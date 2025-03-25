@@ -1,0 +1,30 @@
+{
+	"include": [ "source" ],
+	"compilerOptions": {
+		"outDir": "dist",
+		"module": "node16",
+		"moduleResolution": "node16",
+		"moduleDetection": "force",
+		"target": "esnext",
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ES2022" // Node.js 18
+		],
+		"resolveJsonModule": false, // ESM doesn't yet support JSON modules.
+		"jsx": "react",
+		"declaration": true,
+		"newLine": "lf",
+		"stripInternal": true,
+		"strict": true,
+		"noImplicitReturns": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noPropertyAccessFromIndexSignature": true,
+		"noUncheckedSideEffectImports": true,
+		"forceConsistentCasingInFileNames": true,
+    "rewriteRelativeImportExtensions": true,
+    "allowImportingTsExtensions": true
+	}
+}
