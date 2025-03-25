@@ -5,6 +5,11 @@ import { Config } from "./config.ts";
 import OpenAI from "openai";
 import figlet from "figlet";
 import Spinner from "ink-spinner";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { t, toTypescript } from "structural";
+
+const execPromise = promisify(exec);
 
 const THEME_COLOR = "#72946d";
 
@@ -12,10 +17,116 @@ type Props = {
 	config: Config;
 };
 
-type Message = {
-	role: "assistant" | "user",
+type UserMessage = {
+	role: "user";
+	content: string;
+};
+
+type AssistantMessage = {
+	role: "assistant";
+	content: string;
+};
+
+const ToolSchema = t.subtype({
+	name: t.value("bash"),
+	params: t.subtype({
+		cmd: t.str.comment("The command to run"),
+	}),
+}).comment("Runs a bash command in the cwd");
+
+const ToolResponseSchema = t.subtype({
+	type: t.value("function"),
+	tool: ToolSchema,
+});
+
+type ToolMessage = {
+	role: "tool",
+	tool: t.GetType<typeof ToolResponseSchema>,
+};
+
+type SystemPrompt = {
+	role: "system",
 	content: string,
 };
+
+type HistoryItem = UserMessage | AssistantMessage | ToolMessage;
+type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
+
+const SYSTEM_PROMPT = `
+You are a coding assistant called Octo. You have access to the following tools, defined as
+TypeScript types:
+
+${toTypescript(ToolSchema)}
+
+You can call them by responding with JSON of the following type:
+
+{ type: "function", tool: SOME_TOOL }
+
+For example:
+
+${JSON.stringify({
+	type: "function",
+	tool: {
+		name: "bash",
+		params: {
+			cmd: "ls -la",
+		},
+	},
+} satisfies t.GetType<typeof ToolResponseSchema>)}
+
+You don't have to call any tool functions if you don't need to; you can also just chat to the user
+normally. Attempt to determine what your current task is (the user may have told you outright),
+and figure out the state of the repo using your tools. Then, help the user with the task.
+
+You may need to use tools again after some back-and-forth with the user, as they help you refine
+your solution.
+
+If you want to call a tool, respond ONLY with JSON: no other text. Do not wrap it in backticks or
+use Markdown. For example, do NOT do this:
+
+\`\`\`json
+${JSON.stringify({
+	type: "function",
+	tool: {
+		name: "bash",
+		params: {
+			cmd: "ls -la",
+		},
+	},
+} satisfies t.GetType<typeof ToolResponseSchema>)}
+\`\`\`
+
+Instead, simply respond with this:
+
+${JSON.stringify({
+	type: "function",
+	tool: {
+		name: "bash",
+		params: {
+			cmd: "ls -la",
+		},
+	},
+} satisfies t.GetType<typeof ToolResponseSchema>)}
+`.trim();
+
+function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
+	const output: LlmMessage[] = [
+		{
+			role: "system",
+			content: SYSTEM_PROMPT,
+		},
+	];
+
+	return output.concat(messages.map(message => {
+		if(message.role === "tool") {
+			return {
+				role: "assistant",
+				content: JSON.stringify(message.tool),
+			};
+		}
+		return message;
+	}));
+}
 
 export default function App({ config }: Props) {
 	const client = useMemo(() => {
@@ -25,46 +136,98 @@ export default function App({ config }: Props) {
 		});
 	}, [ config ]);
 
-	const [ history, setHistory ] = useState<Array<Message>>([]);
+	const [ history, setHistory ] = useState<Array<HistoryItem>>([]);
 	const [ query, setQuery ] = useState("");
 	const [ responding, setResponding ] = useState(false);
 
+	const runBashCommand = useCallback(async (command: string) => {
+		const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
+		return stdout || stderr;
+	}, []);
+
 	const onSubmit = useCallback(async () => {
 		setQuery("");
+		const userMessage: UserMessage = {
+			role: "user",
+			content: query,
+		};
+
 		let newHistory = [
 			...history,
-			{
-				role: "user" as const,
-				content: query,
-			},
-		]
+			userMessage,
+		];
+
 		setHistory(newHistory);
 		setResponding(true);
 
-		const res = await client.chat.completions.create({
-			model: config.model,
-			messages: newHistory,
-			stream: true,
-		});
-
-		newHistory.push({
-			role: "assistant" as const,
-			content: "",
-		});
-
-		for await(const chunk of res) {
-			const tokens = chunk.choices[0]?.delta.content || "";
-			newHistory = [ ...newHistory ];
-			const last = newHistory.pop();
-			newHistory.push({
-				role: "assistant",
-				content: (last?.content || "") + tokens,
+		async function getResponse() {
+			const res = await client.chat.completions.create({
+				model: config.model,
+				messages: toLlmMessages(newHistory),
+				stream: true,
 			});
-			setHistory(newHistory);
+
+			const assistantMessage: AssistantMessage = {
+				role: "assistant",
+				content: "",
+			};
+
+			newHistory.push(assistantMessage);
+
+			let isJson = false;
+			let content = "";
+			for await(const chunk of res) {
+				if (chunk.choices[0]?.delta.content) {
+					const tokens = chunk.choices[0].delta.content || "";
+					content += tokens;
+
+					if(!isJson && content.trimStart().startsWith("{")) isJson = true;
+					if(isJson) continue;
+
+					newHistory = [...newHistory];
+					const last = newHistory.pop() as AssistantMessage;
+					newHistory.push({
+						...last, content,
+					} satisfies AssistantMessage);
+					setHistory(newHistory);
+				}
+			}
+
+			if(isJson) {
+				const last = newHistory.pop() as AssistantMessage;
+				const tool = parseTool(content);
+				if(tool == null) {
+					newHistory.push({ ...last, content });
+					setHistory([ ...newHistory ]);
+					return;
+				}
+
+				newHistory.push({
+					role: "tool",
+					tool,
+				});
+
+				try {
+					const result = await runBashCommand(tool.tool.params.cmd);
+					newHistory.push({
+						role: "user",
+						content: result,
+					});
+				} catch(e) {
+					newHistory.push({
+						role: "user",
+						content: `Error: ${e}`,
+					});
+				}
+
+				await getResponse();
+			}
 		}
 
+		await getResponse();
+
 		setResponding(false);
-	}, [ setQuery, query, config ]);
+	}, [ setQuery, query, config, runBashCommand, client ]);
 
 	return <Box flexDirection="column" width="100%">
 		<Header />
@@ -84,25 +247,48 @@ export default function App({ config }: Props) {
 	</Box>
 }
 
+function parseTool(content: string) {
+	try {
+		const json = JSON.parse(content);
+		const tool = ToolResponseSchema.slice(json);
+		return tool;
+	} catch {
+		return null;
+	}
+}
+
 const History = React.memo(({ history }: {
-	history: Array<Message>,
+	history: Array<HistoryItem>,
 }) => {
 	return <Box flexDirection="column">
 		{
 			history.map((item, index) => {
-				return <Box
-					key={`msg-${index}`}
-					marginTop={1}
-					marginBottom={1}
-				>
-					<Text color={item.role === "assistant" ? "white" : "" }>
-						{item.role === "user" ? "> " : null}{item.content}
-					</Text>
+				return <Box marginTop={1} marginBottom={1} flexDirection="column" key={`msg-${index}`}>
+					<MessageDisplay item={item} />
 				</Box>
 			})
 		}
 	</Box>
 });
+
+function MessageDisplay({ item }: { item: HistoryItem }) {
+	if(item.role === "assistant") return <AssistantMessage item={item} />
+	if(item.role === "tool") return <ToolMessage item={item} />
+	return <Text>
+		{item.role === "user" ? "> " : null}{item.content}
+	</Text>
+}
+
+function ToolMessage({ item }: { item: ToolMessage }) {
+	return <Box>
+		<Text color="gray">{item.tool.tool.name}: </Text>
+		<Text color={THEME_COLOR}>{item.tool.tool.params.cmd}</Text>
+	</Box>
+}
+
+function AssistantMessage({ item }: { item: AssistantMessage }) {
+	return <Text color="white">{item.content}</Text>
+}
 
 const InputBox = React.memo((props: {
 	responding: boolean,
@@ -131,7 +317,9 @@ const LOADING_STRINGS = [
 	"Scheming",
 	"Plotting",
 	"Manipulating",
-	"Planning",
+	"Splashing",
+	"Yearning",
+	"Calculating",
 ];
 function Loading() {
 	const [ idx, setIndex ] = useState(0);
