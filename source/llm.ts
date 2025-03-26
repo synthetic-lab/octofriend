@@ -111,7 +111,11 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
         prev.content += "\n" + TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG;
         continue;
       }
-      throw new Error("Corrupted history: tool without prior assistant message");
+      output.push({
+        role: "assistant",
+        content: TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG,
+      });
+      continue;
     }
 
     if(message.role === "tool-output") {
