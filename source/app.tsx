@@ -166,8 +166,10 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
 
 function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
 	return <Box>
-    <Box marginRight={1}><Text>🐙</Text></Box>
-    <Text>{item.content}</Text>
+    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Text>🐙</Text></Box>
+    <Box flexGrow={1}>
+      <Text>{item.content}</Text>
+    </Box>
   </Box>
 }
 
