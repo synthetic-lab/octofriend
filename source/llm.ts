@@ -34,9 +34,8 @@ export const ToolCallRequestSchema = t.subtype({
 	tool: ToolCallSchema,
 });
 
-export const SYSTEM_PROMPT = `
-You are a coding assistant called Octo, also known as octofriend. You have access to the following
-tools, defined as TypeScript types:
+const TOOL_CALL_INSTRUCTIONS = `
+You have access to the following tools, defined as TypeScript types:
 
 ${toTypescript(ToolCallSchema)}
 
@@ -67,6 +66,11 @@ Your tool calls should be the LAST thing in your response, if you have any tool 
 Don't wrap them in backticks Markdown-style, just write the raw tags out.
 
 Remember, you don't need to use tools! Only use them when appropriate.
+
+`.trim();
+
+const SYSTEM_PROMPT = `
+You are a coding assistant called Octo, also known as octofriend.
 `.trim();
 
 export type ToolCallMessage = {
@@ -82,14 +86,14 @@ type ToolOutputMessage = {
 export type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
-	const output: LlmMessage[] = [
+	let output: LlmMessage[] = [
 		{
 			role: "system",
 			content: SYSTEM_PROMPT,
 		},
 	];
 
-	return output.concat(messages.map(message => {
+	output = output.concat(messages.map(message => {
 		if(message.role === "tool") {
 			return {
 				role: "assistant",
@@ -104,6 +108,17 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 		}
 		return message;
 	}));
+
+  const last = messages[messages.length - 1];
+  if(last && last.role === "user") {
+    output.pop();
+    output.push({
+      role: "user",
+      content: last.content + "\n" + TOOL_CALL_INSTRUCTIONS,
+    });
+  }
+
+  return output;
 }
 
 export async function runAgent(
