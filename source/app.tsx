@@ -146,9 +146,11 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 		</Text>
 	}
 	return <Box>
-    <Text>
-      { "> " }
-    </Text>
+    <Box marginRight={1}>
+      <Text color="white">
+        ▶
+      </Text>
+    </Box>
     <Text>
       {item.content}
     </Text>
@@ -164,7 +166,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
 
 function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
 	return <Box>
-    <Text>🐙 </Text>
+    <Box marginRight={1}><Text>🐙</Text></Box>
     <Text>{item.content}</Text>
   </Box>
 }
