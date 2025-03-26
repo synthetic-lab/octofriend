@@ -178,11 +178,14 @@ export default function App({ config, metadata }: Props) {
 		setResponding(false);
 	}, [ setQuery, query, config, runBashCommand, client ]);
 
-  const staticItems: StaticItem[] = useMemo(() => [
-    { type: "header" },
-    { type: "version", metadata, config },
-    ...toStaticItems(history.slice(0, history.length - 1)),
-  ], [ history ]);
+  const staticItems: StaticItem[] = useMemo(() => {
+    const settledHistory = responding ? history.slice(0, history.length - 1) : history;
+    return [
+      { type: "header" },
+      { type: "version", metadata, config },
+      ...toStaticItems(settledHistory),
+    ]
+  }, [ history, responding ]);
 
   const lastHistoryItem = history[history.length - 1] || null;
 
@@ -194,7 +197,7 @@ export default function App({ config, metadata }: Props) {
     </Static>
 
     {
-      lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
+      responding && lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
     }
 
 		<InputBox
