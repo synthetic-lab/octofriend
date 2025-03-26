@@ -19,10 +19,10 @@ export type SystemPrompt = {
 
 export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 
-const TOOL_OPEN_TAG = "<x-octo-tool>";
-const TOOL_CLOSE_TAG = "</x-octo-tool>";
-const TOOL_RESPONSE_OPEN_TAG = "<x-octo-tool-output>";
-const TOOL_RESPONSE_CLOSE_TAG = "</x-octo-tool-output>";
+const TOOL_OPEN_TAG = "<run-tool>";
+const TOOL_CLOSE_TAG = "</run-tool>";
+const TOOL_RESPONSE_OPEN_TAG = "<tool-output>";
+const TOOL_RESPONSE_CLOSE_TAG = "</tool-output>";
 
 export const ToolCallSchema = t.subtype({
 	name: t.value("bash"),
@@ -73,6 +73,9 @@ Your tool calls should be the LAST thing in your response, if you have any tool 
 Don't wrap them in backticks Markdown-style, just write the raw tags out.
 
 Remember, you don't need to use tools! Only use them when appropriate.
+
+Typically, you can only run tools one-by-one. After viewing tool output, you may need to run more
+tools in a step-by-step process.
 `.trim();
 
 function systemPrompt() {
@@ -161,6 +164,7 @@ export async function runAgent(
     model: config.model,
     messages: toLlmMessages(newHistory),
     stream: true,
+    stop: TOOL_CLOSE_TAG,
   });
 
   const assistantMessage: AssistantMessage = {
@@ -171,10 +175,9 @@ export async function runAgent(
   newHistory.push(assistantMessage);
 
   let maybeTool = false;
-  let unclosedToolTag = false;
+  let foundToolTag = false;
   let content = "";
   let toolContent = "";
-  const toolTags: string[] = [];
 
   for await(const chunk of res) {
     if (chunk.choices[0]?.delta.content) {
@@ -191,27 +194,18 @@ export async function runAgent(
       if(maybeTool) {
         toolContent += tokens;
 
-        // Parse out tool tags
-        while(toolContent.includes(TOOL_OPEN_TAG)) {
-          unclosedToolTag = true;
-          const closeIndex = toolContent.indexOf(TOOL_CLOSE_TAG);
-          if(closeIndex < 0) break;
-          unclosedToolTag = false;
-
-          // TODO: actually immediately run this, and split up the assistant vs tool call message
-          toolTags.push(toolContent.slice(0, closeIndex + TOOL_CLOSE_TAG.length));
-          toolContent = toolContent.slice(closeIndex + TOOL_CLOSE_TAG.length).trimStart();
+        if(!foundToolTag && toolContent.includes(TOOL_OPEN_TAG)) {
+          foundToolTag = true;
         }
+        if(foundToolTag) continue;
 
-        if(!unclosedToolTag) {
-          // Check any remaining characters: do they match so far?
-          for(let i = 0; i < toolContent.length && i < TOOL_OPEN_TAG.length; i++) {
-            if(toolContent[i] !== TOOL_OPEN_TAG[i]) {
-              maybeTool = false;
-              content += toolContent;
-              toolContent = "";
-              break;
-            }
+        // Check any remaining characters: do they match so far?
+        for(let i = 0; i < toolContent.length && i < TOOL_OPEN_TAG.length; i++) {
+          if(toolContent[i] !== TOOL_OPEN_TAG[i]) {
+            maybeTool = false;
+            content += toolContent;
+            toolContent = "";
+            break;
           }
         }
       }
@@ -228,31 +222,41 @@ export async function runAgent(
     }
   }
 
-  if(toolTags.length > 0) {
-    for(const tag of toolTags) {
-      const tool = parseTool(tag);
-      if(tool == null) {
-        // TODO tell the LLM it fucked up
-        throw new Error('wat');
-      }
+  if(maybeTool && !foundToolTag) {
+    content += toolContent;
+    toolContent = "";
+    newHistory = [...newHistory];
+    const last = newHistory.pop() as AssistantMessage;
+    newHistory.push({
+      ...last, content,
+    } satisfies AssistantMessage);
+    setHistory(newHistory);
+  }
 
-      newHistory.push({
-        role: "tool",
-        tool,
-      });
-      setHistory([ ...newHistory ]);
+  if(foundToolTag) {
+    const tool = parseTool(toolContent);
 
-      try {
-        const result = await runTool(tool);
-        newHistory.push(result);
-      } catch(e) {
-        newHistory.push({
-          role: "user",
-          content: `Error: ${e}`,
-        });
-      }
-      setHistory([ ...newHistory ]);
+    if(tool == null) {
+      // TODO tell the LLM it fucked up
+      throw new Error('wat');
     }
+
+    newHistory.push({
+      role: "tool",
+      tool,
+    });
+    setHistory([ ...newHistory ]);
+
+    try {
+      const result = await runTool(tool);
+      newHistory.push(result);
+    } catch(e) {
+      newHistory.push({
+        role: "user",
+        content: `Error: ${e}`,
+      });
+    }
+    setHistory([ ...newHistory ]);
 
     await runAgent(client, config, newHistory, setHistory, runTool);
   }
