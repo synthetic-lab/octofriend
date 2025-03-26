@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
+import { ToolCallSchema, ALL_TOOLS } from "./tooldefs.ts";
 
 export type UserMessage = {
 	role: "user";
@@ -24,13 +25,6 @@ const TOOL_CLOSE_TAG = "</run-tool>";
 const TOOL_RESPONSE_OPEN_TAG = "<tool-output>";
 const TOOL_RESPONSE_CLOSE_TAG = "</tool-output>";
 
-export const ToolCallSchema = t.subtype({
-	name: t.value("bash"),
-	params: t.subtype({
-		cmd: t.str.comment("The command to run"),
-	}),
-}).comment("Runs a bash command in the cwd");
-
 export const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
 	tool: ToolCallSchema,
@@ -39,7 +33,7 @@ export const ToolCallRequestSchema = t.subtype({
 const TOOL_CALL_INSTRUCTIONS = `
 You have access to the following tools, defined as TypeScript types:
 
-${toTypescript(ToolCallSchema)}
+${ALL_TOOLS.map(toolType => toTypescript(toolType)).join("\n\n")}
 
 You can call them by responding with JSON of the following type inside special XML tags:
 

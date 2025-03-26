@@ -1,18 +1,16 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
+import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
-import { exec } from "child_process";
-import { promisify } from "util";
 import {
   HistoryItem, UserMessage, AssistantMessage, ToolCallMessage, runAgent
 } from "./llm.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
-
-const execPromise = promisify(exec);
+import { runTool, BashToolSchema, ReadToolSchema } from "./tooldefs.ts";
 
 type Props = {
 	config: Config;
@@ -67,7 +65,7 @@ export default function App({ config, metadata }: Props) {
 		await runAgent(client, config, newHistory, setHistory, async (tool) => {
       return {
         role: "tool-output",
-        content: await runBashCommand(tool.tool.params.cmd),
+        content: await runTool(tool.tool),
       };
     });
 
@@ -103,11 +101,6 @@ export default function App({ config, metadata }: Props) {
 			onSubmit={onSubmit}
 		/>
 	</Box>
-}
-
-async function runBashCommand(command: string) {
-  const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
-  return stdout || stderr;
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
@@ -158,9 +151,23 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 });
 
 function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
-	return <Box>
-		<Text color="gray">{item.tool.tool.name}: </Text>
-		<Text color={THEME_COLOR}>{item.tool.tool.params.cmd}</Text>
+  switch(item.tool.tool.name) {
+    case "read": return <ReadToolRenderer item={item.tool.tool} />
+    case "bash": return <BashToolRenderer item={item.tool.tool} />
+  }
+}
+
+function BashToolRenderer({ item }: { item: t.GetType<typeof BashToolSchema> }) {
+  return <Box>
+		<Text color="gray">{item.name}: </Text>
+		<Text color={THEME_COLOR}>{item.params.cmd}</Text>
+	</Box>
+}
+
+function ReadToolRenderer({ item }: { item: t.GetType<typeof ReadToolSchema> }) {
+  return <Box>
+		<Text color="gray">{item.name}: </Text>
+		<Text color={THEME_COLOR}>{item.params.filePath}</Text>
 	</Box>
 }
 
