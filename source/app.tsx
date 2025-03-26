@@ -5,9 +5,8 @@ import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { t } from "structural";
 import {
-  LlmMessage, UserMessage, AssistantMessage as AssistantMessageRenderer, ToolCallRequestSchema, SYSTEM_PROMPT
+  HistoryItem, UserMessage, AssistantMessage, ToolCallMessage, runAgent
 } from "./llm.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
@@ -19,43 +18,6 @@ type Props = {
 	config: Config;
 	metadata: Metadata,
 };
-
-type ToolCallMessage = {
-	role: "tool",
-	tool: t.GetType<typeof ToolCallRequestSchema>,
-};
-
-type ToolOutputMessage = {
-	role: "tool-output",
-	content: string,
-};
-
-type HistoryItem = UserMessage | AssistantMessageRenderer | ToolCallMessage | ToolOutputMessage;
-
-function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
-	const output: LlmMessage[] = [
-		{
-			role: "system",
-			content: SYSTEM_PROMPT,
-		},
-	];
-
-	return output.concat(messages.map(message => {
-		if(message.role === "tool") {
-			return {
-				role: "assistant",
-				content: JSON.stringify(message.tool),
-			};
-		}
-		if(message.role === "tool-output") {
-			return {
-				role: "user",
-				content: message.content,
-			};
-		}
-		return message;
-	}));
-}
 
 type StaticItem = {
   type: "header",
@@ -87,11 +49,6 @@ export default function App({ config, metadata }: Props) {
 	const [ query, setQuery ] = useState("");
 	const [ responding, setResponding ] = useState(false);
 
-	const runBashCommand = useCallback(async (command: string) => {
-		const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
-		return stdout || stderr;
-	}, []);
-
 	const onSubmit = useCallback(async () => {
 		setQuery("");
 		const userMessage: UserMessage = {
@@ -107,76 +64,15 @@ export default function App({ config, metadata }: Props) {
 		setHistory(newHistory);
 		setResponding(true);
 
-		async function getResponse() {
-			const res = await client.chat.completions.create({
-				model: config.model,
-				messages: toLlmMessages(newHistory),
-				stream: true,
-			});
-
-			const assistantMessage: AssistantMessageRenderer = {
-				role: "assistant",
-				content: "",
-			};
-
-			newHistory.push(assistantMessage);
-
-			let isJson = false;
-			let content = "";
-			for await(const chunk of res) {
-				if (chunk.choices[0]?.delta.content) {
-					const tokens = chunk.choices[0].delta.content || "";
-					content += tokens;
-
-					if(!isJson && content.trimStart().startsWith("{")) isJson = true;
-					if(isJson) continue;
-
-					newHistory = [...newHistory];
-					const last = newHistory.pop() as AssistantMessageRenderer;
-					newHistory.push({
-						...last, content,
-					} satisfies AssistantMessageRenderer);
-					setHistory(newHistory);
-				}
-			}
-
-			if(isJson) {
-				const last = newHistory.pop() as AssistantMessageRenderer;
-				const tool = parseTool(content);
-				if(tool == null) {
-					newHistory.push({ ...last, content });
-					setHistory([ ...newHistory ]);
-					return;
-				}
-
-				newHistory.push({
-					role: "tool",
-					tool,
-				});
-        setHistory([ ...newHistory ]);
-
-				try {
-					const result = await runBashCommand(tool.tool.params.cmd);
-					newHistory.push({
-						role: "tool-output",
-						content: result,
-					});
-				} catch(e) {
-					newHistory.push({
-						role: "user",
-						content: `Error: ${e}`,
-					});
-				}
-        setHistory([ ...newHistory ]);
-
-				await getResponse();
-			}
-		}
-
-		await getResponse();
+		await runAgent(client, config, newHistory, setHistory, async (tool) => {
+      return {
+        role: "tool-output",
+        content: await runBashCommand(tool.tool.params.cmd),
+      };
+    });
 
 		setResponding(false);
-	}, [ setQuery, query, config, runBashCommand, client ]);
+	}, [ query, config, client ]);
 
   const staticItems: StaticItem[] = useMemo(() => {
     const settledHistory = responding ? history.slice(0, history.length - 1) : history;
@@ -209,14 +105,9 @@ export default function App({ config, metadata }: Props) {
 	</Box>
 }
 
-function parseTool(content: string) {
-	try {
-		const json = JSON.parse(content);
-		const tool = ToolCallRequestSchema.slice(json);
-		return tool;
-	} catch {
-		return null;
-	}
+async function runBashCommand(command: string) {
+  const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
+  return stdout || stderr;
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
@@ -271,7 +162,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
 	</Box>
 }
 
-function AssistantMessageRenderer({ item }: { item: AssistantMessageRenderer }) {
+function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
 	return <Box>
     <Text>🐙 </Text>
     <Text>{item.content}</Text>
