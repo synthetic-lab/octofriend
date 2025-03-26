@@ -7,7 +7,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { t } from "structural";
 import {
-  LlmMessage, UserMessage, AssistantMessage, ToolCallRequestSchema, SYSTEM_PROMPT
+  LlmMessage, UserMessage, AssistantMessage as AssistantMessageRenderer, ToolCallRequestSchema, SYSTEM_PROMPT
 } from "./llm.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
@@ -30,7 +30,7 @@ type ToolOutputMessage = {
 	content: string,
 };
 
-type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
+type HistoryItem = UserMessage | AssistantMessageRenderer | ToolCallMessage | ToolOutputMessage;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	const output: LlmMessage[] = [
@@ -114,7 +114,7 @@ export default function App({ config, metadata }: Props) {
 				stream: true,
 			});
 
-			const assistantMessage: AssistantMessage = {
+			const assistantMessage: AssistantMessageRenderer = {
 				role: "assistant",
 				content: "",
 			};
@@ -132,16 +132,16 @@ export default function App({ config, metadata }: Props) {
 					if(isJson) continue;
 
 					newHistory = [...newHistory];
-					const last = newHistory.pop() as AssistantMessage;
+					const last = newHistory.pop() as AssistantMessageRenderer;
 					newHistory.push({
 						...last, content,
-					} satisfies AssistantMessage);
+					} satisfies AssistantMessageRenderer);
 					setHistory(newHistory);
 				}
 			}
 
 			if(isJson) {
-				const last = newHistory.pop() as AssistantMessage;
+				const last = newHistory.pop() as AssistantMessageRenderer;
 				const tool = parseTool(content);
 				if(tool == null) {
 					newHistory.push({ ...last, content });
@@ -244,27 +244,35 @@ const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
 });
 
 const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
-	if(item.role === "assistant") return <AssistantMessage item={item} />
-	if(item.role === "tool") return <ToolMessage item={item} />
+	if(item.role === "assistant") return <AssistantMessageRenderer item={item} />
+	if(item.role === "tool") return <ToolMessageRenderer item={item} />
 	if(item.role === "tool-output") {
 		return <Text color="gray">
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
 	}
-	return <Text>
-		{ ">" } {item.content}
-	</Text>
+	return <Box>
+    <Text>
+      { "> " }
+    </Text>
+    <Text>
+      {item.content}
+    </Text>
+  </Box>
 });
 
-function ToolMessage({ item }: { item: ToolCallMessage }) {
+function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
 	return <Box>
 		<Text color="gray">{item.tool.tool.name}: </Text>
 		<Text color={THEME_COLOR}>{item.tool.tool.params.cmd}</Text>
 	</Box>
 }
 
-function AssistantMessage({ item }: { item: AssistantMessage }) {
-	return <Text color="white">{item.content}</Text>
+function AssistantMessageRenderer({ item }: { item: AssistantMessageRenderer }) {
+	return <Box>
+    <Text>🐙 </Text>
+    <Text>{item.content}</Text>
+  </Box>
 }
 
 const InputBox = React.memo((props: {
