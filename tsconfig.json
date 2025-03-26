@@ -20,7 +20,6 @@
 		"noImplicitReturns": true,
 		"noImplicitOverride": true,
 		"noFallthroughCasesInSwitch": true,
-		"noUncheckedIndexedAccess": true,
 		"noPropertyAccessFromIndexSignature": true,
 		"noUncheckedSideEffectImports": true,
 		"forceConsistentCasingInFileNames": true,

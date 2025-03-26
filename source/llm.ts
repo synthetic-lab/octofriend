@@ -96,28 +96,34 @@ type ToolOutputMessage = {
 export type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
-	let output: LlmMessage[] = [
+	const output: LlmMessage[] = [
 		{
 			role: "system",
 			content: systemPrompt(),
 		},
 	];
 
-	output = output.concat(messages.map(message => {
-		if(message.role === "tool") {
-			return {
-				role: "assistant",
-				content: TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG,
-			};
-		}
-		if(message.role === "tool-output") {
-			return {
+  for(let i = 0; i < messages.length; i++) {
+    const message = messages[i];
+    if(message.role === "tool") {
+      const prev = output[output.length - 1];
+      if(prev && prev.role === "assistant") {
+        prev.content += "\n" + TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG;
+        continue;
+      }
+      throw new Error("Corrupted history: tool without prior assistant message");
+    }
+
+    if(message.role === "tool-output") {
+      output.push({
 				role: "user",
 				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
-			};
-		}
-		return message;
-	}));
+      });
+      continue;
+    }
+
+    output.push(message);
+  }
 
   const last = messages[messages.length - 1];
   if(last && last.role === "user") {
