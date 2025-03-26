@@ -28,21 +28,26 @@ type AssistantMessage = {
 	content: string;
 };
 
-const ToolSchema = t.subtype({
+const ToolCallSchema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
 		cmd: t.str.comment("The command to run"),
 	}),
 }).comment("Runs a bash command in the cwd");
 
-const ToolResponseSchema = t.subtype({
+const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
-	tool: ToolSchema,
+	tool: ToolCallSchema,
 });
 
-type ToolMessage = {
+type ToolCallMessage = {
 	role: "tool",
-	tool: t.GetType<typeof ToolResponseSchema>,
+	tool: t.GetType<typeof ToolCallRequestSchema>,
+};
+
+type ToolOutputMessage = {
+	role: "tool-output",
+	content: string,
 };
 
 type SystemPrompt = {
@@ -50,14 +55,14 @@ type SystemPrompt = {
 	content: string,
 };
 
-type HistoryItem = UserMessage | AssistantMessage | ToolMessage;
+type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
 type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 
 const SYSTEM_PROMPT = `
 You are a coding assistant called Octo. You have access to the following tools, defined as
 TypeScript types:
 
-${toTypescript(ToolSchema)}
+${toTypescript(ToolCallSchema)}
 
 You can call them by responding with JSON of the following type:
 
@@ -73,7 +78,7 @@ ${JSON.stringify({
 			cmd: "ls -la",
 		},
 	},
-} satisfies t.GetType<typeof ToolResponseSchema>)}
+} satisfies t.GetType<typeof ToolCallRequestSchema>)}
 
 You don't have to call any tool functions if you don't need to; you can also just chat to the user
 normally. Attempt to determine what your current task is (the user may have told you outright),
@@ -94,7 +99,7 @@ ${JSON.stringify({
 			cmd: "ls -la",
 		},
 	},
-} satisfies t.GetType<typeof ToolResponseSchema>)}
+} satisfies t.GetType<typeof ToolCallRequestSchema>)}
 \`\`\`
 
 Instead, simply respond with this:
@@ -107,7 +112,9 @@ ${JSON.stringify({
 			cmd: "ls -la",
 		},
 	},
-} satisfies t.GetType<typeof ToolResponseSchema>)}
+} satisfies t.GetType<typeof ToolCallRequestSchema>)}
+
+Note that you can only call one tool at a time: you can't call multiple.
 `.trim();
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
@@ -123,6 +130,12 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 			return {
 				role: "assistant",
 				content: JSON.stringify(message.tool),
+			};
+		}
+		if(message.role === "tool-output") {
+			return {
+				role: "user",
+				content: message.content,
 			};
 		}
 		return message;
@@ -211,7 +224,7 @@ export default function App({ config, metadata }: Props) {
 				try {
 					const result = await runBashCommand(tool.tool.params.cmd);
 					newHistory.push({
-						role: "user",
+						role: "tool-output",
 						content: result,
 					});
 				} catch(e) {
@@ -261,7 +274,7 @@ export default function App({ config, metadata }: Props) {
 function parseTool(content: string) {
 	try {
 		const json = JSON.parse(content);
-		const tool = ToolResponseSchema.slice(json);
+		const tool = ToolCallRequestSchema.slice(json);
 		return tool;
 	} catch {
 		return null;
@@ -282,15 +295,20 @@ const History = React.memo(({ history }: {
 	</Box>
 });
 
-function MessageDisplay({ item }: { item: HistoryItem }) {
+const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
 	if(item.role === "assistant") return <AssistantMessage item={item} />
 	if(item.role === "tool") return <ToolMessage item={item} />
+	if(item.role === "tool-output") {
+		return <Text color="gray">
+			Got <Text>{item.content.split("\n").length}</Text> lines of output
+		</Text>
+	}
 	return <Text>
-		{item.role === "user" ? "> " : null}{item.content}
+		{ ">" } {item.content}
 	</Text>
-}
+});
 
-function ToolMessage({ item }: { item: ToolMessage }) {
+function ToolMessage({ item }: { item: ToolCallMessage }) {
 	return <Box>
 		<Text color="gray">{item.tool.tool.name}: </Text>
 		<Text color={THEME_COLOR}>{item.tool.tool.params.cmd}</Text>
