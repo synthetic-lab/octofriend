@@ -35,6 +35,8 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
+type UiMode = "input" | "responding";
+
 export default function App({ config, metadata }: Props) {
 	const client = useMemo(() => {
 		return new OpenAI({
@@ -45,7 +47,7 @@ export default function App({ config, metadata }: Props) {
 
 	const [ history, setHistory ] = useState<Array<HistoryItem>>([]);
 	const [ query, setQuery ] = useState("");
-	const [ responding, setResponding ] = useState(false);
+	const [ mode, setMode ] = useState<UiMode>("input");
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
@@ -60,7 +62,7 @@ export default function App({ config, metadata }: Props) {
 		];
 
 		setHistory(newHistory);
-		setResponding(true);
+    setMode("responding");
 
 		await runAgent(client, config, newHistory, setHistory, async (tool) => {
       return {
@@ -69,17 +71,17 @@ export default function App({ config, metadata }: Props) {
       };
     });
 
-		setResponding(false);
+    setMode("input");
 	}, [ query, config, client ]);
 
   const staticItems: StaticItem[] = useMemo(() => {
-    const settledHistory = responding ? history.slice(0, history.length - 1) : history;
+    const settledHistory = mode === "responding" ? history.slice(0, history.length - 1) : history;
     return [
       { type: "header" },
       { type: "version", metadata, config },
       ...toStaticItems(settledHistory),
     ]
-  }, [ history, responding ]);
+  }, [ history, mode ]);
 
   const lastHistoryItem = history[history.length - 1] || null;
 
@@ -91,15 +93,16 @@ export default function App({ config, metadata }: Props) {
     </Static>
 
     {
-      responding && lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
+      mode === "responding" && lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
     }
 
-		<InputBox
-			responding={responding}
-			value={query}
-			onChange={setQuery}
-			onSubmit={onSubmit}
-		/>
+    {
+      mode === "responding" ? <Loading /> : <InputBox
+        value={query}
+        onChange={setQuery}
+        onSubmit={onSubmit}
+      />
+    }
 	</Box>
 }
 
@@ -181,13 +184,11 @@ function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
 }
 
 const InputBox = React.memo((props: {
-	responding: boolean,
 	value: string,
 	onChange: (s: string) => any,
 	onSubmit: () => any,
 }) => {
-		if(props.responding) return <Loading />;
-		return <Box width="100%" borderStyle="round" borderColor={THEME_COLOR}>
-			<TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
-		</Box>
+  return <Box width="100%" borderStyle="round" borderColor={THEME_COLOR}>
+    <TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
+  </Box>
 });
