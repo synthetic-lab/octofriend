@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { Text, Box } from "ink";
+import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
@@ -142,6 +142,24 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	}));
 }
 
+type StaticItem = {
+  type: "header",
+} | {
+  type: "version",
+  metadata: Metadata,
+  config: Config,
+} | {
+  type: "history-item",
+  item: HistoryItem,
+};
+
+function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
+  return messages.map(message => ({
+    type: "history-item",
+    item: message,
+  }));
+}
+
 export default function App({ config, metadata }: Props) {
 	const client = useMemo(() => {
 		return new OpenAI({
@@ -243,24 +261,24 @@ export default function App({ config, metadata }: Props) {
 		setResponding(false);
 	}, [ setQuery, query, config, runBashCommand, client ]);
 
+  const staticItems: StaticItem[] = useMemo(() => [
+    { type: "header" },
+    { type: "version", metadata, config },
+    ...toStaticItems(history.slice(0, history.length - 1)),
+  ], [ history ]);
+
+  const lastHistoryItem = history[history.length - 1] || null;
+
 	return <Box flexDirection="column" width="100%">
-		<Header />
+    <Static items={staticItems}>
+      {
+        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+      }
+    </Static>
 
-		<Box marginTop={1} marginLeft={1} flexDirection="column">
-			<Text color="gray">
-				Model: {config.model}
-			</Text>
-			<Text color="gray">
-				Version: {metadata.version}
-			</Text>
-			<Box marginTop={1}>
-				<Text>
-					Octo is your friend. Tell Octo <Text color={THEME_COLOR}>what you want to do.</Text>
-				</Text>
-			</Box>
-		</Box>
-
-		<History history={history} />
+    {
+      lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
+    }
 
 		<InputBox
 			responding={responding}
@@ -281,18 +299,27 @@ function parseTool(content: string) {
 	}
 }
 
-const History = React.memo(({ history }: {
-	history: Array<HistoryItem>,
-}) => {
-	return <Box flexDirection="column">
-		{
-			history.map((item, index) => {
-				return <Box marginTop={1} marginBottom={1} flexDirection="column" key={`msg-${index}`}>
-					<MessageDisplay item={item} />
-				</Box>
-			})
-		}
-	</Box>
+const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
+  if(item.type === "header") return <Header />;
+  if(item.type === "version") {
+    return <Box marginTop={1} marginLeft={1} flexDirection="column">
+      <Text color="gray">
+        Model: {item.config.model}
+      </Text>
+      <Text color="gray">
+        Version: {item.metadata.version}
+      </Text>
+      <Box marginTop={1}>
+        <Text>
+          Octo is your friend. Tell Octo <Text color={THEME_COLOR}>what you want to do.</Text>
+        </Text>
+      </Box>
+    </Box>
+  }
+
+  return <Box marginTop={1} marginBottom={1} flexDirection="column">
+    <MessageDisplay item={item.item} />
+  </Box>
 });
 
 const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
