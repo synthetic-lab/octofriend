@@ -19,6 +19,9 @@ export type SystemPrompt = {
 
 export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 
+const TOOL_OPEN_TAG = "<x-octo-tool>";
+const TOOL_CLOSE_TAG = "</x-octo-tool>";
+
 export const ToolCallSchema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
@@ -37,13 +40,13 @@ tools, defined as TypeScript types:
 
 ${toTypescript(ToolCallSchema)}
 
-You can call them by responding with JSON of the following type:
+You can call them by responding with JSON of the following type inside special XML tags:
 
-{ type: "function", tool: SOME_TOOL }
+${TOOL_OPEN_TAG}{"type":"function","tool":SOME_TOOL}${TOOL_CLOSE_TAG}
 
 For example:
 
-${JSON.stringify({
+${TOOL_OPEN_TAG}${JSON.stringify({
 	type: "function",
 	tool: {
 		name: "bash",
@@ -51,7 +54,7 @@ ${JSON.stringify({
 			cmd: "ls -la",
 		},
 	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
+} satisfies t.GetType<typeof ToolCallRequestSchema>)}${TOOL_CLOSE_TAG}
 
 You don't have to call any tool functions if you don't need to; you can also just chat to the user
 normally. Attempt to determine what your current task is (the user may have told you outright),
@@ -60,35 +63,10 @@ and figure out the state of the repo using your tools. Then, help the user with 
 You may need to use tools again after some back-and-forth with the user, as they help you refine
 your solution.
 
-If you want to call a tool, respond ONLY with JSON: no other text. Do not wrap it in backticks or
-use Markdown. For example, do NOT do this:
+Your tool calls should be the LAST thing in your response, if you have any tool calls.
+Don't wrap them in backticks Markdown-style, just write the raw tags out.
 
-\`\`\`json
-${JSON.stringify({
-	type: "function",
-	tool: {
-		name: "bash",
-		params: {
-			cmd: "ls -la",
-		},
-	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
-\`\`\`
-
-Instead, simply respond with this:
-
-${JSON.stringify({
-	type: "function",
-	tool: {
-		name: "bash",
-		params: {
-			cmd: "ls -la",
-		},
-	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
-
-Note that you can only call one tool at a time: you can't call multiple. You also can't talk if you
-want to call a tool: you can only respond with the single JSON object.
+Remember, you don't need to use tools! Only use them when appropriate.
 `.trim();
 
 export type ToolCallMessage = {
@@ -150,57 +128,96 @@ export async function runAgent(
 
   newHistory.push(assistantMessage);
 
-  let isJson = false;
+  let maybeTool = false;
+  let unclosedToolTag = false;
   let content = "";
+  let toolContent = "";
+  const toolTags: string[] = [];
+
   for await(const chunk of res) {
     if (chunk.choices[0]?.delta.content) {
-      const tokens = chunk.choices[0].delta.content || "";
-      content += tokens;
+      let tokens = chunk.choices[0].delta.content || "";
 
-      if(!isJson && content.trimStart().startsWith("{")) isJson = true;
-      if(isJson) continue;
+      // If we've encountered our first <, check it as maybe a tool call
+      if(!maybeTool && tokens.includes("<")) {
+        maybeTool = true;
+        const openIndex = tokens.indexOf("<");
+        content += tokens.slice(0, openIndex);
+        tokens = tokens.slice(openIndex);
+      }
 
-      newHistory = [...newHistory];
-      const last = newHistory.pop() as AssistantMessage;
-      newHistory.push({
-        ...last, content,
-      } satisfies AssistantMessage);
-      setHistory(newHistory);
+      if(maybeTool) {
+        toolContent += tokens;
+
+        // Parse out tool tags
+        while(toolContent.includes(TOOL_OPEN_TAG)) {
+          unclosedToolTag = true;
+          const closeIndex = toolContent.indexOf(TOOL_CLOSE_TAG);
+          if(closeIndex < 0) break;
+          unclosedToolTag = false;
+
+          // TODO: actually immediately run this, and split up the assistant vs tool call message
+          toolTags.push(toolContent.slice(0, closeIndex + TOOL_CLOSE_TAG.length));
+          toolContent = toolContent.slice(closeIndex + TOOL_CLOSE_TAG.length).trimStart();
+        }
+
+        if(!unclosedToolTag) {
+          // Check any remaining characters: do they match so far?
+          for(let i = 0; i < toolContent.length && i < TOOL_OPEN_TAG.length; i++) {
+            if(toolContent[i] !== TOOL_OPEN_TAG[i]) {
+              maybeTool = false;
+              content += toolContent;
+              toolContent = "";
+              break;
+            }
+          }
+        }
+      }
+
+      if(!maybeTool) {
+        content += tokens;
+        newHistory = [...newHistory];
+        const last = newHistory.pop() as AssistantMessage;
+        newHistory.push({
+          ...last, content,
+        } satisfies AssistantMessage);
+        setHistory(newHistory);
+      }
     }
   }
 
-  if(isJson) {
-    const last = newHistory.pop() as AssistantMessage;
-    const tool = parseTool(content);
-    if(tool == null) {
-      // TODO we should have unambiguous tool call syntax and throw errors here
-      newHistory.push({ ...last, content });
-      setHistory([ ...newHistory ]);
-      return;
-    }
+  if(toolTags.length > 0) {
+    for(const tag of toolTags) {
+      const tool = parseTool(tag);
+      if(tool == null) {
+        // TODO tell the LLM it fucked up
+        throw new Error('wat');
+      }
 
-    newHistory.push({
-      role: "tool",
-      tool,
-    });
-    setHistory([ ...newHistory ]);
-
-    try {
-      const result = await runTool(tool);
-      newHistory.push(result);
-    } catch(e) {
       newHistory.push({
-        role: "user",
-        content: `Error: ${e}`,
+        role: "tool",
+        tool,
       });
+      setHistory([ ...newHistory ]);
+
+      try {
+        const result = await runTool(tool);
+        newHistory.push(result);
+      } catch(e) {
+        newHistory.push({
+          role: "user",
+          content: `Error: ${e}`,
+        });
+      }
+      setHistory([ ...newHistory ]);
     }
-    setHistory([ ...newHistory ]);
 
     await runAgent(client, config, newHistory, setHistory, runTool);
   }
 }
 
-function parseTool(content: string) {
+function parseTool(tag: string) {
+  const content = tag.replace(TOOL_OPEN_TAG, "").replace(TOOL_CLOSE_TAG, "").trim();
 	try {
 		const json = JSON.parse(content);
 		const tool = ToolCallRequestSchema.slice(json);
