@@ -1,44 +1,24 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
-import figlet from "figlet";
-import Spinner from "ink-spinner";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { t, toTypescript } from "structural";
+import { t } from "structural";
+import {
+  LlmMessage, UserMessage, AssistantMessage, ToolCallRequestSchema, SYSTEM_PROMPT
+} from "./llm.ts";
+import Loading from "./loading.tsx";
+import { Header } from "./header.tsx";
+import { THEME_COLOR } from "./theme.ts";
 
 const execPromise = promisify(exec);
-
-const THEME_COLOR = "#72946d";
 
 type Props = {
 	config: Config;
 	metadata: Metadata,
 };
-
-type UserMessage = {
-	role: "user";
-	content: string;
-};
-
-type AssistantMessage = {
-	role: "assistant";
-	content: string;
-};
-
-const ToolCallSchema = t.subtype({
-	name: t.value("bash"),
-	params: t.subtype({
-		cmd: t.str.comment("The command to run"),
-	}),
-}).comment("Runs a bash command in the cwd");
-
-const ToolCallRequestSchema = t.subtype({
-	type: t.value("function"),
-	tool: ToolCallSchema,
-});
 
 type ToolCallMessage = {
 	role: "tool",
@@ -50,72 +30,7 @@ type ToolOutputMessage = {
 	content: string,
 };
 
-type SystemPrompt = {
-	role: "system",
-	content: string,
-};
-
 type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
-type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
-
-const SYSTEM_PROMPT = `
-You are a coding assistant called Octo. You have access to the following tools, defined as
-TypeScript types:
-
-${toTypescript(ToolCallSchema)}
-
-You can call them by responding with JSON of the following type:
-
-{ type: "function", tool: SOME_TOOL }
-
-For example:
-
-${JSON.stringify({
-	type: "function",
-	tool: {
-		name: "bash",
-		params: {
-			cmd: "ls -la",
-		},
-	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
-
-You don't have to call any tool functions if you don't need to; you can also just chat to the user
-normally. Attempt to determine what your current task is (the user may have told you outright),
-and figure out the state of the repo using your tools. Then, help the user with the task.
-
-You may need to use tools again after some back-and-forth with the user, as they help you refine
-your solution.
-
-If you want to call a tool, respond ONLY with JSON: no other text. Do not wrap it in backticks or
-use Markdown. For example, do NOT do this:
-
-\`\`\`json
-${JSON.stringify({
-	type: "function",
-	tool: {
-		name: "bash",
-		params: {
-			cmd: "ls -la",
-		},
-	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
-\`\`\`
-
-Instead, simply respond with this:
-
-${JSON.stringify({
-	type: "function",
-	tool: {
-		name: "bash",
-		params: {
-			cmd: "ls -la",
-		},
-	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}
-
-Note that you can only call one tool at a time: you can't call multiple.
-`.trim();
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	const output: LlmMessage[] = [
@@ -238,6 +153,7 @@ export default function App({ config, metadata }: Props) {
 					role: "tool",
 					tool,
 				});
+        setHistory([ ...newHistory ]);
 
 				try {
 					const result = await runBashCommand(tool.tool.params.cmd);
@@ -251,6 +167,7 @@ export default function App({ config, metadata }: Props) {
 						content: `Error: ${e}`,
 					});
 				}
+        setHistory([ ...newHistory ]);
 
 				await getResponse();
 			}
@@ -317,12 +234,16 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
     </Box>
   }
 
-  return <Box marginTop={1} marginBottom={1} flexDirection="column">
-    <MessageDisplay item={item.item} />
-  </Box>
+  return <MessageDisplay item={item.item} />
 });
 
 const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
+  return <Box marginTop={1} marginBottom={1} flexDirection="column">
+    <MessageDisplayInner item={item} />
+  </Box>
+});
+
+const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 	if(item.role === "assistant") return <AssistantMessage item={item} />
 	if(item.role === "tool") return <ToolMessage item={item} />
 	if(item.role === "tool-output") {
@@ -357,50 +278,3 @@ const InputBox = React.memo((props: {
 			<TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
 		</Box>
 });
-
-const Header = React.memo(() => {
-	const font: figlet.Fonts = "Delta Corps Priest 1";
-	const top = figlet.textSync("Octo", font);
-	const bottom = figlet.textSync("Friend", font);
-
-	return <Box flexDirection="column">
-		<Text color={THEME_COLOR}>{top}</Text>
-		<Text>{bottom}</Text>
-	</Box>
-});
-
-const LOADING_STRINGS = [
-	"Scheming",
-	"Plotting",
-	"Manipulating",
-	"Splashing",
-	"Yearning",
-	"Calculating",
-];
-function Loading() {
-	const [ idx, setIndex ] = useState(0);
-	const [ dotCount, setDotCount ] = useState(0);
-
-	useEffect(() => {
-		let fired = false;
-		const timer = setTimeout(() => {
-			fired = true;
-			if(dotCount >= 3) {
-				setDotCount(0);
-				setIndex((idx + 1) % LOADING_STRINGS.length);
-				return;
-			}
-			setDotCount(dotCount + 1);
-		}, 300);
-
-		return () => {
-			if(!fired) clearTimeout(timer);
-		}
-	}, [ idx, dotCount ]);
-
-	return <Box>
-		<Text color="gray"><Spinner type="binary" /></Text>
-		<Text>{ " " }</Text>
-		<Text color={THEME_COLOR}>{LOADING_STRINGS[idx]}</Text><Text>{".".repeat(dotCount)}</Text>
-	</Box>
-}
