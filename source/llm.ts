@@ -21,6 +21,8 @@ export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 
 const TOOL_OPEN_TAG = "<x-octo-tool>";
 const TOOL_CLOSE_TAG = "</x-octo-tool>";
+const TOOL_RESPONSE_OPEN_TAG = "<x-octo-tool-output>";
+const TOOL_RESPONSE_CLOSE_TAG = "</x-octo-tool-output>";
 
 export const ToolCallSchema = t.subtype({
 	name: t.value("bash"),
@@ -62,16 +64,24 @@ and figure out the state of the repo using your tools. Then, help the user with 
 You may need to use tools again after some back-and-forth with the user, as they help you refine
 your solution.
 
+NEVER output the ${TOOL_OPEN_TAG} or ${TOOL_CLOSE_TAG} unless you intend to call a tool. If you just
+intend to talk about them, leave out the x- part of the tags. These tags will be parsed out of your
+response by an automated system, and it can't differentiate between you using the tag, and just
+talking about the tag; it will assume any use of the tag is an attempt to call a tool.
+
 Your tool calls should be the LAST thing in your response, if you have any tool calls.
 Don't wrap them in backticks Markdown-style, just write the raw tags out.
 
 Remember, you don't need to use tools! Only use them when appropriate.
-
 `.trim();
 
-const SYSTEM_PROMPT = `
+function systemPrompt() {
+return `
 You are a coding assistant called Octo, also known as octofriend.
+
+The current working directory is: ${process.cwd()}
 `.trim();
+}
 
 export type ToolCallMessage = {
 	role: "tool",
@@ -89,7 +99,7 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	let output: LlmMessage[] = [
 		{
 			role: "system",
-			content: SYSTEM_PROMPT,
+			content: systemPrompt(),
 		},
 	];
 
@@ -97,13 +107,13 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 		if(message.role === "tool") {
 			return {
 				role: "assistant",
-				content: JSON.stringify(message.tool),
+				content: TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG,
 			};
 		}
 		if(message.role === "tool-output") {
 			return {
 				role: "user",
-				content: message.content,
+				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
 			};
 		}
 		return message;
@@ -115,6 +125,13 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
     output.push({
       role: "user",
       content: last.content + "\n" + TOOL_CALL_INSTRUCTIONS,
+    });
+  }
+  else {
+    output.shift();
+    output.unshift({
+      role: "system",
+      content: systemPrompt() + "\n" + TOOL_CALL_INSTRUCTIONS,
     });
   }
 
