@@ -2,7 +2,7 @@
 import React from "react";
 import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
-import App from "./app.ts";
+import App from "./app.tsx";
 import { readConfig, readMetadata } from "./config.ts";
 
 const cli = new Command()
