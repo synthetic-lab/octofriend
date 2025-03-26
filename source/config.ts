@@ -1,5 +1,8 @@
 import { t } from "structural";
 import * as fs from "fs/promises";
+import * as path from "path";
+import { fileURLToPath } from "url";
+const __dir = path.dirname(fileURLToPath(import.meta.url));
 
 const ConfigSchema = t.subtype({
   baseUrl: t.str,
@@ -26,4 +29,16 @@ export async function readConfig(path?: string): Promise<Config> {
     if(config[key]) clone[key] = config[key];
   }
   return clone;
+}
+
+export type Metadata = {
+  version: string,
+};
+
+export async function readMetadata(): Promise<Metadata> {
+  const packageFile = await fs.readFile(path.join(__dir, "../package.json"), "utf8");
+  const packageJson = JSON.parse(packageFile);
+  return {
+    version: packageJson["version"],
+  };
 }

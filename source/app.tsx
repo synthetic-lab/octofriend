@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Text, Box } from "ink";
 import TextInput from "ink-text-input";
-import { Config } from "./config.ts";
+import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import figlet from "figlet";
 import Spinner from "ink-spinner";
@@ -15,6 +15,7 @@ const THEME_COLOR = "#72946d";
 
 type Props = {
 	config: Config;
+	metadata: Metadata,
 };
 
 type UserMessage = {
@@ -128,7 +129,7 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	}));
 }
 
-export default function App({ config }: Props) {
+export default function App({ config, metadata }: Props) {
 	const client = useMemo(() => {
 		return new OpenAI({
 			baseURL: config.baseUrl,
@@ -232,9 +233,19 @@ export default function App({ config }: Props) {
 	return <Box flexDirection="column" width="100%">
 		<Header />
 
-		<Text>
-			Hello, <Text color="green">World</Text>
-		</Text>
+		<Box marginTop={1} marginLeft={1} flexDirection="column">
+			<Text color="gray">
+				Model: {config.model}
+			</Text>
+			<Text color="gray">
+				Version: {metadata.version}
+			</Text>
+			<Box marginTop={1}>
+				<Text>
+					Octo is your friend. Tell Octo <Text color={THEME_COLOR}>what you want to do.</Text>
+				</Text>
+			</Box>
+		</Box>
 
 		<History history={history} />
 
@@ -345,6 +356,6 @@ function Loading() {
 	return <Box>
 		<Text color="gray"><Spinner type="binary" /></Text>
 		<Text>{ " " }</Text>
-		<Text>{LOADING_STRINGS[idx]} {".".repeat(dotCount)}</Text>
+		<Text color={THEME_COLOR}>{LOADING_STRINGS[idx]}</Text><Text>{".".repeat(dotCount)}</Text>
 	</Box>
 }
