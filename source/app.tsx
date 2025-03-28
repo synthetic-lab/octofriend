@@ -14,6 +14,7 @@ import { runTool, BashToolSchema, ReadToolSchema } from "./tooldefs.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
+import figures from "figures";
 
 type Props = {
 	config: Config;
@@ -236,7 +237,24 @@ function ToolRequestRenderer({ toolReq, client, config }: {
     await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
 
-  return <SelectInput items={items} onSelect={onSelect} />
+  return <SelectInput
+    items={items}
+    onSelect={onSelect}
+    indicatorComponent={IndicatorComponent}
+    itemComponent={ItemComponent}
+  />
+}
+
+function IndicatorComponent({ isSelected = false }: { isSelected?: boolean }) {
+  return <Box marginRight={1}>
+    {
+      isSelected ? <Text color={THEME_COLOR}>{figures.pointer}</Text> : <Text> </Text>
+    }
+  </Box>
+}
+
+function ItemComponent({ isSelected = false, label }: { isSelected?: boolean, label: string }) {
+  return <Text color={isSelected ? THEME_COLOR : undefined}>{label}</Text>
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
