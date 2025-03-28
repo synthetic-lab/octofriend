@@ -23,7 +23,8 @@
 		"ink-text-input": "^6.0.0",
 		"openai": "^4.89.0",
 		"react": "^18.2.0",
-		"structural": "^0.0.29"
+		"structural": "^0.0.29",
+		"zustand": "^5.0.3"
 	},
 	"devDependencies": {
 		"@commander-js/extra-typings": "^13.1.0",

@@ -158,24 +158,14 @@ export async function runAgent(
   client: OpenAI,
   config: Config,
   history: HistoryItem[],
-  setHistory: (h: HistoryItem[]) => any,
-  runTool: (tool: ToolCallMessage["tool"]) => Promise<ToolOutputMessage>,
+  onTokens: (t: string) => any,
 ) {
-  let newHistory = [ ...history ];
-
   const res = await client.chat.completions.create({
     model: config.model,
-    messages: toLlmMessages(newHistory),
+    messages: toLlmMessages(history),
     stream: true,
     stop: TOOL_CLOSE_TAG,
   });
-
-  const assistantMessage: AssistantMessage = {
-    role: "assistant",
-    content: "",
-  };
-
-  newHistory.push(assistantMessage);
 
   let maybeTool = false;
   let foundToolTag = false;
@@ -206,7 +196,7 @@ export async function runAgent(
         for(let i = 0; i < toolContent.length && i < TOOL_OPEN_TAG.length; i++) {
           if(toolContent[i] !== TOOL_OPEN_TAG[i]) {
             maybeTool = false;
-            content += toolContent;
+            tokens = toolContent;
             toolContent = "";
             break;
           }
@@ -214,26 +204,10 @@ export async function runAgent(
       }
 
       if(!maybeTool) {
+        onTokens(tokens);
         content += tokens;
-        newHistory = [...newHistory];
-        const last = newHistory.pop() as AssistantMessage;
-        newHistory.push({
-          ...last, content,
-        } satisfies AssistantMessage);
-        setHistory(newHistory);
       }
     }
-  }
-
-  if(maybeTool && !foundToolTag) {
-    content += toolContent;
-    toolContent = "";
-    newHistory = [...newHistory];
-    const last = newHistory.pop() as AssistantMessage;
-    newHistory.push({
-      ...last, content,
-    } satisfies AssistantMessage);
-    setHistory(newHistory);
   }
 
   if(foundToolTag) {
@@ -244,25 +218,29 @@ export async function runAgent(
       throw new Error('wat');
     }
 
-    newHistory.push({
-      role: "tool",
-      tool,
-    });
-    setHistory([ ...newHistory ]);
-
-    try {
-      const result = await runTool(tool);
-      newHistory.push(result);
-    } catch(e) {
-      newHistory.push({
-        role: "user",
-        content: `Error: ${e}`,
-      });
-    }
-    setHistory([ ...newHistory ]);
-
-    await runAgent(client, config, newHistory, setHistory, runTool);
+    return history.concat([
+      {
+        role: "assistant",
+        content,
+      },
+      {
+        role: "tool",
+        tool,
+      },
+    ]);
   }
+
+  if(maybeTool) {
+    content += toolContent;
+    toolContent = "";
+  }
+
+  return history.concat([
+    {
+      role: "assistant",
+      content,
+    },
+  ]);
 }
 
 function parseTool(tag: string) {

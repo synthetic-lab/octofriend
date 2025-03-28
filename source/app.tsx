@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
@@ -11,6 +11,8 @@ import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
 import { runTool, BashToolSchema, ReadToolSchema } from "./tooldefs.ts";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 
 type Props = {
 	config: Config;
@@ -35,7 +37,94 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-type UiMode = "input" | "responding";
+type UiMode = "input" | "responding" | "resolving";
+
+type RunArgs = {
+  client: OpenAI,
+  config: Config,
+};
+type UiState = {
+  mode: UiMode,
+  history: Array<HistoryItem>,
+  inflightResponse: null | AssistantMessage,
+  input: (args: RunArgs & { query: string }) => Promise<void>,
+  resolve: (args: RunArgs) => Promise<void>,
+  _runAgent: (args: RunArgs) => Promise<void>,
+};
+
+const useAppStore = create<UiState>((set, get) => ({
+  mode: "input" as const,
+  history: [],
+  running: false,
+  inflightResponse: null,
+
+  input: async ({ client, config, query }) => {
+    const userMessage: UserMessage = {
+			role: "user",
+			content: query,
+		};
+
+		let history = [
+			...get().history,
+			userMessage,
+		];
+    set({ history });
+    await get()._runAgent({ client, config });
+  },
+
+  resolve: async ({ client, config }) => {
+    const history = get().history;
+    const lastHistoryItem = history[history.length - 1];
+    if(lastHistoryItem.role === "assistant") {
+      set({ mode: "input" });
+      return;
+    }
+
+    if(lastHistoryItem.role !== "tool") {
+      throw new Error(`Unexpected role: ${lastHistoryItem.role}`);
+    }
+
+    const output = await runTool(lastHistoryItem.tool.tool);
+    let newHistory: HistoryItem[] = [
+      ...history,
+      {
+        role: "tool-output",
+        content: output,
+      },
+    ];
+
+    set({ history: newHistory });
+
+    await get()._runAgent({ client, config });
+  },
+
+  _runAgent: async ({ client, config }) => {
+    let content = "";
+    set({
+      inflightResponse: {
+        role: "assistant",
+        content,
+      },
+      mode: "responding",
+    });
+
+		const history = await runAgent(client, config, get().history, tokens => {
+      content += tokens;
+      set({
+        inflightResponse: {
+          role: "assistant",
+          content,
+        },
+      });
+    });
+
+    set({
+      history,
+      mode: "resolving",
+      inflightResponse: null,
+    });
+  },
+}));
 
 export default function App({ config, metadata }: Props) {
 	const client = useMemo(() => {
@@ -45,45 +134,34 @@ export default function App({ config, metadata }: Props) {
 		});
 	}, [ config ]);
 
-	const [ history, setHistory ] = useState<Array<HistoryItem>>([]);
 	const [ query, setQuery ] = useState("");
-	const [ mode, setMode ] = useState<UiMode>("input");
+  const { history, mode, input, resolve, inflightResponse } = useAppStore(
+    useShallow(state => ({
+      history: state.history,
+      mode: state.mode,
+      input: state.input,
+      resolve: state.resolve,
+      inflightResponse: state.inflightResponse,
+    }))
+  );
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
-		const userMessage: UserMessage = {
-			role: "user",
-			content: query,
-		};
-
-		let newHistory = [
-			...history,
-			userMessage,
-		];
-
-		setHistory(newHistory);
-    setMode("responding");
-
-		await runAgent(client, config, newHistory, setHistory, async (tool) => {
-      return {
-        role: "tool-output",
-        content: await runTool(tool.tool),
-      };
-    });
-
-    setMode("input");
+    input({ query, config, client });
 	}, [ query, config, client ]);
 
+  useEffect(() => {
+    if(mode !== "resolving") return;
+    resolve({ config, client });
+  }, [ mode, config, client ]);
+
   const staticItems: StaticItem[] = useMemo(() => {
-    const settledHistory = mode === "responding" ? history.slice(0, history.length - 1) : history;
     return [
       { type: "header" },
       { type: "version", metadata, config },
-      ...toStaticItems(settledHistory),
+      ...toStaticItems(history),
     ]
   }, [ history, mode ]);
-
-  const lastHistoryItem = history[history.length - 1] || null;
 
 	return <Box flexDirection="column" width="100%">
     <Static items={staticItems}>
@@ -92,16 +170,14 @@ export default function App({ config, metadata }: Props) {
       }
     </Static>
 
-    {
-      mode === "responding" && lastHistoryItem && <MessageDisplay item={lastHistoryItem} />
-    }
+    { inflightResponse && inflightResponse.content && <MessageDisplay item={inflightResponse} /> }
 
     {
-      mode === "responding" ? <Loading /> : <InputBox
+      mode === "input" ? <InputBox
         value={query}
         onChange={setQuery}
         onSubmit={onSubmit}
-      />
+      /> : <Loading />
     }
 	</Box>
 }
