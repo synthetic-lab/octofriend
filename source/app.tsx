@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
@@ -170,13 +170,11 @@ export default function App({ config, metadata }: Props) {
       }
     </Static>
 
-    <Box height={modeData.mode === "responding" ? undefined : 0}>
-      {
-        modeData.mode === "responding" &&
-          modeData.inflightResponse.content &&
-          <MessageDisplay item={modeData.inflightResponse} />
-      }
-    </Box>
+    {
+      modeData.mode === "responding" &&
+        modeData.inflightResponse.content &&
+        <MessageDisplay item={modeData.inflightResponse} />
+    }
 
     <BottomBar client={client} config={config} />
 	</Box>
@@ -237,10 +235,6 @@ function ToolRequestRenderer({ toolReq, client, config }: {
     if(item.value === "no") throw new Error("unsupported");
     await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
-
-  useEffect(() => {
-    onSelect({ label: "Yes", value: "yes" });
-  }, []);
 
   return <SelectInput items={items} onSelect={onSelect} />
 }
