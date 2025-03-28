@@ -19,6 +19,7 @@
 		"commander": "^13.1.0",
 		"figlet": "^1.8.0",
 		"ink": "^5.2.0",
+		"ink-select-input": "^6.0.0",
 		"ink-spinner": "^5.0.0",
 		"ink-text-input": "^6.0.0",
 		"openai": "^4.89.0",

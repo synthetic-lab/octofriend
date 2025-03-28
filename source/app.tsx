@@ -13,6 +13,7 @@ import { THEME_COLOR } from "./theme.ts";
 import { runTool, BashToolSchema, ReadToolSchema } from "./tooldefs.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import SelectInput from "ink-select-input";
 
 type Props = {
 	config: Config;
@@ -37,26 +38,32 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-type UiMode = "input" | "responding" | "resolving";
-
 type RunArgs = {
   client: OpenAI,
   config: Config,
 };
 type UiState = {
-  mode: UiMode,
+  modeData: {
+    mode: "input",
+  } | {
+    mode: "responding",
+    inflightResponse: AssistantMessage,
+  } | {
+    mode: "tool-request",
+    toolReq: ToolCallMessage["tool"],
+  },
   history: Array<HistoryItem>,
-  inflightResponse: null | AssistantMessage,
   input: (args: RunArgs & { query: string }) => Promise<void>,
-  resolve: (args: RunArgs) => Promise<void>,
+  runTool: (args: RunArgs & { toolReq: ToolCallMessage["tool"] }) => Promise<void>,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
 const useAppStore = create<UiState>((set, get) => ({
-  mode: "input" as const,
+  modeData: {
+    mode: "input" as const,
+  },
   history: [],
   running: false,
-  inflightResponse: null,
 
   input: async ({ client, config, query }) => {
     const userMessage: UserMessage = {
@@ -72,28 +79,17 @@ const useAppStore = create<UiState>((set, get) => ({
     await get()._runAgent({ client, config });
   },
 
-  resolve: async ({ client, config }) => {
-    const history = get().history;
-    const lastHistoryItem = history[history.length - 1];
-    if(lastHistoryItem.role === "assistant") {
-      set({ mode: "input" });
-      return;
-    }
-
-    if(lastHistoryItem.role !== "tool") {
-      throw new Error(`Unexpected role: ${lastHistoryItem.role}`);
-    }
-
-    const output = await runTool(lastHistoryItem.tool.tool);
-    let newHistory: HistoryItem[] = [
-      ...history,
+  runTool: async ({ client, config, toolReq }) => {
+    const output = await runTool(toolReq.tool);
+    let history: HistoryItem[] = [
+      ...get().history,
       {
         role: "tool-output",
         content: output,
       },
     ];
 
-    set({ history: newHistory });
+    set({ history });
 
     await get()._runAgent({ client, config });
   },
@@ -101,27 +97,45 @@ const useAppStore = create<UiState>((set, get) => ({
   _runAgent: async ({ client, config }) => {
     let content = "";
     set({
-      inflightResponse: {
-        role: "assistant",
-        content,
-      },
-      mode: "responding",
+      modeData: {
+        mode: "responding",
+        inflightResponse: {
+          role: "assistant",
+          content,
+        },
+      }
     });
 
 		const history = await runAgent(client, config, get().history, tokens => {
       content += tokens;
       set({
-        inflightResponse: {
-          role: "assistant",
-          content,
+        modeData: {
+          mode: "responding",
+          inflightResponse: {
+            role: "assistant",
+            content,
+          },
         },
       });
     });
 
+
+    const lastHistoryItem = history[history.length - 1];
+    if(lastHistoryItem.role === "assistant") {
+      set({ modeData: { mode: "input" }, history });
+      return;
+    }
+
+    if(lastHistoryItem.role !== "tool") {
+      throw new Error(`Unexpected role: ${lastHistoryItem.role}`);
+    }
+
     set({
+      modeData: {
+        mode: "tool-request",
+        toolReq: lastHistoryItem.tool,
+      },
       history,
-      mode: "resolving",
-      inflightResponse: null,
     });
   },
 }));
@@ -134,14 +148,46 @@ export default function App({ config, metadata }: Props) {
 		});
 	}, [ config ]);
 
-	const [ query, setQuery ] = useState("");
-  const { history, mode, input, resolve, inflightResponse } = useAppStore(
+  const { history, modeData } = useAppStore(
     useShallow(state => ({
       history: state.history,
-      mode: state.mode,
+      modeData: state.modeData,
+    }))
+  );
+
+  const staticItems: StaticItem[] = useMemo(() => {
+    return [
+      { type: "header" },
+      { type: "version", metadata, config },
+      ...toStaticItems(history),
+    ]
+  }, [ history ]);
+
+	return <Box flexDirection="column" width="100%" height="100%">
+    <Static items={staticItems}>
+      {
+        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+      }
+    </Static>
+
+    <Box height={modeData.mode === "responding" ? undefined : 0}>
+      {
+        modeData.mode === "responding" &&
+          modeData.inflightResponse.content &&
+          <MessageDisplay item={modeData.inflightResponse} />
+      }
+    </Box>
+
+    <BottomBar client={client} config={config} />
+	</Box>
+}
+
+function BottomBar({ config, client }: { config: Config, client: OpenAI }) {
+	const [ query, setQuery ] = useState("");
+  const { modeData, input } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
       input: state.input,
-      resolve: state.resolve,
-      inflightResponse: state.inflightResponse,
     }))
   );
 
@@ -150,36 +196,53 @@ export default function App({ config, metadata }: Props) {
     input({ query, config, client });
 	}, [ query, config, client ]);
 
-  useEffect(() => {
-    if(mode !== "resolving") return;
-    resolve({ config, client });
-  }, [ mode, config, client ]);
+  if(modeData.mode === "responding") return <Loading />;
 
-  const staticItems: StaticItem[] = useMemo(() => {
-    return [
-      { type: "header" },
-      { type: "version", metadata, config },
-      ...toStaticItems(history),
-    ]
-  }, [ history, mode ]);
+  if(modeData.mode === "tool-request") {
+    return <ToolRequestRenderer
+      toolReq={modeData.toolReq}
+      client={client}
+      config={config}
+    />;
+  }
 
-	return <Box flexDirection="column" width="100%">
-    <Static items={staticItems}>
-      {
-        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-      }
-    </Static>
+  return <InputBox
+    value={query}
+    onChange={setQuery}
+    onSubmit={onSubmit}
+  />;
+}
 
-    { inflightResponse && inflightResponse.content && <MessageDisplay item={inflightResponse} /> }
+function ToolRequestRenderer({ toolReq, client, config }: {
+  toolReq: ToolCallMessage["tool"]
+} & RunArgs) {
+  const { runTool } = useAppStore(
+    useShallow(state => ({
+      runTool: state.runTool,
+    }))
+  );
 
+  const items = [
     {
-      mode === "input" ? <InputBox
-        value={query}
-        onChange={setQuery}
-        onSubmit={onSubmit}
-      /> : <Loading />
-    }
-	</Box>
+      label: "Yes",
+      value: "yes",
+    },
+    {
+      label: "No, and tell Octo what to do differently",
+      value: "no",
+    },
+  ];
+
+	const onSelect = useCallback(async (item: (typeof items)[number]) => {
+    if(item.value === "no") throw new Error("unsupported");
+    await runTool({ toolReq, config, client });
+	}, [ toolReq, config, client ]);
+
+  useEffect(() => {
+    onSelect({ label: "Yes", value: "yes" });
+  }, []);
+
+  return <SelectInput items={items} onSelect={onSelect} />
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
