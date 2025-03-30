@@ -72,9 +72,28 @@ export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<s
   }
 }
 
+const ExecErrorSchema = t.subtype({
+  code: t.num,
+  killed: t.bool,
+  stdout: t.str,
+  stderr: t.str,
+});
 async function runBashCommand(command: string) {
-  const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
-  return stdout || stderr;
+  try {
+    const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
+    return stdout || stderr;
+  } catch(e) {
+    if(ExecErrorSchema.guard(e)) {
+      throw new ToolError(
+`Command exited with code: ${e.code}
+killed: ${e.killed}
+stdout: ${e.stdout}
+stderr: ${e.stderr}`);
+    }
+    else {
+      throw e;
+    }
+  }
 }
 
 async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {

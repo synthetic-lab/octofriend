@@ -12,6 +12,7 @@ import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
 import {
   runTool,
+  ToolError,
   BashToolSchema,
   ReadToolSchema,
   EditToolSchema,
@@ -88,16 +89,33 @@ const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ client, config, toolReq }) => {
-    const output = await runTool(toolReq.tool);
-    let history: HistoryItem[] = [
-      ...get().history,
-      {
-        role: "tool-output",
-        content: output,
-      },
-    ];
+    try {
+      const output = await runTool(toolReq.tool);
+      const history: HistoryItem[] = [
+        ...get().history,
+        {
+          role: "tool-output",
+          content: output,
+        },
+      ];
 
-    set({ history });
+      set({ history });
+    } catch(e) {
+      if(e instanceof ToolError) {
+        const history: HistoryItem[] = [
+          ...get().history,
+          {
+            role: "tool-error",
+            error: e.message,
+          },
+        ];
+
+        set({ history });
+      }
+      else {
+        throw e;
+      }
+    }
 
     await get()._runAgent({ client, config });
   },
@@ -299,6 +317,11 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
 	}
+  if(item.role === "tool-error") {
+    return <Text color="red">
+      Error: {item.error}
+    </Text>
+  }
 	return <Box>
     <Box marginRight={1}>
       <Text color="white">

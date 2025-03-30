@@ -24,6 +24,13 @@ const TOOL_OPEN_TAG = "<run-tool>";
 const TOOL_CLOSE_TAG = "</run-tool>";
 const TOOL_RESPONSE_OPEN_TAG = "<tool-output>";
 const TOOL_RESPONSE_CLOSE_TAG = "</tool-output>";
+const TOOL_ERROR_TAG = "tool-error";
+function openTag(tag: string) {
+  return "<" + tag + ">";
+}
+function closeTag(tag: string) {
+  return "</" + tag + ">";
+}
 
 export const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
@@ -99,7 +106,17 @@ type ToolOutputMessage = {
 	content: string,
 };
 
-export type HistoryItem = UserMessage | AssistantMessage | ToolCallMessage | ToolOutputMessage;
+type ToolErrorMessage = {
+  role: "tool-error",
+  error: string,
+};
+
+export type HistoryItem = UserMessage
+                        | AssistantMessage
+                        | ToolCallMessage
+                        | ToolOutputMessage
+                        | ToolErrorMessage
+                        ;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 	const output: LlmMessage[] = [
@@ -128,6 +145,14 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
       output.push({
 				role: "user",
 				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
+      });
+      continue;
+    }
+
+    if(message.role === "tool-error") {
+      output.push({
+        role: "user",
+        content: openTag(TOOL_ERROR_TAG) + message.error + closeTag(TOOL_ERROR_TAG),
       });
       continue;
     }
