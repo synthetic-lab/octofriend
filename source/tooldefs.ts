@@ -80,7 +80,10 @@ const ExecErrorSchema = t.subtype({
 });
 async function runBashCommand(command: string) {
   try {
-    const { stdout, stderr } = await execPromise(command, { cwd: process.cwd() });
+    const { stdout, stderr } = await execPromise(command, {
+      cwd: process.cwd(),
+      shell: "/bin/bash",
+    });
     return stdout || stderr;
   } catch(e) {
     if(ExecErrorSchema.guard(e)) {
