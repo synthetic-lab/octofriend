@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Text, Box, Static } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
@@ -18,6 +18,7 @@ import {
   EditToolSchema,
   AllEdits,
   DiffEdit,
+  SKIP_CONFIRMATION,
 } from "./tooldefs.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
@@ -217,7 +218,7 @@ function BottomBar({ config, client }: { config: Config, client: OpenAI }) {
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
-    input({ query, config, client });
+    await input({ query, config, client });
 	}, [ query, config, client ]);
 
   if(modeData.mode === "responding") return <Loading />;
@@ -261,6 +262,14 @@ function ToolRequestRenderer({ toolReq, client, config }: {
     if(item.value === "no") throw new Error("unsupported");
     await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
+
+  useEffect(() => {
+    if(SKIP_CONFIRMATION.includes(toolReq.tool.name)) runTool({ toolReq, config, client });
+  }, [ toolReq ]);
+
+  if(SKIP_CONFIRMATION.includes(toolReq.tool.name)) {
+    return <Loading />;
+  }
 
   return <SelectInput
     items={items}

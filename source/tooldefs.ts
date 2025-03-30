@@ -63,6 +63,9 @@ function unionAll<T extends t.Type<any>>(array: readonly T[]): t.Type<t.GetType<
   return array[0].or(unionAll(array.slice(1)));
 }
 export const ToolCallSchema = unionAll(ALL_TOOLS);
+export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
+  "read",
+];
 
 export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<string> {
   switch(tool.name) {
