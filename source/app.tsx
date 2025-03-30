@@ -10,7 +10,14 @@ import {
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
-import { runTool, BashToolSchema, ReadToolSchema } from "./tooldefs.ts";
+import {
+  runTool,
+  BashToolSchema,
+  ReadToolSchema,
+  EditToolSchema,
+  AllEdits,
+  DiffEdit,
+} from "./tooldefs.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
@@ -308,6 +315,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
   switch(item.tool.tool.name) {
     case "read": return <ReadToolRenderer item={item.tool.tool} />
     case "bash": return <BashToolRenderer item={item.tool.tool} />
+    case "edit": return <EditToolRenderer item={item.tool.tool} />
   }
 }
 
@@ -323,6 +331,42 @@ function ReadToolRenderer({ item }: { item: t.GetType<typeof ReadToolSchema> }) 
 		<Text color="gray">{item.name}: </Text>
 		<Text color={THEME_COLOR}>{item.params.filePath}</Text>
 	</Box>
+}
+
+function EditToolRenderer({ item }: { item: t.GetType<typeof EditToolSchema> }) {
+  return <Box flexDirection="column">
+    <Box>
+      <Text>Edit: </Text>
+      <Text color={THEME_COLOR}>{item.params.filePath}</Text>
+    </Box>
+    <EditRenderer item={item.params.edit} />
+  </Box>
+}
+
+function EditRenderer({ item }: { item: t.GetType<typeof AllEdits> }) {
+  switch(item.type) {
+    case "diff": return <DiffEditRenderer item={item} />
+    case "append":
+      return <Box flexDirection="column">
+        <Text>Octo wants to add the following to the end of the file:</Text>
+        <Text>{item.text}</Text>
+      </Box>
+    case "prepend":
+      return <Box flexDirection="column">
+        <Text>Octo wants to add the following to the beginning of the file:</Text>
+        <Text>{item.text}</Text>
+      </Box>
+  }
+}
+
+function DiffEditRenderer({ item }: { item: t.GetType<typeof DiffEdit> }) {
+  return <Box flexDirection="column">
+    <Text>Octo wants to replace the following:</Text>
+    <Text color="gray">Original text:</Text>
+    <Text color="gray">{item.search}</Text>
+    <Text>New:</Text>
+    <Text>{item.replace}</Text>
+  </Box>
 }
 
 function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
