@@ -13,7 +13,11 @@
 		"exec": "tsc && node ./dist/cli.js"
 	},
 	"files": [
-		"dist"
+		"dist",
+    "source",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json"
 	],
 	"dependencies": {
 		"commander": "^13.1.0",
