@@ -111,11 +111,16 @@ type ToolErrorMessage = {
   error: string,
 };
 
+type ToolRejectMessage = {
+  role: "tool-reject",
+};
+
 export type HistoryItem = UserMessage
                         | AssistantMessage
                         | ToolCallMessage
                         | ToolOutputMessage
                         | ToolErrorMessage
+                        | ToolRejectMessage
                         ;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
@@ -140,6 +145,8 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
       });
       continue;
     }
+
+    if(message.role === "tool-reject") continue;
 
     if(message.role === "tool-output") {
       output.push({

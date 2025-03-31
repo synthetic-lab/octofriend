@@ -65,6 +65,7 @@ type UiState = {
   history: Array<HistoryItem>,
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallMessage["tool"] }) => Promise<void>,
+  rejectTool: () => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -87,6 +88,18 @@ const useAppStore = create<UiState>((set, get) => ({
 		];
     set({ history });
     await get()._runAgent({ client, config });
+  },
+
+  rejectTool: () => {
+    set({
+      history: [
+        ...get().history,
+        { role: "tool-reject" },
+      ],
+      modeData: {
+        mode: "input",
+      },
+    });
   },
 
   runTool: async ({ client, config, toolReq }) => {
@@ -241,9 +254,10 @@ function BottomBar({ config, client }: { config: Config, client: OpenAI }) {
 function ToolRequestRenderer({ toolReq, client, config }: {
   toolReq: ToolCallMessage["tool"]
 } & RunArgs) {
-  const { runTool } = useAppStore(
+  const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
+      rejectTool: state.rejectTool,
     }))
   );
 
@@ -259,8 +273,8 @@ function ToolRequestRenderer({ toolReq, client, config }: {
   ];
 
 	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "no") throw new Error("unsupported");
-    await runTool({ toolReq, config, client });
+    if(item.value === "no") rejectTool();
+    else await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
 
   useEffect(() => {
@@ -329,6 +343,11 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
   if(item.role === "tool-error") {
     return <Text color="red">
       Error: {item.error}
+    </Text>
+  }
+  if(item.role === "tool-reject") {
+    return <Text>
+      Tool rejected; tell Octo what to do instead:
     </Text>
   }
 	return <Box>
