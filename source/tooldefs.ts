@@ -18,6 +18,15 @@ export const ReadToolSchema = t.subtype({
  }),
 }).comment("Reads file contents as UTF-8. Prefer this to Unix tools like `cat`");
 
+export const ListToolSchema = t.subtype({
+  name: t.value("list"),
+  params: t.subtype({
+    dirPath: t.optional(t.str.comment("Path to the directory")),
+  }),
+}).comment(
+  "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd"
+);
+
 export const BashToolSchema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
@@ -56,6 +65,7 @@ export const ALL_TOOLS = [
   ReadToolSchema,
   BashToolSchema,
   EditToolSchema,
+  ListToolSchema,
 ] as const;
 
 function unionAll<T extends t.Type<any>>(array: readonly T[]): t.Type<t.GetType<T>> {
@@ -65,6 +75,7 @@ function unionAll<T extends t.Type<any>>(array: readonly T[]): t.Type<t.GetType<
 export const ToolCallSchema = unionAll(ALL_TOOLS);
 export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
   "read",
+  "list",
 ];
 
 export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<string> {
@@ -72,6 +83,7 @@ export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<s
     case "bash": return runBashCommand(tool.params.cmd);
     case "read": return readFile(tool);
     case "edit": return editFile(tool);
+    case "list": return listDir(tool);
   }
 }
 
@@ -105,6 +117,15 @@ stderr: ${e.stderr}`);
 async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {
   return attempt(`No such file ${toolCall.params.filePath}`, async () => {
     return fs.readFile(toolCall.params.filePath, "utf8");
+  });
+}
+
+async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
+  return attempt(`No such directory: ${toolCall.params.dirPath}`, async () => {
+    const entries = await fs.readdir(toolCall.params.dirPath || process.cwd(), {
+      withFileTypes: true,
+    });
+    return entries.map(entry => JSON.stringify(entry)).join("\n");
   });
 }
 

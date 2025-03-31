@@ -53,7 +53,7 @@ ${TOOL_OPEN_TAG}${JSON.stringify({
 	tool: {
 		name: "bash",
 		params: {
-			cmd: "ls -la",
+			cmd: "curl \"https://github.com/reissbaker/antipattern\"",
 		},
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>)}${TOOL_CLOSE_TAG}
@@ -247,7 +247,7 @@ export async function runAgent(
 
     if(tool == null) {
       // TODO tell the LLM it fucked up
-      throw new Error('wat');
+      throw new Error('fixme: tool parse failed, auto tell LLM about failure');
     }
 
     return history.concat([

@@ -15,6 +15,7 @@ import {
   ToolError,
   BashToolSchema,
   ReadToolSchema,
+  ListToolSchema,
   EditToolSchema,
   AllEdits,
   DiffEdit,
@@ -365,6 +366,7 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
   switch(item.tool.tool.name) {
     case "read": return <ReadToolRenderer item={item.tool.tool} />
+    case "list": return <ListToolRenderer item={item.tool.tool} />
     case "bash": return <BashToolRenderer item={item.tool.tool} />
     case "edit": return <EditToolRenderer item={item.tool.tool} />
   }
@@ -381,6 +383,13 @@ function ReadToolRenderer({ item }: { item: t.GetType<typeof ReadToolSchema> }) 
   return <Box>
 		<Text color="gray">{item.name}: </Text>
 		<Text color={THEME_COLOR}>{item.params.filePath}</Text>
+	</Box>
+}
+
+function ListToolRenderer({ item }: { item: t.GetType<typeof ListToolSchema> }) {
+  return <Box>
+		<Text color="gray">{item.name}: </Text>
+		<Text color={THEME_COLOR}>{item.params.dirPath || process.cwd()}</Text>
 	</Box>
 }
 
