@@ -61,11 +61,20 @@ export const EditToolSchema = t.subtype({
   }),
 });
 
+export const CreateToolSchema = t.subtype({
+  name: t.value("create"),
+  params: t.subtype({
+    filePath: t.str.comment("Path where the file should be created"),
+    content: t.str.comment("Content to write to the file"),
+  }),
+}).comment("Creates a new file with the specified content");
+
 export const ALL_TOOLS = [
   ReadToolSchema,
   BashToolSchema,
   EditToolSchema,
   ListToolSchema,
+  CreateToolSchema,
 ] as const;
 
 function unionAll<T extends t.Type<any>>(array: readonly T[]): t.Type<t.GetType<T>> {
@@ -84,6 +93,7 @@ export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<s
     case "read": return readFile(tool);
     case "edit": return editFile(tool);
     case "list": return listDir(tool);
+    case "create": return createFile(tool);
   }
 }
 
@@ -173,4 +183,11 @@ async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promi
   } catch {
     throw new ToolError(errMessage);
   }
+}
+
+async function createFile(toolCall: t.GetType<typeof CreateToolSchema>) {
+  return attempt(`Failed to create file ${toolCall.params.filePath}`, async () => {
+    await fs.writeFile(toolCall.params.filePath, toolCall.params.content, "utf8");
+    return `Successfully created file ${toolCall.params.filePath}`;
+  });
 }

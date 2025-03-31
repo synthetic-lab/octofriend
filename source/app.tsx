@@ -17,6 +17,7 @@ import {
   ReadToolSchema,
   ListToolSchema,
   EditToolSchema,
+  CreateToolSchema,
   AllEdits,
   DiffEdit,
   SKIP_CONFIRMATION,
@@ -369,6 +370,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
     case "list": return <ListToolRenderer item={item.tool.tool} />
     case "bash": return <BashToolRenderer item={item.tool.tool} />
     case "edit": return <EditToolRenderer item={item.tool.tool} />
+    case "create": return <CreateToolRenderer item={item.tool.tool} />
   }
 }
 
@@ -426,6 +428,19 @@ function DiffEditRenderer({ item }: { item: t.GetType<typeof DiffEdit> }) {
     <Text color="gray">{item.search}</Text>
     <Text>New:</Text>
     <Text>{item.replace}</Text>
+  </Box>
+}
+
+function CreateToolRenderer({ item }: { item: t.GetType<typeof CreateToolSchema> }) {
+  return <Box flexDirection="column">
+    <Box>
+      <Text>Create file: </Text>
+      <Text color={THEME_COLOR}>{item.params.filePath}</Text>
+    </Box>
+    <Box flexDirection="column">
+      <Text>With content:</Text>
+      <Text>{item.params.content}</Text>
+    </Box>
   </Box>
 }
 
