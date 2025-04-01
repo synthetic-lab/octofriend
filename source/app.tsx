@@ -167,6 +167,10 @@ const useAppStore = create<UiState>((set, get) => ({
       set({ modeData: { mode: "input" }, history });
       return;
     }
+    if(lastHistoryItem.role === "tool-error") {
+      set({ history });
+      return get()._runAgent({ client, config });
+    }
 
     if(lastHistoryItem.role !== "tool") {
       throw new Error(`Unexpected role: ${lastHistoryItem.role}`);

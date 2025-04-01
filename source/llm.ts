@@ -243,11 +243,19 @@ export async function runAgent(
   }
 
   if(foundToolTag) {
-    const tool = parseTool(toolContent);
+    const parseResult = parseTool(toolContent);
 
-    if(tool == null) {
-      // TODO tell the LLM it fucked up
-      throw new Error('fixme: tool parse failed, auto tell LLM about failure');
+    if(parseResult.status === "error") {
+      return history.concat([
+        {
+          role: "assistant",
+          content,
+        },
+        {
+          role: "tool-error",
+          error: parseResult.message,
+        },
+      ]);
     }
 
     return history.concat([
@@ -257,7 +265,7 @@ export async function runAgent(
       },
       {
         role: "tool",
-        tool,
+        tool: parseResult.tool,
       },
     ]);
   }
@@ -275,13 +283,28 @@ export async function runAgent(
   ]);
 }
 
-function parseTool(tag: string) {
+type ParseToolResult = { status: "success"; tool: t.GetType<typeof ToolCallRequestSchema> } | { status: "error"; message: string };
+
+function parseTool(tag: string): ParseToolResult {
+  if (!tag.includes(TOOL_OPEN_TAG)) {
+    return { status: "error", message: "Missing opening tool tag" };
+  }
+  
   const content = tag.replace(TOOL_OPEN_TAG, "").replace(TOOL_CLOSE_TAG, "").trim();
-	try {
-		const json = JSON.parse(content);
-		const tool = ToolCallRequestSchema.slice(json);
-		return tool;
-	} catch {
-		return null;
-	}
+  
+  if (!content) {
+    return { status: "error", message: "Empty tool call" };
+  }
+
+  try {
+    const json = JSON.parse(content);
+    const tool = ToolCallRequestSchema.slice(json);
+    return { status: "success", tool };
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e.message : "Invalid JSON in tool call";
+    return { 
+      status: "error", 
+      message: `Failed to parse tool call: ${error}. Make sure your JSON is valid and matches the expected format.` 
+    };
+  }
 }
