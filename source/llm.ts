@@ -311,6 +311,11 @@ ${tagged(TOOL_RESPONSE_TAG, item.updatedFile)}`.trim(),
   ];
 }
 
+let totalTokens = 0;
+export function totalTokensUsed() {
+  return totalTokens;
+}
+
 export async function runAgent(
   client: OpenAI,
   config: Config,
@@ -322,17 +327,23 @@ export async function runAgent(
     messages: toLlmMessages(history),
     stream: true,
     stop: closeTag(TOOL_RUN_TAG),
+    stream_options: {
+      include_usage: true,
+    },
   });
 
   let maybeTool = false;
   let foundToolTag = false;
   let content = "";
   let toolContent = "";
+  let usage = 0;
 
   const toolOpenTag = openTag(TOOL_RUN_TAG);
 
   for await(const chunk of res) {
-    if (chunk.choices[0]?.delta.content) {
+    if(chunk.usage) usage = chunk.usage.total_tokens;
+
+    if(chunk.choices[0]?.delta.content) {
       let tokens = chunk.choices[0].delta.content || "";
 
       // If we've encountered our first <, check it as maybe a tool call
@@ -368,6 +379,8 @@ export async function runAgent(
       }
     }
   }
+
+  totalTokens += usage;
 
   if(foundToolTag) {
     const parseResult = parseTool(toolContent);
