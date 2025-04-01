@@ -9,8 +9,8 @@ TODO:
 - [ ] Handle file modification time checks before prompting user to accept
   edits or file creation
 - [ ] Handle file search string checking before prompting user to accept edits
-- [ ] Don't include the same file 80000 times due to multiple repeated edits.
-  Just include the latest version of the file
+- [ ] Tell the LLM about tool rejections, don't just only give them the user
+  message
 - [ ] Track token usage and use high/low watermarks for managing context space
 - [ ] Allow configuring a "guru mode" to call to a reasoning LLM. The LLM can
   enter guru mode by calling a `enter_mode` tool, and when in guru mode, the LLM

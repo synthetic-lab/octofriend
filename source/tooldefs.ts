@@ -2,6 +2,7 @@ import { t } from "structural";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs/promises";
+import * as path from "path";
 import { fileTracker, FileExistsError } from "./file-tracker.ts";
 const execPromise = promisify(exec);
 
@@ -88,13 +89,29 @@ export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> 
   "list",
 ];
 
-export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<string> {
+export type ToolResult =
+  | { type: "output", content: string }
+  | { type: "file-edit", path: string, content: string, sequence: number };
+
+export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<ToolResult> {
   switch(tool.name) {
-    case "bash": return runBashCommand(tool.params.cmd);
-    case "read": return readFile(tool);
-    case "edit": return editFile(tool);
-    case "list": return listDir(tool);
-    case "create": return createFile(tool);
+    case "bash":
+      return { type: "output", content: await runBashCommand(tool.params.cmd) };
+    case "read":
+      return { type: "output", content: await readFile(tool) };
+    case "edit": {
+      const editResult = await editFile(tool);
+      return {
+        type: "file-edit",
+        path: editResult.path,
+        content: editResult.content,
+        sequence: editResult.sequence
+      };
+    }
+    case "list":
+      return { type: "output", content: await listDir(tool) };
+    case "create":
+      return { type: "output", content: await createFile(tool) };
   }
 }
 
@@ -140,6 +157,8 @@ async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
   });
 }
 
+let editSequenceCounter = 0;
+
 async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
   await fileTracker.assertCanEdit(toolCall.params.filePath);
 
@@ -152,7 +171,13 @@ async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
     edit: toolCall.params.edit,
   });
   await fileTracker.write(toolCall.params.filePath, replaced);
-  return `Successfully edited ${toolCall.params.filePath}. File contents are now:\n${replaced}`;
+
+  editSequenceCounter++;
+  return {
+    path: path.resolve(toolCall.params.filePath),
+    content: replaced,
+    sequence: editSequenceCounter
+  };
 }
 
 function runEdit({ path, file, edit }: {

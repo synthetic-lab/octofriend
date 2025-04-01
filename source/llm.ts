@@ -120,6 +120,13 @@ type FileOutdatedMessage = {
   updatedFile: string,
 };
 
+export type FileEditMessage = {
+  role: "file-edit",
+  path: string,  // Absolute path
+  content: string, // Latest content
+  sequence: number, // Monotonically increasing sequence number to track latest edit
+};
+
 export type HistoryItem = UserMessage
                         | AssistantMessage
                         | ToolCallMessage
@@ -127,6 +134,7 @@ export type HistoryItem = UserMessage
                         | ToolErrorMessage
                         | ToolRejectMessage
                         | FileOutdatedMessage
+                        | FileEditMessage
                         ;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
@@ -137,6 +145,15 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
 		},
 	];
 
+  // First pass: marks the latest edits
+  const latestEdits = new Map<string, number>();
+  for(const message of messages) {
+    if(message.role === "file-edit") {
+      latestEdits.set(message.path, message.sequence);
+    }
+  }
+
+  // Second pass: transform
   for(let i = 0; i < messages.length; i++) {
     const message = messages[i];
     if(message.role === "tool") {
@@ -158,6 +175,18 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
       output.push({
 				role: "user",
 				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
+      });
+      continue;
+    }
+
+    if(message.role === "file-edit") {
+      output.push({
+        role: "user",
+        content: TOOL_RESPONSE_OPEN_TAG + "File edited successfully." + (
+          latestEdits.get(message.path) === message.sequence
+            ? "\nNew contents:\n" + message.content
+            : ""
+        ) + TOOL_RESPONSE_CLOSE_TAG,
       });
       continue;
     }

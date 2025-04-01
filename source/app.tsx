@@ -107,13 +107,19 @@ const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ client, config, toolReq }) => {
     try {
-      const output = await runTool(toolReq.tool);
+      const result = await runTool(toolReq.tool);
+      const toolHistoryItem: HistoryItem = result.type === "output" ? {
+        role: "tool-output",
+        content: result.content,
+      } : {
+        role: "file-edit",
+        content: result.content,
+        sequence: result.sequence,
+        path: result.path,
+      };
       const history: HistoryItem[] = [
         ...get().history,
-        {
-          role: "tool-output",
-          content: output,
-        },
+        toolHistoryItem,
       ];
 
       set({ history });
@@ -353,7 +359,7 @@ const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
 const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
 	if(item.role === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.role === "tool") return <ToolMessageRenderer item={item} />
-	if(item.role === "tool-output") {
+	if(item.role === "tool-output" || item.role === "file-edit") {
 		return <Text color="gray">
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
