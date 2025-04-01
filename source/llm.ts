@@ -300,15 +300,21 @@ export async function runAgent(
   ]);
 }
 
-type ParseToolResult = { status: "success"; tool: t.GetType<typeof ToolCallRequestSchema> } | { status: "error"; message: string };
+type ParseToolResult = {
+  status: "success";
+  tool: t.GetType<typeof ToolCallRequestSchema>
+} | {
+  status: "error";
+  message: string
+};
 
 function parseTool(tag: string): ParseToolResult {
   if (!tag.includes(TOOL_OPEN_TAG)) {
     return { status: "error", message: "Missing opening tool tag" };
   }
-  
+
   const content = tag.replace(TOOL_OPEN_TAG, "").replace(TOOL_CLOSE_TAG, "").trim();
-  
+
   if (!content) {
     return { status: "error", message: "Empty tool call" };
   }
@@ -319,9 +325,11 @@ function parseTool(tag: string): ParseToolResult {
     return { status: "success", tool };
   } catch (e: unknown) {
     const error = e instanceof Error ? e.message : "Invalid JSON in tool call";
-    return { 
-      status: "error", 
-      message: `Failed to parse tool call: ${error}. Make sure your JSON is valid and matches the expected format.` 
+    return {
+      status: "error",
+      message: `
+Failed to parse tool call: ${error}. Make sure your JSON is valid and matches the expected format.
+      `.trim(),
     };
   }
 }
