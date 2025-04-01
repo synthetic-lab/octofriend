@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
-import { ToolCallSchema, ALL_TOOLS } from "./tooldefs.ts";
+import { ToolCallSchema, ALL_TOOLS } from "./tools/index.ts";
 
 export type UserMessage = {
 	role: "user";

@@ -22,7 +22,7 @@ import {
   AllEdits,
   DiffEdit,
   SKIP_CONFIRMATION,
-} from "./tooldefs.ts";
+} from "./tools/index.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
