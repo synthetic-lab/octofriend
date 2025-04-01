@@ -293,7 +293,7 @@ function BottomBar({ config, client, metadata }: {
       justifyContent="flex-end"
       height={1}
       flexShrink={0}
-      flexGrow={0}
+      flexGrow={1}
     >
       <Text color={THEME_COLOR}>{versionCheck}</Text>
     </Box>
