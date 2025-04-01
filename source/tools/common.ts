@@ -26,3 +26,7 @@ export async function attemptUntrackedRead(path: string) {
     return fs.readFile(path, "utf8");
   });
 }
+
+export type ToolResult =
+  | { type: "output", content: string }
+  | { type: "file-edit", path: string, content: string, sequence: number };

@@ -1,7 +1,7 @@
 import { t } from "structural";
 import * as path from "path";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead } from "./common.ts";
+import { ToolError, attemptUntrackedRead, ToolResult } from "./common.ts";
 
 export const DiffEdit = t.subtype({
   type: t.value("diff"),
@@ -24,7 +24,7 @@ export const PrependEdit = t.subtype({
 
 export const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit);
 
-export const EditToolSchema = t.subtype({
+export const Schema = t.subtype({
   name: t.value("edit"),
   params: t.subtype({
     filePath: t.str.comment("The path to the file"),
@@ -34,7 +34,7 @@ export const EditToolSchema = t.subtype({
 
 let editSequenceCounter = 0;
 
-export async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
+export async function run(toolCall: t.GetType<typeof Schema>): Promise<ToolResult> {
   await fileTracker.assertCanEdit(toolCall.params.filePath);
 
   const file = await attemptUntrackedRead(toolCall.params.filePath);
@@ -47,13 +47,14 @@ export async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
 
   editSequenceCounter++;
   return {
+    type: "file-edit",
     path: path.resolve(toolCall.params.filePath),
     content: replaced,
     sequence: editSequenceCounter
   };
 }
 
-export async function validateEdit(toolCall: t.GetType<typeof EditToolSchema>) {
+export async function validate(toolCall: t.GetType<typeof Schema>) {
   await fileTracker.assertCanEdit(toolCall.params.filePath);
   const file = await attemptUntrackedRead(toolCall.params.filePath);
   switch(toolCall.params.edit.type) {

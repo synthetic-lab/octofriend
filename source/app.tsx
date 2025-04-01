@@ -14,13 +14,11 @@ import {
   runTool,
   validateTool,
   ToolError,
-  BashToolSchema,
-  ReadToolSchema,
-  ListToolSchema,
-  EditToolSchema,
-  CreateToolSchema,
-  AllEdits,
-  DiffEdit,
+  bash,
+  read,
+  list,
+  edit,
+  create as createTool,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { create } from "zustand";
@@ -475,7 +473,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
   }
 }
 
-function BashToolRenderer({ item }: { item: t.GetType<typeof BashToolSchema> }) {
+function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
   return <Box flexDirection="column">
     <Box>
       <Text color="gray">{item.name}: </Text>
@@ -485,21 +483,21 @@ function BashToolRenderer({ item }: { item: t.GetType<typeof BashToolSchema> }) 
 	</Box>
 }
 
-function ReadToolRenderer({ item }: { item: t.GetType<typeof ReadToolSchema> }) {
+function ReadToolRenderer({ item }: { item: t.GetType<typeof read.Schema> }) {
   return <Box>
 		<Text color="gray">{item.name}: </Text>
 		<Text color={THEME_COLOR}>{item.params.filePath}</Text>
 	</Box>
 }
 
-function ListToolRenderer({ item }: { item: t.GetType<typeof ListToolSchema> }) {
+function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
   return <Box>
 		<Text color="gray">{item.name}: </Text>
 		<Text color={THEME_COLOR}>{item?.params?.dirPath || process.cwd()}</Text>
 	</Box>
 }
 
-function EditToolRenderer({ item }: { item: t.GetType<typeof EditToolSchema> }) {
+function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
   return <Box flexDirection="column">
     <Box>
       <Text>Edit: </Text>
@@ -509,7 +507,7 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof EditToolSchema> }) 
   </Box>
 }
 
-function EditRenderer({ item }: { item: t.GetType<typeof AllEdits> }) {
+function EditRenderer({ item }: { item: t.GetType<typeof edit.AllEdits> }) {
   switch(item.type) {
     case "diff": return <DiffEditRenderer item={item} />
     case "append":
@@ -525,7 +523,7 @@ function EditRenderer({ item }: { item: t.GetType<typeof AllEdits> }) {
   }
 }
 
-function DiffEditRenderer({ item }: { item: t.GetType<typeof DiffEdit> }) {
+function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
   return <Box flexDirection="column">
     <Text>Octo wants to replace the following:</Text>
     <Text color="gray">Original text:</Text>
@@ -535,7 +533,7 @@ function DiffEditRenderer({ item }: { item: t.GetType<typeof DiffEdit> }) {
   </Box>
 }
 
-function CreateToolRenderer({ item }: { item: t.GetType<typeof CreateToolSchema> }) {
+function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema> }) {
   return <Box flexDirection="column">
     <Box>
       <Text>Create file: </Text>

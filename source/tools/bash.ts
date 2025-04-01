@@ -1,8 +1,8 @@
 import { t } from "structural";
 import { spawn } from "child_process";
-import { ToolError } from "./common.ts";
+import { ToolError, ToolResult } from "./common.ts";
 
-export const BashToolSchema = t.subtype({
+export const Schema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
 		cmd: t.str.comment("The command to run"),
@@ -19,9 +19,14 @@ export const BashToolSchema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export async function runBashCommand(command: string, timeout: number) {
-  return new Promise<string>((resolve, reject) => {
-    const child = spawn(command, {
+export async function validate(_: t.GetType<typeof Schema>) {
+  return null;
+}
+
+export async function run(toolCall: t.GetType<typeof Schema>) {
+  const { cmd, timeout } = toolCall.params;
+  return new Promise<ToolResult>((resolve, reject) => {
+    const child = spawn(cmd, {
       cwd: process.cwd(),
       shell: "/bin/bash",
       timeout,
@@ -40,7 +45,7 @@ export async function runBashCommand(command: string, timeout: number) {
 
     child.on('close', (code) => {
       if (code === 0) {
-        resolve(output);
+        resolve({ type: "output", content: output });
       } else {
         reject(new ToolError(
 `Command exited with code: ${code}
