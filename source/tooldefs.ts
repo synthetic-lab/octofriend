@@ -1,10 +1,8 @@
 import { t } from "structural";
-import { exec, spawn } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileTracker, FileExistsError } from "./file-tracker.ts";
-const execPromise = promisify(exec);
 
 export class ToolError extends Error {
   constructor(message: string) {
