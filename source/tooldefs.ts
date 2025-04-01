@@ -115,6 +115,16 @@ export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<T
   }
 }
 
+export async function validateTool(tool: t.GetType<typeof ToolCallSchema>): Promise<null> {
+  switch(tool.name) {
+    case "bash": return null;
+    case "read": return await validateRead(tool);
+    case "edit": return await validateEdit(tool);
+    case "create": return await validateCreateFile(tool);
+    case "list": return await validateListDir(tool);
+  }
+}
+
 const ExecErrorSchema = t.subtype({
   code: t.num,
   killed: t.bool,
@@ -147,9 +157,20 @@ async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {
     return fileTracker.read(toolCall.params.filePath);
   });
 }
+async function validateRead(toolCall: t.GetType<typeof ReadToolSchema>) {
+  await attemptUntrackedStat(toolCall.params.filePath);
+  return null;
+}
+
+function attemptUntrackedStat(path: string) {
+  return attempt(`Could not stat(${path}): does the file exist?`, async () => {
+    return await fs.stat(path);
+  });
+}
 
 async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
   const dirpath = toolCall?.params?.dirPath || process.cwd();
+  await validateListDir(toolCall);
   return attempt(`No such directory: ${dirpath}`, async () => {
     const entries = await fs.readdir(dirpath, {
       withFileTypes: true,
@@ -157,15 +178,19 @@ async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
     return entries.map(entry => JSON.stringify(entry)).join("\n");
   });
 }
+async function validateListDir(toolCall: t.GetType<typeof ListToolSchema>) {
+  const dirpath = toolCall?.params?.dirPath || process.cwd();
+  const stat = await attemptUntrackedStat(dirpath);
+  if(!stat.isDirectory()) throw new ToolError(`${dirpath} is not a directory`);
+  return null;
+}
 
 let editSequenceCounter = 0;
 
 async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
   await fileTracker.assertCanEdit(toolCall.params.filePath);
 
-  const file = await attempt(`${toolCall.params.filePath} couldn't be read`, async () => {
-    return fs.readFile(toolCall.params.filePath, "utf8");
-  });
+  const file = await attemptUntrackedRead(toolCall.params.filePath);
   const replaced = runEdit({
     path: toolCall.params.filePath,
     file,
@@ -179,6 +204,23 @@ async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
     content: replaced,
     sequence: editSequenceCounter
   };
+}
+
+async function attemptUntrackedRead(path: string) {
+  return await attempt(`${path} couldn't be read`, async () => {
+    return fs.readFile(path, "utf8");
+  });
+}
+
+async function validateEdit(toolCall: t.GetType<typeof EditToolSchema>) {
+  await fileTracker.assertCanEdit(toolCall.params.filePath);
+  const file = await attemptUntrackedRead(toolCall.params.filePath);
+  switch(toolCall.params.edit.type) {
+    case "append": return null;
+    case "prepend": return null;
+    case "diff":
+      return validateDiff({ file, diff: toolCall.params.edit, path: toolCall.params.filePath });
+  }
 }
 
 function runEdit({ path, file, edit }: {
@@ -198,12 +240,19 @@ function diffEditFile({ path, file, diff }: {
   file: string,
   diff: t.GetType<typeof DiffEdit>,
 }): string {
-  if(!file.includes(diff.search)) {
-    throw new ToolError(
-      `Could not find search string in file ${path}: ${diff.search}`
-    );
-  }
+  validateDiff({ path, file, diff });
   return file.replace(diff.search, diff.replace);
+}
+
+function validateDiff({ path, file, diff }: {
+  path: string,
+  file: string,
+  diff: t.GetType<typeof DiffEdit>,
+}) {
+  if(!file.includes(diff.search)) {
+    throw new ToolError(`Could not find search string in file ${path}: ${diff.search}`);
+  }
+  return null;
 }
 
 async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promise<T> {
@@ -215,15 +264,19 @@ async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promi
 }
 
 async function createFile(toolCall: t.GetType<typeof CreateToolSchema>) {
+  await validateCreateFile(toolCall);
+  return attempt(`Failed to create file ${toolCall.params.filePath}`, async () => {
+    await fileTracker.write(toolCall.params.filePath, toolCall.params.content);
+    return `Successfully created file ${toolCall.params.filePath}`;
+  });
+}
+
+async function validateCreateFile(toolCall: t.GetType<typeof CreateToolSchema>) {
   try {
     await fileTracker.assertCanCreate(toolCall.params.filePath);
   } catch(e) {
     if(e instanceof FileExistsError) throw new ToolError(e.message);
     throw e;
   }
-
-  return attempt(`Failed to create file ${toolCall.params.filePath}`, async () => {
-    await fileTracker.write(toolCall.params.filePath, toolCall.params.content);
-    return `Successfully created file ${toolCall.params.filePath}`;
-  });
+  return null;
 }

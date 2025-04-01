@@ -12,6 +12,7 @@ import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
 import {
   runTool,
+  validateTool,
   ToolError,
   BashToolSchema,
   ReadToolSchema,
@@ -64,6 +65,8 @@ type UiState = {
   } | {
     mode: "tool-request",
     toolReq: ToolCallMessage["tool"],
+  } | {
+    mode: "error-recovery",
   },
   history: Array<HistoryItem>,
   input: (args: RunArgs & { query: string }) => Promise<void>,
@@ -124,32 +127,11 @@ const useAppStore = create<UiState>((set, get) => ({
 
       set({ history });
     } catch(e) {
-      if(e instanceof ToolError) {
-        const history: HistoryItem[] = [
-          ...get().history,
-          {
-            role: "tool-error",
-            error: e.message,
-            original: tagged(TOOL_RUN_TAG, JSON.stringify(toolReq.tool)),
-          },
-        ];
-
-        set({ history });
-      }
-      if(e instanceof FileOutdatedError) {
-        const history: HistoryItem[] = [
-          ...get().history,
-          {
-            role: "file-outdated",
-            updatedFile: await fileTracker.read(e.filePath),
-          },
-        ];
-
-        set({ history });
-      }
-      else {
-        throw e;
-      }
+      const history = [
+        ...get().history,
+        await tryTransformToolError(toolReq, e),
+      ];
+      set({ history });
     }
 
     await get()._runAgent({ client, config });
@@ -187,12 +169,30 @@ const useAppStore = create<UiState>((set, get) => ({
       return;
     }
     if(lastHistoryItem.role === "tool-error") {
-      set({ history });
+      set({
+        modeData: { mode: "error-recovery" },
+        history
+      });
       return get()._runAgent({ client, config });
     }
 
     if(lastHistoryItem.role !== "tool") {
       throw new Error(`Unexpected role: ${lastHistoryItem.role}`);
+    }
+
+    try {
+      await validateTool(lastHistoryItem.tool.tool);
+    } catch(e) {
+      set({
+        modeData: {
+          mode: "error-recovery",
+        },
+        history: [
+          ...history,
+          await tryTransformToolError(lastHistoryItem.tool, e),
+        ],
+      });
+      return await get()._runAgent({ client, config });
     }
 
     set({
@@ -204,6 +204,25 @@ const useAppStore = create<UiState>((set, get) => ({
     });
   },
 }));
+
+async function tryTransformToolError(
+  toolReq: ToolCallMessage["tool"], e: unknown
+): Promise<HistoryItem> {
+  if(e instanceof ToolError) {
+    return {
+      role: "tool-error",
+      error: e.message,
+      original: tagged(TOOL_RUN_TAG, JSON.stringify(toolReq.tool)),
+    };
+  }
+  if(e instanceof FileOutdatedError) {
+    return {
+      role: "file-outdated",
+      updatedFile: await fileTracker.read(e.filePath),
+    };
+  }
+  throw e;
+}
 
 export default function App({ config, metadata }: Props) {
 	const client = useMemo(() => {
@@ -260,6 +279,7 @@ function BottomBar({ config, client }: { config: Config, client: OpenAI }) {
 	}, [ query, config, client ]);
 
   if(modeData.mode === "responding") return <Loading />;
+  if(modeData.mode === "error-recovery") return <Loading />;
 
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer
