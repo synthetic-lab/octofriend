@@ -1,3 +1,4 @@
+import { t } from "structural";
 import * as fs from "fs/promises";
 
 export class ToolError extends Error {
@@ -30,3 +31,9 @@ export async function attemptUntrackedRead(path: string) {
 export type ToolResult =
   | { type: "output", content: string }
   | { type: "file-edit", path: string, content: string, sequence: number };
+
+export type ToolDef<T> = {
+  Schema: t.Type<T>,
+  validate: (t: T) => Promise<null>,
+  run: (t: T) => Promise<ToolResult>,
+};
