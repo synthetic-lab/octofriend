@@ -77,6 +77,10 @@ Remember, you don't need to use tools! Only use them when appropriate.
 
 Typically, you can only run tools one-by-one. After viewing tool output, you may need to run more
 tools in a step-by-step process.
+
+Don't ask the user whether they want you to run a tool (e.g. file edits): instead, just run the
+tool. The user is prompted when you call tools to accept or reject your attempted tool call, so
+there's no need to get a second verbal confirmation: they can just use the UI.
 `.trim();
 
 function systemPrompt() {
