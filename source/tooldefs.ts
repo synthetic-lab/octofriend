@@ -2,6 +2,7 @@ import { t } from "structural";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs/promises";
+import { fileTracker, FileStateError } from "./file-tracker.ts";
 const execPromise = promisify(exec);
 
 export class ToolError extends Error {
@@ -126,7 +127,7 @@ stderr: ${e.stderr}`);
 
 async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {
   return attempt(`No such file ${toolCall.params.filePath}`, async () => {
-    return fs.readFile(toolCall.params.filePath, "utf8");
+    return fileTracker.read(toolCall.params.filePath);
   });
 }
 
@@ -140,6 +141,8 @@ async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
 }
 
 async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
+  await fileTracker.assertCanEdit(toolCall.params.filePath);
+
   const file = await attempt(`${toolCall.params.filePath} couldn't be read`, async () => {
     return fs.readFile(toolCall.params.filePath, "utf8");
   });
@@ -148,7 +151,7 @@ async function editFile(toolCall: t.GetType<typeof EditToolSchema>) {
     file,
     edit: toolCall.params.edit,
   });
-  await fs.writeFile(toolCall.params.filePath, replaced, "utf8");
+  await fileTracker.write(toolCall.params.filePath, replaced);
   return `Successfully edited ${toolCall.params.filePath}. File contents are now:\n${replaced}`;
 }
 
@@ -186,8 +189,15 @@ async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promi
 }
 
 async function createFile(toolCall: t.GetType<typeof CreateToolSchema>) {
+  try {
+    await fileTracker.assertCanCreate(toolCall.params.filePath);
+  } catch(e) {
+    if(e instanceof FileStateError) throw new ToolError(e.message);
+    throw e;
+  }
+
   return attempt(`Failed to create file ${toolCall.params.filePath}`, async () => {
-    await fs.writeFile(toolCall.params.filePath, toolCall.params.content, "utf8");
+    await fileTracker.write(toolCall.params.filePath, toolCall.params.content);
     return `Successfully created file ${toolCall.params.filePath}`;
   });
 }

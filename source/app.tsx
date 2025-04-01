@@ -26,6 +26,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
 import figures from "figures";
+import { FileOutdatedError, fileTracker } from "./file-tracker.ts";
 
 type Props = {
 	config: Config;
@@ -123,6 +124,17 @@ const useAppStore = create<UiState>((set, get) => ({
           {
             role: "tool-error",
             error: e.message,
+          },
+        ];
+
+        set({ history });
+      }
+      if(e instanceof FileOutdatedError) {
+        const history: HistoryItem[] = [
+          ...get().history,
+          {
+            role: "file-outdated",
+            updatedFile: await fileTracker.read(e.filePath),
           },
         ];
 
@@ -355,6 +367,14 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
     return <Text>
       Tool rejected; tell Octo what to do instead:
     </Text>
+  }
+  if(item.role === "file-outdated") {
+    return <Box flexDirection="column">
+      <Text>File was modified since it was last read; re-reading...</Text>
+      <Text color="gray">
+        Got {item.updatedFile.split("\n").length} lines of output
+      </Text>
+    </Box>
   }
 	return <Box>
     <Box marginRight={1}>

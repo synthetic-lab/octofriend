@@ -115,12 +115,18 @@ type ToolRejectMessage = {
   role: "tool-reject",
 };
 
+type FileOutdatedMessage = {
+  role: "file-outdated",
+  updatedFile: string,
+};
+
 export type HistoryItem = UserMessage
                         | AssistantMessage
                         | ToolCallMessage
                         | ToolOutputMessage
                         | ToolErrorMessage
                         | ToolRejectMessage
+                        | FileOutdatedMessage
                         ;
 
 function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
@@ -152,6 +158,17 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
       output.push({
 				role: "user",
 				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
+      });
+      continue;
+    }
+
+    if(message.role === "file-outdated") {
+      output.push({
+        role: "user",
+        content: `
+${openTag(TOOL_ERROR_TAG)}File could not be updated because it was modified after being last read ${closeTag(TOOL_ERROR_TAG)}
+Re-reading file:
+${TOOL_RESPONSE_OPEN_TAG}${message.updatedFile}${TOOL_RESPONSE_CLOSE_TAG}`.trim(),
       });
       continue;
     }

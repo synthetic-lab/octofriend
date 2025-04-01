@@ -6,9 +6,8 @@ $ npm install --global octofriend
 
 TODO:
 
-- [ ] Automatically force LLMs to re-read files if they've been edited more
-  recently than the last read
-- [ ] Disallow edits unless the file was read first
+- [ ] Handle file modification time checks before prompting user to accept
+  edits or file creation
 - [ ] Allow configuring a "guru mode" to call to a reasoning LLM. The LLM can
   enter guru mode by calling a `enter_mode` tool, and when in guru mode, the LLM
   can exit by calling an `exit_mode` tool. When entering guru mode, the
