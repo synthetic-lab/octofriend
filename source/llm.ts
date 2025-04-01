@@ -241,7 +241,6 @@ function toLlmMessage(
   }
 
   if(item.role === "tool-reject") {
-    console.log("found tool reject");
     if(prev && prev.role === "user") {
       return [
         {
