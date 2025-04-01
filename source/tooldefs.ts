@@ -22,9 +22,9 @@ export const ReadToolSchema = t.subtype({
 
 export const ListToolSchema = t.subtype({
   name: t.value("list"),
-  params: t.subtype({
+  params: t.optional(t.subtype({
     dirPath: t.optional(t.str.comment("Path to the directory")),
-  }),
+  })),
 }).comment(
   "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd"
 );
@@ -149,8 +149,9 @@ async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {
 }
 
 async function listDir(toolCall: t.GetType<typeof ListToolSchema>) {
-  return attempt(`No such directory: ${toolCall.params.dirPath}`, async () => {
-    const entries = await fs.readdir(toolCall.params.dirPath || process.cwd(), {
+  const dirpath = toolCall?.params?.dirPath || process.cwd();
+  return attempt(`No such directory: ${dirpath}`, async () => {
+    const entries = await fs.readdir(dirpath, {
       withFileTypes: true,
     });
     return entries.map(entry => JSON.stringify(entry)).join("\n");

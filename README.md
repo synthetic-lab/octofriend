@@ -9,8 +9,6 @@ TODO:
 - [ ] Handle file modification time checks before prompting user to accept
   edits or file creation
 - [ ] Handle file search string checking before prompting user to accept edits
-- [ ] Tell the LLM about tool rejections, don't just only give them the user
-  message
 - [ ] Track token usage and use high/low watermarks for managing context space
 - [ ] Allow configuring a "guru mode" to call to a reasoning LLM. The LLM can
   enter guru mode by calling a `enter_mode` tool, and when in guru mode, the LLM
@@ -22,5 +20,5 @@ TODO:
 - [ ] Handle `<think>` tags as well as reasoning tokens in the UI
 - [ ] Figure out why throwing ToolError sometimes causes crashes despite
   try/catch blocks
-- [ ] Fix assistant message parsing stream so that tool calls don't get
-  appended multiple times
+- [ ] Context optimization for repeated reads of the same file: only include
+  the latest version of the file, much like the edit optimization

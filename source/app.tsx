@@ -5,7 +5,7 @@ import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import {
-  HistoryItem, UserMessage, AssistantMessage, ToolCallMessage, runAgent
+  HistoryItem, UserMessage, AssistantMessage, ToolCallMessage, runAgent, tagged, TOOL_RUN_TAG
 } from "./llm.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
@@ -130,6 +130,7 @@ const useAppStore = create<UiState>((set, get) => ({
           {
             role: "tool-error",
             error: e.message,
+            original: tagged(TOOL_RUN_TAG, JSON.stringify(toolReq.tool)),
           },
         ];
 
@@ -421,7 +422,7 @@ function ReadToolRenderer({ item }: { item: t.GetType<typeof ReadToolSchema> }) 
 function ListToolRenderer({ item }: { item: t.GetType<typeof ListToolSchema> }) {
   return <Box>
 		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item.params.dirPath || process.cwd()}</Text>
+		<Text color={THEME_COLOR}>{item?.params?.dirPath || process.cwd()}</Text>
 	</Box>
 }
 

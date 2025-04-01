@@ -20,16 +20,18 @@ export type SystemPrompt = {
 
 export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 
-const TOOL_OPEN_TAG = "<run-tool>";
-const TOOL_CLOSE_TAG = "</run-tool>";
-const TOOL_RESPONSE_OPEN_TAG = "<tool-output>";
-const TOOL_RESPONSE_CLOSE_TAG = "</tool-output>";
+export const TOOL_RUN_TAG = "run-tool";
+const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
+const USER_TOOL_INSTR_TAG = "tool-instructions";
 function openTag(tag: string) {
   return "<" + tag + ">";
 }
 function closeTag(tag: string) {
   return "</" + tag + ">";
+}
+export function tagged(tag: string, content: string) {
+  return openTag(tag) + content + closeTag(tag);
 }
 
 export const ToolCallRequestSchema = t.subtype({
@@ -44,11 +46,11 @@ ${ALL_TOOLS.map(toolType => toTypescript(toolType)).join("\n\n")}
 
 You can call them by responding with JSON of the following type inside special XML tags:
 
-${TOOL_OPEN_TAG}{"type":"function","tool":SOME_TOOL}${TOOL_CLOSE_TAG}
+${tagged(TOOL_RUN_TAG, `{"type":"function","tool":SOME_TOOL}`)}
 
 For example:
 
-${TOOL_OPEN_TAG}${JSON.stringify({
+${tagged(TOOL_RUN_TAG, JSON.stringify({
 	type: "function",
 	tool: {
 		name: "bash",
@@ -56,7 +58,7 @@ ${TOOL_OPEN_TAG}${JSON.stringify({
 			cmd: "curl \"https://github.com/reissbaker/antipattern\"",
 		},
 	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>)}${TOOL_CLOSE_TAG}
+} satisfies t.GetType<typeof ToolCallRequestSchema>))}
 
 You don't have to call any tool functions if you don't need to; you can also just chat to the user
 normally. Attempt to determine what your current task is (the user may have told you outright),
@@ -65,10 +67,11 @@ and figure out the state of the repo using your tools. Then, help the user with 
 You may need to use tools again after some back-and-forth with the user, as they help you refine
 your solution.
 
-NEVER output the ${TOOL_OPEN_TAG} or ${TOOL_CLOSE_TAG} unless you intend to call a tool. If you just
-intend to talk about them, leave out the x- part of the tags. These tags will be parsed out of your
-response by an automated system, and it can't differentiate between you using the tag, and just
-talking about the tag; it will assume any use of the tag is an attempt to call a tool.
+NEVER output the ${openTag(TOOL_RUN_TAG)} or ${closeTag(TOOL_RUN_TAG)} unless you intend to call a
+tool. If you just intend to talk about them, write them in ALL-CAPS e.g.
+${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags will be parsed out of your response by an
+automated system, and it can't differentiate between you using the tag, and just talking about the
+tag; it will assume any use of the tag is an attempt to call a tool.
 
 Your tool calls should be the LAST thing in your response, if you have any tool calls.
 Don't wrap them in backticks Markdown-style, just write the raw tags out.
@@ -113,6 +116,7 @@ type ToolOutputMessage = {
 type ToolErrorMessage = {
   role: "tool-error",
   error: string,
+  original: string,
 };
 
 type ToolRejectMessage = {
@@ -157,72 +161,35 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
     }
   }
 
-  // Second pass: transform
+  // Second pass: reorder tool rejections to come after user messages, so we don't need lookahead
+  const reorderedHistory = [];
   for(let i = 0; i < messages.length; i++) {
-    const message = messages[i];
-    if(message.role === "tool") {
-      const prev = output[output.length - 1];
-      if(prev && prev.role === "assistant") {
-        prev.content += "\n" + TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG;
-        continue;
-      }
-      output.push({
-        role: "assistant",
-        content: TOOL_OPEN_TAG + JSON.stringify(message.tool) + TOOL_CLOSE_TAG,
-      });
+    const item = messages[i];
+    if(item.role !== "tool-reject") {
+      reorderedHistory.push(item);
       continue;
     }
+    // Got this far? It's a tool rejection. Swap it with the next message and skip ahead
+    const next = messages[i + 1];
+    reorderedHistory.push(next, item);
+    i++;
+  }
 
-    if(message.role === "tool-reject") continue;
-
-    if(message.role === "tool-output") {
-      output.push({
-				role: "user",
-				content: TOOL_RESPONSE_OPEN_TAG + message.content + TOOL_RESPONSE_CLOSE_TAG,
-      });
-      continue;
-    }
-
-    if(message.role === "file-edit") {
-      output.push({
-        role: "user",
-        content: TOOL_RESPONSE_OPEN_TAG + "File edited successfully." + (
-          latestEdits.get(message.path) === message.sequence
-            ? "\nNew contents:\n" + message.content
-            : ""
-        ) + TOOL_RESPONSE_CLOSE_TAG,
-      });
-      continue;
-    }
-
-    if(message.role === "file-outdated") {
-      output.push({
-        role: "user",
-        content: `
-${openTag(TOOL_ERROR_TAG)}File could not be updated because it was modified after being last read ${closeTag(TOOL_ERROR_TAG)}
-Re-reading file:
-${TOOL_RESPONSE_OPEN_TAG}${message.updatedFile}${TOOL_RESPONSE_CLOSE_TAG}`.trim(),
-      });
-      continue;
-    }
-
-    if(message.role === "tool-error") {
-      output.push({
-        role: "user",
-        content: openTag(TOOL_ERROR_TAG) + message.error + closeTag(TOOL_ERROR_TAG),
-      });
-      continue;
-    }
-
-    output.push(message);
+  // Third pass: transform
+  for(let i = 0; i < reorderedHistory.length; i++) {
+    const item = reorderedHistory[i];
+    const prev = output.length > 0 ? output[output.length - 1] : null;
+    const [ newPrev, transformed ] = toLlmMessage(prev, item, latestEdits);
+    if(newPrev) output[output.length - 1] = newPrev;
+    if(transformed) output.push(transformed);
   }
 
   const last = messages[messages.length - 1];
   if(last && last.role === "user") {
-    output.pop();
+    const lastOutput = output.pop()!;
     output.push({
       role: "user",
-      content: last.content + "\n" + TOOL_CALL_INSTRUCTIONS,
+      content: lastOutput.content + "\n" + tagged(USER_TOOL_INSTR_TAG, TOOL_CALL_INSTRUCTIONS),
     });
   }
   else {
@@ -236,6 +203,114 @@ ${TOOL_RESPONSE_OPEN_TAG}${message.updatedFile}${TOOL_RESPONSE_CLOSE_TAG}`.trim(
   return output;
 }
 
+// Given a previous LLM message (if one exists) in the conversation, a history item, and the latest
+// edits map, returns a tuple of:
+//
+// 1. What the prev message should be overwritten with
+// 2. The history item transformed to an LLM message
+//
+// The prev message overwrite doesn't need to be a new object: you can just return `prev` for that
+// position if you don't intend to overwrite anything. However, the transformed history-to-LLM
+// message must be a new object: do not simply return the history item, or it could be modified by
+// future calls.
+function toLlmMessage(
+  prev: LlmMessage | null,
+  item: HistoryItem,
+  latestEdits: Map<string, number>,
+): [LlmMessage | null, LlmMessage | null] {
+  if(item.role === "tool") {
+    if(prev && prev.role === "assistant") {
+      return [
+        {
+          role: "assistant",
+          content: prev.content + "\n" + tagged(TOOL_RUN_TAG, JSON.stringify(item.tool)),
+        },
+        null,
+      ];
+    }
+    return [
+      prev,
+      {
+        role: "assistant",
+        content: tagged(TOOL_RUN_TAG, JSON.stringify(item.tool)),
+      },
+    ];
+  }
+
+  if(item.role === "tool-reject") {
+    console.log("found tool reject");
+    if(prev && prev.role === "user") {
+      return [
+        {
+          role: "user",
+          content: tagged(TOOL_ERROR_TAG, "Tool call rejected by user.") + "\n" + prev.content,
+        },
+        null,
+      ];
+    }
+    throw new Error("Impossible tool rejection ordering: no previous user message");
+  }
+
+  if(item.role === "tool-output") {
+    return [
+      prev,
+      {
+        role: "user",
+        content: tagged(TOOL_RESPONSE_TAG, item.content)
+      }
+    ];
+  }
+
+  if(item.role === "file-edit") {
+    const content = latestEdits.get(item.path) === item.sequence ?
+      `\nNew contents:\n${item.content}` : "";
+    return [
+      prev,
+      {
+        role: "user",
+        content: tagged(TOOL_RESPONSE_TAG, `File edited successfully.${content}`),
+      }
+    ];
+  }
+
+  if(item.role === "file-outdated") {
+    return [
+      prev,
+      {
+        role: "user",
+        content: `
+${tagged(TOOL_ERROR_TAG, "File could not be updated because it was modified after being last read")}
+Re-reading file:
+${tagged(TOOL_RESPONSE_TAG, item.updatedFile)}`.trim(),
+      }
+    ];
+  }
+
+  if(item.role === "tool-error") {
+    if(prev && prev.role === "assistant") {
+      return [
+        {
+          role: "assistant",
+          content: prev.content + "\n" + item.original,
+        },
+        {
+          role: "user",
+          content: tagged(TOOL_ERROR_TAG, item.error),
+        }
+      ];
+    }
+    throw new Error("Impossible tool ordering: no prev assistant response for tool error");
+  }
+
+  return [
+    prev,
+    {
+      role: item.role,
+      content: item.content,
+    },
+  ];
+}
+
 export async function runAgent(
   client: OpenAI,
   config: Config,
@@ -246,13 +321,15 @@ export async function runAgent(
     model: config.model,
     messages: toLlmMessages(history),
     stream: true,
-    stop: TOOL_CLOSE_TAG,
+    stop: closeTag(TOOL_RUN_TAG),
   });
 
   let maybeTool = false;
   let foundToolTag = false;
   let content = "";
   let toolContent = "";
+
+  const toolOpenTag = openTag(TOOL_RUN_TAG);
 
   for await(const chunk of res) {
     if (chunk.choices[0]?.delta.content) {
@@ -269,14 +346,14 @@ export async function runAgent(
       if(maybeTool) {
         toolContent += tokens;
 
-        if(!foundToolTag && toolContent.includes(TOOL_OPEN_TAG)) {
+        if(!foundToolTag && toolContent.includes(toolOpenTag)) {
           foundToolTag = true;
         }
         if(foundToolTag) continue;
 
         // Check any remaining characters: do they match so far?
-        for(let i = 0; i < toolContent.length && i < TOOL_OPEN_TAG.length; i++) {
-          if(toolContent[i] !== TOOL_OPEN_TAG[i]) {
+        for(let i = 0; i < toolContent.length && i < toolOpenTag.length; i++) {
+          if(toolContent[i] !== toolOpenTag[i]) {
             maybeTool = false;
             tokens = toolContent;
             toolContent = "";
@@ -304,6 +381,7 @@ export async function runAgent(
         {
           role: "tool-error",
           error: parseResult.message,
+          original: toolContent,
         },
       ]);
     }
@@ -342,15 +420,9 @@ type ParseToolResult = {
 };
 
 function parseTool(tag: string): ParseToolResult {
-  if (!tag.includes(TOOL_OPEN_TAG)) {
-    return { status: "error", message: "Missing opening tool tag" };
-  }
+  const content = tag.replace(openTag(TOOL_RUN_TAG), "").replace(closeTag(TOOL_RUN_TAG), "").trim();
 
-  const content = tag.replace(TOOL_OPEN_TAG, "").replace(TOOL_CLOSE_TAG, "").trim();
-
-  if (!content) {
-    return { status: "error", message: "Empty tool call" };
-  }
+  if(!content) return { status: "error", message: "Empty tool call" };
 
   try {
     const json = JSON.parse(content);
