@@ -20,3 +20,7 @@ TODO:
   configurable modes in general? E.g. an explore mode vs a write code mode vs
   an architect mode. Let the config file handle all of that.
 - [ ] Handle `<think>` tags as well as reasoning tokens in the UI
+- [ ] Figure out why throwing ToolError sometimes causes crashes despite
+  try/catch blocks
+- [ ] Fix assistant message parsing stream so that tool calls don't get
+  appended multiple times
