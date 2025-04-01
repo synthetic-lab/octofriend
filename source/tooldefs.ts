@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -33,8 +33,18 @@ export const BashToolSchema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
 		cmd: t.str.comment("The command to run"),
+    timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous."),
 	}),
-}).comment("Runs a bash command in the cwd");
+}).comment(`
+  Runs a bash command in the cwd. The bash command is run as a subshell, not connected to a PTY, so
+  don't run interactive commands: only run commands that will work headless.
+
+  Do NOT attempt to pipe echo, printf, etc commands to work around this. If it's interactive, either
+  figure out a non-interactive variant to run instead, or if that's impossible, as a last resort you
+  can ask the user to run the command, explaining that it's interactive.
+
+  Often interactive commands provide flags to run them non-interactively. Prefer those flags.
+`);
 
 export const DiffEdit = t.subtype({
   type: t.value("diff"),
@@ -96,7 +106,10 @@ export type ToolResult =
 export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<ToolResult> {
   switch(tool.name) {
     case "bash":
-      return { type: "output", content: await runBashCommand(tool.params.cmd) };
+      return {
+        type: "output",
+        content: await runBashCommand(tool.params.cmd, tool.params.timeout),
+      };
     case "read":
       return { type: "output", content: await readFile(tool) };
     case "edit": {
@@ -125,31 +138,39 @@ export async function validateTool(tool: t.GetType<typeof ToolCallSchema>): Prom
   }
 }
 
-const ExecErrorSchema = t.subtype({
-  code: t.num,
-  killed: t.bool,
-  stdout: t.str,
-  stderr: t.str,
-});
-async function runBashCommand(command: string) {
-  try {
-    const { stdout, stderr } = await execPromise(command, {
+async function runBashCommand(command: string, timeout: number) {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(command, {
       cwd: process.cwd(),
       shell: "/bin/bash",
+      timeout,
+      stdio: ['ignore', 'pipe', 'pipe']
     });
-    return stdout || stderr;
-  } catch(e) {
-    if(ExecErrorSchema.guard(e)) {
-      throw new ToolError(
-`Command exited with code: ${e.code}
-killed: ${e.killed}
-stdout: ${e.stdout}
-stderr: ${e.stderr}`);
-    }
-    else {
-      throw e;
-    }
-  }
+
+    let output = '';
+
+    child.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+
+    child.stderr.on('data', (data) => {
+      output += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(output);
+      } else {
+        reject(new ToolError(
+`Command exited with code: ${code}
+output: ${output}`));
+      }
+    });
+
+    child.on('error', (err) => {
+      reject(new ToolError(`Command failed: ${err.message}`));
+    });
+  });
 }
 
 async function readFile(toolCall: t.GetType<typeof ReadToolSchema>) {

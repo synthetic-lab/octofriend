@@ -56,6 +56,7 @@ ${tagged(TOOL_RUN_TAG, JSON.stringify({
 		name: "bash",
 		params: {
 			cmd: "curl \"https://github.com/reissbaker/antipattern\"",
+      timeout: 10000,
 		},
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>))}
@@ -78,12 +79,14 @@ Don't wrap them in backticks Markdown-style, just write the raw tags out.
 
 Remember, you don't need to use tools! Only use them when appropriate.
 
-Typically, you can only run tools one-by-one. After viewing tool output, you may need to run more
-tools in a step-by-step process.
+You can only run tools one-by-one. After viewing tool output, you may need to run more tools in a
+step-by-step process.
 
 Don't ask the user whether they want you to run a tool (e.g. file edits): instead, just run the
 tool. The user is prompted when you call tools to accept or reject your attempted tool call, so
-there's no need to get a second verbal confirmation: they can just use the UI.
+there's no need to get a verbal confirmation: they can just use the UI. Similarly, don't tell them
+what tool you're going to use or what edit you're going to make: just run the tool or make the edit,
+and they'll see what you're trying to do in the UI.
 `.trim();
 
 function systemPrompt() {

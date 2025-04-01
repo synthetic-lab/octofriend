@@ -476,9 +476,12 @@ function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
 }
 
 function BashToolRenderer({ item }: { item: t.GetType<typeof BashToolSchema> }) {
-  return <Box>
-		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item.params.cmd}</Text>
+  return <Box flexDirection="column">
+    <Box>
+      <Text color="gray">{item.name}: </Text>
+      <Text color={THEME_COLOR}>{item.params.cmd}</Text>
+    </Box>
+		<Text color="gray">timeout: {item.params.timeout}</Text>
 	</Box>
 }
 
