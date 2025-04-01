@@ -260,11 +260,63 @@ export default function App({ config, metadata }: Props) {
         <MessageDisplay item={modeData.inflightResponse} />
     }
 
-    <BottomBar client={client} config={config} />
+    <BottomBar client={client} config={config} metadata={metadata} />
 	</Box>
 }
 
-function BottomBar({ config, client }: { config: Config, client: OpenAI }) {
+function BottomBar({ config, client, metadata }: {
+  config: Config,
+  client: OpenAI,
+  metadata: Metadata,
+}) {
+  const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
+
+  useEffect(() => {
+    getLatestVersion().then(latestVersion => {
+      if(latestVersion && metadata.version < latestVersion) {
+        setVersionCheck(
+          `New version released! Latest version is ${latestVersion}. Run npm install -g octofriend to update.`
+        );
+        return;
+      }
+      setVersionCheck("Octo is up-to-date.");
+      setTimeout(() => {
+        setVersionCheck("");
+      }, 5000);
+    });
+  }, [ metadata ]);
+
+  return <Box flexDirection="column" width="100%">
+    <BottomBarContent config={config} client={client} />
+    <Box
+      width="100%"
+      justifyContent="flex-end"
+      height={1}
+      flexShrink={0}
+      flexGrow={0}
+    >
+      <Text color={THEME_COLOR}>{versionCheck}</Text>
+    </Box>
+  </Box>
+}
+
+const PackageSchema = t.subtype({
+  "dist-tags": t.subtype({
+    latest: t.str,
+  }),
+});
+async function getLatestVersion() {
+  try {
+    const response = await fetch("https://registry.npmjs.com/octofriend");
+    const contents = await response.json();
+    const packageInfo = PackageSchema.slice(contents);
+    return packageInfo["dist-tags"].latest;
+  } catch {
+    return null;
+  }
+}
+
+function BottomBarContent({ config, client }: { config: Config, client: OpenAI }) {
 	const [ query, setQuery ] = useState("");
   const { modeData, input } = useAppStore(
     useShallow(state => ({
