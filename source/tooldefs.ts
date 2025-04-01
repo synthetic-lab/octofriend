@@ -2,7 +2,7 @@ import { t } from "structural";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs/promises";
-import { fileTracker, FileStateError } from "./file-tracker.ts";
+import { fileTracker, FileExistsError } from "./file-tracker.ts";
 const execPromise = promisify(exec);
 
 export class ToolError extends Error {
@@ -192,7 +192,7 @@ async function createFile(toolCall: t.GetType<typeof CreateToolSchema>) {
   try {
     await fileTracker.assertCanCreate(toolCall.params.filePath);
   } catch(e) {
-    if(e instanceof FileStateError) throw new ToolError(e.message);
+    if(e instanceof FileExistsError) throw new ToolError(e.message);
     throw e;
   }
 

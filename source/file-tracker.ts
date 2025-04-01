@@ -18,7 +18,7 @@ export class FileOutdatedError extends Error {
     this.filePath = params.path;
   }
 }
-export class FileStateError extends Error {
+export class FileExistsError extends Error {
   constructor(message: string) {
     super(message);
     this.name = this.constructor.name;
@@ -65,7 +65,7 @@ export class FileTracker {
 
   async assertCanCreate(filePath: string) {
     const canCreate = await this.canCreate(filePath);
-    if(!canCreate) throw new FileStateError("File already exists");
+    if(!canCreate) throw new FileExistsError("File already exists");
   }
 
   async assertCanEdit(filePath: string) {
