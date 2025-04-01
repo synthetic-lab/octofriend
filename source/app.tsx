@@ -25,7 +25,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
 import figures from "figures";
-import { FileOutdatedError, fileTracker } from "./file-tracker.ts";
+import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 
 type Props = {
 	config: Config;

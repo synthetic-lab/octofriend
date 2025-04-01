@@ -1,7 +1,7 @@
 import { t } from "structural";
 import * as path from "path";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, ToolResult } from "./common.ts";
+import { ToolError, attemptUntrackedRead, ToolResult } from "../common.ts";
 
 export const DiffEdit = t.subtype({
   type: t.value("diff"),

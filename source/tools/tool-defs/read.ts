@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolResult, attempt, attemptUntrackedStat } from "./common.ts";
+import { ToolResult, attempt, attemptUntrackedStat } from "../common.ts";
 
 export const Schema = t.subtype({
  name: t.value("read"),

@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { spawn } from "child_process";
-import { ToolError, ToolResult } from "./common.ts";
+import { ToolError, ToolResult } from "../common.ts";
 
 export const Schema = t.subtype({
 	name: t.value("bash"),

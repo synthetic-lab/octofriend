@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, ToolResult } from "./common.ts";
+import { ToolError, attempt, ToolResult } from "../common.ts";
 
 export const Schema = t.subtype({
   name: t.value("create"),

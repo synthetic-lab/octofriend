@@ -1,6 +1,6 @@
 import { t } from "structural";
 import * as fs from "fs/promises";
-import { ToolError, attempt, attemptUntrackedStat, ToolResult } from "./common.ts";
+import { ToolError, attempt, attemptUntrackedStat, ToolResult } from "../common.ts";
 
 export const Schema = t.subtype({
   name: t.value("list"),

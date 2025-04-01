@@ -1,11 +1,11 @@
 import { t } from "structural";
 
 import { unionAll } from "../types.ts";
-import * as toolMap from "./tool-listing.ts";
+import * as toolMap from "./tool-defs/index.ts";
 import { ToolResult, ToolDef } from "./common.ts";
 
 export { ToolError, ToolResult } from "./common.ts";
-export * from "./tool-listing.ts";
+export * from "./tool-defs/index.ts";
 
 export const ALL_TOOLS = Object.values(toolMap).map(t => t.Schema);
 export const ToolCallSchema = unionAll(ALL_TOOLS);
