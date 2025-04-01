@@ -274,9 +274,7 @@ function BottomBar({ config, client, metadata }: {
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
       if(latestVersion && metadata.version < latestVersion) {
-        setVersionCheck(
-          `New version released! Latest version is ${latestVersion}. Run npm install -g octofriend to update.`
-        );
+        setVersionCheck("New version released! Run npm install -g octofriend to update.");
         return;
       }
       setVersionCheck("Octo is up-to-date.");
