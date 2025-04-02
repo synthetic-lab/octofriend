@@ -21,9 +21,13 @@ TODO:
 - [ ] Make file writing (edits, file creation) different than just calling
   tools, so that you don't need to put everything inside JSON (which makes the
   LLMs worse at writing code). Have a couple extra tags:
-  * `<edit-replace path="..." search="...">`
-  * `<edit-append path="...">`
-  * `<edit-prepend path="...">`
-  * `<create-file path="...">`
-  * `<file-path path="...">`
+  * `<run-edit filepath="..." type="...">`: wraps all file edit/create ops. The
+    `</run-edit>` closing tag is another stop token. Types can be:
+    * `diff`
+    * `append`
+    * `prepend`
+    * `create`
+  * `<diff-search>`: inner element that wraps search queries for type=diff
+  * `<diff-replace>`: inner element that wraps replace strings for type=diff
   Use an actual streaming XML parser to parse out this stuff.
+  test

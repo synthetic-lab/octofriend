@@ -36,4 +36,5 @@ export type ToolDef<T> = {
   Schema: t.Type<T>,
   validate: (t: T) => Promise<null>,
   run: (t: T) => Promise<ToolResult>,
+  hidden?: boolean,
 };

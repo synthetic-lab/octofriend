@@ -228,7 +228,7 @@ async function tryTransformToolError(
     return {
       role: "tool-error",
       error: e.message,
-      original: tagged(TOOL_RUN_TAG, JSON.stringify(toolReq.tool)),
+      original: tagged(TOOL_RUN_TAG, {}, JSON.stringify(toolReq.tool)),
     };
   }
   if(e instanceof FileOutdatedError) {

@@ -65,6 +65,9 @@ export async function validate(toolCall: t.GetType<typeof Schema>) {
   }
 }
 
+// Mark this tool as hidden from the tool listing
+export const hidden = true;
+
 function runEdit({ path, file, edit }: {
   path: string,
   file: string,

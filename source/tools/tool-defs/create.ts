@@ -30,3 +30,6 @@ export async function validate(toolCall: t.GetType<typeof Schema>) {
   }
   return null;
 }
+
+// Mark this tool as hidden from the tool listing
+export const hidden = true;

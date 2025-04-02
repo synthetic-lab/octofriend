@@ -10,6 +10,11 @@ export * from "./tool-defs/index.ts";
 export const ALL_TOOLS = Object.values(toolMap).map(t => t.Schema);
 export const ToolCallSchema = unionAll(ALL_TOOLS);
 
+// Filter out hidden tools for instructions
+export const VISIBLE_TOOLS = Object.entries(toolMap)
+  .filter(([_, tool]) => !("hidden" in tool && tool.hidden))
+  .map(([_, tool]) => tool.Schema);
+
 export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
   "read",
   "list",
