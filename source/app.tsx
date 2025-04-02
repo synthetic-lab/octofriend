@@ -147,19 +147,44 @@ const useAppStore = create<UiState>((set, get) => ({
       }
     });
 
-		const history = await runAgent(client, config, get().history, tokens => {
-      content += tokens;
-      set({
-        modeData: {
-          mode: "responding",
-          inflightResponse: {
-            role: "assistant",
-            content,
-          },
-        },
-      });
-    });
+    const debounceTimeout = 16;
+    let timeout: NodeJS.Timeout | null = null;
+    let lastContent = "";
 
+    const history = await runAgent(client, config, get().history, tokens => {
+      content += tokens;
+
+      // Skip duplicate updates
+      if (content === lastContent) return;
+      lastContent = content;
+
+      if (timeout) return;
+
+      // Schedule the UI update
+      timeout = setTimeout(() => {
+        set({
+          modeData: {
+            mode: "responding",
+            inflightResponse: {
+              role: "assistant",
+              content,
+            },
+          },
+        });
+
+        timeout = null;
+        set({
+          modeData: {
+            mode: "responding",
+            inflightResponse: {
+              role: "assistant",
+              content,
+            },
+          },
+        });
+      }, debounceTimeout);
+    });
+    if(timeout) clearTimeout(timeout);
 
     const lastHistoryItem = history[history.length - 1];
     if(lastHistoryItem.role === "assistant") {
@@ -546,12 +571,14 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
   </Box>
 }
 
+const MAX_THOUGHTBOX_HEIGHT = 8;
+const MAX_THOUGHTBOX_WIDTH = 80;
 function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
   let thoughts = null;
-  let content = item.content;
+  let content = item.content.trim();
   if(content.includes("<think>")) {
     const splits = item.content.split("</think>");
     thoughts = splits[0].replace("<think>", "").replace("</think>", "").trim();
@@ -565,14 +592,12 @@ function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
     }
   }, [ thoughts ]);
 
-  const MAX_THOUGHTBOX_HEIGHT = 6;
-  const MAX_THOUGHTBOX_WIDTH = 80;
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
 	return <Box>
     <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Text>🐙</Text></Box>
     <Box flexDirection="column" flexGrow={1}>
       {
-        thoughts && <Box flexDirection="column">
+        thoughts && thoughts !== "" && <Box flexDirection="column">
           <Box
             flexGrow={0}
             flexShrink={1}
