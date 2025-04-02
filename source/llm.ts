@@ -69,7 +69,9 @@ export const ToolCallRequestSchema = t.subtype({
 const TOOL_CALL_INSTRUCTIONS = `
 You have access to the following tools, defined as TypeScript types:
 
-${VISIBLE_TOOLS.map(toolType => toTypescript(toolType)).join("\n\n")}
+\`\`\`typescript
+${VISIBLE_TOOLS.map(toolType => toTypescript(toolType.schema)).join("\n\n")}
+\`\`\`
 
 You can call them by responding with JSON of the following type inside special XML tags:
 
@@ -151,7 +153,10 @@ and figure out the state of the repo using your tools. Then, help the user with 
 You may need to use tools again after some back-and-forth with the user, as they help you refine
 your solution.
 
-NEVER output any of these XML tags unless you intend to call a tool:
+You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
+to run more tools or edits in a step-by-step process.
+
+NEVER output any of these XML tags unless you intend to call a tool or edit a file:
 ${openTag(TOOL_RUN_TAG)}, ${openTag(EDIT_RUN_TAG)}, ${openTag(DIFF_SEARCH_TAG)}, ${openTag(DIFF_REPLACE_TAG)}
 
 If you just intend to talk about these tags, write them in ALL-CAPS e.g.
@@ -160,18 +165,16 @@ automated system, and it can't differentiate between you using a tag and just ta
 tag; it will assume any use of the tag is an attempt to call a tool.
 
 Your tool calls should be the LAST thing in your response, if you have any tool calls.
-Don't wrap them in backticks Markdown-style, just write the raw tags out.
+Don't wrap them in backticks Markdown-style, just write the raw tags out. Do not use backticks at
+all! If you use backticks you're making a mistake.
+
+Don't ask the user whether they want you to run a tool or make file edits: instead, just run the
+tool or make the edit. The user is prompted when you call tools to accept or reject your attempted
+tool call or edit, so there's no need to get a verbal confirmation: they can just use the UI.
+Similarly, don't tell them what tool you're going to use or what edit you're going to make: just run
+the tool or make the edit, and they'll see what you're trying to do in the UI.
 
 Remember, you don't need to use tools! Only use them when appropriate.
-
-You can only run tools one-by-one. After viewing tool output, you may need to run more tools in a
-step-by-step process.
-
-Don't ask the user whether they want you to run a tool (e.g. file edits): instead, just run the
-tool. The user is prompted when you call tools to accept or reject your attempted tool call, so
-there's no need to get a verbal confirmation: they can just use the UI. Similarly, don't tell them
-what tool you're going to use or what edit you're going to make: just run the tool or make the edit,
-and they'll see what you're trying to do in the UI.
 `.trim();
 
 function systemPrompt(appliedWindow: boolean) {

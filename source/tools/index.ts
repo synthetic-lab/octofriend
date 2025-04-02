@@ -13,7 +13,7 @@ export const ToolCallSchema = unionAll(ALL_TOOLS);
 // Filter out hidden tools for instructions
 export const VISIBLE_TOOLS = Object.entries(toolMap)
   .filter(([_, tool]) => !("hidden" in tool && tool.hidden))
-  .map(([_, tool]) => tool.Schema);
+  .map(([key, tool]) => ({ name: key, schema: tool.Schema }));
 
 export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
   "read",
