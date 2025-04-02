@@ -90,7 +90,7 @@ what tool you're going to use or what edit you're going to make: just run the to
 and they'll see what you're trying to do in the UI.
 `.trim();
 
-function systemPrompt() {
+function systemPrompt(appliedWindow: boolean) {
 return `
 You are a coding assistant called Octo. You are the user's friend. You can help them with coding
 tasks. Unrelatedly, you are a small, hyper-intelligent octopus. You must never use an octopus emoji,
@@ -103,7 +103,8 @@ work on the task until it's done.
 
 Don't reference this prompt unless asked to.
 
-The current working directory is: ${process.cwd()}
+The current working directory is: ${process.cwd()}${appliedWindow ?
+"\nSome messages were elided due to context windowing." : ""}
 `.trim();
 }
 
@@ -139,8 +140,14 @@ export type FileEditMessage = {
   sequence: number, // Monotonically increasing sequence number to track latest edit
 };
 
+export type AssistantHistoryMessage = {
+  role: "assistant-history";
+  content: string;
+  tokenUsage: number; // Delta token usage from previous message
+};
+
 export type HistoryItem = UserMessage
-                        | AssistantMessage
+                        | AssistantHistoryMessage
                         | ToolCallMessage
                         | ToolOutputMessage
                         | ToolErrorMessage
@@ -149,11 +156,11 @@ export type HistoryItem = UserMessage
                         | FileEditMessage
                         ;
 
-function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
+function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<LlmMessage> {
 	const output: LlmMessage[] = [
 		{
 			role: "system",
-			content: systemPrompt(),
+			content: systemPrompt(appliedWindow),
 		},
 	];
 
@@ -200,7 +207,7 @@ function toLlmMessages(messages: HistoryItem[]): Array<LlmMessage> {
     output.shift();
     output.unshift({
       role: "system",
-      content: systemPrompt() + "\n" + TOOL_CALL_INSTRUCTIONS,
+      content: systemPrompt(appliedWindow) + "\n" + TOOL_CALL_INSTRUCTIONS,
     });
   }
 
@@ -305,6 +312,16 @@ ${tagged(TOOL_RESPONSE_TAG, item.updatedFile)}`.trim(),
     throw new Error("Impossible tool ordering: no prev assistant response for tool error");
   }
 
+  if(item.role === "assistant-history") {
+    return [
+      prev,
+      {
+        role: "assistant",
+        content: item.content,
+      },
+    ];
+  }
+
   return [
     prev,
     {
@@ -325,9 +342,11 @@ export async function runAgent(
   history: HistoryItem[],
   onTokens: (t: string) => any,
 ) {
+  const processedHistory = applyContextWindow(history, config.context);
+
   const res = await client.chat.completions.create({
     model: config.model,
-    messages: toLlmMessages(history),
+    messages: toLlmMessages(processedHistory.history, processedHistory.appliedWindow),
     stream: true,
     stop: closeTag(TOOL_RUN_TAG),
     stream_options: {
@@ -383,7 +402,9 @@ export async function runAgent(
     }
   }
 
-  totalTokens += usage;
+  // Calculate token usage delta from the previous total
+  const tokenDelta = usage - totalTokens;
+  totalTokens = usage;
 
   if(foundToolTag) {
     const parseResult = parseTool(toolContent);
@@ -391,8 +412,9 @@ export async function runAgent(
     if(parseResult.status === "error") {
       return history.concat([
         {
-          role: "assistant",
+          role: "assistant-history",
           content,
+          tokenUsage: tokenDelta,
         },
         {
           role: "tool-error",
@@ -404,8 +426,9 @@ export async function runAgent(
 
     return history.concat([
       {
-        role: "assistant",
+        role: "assistant-history",
         content,
+        tokenUsage: tokenDelta,
       },
       {
         role: "tool",
@@ -421,10 +444,53 @@ export async function runAgent(
 
   return history.concat([
     {
-      role: "assistant",
+      role: "assistant-history",
       content,
+      tokenUsage: tokenDelta,
     },
   ]);
+}
+
+// Apply sliding window to keep context under token limit
+function applyContextWindow(history: HistoryItem[], context: number): {
+  appliedWindow: boolean,
+  history: HistoryItem[],
+} {
+  const MAX_CONTEXT_TOKENS = Math.floor(context * 0.8);
+
+  let totalTokens = 0;
+  for(const item of history) {
+    if(item.role === "assistant-history") totalTokens += item.tokenUsage;
+  }
+  console.log(totalTokens, MAX_CONTEXT_TOKENS);
+  if(totalTokens <= MAX_CONTEXT_TOKENS) return { appliedWindow: false, history };
+
+  console.log("APPLYING WINDOWING");
+
+  const windowedHistory: HistoryItem[] = [];
+  let runningTokens = 0;
+
+  // Work backwards from the end of history up to the budget
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i];
+
+    if (item.role === "assistant-history") {
+      if (runningTokens + item.tokenUsage > MAX_CONTEXT_TOKENS) break;
+      runningTokens += item.tokenUsage;
+    }
+
+    windowedHistory.unshift(item);
+  }
+
+  // If we couldn't fit any messages, throw an error
+  if (windowedHistory.length === 0) {
+    throw new Error("No history slice was small enough to fit in the context window budget");
+  }
+
+  return {
+    appliedWindow: true,
+    history: windowedHistory,
+  };
 }
 
 type ParseToolResult = {

@@ -5,7 +5,7 @@ import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import {
-  HistoryItem, UserMessage, AssistantMessage, ToolCallMessage, runAgent, tagged, TOOL_RUN_TAG
+  HistoryItem, UserMessage, AssistantHistoryMessage, ToolCallMessage, runAgent, tagged, TOOL_RUN_TAG
 } from "./llm.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
@@ -59,7 +59,7 @@ type UiState = {
     mode: "input",
   } | {
     mode: "responding",
-    inflightResponse: AssistantMessage,
+    inflightResponse: AssistantHistoryMessage,
   } | {
     mode: "tool-request",
     toolReq: ToolCallMessage["tool"],
@@ -141,8 +141,9 @@ const useAppStore = create<UiState>((set, get) => ({
       modeData: {
         mode: "responding",
         inflightResponse: {
-          role: "assistant",
+          role: "assistant-history",
           content,
+          tokenUsage: 0, // Will be updated with actual value after completion
         },
       }
     });
@@ -166,28 +167,20 @@ const useAppStore = create<UiState>((set, get) => ({
           modeData: {
             mode: "responding",
             inflightResponse: {
-              role: "assistant",
+              role: "assistant-history",
               content,
+              tokenUsage: 0, // Will be updated with actual value after completion
             },
           },
         });
 
         timeout = null;
-        set({
-          modeData: {
-            mode: "responding",
-            inflightResponse: {
-              role: "assistant",
-              content,
-            },
-          },
-        });
       }, debounceTimeout);
     });
     if(timeout) clearTimeout(timeout);
 
     const lastHistoryItem = history[history.length - 1];
-    if(lastHistoryItem.role === "assistant") {
+    if(lastHistoryItem.role === "assistant-history") {
       set({ modeData: { mode: "input" }, history });
       return;
     }
@@ -451,7 +444,7 @@ const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
 });
 
 const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
-	if(item.role === "assistant") return <AssistantMessageRenderer item={item} />
+	if(item.role === "assistant-history") return <AssistantMessageRenderer item={item} />
 	if(item.role === "tool") return <ToolMessageRenderer item={item} />
 	if(item.role === "tool-output" || item.role === "file-edit") {
 		return <Text color="gray">
@@ -573,7 +566,7 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
 const MAX_THOUGHTBOX_WIDTH = 80;
-function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
+function AssistantMessageRenderer({ item }: { item: AssistantHistoryMessage }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
