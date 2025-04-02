@@ -30,4 +30,3 @@ TODO:
   * `<diff-search>`: inner element that wraps search queries for type=diff
   * `<diff-replace>`: inner element that wraps replace strings for type=diff
   Use an actual streaming XML parser to parse out this stuff.
-  test

@@ -44,14 +44,12 @@ type TagState = {
   content?: string;
 };
 function openTag(tag: string, attrs?: Record<string, string>) {
-  if (!attrs || Object.keys(attrs).length === 0) {
-    return "<" + tag + ">";
-  }
-  
+  if (!attrs || Object.keys(attrs).length === 0) return "<" + tag + ">";
+
   const attrString = Object.entries(attrs)
     .map(([key, value]) => `${key}="${value}"`)
     .join(" ");
-    
+
   return "<" + tag + " " + attrString + ">";
 }
 
