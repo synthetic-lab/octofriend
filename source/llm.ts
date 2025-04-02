@@ -90,15 +90,23 @@ ${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>))}
 
-You also have access to the following XML-based file editing syntax for more natural code editing:
+You also have access to XML-based file editing:
 
 1. For file editing with diff search/replace:
 ${tagged(EDIT_RUN_TAG,
   { filepath: "src/example.ts", type: "diff" },
-  tagged(DIFF_SEARCH_TAG, {}, "text to search for"),
-  tagged(DIFF_REPLACE_TAG, {}, "text to replace it with")
+  tagged(DIFF_SEARCH_TAG, {}, `
+some lines of context above
+old text you want to replace
+some lines of context below
+`.trim()),
+  tagged(DIFF_REPLACE_TAG, {}, `
+the lines of context copied above
+new text you want to replace
+the lines of context copied below
+`.trim())
 )}
-The search string musst exactly match the old content, including whitespace: it's
+The search string must exactly match the old content, including whitespace: it's
 whitespace-sensitive. Make sure it doesn't match anything else in the file, or you may inadvertantly
 edit a line you don't mean to. It may help to include some extra context such as the line above and
 the line below the content you intend to replace: if you do so, make sure to include those lines in
@@ -127,13 +135,13 @@ ${tagged(EDIT_RUN_TAG,
 )}
 
 3. For prepending to a file:
-${tagged(EDIT_RUN_TAG, 
+${tagged(EDIT_RUN_TAG,
   { filepath: "src/example.ts", type: "prepend" },
   "content to prepend"
 )}
 
 4. For creating a new file:
-${tagged(EDIT_RUN_TAG, 
+${tagged(EDIT_RUN_TAG,
   { filepath: "src/new-file.ts", type: "create" },
   "file content"
 )}
@@ -578,7 +586,6 @@ export async function runAgent(
     if(chunk.choices[0]?.delta.content) {
       const tokens = chunk.choices[0].delta.content || "";
       currentText = tokens;
-
 
       try {
         parser.write(currentText);
