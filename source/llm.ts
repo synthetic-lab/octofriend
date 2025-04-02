@@ -72,7 +72,8 @@ NEVER output the ${openTag(TOOL_RUN_TAG)} or ${closeTag(TOOL_RUN_TAG)} unless yo
 tool. If you just intend to talk about them, write them in ALL-CAPS e.g.
 ${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags will be parsed out of your response by an
 automated system, and it can't differentiate between you using the tag, and just talking about the
-tag; it will assume any use of the tag is an attempt to call a tool.
+tag; it will assume any use of the tag is an attempt to call a tool. If you intend to call a tool,
+though, use the lowercase version e.g. ${openTag(TOOL_RUN_TAG)}.
 
 Your tool calls should be the LAST thing in your response, if you have any tool calls.
 Don't wrap them in backticks Markdown-style, just write the raw tags out.
