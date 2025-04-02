@@ -309,7 +309,11 @@ ${tagged(TOOL_RESPONSE_TAG, item.updatedFile)}`.trim(),
         }
       ];
     }
-    throw new Error("Impossible tool ordering: no prev assistant response for tool error");
+    if(prev) {
+      throw new Error("Impossible tool ordering: no prev assistant response for tool error");
+    }
+    // Got this far? We're missing the prev assistant message due to windowing. Just skip this.
+    return [ null, null ];
   }
 
   if(item.role === "assistant-history") {
