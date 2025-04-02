@@ -65,7 +65,6 @@ export class StreamingXMLParser {
    */
   write(chunk: string): void {
     if (!chunk) return;
-    
     for (let i = 0; i < chunk.length; i++) {
       this.processChar(chunk[i]);
     }
@@ -147,9 +146,7 @@ export class StreamingXMLParser {
         // Moving to attributes
         this.state = ParserState.ATTRIBUTE_NAME;
       } else if (char === '>') {
-        // End of opening tag - check if it was preceded by '/' for self-closing
-        const isSelfClosing = this.buffer.length >= 2 && this.buffer[this.buffer.length - 2] === '/';
-        this.emitOpenTag(this.currentTag, this.attributes, isSelfClosing);
+        this.emitOpenTag(this.currentTag, this.attributes);
         this.buffer = '';
         this.state = ParserState.TEXT;
       } else if (char === '/') {
@@ -210,7 +207,7 @@ export class StreamingXMLParser {
         // This is a boolean attribute (no value)
         this.attributes[this.currentAttrName] = '';
       }
-      this.emitOpenTag(this.currentTag, this.attributes, false);
+      this.emitOpenTag(this.currentTag, this.attributes);
       this.buffer = '';
       this.state = ParserState.TEXT;
     } else if (char === '/') {
@@ -259,22 +256,25 @@ export class StreamingXMLParser {
       this.state = ParserState.ATTRIBUTE_NAME;
     } else if (!this.quoteChar && (this.isWhitespace(char) || char === '>' || char === '/')) {
       // End of unquoted attribute value
-      this.attributes[this.currentAttrName] = this.currentAttrValue;
-      this.currentAttrName = '';
-      this.currentAttrValue = '';
-      
-      this.buffer += char;
-      
-      if (this.isWhitespace(char)) {
-        this.state = ParserState.ATTRIBUTE_NAME;
-      } else if (char === '>') {
-        // Check if tag is self-closing (preceded by /)
-        const needsCloseTag = this.buffer.length >= 2 && this.buffer[this.buffer.length - 2] === '/';
-        this.emitOpenTag(this.currentTag, this.attributes, needsCloseTag);
+      if (char === '>') {
+        // '>' terminates the attribute value AND the tag
+        this.attributes[this.currentAttrName] = this.currentAttrValue.split('>')[0];
+        this.buffer += '>';
+        this.emitOpenTag(this.currentTag, this.attributes);
         this.buffer = '';
         this.state = ParserState.TEXT;
-      } else if (char === '/') {
-        // Potential self-closing tag, wait for '>'
+      } else {
+        // Space or '/' terminates just the attribute value
+        this.attributes[this.currentAttrName] = this.currentAttrValue;
+        this.currentAttrName = '';
+        this.currentAttrValue = '';
+        this.buffer += char;
+        
+        if (this.isWhitespace(char)) {
+          this.state = ParserState.ATTRIBUTE_NAME;
+        } else if (char === '/') {
+          // Potential self-closing tag, wait for '>'
+        }
       }
     } else {
       // Continue building attribute value
@@ -306,15 +306,16 @@ export class StreamingXMLParser {
     }
   }
 
-  private emitOpenTag(name: string, attributes: Record<string, string>, needsCloseTag: boolean): void {
+  private emitOpenTag(name: string, attributes: Record<string, string>): void {
     if (this.handlers.onOpenTag) {
+      const selfClosing = this.buffer.trimEnd().endsWith('/>');
       this.handlers.onOpenTag({
         type: 'openTag',
         name,
         attributes
       });
-      
-      if (needsCloseTag && this.handlers.onCloseTag) {
+
+      if (selfClosing && this.handlers.onCloseTag) {
         this.handlers.onCloseTag({
           type: 'closeTag',
           name
