@@ -174,6 +174,10 @@ tool call or edit, so there's no need to get a verbal confirmation: they can jus
 Similarly, don't tell them what tool you're going to use or what edit you're going to make: just run
 the tool or make the edit, and they'll see what you're trying to do in the UI.
 
+Note that ${openTag(EDIT_RUN_TAG)} tags are NOT wrapped inside ${openTag(TOOL_RUN_TAG)} tags.
+They're standalone. ${openTag(TOOL_RUN_TAG)} tags wrap JSON; ${openTag(EDIT_RUN_TAG)} tags wrap
+edits.
+
 Remember, you don't need to use tools! Only use them when appropriate.
 `.trim();
 
