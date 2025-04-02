@@ -470,106 +470,109 @@ export async function runAgent(
   let currentText = "";
 
   const xmlParser = new StreamingXMLParser({
-    onOpenTag: node => {
-      const tagName = node.name;
-      let attrString = "";
+    whitelist: ([] as string[]).concat(LLM_TAGS),
+    handlers: {
+      onOpenTag: node => {
+        const tagName = node.name;
+        let attrString = "";
 
-      // Format attributes for unknown tags
-      if (node.attributes) {
-        for (const [key, value] of Object.entries(node.attributes)) {
-          attrString += ` ${key}="${value}"`;
-        }
-      }
-
-      // Store the opening tag string
-      const openTagStr = `<${tagName}${attrString}>`;
-      openTagStrings.push(openTagStr);
-
-      if(isLlmTag(tagName)) {
-        tagStates[tagName].content = tagStates[tagName].content || "";
-        tagStates[tagName].active = true;
-      }
-
-      // Add the opening tag to all active parent tags' content
-      for (const tag of LLM_TAGS) {
-        if (tag !== tagName && tagStates[tag].active) {
-          tagStates[tag].content = (tagStates[tag].content || "") + openTagStr;
-        }
-      }
-
-      // Unknown tag - treat as text content
-      if(!isLlmTag(tagName)) {
-        // If no active tags, add to regular content
-        if (!LLM_TAGS.some(tag => tagStates[tag].active)) {
-          content += openTagStr;
-          onTokens(openTagStr);
-        }
-        return;
-      }
-
-      // Handle specific tag requirements
-      if (tagName === EDIT_RUN_TAG) {
+        // Format attributes for unknown tags
         if (node.attributes) {
-          if(typeof node.attributes["filepath"] === "string") {
-            editFilePath = node.attributes["filepath"];
-          }
-          if(typeof node.attributes["type"] === "string") {
-            editFileType = node.attributes['type'];
+          for (const [key, value] of Object.entries(node.attributes)) {
+            attrString += ` ${key}="${value}"`;
           }
         }
-      }
-      else if (tagName === DIFF_SEARCH_TAG || tagName === DIFF_REPLACE_TAG) {
-        // These tags must be inside an edit tag
-        if (!tagStates[EDIT_RUN_TAG].active) {
-          validationError = {
-            error: `${tagName} tag must be inside a ${EDIT_RUN_TAG} tag`,
-            original: openTagStr
-          };
+
+        // Store the opening tag string
+        const openTagStr = `<${tagName}${attrString}>`;
+        openTagStrings.push(openTagStr);
+
+        if(isLlmTag(tagName)) {
+          tagStates[tagName].content = tagStates[tagName].content || "";
+          tagStates[tagName].active = true;
         }
-      }
-    },
 
-    onCloseTag: e => {
-      const tagName = e.name;
-      // Get the closing tag string
-      const closeTagStr = `</${tagName}>`;
-
-      // Pop the matching open tag
-      if (openTagStrings.length > 0) openTagStrings.pop();
-
-      for (const tag of LLM_TAGS) {
-        if (tag !== tagName && tagStates[tag].active) {
-          tagStates[tag].content = (tagStates[tag].content || "") + closeTagStr;
-        }
-      }
-      if (isLlmTag(tagName)) {
-        // Mark tag as inactive
-        tagStates[tagName].active = false;
-      } else {
-        // If no active tags, add to regular content
-        if (!LLM_TAGS.some(tag => tagStates[tag].active)) {
-          content += closeTagStr;
-          onTokens(closeTagStr);
-        }
-      }
-    },
-
-    onText: e => {
-      const text = e.content;
-      // Check if any tags are active
-      const hasActiveTags = LLM_TAGS.some(tag => tagStates[tag].active);
-
-      if (hasActiveTags) {
-        // Add text to all active tags' content
+        // Add the opening tag to all active parent tags' content
         for (const tag of LLM_TAGS) {
-          if (tagStates[tag].active) {
-            tagStates[tag].content = (tagStates[tag].content || "") + text;
+          if (tag !== tagName && tagStates[tag].active) {
+            tagStates[tag].content = (tagStates[tag].content || "") + openTagStr;
           }
         }
-      } else {
-        content += text;
-        onTokens(text);
-      }
+
+        // Unknown tag - treat as text content
+        if(!isLlmTag(tagName)) {
+          // If no active tags, add to regular content
+          if (!LLM_TAGS.some(tag => tagStates[tag].active)) {
+            content += openTagStr;
+            onTokens(openTagStr);
+          }
+          return;
+        }
+
+        // Handle specific tag requirements
+        if (tagName === EDIT_RUN_TAG) {
+          if (node.attributes) {
+            if(typeof node.attributes["filepath"] === "string") {
+              editFilePath = node.attributes["filepath"];
+            }
+            if(typeof node.attributes["type"] === "string") {
+              editFileType = node.attributes['type'];
+            }
+          }
+        }
+        else if (tagName === DIFF_SEARCH_TAG || tagName === DIFF_REPLACE_TAG) {
+          // These tags must be inside an edit tag
+          if (!tagStates[EDIT_RUN_TAG].active) {
+            validationError = {
+              error: `${tagName} tag must be inside a ${EDIT_RUN_TAG} tag`,
+              original: openTagStr
+            };
+          }
+        }
+      },
+
+      onCloseTag: e => {
+        const tagName = e.name;
+        // Get the closing tag string
+        const closeTagStr = `</${tagName}>`;
+
+        // Pop the matching open tag
+        if (openTagStrings.length > 0) openTagStrings.pop();
+
+        for (const tag of LLM_TAGS) {
+          if (tag !== tagName && tagStates[tag].active) {
+            tagStates[tag].content = (tagStates[tag].content || "") + closeTagStr;
+          }
+        }
+        if (isLlmTag(tagName)) {
+          // Mark tag as inactive
+          tagStates[tagName].active = false;
+        } else {
+          // If no active tags, add to regular content
+          if (!LLM_TAGS.some(tag => tagStates[tag].active)) {
+            content += closeTagStr;
+            onTokens(closeTagStr);
+          }
+        }
+      },
+
+      onText: e => {
+        const text = e.content;
+        // Check if any tags are active
+        const hasActiveTags = LLM_TAGS.some(tag => tagStates[tag].active);
+
+        if (hasActiveTags) {
+          // Add text to all active tags' content
+          for (const tag of LLM_TAGS) {
+            if (tagStates[tag].active) {
+              tagStates[tag].content = (tagStates[tag].content || "") + text;
+            }
+          }
+        } else {
+          content += text;
+          onTokens(text);
+        }
+      },
     },
   });
 
