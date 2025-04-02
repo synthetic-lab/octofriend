@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { Text, Box, Static } from "ink";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { Text, Box, Static, measureElement, DOMElement } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
@@ -547,10 +547,57 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
 }
 
 function AssistantMessageRenderer({ item }: { item: AssistantMessage }) {
+  const thoughtsRef = useRef<DOMElement | null>(null);
+  const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
+
+  let thoughts = null;
+  let content = item.content;
+  if(content.includes("<think>")) {
+    const splits = item.content.split("</think>");
+    thoughts = splits[0].replace("<think>", "").replace("</think>", "").trim();
+    content = splits.slice(1).join("").trim();
+  }
+
+  useEffect(() => {
+    if(thoughtsRef.current) {
+      const { height } = measureElement(thoughtsRef.current);
+      setThoughtsHeight(height);
+    }
+  }, [ thoughts ]);
+
+  const MAX_THOUGHTBOX_HEIGHT = 6;
+  const MAX_THOUGHTBOX_WIDTH = 80;
+  const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
 	return <Box>
     <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Text>🐙</Text></Box>
-    <Box flexGrow={1}>
-      <Text>{item.content}</Text>
+    <Box flexDirection="column" flexGrow={1}>
+      {
+        thoughts && <Box flexDirection="column">
+          <Box
+            flexGrow={0}
+            flexShrink={1}
+            height={thoughtsOverflow > 0 ? MAX_THOUGHTBOX_HEIGHT : undefined}
+            width={MAX_THOUGHTBOX_WIDTH}
+            overflowY="hidden"
+            flexDirection="column"
+            borderColor="gray"
+            borderStyle="round"
+          >
+            <Box
+              ref={thoughtsRef}
+              flexShrink={0}
+              width={MAX_THOUGHTBOX_WIDTH - 2}
+              flexDirection="column"
+              marginTop={-1 * Math.max(0, thoughtsOverflow)}
+            >
+              <Text color="gray">{thoughts}</Text>
+            </Box>
+          </Box>
+        </Box>
+      }
+      <Box flexGrow={1}>
+        <Text>{content}</Text>
+      </Box>
     </Box>
   </Box>
 }
