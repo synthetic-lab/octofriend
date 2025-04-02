@@ -462,10 +462,7 @@ function applyContextWindow(history: HistoryItem[], context: number): {
   for(const item of history) {
     if(item.role === "assistant-history") totalTokens += item.tokenUsage;
   }
-  console.log(totalTokens, MAX_CONTEXT_TOKENS);
   if(totalTokens <= MAX_CONTEXT_TOKENS) return { appliedWindow: false, history };
-
-  console.log("APPLYING WINDOWING");
 
   const windowedHistory: HistoryItem[] = [];
   let runningTokens = 0;
