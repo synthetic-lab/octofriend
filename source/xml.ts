@@ -284,3 +284,21 @@ export class StreamingXMLParser {
     this.state = ParserState.TEXT;
   }
 }
+
+export function openTag(tag: string, attrs?: Record<string, string>) {
+  if (!attrs || Object.keys(attrs).length === 0) return "<" + tag + ">";
+
+  const attrString = Object.entries(attrs)
+    .map(([key, value]) => `${key}="${value}"`)
+    .join(" ");
+
+  return "<" + tag + " " + attrString + ">";
+}
+
+export function closeTag(tag: string) {
+  return "</" + tag + ">";
+}
+
+export function tagged(tag: string, attrs: Record<string, string> = {}, ...content: string[]) {
+  return openTag(tag, attrs) + content.join("") + closeTag(tag);
+}

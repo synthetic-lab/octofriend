@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
 import { ToolCallSchema, ALL_TOOLS } from "./tools/index.ts";
-import { StreamingXMLParser } from "./xml.ts";
+import { StreamingXMLParser, openTag, closeTag, tagged } from "./xml.ts";
 
 export type UserMessage = {
 	role: "user";
@@ -25,24 +25,6 @@ export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
 const USER_TOOL_INSTR_TAG = "system-instructions";
-
-function openTag(tag: string, attrs?: Record<string, string>) {
-  if (!attrs || Object.keys(attrs).length === 0) return "<" + tag + ">";
-
-  const attrString = Object.entries(attrs)
-    .map(([key, value]) => `${key}="${value}"`)
-    .join(" ");
-
-  return "<" + tag + " " + attrString + ">";
-}
-
-function closeTag(tag: string) {
-  return "</" + tag + ">";
-}
-
-export function tagged(tag: string, attrs: Record<string, string> = {}, ...content: string[]) {
-  return openTag(tag, attrs) + content.join("") + closeTag(tag);
-}
 
 export const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
@@ -125,52 +107,57 @@ The current working directory is: ${process.cwd()}${appliedWindow ?
 `.trim();
 }
 
-export type ToolCallMessage = {
-	role: "tool",
+export type ToolCallItem = {
+	type: "tool",
 	tool: t.GetType<typeof ToolCallRequestSchema>,
 };
 
-type ToolOutputMessage = {
-	role: "tool-output",
+type ToolOutputItem = {
+	type: "tool-output",
 	content: string,
 };
 
-type ToolErrorMessage = {
-  role: "tool-error",
+type ToolErrorItem = {
+  type: "tool-error",
   error: string,
   original: string,
 };
 
-type ToolRejectMessage = {
-  role: "tool-reject",
+type ToolRejectItem = {
+  type: "tool-reject",
 };
 
-type FileOutdatedMessage = {
-  role: "file-outdated",
+type FileOutdatedItem = {
+  type: "file-outdated",
   updatedFile: string,
 };
 
-export type FileEditMessage = {
-  role: "file-edit",
+export type FileEditItem = {
+  type: "file-edit",
   path: string,  // Absolute path
   content: string, // Latest content
   sequence: number, // Monotonically increasing sequence number to track latest edit
 };
 
-export type AssistantHistoryMessage = {
-  role: "assistant-history";
+export type AssistantItem = {
+  type: "assistant";
   content: string;
   tokenUsage: number; // Delta token usage from previous message
 };
 
-export type HistoryItem = UserMessage
-                        | AssistantHistoryMessage
-                        | ToolCallMessage
-                        | ToolOutputMessage
-                        | ToolErrorMessage
-                        | ToolRejectMessage
-                        | FileOutdatedMessage
-                        | FileEditMessage
+export type UserItem = {
+  type: "user",
+  content: string,
+};
+
+export type HistoryItem = UserItem
+                        | AssistantItem
+                        | ToolCallItem
+                        | ToolOutputItem
+                        | ToolErrorItem
+                        | ToolRejectItem
+                        | FileOutdatedItem
+                        | FileEditItem
                         ;
 
 function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<LlmMessage> {
@@ -184,7 +171,7 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
   // First pass: marks the latest edits
   const latestEdits = new Map<string, number>();
   for(const message of messages) {
-    if(message.role === "file-edit") {
+    if(message.type === "file-edit") {
       latestEdits.set(message.path, message.sequence);
     }
   }
@@ -193,7 +180,7 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
   const reorderedHistory = [];
   for(let i = 0; i < messages.length; i++) {
     const item = messages[i];
-    if(item.role !== "tool-reject") {
+    if(item.type !== "tool-reject") {
       reorderedHistory.push(item);
       continue;
     }
@@ -213,7 +200,7 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
   }
 
   const last = messages[messages.length - 1];
-  if(last && last.role === "user") {
+  if(last && last.type === "user") {
     const lastOutput = output.pop()!;
     output.push({
       role: "user",
@@ -246,7 +233,7 @@ function toLlmMessage(
   item: HistoryItem,
   latestEdits: Map<string, number>,
 ): [LlmMessage | null, LlmMessage | null] {
-  if(item.role === "tool") {
+  if(item.type === "tool") {
     if(prev && prev.role === "assistant") {
       return [
         {
@@ -265,7 +252,7 @@ function toLlmMessage(
     ];
   }
 
-  if(item.role === "tool-reject") {
+  if(item.type === "tool-reject") {
     if(prev && prev.role === "user") {
       return [
         {
@@ -278,7 +265,7 @@ function toLlmMessage(
     throw new Error("Impossible tool rejection ordering: no previous user message");
   }
 
-  if(item.role === "tool-output") {
+  if(item.type === "tool-output") {
     return [
       prev,
       {
@@ -288,7 +275,7 @@ function toLlmMessage(
     ];
   }
 
-  if(item.role === "file-edit") {
+  if(item.type === "file-edit") {
     const content = latestEdits.get(item.path) === item.sequence ?
       `\nNew contents:\n${item.content}` : "";
     return [
@@ -300,7 +287,7 @@ function toLlmMessage(
     ];
   }
 
-  if(item.role === "file-outdated") {
+  if(item.type === "file-outdated") {
     return [
       prev,
       {
@@ -313,7 +300,7 @@ ${tagged(TOOL_RESPONSE_TAG, {}, item.updatedFile)}`.trim(),
     ];
   }
 
-  if(item.role === "tool-error") {
+  if(item.type === "tool-error") {
     if(prev && prev.role === "assistant") {
       return [
         {
@@ -333,7 +320,7 @@ ${tagged(TOOL_RESPONSE_TAG, {}, item.updatedFile)}`.trim(),
     return [ null, null ];
   }
 
-  if(item.role === "assistant-history") {
+  if(item.type === "assistant") {
     return [
       prev,
       {
@@ -343,10 +330,13 @@ ${tagged(TOOL_RESPONSE_TAG, {}, item.updatedFile)}`.trim(),
     ];
   }
 
+  // Type assertion we've handled all cases other than user
+  const _: "user" = item.type;
+
   return [
     prev,
     {
-      role: item.role,
+      role: "user",
       content: item.content,
     },
   ];
@@ -426,12 +416,12 @@ export async function runAgent(
     if(parseResult.status === "error") {
       return history.concat([
         {
-          role: "assistant-history",
+          type: "assistant",
           content,
           tokenUsage: tokenDelta,
         },
         {
-          role: "tool-error",
+          type: "tool-error",
           error: parseResult.message,
           original,
         },
@@ -440,12 +430,12 @@ export async function runAgent(
 
     return history.concat([
       {
-        role: "assistant-history",
+        type: "assistant",
         content,
         tokenUsage: tokenDelta,
       },
       {
-        role: "tool",
+        type: "tool",
         tool: parseResult.tool,
       },
     ]);
@@ -453,7 +443,7 @@ export async function runAgent(
 
   return history.concat([
     {
-      role: "assistant-history",
+      type: "assistant",
       content,
       tokenUsage: tokenDelta,
     },
@@ -469,7 +459,7 @@ function applyContextWindow(history: HistoryItem[], context: number): {
 
   let totalTokens = 0;
   for(const item of history) {
-    if(item.role === "assistant-history") totalTokens += item.tokenUsage;
+    if(item.type === "assistant") totalTokens += item.tokenUsage;
   }
   if(totalTokens <= MAX_CONTEXT_TOKENS) return { appliedWindow: false, history };
 
@@ -480,7 +470,7 @@ function applyContextWindow(history: HistoryItem[], context: number): {
   for (let i = history.length - 1; i >= 0; i--) {
     const item = history[i];
 
-    if (item.role === "assistant-history") {
+    if (item.type === "assistant") {
       if (runningTokens + item.tokenUsage > MAX_CONTEXT_TOKENS) break;
       runningTokens += item.tokenUsage;
     }

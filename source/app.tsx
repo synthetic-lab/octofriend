@@ -5,8 +5,9 @@ import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import {
-  HistoryItem, UserMessage, AssistantHistoryMessage, ToolCallMessage, runAgent, tagged, TOOL_RUN_TAG
+  HistoryItem, UserItem, AssistantItem, ToolCallItem, runAgent, TOOL_RUN_TAG
 } from "./llm.ts";
+import { tagged } from "./xml.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
@@ -59,16 +60,16 @@ type UiState = {
     mode: "input",
   } | {
     mode: "responding",
-    inflightResponse: AssistantHistoryMessage,
+    inflightResponse: AssistantItem,
   } | {
     mode: "tool-request",
-    toolReq: ToolCallMessage["tool"],
+    toolReq: ToolCallItem["tool"],
   } | {
     mode: "error-recovery",
   },
   history: Array<HistoryItem>,
   input: (args: RunArgs & { query: string }) => Promise<void>,
-  runTool: (args: RunArgs & { toolReq: ToolCallMessage["tool"] }) => Promise<void>,
+  runTool: (args: RunArgs & { toolReq: ToolCallItem["tool"] }) => Promise<void>,
   rejectTool: () => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -81,8 +82,8 @@ const useAppStore = create<UiState>((set, get) => ({
   running: false,
 
   input: async ({ client, config, query }) => {
-    const userMessage: UserMessage = {
-			role: "user",
+    const userMessage: UserItem = {
+			type: "user",
 			content: query,
 		};
 
@@ -98,7 +99,7 @@ const useAppStore = create<UiState>((set, get) => ({
     set({
       history: [
         ...get().history,
-        { role: "tool-reject" },
+        { type: "tool-reject" },
       ],
       modeData: {
         mode: "input",
@@ -110,10 +111,10 @@ const useAppStore = create<UiState>((set, get) => ({
     try {
       const result = await runTool(toolReq.tool);
       const toolHistoryItem: HistoryItem = result.type === "output" ? {
-        role: "tool-output",
+        type: "tool-output",
         content: result.content,
       } : {
-        role: "file-edit",
+        type: "file-edit",
         content: result.content,
         sequence: result.sequence,
         path: result.path,
@@ -141,7 +142,7 @@ const useAppStore = create<UiState>((set, get) => ({
       modeData: {
         mode: "responding",
         inflightResponse: {
-          role: "assistant-history",
+          type: "assistant",
           content,
           tokenUsage: 0, // Will be updated with actual value after completion
         },
@@ -167,7 +168,7 @@ const useAppStore = create<UiState>((set, get) => ({
           modeData: {
             mode: "responding",
             inflightResponse: {
-              role: "assistant-history",
+              type: "assistant",
               content,
               tokenUsage: 0, // Will be updated with actual value after completion
             },
@@ -180,11 +181,11 @@ const useAppStore = create<UiState>((set, get) => ({
     if(timeout) clearTimeout(timeout);
 
     const lastHistoryItem = history[history.length - 1];
-    if(lastHistoryItem.role === "assistant-history") {
+    if(lastHistoryItem.type === "assistant") {
       set({ modeData: { mode: "input" }, history });
       return;
     }
-    if(lastHistoryItem.role === "tool-error") {
+    if(lastHistoryItem.type === "tool-error") {
       set({
         modeData: { mode: "error-recovery" },
         history
@@ -192,8 +193,8 @@ const useAppStore = create<UiState>((set, get) => ({
       return get()._runAgent({ client, config });
     }
 
-    if(lastHistoryItem.role !== "tool") {
-      throw new Error(`Unexpected role: ${lastHistoryItem.role}`);
+    if(lastHistoryItem.type !== "tool") {
+      throw new Error(`Unexpected role: ${lastHistoryItem.type}`);
     }
 
     try {
@@ -222,18 +223,18 @@ const useAppStore = create<UiState>((set, get) => ({
 }));
 
 async function tryTransformToolError(
-  toolReq: ToolCallMessage["tool"], e: unknown
+  toolReq: ToolCallItem["tool"], e: unknown
 ): Promise<HistoryItem> {
   if(e instanceof ToolError) {
     return {
-      role: "tool-error",
+      type: "tool-error",
       error: e.message,
       original: tagged(TOOL_RUN_TAG, {}, JSON.stringify(toolReq.tool)),
     };
   }
   if(e instanceof FileOutdatedError) {
     return {
-      role: "file-outdated",
+      type: "file-outdated",
       updatedFile: await fileTracker.read(e.filePath),
     };
   }
@@ -363,7 +364,7 @@ function BottomBarContent({ config, client }: { config: Config, client: OpenAI }
 }
 
 function ToolRequestRenderer({ toolReq, client, config }: {
-  toolReq: ToolCallMessage["tool"]
+  toolReq: ToolCallItem["tool"]
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
@@ -444,24 +445,24 @@ const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
 });
 
 const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
-	if(item.role === "assistant-history") return <AssistantMessageRenderer item={item} />
-	if(item.role === "tool") return <ToolMessageRenderer item={item} />
-	if(item.role === "tool-output" || item.role === "file-edit") {
+	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
+	if(item.type === "tool") return <ToolMessageRenderer item={item} />
+	if(item.type === "tool-output" || item.type === "file-edit") {
 		return <Text color="gray">
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
 	}
-  if(item.role === "tool-error") {
+  if(item.type === "tool-error") {
     return <Text color="red">
       Error: {item.error}
     </Text>
   }
-  if(item.role === "tool-reject") {
+  if(item.type === "tool-reject") {
     return <Text>
       Tool rejected; tell Octo what to do instead:
     </Text>
   }
-  if(item.role === "file-outdated") {
+  if(item.type === "file-outdated") {
     return <Box flexDirection="column">
       <Text>File was modified since it was last read; re-reading...</Text>
       <Text color="gray">
@@ -481,7 +482,7 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
   </Box>
 });
 
-function ToolMessageRenderer({ item }: { item: ToolCallMessage }) {
+function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
   switch(item.tool.tool.name) {
     case "read": return <ReadToolRenderer item={item.tool.tool} />
     case "list": return <ListToolRenderer item={item.tool.tool} />
@@ -566,7 +567,7 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
 const MAX_THOUGHTBOX_WIDTH = 80;
-function AssistantMessageRenderer({ item }: { item: AssistantHistoryMessage }) {
+function AssistantMessageRenderer({ item }: { item: AssistantItem }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
