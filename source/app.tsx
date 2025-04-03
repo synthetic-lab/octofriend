@@ -28,6 +28,7 @@ import figures from "figures";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import { ContextSpace, contextSpace } from "./context-space.ts";
 import * as path from "path";
+import { sleep } from "./sleep.ts";
 
 type Props = {
 	config: Config;
@@ -163,31 +164,46 @@ const useAppStore = create<UiState>((set, get) => ({
     let timeout: NodeJS.Timeout | null = null;
     let lastContent = "";
 
-    const history = await runAgent(client, config, get().history, context, tokens => {
-      content += tokens;
+    let history: HistoryItem[];
+    try {
+      history = await runAgent(client, config, get().history, context, tokens => {
+        content += tokens;
 
-      // Skip duplicate updates
-      if (content === lastContent) return;
-      lastContent = content;
+        // Skip duplicate updates
+        if (content === lastContent) return;
+        lastContent = content;
 
-      if (timeout) return;
+        if (timeout) return;
 
-      // Schedule the UI update
-      timeout = setTimeout(() => {
-        set({
-          modeData: {
-            mode: "responding",
-            inflightResponse: {
-              type: "assistant",
-              content,
+        // Schedule the UI update
+        timeout = setTimeout(() => {
+          set({
+            modeData: {
+              mode: "responding",
+              inflightResponse: {
+                type: "assistant",
+                content,
+              },
             },
-          },
-        });
+          });
 
-        timeout = null;
-      }, debounceTimeout);
-    });
-    if(timeout) clearTimeout(timeout);
+          timeout = null;
+        }, debounceTimeout);
+      });
+      if(timeout) clearTimeout(timeout);
+    } catch {
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "request-failed",
+            id: sequenceId(),
+          },
+        ],
+      });
+      await sleep(1000);
+      return get()._runAgent({ config, client });
+    }
 
     const lastHistoryItem = history[history.length - 1];
     if(lastHistoryItem.type === "assistant") {
@@ -507,6 +523,10 @@ const MessageDisplayInner = React.memo(({ item }: {
     return <Box flexDirection="column">
       <Text>File could not be read — has it been deleted?</Text>
     </Box>
+  }
+
+  if(item.type === "request-failed") {
+    return <Text color="red">Request failed. Retrying...</Text>
   }
 
   // Type assertion proving we've handled all types other than user

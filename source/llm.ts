@@ -264,6 +264,11 @@ File ${item.path} could not be read. Has it been deleted?
     ]
   }
 
+  // Filter out request failed
+  if(item.type === "request-failed") {
+    return [ prev, null ];
+  }
+
   // Type assertion we've handled all cases other than user
   const _: "user" = item.type;
 

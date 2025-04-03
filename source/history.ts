@@ -50,6 +50,10 @@ export type UserItem = SequenceIdTagged<{
   content: string,
 }>;
 
+export type RequestFailed = SequenceIdTagged<{
+  type: "request-failed",
+}>;
+
 export type HistoryItem = UserItem
                         | AssistantItem
                         | ToolCallItem
@@ -58,6 +62,7 @@ export type HistoryItem = UserItem
                         | ToolRejectItem
                         | FileOutdatedItem
                         | FileUnreadableItem
+                        | RequestFailed
                         ;
 
 let monotonicGuid = 0n;
