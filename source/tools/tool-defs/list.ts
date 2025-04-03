@@ -1,6 +1,7 @@
 import { t } from "structural";
 import * as fs from "fs/promises";
 import { ToolError, attempt, attemptUntrackedStat, ToolDef } from "../common.ts";
+import * as path from "path";
 
 const Schema = t.subtype({
   name: t.value("list"),
@@ -13,12 +14,16 @@ const Schema = t.subtype({
 
 export default {
   Schema, validate,
-  async run(call) {
+  async run(call, context) {
     const dirpath = call.tool.params?.dirPath || process.cwd();
     await validate(call.tool);
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await fs.readdir(dirpath, {
         withFileTypes: true,
+      });
+      context.tracker("dirs").track({
+        absolutePath: path.resolve(dirpath),
+        historyId: call.id,
       });
       return entries.map(entry => JSON.stringify(entry)).join("\n");
     });

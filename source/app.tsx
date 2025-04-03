@@ -265,12 +265,19 @@ export default function App({ config, metadata }: Props) {
 		});
 	}, [ config ]);
 
-  const { history, modeData } = useAppStore(
+  const { history, modeData, context } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
+      context: state.context,
     }))
   );
+
+  useEffect(() => {
+    context.tracker("dirs").permaTrack({
+      absolutePath: process.cwd(),
+    });
+  }, [ context ]);
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
