@@ -34,6 +34,11 @@ export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
 }>;
 
+export type FileUnreadableItem = SequenceIdTagged<{
+  type: "file-unreadable",
+  path: string,
+}>;
+
 export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
@@ -52,6 +57,7 @@ export type HistoryItem = UserItem
                         | ToolErrorItem
                         | ToolRejectItem
                         | FileOutdatedItem
+                        | FileUnreadableItem
                         ;
 
 let monotonicGuid = 0n;

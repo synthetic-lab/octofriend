@@ -244,15 +244,24 @@ async function tryTransformToolError(
   }
   if(e instanceof FileOutdatedError) {
     const absolutePath = path.resolve(e.filePath);
-    const content = await fileTracker.read(absolutePath);
-    context.tracker("files").track({
-      absolutePath, content,
-      historyId: toolReq.id,
-    });
-    return {
-      type: "file-outdated",
-      id: sequenceId(),
-    };
+    // Actually perform the read to ensure it's readable
+    try {
+      await fileTracker.read(absolutePath);
+      context.tracker("files").track({
+        absolutePath,
+        historyId: toolReq.id,
+      });
+      return {
+        type: "file-outdated",
+        id: sequenceId(),
+      };
+    } catch {
+      return {
+        type: "file-unreadable",
+        path: e.filePath,
+        id: sequenceId(),
+      };
+    }
   }
   throw e;
 }
@@ -494,6 +503,15 @@ const MessageDisplayInner = React.memo(({ item }: {
       <Text>File was modified since it was last read; re-reading...</Text>
     </Box>
   }
+  if(item.type === "file-unreadable") {
+    return <Box flexDirection="column">
+      <Text>File could not be read — has it been deleted?</Text>
+    </Box>
+  }
+
+  // Type assertion proving we've handled all types other than user
+  const _: "user" = item.type;
+
 	return <Box>
     <Box marginRight={1}>
       <Text color="white">

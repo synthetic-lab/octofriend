@@ -15,10 +15,13 @@ export default {
   async run(call, context) {
     const { filePath } = call.tool.params;
     return attempt(`No such file ${filePath}`, async () => {
-      const content = await fileTracker.read(filePath)
+      // Actually perform the read to ensure it's readable, and that the timestamps get updated
+      await fileTracker.read(filePath)
+
+      // Add it to the context tracker only after the read succeeds, to avoid tracking impossible
+      // files
       context.tracker("files").track({
         absolutePath: path.resolve(filePath),
-        content,
         historyId: call.id,
       });
       return `Successfully read file ${filePath}`;

@@ -45,7 +45,6 @@ export default {
     const absolutePath = await fileTracker.write(filePath, replaced);
     context.tracker("files").track({
       absolutePath,
-      content: replaced,
       historyId: call.id,
     });
 

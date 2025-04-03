@@ -1,35 +1,25 @@
 import { tagged } from "./xml.ts";
 import * as fs from "fs/promises";
+import { fileTracker } from "./tools/file-tracker.ts";
 
 const CONTEXT_SPACE_TAG = "context";
 const FILE_TAG = "file";
 const DIR_TAG = "dir";
-
-type FileContext = {
-  absolutePath: string,
-  content: string,
-  historyId: bigint,
-};
-
-type DirectoryContext = {
-  absolutePath: string,
-  historyId: bigint,
-};
 
 type TrackedContext = {
   absolutePath: string,
   historyId: bigint,
 };
 
-export class SequencedPathTracker<T extends TrackedContext> {
-  private pathToItem = new Map<string, T>();
-  private items: T[] = [];
-  private permanentItems = new Map<string, Omit<T, "historyId">>();
+export class SequencedPathTracker {
+  private pathToItem = new Map<string, TrackedContext>();
+  private items: TrackedContext[] = [];
+  private permanentItems = new Map<string, Omit<TrackedContext, "historyId">>();
   constructor(
-    private readonly _toXML: (tracker: SequencedPathTracker<T>) => Promise<string>
+    private readonly _toXML: (tracker: SequencedPathTracker) => Promise<string>
   ) {}
 
-  track(item: T) {
+  track(item: TrackedContext) {
     // If there's an existing file with the same abs path, delete it
     const existing = this.pathToItem.get(item.absolutePath);
     if(existing) {
@@ -45,7 +35,7 @@ export class SequencedPathTracker<T extends TrackedContext> {
     this.pathToItem.set(item.absolutePath, item);
   }
 
-  permaTrack(item: Omit<T, "historyId">) {
+  permaTrack(item: Omit<TrackedContext, "historyId">) {
     this.permanentItems.set(item.absolutePath, item);
   }
 
@@ -72,7 +62,7 @@ export class SequencedPathTracker<T extends TrackedContext> {
 }
 
 export class ContextSpaceBuilder<T extends {
-  [key: string]: SequencedPathTracker<any>
+  [key: string]: SequencedPathTracker
 }> {
   constructor(
     private readonly defn: T
@@ -101,14 +91,25 @@ ${nonempty.join("\n\n")}
 
 export function contextSpace() {
   return new ContextSpaceBuilder({
-    files: new SequencedPathTracker<FileContext>(async (f) => {
+    files: new SequencedPathTracker(async (f) => {
+      const files = await Promise.all(f.orderedItems().map(async (f) => {
+        try {
+          return {
+            absolutePath: f.absolutePath,
+            content: await fileTracker.read(f.absolutePath),
+          };
+        } catch {
+          return null;
+        }
+      }));
+      const existingFiles = files.filter(f => f !== null);
       return `
 You have the following files open:
-${f.orderedItems().map(f => tagged(FILE_TAG, { filePath: f.absolutePath }, f.content)).join("\n")}
+${existingFiles.map(f => tagged(FILE_TAG, { filePath: f.absolutePath }, f.content)).join("\n")}
 These files will be auto-closed when they're no longer relevant.
       `.trim();
     }),
-    dirs: new SequencedPathTracker<DirectoryContext>(async (d) => {
+    dirs: new SequencedPathTracker(async (d) => {
       const dirs = await Promise.all(d.orderedItems().map(async (dc) => {
         try {
           return {

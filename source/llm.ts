@@ -264,6 +264,18 @@ Please try again.
     ];
   }
 
+  if(item.type === "file-unreadable") {
+    return [
+      prev,
+      {
+        role: "user",
+        content: tagged(TOOL_ERROR_TAG, {}, `
+File ${item.path} could not be read. Has it been deleted?
+        `.trim()),
+      },
+    ]
+  }
+
   // Type assertion we've handled all cases other than user
   const _: "user" = item.type;
 
