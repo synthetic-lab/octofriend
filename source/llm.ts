@@ -164,14 +164,24 @@ ${tagged(EDIT_RUN_TAG,
   "file content"
 )}
 
-## XML vs raw text
+## No double-escaping
 
-Note that all text inside the tags is considered raw text: you don't need to escape it. For example,
+All text inside the tags is considered raw text: you don't need to escape it. For example,
 if writing JSX, just use ordinary JSX:
 <div>...</div>
 
-Don't escape the JSX tags with XML/HTML entities. Everything inside the special tags listed here
-will be treated as raw text.
+Don't escape the JSX tags with XML/HTML entities. For example, DON'T do this:
+&lt;div>...&lt;div>
+
+Similarly, if writing generic code, don't do this:
+Type&lt;T&gt;
+Instead do this:
+Type<T>
+
+Since it's all raw text, you don't need to escape it. Unless you're intending to literally output
+escaped characters, don't escape the code you're writing.
+
+# Only use the tags if you mean to call a function or edit a file
 
 Never output any of these special tags unless you intend to call a tool or edit a file:
 * ${LLM_TAGS.map(tag => openTag(tag)).join("\n* ")}
@@ -181,7 +191,9 @@ ${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags will be parsed out of
 automated system, and it can't differentiate between you using a tag and just talking about a
 tag; it will assume any use of the tag is an attempt to call a tool.
 
-Note that ${openTag(EDIT_RUN_TAG)} tags are NOT wrapped inside ${openTag(TOOL_RUN_TAG)} tags.
+# Don't use JSON to edit
+
+The ${openTag(EDIT_RUN_TAG)} tags are NOT wrapped inside ${openTag(TOOL_RUN_TAG)} tags.
 They're standalone. ${openTag(TOOL_RUN_TAG)} tags wrap JSON; ${openTag(EDIT_RUN_TAG)} tags wrap
 edits. Make edits only with the ${openTag(EDIT_RUN_TAG)} tag... Don't try to use the JSON tool
 calling to perform edits.
