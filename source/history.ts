@@ -1,64 +1,69 @@
 import { t } from "structural";
 import { ToolCallSchema } from "./tools/index.ts";
 
+type SequenceIdTagged<T> = T & {
+  id: bigint
+};
+
 export const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
 	tool: ToolCallSchema,
 });
 
-export type ToolCallItem = {
+export type ToolCallItem = SequenceIdTagged<{
 	type: "tool",
 	tool: t.GetType<typeof ToolCallRequestSchema>,
-};
+}>;
 
-export type ToolOutputItem = {
+export type ToolOutputItem = SequenceIdTagged<{
 	type: "tool-output",
 	content: string,
-};
+}>;
 
-export type ToolErrorItem = {
+export type ToolErrorItem = SequenceIdTagged<{
   type: "tool-error",
   error: string,
   original: string,
-};
+}>;
 
-export type ToolRejectItem = {
+export type ToolRejectItem = SequenceIdTagged<{
   type: "tool-reject",
-};
+}>;
 
-export type FileOutdatedItem = {
+export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
   updatedFile: string,
-};
+}>;
 
-export type FileEditItem = {
+export type FileEditItem = SequenceIdTagged<{
   type: "file-edit",
   path: string,  // Absolute path
   content: string, // Latest content
   sequence: number, // Monotonically increasing sequence number to track latest edit
-};
+}>;
 
-export type AssistantItem = {
+export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
   tokenUsage: number; // Delta token usage from previous message
-};
+}>;
 
-export type UserItem = {
+export type UserItem = SequenceIdTagged<{
   type: "user",
   content: string,
-};
+}>;
 
-type SequenceIdTagged<T> = T & {
-};
+export type HistoryItem = UserItem
+                        | AssistantItem
+                        | ToolCallItem
+                        | ToolOutputItem
+                        | ToolErrorItem
+                        | ToolRejectItem
+                        | FileOutdatedItem
+                        | FileEditItem
+                        ;
 
-export type HistoryItem = SequenceIdTagged<
-  UserItem
-  | AssistantItem
-  | ToolCallItem
-  | ToolOutputItem
-  | ToolErrorItem
-  | ToolRejectItem
-  | FileOutdatedItem
-  | FileEditItem
->;
+let monotonicGuid = 0n;
+export function sequenceId() {
+  return monotonicGuid++;
+}

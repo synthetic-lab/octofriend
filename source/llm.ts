@@ -3,7 +3,7 @@ import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
 import { ALL_TOOLS } from "./tools/index.ts";
 import { StreamingXMLParser, openTag, closeTag, tagged } from "./xml.ts";
-import { HistoryItem, ToolCallRequestSchema } from "./history.ts";
+import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 
 export type UserMessage = {
 	role: "user";
@@ -360,11 +360,13 @@ export async function runAgent(
       return history.concat([
         {
           type: "assistant",
+          id: sequenceId(),
           content,
           tokenUsage: tokenDelta,
         },
         {
           type: "tool-error",
+          id: sequenceId(),
           error: parseResult.message,
           original,
         },
@@ -374,11 +376,13 @@ export async function runAgent(
     return history.concat([
       {
         type: "assistant",
+        id: sequenceId(),
         content,
         tokenUsage: tokenDelta,
       },
       {
         type: "tool",
+        id: sequenceId(),
         tool: parseResult.tool,
       },
     ]);
@@ -387,6 +391,7 @@ export async function runAgent(
   return history.concat([
     {
       type: "assistant",
+      id: sequenceId(),
       content,
       tokenUsage: tokenDelta,
     },

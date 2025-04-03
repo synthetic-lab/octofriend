@@ -5,7 +5,7 @@ import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
 import { runAgent, TOOL_RUN_TAG } from "./llm.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
 import { tagged } from "./xml.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
@@ -59,7 +59,7 @@ type UiState = {
     mode: "input",
   } | {
     mode: "responding",
-    inflightResponse: AssistantItem,
+    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage">,
   } | {
     mode: "tool-request",
     toolReq: ToolCallItem["tool"],
@@ -83,6 +83,7 @@ const useAppStore = create<UiState>((set, get) => ({
   input: async ({ client, config, query }) => {
     const userMessage: UserItem = {
 			type: "user",
+      id: sequenceId(),
 			content: query,
 		};
 
@@ -98,7 +99,10 @@ const useAppStore = create<UiState>((set, get) => ({
     set({
       history: [
         ...get().history,
-        { type: "tool-reject" },
+        {
+          type: "tool-reject",
+          id: sequenceId(),
+        },
       ],
       modeData: {
         mode: "input",
@@ -111,9 +115,11 @@ const useAppStore = create<UiState>((set, get) => ({
       const result = await runTool(toolReq.tool);
       const toolHistoryItem: HistoryItem = result.type === "output" ? {
         type: "tool-output",
+        id: sequenceId(),
         content: result.content,
       } : {
         type: "file-edit",
+        id: sequenceId(),
         content: result.content,
         sequence: result.sequence,
         path: result.path,
@@ -143,7 +149,6 @@ const useAppStore = create<UiState>((set, get) => ({
         inflightResponse: {
           type: "assistant",
           content,
-          tokenUsage: 0, // Will be updated with actual value after completion
         },
       }
     });
@@ -169,7 +174,6 @@ const useAppStore = create<UiState>((set, get) => ({
             inflightResponse: {
               type: "assistant",
               content,
-              tokenUsage: 0, // Will be updated with actual value after completion
             },
           },
         });
@@ -227,6 +231,7 @@ async function tryTransformToolError(
   if(e instanceof ToolError) {
     return {
       type: "tool-error",
+      id: sequenceId(),
       error: e.message,
       original: tagged(TOOL_RUN_TAG, {}, JSON.stringify(toolReq.tool)),
     };
@@ -234,6 +239,7 @@ async function tryTransformToolError(
   if(e instanceof FileOutdatedError) {
     return {
       type: "file-outdated",
+      id: sequenceId(),
       updatedFile: await fileTracker.read(e.filePath),
     };
   }
@@ -437,13 +443,17 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
   return <MessageDisplay item={item.item} />
 });
 
-const MessageDisplay = React.memo(({ item }: { item: HistoryItem }) => {
+const MessageDisplay = React.memo(({ item }: {
+  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
+}) => {
   return <Box marginTop={1} marginBottom={1} flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
   </Box>
 });
 
-const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem }) => {
+const MessageDisplayInner = React.memo(({ item }: {
+  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
+}) => {
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />
 	if(item.type === "tool-output" || item.type === "file-edit") {
@@ -566,7 +576,7 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
 const MAX_THOUGHTBOX_WIDTH = 80;
-function AssistantMessageRenderer({ item }: { item: AssistantItem }) {
+function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "tokenUsage"> }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
