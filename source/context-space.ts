@@ -107,6 +107,8 @@ export function contextSpace() {
 You have the following files open:
 ${existingFiles.map(f => tagged(FILE_TAG, { filePath: f.absolutePath }, f.content)).join("\n")}
 These files will be auto-closed when they're no longer relevant.
+You don't need to re-read these files: they're automatically kept up-to-date with the current state
+on disk.
       `.trim();
     }),
     dirs: new SequencedPathTracker(async (d) => {
