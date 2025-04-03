@@ -24,7 +24,7 @@ export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
-const USER_TOOL_INSTR_TAG = "tool-instructions";
+const USER_TOOL_INSTR_TAG = "system-instructions";
 export const EDIT_RUN_TAG = "run-edit";
 const DIFF_SEARCH_TAG = "diff-search";
 const DIFF_REPLACE_TAG = "diff-replace";
@@ -67,11 +67,11 @@ export const ToolCallRequestSchema = t.subtype({
 });
 
 const TOOL_CALL_INSTRUCTIONS = `
+# Tools
+
 You have access to the following tools, defined as TypeScript types:
 
-\`\`\`typescript
 ${VISIBLE_TOOLS.map(toolType => toTypescript(toolType.schema)).join("\n\n")}
-\`\`\`
 
 You can call them by responding with JSON of the following type inside special XML tags:
 
@@ -90,9 +90,14 @@ ${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>))}
 
-You also have access to XML-based file editing:
+# Text editing
 
-1. For file editing with diff search/replace:
+You also have access to XML-based text editing:
+
+## Search-and-replace diff editing
+
+For file editing with diff search/replace:
+
 ${tagged(EDIT_RUN_TAG,
   { filepath: "src/example.ts", type: "diff" },
   tagged(DIFF_SEARCH_TAG, {}, `
@@ -106,19 +111,18 @@ new text you want to replace
 the lines of context copied below
 `.trim())
 )}
+
 The search string must exactly match the old content, including whitespace: it's
 whitespace-sensitive. Make sure it doesn't match anything else in the file, or you may inadvertantly
 edit a line you don't mean to. It may help to include some extra context such as the line above and
 the line below the content you intend to replace: if you do so, make sure to include those lines in
 your ${openTag(DIFF_REPLACE_TAG)} as well, so that they don't get deleted! For example:
 
-\`\`\`javascript
-// test.js
+// assume a file called test.js
 let test = 1;
 console.log(test);
 test += 1
 console.log(test);
-\`\`\`
 
 To delete the final console.log line, do this:
 
@@ -128,23 +132,75 @@ ${tagged(EDIT_RUN_TAG,
   tagged(DIFF_REPLACE_TAG, {}, "test += 1")
 )}
 
-2. For appending to a file:
+Keep diff edits relatively small: copying large amounts of text is likely to lead to minor
+whitespace errors that will cause the search string to fail to match. If you need to make a large
+edit, break it down into multiple smaller edits. If you're breaking it down into multiple edits,
+give a very brief summary of each edit you plan to make ahead of time, and then make the edits.
+
+## Appending to a file
+
+For appending to a file:
+
 ${tagged(EDIT_RUN_TAG,
   { filepath: "src/example.ts", type: "append" },
   "content to append"
 )}
 
-3. For prepending to a file:
+## Prepending to a file
+
+For prepending to a file:
+
 ${tagged(EDIT_RUN_TAG,
   { filepath: "src/example.ts", type: "prepend" },
   "content to prepend"
 )}
 
-4. For creating a new file:
+## Creating a new file
+
+For creating a new file:
+
 ${tagged(EDIT_RUN_TAG,
   { filepath: "src/new-file.ts", type: "create" },
   "file content"
 )}
+
+## XML vs raw text
+
+Note that all text inside the tags is considered raw text: you don't need to escape it. For example,
+if writing JSX, just use ordinary JSX:
+<div>...</div>
+
+Don't escape the JSX tags with XML/HTML entities. Everything inside the special tags listed here
+will be treated as raw text.
+
+Never output any of these special tags unless you intend to call a tool or edit a file:
+* ${LLM_TAGS.map(tag => openTag(tag)).join("\n* ")}
+
+If you just intend to talk about these tags, write them in ALL-CAPS e.g.
+${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags will be parsed out of your response by an
+automated system, and it can't differentiate between you using a tag and just talking about a
+tag; it will assume any use of the tag is an attempt to call a tool.
+
+Note that ${openTag(EDIT_RUN_TAG)} tags are NOT wrapped inside ${openTag(TOOL_RUN_TAG)} tags.
+They're standalone. ${openTag(TOOL_RUN_TAG)} tags wrap JSON; ${openTag(EDIT_RUN_TAG)} tags wrap
+edits. Make edits only with the ${openTag(EDIT_RUN_TAG)} tag... Don't try to use the JSON tool
+calling to perform edits.
+
+# No backticks
+
+Your tool calls should be the last thing in your response, if you have any tool calls.
+Don't wrap them in backticks Markdown-style, just write the raw tags out. Do not use backticks at
+all! If you use backticks you're making a mistake.
+
+# No questions
+
+Don't ask the user whether they want you to run a tool or make file edits: instead, just run the
+tool or make the edit. The user is prompted when you call tools to accept or reject your attempted
+tool call or edit, so there's no need to get a verbal confirmation: they can just use the UI.
+Similarly, don't tell them what tool you're going to use or what edit you're going to make: just run
+the tool or make the edit, and they'll see what you're trying to do in the UI.
+
+# General instructions
 
 You don't have to call any tool functions if you don't need to; you can also just chat to the user
 normally. Attempt to determine what your current task is (the user may have told you outright),
@@ -155,30 +211,6 @@ your solution.
 
 You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
 to run more tools or edits in a step-by-step process.
-
-NEVER output any of these XML tags unless you intend to call a tool or edit a file:
-${openTag(TOOL_RUN_TAG)}, ${openTag(EDIT_RUN_TAG)}, ${openTag(DIFF_SEARCH_TAG)}, ${openTag(DIFF_REPLACE_TAG)}
-
-If you just intend to talk about these tags, write them in ALL-CAPS e.g.
-${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags will be parsed out of your response by an
-automated system, and it can't differentiate between you using a tag and just talking about a
-tag; it will assume any use of the tag is an attempt to call a tool.
-
-Your tool calls should be the LAST thing in your response, if you have any tool calls.
-Don't wrap them in backticks Markdown-style, just write the raw tags out. Do not use backticks at
-all! If you use backticks you're making a mistake.
-
-Don't ask the user whether they want you to run a tool or make file edits: instead, just run the
-tool or make the edit. The user is prompted when you call tools to accept or reject your attempted
-tool call or edit, so there's no need to get a verbal confirmation: they can just use the UI.
-Similarly, don't tell them what tool you're going to use or what edit you're going to make: just run
-the tool or make the edit, and they'll see what you're trying to do in the UI.
-
-Note that ${openTag(EDIT_RUN_TAG)} tags are NOT wrapped inside ${openTag(TOOL_RUN_TAG)} tags.
-They're standalone. ${openTag(TOOL_RUN_TAG)} tags wrap JSON; ${openTag(EDIT_RUN_TAG)} tags wrap
-edits.
-
-Remember, you don't need to use tools! Only use them when appropriate.
 `.trim();
 
 function systemPrompt(appliedWindow: boolean) {
