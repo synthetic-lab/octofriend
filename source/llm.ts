@@ -211,7 +211,11 @@ function toLlmMessage(
       prev,
       {
         role: "user",
-        content: tagged(TOOL_RESPONSE_TAG, {}, item.content)
+        content: tagged(TOOL_RESPONSE_TAG, {}, `
+This is an automated message. The output from the tool was:
+${item.content}
+Continue what you were doing before, or ask the user if you need help deciding what to do.
+        `.trim())
       }
     ];
   }
