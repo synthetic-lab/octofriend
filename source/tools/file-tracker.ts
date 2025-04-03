@@ -39,8 +39,9 @@ export class FileTracker {
   async write(filePath: string, content: string): Promise<void> {
     const absolutePath = path.resolve(filePath);
     await fs.writeFile(absolutePath, content, 'utf8');
-    // Use current timestamp after write
-    this.readTimestamps.set(absolutePath, Date.now());
+    // Update mod time
+    const modified = await getModifiedTime(absolutePath);
+    this.readTimestamps.set(absolutePath, modified);
   }
 
   async canEdit(filePath: string): Promise<boolean> {
