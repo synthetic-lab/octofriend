@@ -4,9 +4,8 @@ import TextInput from "ink-text-input";
 import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
-import {
-  HistoryItem, UserItem, AssistantItem, ToolCallItem, runAgent, TOOL_RUN_TAG
-} from "./llm.ts";
+import { runAgent, TOOL_RUN_TAG } from "./llm.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem } from "./history.ts";
 import { tagged } from "./xml.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";

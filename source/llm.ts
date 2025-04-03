@@ -1,8 +1,9 @@
 import OpenAI from "openai";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
-import { ToolCallSchema, ALL_TOOLS } from "./tools/index.ts";
+import { ALL_TOOLS } from "./tools/index.ts";
 import { StreamingXMLParser, openTag, closeTag, tagged } from "./xml.ts";
+import { HistoryItem, ToolCallRequestSchema } from "./history.ts";
 
 export type UserMessage = {
 	role: "user";
@@ -25,11 +26,6 @@ export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
 const USER_TOOL_INSTR_TAG = "system-instructions";
-
-export const ToolCallRequestSchema = t.subtype({
-	type: t.value("function"),
-	tool: ToolCallSchema,
-});
 
 const TOOL_CALL_INSTRUCTIONS = `
 # Tools
@@ -106,59 +102,6 @@ The current working directory is: ${process.cwd()}${appliedWindow ?
 "\nSome messages were elided due to context windowing." : ""}
 `.trim();
 }
-
-export type ToolCallItem = {
-	type: "tool",
-	tool: t.GetType<typeof ToolCallRequestSchema>,
-};
-
-type ToolOutputItem = {
-	type: "tool-output",
-	content: string,
-};
-
-type ToolErrorItem = {
-  type: "tool-error",
-  error: string,
-  original: string,
-};
-
-type ToolRejectItem = {
-  type: "tool-reject",
-};
-
-type FileOutdatedItem = {
-  type: "file-outdated",
-  updatedFile: string,
-};
-
-export type FileEditItem = {
-  type: "file-edit",
-  path: string,  // Absolute path
-  content: string, // Latest content
-  sequence: number, // Monotonically increasing sequence number to track latest edit
-};
-
-export type AssistantItem = {
-  type: "assistant";
-  content: string;
-  tokenUsage: number; // Delta token usage from previous message
-};
-
-export type UserItem = {
-  type: "user",
-  content: string,
-};
-
-export type HistoryItem = UserItem
-                        | AssistantItem
-                        | ToolCallItem
-                        | ToolOutputItem
-                        | ToolErrorItem
-                        | ToolRejectItem
-                        | FileOutdatedItem
-                        | FileEditItem
-                        ;
 
 function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<LlmMessage> {
 	const output: LlmMessage[] = [
