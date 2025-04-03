@@ -9,19 +9,28 @@ const DiffEdit = t.subtype({
     whitespace, punctuation, etc.
   `),
   replace: t.str.comment("The string you want to insert into the file"),
-});
+}).comment("Applies a search/replace edit to a file");
 
 const AppendEdit = t.subtype({
   type: t.value("append"),
   text: t.str.comment("The text to append"),
-});
+}).comment("Appends to a file");
 
 const PrependEdit = t.subtype({
   type: t.value("prepend"),
   text: t.str.comment("The text to prepend"),
-});
+}).comment("Prepends to a file");
 
-const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit);
+const RewriteEdit = t.subtype({
+  type: t.value("rewrite-whole"),
+  text: t.str.comment("The replaced file contents. This will rewrite and replace the entire file"),
+}).comment(`
+  Rewrites the entire file. If you need to rewrite large chunks of the file, or are struggling to
+  to make a diff edit work, use this as a last resort. Prefer other edit types unless you are
+  struggling (have failed multiple times in a row).
+`);
+
+const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit).or(RewriteEdit);
 
 const Schema = t.subtype({
   name: t.value("edit"),
@@ -32,7 +41,7 @@ const Schema = t.subtype({
 });
 
 export default {
-  Schema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit,
+  Schema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
   async run(call, context) {
     const { filePath, edit } = call.tool.params;
     await fileTracker.assertCanEdit(filePath);
@@ -55,6 +64,7 @@ export default {
   PrependEdit: typeof PrependEdit,
   AppendEdit: typeof AppendEdit,
   DiffEdit: typeof DiffEdit,
+  RewriteEdit: typeof RewriteEdit,
 };
 
 async function validate(toolCall: t.GetType<typeof Schema>) {
@@ -63,6 +73,7 @@ async function validate(toolCall: t.GetType<typeof Schema>) {
   switch(toolCall.params.edit.type) {
     case "append": return null;
     case "prepend": return null;
+    case "rewrite-whole": return null;
     case "diff":
       return validateDiff({ file, diff: toolCall.params.edit, path: toolCall.params.filePath });
   }
@@ -77,6 +88,7 @@ function runEdit({ path, file, edit }: {
     case "diff": return diffEditFile({ path, file, diff: edit });
     case "append": return file + edit.text;
     case "prepend": return edit.text + file;
+    case "rewrite-whole": return edit.text;
   }
 }
 
@@ -95,7 +107,11 @@ function validateDiff({ path, file, diff }: {
   diff: t.GetType<typeof DiffEdit>,
 }) {
   if(!file.includes(diff.search)) {
-    throw new ToolError(`Could not find search string in file ${path}: ${diff.search}`);
+    throw new ToolError(`
+Could not find search string in file ${path}: ${diff.search}
+This is likely an error in your formatting. The search string must EXACTLY match, including
+whitespace and punctuation.
+`.trim());
   }
   return null;
 }

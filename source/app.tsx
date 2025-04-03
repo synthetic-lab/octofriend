@@ -581,6 +581,11 @@ function EditRenderer({ item }: { item: t.GetType<typeof edit.AllEdits> }) {
         <Text>Octo wants to add the following to the beginning of the file:</Text>
         <Text>{item.text}</Text>
       </Box>
+    case "rewrite-whole":
+      return <Box flexDirection="column">
+        <Text>Octo wants to rewrite the file:</Text>
+        <Text>{item.text}</Text>
+      </Box>
   }
 }
 
