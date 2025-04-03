@@ -8,9 +8,6 @@ enum ParserState {
   TAG_START = 'tagStart', // After "<", deciding if opening or closing tag
   CLOSING_TAG = 'closingTag', // Inside "</tag>"
   OPENING_TAG = 'openingTag', // Inside "<tag>"
-  ATTRIBUTE_NAME = 'attrName', // Reading attribute name
-  ATTRIBUTE_VALUE_START = 'attrValueStart', // After "=" before value
-  ATTRIBUTE_VALUE = 'attrValue', // Inside attribute value
 }
 
 export type Attribute = {
@@ -51,11 +48,8 @@ export class StreamingXMLParser {
 
   private buffer = ''; // Buffer for accumulating tag parts
   private currentTag = '';
-  private currentAttrName = '';
-  private currentAttrValue = '';
 
   private attributes: Record<string, string> = {};
-  private quoteChar: string | null = null;
   private handlers: Partial<XMLEventHandlers>;
   private whitelist: string[] | null;
 
@@ -94,12 +88,6 @@ export class StreamingXMLParser {
         return this.processOpeningTagState(char);
       case ParserState.CLOSING_TAG:
         return this.processClosingTagState(char);
-      case ParserState.ATTRIBUTE_NAME:
-        return this.processAttributeNameState(char);
-      case ParserState.ATTRIBUTE_VALUE_START:
-        return this.processAttributeValueStartState(char);
-      case ParserState.ATTRIBUTE_VALUE:
-        return this.processAttributeValueState(char);
     }
   }
 
@@ -173,12 +161,6 @@ export class StreamingXMLParser {
       return this.emitTextAndReset(this.buffer);
     }
 
-    if(this.isWhitespace(char)) {
-      // Moving to attributes
-      this.state = ParserState.ATTRIBUTE_NAME;
-      return;
-    }
-
     if(char === ">") {
       this.emitOpenTag(this.currentTag, this.attributes);
       this.buffer = '';
@@ -227,116 +209,6 @@ export class StreamingXMLParser {
     }
 
     this.emitTextAndReset(this.buffer);
-  }
-
-  private processAttributeNameState(char: string): void {
-    this.buffer += char;
-
-    if(this.isValidAttrNameChar(char)) {
-      // Building attribute name
-      this.currentAttrName += char;
-      return;
-    }
-
-    if(char === '=') {
-      // End of attribute name, moving to attribute value
-      this.state = ParserState.ATTRIBUTE_VALUE_START;
-      return;
-    }
-
-    if(this.isWhitespace(char)) {
-      // Whitespace after attribute name
-      if (this.currentAttrName) {
-        // This is a boolean attribute (no value)
-        this.attributes[this.currentAttrName] = '';
-        this.currentAttrName = '';
-      }
-      return;
-    }
-
-    if(char === '>') {
-      // End of opening tag
-      if (this.currentAttrName) {
-        // This is a boolean attribute (no value)
-        this.attributes[this.currentAttrName] = '';
-      }
-      this.emitOpenTag(this.currentTag, this.attributes);
-      this.buffer = '';
-      this.state = ParserState.TEXT;
-      return;
-    }
-
-    if(char === '/') {
-      // Potential self-closing tag
-      if (this.currentAttrName) {
-        // This is a boolean attribute (no value)
-        this.attributes[this.currentAttrName] = '';
-        this.currentAttrName = '';
-      }
-      return;
-    }
-
-    this.emitTextAndReset(this.buffer);
-  }
-
-  private processAttributeValueStartState(char: string): void {
-    this.buffer += char;
-
-    if (char === '"' || char === "'") {
-      // Start of quoted attribute value
-      this.quoteChar = char;
-      this.currentAttrValue = '';
-      this.state = ParserState.ATTRIBUTE_VALUE;
-      return;
-    }
-
-    // Whitespace before attribute value
-    if(this.isWhitespace(char)) return;
-
-    // Unquoted attribute value
-    this.currentAttrValue = char;
-    this.state = ParserState.ATTRIBUTE_VALUE;
-    this.quoteChar = null;
-  }
-
-  private processAttributeValueState(char: string): void {
-    this.buffer += char;
-
-    if(this.quoteChar && char === this.quoteChar) {
-      // End of quoted attribute value
-      this.attributes[this.currentAttrName] = this.currentAttrValue;
-      this.currentAttrName = '';
-      this.currentAttrValue = '';
-      this.quoteChar = null;
-      this.state = ParserState.ATTRIBUTE_NAME;
-      return;
-    }
-
-    if (!this.quoteChar && (this.isWhitespace(char) || char === '>' || char === '/')) {
-      // End of unquoted attribute value
-      if (char === '>') {
-        // '>' terminates the attribute value AND the tag
-        this.attributes[this.currentAttrName] = this.currentAttrValue.split('>')[0];
-        this.emitOpenTag(this.currentTag, this.attributes);
-        this.buffer = '';
-        this.state = ParserState.TEXT;
-      } else {
-        // Space or '/' terminates just the attribute value
-        this.attributes[this.currentAttrName] = this.currentAttrValue;
-        this.currentAttrName = '';
-        this.currentAttrValue = '';
-
-        if (this.isWhitespace(char)) {
-          this.state = ParserState.ATTRIBUTE_NAME;
-        } else if (char === '/') {
-          // Potential self-closing tag, wait for '>'
-        }
-      }
-      return;
-    }
-
-    // Continue building attribute value
-    this.currentAttrValue += char;
   }
 
   /**
@@ -401,10 +273,6 @@ export class StreamingXMLParser {
       // Subsequent characters can also include digits, hyphens, and periods
       return /[a-zA-Z0-9_:.-]/.test(char);
     }
-  }
-
-  private isValidAttrNameChar(char: string): boolean {
-    return /[a-zA-Z0-9_:.-]/.test(char);
   }
 
   /**
