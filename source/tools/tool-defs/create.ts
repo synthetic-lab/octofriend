@@ -1,8 +1,8 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, ToolResult } from "../common.ts";
+import { ToolError, attempt, ToolDef } from "../common.ts";
 
-export const Schema = t.subtype({
+const Schema = t.subtype({
   name: t.value("create"),
   params: t.subtype({
     filePath: t.str.comment("Path where the file should be created"),
@@ -10,18 +10,7 @@ export const Schema = t.subtype({
   }),
 }).comment("Creates a new file with the specified content");
 
-export async function run(toolCall: t.GetType<typeof Schema>): Promise<ToolResult> {
-  await validate(toolCall);
-  return attempt(`Failed to create file ${toolCall.params.filePath}`, async () => {
-    await fileTracker.write(toolCall.params.filePath, toolCall.params.content);
-    return {
-      type: "output",
-      content: `Successfully created file ${toolCall.params.filePath}`,
-    };
-  });
-}
-
-export async function validate(toolCall: t.GetType<typeof Schema>) {
+async function validate(toolCall: t.GetType<typeof Schema>) {
   try {
     await fileTracker.assertCanCreate(toolCall.params.filePath);
   } catch(e) {
@@ -31,5 +20,18 @@ export async function validate(toolCall: t.GetType<typeof Schema>) {
   return null;
 }
 
-// Mark this tool as hidden from the tool listing
-export const hidden = true;
+export default {
+  Schema, validate,
+  async run(call, context) {
+    await validate(call.tool);
+    const { filePath, content } = call.tool.params;
+    return attempt(`Failed to create file ${filePath}`, async () => {
+      const absolutePath = await fileTracker.write(filePath, content);
+      context.trackFile({
+        content, absolutePath,
+        historyId: call.id,
+      });
+      return `Successfully created file ${filePath}`;
+    });
+  },
+} satisfies ToolDef<t.GetType<typeof Schema>>;

@@ -4,6 +4,7 @@ import { Config } from "./config.ts";
 import { ALL_TOOLS } from "./tools/index.ts";
 import { StreamingXMLParser, openTag, closeTag, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
+import { ContextSpace } from "./context-space.ts";
 
 export type UserMessage = {
 	role: "user";
@@ -103,7 +104,11 @@ The current working directory is: ${process.cwd()}${appliedWindow ?
 `.trim();
 }
 
-function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<LlmMessage> {
+function toLlmMessages(
+  messages: HistoryItem[],
+  appliedWindow: boolean,
+  contextSpace: ContextSpace,
+): Array<LlmMessage> {
 	const output: LlmMessage[] = [
 		{
 			role: "system",
@@ -111,15 +116,7 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
 		},
 	];
 
-  // First pass: marks the latest edits
-  const latestEdits = new Map<string, number>();
-  for(const message of messages) {
-    if(message.type === "file-edit") {
-      latestEdits.set(message.path, message.sequence);
-    }
-  }
-
-  // Second pass: reorder tool rejections to come after user messages, so we don't need lookahead
+  // First pass: reorder tool rejections to come after user messages, so we don't need lookahead
   const reorderedHistory = [];
   for(let i = 0; i < messages.length; i++) {
     const item = messages[i];
@@ -133,11 +130,11 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
     i++;
   }
 
-  // Third pass: transform
+  // Second pass: transform
   for(let i = 0; i < reorderedHistory.length; i++) {
     const item = reorderedHistory[i];
     const prev = output.length > 0 ? output[output.length - 1] : null;
-    const [ newPrev, transformed ] = toLlmMessage(prev, item, latestEdits);
+    const [ newPrev, transformed ] = toLlmMessage(prev, item);
     if(newPrev) output[output.length - 1] = newPrev;
     if(transformed) output.push(transformed);
   }
@@ -158,6 +155,8 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
     });
   }
 
+  output[output.length - 1].content += "\n" + contextSpace.toXML();
+
   return output;
 }
 
@@ -174,7 +173,6 @@ function toLlmMessages(messages: HistoryItem[], appliedWindow: boolean): Array<L
 function toLlmMessage(
   prev: LlmMessage | null,
   item: HistoryItem,
-  latestEdits: Map<string, number>,
 ): [LlmMessage | null, LlmMessage | null] {
   if(item.type === "tool") {
     if(prev && prev.role === "assistant") {
@@ -218,18 +216,6 @@ function toLlmMessage(
     ];
   }
 
-  if(item.type === "file-edit") {
-    const content = latestEdits.get(item.path) === item.sequence ?
-      `\nNew contents:\n${item.content}` : "";
-    return [
-      prev,
-      {
-        role: "user",
-        content: tagged(TOOL_RESPONSE_TAG, {}, `File edited successfully.${content}`),
-      }
-    ];
-  }
-
   if(item.type === "file-outdated") {
     return [
       prev,
@@ -237,8 +223,9 @@ function toLlmMessage(
         role: "user",
         content: `
 ${tagged(TOOL_ERROR_TAG, {}, "File could not be updated because it was modified after being last read")}
-Re-reading file:
-${tagged(TOOL_RESPONSE_TAG, {}, item.updatedFile)}`.trim(),
+The latest version of the file has been automatically re-read and placed in your context space.
+Please try again.
+        `.trim(),
       }
     ];
   }
@@ -294,13 +281,17 @@ export async function runAgent(
   client: OpenAI,
   config: Config,
   history: HistoryItem[],
+  contextSpace: ContextSpace,
   onTokens: (t: string) => any,
 ) {
   const processedHistory = applyContextWindow(history, config.context);
+  if(processedHistory.appliedWindow) {
+    contextSpace.window(processedHistory.history[0].id);
+  }
 
   const res = await client.chat.completions.create({
     model: config.model,
-    messages: toLlmMessages(processedHistory.history, processedHistory.appliedWindow),
+    messages: toLlmMessages(processedHistory.history, processedHistory.appliedWindow, contextSpace),
     stream: true,
     stop: closeTag(TOOL_RUN_TAG),
     stream_options: {

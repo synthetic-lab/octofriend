@@ -1,8 +1,8 @@
 import { t } from "structural";
 import { spawn } from "child_process";
-import { ToolError, ToolResult } from "../common.ts";
+import { ToolError, ToolDef } from "../common.ts";
 
-export const Schema = t.subtype({
+const Schema = t.subtype({
 	name: t.value("bash"),
 	params: t.subtype({
 		cmd: t.str.comment("The command to run"),
@@ -19,42 +19,42 @@ export const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export async function validate(_: t.GetType<typeof Schema>) {
-  return null;
-}
+export default {
+  Schema,
+  validate: async () => null,
+  async run(call) {
+    const { cmd, timeout } = call.tool.params;
+    return new Promise<string>((resolve, reject) => {
+      const child = spawn(cmd, {
+        cwd: process.cwd(),
+        shell: "/bin/bash",
+        timeout,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
 
-export async function run(toolCall: t.GetType<typeof Schema>) {
-  const { cmd, timeout } = toolCall.params;
-  return new Promise<ToolResult>((resolve, reject) => {
-    const child = spawn(cmd, {
-      cwd: process.cwd(),
-      shell: "/bin/bash",
-      timeout,
-      stdio: ['ignore', 'pipe', 'pipe']
+      let output = '';
+
+      child.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      child.stderr.on('data', (data) => {
+        output += data.toString();
+      });
+
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve(output);
+        } else {
+          reject(new ToolError(
+  `Command exited with code: ${code}
+  output: ${output}`));
+        }
+      });
+
+      child.on('error', (err) => {
+        reject(new ToolError(`Command failed: ${err.message}`));
+      });
     });
-
-    let output = '';
-
-    child.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      output += data.toString();
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve({ type: "output", content: output });
-      } else {
-        reject(new ToolError(
-`Command exited with code: ${code}
-output: ${output}`));
-      }
-    });
-
-    child.on('error', (err) => {
-      reject(new ToolError(`Command failed: ${err.message}`));
-    });
-  });
-}
+  },
+} satisfies ToolDef<t.GetType<typeof Schema>>;

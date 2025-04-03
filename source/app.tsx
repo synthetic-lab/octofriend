@@ -26,6 +26,8 @@ import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
 import figures from "figures";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
+import { ContextSpace } from "./context-space.ts";
+import * as path from "path";
 
 type Props = {
 	config: Config;
@@ -62,13 +64,14 @@ type UiState = {
     inflightResponse: Omit<AssistantItem, "id" | "tokenUsage">,
   } | {
     mode: "tool-request",
-    toolReq: ToolCallItem["tool"],
+    toolReq: ToolCallItem,
   } | {
     mode: "error-recovery",
   },
   history: Array<HistoryItem>,
+  context: ContextSpace,
   input: (args: RunArgs & { query: string }) => Promise<void>,
-  runTool: (args: RunArgs & { toolReq: ToolCallItem["tool"] }) => Promise<void>,
+  runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
   rejectTool: () => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -78,6 +81,7 @@ const useAppStore = create<UiState>((set, get) => ({
     mode: "input" as const,
   },
   history: [],
+  context: new ContextSpace(),
   running: false,
 
   input: async ({ client, config, query }) => {
@@ -111,19 +115,20 @@ const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ client, config, toolReq }) => {
+    const context = get().context;
+
     try {
-      const result = await runTool(toolReq.tool);
-      const toolHistoryItem: HistoryItem = result.type === "output" ? {
+      const content = await runTool({
+        id: toolReq.id,
+        tool: toolReq.tool.tool,
+      }, context);
+
+      const toolHistoryItem: HistoryItem = {
         type: "tool-output",
         id: sequenceId(),
-        content: result.content,
-      } : {
-        type: "file-edit",
-        id: sequenceId(),
-        content: result.content,
-        sequence: result.sequence,
-        path: result.path,
+        content,
       };
+
       const history: HistoryItem[] = [
         ...get().history,
         toolHistoryItem,
@@ -133,7 +138,7 @@ const useAppStore = create<UiState>((set, get) => ({
     } catch(e) {
       const history = [
         ...get().history,
-        await tryTransformToolError(toolReq, e),
+        await tryTransformToolError(toolReq, context, e),
       ];
       set({ history });
     }
@@ -142,6 +147,7 @@ const useAppStore = create<UiState>((set, get) => ({
   },
 
   _runAgent: async ({ client, config }) => {
+    const context = get().context;
     let content = "";
     set({
       modeData: {
@@ -157,7 +163,7 @@ const useAppStore = create<UiState>((set, get) => ({
     let timeout: NodeJS.Timeout | null = null;
     let lastContent = "";
 
-    const history = await runAgent(client, config, get().history, tokens => {
+    const history = await runAgent(client, config, get().history, context, tokens => {
       content += tokens;
 
       // Skip duplicate updates
@@ -209,7 +215,7 @@ const useAppStore = create<UiState>((set, get) => ({
         },
         history: [
           ...history,
-          await tryTransformToolError(lastHistoryItem.tool, e),
+          await tryTransformToolError(lastHistoryItem, context, e),
         ],
       });
       return await get()._runAgent({ client, config });
@@ -218,7 +224,7 @@ const useAppStore = create<UiState>((set, get) => ({
     set({
       modeData: {
         mode: "tool-request",
-        toolReq: lastHistoryItem.tool,
+        toolReq: lastHistoryItem,
       },
       history,
     });
@@ -226,7 +232,7 @@ const useAppStore = create<UiState>((set, get) => ({
 }));
 
 async function tryTransformToolError(
-  toolReq: ToolCallItem["tool"], e: unknown
+  toolReq: ToolCallItem, context: ContextSpace, e: unknown
 ): Promise<HistoryItem> {
   if(e instanceof ToolError) {
     return {
@@ -237,10 +243,15 @@ async function tryTransformToolError(
     };
   }
   if(e instanceof FileOutdatedError) {
+    const absolutePath = path.resolve(e.filePath);
+    const content = await fileTracker.read(absolutePath);
+    context.trackFile({
+      absolutePath, content,
+      historyId: toolReq.id,
+    });
     return {
       type: "file-outdated",
       id: sequenceId(),
-      updatedFile: await fileTracker.read(e.filePath),
     };
   }
   throw e;
@@ -369,7 +380,7 @@ function BottomBarContent({ config, client }: { config: Config, client: OpenAI }
 }
 
 function ToolRequestRenderer({ toolReq, client, config }: {
-  toolReq: ToolCallItem["tool"]
+  toolReq: ToolCallItem
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
@@ -395,10 +406,10 @@ function ToolRequestRenderer({ toolReq, client, config }: {
 	}, [ toolReq, config, client ]);
 
   useEffect(() => {
-    if(SKIP_CONFIRMATION.includes(toolReq.tool.name)) runTool({ toolReq, config, client });
+    if(SKIP_CONFIRMATION.includes(toolReq.tool.tool.name)) runTool({ toolReq, config, client });
   }, [ toolReq ]);
 
-  if(SKIP_CONFIRMATION.includes(toolReq.tool.name)) {
+  if(SKIP_CONFIRMATION.includes(toolReq.tool.tool.name)) {
     return <Loading />;
   }
 
@@ -456,7 +467,7 @@ const MessageDisplayInner = React.memo(({ item }: {
 }) => {
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />
-	if(item.type === "tool-output" || item.type === "file-edit") {
+	if(item.type === "tool-output") {
 		return <Text color="gray">
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
@@ -474,9 +485,6 @@ const MessageDisplayInner = React.memo(({ item }: {
   if(item.type === "file-outdated") {
     return <Box flexDirection="column">
       <Text>File was modified since it was last read; re-reading...</Text>
-      <Text color="gray">
-        Got {item.updatedFile.split("\n").length} lines of output
-      </Text>
     </Box>
   }
 	return <Box>

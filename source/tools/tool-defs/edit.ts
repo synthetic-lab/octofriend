@@ -1,9 +1,8 @@
 import { t } from "structural";
-import * as path from "path";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, ToolResult } from "../common.ts";
+import { ToolError, attemptUntrackedRead, ToolDef } from "../common.ts";
 
-export const DiffEdit = t.subtype({
+const DiffEdit = t.subtype({
   type: t.value("diff"),
   search: t.str.comment(`
     The search string to replace. Must EXACTLY match the text you intend to replace, including
@@ -12,19 +11,19 @@ export const DiffEdit = t.subtype({
   replace: t.str.comment("The string you want to insert into the file"),
 });
 
-export const AppendEdit = t.subtype({
+const AppendEdit = t.subtype({
   type: t.value("append"),
   text: t.str.comment("The text to append"),
 });
 
-export const PrependEdit = t.subtype({
+const PrependEdit = t.subtype({
   type: t.value("prepend"),
   text: t.str.comment("The text to prepend"),
 });
 
-export const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit);
+const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit);
 
-export const Schema = t.subtype({
+const Schema = t.subtype({
   name: t.value("edit"),
   params: t.subtype({
     filePath: t.str.comment("The path to the file"),
@@ -32,29 +31,34 @@ export const Schema = t.subtype({
   }),
 });
 
-let editSequenceCounter = 0;
+export default {
+  Schema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit,
+  async run(call, context) {
+    const { filePath, edit } = call.tool.params;
+    await fileTracker.assertCanEdit(filePath);
 
-export async function run(toolCall: t.GetType<typeof Schema>): Promise<ToolResult> {
-  await fileTracker.assertCanEdit(toolCall.params.filePath);
+    const file = await attemptUntrackedRead(filePath);
+    const replaced = runEdit({
+      path: filePath,
+      file, edit,
+    });
+    const absolutePath = await fileTracker.write(filePath, replaced);
+    context.trackFile({
+      absolutePath,
+      content: replaced,
+      historyId: call.id,
+    });
 
-  const file = await attemptUntrackedRead(toolCall.params.filePath);
-  const replaced = runEdit({
-    path: toolCall.params.filePath,
-    file,
-    edit: toolCall.params.edit,
-  });
-  await fileTracker.write(toolCall.params.filePath, replaced);
+    return `Successfully edited file ${filePath}`;
+  },
+} satisfies ToolDef<t.GetType<typeof Schema>> & {
+  AllEdits: typeof AllEdits,
+  PrependEdit: typeof PrependEdit,
+  AppendEdit: typeof AppendEdit,
+  DiffEdit: typeof DiffEdit,
+};
 
-  editSequenceCounter++;
-  return {
-    type: "file-edit",
-    path: path.resolve(toolCall.params.filePath),
-    content: replaced,
-    sequence: editSequenceCounter
-  };
-}
-
-export async function validate(toolCall: t.GetType<typeof Schema>) {
+async function validate(toolCall: t.GetType<typeof Schema>) {
   await fileTracker.assertCanEdit(toolCall.params.filePath);
   const file = await attemptUntrackedRead(toolCall.params.filePath);
   switch(toolCall.params.edit.type) {
@@ -64,9 +68,6 @@ export async function validate(toolCall: t.GetType<typeof Schema>) {
       return validateDiff({ file, diff: toolCall.params.edit, path: toolCall.params.filePath });
   }
 }
-
-// Mark this tool as hidden from the tool listing
-export const hidden = true;
 
 function runEdit({ path, file, edit }: {
   path: string,

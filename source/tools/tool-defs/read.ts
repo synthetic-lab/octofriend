@@ -1,22 +1,30 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolResult, attempt, attemptUntrackedStat } from "../common.ts";
+import { attempt, attemptUntrackedStat, ToolDef } from "../common.ts";
+import * as path from "path";
 
-export const Schema = t.subtype({
+const Schema = t.subtype({
  name: t.value("read"),
  params: t.subtype({
    filePath: t.str.comment("Path to file to read"),
  }),
 }).comment("Reads file contents as UTF-8. Prefer this to Unix tools like `cat`");
 
-export async function run(toolCall: t.GetType<typeof Schema>): Promise<ToolResult> {
-  return attempt(`No such file ${toolCall.params.filePath}`, async () => {
-    return {
-      type: "output",
-      content: await fileTracker.read(toolCall.params.filePath)
-    };
-  });
-}
+export default {
+  Schema, validate,
+  async run(call, context) {
+    const { filePath } = call.tool.params;
+    return attempt(`No such file ${filePath}`, async () => {
+      const content = await fileTracker.read(filePath)
+      context.trackFile({
+        absolutePath: path.resolve(filePath),
+        content,
+        historyId: call.id,
+      });
+      return `Successfully read file ${filePath}`;
+    });
+  },
+} satisfies ToolDef<t.GetType<typeof Schema>>;
 
 export async function validate(toolCall: t.GetType<typeof Schema>) {
   await attemptUntrackedStat(toolCall.params.filePath);

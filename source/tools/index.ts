@@ -2,27 +2,27 @@ import { t } from "structural";
 
 import { unionAll } from "../types.ts";
 import * as toolMap from "./tool-defs/index.ts";
-import { ToolResult, ToolDef } from "./common.ts";
+import { ToolDef } from "./common.ts";
+import { SequenceIdTagged } from "../history.ts";
+import { ContextSpace } from "../context-space.ts";
 
-export { ToolError, ToolResult } from "./common.ts";
+export { ToolError } from "./common.ts";
 export * from "./tool-defs/index.ts";
 
 export const ALL_TOOLS = Object.values(toolMap).map(t => t.Schema);
 export const ToolCallSchema = unionAll(ALL_TOOLS);
-
-// Filter out hidden tools for instructions
-export const VISIBLE_TOOLS = Object.entries(toolMap)
-  .filter(([_, tool]) => !("hidden" in tool && tool.hidden))
-  .map(([key, tool]) => ({ name: key, schema: tool.Schema }));
 
 export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
   "read",
   "list",
 ];
 
-export async function runTool(tool: t.GetType<typeof ToolCallSchema>): Promise<ToolResult> {
-  const def = lookup(tool);
-  return await def.run(tool);
+export async function runTool(
+  call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
+  context: ContextSpace,
+): Promise<string> {
+  const def = lookup(call.tool);
+  return await def.run(call, context);
 }
 
 export async function validateTool(tool: t.GetType<typeof ToolCallSchema>): Promise<null> {

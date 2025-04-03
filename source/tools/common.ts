@@ -1,5 +1,7 @@
 import { t } from "structural";
 import * as fs from "fs/promises";
+import { ContextSpace } from "../context-space.ts";
+import { SequenceIdTagged } from "../history.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -28,13 +30,8 @@ export async function attemptUntrackedRead(path: string) {
   });
 }
 
-export type ToolResult =
-  | { type: "output", content: string }
-  | { type: "file-edit", path: string, content: string, sequence: number };
-
 export type ToolDef<T> = {
   Schema: t.Type<T>,
   validate: (t: T) => Promise<null>,
-  run: (t: T) => Promise<ToolResult>,
-  hidden?: boolean,
+  run: (t: SequenceIdTagged<{ tool: T }>, c: ContextSpace) => Promise<string>,
 };

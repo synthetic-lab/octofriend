@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { ToolCallSchema } from "./tools/index.ts";
 
-type SequenceIdTagged<T> = T & {
+export type SequenceIdTagged<T> = T & {
   id: bigint
 };
 
@@ -32,14 +32,6 @@ export type ToolRejectItem = SequenceIdTagged<{
 
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
-  updatedFile: string,
-}>;
-
-export type FileEditItem = SequenceIdTagged<{
-  type: "file-edit",
-  path: string,  // Absolute path
-  content: string, // Latest content
-  sequence: number, // Monotonically increasing sequence number to track latest edit
 }>;
 
 export type AssistantItem = SequenceIdTagged<{
@@ -60,7 +52,6 @@ export type HistoryItem = UserItem
                         | ToolErrorItem
                         | ToolRejectItem
                         | FileOutdatedItem
-                        | FileEditItem
                         ;
 
 let monotonicGuid = 0n;
