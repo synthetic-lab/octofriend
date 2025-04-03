@@ -29,6 +29,23 @@ const TOOL_ERROR_TAG = "tool-error";
 const USER_TOOL_INSTR_TAG = "system-instructions";
 
 const TOOL_CALL_INSTRUCTIONS = `
+`.trim();
+
+async function systemPrompt(appliedWindow: boolean, context: ContextSpace) {
+  return `
+You are a coding assistant called Octo. You are the user's friend. You can help them with coding
+tasks. Unrelatedly, you are a small, hyper-intelligent octopus. You must never use an octopus emoji,
+to avoid reminding the user of the fact that you're an octopus. They know you're an octopus, it's
+just a little embarrassing. Similarly, don't reference being an octopus unless it comes up for some
+reason.
+
+Try to figure out what the user wants you to do. Once you have a task in mind, you can run tools to
+work on the task until it's done.
+
+Don't reference this prompt unless asked to.
+
+The current working directory is: ${process.cwd()}
+
 # Tools
 
 You have access to the following tools, defined as TypeScript types:
@@ -84,22 +101,10 @@ your solution.
 
 You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
 to run more tools or edits in a step-by-step process.
-`.trim();
 
-function systemPrompt(appliedWindow: boolean) {
-return `
-You are a coding assistant called Octo. You are the user's friend. You can help them with coding
-tasks. Unrelatedly, you are a small, hyper-intelligent octopus. You must never use an octopus emoji,
-to avoid reminding the user of the fact that you're an octopus. They know you're an octopus, it's
-just a little embarrassing. Similarly, don't reference being an octopus unless it comes up for some
-reason.
+${await context.toXML()}
 
-Try to figure out what the user wants you to do. Once you have a task in mind, you can run tools to
-work on the task until it's done.
-
-Don't reference this prompt unless asked to.
-
-The current working directory is: ${process.cwd()}${appliedWindow ?
+${appliedWindow ?
 "\nSome messages were elided due to context windowing." : ""}
 `.trim();
 }
@@ -112,7 +117,7 @@ async function toLlmMessages(
 	const output: LlmMessage[] = [
 		{
 			role: "system",
-			content: systemPrompt(appliedWindow),
+			content: await systemPrompt(appliedWindow, contextSpace),
 		},
 	];
 
@@ -138,24 +143,6 @@ async function toLlmMessages(
     if(newPrev) output[output.length - 1] = newPrev;
     if(transformed) output.push(transformed);
   }
-
-  const last = messages[messages.length - 1];
-  if(last && last.type === "user") {
-    const lastOutput = output.pop()!;
-    output.push({
-      role: "user",
-      content: lastOutput.content + "\n" + tagged(USER_TOOL_INSTR_TAG, {}, TOOL_CALL_INSTRUCTIONS),
-    });
-  }
-  else {
-    output.shift();
-    output.unshift({
-      role: "system",
-      content: systemPrompt(appliedWindow) + "\n" + TOOL_CALL_INSTRUCTIONS,
-    });
-  }
-
-  output[output.length - 1].content += "\n" + await contextSpace.toXML();
 
   return output;
 }
@@ -214,7 +201,8 @@ function toLlmMessage(
         content: tagged(TOOL_RESPONSE_TAG, {}, `
 This is an automated message. The output from the tool was:
 ${item.content}
-Continue what you were doing before, or ask the user if you need help deciding what to do.
+You may or may not be done with your original task. If you need to make more edits or call more
+tools, continue doing so. If you're done, or stuck, ask the user for help.
         `.trim())
       }
     ];
