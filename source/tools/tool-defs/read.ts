@@ -16,7 +16,7 @@ export default {
     const { filePath } = call.tool.params;
     return attempt(`No such file ${filePath}`, async () => {
       const content = await fileTracker.read(filePath)
-      context.trackFile({
+      context.tracker("files").track({
         absolutePath: path.resolve(filePath),
         content,
         historyId: call.id,

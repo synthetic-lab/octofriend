@@ -27,7 +27,7 @@ export default {
     const { filePath, content } = call.tool.params;
     return attempt(`Failed to create file ${filePath}`, async () => {
       const absolutePath = await fileTracker.write(filePath, content);
-      context.trackFile({
+      context.tracker("files").track({
         content, absolutePath,
         historyId: call.id,
       });

@@ -104,11 +104,11 @@ The current working directory is: ${process.cwd()}${appliedWindow ?
 `.trim();
 }
 
-function toLlmMessages(
+async function toLlmMessages(
   messages: HistoryItem[],
   appliedWindow: boolean,
   contextSpace: ContextSpace,
-): Array<LlmMessage> {
+): Promise<Array<LlmMessage>> {
 	const output: LlmMessage[] = [
 		{
 			role: "system",
@@ -155,7 +155,7 @@ function toLlmMessages(
     });
   }
 
-  output[output.length - 1].content += "\n" + contextSpace.toXML();
+  output[output.length - 1].content += "\n" + await contextSpace.toXML();
 
   return output;
 }
@@ -289,9 +289,14 @@ export async function runAgent(
     contextSpace.window(processedHistory.history[0].id);
   }
 
+  const messages = await toLlmMessages(
+    processedHistory.history,
+    processedHistory.appliedWindow,
+    contextSpace,
+  );
   const res = await client.chat.completions.create({
     model: config.model,
-    messages: toLlmMessages(processedHistory.history, processedHistory.appliedWindow, contextSpace),
+    messages,
     stream: true,
     stop: closeTag(TOOL_RUN_TAG),
     stream_options: {

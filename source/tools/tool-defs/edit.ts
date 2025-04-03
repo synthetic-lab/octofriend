@@ -43,7 +43,7 @@ export default {
       file, edit,
     });
     const absolutePath = await fileTracker.write(filePath, replaced);
-    context.trackFile({
+    context.tracker("files").track({
       absolutePath,
       content: replaced,
       historyId: call.id,

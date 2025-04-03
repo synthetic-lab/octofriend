@@ -9,50 +9,94 @@ type FileContext = {
   historyId: bigint,
 };
 
-export class ContextSpace {
-  private pathToFile = new Map<string, FileContext>();
-  private files: FileContext[] = [];
+type DirectoryContext = {
+  absolutePath: string,
+  historyId: bigint,
+};
 
-  trackFile(f: FileContext) {
+export class SequencedPathTracker<T extends { absolutePath: string, historyId: bigint }> {
+  private pathToItem = new Map<string, T>();
+  private items: T[] = [];
+  constructor(
+    private readonly _toXML: (tracker: SequencedPathTracker<T>) => Promise<string>
+  ) {}
+
+  track(item: T) {
     // If there's an existing file with the same abs path, delete it
-    const existing = this.pathToFile.get(f.absolutePath);
+    const existing = this.pathToItem.get(item.absolutePath);
     if(existing) {
-      const index = this.files.findIndex(e => e.absolutePath === f.absolutePath);
+      const index = this.items.findIndex(e => e.absolutePath === item.absolutePath);
       if(index < 0) {
-        throw new Error("File context out of sync: pathToFile found but no matching file");
+        throw new Error("Context out of sync: pathToItem found but no matching item");
       }
-      this.files.splice(index, 1);
+      this.items.splice(index, 1);
     }
 
     // Push and overwrite
-    this.files.push(f);
-    this.pathToFile.set(f.absolutePath, f);
+    this.items.push(item);
+    this.pathToItem.set(item.absolutePath, item);
   }
 
   window(minHistoryId: bigint) {
-    this.files = this.files.filter(f => f.historyId >= minHistoryId);
-    this.pathToFile = new Map();
-    for(const f of this.files) {
-      this.pathToFile.set(f.absolutePath, f);
+    this.items = this.items.filter(item => item.historyId >= minHistoryId);
+    this.pathToItem = new Map();
+    for(const item of this.items) {
+      this.pathToItem.set(item.absolutePath, item);
     }
   }
 
-  toXML() {
-    if(this.files.length === 0) return "";
-
-    const orderedFiles = this.files.concat([]).sort((a, b) => {
+  orderedItems() {
+    return this.items.concat([]).sort((a, b) => {
       if(a.historyId < b.historyId) return -1;
       if(b.historyId < a.historyId) return 1;
       return 0;
     });
+  }
 
+  async toXML() {
+    if(this.items.length === 0) return "";
+    return await this._toXML(this);
+  }
+}
+
+export class ContextSpaceBuilder<T extends {
+  [key: string]: SequencedPathTracker<any>
+}> {
+  constructor(
+    private readonly defn: T
+  ) {}
+
+  tracker<K extends keyof T>(k: K): T[K] {
+    return this.defn[k];
+  }
+
+  window(minHistoryId: bigint) {
+    for(const tracker of Object.values(this.defn)) {
+      tracker.window(minHistoryId);
+    }
+  }
+
+  async toXML() {
+    const xml = await Promise.all(Object.values(this.defn).map(t => t.toXML()));
+    const nonempty = xml.filter(s => s !== "");
+    if(nonempty.length === 0) return "";
     return tagged(CONTEXT_SPACE_TAG, {}, `
 This is a system-generated message.
-You have the following files open:
-${orderedFiles.map(f => {
-  return tagged(FILE_TAG, { absolutePath: f.absolutePath }, f.content);
-}).join("\n")}
-These files will be auto-closed when they're no longer relevant.
+${nonempty.join("\n")}
     `.trim());
   }
 }
+
+export function contextSpace() {
+  return new ContextSpaceBuilder({
+    files: new SequencedPathTracker<FileContext>(async (f) => {
+      return `
+You have the following files open:
+${f.orderedItems().map(f => tagged(FILE_TAG, { filePath: f.absolutePath }, f.content)).join("\n")}
+These files will be auto-closed when they're no longer relevant.
+      `.trim();
+    })
+  });
+}
+
+export type ContextSpace = ReturnType<typeof contextSpace>;

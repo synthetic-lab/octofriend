@@ -26,7 +26,7 @@ import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
 import figures from "figures";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
-import { ContextSpace } from "./context-space.ts";
+import { ContextSpace, contextSpace } from "./context-space.ts";
 import * as path from "path";
 
 type Props = {
@@ -81,7 +81,7 @@ const useAppStore = create<UiState>((set, get) => ({
     mode: "input" as const,
   },
   history: [],
-  context: new ContextSpace(),
+  context: contextSpace(),
   running: false,
 
   input: async ({ client, config, query }) => {
@@ -245,7 +245,7 @@ async function tryTransformToolError(
   if(e instanceof FileOutdatedError) {
     const absolutePath = path.resolve(e.filePath);
     const content = await fileTracker.read(absolutePath);
-    context.trackFile({
+    context.tracker("files").track({
       absolutePath, content,
       historyId: toolReq.id,
     });
