@@ -15,19 +15,19 @@ const RemoveStep = t.subtype({
 
 const Clear = t.subtype({
   type: t.value("clear"),
-}).comment("Clears the plan");
+}).comment("Proposes clearing the plan");
 
 const SetPlan = t.subtype({
   type: t.value("set"),
   steps: t.array(t.str).comment(
     "An array of steps in the plan. Each step must be a single, short sentence with no newlines or markdown"
   ),
-}).comment("Sets a new plan. If a plan already exists, overwrites the plan.");
+}).comment("Proposes setting a new plan. If a plan already exists, proposes overwriting the plan.");
 
 const Updates = t.subtype({
   type: t.value("update"),
   changeset: t.array(AddStep.or(RemoveStep)),
-}).comment("Updates the current plan");
+}).comment("Proposes updating the current plan");
 
 const Schema = t.subtype({
   name: t.value("plan"),

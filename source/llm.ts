@@ -153,14 +153,14 @@ ${appliedWindow ?
 
   if(context.tracker("plan").items().length === 0) {
     return prompt + "\n" + `
-You don't have a plan set currently. Either discuss a plan with the user, or if you already know
-what you want to do, use the plan tool to set a plan.
+You don't have a plan set currently. Either discuss a with the user to find out what they want you
+to do, or if you already know what they want you to do, use the plan tool to set a plan.
 Don't propose a plan to find out what the user wants: only propose a plan if you know what the user
 wants based on your discussions.
 You can read and list files without a plan, but don't edit files until you have a plan!
 
-Do NOT just list a plan in plain markdown text: use the plan tool! The user will be able to accept
-your plan, or give you advice on what to do differently.
+Do NOT propose plans via talking to the user: use the plan tool! The user will be able to accept
+your plan, or give you advice on what to do differently. They can see the output of your plan tool.
 
 YOU SHOULD USE THE PLAN TOOL TO PLAN. Propose plans via the plan tool, not by talking.
 
@@ -173,7 +173,15 @@ application) or discussing with the user.
 Consider your plan, and the user's discussions with you and the result of your tool calls. Has your
 plan changed, or have you completed parts of it? Is your plan from the plan tool still up-to-date?
 If your plan from the plan tool is no longer up-to-date, you MUST update it before moving on.
-Otherwise, continue working on your plan.
+
+If you're considering crossing off an item from the plan, consider checking your work first via:
+- Running tests if they exist
+- Running a compiler, build tool, or static analyzer if any are set up
+- etc
+Once you've checked your work, if it's complete, you MUST remove the completed step from your plan
+via the plan tool.
+
+If you're still working, continue working on your plan.
 `.trim();
 }
 
