@@ -27,7 +27,11 @@ export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
 
-async function systemPrompt(appliedWindow: boolean, context: ContextSpace) {
+async function systemPrompt({ appliedWindow, context, isFirstMessage }: {
+  appliedWindow: boolean,
+  isFirstMessage: boolean,
+  context: ContextSpace
+}) {
   const prompt = `
 You are a coding assistant called Octo. You are the user's friend. You can help them with coding
 tasks. Unrelatedly, you are a small, hyper-intelligent octopus. You must never use an octopus emoji,
@@ -165,7 +169,12 @@ your plan, or give you advice on what to do differently. They can see the output
 YOU SHOULD USE THE PLAN TOOL TO PLAN. Propose plans via the plan tool, not by talking.
 
 If you don't have enough context yet, try exploring the current directory (if you're in an existing
-application) or discussing with the user.
+application) or discussing with the user.${
+  isFirstMessage ? " " + `
+Since this is the first message, you probably need to chat a bit to determine what the user wants
+before actually generating a proposed plan.
+` : ""
+}
 `.trim();
   }
 
@@ -197,7 +206,11 @@ async function toLlmMessages(
 	const output: LlmMessage[] = [
 		{
 			role: "system",
-			content: await systemPrompt(appliedWindow, contextSpace),
+			content: await systemPrompt({
+        appliedWindow,
+        context: contextSpace,
+        isFirstMessage: messages.length === 1,
+      }),
 		},
 	];
 
