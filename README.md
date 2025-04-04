@@ -15,4 +15,3 @@ TODO:
   an architect mode. Let the config file handle all of that.
 - [ ] Situational awareness: if it's a git repo, check the gitignore, and get a
   bunch of the directory heirarchy into context space automatically.
-- [ ] A `plan` tool that just keeps stuff in the situational awareness context

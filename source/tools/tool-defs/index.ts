@@ -3,3 +3,4 @@ export { default as list } from "./list.ts";
 export { default as bash } from "./bash.ts";
 export { default as edit } from "./edit.ts";
 export { default as create } from "./create.ts";
+export { default as plan } from "./plan.ts";

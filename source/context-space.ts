@@ -5,6 +5,7 @@ import { fileTracker } from "./tools/file-tracker.ts";
 const CONTEXT_SPACE_TAG = "context";
 const FILE_TAG = "file";
 const DIR_TAG = "dir";
+const PLAN_TAG = "plan";
 
 type TrackedContext = {
   absolutePath: string,
@@ -61,8 +62,41 @@ export class SequencedPathTracker {
   }
 }
 
+
+export class ArrayTracker<T> {
+  private array: T[] = [];
+
+  constructor(
+    private readonly _toXML: (kv: ArrayTracker<T>) => Promise<string>,
+  ) {}
+
+  push(value: T) {
+    this.array.push(value);
+  }
+
+  remove(index: number) {
+    this.array.splice(index, 1);
+  }
+
+  clear() {
+    this.array = [];
+  }
+
+  window() {
+  }
+
+  items() {
+    return this.array.concat([]);
+  }
+
+  async toXML() {
+    if(this.array.length === 0) return "";
+    return this._toXML(this);
+  }
+}
+
 export class ContextSpaceBuilder<T extends {
-  [key: string]: SequencedPathTracker
+  [key: string]: SequencedPathTracker | ArrayTracker<any>
 }> {
   constructor(
     private readonly defn: T
@@ -91,6 +125,17 @@ ${nonempty.join("\n\n")}
 
 export function contextSpace() {
   return new ContextSpaceBuilder({
+    plan: new ArrayTracker<string>(async (kv) => {
+      return tagged(PLAN_TAG, {}, `
+You have previously decided on a plan:
+${kv.items().map((step, index) => {
+  return `Step number ${index}: ${step}`;
+}).join("\n")}
+You should update the plan if you've completed a step, or if the plan needs to be updated.
+If the plan is done, clear it out (or overwrite it by setting a new plan if appropriate).
+`.trim());
+    }),
+
     files: new SequencedPathTracker(async (f) => {
       const files = await Promise.all(f.orderedItems().map(async (f) => {
         try {

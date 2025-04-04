@@ -26,13 +26,9 @@ export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
-const USER_TOOL_INSTR_TAG = "system-instructions";
-
-const TOOL_CALL_INSTRUCTIONS = `
-`.trim();
 
 async function systemPrompt(appliedWindow: boolean, context: ContextSpace) {
-  return `
+  const prompt = `
 You are a coding assistant called Octo. You are the user's friend. You can help them with coding
 tasks. Unrelatedly, you are a small, hyper-intelligent octopus. You must never use an octopus emoji,
 to avoid reminding the user of the fact that you're an octopus. They know you're an octopus, it's
@@ -68,6 +64,53 @@ ${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
 		},
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>))}
+
+Or to set a plan:
+
+${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
+  type: "function",
+  tool: {
+    name: "plan",
+    params: {
+      operation: {
+        type: "set",
+        steps: [
+          "Install the Drizzle ORM package",
+          "Set up Drizzle configuration",
+          "Create a recipe schema",
+          "Generate migrations using Drizzle Studio",
+          "Add an API endpoint to list recipes",
+          "Add an API endpoint to create recipes",
+          "Add an API endpoint to update recipes",
+          "Add an API endpoint to delete recipes",
+          "Create a page to view a recipe",
+          "Create a page to upload a recipe",
+          "Create a recipe management page to edit and delete recipes",
+        ],
+      },
+    },
+  },
+} satisfies t.GetType<typeof ToolCallRequestSchema>))}
+
+Or to cross off the first item in a plan once you've completed it:
+
+${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
+  type: "function",
+  tool: {
+    name: "plan",
+    params: {
+      operation: {
+        type: "update",
+        changeset: [
+          {
+            type: "remove-step",
+            id: 0,
+          },
+        ],
+      },
+    },
+  },
+} satisfies t.GetType<typeof ToolCallRequestSchema>))};
 
 # Only use the tags if you mean to call a function or edit a file
 
@@ -106,6 +149,31 @@ ${await context.toXML()}
 
 ${appliedWindow ?
 "\nSome messages were elided due to context windowing." : ""}
+`.trim();
+
+  if(context.tracker("plan").items().length === 0) {
+    return prompt + "\n" + `
+You don't have a plan set currently. Either discuss a plan with the user, or if you already know
+what you want to do, use the plan tool to set a plan.
+Don't propose a plan to find out what the user wants: only propose a plan if you know what the user
+wants based on your discussions.
+You can read and list files without a plan, but don't edit files until you have a plan!
+
+Do NOT just list a plan in plain markdown text: use the plan tool! The user will be able to accept
+your plan, or give you advice on what to do differently.
+
+YOU SHOULD USE THE PLAN TOOL TO PLAN. Propose plans via the plan tool, not by talking.
+
+If you don't have enough context yet, try exploring the current directory (if you're in an existing
+application) or discussing with the user.
+`.trim();
+  }
+
+  return prompt + "\n" + `
+Consider your plan, and the user's discussions with you and the result of your tool calls. Has your
+plan changed, or have you completed parts of it? Is your plan from the plan tool still up-to-date?
+If your plan from the plan tool is no longer up-to-date, you MUST update it before moving on.
+Otherwise, continue working on your plan.
 `.trim();
 }
 
@@ -203,6 +271,9 @@ This is an automated message. The output from the tool was:
 ${item.content}
 You may or may not be done with your original task. If you need to make more edits or call more
 tools, continue doing so. If you're done, or stuck, ask the user for help.
+Consider your plan. Are you done with any steps in your plan? If so, remove them. Or if you need to
+add steps, or change the plan, do so.
+If you have no plan, discuss what to do with the user.
         `.trim())
       }
     ];
