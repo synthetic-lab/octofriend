@@ -18,7 +18,6 @@ import {
   read,
   list,
   edit,
-  plan,
   create as createTool,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
@@ -192,7 +191,8 @@ const useAppStore = create<UiState>((set, get) => ({
         }, debounceTimeout);
       });
       if(timeout) clearTimeout(timeout);
-    } catch {
+    } catch(e) {
+      console.error(e);
       set({
         history: [
           ...get().history,
@@ -552,45 +552,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
     case "bash": return <BashToolRenderer item={item.tool.tool} />
     case "edit": return <EditToolRenderer item={item.tool.tool} />
     case "create": return <CreateToolRenderer item={item.tool.tool} />
-    case "plan": return <PlanToolRenderer item={item.tool.tool} />
   }
-}
-
-function PlanToolRenderer({ item }: { item: t.GetType<typeof plan.Schema> }) {
-  const { operation } = item.params;
-  if(operation.type === "clear") return <Text color="gray">Cleared plan</Text>;
-  if(operation.type === "set") {
-    return <Box flexDirection="column">
-      <Text color={THEME_COLOR}>Proposed plan:</Text>
-      {
-        operation.steps.map((step, index) => {
-          return <Text key={`set-plan-${index}`}>{step}</Text>
-        })
-      }
-    </Box>
-  }
-  const { context } = useAppStore(
-    useShallow(s => ({
-      context: s.context,
-    }))
-  );
-  return <Box flexDirection="column">
-    {
-      operation.changeset.map((change, index) => {
-        if(change.type === "add-step") {
-          return <Box key={`add-step-${index}`}>
-            <Text color={THEME_COLOR}>Add: </Text>
-            <Text>+ {change.step}</Text>
-          </Box>
-        }
-
-        return <Box key={`remove-step-${index}`}>
-          <Text color="red">Remove: </Text>
-          <Text>{context.tracker("plan").items()[change.id]}</Text>
-        </Box>
-      })
-    }
-  </Box>
 }
 
 function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {

@@ -26,11 +26,10 @@ export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
 export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
+const CONTEXT_TAG = "context";
 
-async function systemPrompt({ appliedWindow, context, isFirstMessage }: {
+async function systemPrompt({ appliedWindow }: {
   appliedWindow: boolean,
-  isFirstMessage: boolean,
-  context: ContextSpace
 }) {
   const prompt = `
 You are a coding assistant called Octo. You are the user's friend. You can help them with coding
@@ -69,53 +68,6 @@ ${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
 	},
 } satisfies t.GetType<typeof ToolCallRequestSchema>))}
 
-Or to set a plan:
-
-${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
-  type: "function",
-  tool: {
-    name: "plan",
-    params: {
-      operation: {
-        type: "set",
-        steps: [
-          "Install the Drizzle ORM package",
-          "Set up Drizzle configuration",
-          "Create a recipe schema",
-          "Generate migrations using Drizzle Studio",
-          "Add an API endpoint to list recipes",
-          "Add an API endpoint to create recipes",
-          "Add an API endpoint to update recipes",
-          "Add an API endpoint to delete recipes",
-          "Create a page to view a recipe",
-          "Create a page to upload a recipe",
-          "Create a recipe management page to edit and delete recipes",
-        ],
-      },
-    },
-  },
-} satisfies t.GetType<typeof ToolCallRequestSchema>))}
-
-Or to cross off the first item in a plan once you've completed it:
-
-${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
-  type: "function",
-  tool: {
-    name: "plan",
-    params: {
-      operation: {
-        type: "update",
-        changeset: [
-          {
-            type: "remove-step",
-            id: 0,
-          },
-        ],
-      },
-    },
-  },
-} satisfies t.GetType<typeof ToolCallRequestSchema>))};
-
 # Only use the tags if you mean to call a function or edit a file
 
 Never output the ${openTag(TOOL_RUN_TAG)} unless you intend to call a tool. If you just intend to
@@ -149,53 +101,10 @@ your solution.
 You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
 to run more tools or edits in a step-by-step process.
 
-${await context.toXML()}
-
 ${appliedWindow ?
 "\nSome messages were elided due to context windowing." : ""}
 `.trim();
-
-  if(context.tracker("plan").items().length === 0) {
-    return prompt + "\n" + `
-You don't have a plan set currently. Either discuss a with the user to find out what they want you
-to do, or if you already know what they want you to do, use the plan tool to set a plan.
-Don't propose a plan to find out what the user wants: only propose a plan if you know what the user
-wants based on your discussions.
-You can read and list files without a plan, but don't edit files until you have a plan!
-
-Do NOT propose plans via talking to the user: use the plan tool! The user will be able to accept
-your plan, or give you advice on what to do differently. They can see the output of your plan tool.
-
-YOU SHOULD USE THE PLAN TOOL TO PLAN. Propose plans via the plan tool, not by talking.
-
-If you don't have enough context yet, try exploring the current directory (if you're in an existing
-application) or discussing with the user.${
-  isFirstMessage ? " " + `
-Since this is the first message, you probably need to chat a bit to determine what the user wants
-before actually generating a proposed plan.
-` : ""
-}
-`.trim();
-  }
-
-  return prompt + "\n" + `
-Consider your plan, and the user's discussions with you and the result of your tool calls. Has your
-plan changed, or have you completed parts of it? Is your plan from the plan tool still up-to-date?
-If your plan from the plan tool is no longer up-to-date, you MUST update it before moving on.
-
-If you're considering crossing off an item from the plan, consider checking your work first via:
-- Running tests if they exist
-- Running a compiler, build tool, or static analyzer if any are set up
-- etc
-
-Remember to make your builds and package management reproducible; i.e. npm install --save ... or
---save-dev.
-
-Once you've checked your work, if it's complete, you MUST remove the completed step from your plan
-via the plan tool.
-
-If you're still working, continue working on your plan.
-`.trim();
+  return prompt;
 }
 
 async function toLlmMessages(
@@ -208,8 +117,6 @@ async function toLlmMessages(
 			role: "system",
 			content: await systemPrompt({
         appliedWindow,
-        context: contextSpace,
-        isFirstMessage: messages.length === 1,
       }),
 		},
 	];
@@ -235,6 +142,13 @@ async function toLlmMessages(
     const [ newPrev, transformed ] = toLlmMessage(prev, item);
     if(newPrev) output[output.length - 1] = newPrev;
     if(transformed) output.push(transformed);
+  }
+
+  const context = await contextSpace.toXML();
+  if(context.length > 0) {
+    const lastItem = output[output.length - 1];
+    const contextTag = tagged(CONTEXT_TAG, {}, context);
+    lastItem.content = contextTag + lastItem.content;
   }
 
   return output;
@@ -296,9 +210,6 @@ This is an automated message. The output from the tool was:
 ${item.content}
 You may or may not be done with your original task. If you need to make more edits or call more
 tools, continue doing so. If you're done, or stuck, ask the user for help.
-Consider your plan. Are you done with any steps in your plan? If so, remove them. Or if you need to
-add steps, or change the plan, do so.
-If you have no plan, discuss what to do with the user.
         `.trim())
       }
     ];

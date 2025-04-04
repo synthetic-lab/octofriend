@@ -28,6 +28,8 @@ const RewriteEdit = t.subtype({
   Rewrites the entire file. If you need to rewrite large chunks of the file, or are struggling to
   to make a diff edit work, use this as a last resort. Prefer other edit types unless you are
   struggling (have failed multiple times in a row).
+  This overwrites the ENTIRE file, so make sure to write everything you intend to overwrite: you
+  can't leave anything out by saying e.g. "[The rest of the file stays the same]"
 `);
 
 const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit).or(RewriteEdit);
@@ -57,7 +59,7 @@ export default {
       historyId: call.id,
     });
 
-    return `Successfully edited file ${filePath}`;
+    return `Successfully edited file ${filePath}. The file has been updated in your context space.`;
   },
 } satisfies ToolDef<t.GetType<typeof Schema>> & {
   AllEdits: typeof AllEdits,

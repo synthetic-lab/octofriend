@@ -31,7 +31,7 @@ export default {
         absolutePath,
         historyId: call.id,
       });
-      return `Successfully created file ${filePath}`;
+      return `Successfully created file ${filePath}. The file has been added to your context space.`;
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;

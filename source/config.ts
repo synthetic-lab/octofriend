@@ -16,7 +16,7 @@ export type Config = t.GetType<typeof ConfigSchema>;
 const defaultConfig: Config = {
   baseUrl: "https://api.glhf.chat/v1",
   apiEnvVar: "GLHF_API_KEY",
-  model: "hf:deepseek-ai/DeepSeek-R1",
+  model: "hf:deepseek-ai/DeepSeek-V3-0324",
   context: 64 * 1024,
 };
 

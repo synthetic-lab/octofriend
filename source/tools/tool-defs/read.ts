@@ -24,7 +24,9 @@ export default {
         absolutePath: path.resolve(filePath),
         historyId: call.id,
       });
-      return `Successfully read file ${filePath}`;
+      return `
+Successfully read file ${filePath}. The contents of the file have been placed in your context space.
+      `.trim();
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
