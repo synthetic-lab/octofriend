@@ -178,6 +178,10 @@ If you're considering crossing off an item from the plan, consider checking your
 - Running tests if they exist
 - Running a compiler, build tool, or static analyzer if any are set up
 - etc
+
+Remember to make your builds and package management reproducible; i.e. npm install --save ... or
+--save-dev.
+
 Once you've checked your work, if it's complete, you MUST remove the completed step from your plan
 via the plan tool.
 
