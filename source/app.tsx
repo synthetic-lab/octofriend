@@ -150,6 +150,7 @@ const useAppStore = create<UiState>((set, get) => ({
   _runAgent: async ({ client, config }) => {
     const context = get().context;
     let content = "";
+    let reasoningContent: undefined | string = undefined;
     set({
       modeData: {
         mode: "responding",
@@ -166,14 +167,20 @@ const useAppStore = create<UiState>((set, get) => ({
 
     let history: HistoryItem[];
     try {
-      history = await runAgent(client, config, get().history, context, tokens => {
-        content += tokens;
+      history = await runAgent(client, config, get().history, context, (tokens, type) => {
+        if(type === "content") {
+          content += tokens;
 
-        // Skip duplicate updates
-        if (content === lastContent) return;
-        lastContent = content;
+          // Skip duplicate updates
+          if (content === lastContent) return;
+          lastContent = content;
 
-        if (timeout) return;
+          if (timeout) return;
+        } else {
+          if(reasoningContent == null) reasoningContent = "";
+          reasoningContent += tokens;
+          if(timeout) return;
+        }
 
         // Schedule the UI update
         timeout = setTimeout(() => {
@@ -182,7 +189,7 @@ const useAppStore = create<UiState>((set, get) => ({
               mode: "responding",
               inflightResponse: {
                 type: "assistant",
-                content,
+                content, reasoningContent,
               },
             },
           });
@@ -322,7 +329,7 @@ export default function App({ config, metadata }: Props) {
 
     {
       modeData.mode === "responding" &&
-        modeData.inflightResponse.content &&
+        (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
         <MessageDisplay item={modeData.inflightResponse} />
     }
 
@@ -639,9 +646,9 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
-  let thoughts = null;
+  let thoughts = item.reasoningContent;
   let content = item.content.trim();
-  if(content.includes("<think>")) {
+  if(item.reasoningContent == null && content.includes("<think>")) {
     const splits = item.content.split("</think>");
     thoughts = splits[0].replace("<think>", "").replace("</think>", "").trim();
     content = splits.slice(1).join("").trim();

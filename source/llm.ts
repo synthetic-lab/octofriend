@@ -298,7 +298,7 @@ export async function runAgent(
   config: Config,
   history: HistoryItem[],
   contextSpace: ContextSpace,
-  onTokens: (t: string) => any,
+  onTokens: (t: string, type: "reasoning" | "content") => any,
 ) {
   const processedHistory = applyContextWindow(history, config.context);
   if(processedHistory.appliedWindow) {
@@ -314,13 +314,14 @@ export async function runAgent(
     model: config.model,
     messages,
     stream: true,
-    stop: closeTag(TOOL_RUN_TAG),
+    //stop: [closeTag(TOOL_RUN_TAG)],
     stream_options: {
       include_usage: true,
     },
   });
 
   let content = "";
+  let reasoningContent: undefined | string = undefined;
   let toolContent = "";
   let inToolTag = false;
   let usage = 0;
@@ -339,7 +340,7 @@ export async function runAgent(
       onText: e => {
         if(inToolTag) toolContent += e.content;
         else {
-          onTokens(e.content);
+          onTokens(e.content, "content");
           content += e.content;
         }
       },
@@ -350,9 +351,20 @@ export async function runAgent(
   for await(const chunk of res) {
     if(chunk.usage) usage = chunk.usage.total_tokens;
 
-    if(chunk.choices[0]?.delta.content) {
+    const delta = chunk.choices[0]?.delta as {
+      content: string
+    } | {
+      reasoning_content: string
+    } | null;
+
+    if(delta && "content" in delta && delta.content) {
       const tokens = chunk.choices[0].delta.content || "";
       xmlParser.write(tokens);
+    }
+    else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
+      if(reasoningContent == null) reasoningContent = "";
+      reasoningContent += delta.reasoning_content;
+      onTokens(delta.reasoning_content, "reasoning");
     }
   }
 
@@ -373,7 +385,7 @@ export async function runAgent(
         {
           type: "assistant",
           id: sequenceId(),
-          content,
+          content, reasoningContent,
           tokenUsage: tokenDelta,
         },
         {
@@ -389,7 +401,7 @@ export async function runAgent(
       {
         type: "assistant",
         id: sequenceId(),
-        content,
+        content, reasoningContent,
         tokenUsage: tokenDelta,
       },
       {
@@ -404,7 +416,7 @@ export async function runAgent(
     {
       type: "assistant",
       id: sequenceId(),
-      content,
+      content, reasoningContent,
       tokenUsage: tokenDelta,
     },
   ]);

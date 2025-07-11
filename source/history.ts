@@ -42,6 +42,7 @@ export type FileUnreadableItem = SequenceIdTagged<{
 export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
+  reasoningContent?: string;
   tokenUsage: number; // Delta token usage from previous message
 }>;
 
