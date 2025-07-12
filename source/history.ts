@@ -7,7 +7,8 @@ export type SequenceIdTagged<T> = T & {
 
 export const ToolCallRequestSchema = t.subtype({
 	type: t.value("function"),
-	tool: ToolCallSchema,
+	function: ToolCallSchema,
+  toolCallId: t.str,
 });
 
 export type ToolCallItem = SequenceIdTagged<{
@@ -18,25 +19,30 @@ export type ToolCallItem = SequenceIdTagged<{
 export type ToolOutputItem = SequenceIdTagged<{
 	type: "tool-output",
 	content: string,
+  toolCallId: string,
 }>;
 
 export type ToolErrorItem = SequenceIdTagged<{
   type: "tool-error",
   error: string,
   original: string,
+  toolCallId: string,
 }>;
 
 export type ToolRejectItem = SequenceIdTagged<{
   type: "tool-reject",
+  toolCallId: string,
 }>;
 
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
+  toolCallId: string,
 }>;
 
 export type FileUnreadableItem = SequenceIdTagged<{
   type: "file-unreadable",
   path: string,
+  toolCallId: string,
 }>;
 
 export type AssistantItem = SequenceIdTagged<{

@@ -4,9 +4,8 @@ import TextInput from "ink-text-input";
 import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
 import OpenAI from "openai";
-import { runAgent, TOOL_RUN_TAG } from "./llm.ts";
+import { runAgent } from "./llm.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
-import { tagged } from "./xml.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
@@ -73,7 +72,7 @@ type UiState = {
   context: ContextSpace,
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
-  rejectTool: () => void,
+  rejectTool: (toolCallId: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -100,13 +99,14 @@ const useAppStore = create<UiState>((set, get) => ({
     await get()._runAgent({ client, config });
   },
 
-  rejectTool: () => {
+  rejectTool: (toolCallId) => {
     set({
       history: [
         ...get().history,
         {
           type: "tool-reject",
           id: sequenceId(),
+          toolCallId,
         },
       ],
       modeData: {
@@ -121,13 +121,14 @@ const useAppStore = create<UiState>((set, get) => ({
     try {
       const content = await runTool({
         id: toolReq.id,
-        tool: toolReq.tool.tool,
+        tool: toolReq.tool.function,
       }, context);
 
       const toolHistoryItem: HistoryItem = {
         type: "tool-output",
         id: sequenceId(),
         content,
+        toolCallId: toolReq.tool.toolCallId,
       };
 
       const history: HistoryItem[] = [
@@ -231,7 +232,7 @@ const useAppStore = create<UiState>((set, get) => ({
     }
 
     try {
-      await validateTool(lastHistoryItem.tool.tool);
+      await validateTool(lastHistoryItem.tool.function);
     } catch(e) {
       set({
         modeData: {
@@ -263,7 +264,8 @@ async function tryTransformToolError(
       type: "tool-error",
       id: sequenceId(),
       error: e.message,
-      original: tagged(TOOL_RUN_TAG, {}, JSON.stringify(toolReq.tool)),
+      original: JSON.stringify(toolReq.tool),
+      toolCallId: toolReq.tool.toolCallId,
     };
   }
   if(e instanceof FileOutdatedError) {
@@ -278,12 +280,14 @@ async function tryTransformToolError(
       return {
         type: "file-outdated",
         id: sequenceId(),
+        toolCallId: toolReq.tool.toolCallId,
       };
     } catch {
       return {
         type: "file-unreadable",
         path: e.filePath,
         id: sequenceId(),
+        toolCallId: toolReq.tool.toolCallId,
       };
     }
   }
@@ -441,15 +445,15 @@ function ToolRequestRenderer({ toolReq, client, config }: {
   ];
 
 	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "no") rejectTool();
+    if(item.value === "no") rejectTool(toolReq.tool.toolCallId);
     else await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
 
   useEffect(() => {
-    if(SKIP_CONFIRMATION.includes(toolReq.tool.tool.name)) runTool({ toolReq, config, client });
+    if(SKIP_CONFIRMATION.includes(toolReq.tool.function.name)) runTool({ toolReq, config, client });
   }, [ toolReq ]);
 
-  if(SKIP_CONFIRMATION.includes(toolReq.tool.tool.name)) {
+  if(SKIP_CONFIRMATION.includes(toolReq.tool.function.name)) {
     return <Loading />;
   }
 
@@ -553,12 +557,12 @@ const MessageDisplayInner = React.memo(({ item }: {
 });
 
 function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
-  switch(item.tool.tool.name) {
-    case "read": return <ReadToolRenderer item={item.tool.tool} />
-    case "list": return <ListToolRenderer item={item.tool.tool} />
-    case "bash": return <BashToolRenderer item={item.tool.tool} />
-    case "edit": return <EditToolRenderer item={item.tool.tool} />
-    case "create": return <CreateToolRenderer item={item.tool.tool} />
+  switch(item.tool.function.name) {
+    case "read": return <ReadToolRenderer item={item.tool.function} />
+    case "list": return <ListToolRenderer item={item.tool.function} />
+    case "bash": return <BashToolRenderer item={item.tool.function} />
+    case "edit": return <EditToolRenderer item={item.tool.function} />
+    case "create": return <CreateToolRenderer item={item.tool.function} />
   }
 }
 
@@ -566,23 +570,23 @@ function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
   return <Box flexDirection="column">
     <Box>
       <Text color="gray">{item.name}: </Text>
-      <Text color={THEME_COLOR}>{item.params.cmd}</Text>
+      <Text color={THEME_COLOR}>{item.arguments.cmd}</Text>
     </Box>
-		<Text color="gray">timeout: {item.params.timeout}</Text>
+		<Text color="gray">timeout: {item.arguments.timeout}</Text>
 	</Box>
 }
 
 function ReadToolRenderer({ item }: { item: t.GetType<typeof read.Schema> }) {
   return <Box>
 		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item.params.filePath}</Text>
+		<Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
 	</Box>
 }
 
 function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
   return <Box>
 		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item?.params?.dirPath || process.cwd()}</Text>
+		<Text color={THEME_COLOR}>{item?.arguments?.dirPath || process.cwd()}</Text>
 	</Box>
 }
 
@@ -590,9 +594,9 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
   return <Box flexDirection="column">
     <Box>
       <Text>Edit: </Text>
-      <Text color={THEME_COLOR}>{item.params.filePath}</Text>
+      <Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
     </Box>
-    <EditRenderer item={item.params.edit} />
+    <EditRenderer item={item.arguments.edit} />
   </Box>
 }
 
@@ -631,11 +635,11 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
   return <Box flexDirection="column">
     <Box>
       <Text>Create file: </Text>
-      <Text color={THEME_COLOR}>{item.params.filePath}</Text>
+      <Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
     </Box>
     <Box flexDirection="column">
       <Text>With content:</Text>
-      <Text>{item.params.content}</Text>
+      <Text>{item.arguments.content}</Text>
     </Box>
   </Box>
 }

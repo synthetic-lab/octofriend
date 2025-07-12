@@ -1,8 +1,9 @@
 import OpenAI from "openai";
-import { t, toTypescript } from "structural";
+import { t, toTypescript, toJSONSchema } from "structural";
 import { Config } from "./config.ts";
 import { ALL_TOOLS } from "./tools/index.ts";
-import { StreamingXMLParser, openTag, closeTag, tagged } from "./xml.ts";
+import * as toolMap from "./tools/tool-defs/index.ts";
+import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { ContextSpace } from "./context-space.ts";
 
@@ -14,6 +15,20 @@ export type UserMessage = {
 export type AssistantMessage = {
 	role: "assistant";
 	content: string;
+  tool_calls?: Array<{
+    type: "function",
+    function: {
+      arguments: string,
+      name: string,
+    },
+    id: string,
+  }>
+};
+
+export type ToolMessage = {
+  role: "tool",
+  content: string,
+  tool_call_id: string,
 };
 
 export type SystemPrompt = {
@@ -21,7 +36,17 @@ export type SystemPrompt = {
 	content: string,
 };
 
-export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage;
+export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage | ToolMessage;
+
+const ResponseToolCallSchema = t.subtype({
+  id: t.str,
+  function: t.subtype({
+    name: t.str,
+    arguments: t.str,
+  }),
+});
+
+type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
 export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
@@ -51,35 +76,21 @@ You have access to the following tools, defined as TypeScript types:
 
 ${ALL_TOOLS.map(toolType => toTypescript(toolType)).join("\n\n")}
 
-You can call them by responding with JSON of the following type inside special XML tags:
+You can call them by calling them as tools.
 
-${tagged(TOOL_RUN_TAG, {}, `{"type":"function","tool":SOME_TOOL}`)}
-
-For example:
-
-${tagged(TOOL_RUN_TAG, {}, JSON.stringify({
+${JSON.stringify({
 	type: "function",
-	tool: {
+  id: "SOME_STRING_ID",
+	function: {
 		name: "bash",
-		params: {
+		arguments: JSON.stringify({
 			cmd: "curl \"https://github.com/reissbaker/antipattern\"",
       timeout: 10000,
-		},
+		} satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
 	},
-} satisfies t.GetType<typeof ToolCallRequestSchema>))}
-
-# Only use the tags if you mean to call a function or edit a file
-
-Never output the ${openTag(TOOL_RUN_TAG)} unless you intend to call a tool. If you just intend to
-talk about the tag, write it in ALL-CAPS: ${openTag(TOOL_RUN_TAG).toUpperCase()}. The lowercase tags
-will be parsed out of your response by an automated system; it assume any use of the tag is an
-attempt to call a tool.
-
-# No backticks
-
-Your tool calls should be the last thing in your response, if you have any tool calls.
-Don't wrap them in backticks Markdown-style, just write the raw tags out. Do not use backticks at
-all! If you use backticks you're making a mistake.
+} satisfies ResponseToolCall & {
+  type: "function",
+})}
 
 # No questions
 
@@ -173,16 +184,32 @@ function toLlmMessage(
       return [
         {
           role: "assistant",
-          content: prev.content + "\n" + tagged(TOOL_RUN_TAG, {}, JSON.stringify(item.tool)),
+          content: prev.content,
+          tool_calls: [{
+            type: "function",
+            id: item.tool.toolCallId,
+            function: {
+              name: item.tool.function.name,
+              arguments: item.tool.function.arguments ? JSON.stringify(item.tool.function.arguments) : "{}",
+            },
+          }],
         },
         null,
-      ];
+      ]
     }
     return [
       prev,
       {
         role: "assistant",
-        content: tagged(TOOL_RUN_TAG, {}, JSON.stringify(item.tool)),
+        content: "",
+        tool_calls: [{
+          type: "function",
+          id: item.tool.toolCallId,
+          function: {
+            name: item.tool.function.name,
+            arguments: item.tool.function.arguments ? JSON.stringify(item.tool.function.arguments) : "{}",
+          },
+        }],
       },
     ];
   }
@@ -191,8 +218,9 @@ function toLlmMessage(
     if(prev && prev.role === "user") {
       return [
         {
-          role: "user",
+          role: "tool",
           content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user.") + "\n" + prev.content,
+          tool_call_id: item.toolCallId,
         },
         null,
       ];
@@ -204,7 +232,8 @@ function toLlmMessage(
     return [
       prev,
       {
-        role: "user",
+        role: "tool",
+        tool_call_id: item.toolCallId,
         content: tagged(TOOL_RESPONSE_TAG, {}, `
 This is an automated message. The output from the tool was:
 ${item.content}
@@ -219,7 +248,8 @@ tools, continue doing so. If you're done, or stuck, ask the user for help.
     return [
       prev,
       {
-        role: "user",
+        role: "tool",
+        tool_call_id: item.toolCallId,
         content: `
 ${tagged(TOOL_ERROR_TAG, {}, "File could not be updated because it was modified after being last read")}
 The latest version of the file has been automatically re-read and placed in your context space.
@@ -234,10 +264,12 @@ Please try again.
       return [
         {
           role: "assistant",
-          content: prev.content + "\n" + item.original,
+          content: prev.content,
+          tool_calls: [ JSON.parse(item.original) ],
         },
         {
-          role: "user",
+          role: "tool",
+          tool_call_id: item.toolCallId,
           content: tagged(TOOL_ERROR_TAG, {}, item.error),
         }
       ];
@@ -263,7 +295,8 @@ Please try again.
     return [
       prev,
       {
-        role: "user",
+        role: "tool",
+        tool_call_id: item.toolCallId,
         content: tagged(TOOL_ERROR_TAG, {}, `
 File ${item.path} could not be read. Has it been deleted?
         `.trim()),
@@ -314,7 +347,25 @@ export async function runAgent(
     model: config.model,
     messages,
     stream: true,
-    //stop: [closeTag(TOOL_RUN_TAG)],
+    parallel_tool_calls: false,
+    tools: Object.entries(toolMap).map(([ name, tool ]) => {
+      const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
+      // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
+      // @ts-ignore
+      delete argJsonSchema.$schema;
+      delete argJsonSchema.description;
+      // @ts-ignore
+      delete argJsonSchema.title;
+
+      return {
+        type: "function",
+        function: {
+          name: name,
+          description: `The ${name} tool`,
+          parameters: argJsonSchema,
+        },
+      };
+    }),
     stream_options: {
       include_usage: true,
     },
@@ -326,8 +377,9 @@ export async function runAgent(
   let inToolTag = false;
   let usage = 0;
 
+  // TODO: parse <think> tags (configurable what the tag is)
   const xmlParser = new StreamingXMLParser({
-    whitelist: [ TOOL_RUN_TAG ],
+    whitelist: [ ],
     handlers: {
       onOpenTag: () => {
         inToolTag = true;
@@ -348,13 +400,19 @@ export async function runAgent(
   });
 
 
+  let currTool: Partial<ResponseToolCall> | null = null;
+  let doneParsingTools = false;
+
   for await(const chunk of res) {
+    if(doneParsingTools) break;
     if(chunk.usage) usage = chunk.usage.total_tokens;
 
     const delta = chunk.choices[0]?.delta as {
       content: string
     } | {
       reasoning_content: string
+    } | {
+      tool_calls: Array<ResponseToolCall>
     } | null;
 
     if(delta && "content" in delta && delta.content) {
@@ -366,6 +424,27 @@ export async function runAgent(
       reasoningContent += delta.reasoning_content;
       onTokens(delta.reasoning_content, "reasoning");
     }
+    else if(delta && "tool_calls" in delta && delta.tool_calls.length > 0) {
+      for(const deltaCall of delta.tool_calls) {
+        if(currTool == null) {
+          currTool = {
+            id: deltaCall.id,
+            function: {
+              name: deltaCall.function.name || "",
+              arguments: deltaCall.function.arguments || "",
+            },
+          };
+        }
+        else {
+          if(deltaCall.id && deltaCall.id !== currTool.id) {
+            doneParsingTools = true;
+            break;
+          }
+          if(deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
+          if(deltaCall.function.arguments) currTool.function!.arguments += deltaCall.function.arguments;
+        }
+      }
+    }
   }
 
   // Make sure to close the parser to flush any remaining data
@@ -375,10 +454,11 @@ export async function runAgent(
   const tokenDelta = usage - totalTokens;
   totalTokens = usage;
 
-  // Check if we found a tool tag
-  if (toolContent) {
-    const original = `${tagged(TOOL_RUN_TAG, {}, toolContent)}`;
-    const parseResult = parseTool(original);
+  // Check if we found a tool call
+  if (currTool) {
+    // Validate with structural
+    const validatedTool = ResponseToolCallSchema.slice(currTool);
+    const parseResult = parseTool(validatedTool);
 
     if(parseResult.status === "error") {
       return history.concat([
@@ -392,7 +472,8 @@ export async function runAgent(
           type: "tool-error",
           id: sequenceId(),
           error: parseResult.message,
-          original,
+          original: JSON.stringify(currTool),
+          toolCallId: validatedTool.id,
         },
       ]);
     }
@@ -463,22 +544,26 @@ function applyContextWindow(history: HistoryItem[], context: number): {
 
 type ParseToolResult = {
   status: "success";
-  tool: t.GetType<typeof ToolCallRequestSchema>
+  tool: t.GetType<typeof ToolCallRequestSchema>,
 } | {
   status: "error";
   message: string
 };
 
-function parseTool(tag: string): ParseToolResult {
-  const content = tag.replace(openTag(TOOL_RUN_TAG), "").replace(closeTag(TOOL_RUN_TAG), "").trim();
-
-  if(!content) return { status: "error", message: "Empty tool call" };
-
+function parseTool(toolCall: ResponseToolCall): ParseToolResult {
   try {
-    const json = JSON.parse(content);
-    const tool = ToolCallRequestSchema.slice(json);
-    return { status: "success", tool };
+    const parsed = ToolCallRequestSchema.slice({
+      type: "function",
+      function: {
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
+      },
+      toolCallId: toolCall.id,
+    });
+    return { status: "success", tool: parsed };
   } catch (e: unknown) {
+    console.error(e);
+    console.error(toolCall);
     const error = e instanceof Error ? e.message : "Invalid JSON in tool call";
     return {
       status: "error",

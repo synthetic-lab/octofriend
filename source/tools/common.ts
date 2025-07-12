@@ -31,6 +31,7 @@ export async function attemptUntrackedRead(path: string) {
 }
 
 export type ToolDef<T> = {
+  ArgumentsSchema: t.Type<any>,
   Schema: t.Type<T>,
   validate: (t: T) => Promise<null>,
   run: (t: SequenceIdTagged<{ tool: T }>, c: ContextSpace) => Promise<string>,

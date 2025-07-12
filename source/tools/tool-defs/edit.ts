@@ -34,18 +34,20 @@ const RewriteEdit = t.subtype({
 
 const AllEdits = DiffEdit.or(AppendEdit).or(PrependEdit).or(RewriteEdit);
 
+const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  edit: AllEdits,
+});
+
 const Schema = t.subtype({
   name: t.value("edit"),
-  params: t.subtype({
-    filePath: t.str.comment("The path to the file"),
-    edit: AllEdits,
-  }),
+  arguments: ArgumentsSchema,
 });
 
 export default {
-  Schema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
+  Schema, ArgumentsSchema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
   async run(call, context) {
-    const { filePath, edit } = call.tool.params;
+    const { filePath, edit } = call.tool.arguments;
     await fileTracker.assertCanEdit(filePath);
 
     const file = await attemptUntrackedRead(filePath);
@@ -70,14 +72,14 @@ export default {
 };
 
 async function validate(toolCall: t.GetType<typeof Schema>) {
-  await fileTracker.assertCanEdit(toolCall.params.filePath);
-  const file = await attemptUntrackedRead(toolCall.params.filePath);
-  switch(toolCall.params.edit.type) {
+  await fileTracker.assertCanEdit(toolCall.arguments.filePath);
+  const file = await attemptUntrackedRead(toolCall.arguments.filePath);
+  switch(toolCall.arguments.edit.type) {
     case "append": return null;
     case "prepend": return null;
     case "rewrite-whole": return null;
     case "diff":
-      return validateDiff({ file, diff: toolCall.params.edit, path: toolCall.params.filePath });
+      return validateDiff({ file, diff: toolCall.arguments.edit, path: toolCall.arguments.filePath });
   }
 }
 

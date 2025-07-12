@@ -2,12 +2,14 @@ import { t } from "structural";
 import { spawn } from "child_process";
 import { ToolError, ToolDef } from "../common.ts";
 
+const ArgumentsSchema = t.subtype({
+  cmd: t.str.comment("The command to run"),
+  timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous."),
+});
+
 const Schema = t.subtype({
 	name: t.value("bash"),
-	params: t.subtype({
-		cmd: t.str.comment("The command to run"),
-    timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous."),
-	}),
+	arguments: ArgumentsSchema,
 }).comment(`
   Runs a bash command in the cwd. The bash command is run as a subshell, not connected to a PTY, so
   don't run interactive commands: only run commands that will work headless.
@@ -20,10 +22,10 @@ const Schema = t.subtype({
 `);
 
 export default {
-  Schema,
+  Schema, ArgumentsSchema,
   validate: async () => null,
   async run(call) {
-    const { cmd, timeout } = call.tool.params;
+    const { cmd, timeout } = call.tool.arguments;
     return new Promise<string>((resolve, reject) => {
       const child = spawn(cmd, {
         cwd: process.cwd(),

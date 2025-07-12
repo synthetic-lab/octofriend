@@ -14,9 +14,9 @@ const PartialConfig = t.partial(ConfigSchema);
 export type Config = t.GetType<typeof ConfigSchema>;
 
 const defaultConfig: Config = {
-  baseUrl: "https://api.glhf.chat/v1",
-  apiEnvVar: "GLHF_API_KEY",
-  model: "hf:deepseek-ai/DeepSeek-R1-0528",
+  baseUrl: "https://api.moonshot.ai/v1",
+  apiEnvVar: "MOONSHOT_API_KEY",
+  model: "kimi-k2-0711-preview",
   context: 64 * 1024,
 };
 
