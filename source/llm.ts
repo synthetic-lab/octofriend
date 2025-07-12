@@ -376,6 +376,7 @@ export async function runAgent(
     stream_options: {
       include_usage: true,
     },
+    max_completion_tokens: config.context,
   });
 
   let content = "";
