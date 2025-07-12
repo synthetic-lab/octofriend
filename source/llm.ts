@@ -264,8 +264,15 @@ Please try again.
       return [
         {
           role: "assistant",
-          content: prev.content,
-          tool_calls: [ JSON.parse(item.original) ],
+          content: prev.content || "",
+          tool_calls: [{
+            type: "function",
+            id: item.original.id || "unknown",
+            function: {
+              name: item.original.function?.name || "unknown",
+              arguments: item.original.function?.arguments || "{}",
+            },
+          }],
         },
         {
           role: "tool",
@@ -473,7 +480,7 @@ export async function runAgent(
           type: "tool-error",
           id: sequenceId(),
           error: validatedTool.message,
-          original: JSON.stringify(currTool),
+          original: currTool,
           toolCallId,
         },
       ]);
@@ -488,7 +495,7 @@ export async function runAgent(
           type: "tool-error",
           id: sequenceId(),
           error: parseResult.message,
-          original: JSON.stringify(currTool),
+          original: currTool,
           toolCallId: validatedTool.id,
         },
       ]);

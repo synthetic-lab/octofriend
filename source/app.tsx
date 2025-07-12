@@ -264,7 +264,14 @@ async function tryTransformToolError(
       type: "tool-error",
       id: sequenceId(),
       error: e.message,
-      original: JSON.stringify(toolReq.tool),
+      original: {
+        id: toolReq.tool.toolCallId,
+        function: {
+          name: toolReq.tool.function.name,
+          arguments: toolReq.tool.function.arguments ?
+            JSON.stringify(toolReq.tool.function.arguments) : "{}"
+        },
+      },
       toolCallId: toolReq.tool.toolCallId,
     };
   }

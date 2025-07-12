@@ -25,7 +25,13 @@ export type ToolOutputItem = SequenceIdTagged<{
 export type ToolErrorItem = SequenceIdTagged<{
   type: "tool-error",
   error: string,
-  original: string,
+  original: Partial<{
+    id: string,
+    function: {
+      name: string,
+      arguments: string,
+    },
+  }>,
   toolCallId: string,
 }>;
 
