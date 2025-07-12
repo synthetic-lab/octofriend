@@ -454,20 +454,36 @@ export async function runAgent(
   const tokenDelta = usage - totalTokens;
   totalTokens = usage;
 
+  const assistantHistoryItem = {
+    type: "assistant" as const,
+    id: sequenceId(),
+    content, reasoningContent,
+    tokenUsage: tokenDelta,
+  };
+
   // Check if we found a tool call
   if (currTool) {
-    // Validate with structural
-    const validatedTool = ResponseToolCallSchema.slice(currTool);
+    const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
+    if(validatedTool instanceof t.Err) {
+      const toolCallId = currTool["id"];
+      if(toolCallId == null) throw new Error("Impossible tool call: no id given");
+      return history.concat([
+        assistantHistoryItem,
+        {
+          type: "tool-error",
+          id: sequenceId(),
+          error: validatedTool.message,
+          original: JSON.stringify(currTool),
+          toolCallId,
+        },
+      ]);
+    }
+
     const parseResult = parseTool(validatedTool);
 
     if(parseResult.status === "error") {
       return history.concat([
-        {
-          type: "assistant",
-          id: sequenceId(),
-          content, reasoningContent,
-          tokenUsage: tokenDelta,
-        },
+        assistantHistoryItem,
         {
           type: "tool-error",
           id: sequenceId(),
@@ -479,12 +495,7 @@ export async function runAgent(
     }
 
     return history.concat([
-      {
-        type: "assistant",
-        id: sequenceId(),
-        content, reasoningContent,
-        tokenUsage: tokenDelta,
-      },
+      assistantHistoryItem,
       {
         type: "tool",
         id: sequenceId(),
@@ -493,14 +504,7 @@ export async function runAgent(
     ]);
   }
 
-  return history.concat([
-    {
-      type: "assistant",
-      id: sequenceId(),
-      content, reasoningContent,
-      tokenUsage: tokenDelta,
-    },
-  ]);
+  return history.concat([ assistantHistoryItem ]);
 }
 
 // Apply sliding window to keep context under token limit
