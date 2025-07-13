@@ -2,6 +2,7 @@ import { t } from "structural";
 import * as fs from "fs/promises";
 import { ContextSpace } from "../context-space.ts";
 import { SequenceIdTagged } from "../history.ts";
+import { Config } from "../config.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -33,6 +34,6 @@ export async function attemptUntrackedRead(path: string) {
 export type ToolDef<T> = {
   ArgumentsSchema: t.Type<any>,
   Schema: t.Type<T>,
-  validate: (t: T) => Promise<null>,
-  run: (t: SequenceIdTagged<{ tool: T }>, c: ContextSpace) => Promise<string>,
+  validate: (t: T, cfg: Config) => Promise<null>,
+  run: (t: SequenceIdTagged<{ tool: T }>, c: ContextSpace, cfg: Config) => Promise<string>,
 };

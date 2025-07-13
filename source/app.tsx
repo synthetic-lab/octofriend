@@ -123,7 +123,7 @@ const useAppStore = create<UiState>((set, get) => ({
       const content = await runTool({
         id: toolReq.id,
         tool: toolReq.tool.function,
-      }, context);
+      }, context, config);
 
       const toolHistoryItem: HistoryItem = {
         type: "tool-output",
@@ -233,7 +233,7 @@ const useAppStore = create<UiState>((set, get) => ({
     }
 
     try {
-      await validateTool(lastHistoryItem.tool.function);
+      await validateTool(lastHistoryItem.tool.function, config);
     } catch(e) {
       set({
         modeData: {

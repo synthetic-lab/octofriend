@@ -2,7 +2,7 @@ import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ToolError, ToolDef } from "../common.ts";
-import { readConfig } from "../../config.ts";
+import { Config } from "../../config.ts";
 
 const ArgumentsSchema = t.subtype({
   server: t.str.comment("Name of the MCP server to use"),
@@ -24,13 +24,12 @@ const Schema = t.subtype({
 // Cache for MCP clients to avoid reconnecting
 const clientCache = new Map<string, Client>();
 
-export async function getMcpClient(serverName: string): Promise<Client> {
+export async function getMcpClient(serverName: string, config: Config): Promise<Client> {
   // Check cache first
   if (clientCache.has(serverName)) {
     return clientCache.get(serverName)!;
   }
 
-  const config = await readConfig();
   const serverConfig = config.mcpServers?.[serverName];
 
   if (!serverConfig) {
@@ -57,11 +56,11 @@ export default {
   Schema,
   ArgumentsSchema,
   validate: async () => null,
-  async run(call) {
+  async run(call, _, config) {
     const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.tool.arguments;
 
     try {
-      const client = await getMcpClient(serverName);
+      const client = await getMcpClient(serverName, config);
 
       // List available tools to check if the requested tool exists
       const tools = await client.listTools();
