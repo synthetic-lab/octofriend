@@ -1,6 +1,6 @@
 {
 	"name": "octofriend",
-	"version": "0.0.3",
+	"version": "0.0.4",
 	"license": "MIT",
 	"bin": "dist/cli.js",
 	"type": "module",
@@ -20,7 +20,9 @@
 		"tsconfig.json"
 	],
 	"dependencies": {
+		"@commander-js/extra-typings": "^13.1.0",
 		"@modelcontextprotocol/sdk": "^1.0.1",
+		"chalk": "^5.4.1",
 		"commander": "^13.1.0",
 		"figlet": "^1.8.0",
 		"figures": "^6.1.0",
@@ -35,11 +37,9 @@
 		"zustand": "^5.0.3"
 	},
 	"devDependencies": {
-		"@commander-js/extra-typings": "^13.1.0",
 		"@types/figlet": "^1.7.0",
 		"@types/node": "^22.13.13",
 		"@types/react": "^18.0.32",
-		"chalk": "^5.4.1",
 		"ink-testing-library": "^3.0.0",
 		"typescript": "^5.8.3"
 	}
