@@ -4,19 +4,26 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
+const McpServerConfigSchema = t.subtype({
+  command: t.str,
+  args: t.optional(t.array(t.str)),
+  env: t.optional(t.dict(t.str)),
+});
+
 const ConfigSchema = t.subtype({
   baseUrl: t.str,
   apiEnvVar: t.str,
   model: t.str,
   context: t.num,
+  mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
 const PartialConfig = t.partial(ConfigSchema);
 export type Config = t.GetType<typeof ConfigSchema>;
 
 const defaultConfig: Config = {
-  baseUrl: "https://api.moonshot.ai/v1",
-  apiEnvVar: "MOONSHOT_API_KEY",
-  model: "kimi-k2-0711-preview",
+  baseUrl: "https://api.x.ai/v1",
+  apiEnvVar: "GROK_API_KEY",
+  model: "grok-4-latest",
   context: 64 * 1024,
 };
 

@@ -20,6 +20,7 @@
 		"tsconfig.json"
 	],
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.0.1",
 		"commander": "^13.1.0",
 		"figlet": "^1.8.0",
 		"figures": "^6.1.0",
@@ -39,6 +40,6 @@
 		"@types/react": "^18.0.32",
 		"chalk": "^5.2.0",
 		"ink-testing-library": "^3.0.0",
-		"typescript": "^5.0.3"
+		"typescript": "^5.8.3"
 	}
 }

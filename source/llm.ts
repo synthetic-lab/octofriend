@@ -1,20 +1,20 @@
+import { getMcpClient } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { t, toTypescript, toJSONSchema } from "structural";
 import { Config } from "./config.ts";
-import { ALL_TOOLS } from "./tools/index.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { ContextSpace } from "./context-space.ts";
 
 export type UserMessage = {
-	role: "user";
-	content: string;
+  role: "user";
+  content: string;
 };
 
 export type AssistantMessage = {
-	role: "assistant";
-	content: string;
+  role: "assistant";
+  content: string;
   tool_calls?: Array<{
     type: "function",
     function: {
@@ -32,8 +32,8 @@ export type ToolMessage = {
 };
 
 export type SystemPrompt = {
-	role: "system",
-	content: string,
+  role: "system",
+  content: string,
 };
 
 export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage | ToolMessage;
@@ -53,8 +53,9 @@ const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
 const CONTEXT_TAG = "context";
 
-async function systemPrompt({ appliedWindow }: {
+async function systemPrompt({ appliedWindow, config }: {
   appliedWindow: boolean,
+  config: Config,
 }) {
   const prompt = `
 You are a coding assistant called Octo. You are the user's friend. You can help them with coding
@@ -74,20 +75,28 @@ The current working directory is: ${process.cwd()}
 
 You have access to the following tools, defined as TypeScript types:
 
-${ALL_TOOLS.map(toolType => toTypescript(toolType)).join("\n\n")}
+${
+  Object.entries(toolMap).filter(([toolName, _]) => {
+    if(config.mcpServers) return true;
+    if(toolName !== "mcp") return true;
+    return false;
+  }).map(([_, tool]) => {
+    return toTypescript(tool.Schema);
+  }).join("\n\n")
+}
 
 You can call them by calling them as tools.
 
 ${JSON.stringify({
-	type: "function",
+  type: "function",
   id: "SOME_STRING_ID",
-	function: {
-		name: "bash",
-		arguments: JSON.stringify({
-			cmd: "curl \"https://github.com/reissbaker/antipattern\"",
+  function: {
+    name: "bash",
+    arguments: JSON.stringify({
+      cmd: "curl \"https://github.com/reissbaker/antipattern\"",
       timeout: 10000,
-		} satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
-	},
+    } satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
+  },
 } satisfies ResponseToolCall & {
   type: "function",
 })}
@@ -115,22 +124,46 @@ to run more tools or edits in a step-by-step process.
 ${appliedWindow ?
 "\nSome messages were elided due to context windowing." : ""}
 `.trim();
-  return prompt;
+  if (!config.mcpServers) return prompt;
+
+  const mcpSections = [];
+
+  for (const [serverName, _] of Object.entries(config.mcpServers)) {
+    const client = await getMcpClient(serverName);
+    const listed = await client.listTools();
+    const tools = listed.tools.map((t: {name: string, description?: string}) => ({name: t.name, description: t.description}));
+    const toolStrings = tools.map((t: {name: string, description?: string}) => `- ${t.name}${t.description ? `: ${t.description}` : ''}`).join('\n');
+    mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
+  }
+
+  const mcpPrompt = `
+
+# MCP Tools
+
+You have access to the following MCP servers and their tools. Use the mcp tool to call them, specifying the server and tool name:
+
+${mcpSections.join('\n\n')}
+
+`.trim();
+
+  return `${prompt}\n\n${mcpPrompt}`;
 }
 
 async function toLlmMessages(
   messages: HistoryItem[],
   appliedWindow: boolean,
   contextSpace: ContextSpace,
+  config: Config,
 ): Promise<Array<LlmMessage>> {
-	const output: LlmMessage[] = [
-		{
-			role: "system",
-			content: await systemPrompt({
+  const output: LlmMessage[] = [
+    {
+      role: "system",
+      content: await systemPrompt({
         appliedWindow,
+        config,
       }),
-		},
-	];
+    },
+  ];
 
   // First pass: reorder tool rejections to come after user messages, so we don't need lookahead
   const reorderedHistory = [];
@@ -234,12 +267,7 @@ function toLlmMessage(
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: tagged(TOOL_RESPONSE_TAG, {}, `
-This is an automated message. The output from the tool was:
-${item.content}
-You may or may not be done with your original task. If you need to make more edits or call more
-tools, continue doing so. If you're done, or stuck, ask the user for help.
-        `.trim())
+        content: tagged(TOOL_RESPONSE_TAG, {}, `\nThis is an automated message. The output from the tool was:\n${item.content}\nYou may or may not be done with your original task. If you need to make more edits or call more\ntools, continue doing so. If you're done, or stuck, ask the user for help.\n        `.trim())
       }
     ];
   }
@@ -250,11 +278,7 @@ tools, continue doing so. If you're done, or stuck, ask the user for help.
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: `
-${tagged(TOOL_ERROR_TAG, {}, "File could not be updated because it was modified after being last read")}
-The latest version of the file has been automatically re-read and placed in your context space.
-Please try again.
-        `.trim(),
+        content: `\n${tagged(TOOL_ERROR_TAG, {}, "File could not be updated because it was modified after being last read")}\nThe latest version of the file has been automatically re-read and placed in your context space.\nPlease try again.\n        `.trim(),
       }
     ];
   }
@@ -304,9 +328,7 @@ Please try again.
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: tagged(TOOL_ERROR_TAG, {}, `
-File ${item.path} could not be read. Has it been deleted?
-        `.trim()),
+        content: tagged(TOOL_ERROR_TAG, {}, `\nFile ${item.path} could not be read. Has it been deleted?\n        `.trim()),
       },
     ]
   }
@@ -349,7 +371,9 @@ export async function runAgent(
     processedHistory.history,
     processedHistory.appliedWindow,
     contextSpace,
+    config
   );
+
   const res = await client.chat.completions.create({
     model: config.model,
     messages,
@@ -366,6 +390,7 @@ export async function runAgent(
 
       return {
         type: "function",
+        strict: true,
         function: {
           name: name,
           description: `The ${name} tool`,
@@ -487,7 +512,7 @@ export async function runAgent(
       ]);
     }
 
-    const parseResult = parseTool(validatedTool);
+    const parseResult = parseTool(validatedTool, config);
 
     if(parseResult.status === "error") {
       return history.concat([
@@ -562,17 +587,55 @@ type ParseToolResult = {
   message: string
 };
 
-function parseTool(toolCall: ResponseToolCall): ParseToolResult {
+const TOOL_NAMES = new Set(Object.keys(toolMap));
+function hasMcp(config: Config) {
+  if(config.mcpServers == null) return false;
+  if(Object.keys(config.mcpServers).length === 0) return false;
+  return true;
+}
+
+function isValidToolName(name: string, config: Config): name is ((keyof typeof toolMap) & string) {
+  if(!hasMcp(config) && name === "mcp") return false;
+  return TOOL_NAMES.has(name);
+}
+
+function validToolNames(config: Config) {
+  return Object.keys(toolMap).filter(t => {
+    if(hasMcp(config)) return true;
+    return t !== "mcp";
+  });
+}
+
+function parseTool(toolCall: ResponseToolCall, config: Config): ParseToolResult {
+  const name = toolCall.function.name;
+  if(!isValidToolName(name, config)) {
+    return {
+      status: "error",
+      message: `
+Unknown tool ${name}. The only valid tool names are:
+
+- ${validToolNames(config).join("\n- ")}
+
+Please try calling a valid tool.
+      `.trim(),
+    };
+  }
+
+  const toolSchema = toolMap[name].Schema;
   try {
-    const parsed = ToolCallRequestSchema.slice({
-      type: "function",
-      function: {
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
-      },
-      toolCallId: toolCall.id,
+    const parsed = toolSchema.slice({
+      name: toolCall.function.name,
+      arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
     });
-    return { status: "success", tool: parsed };
+
+    return {
+      status: "success",
+      tool: {
+        type: "function",
+        function: parsed,
+        toolCallId: toolCall.id,
+      },
+    };
   } catch (e: unknown) {
     console.error(e);
     console.error(toolCall);

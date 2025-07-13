@@ -18,6 +18,7 @@ import {
   list,
   edit,
   create as createTool,
+  mcp,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { create } from "zustand";
@@ -570,6 +571,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
     case "bash": return <BashToolRenderer item={item.tool.function} />
     case "edit": return <EditToolRenderer item={item.tool.function} />
     case "create": return <CreateToolRenderer item={item.tool.function} />
+    case "mcp": return <McpToolRenderer item={item.tool.function} />
   }
 }
 
@@ -648,6 +650,16 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
       <Text>With content:</Text>
       <Text>{item.arguments.content}</Text>
     </Box>
+  </Box>
+}
+
+function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
+  return <Box flexDirection="column">
+    <Box>
+      <Text color="gray">{item.name}: </Text>
+      <Text color={THEME_COLOR}>Server: {item.arguments.server}, Tool: {item.arguments.tool}</Text>
+    </Box>
+    <Text color="gray">Arguments: {JSON.stringify(item.arguments.arguments)}</Text>
   </Box>
 }
 
