@@ -60,6 +60,17 @@ export async function getMcpClient(serverName: string, config: Config): Promise<
     return clientCache.get(serverName)!;
   }
 
+  const client = await connectMcpServer(serverName, config);
+  clientCache.set(serverName, client);
+
+  return client;
+}
+
+export async function connectMcpServer(
+  serverName: string,
+  config: Config,
+  log: boolean = false
+): Promise<Client> {
   const serverConfig = config.mcpServers?.[serverName];
 
   if (!serverConfig) {
@@ -74,11 +85,10 @@ export async function getMcpClient(serverName: string, config: Config): Promise<
   const transport = new StdioClientTransport({
     command: serverConfig.command,
     args: serverConfig.args || [],
-    env: serverConfig.env || {},
+    stderr: log ? "inherit" : "ignore",
   });
 
   await client.connect(transport);
-  clientCache.set(serverName, client);
   return client;
 }
 
@@ -109,9 +119,10 @@ export default {
         arguments: toolArgs,
       }) as MCPResult;
 
-      // Check content size limits (20KB max for embedded data)
-      const MAX_SIZE = 20 * 1024; // 20KB in bytes
-      
+      // Worst case, the response sizes will be one token per byte. Cap responses to the context
+      // length
+      const MAX_SIZE = config.context;
+
       for (const content of result.content) {
         if (content.type === 'text' && content.text.length > MAX_SIZE) {
           throw new ToolError(

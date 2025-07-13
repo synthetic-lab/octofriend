@@ -11,13 +11,12 @@ import { THEME_COLOR } from "./theme.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
-const McpServerConfigSchema = t.subtype({
+const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
-  env: t.optional(t.dict(t.str)),
 });
 
-const ConfigSchema = t.subtype({
+const ConfigSchema = t.exact({
   yourName: t.str,
   baseUrl: t.str,
   apiEnvVar: t.str,
@@ -112,7 +111,7 @@ Format the number in k: for example, ` + themeStyle("32k") + " or " + themeStyle
 
   const dir = path.dirname(configPath);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(configPath, json5.stringify(config));
+  await fs.writeFile(configPath, json5.stringify(config, null, 2));
   console.log("\nYou're all set up!\n");
   return config;
 }
