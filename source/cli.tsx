@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import React from "react";
-import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
+import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
 import { readConfig, readMetadata, initConfig } from "./config.ts";
 import { totalTokensUsed } from "./llm.ts";
@@ -49,15 +49,6 @@ async function loadConfig(configPath?: string) {
     return await readConfig(jsonFile);
   }
   return await initConfig(json5File);
-}
-
-async function fileExists(path: string) {
-  try {
-    await fs.stat(path);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 cli.parse();

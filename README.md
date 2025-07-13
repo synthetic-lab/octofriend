@@ -27,6 +27,27 @@ $ npm install --global octofriend
 octofriend
 ```
 
+## Rules
+
+Octo will look for instruction files named like so:
+
+- `OCTO.md`
+- `CLAUDE.md`
+- `AGENTS.md`
+
+Octo uses the *first* one of those it finds: so if you want to have different
+instructions for Octo than for Claude, just have an `OCTO.md` and a
+`CLAUDE.md`, and Octo will ignore your `CLAUDE.md`.
+
+Octo will search the current directory for rules, and every parent directory,
+up until (inclusive of) your home directory. All rule files will be merged: so
+if you want project-specific rules as well as general rules to apply
+everywhere, you can add an `OCTO.md` to your project, as well as a global
+`OCTO.md` in your home directory.
+
+If you don't want to clutter your home directory, you can also add a global
+rules file in `~/.config/octofriend/OCTO.md`;
+
 ## Connecting Octo to MCP servers
 
 Although Octo can do a lot out of the box — pretty much anything is possible
