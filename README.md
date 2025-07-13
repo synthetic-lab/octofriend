@@ -15,6 +15,11 @@ Octo tries to be a complete product: unlike some other open-source tools, we
 iterate on context engineering strategies in addition to UI, in an attempt to
 squeeze the best performance out of coding LLMs.
 
+Octo has helped write some of its own source code, but we're human-first: Octo
+is meant to be a friendly little helper rather than a completely hands-free
+author, and that's how we use it. We don't blindly commit LLM-generated code,
+and typically iterate extensively with any code Octo writes.
+
 # Install Octo
 ```bash
 $ npm install --global octofriend
