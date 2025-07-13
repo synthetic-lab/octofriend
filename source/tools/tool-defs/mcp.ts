@@ -109,15 +109,48 @@ export default {
         arguments: toolArgs,
       }) as MCPResult;
 
+      // Check content size limits (20KB max for embedded data)
+      const MAX_SIZE = 20 * 1024; // 20KB in bytes
+      
+      for (const content of result.content) {
+        if (content.type === 'text' && content.text.length > MAX_SIZE) {
+          throw new ToolError(
+            `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`
+          );
+        }
+        if (content.type === 'resource') {
+          if ('text' in content.resource && content.resource.text.length > MAX_SIZE) {
+            throw new ToolError(
+              `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`
+            );
+          }
+        }
+      }
+
       // Format the result
       let output = '';
       for (const content of result.content) {
         if (content.type === 'text') {
           output += content.text + '\n';
         } else if (content.type === 'image') {
-          output += `[Image: ${content.mimeType}]\n`;
+          output += `[Image: ${content.mimeType}, ${content.data.length} bytes]\n`;
+        } else if (content.type === 'audio') {
+          output += `[Audio: ${content.mimeType}, ${content.data.length} bytes]\n`;
+        } else if (content.type === 'resource_link') {
+          output += `[Resource Link: ${content.uri}`;
+          if (content.mimeType) {
+            output += ` (${content.mimeType})`;
+          }
+          output += `]\n`;
         } else if (content.type === 'resource') {
-          output += `[Resource: ${content.resource.uri}]\n`;
+          const resource = content.resource;
+          if ('text' in resource) {
+            output += `[Resource: ${resource.uri}]\n${resource.text}\n`;
+          } else {
+            // blob variant
+            output += `[Resource: ${resource.uri} (${resource.mimeType || 'application/octet-stream'})]\n`;
+            output += `[Binary data: ${resource.blob.length} bytes]\n`;
+          }
         }
       }
 
