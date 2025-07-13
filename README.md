@@ -46,12 +46,12 @@ everywhere, you can add an `OCTO.md` to your project, as well as a global
 `OCTO.md` in your home directory.
 
 If you don't want to clutter your home directory, you can also add a global
-rules file in `~/.config/octofriend/OCTO.md`;
+rules file in `~/.config/octofriend/OCTO.md`.
 
 ## Connecting Octo to MCP servers
 
 Although Octo can do a lot out of the box — pretty much anything is possible
-with enough Bash — if you want access to rich data from an MCP server, it'll
+with enough Bash — but if you want access to rich data from an MCP server, it'll
 help Octo out a lot to just provide the MCP server directly instead of trying
 to contort its tentacles into crafting the right Bash-isms. After you run
 `octofriend` for the first time, you'll end up with a config file in
