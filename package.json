@@ -24,6 +24,7 @@
 		"@modelcontextprotocol/sdk": "^1.0.1",
 		"chalk": "^5.4.1",
 		"commander": "^13.1.0",
+		"diff": "^8.0.2",
 		"figlet": "^1.8.0",
 		"figures": "^6.1.0",
 		"ink": "^5.2.0",

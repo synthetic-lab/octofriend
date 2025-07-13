@@ -9,6 +9,7 @@ import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
 import { THEME_COLOR } from "./theme.ts";
+import { DiffRenderer } from "./diff-renderer.tsx";
 import {
   runTool,
   validateTool,
@@ -666,11 +667,8 @@ function EditRenderer({ item }: { item: t.GetType<typeof edit.AllEdits> }) {
 
 function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
   return <Box flexDirection="column">
-    <Text>Octo wants to replace the following:</Text>
-    <Text color="gray">Original text:</Text>
-    <Text color="gray">{item.search}</Text>
-    <Text>New:</Text>
-    <Text>{item.replace}</Text>
+    <Text>Octo wants to make the following changes:</Text>
+    <DiffRenderer oldText={item.search} newText={item.replace} />
   </Box>
 }
 
