@@ -11,6 +11,7 @@ import { totalTokensUsed } from "./llm.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
+const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
 
 const cli = new Command()
 .description("If run with no subcommands, runs Octo interactively.")
@@ -53,19 +54,24 @@ cli.command("version")
   console.log(metadata.version);
 });
 
+cli.command("init")
+.description("Create a fresh config file for Octo")
+.action(async () => {
+  await initConfig(CONFIG_JSON5_FILE);
+});
+
 async function loadConfig(configPath?: string) {
   if(configPath) return await readConfig(configPath);
 
-  const json5File = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
-  if(await fileExists(json5File)) {
-    return await readConfig(json5File);
+  if(await fileExists(CONFIG_JSON5_FILE)) {
+    return await readConfig(CONFIG_JSON5_FILE);
   }
 
   const jsonFile = path.join(CONFIG_STANDARD_DIR, "octofriend.json")
   if(await fileExists(jsonFile)) {
     return await readConfig(jsonFile);
   }
-  return await initConfig(json5File);
+  return await initConfig(CONFIG_JSON5_FILE);
 }
 
 cli.parse();

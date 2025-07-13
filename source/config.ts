@@ -38,12 +38,23 @@ export async function initConfig(configPath: string): Promise<Config> {
   console.log(
     "\nYou don't seem to have a config file yet, so let's get you set up for the first time.\n"
   );
+
+  console.log(`
+Octo lets you choose the LLM that powers it. You'll need a few key pieces of information, but the
+first decision you have to make is what inference company to use to power your LLM (or, if you're
+relatively advanced, you can run your own LLM locally on your own computer).
+
+If you don't know what company you want to use, we'd selfishly recommend Synthetic, the
+privacy-first inference company we run. You can sign up here: https://synthetic.new
+`.trim());
+  console.log("\n");
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
-
-  const yourName = (await rl.question(themeStyle("What's your name? "))).trim();
+  await rl.question("Press enter whenever you're ready to begin setup.")
+  console.log("\n");
 
   let baseUrl: string;
   let apiEnvVar: string;
@@ -51,12 +62,21 @@ export async function initConfig(configPath: string): Promise<Config> {
   while(true) {
     baseUrl = (await rl.question(
       themeStyle("What's the base URL for the API you're connecting to?") +
-        " (For example, https://api.synthetic.new/v1) "
+        "\n(For example, https://api.synthetic.new/v1)" +
+      "\nYou can usually find this information in your inference provider's documentation." +
+      "\nBase URL: "
     )).trim();
     while(true) {
+      console.log("\n");
       apiEnvVar = (await rl.question(
         themeStyle("What environment variable should Octo read to get the API key?") +
-          " (For example, SYNTHETIC_API_KEY) "
+          "\n(For example, SYNTHETIC_API_KEY)" +
+          "\nYou can typically find your API key on your account or settings page on your " +
+          "inference provider's website.\nFor Synthetic, go to: https://synthetic.new/user-settings/api" +
+          "\nAfter getting an API key, make sure to export it in your shell; for example:" +
+          chalk.bold("\nexport SYNTHETIC_API_KEY=\"your-api-key-here\"") +
+          "\n(If you're running a local LLM, you can use any non-empty env var.)" +
+          "\nEnvironment variable name: "
       )).trim();
 
       if(process.env[apiEnvVar]) break;
@@ -67,12 +87,17 @@ your .bash_profile or .zshrc?
 `.trim());
     }
 
+    console.log("\n");
     model = (await rl.question(
       themeStyle("What's the model name for the API you're using?") +
-        " (For example, hf:deepseek-ai/DeepSeek-R1-0528) "
+        "\n(For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)" +
+        "\nThis varies by inference provider: you can typically find this information in your " +
+        "inference provider's documentation." +
+        "\nModel name: "
     )).trim();
 
-    console.log(chalk.yellow("Testing API connection:"));
+    console.log("\n");
+    console.log(chalk.yellow("Testing API connection..."));
 
     const client = new OpenAI({
       baseURL: baseUrl,
@@ -98,11 +123,16 @@ your .bash_profile or .zshrc?
 
   let contextK: number | undefined = undefined;
   while(contextK == null) {
+    console.log("\n");
     const len = (await rl.question(
-    themeStyle("What's the maximum number of tokens Octo should use per request?") +
-`
+    themeStyle("What's the maximum number of tokens Octo should use per request?\n") +
+`You can usually find this information in the documentation for the model on your inference company's
+website.
+
 (This is an estimate: leave some buffer room. Best performance is often at half the number of tokens supported by the API.)
-Format the number in k: for example, ` + themeStyle("32k") + " or " + themeStyle("64k: ")
+Format the number in k: for example, ${themeStyle("32k")} or ${themeStyle("64k: ")}
+
+Maximum input tokens: `
     )).trim();
     try {
       const numberStr = len.replace("k", "");
@@ -111,6 +141,10 @@ Format the number in k: for example, ` + themeStyle("32k") + " or " + themeStyle
       console.error("Couldn't parse your input. Please enter the context length, e.g. 32k, 64k");
     }
   }
+
+  console.log("\n");
+  const yourName = (await rl.question("And finally... " + themeStyle("What's your name?\n") +
+                                     "Your name: ")).trim();
 
   rl.close();
 
