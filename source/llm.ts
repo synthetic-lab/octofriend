@@ -426,9 +426,9 @@ Please try again.`.trim())}`,
   ];
 }
 
-let totalTokens = 0;
+let totalTokensEver = 0;
 export function totalTokensUsed() {
-  return totalTokens;
+  return totalTokensEver;
 }
 
 export async function runAgent(
@@ -437,6 +437,7 @@ export async function runAgent(
   history: HistoryItem[],
   contextSpace: ContextSpace,
   onTokens: (t: string, type: "reasoning" | "content") => any,
+  abortSignal: AbortSignal,
 ) {
   const processedHistory = applyContextWindow(history, config.context);
   if(processedHistory.appliedWindow) {
@@ -478,6 +479,8 @@ export async function runAgent(
       include_usage: true,
     },
     max_completion_tokens: config.context,
+  }, {
+    signal: abortSignal,
   });
 
   let content = "";
@@ -512,47 +515,61 @@ export async function runAgent(
   let currTool: Partial<ResponseToolCall> | null = null;
   let doneParsingTools = false;
 
-  for await(const chunk of res) {
-    if(doneParsingTools) break;
-    if(chunk.usage) usage = chunk.usage.total_tokens;
+  try {
+    for await(const chunk of res) {
+      // Check if aborted
+      if (abortSignal.aborted) {
+        break;
+      }
 
-    const delta = chunk.choices[0]?.delta as {
-      content: string
-    } | {
-      reasoning_content: string
-    } | {
-      tool_calls: Array<ResponseToolCall>
-    } | null;
+      if(doneParsingTools) break;
+      if(chunk.usage) usage = chunk.usage.total_tokens;
 
-    if(delta && "content" in delta && delta.content) {
-      const tokens = chunk.choices[0].delta.content || "";
-      xmlParser.write(tokens);
-    }
-    else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
-      if(reasoningContent == null) reasoningContent = "";
-      reasoningContent += delta.reasoning_content;
-      onTokens(delta.reasoning_content, "reasoning");
-    }
-    else if(delta && "tool_calls" in delta && delta.tool_calls.length > 0) {
-      for(const deltaCall of delta.tool_calls) {
-        if(currTool == null) {
-          currTool = {
-            id: deltaCall.id,
-            function: {
-              name: deltaCall.function.name || "",
-              arguments: deltaCall.function.arguments || "",
-            },
-          };
-        }
-        else {
-          if(deltaCall.id && deltaCall.id !== currTool.id) {
-            doneParsingTools = true;
-            break;
+      const delta = chunk.choices[0]?.delta as {
+        content: string
+      } | {
+        reasoning_content: string
+      } | {
+        tool_calls: Array<ResponseToolCall>
+      } | null;
+
+      if(delta && "content" in delta && delta.content) {
+        const tokens = chunk.choices[0].delta.content || "";
+        xmlParser.write(tokens);
+      }
+      else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
+        if(reasoningContent == null) reasoningContent = "";
+        reasoningContent += delta.reasoning_content;
+        onTokens(delta.reasoning_content, "reasoning");
+      }
+      else if(delta && "tool_calls" in delta && delta.tool_calls.length > 0) {
+        for(const deltaCall of delta.tool_calls) {
+          if(currTool == null) {
+            currTool = {
+              id: deltaCall.id,
+              function: {
+                name: deltaCall.function.name || "",
+                arguments: deltaCall.function.arguments || "",
+              },
+            };
           }
-          if(deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
-          if(deltaCall.function.arguments) currTool.function!.arguments += deltaCall.function.arguments;
+          else {
+            if(deltaCall.id && deltaCall.id !== currTool.id) {
+              doneParsingTools = true;
+              break;
+            }
+            if(deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
+            if(deltaCall.function.arguments) currTool.function!.arguments += deltaCall.function.arguments;
+          }
         }
       }
+    }
+  } catch (e) {
+    // Handle abort errors gracefully
+    if (abortSignal.aborted) {
+      // Fall through to return abbreviated response
+    } else {
+      throw e;
     }
   }
 
@@ -560,8 +577,12 @@ export async function runAgent(
   xmlParser.close();
 
   // Calculate token usage delta from the previous total
-  const tokenDelta = usage - totalTokens;
-  totalTokens = usage;
+  let tokenDelta = 0;
+  totalTokensEver += usage;
+  if(!abortSignal.aborted) {
+    const previousTokens = messageHistoryTokens(processedHistory.history);
+    tokenDelta = usage - previousTokens;
+  }
 
   const assistantHistoryItem = {
     type: "assistant" as const,
@@ -569,6 +590,9 @@ export async function runAgent(
     content, reasoningContent,
     tokenUsage: tokenDelta,
   };
+
+  // If aborted, don't try to parse tool calls - just return the assistant response
+  if(abortSignal.aborted) return history.concat([ assistantHistoryItem ]);
 
   // Check if we found a tool call
   if (currTool) {
@@ -616,6 +640,14 @@ export async function runAgent(
   return history.concat([ assistantHistoryItem ]);
 }
 
+function messageHistoryTokens(history: HistoryItem[]) {
+  let totalTokens = 0;
+  for(const item of history) {
+    if(item.type === "assistant") totalTokens += item.tokenUsage;
+  }
+  return totalTokens;
+}
+
 // Apply sliding window to keep context under token limit
 function applyContextWindow(history: HistoryItem[], context: number): {
   appliedWindow: boolean,
@@ -623,10 +655,7 @@ function applyContextWindow(history: HistoryItem[], context: number): {
 } {
   const MAX_CONTEXT_TOKENS = Math.floor(context * 0.8);
 
-  let totalTokens = 0;
-  for(const item of history) {
-    if(item.type === "assistant") totalTokens += item.tokenUsage;
-  }
+  let totalTokens = messageHistoryTokens(history);
   if(totalTokens <= MAX_CONTEXT_TOKENS) return { appliedWindow: false, history };
 
   const windowedHistory: HistoryItem[] = [];

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { Text, Box, Static, measureElement, DOMElement } from "ink";
+import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import { Config, Metadata } from "./config.ts";
@@ -63,6 +63,7 @@ type UiState = {
   } | {
     mode: "responding",
     inflightResponse: Omit<AssistantItem, "id" | "tokenUsage">,
+    abortController: AbortController,
   } | {
     mode: "tool-request",
     toolReq: ToolCallItem,
@@ -74,6 +75,7 @@ type UiState = {
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
   rejectTool: (toolCallId: string) => void,
+  abortResponse: () => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -83,7 +85,6 @@ const useAppStore = create<UiState>((set, get) => ({
   },
   history: [],
   context: contextSpace(),
-  running: false,
 
   input: async ({ client, config, query }) => {
     const userMessage: UserItem = {
@@ -114,6 +115,13 @@ const useAppStore = create<UiState>((set, get) => ({
         mode: "input",
       },
     });
+  },
+
+  abortResponse: () => {
+    const { modeData } = get();
+    if (modeData.mode === "responding") {
+      modeData.abortController.abort();
+    }
   },
 
   runTool: async ({ client, config, toolReq }) => {
@@ -153,6 +161,8 @@ const useAppStore = create<UiState>((set, get) => ({
     const context = get().context;
     let content = "";
     let reasoningContent: undefined | string = undefined;
+
+    const abortController = new AbortController();
     set({
       modeData: {
         mode: "responding",
@@ -160,6 +170,7 @@ const useAppStore = create<UiState>((set, get) => ({
           type: "assistant",
           content,
         },
+        abortController,
       }
     });
 
@@ -193,14 +204,25 @@ const useAppStore = create<UiState>((set, get) => ({
                 type: "assistant",
                 content, reasoningContent,
               },
+              abortController,
             },
           });
 
           timeout = null;
         }, debounceTimeout);
-      });
+      }, abortController.signal);
       if(timeout) clearTimeout(timeout);
     } catch(e) {
+      if (abortController.signal.aborted) {
+        // Handle abort gracefully - return to input mode
+        set({
+          modeData: {
+            mode: "input",
+          },
+        });
+        return;
+      }
+
       console.error(e);
       set({
         history: [
@@ -310,11 +332,12 @@ export default function App({ config, metadata }: Props) {
 		});
 	}, [ config ]);
 
-  const { history, modeData, context } = useAppStore(
+  const { history, modeData, context, abortResponse } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       context: state.context,
+      abortResponse: state.abortResponse,
     }))
   );
 
@@ -323,6 +346,12 @@ export default function App({ config, metadata }: Props) {
       absolutePath: process.cwd(),
     });
   }, [ context ]);
+
+  useInput((_, key) => {
+    if(key.escape) {
+      abortResponse();
+    }
+  });
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
@@ -413,7 +442,12 @@ function BottomBarContent({ config, client }: { config: Config, client: OpenAI }
     await input({ query, config, client });
 	}, [ query, config, client ]);
 
-  if(modeData.mode === "responding") return <Loading />;
+  if(modeData.mode === "responding") {
+    return <Box justifyContent="space-between">
+      <Loading />
+      <Text color="gray">(Press ESC to interrupt)</Text>
+    </Box>;
+  }
   if(modeData.mode === "error-recovery") return <Loading />;
 
   if(modeData.mode === "tool-request") {
