@@ -135,16 +135,25 @@ ${appliedWindow ?
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
     const client = await getMcpClient(serverName, config);
     const listed = await client.listTools();
-    const tools = listed.tools.map((t: {name: string, description?: string}) => ({name: t.name, description: t.description}));
-    const toolStrings = tools.map((t: {name: string, description?: string}) => `- ${t.name}${t.description ? `: ${t.description}` : ''}`).join('\n');
+
+    const tools = listed.tools.map((t: {name: string, description?: string}) => ({
+      name: t.name,
+      description: t.description
+    }));
+
+    const toolStrings = tools.map((t: {name: string, description?: string}) => {
+      return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
+    }).join('\n');
+
     mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
   }
 
   const mcpPrompt = `
 
-# MCP Tools
+# Model-Context-Protocol (MCP) Tools
 
-You have access to the following MCP servers and their tools. Use the mcp tool to call them, specifying the server and tool name:
+You have access to the following MCP servers and their sub-tools. Use the mcp tool to call them,
+specifying the server and tool name:
 
 ${mcpSections.join('\n\n')}
 
@@ -271,7 +280,11 @@ function toLlmMessage(
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: tagged(TOOL_RESPONSE_TAG, {}, `\nThis is an automated message. The output from the tool was:\n${item.content}\nYou may or may not be done with your original task. If you need to make more edits or call more\ntools, continue doing so. If you're done, or stuck, ask the user for help.\n        `.trim())
+        content: tagged(TOOL_RESPONSE_TAG, {}, `
+This is an automated message. The output from the tool was:
+${item.content}
+You may or may not be done with your original task. If you need to make more edits or call more
+tools, continue doing so. If you're done, or stuck, ask the user for help.`.trim())
       }
     ];
   }
@@ -282,7 +295,10 @@ function toLlmMessage(
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: `\n${tagged(TOOL_ERROR_TAG, {}, "File could not be updated because it was modified after being last read")}\nThe latest version of the file has been automatically re-read and placed in your context space.\nPlease try again.\n        `.trim(),
+        content: `\n${tagged(TOOL_ERROR_TAG, {}, `
+File could not be updated because it was modified after being last read.
+The latest version of the file has been automatically re-read and placed in your context space.
+Please try again.`.trim())}`,
       }
     ];
   }
@@ -332,7 +348,11 @@ function toLlmMessage(
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: tagged(TOOL_ERROR_TAG, {}, `\nFile ${item.path} could not be read. Has it been deleted?\n        `.trim()),
+        content: tagged(
+          TOOL_ERROR_TAG,
+          {},
+          `File ${item.path} could not be read. Has it been deleted?`,
+        ),
       },
     ]
   }
