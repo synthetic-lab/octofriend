@@ -4,6 +4,36 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { ToolError, ToolDef } from "../common.ts";
 import { Config } from "../../config.ts";
 
+// Types ported from:
+// https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
+type ResourceContents = {
+  uri: string,
+  mimeType?: string,
+};
+type MCPResult = {
+  content: Array<{
+    type: "text",
+    text: string,
+  } | {
+    type: "image",
+    mimeType: string,
+    data: string,
+  } | {
+    type: "audio",
+    mimeType: string,
+    data: string,
+  } | (ResourceContents & {
+    type: "resource_link",
+  }) | {
+    type: "resource",
+    resource: (ResourceContents & {
+      text: string,
+    }) | ( ResourceContents & {
+      blob: string,
+    }),
+  }>
+};
+
 const ArgumentsSchema = t.subtype({
   server: t.str.comment("Name of the MCP server to use"),
   tool: t.str.comment("Name of the tool to call"),
@@ -74,39 +104,10 @@ export default {
       }
 
       // Call the tool
-      // Types ported from:
-      // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
-      type ResourceContentsType = {
-        uri: string,
-        mimeType?: string,
-      };
-      type ResultType = {
-        content: Array<{
-          type: "text",
-          text: string,
-        } | {
-          type: "image",
-          mimeType: string,
-          data: string,
-        } | {
-          type: "audio",
-          mimeType: string,
-          data: string,
-        } | (ResourceContentsType & {
-          type: "resource_link",
-        }) | {
-          type: "resource",
-          resource: (ResourceContentsType & {
-            text: string,
-          }) | ( ResourceContentsType & {
-            blob: string,
-          }),
-        }>
-      }
       const result = await client.callTool({
         name: toolName,
         arguments: toolArgs,
-      }) as ResultType;
+      }) as MCPResult;
 
       // Format the result
       let output = '';
