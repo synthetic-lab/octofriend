@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { getMcpClient } from "./tools/tool-defs/mcp.ts";
@@ -10,11 +11,11 @@ import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { ContextSpace } from "./context-space.ts";
 import { fileExists } from "./fs-utils.ts";
 
-const LLM_AID_FILES = [
+const LLM_INSTR_FILES = [
   "OCTO.md",
   "CLAUDE.md",
   "AGENTS.md",
-];
+] as const;
 
 export type UserMessage = {
   role: "user";
@@ -66,7 +67,7 @@ async function systemPrompt({ appliedWindow, config }: {
   appliedWindow: boolean,
   config: Config,
 }) {
-  const prompt = `
+  return `
 You are a coding assistant called Octo. The user's name is ${config.yourName}, and you're their
 friend. You can help them with coding tasks. Unrelatedly, you are a small, hyper-intelligent
 octopus. You must never use an octopus emoji, to avoid reminding the ${config.yourName} of the fact
@@ -110,6 +111,8 @@ ${JSON.stringify({
   type: "function",
 })}
 
+${await mcpPrompt(config)}
+
 # No questions
 
 Don't ask ${config.yourName} whether they want you to run a tool or make file edits: instead, just
@@ -117,20 +120,6 @@ run the tool or make the edit. ${config.yourName} is prompted when you call tool
 reject your attempted tool call or edit, so there's no need to get a verbal confirmation: they can
 just use the UI. Similarly, don't tell them what tool you're going to use or what edit you're going
 to make: just run the tool or make the edit, and they'll see what you're trying to do in the UI.
-
-# Informative files
-You may have some files auto-loaded into your context. They're files named like so:
-
-- ${LLM_AID_FILES.join("\n- ")}
-
-If you see any of those files in your context, those are user-provided information and rules for
-you. Do your best to follow any instructions contained in them.
-
-Do not attempt to read these files manually: if they exist, they're already loaded into your context
-space. If you don't see them, they don't exist.
-
-Instructions in these files are addressed to you, not ${config.yourName}: if it says "you", it means
-you, Octo.
 
 # General instructions
 
@@ -148,10 +137,50 @@ refine your solution.
 You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
 to run more tools or edits in a step-by-step process.
 
+${await llmInstrsPrompt(config)}
+
 ${appliedWindow ?
-"\nSome messages were elided due to context windowing." : ""}
+"\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
 `.trim();
-  if (!config.mcpServers) return prompt;
+}
+
+async function llmInstrsPrompt(config: Config) {
+  const instrs = await getLlmInstrs();
+  if(instrs.length === 0) return "";
+
+  function instrHeader(instr: LlmInstr) {
+    switch(instr.target) {
+      case "OCTO.md": return "This is an instruction file specifically for you.";
+      case "CLAUDE.md":
+        return "This is an instruction file for Claude, a different LLM, but you may find it useful."
+      case "AGENTS.md":
+        return "This is a generic instruction for automated agents. You may find it useful."
+    }
+  }
+
+  const rendered: string[] = [];
+  for(const instr of instrs) {
+    const pieces: string[] = [];
+    pieces.push("Note: " + instrHeader(instr));
+    pieces.push(tagged("instruction", { path: instr.path }, instr.contents));
+    rendered.push(pieces.join("\n"));
+  }
+
+  return `
+# Instructions from ${config.yourName}
+
+${config.yourName} has left instructions in some config files. They're as follows, listed from
+most-general to most-specific:
+
+${rendered.join("\n\n")}
+
+These instructions are automatically kept fresh in your context space. You don't need to re-read
+these files.
+`.trim();
+}
+
+async function mcpPrompt(config: Config) {
+  if(config.mcpServers == null || Object.keys(config.mcpServers).length === 0) return "";
 
   const mcpSections = [];
 
@@ -182,7 +211,7 @@ ${mcpSections.join('\n\n')}
 
 `.trim();
 
-  return `${prompt}\n\n${mcpPrompt}`;
+  return mcpPrompt;
 }
 
 async function toLlmMessages(
@@ -409,14 +438,6 @@ export async function runAgent(
   contextSpace: ContextSpace,
   onTokens: (t: string, type: "reasoning" | "content") => any,
 ) {
-  // Get all the LLM aid paths
-  const llmAidPaths = await getLlmAidPaths();
-  for(const path of llmAidPaths) {
-    contextSpace.tracker("files").permaTrack({
-      absolutePath: path,
-    });
-  }
-
   const processedHistory = applyContextWindow(history, config.context);
   if(processedHistory.appliedWindow) {
     contextSpace.window(processedHistory.history[0].id);
@@ -704,37 +725,64 @@ Failed to parse tool call: ${error}. Make sure your JSON is valid and matches th
   }
 }
 
-async function getLlmAidPaths() {
+type LlmTarget = (typeof LLM_INSTR_FILES)[number];
+type LlmInstr = {
+  contents: string,
+  path: string,
+  target: LlmTarget,
+};
+async function getLlmInstrs() {
+  const targetPaths = await getLlmInstrPaths();
+  const instrs: LlmInstr[] = [];
+
+  for(const targetPath of targetPaths) {
+    const contents = await fs.readFile(targetPath.path, "utf8");
+    instrs.push({
+      ...targetPath, contents
+    });
+  }
+
+  return instrs;
+}
+
+async function getLlmInstrPaths() {
   const stop = os.homedir();
   let curr = process.cwd();
-  const paths = new Set<string>();
+  const paths: Array<{ path: string, target: LlmTarget }> = [];
 
   while(curr !== stop && curr && curr !== "/") {
-    const aidPath = await getLlmAidPathFromDir(curr);
-    if(aidPath) paths.add(path.resolve(aidPath));
+    const aidPath = await getLlmInstrPathFromDir(curr);
+    if(aidPath) paths.push(aidPath);
     const next = path.dirname(curr);
     if(next === curr) break;
     curr = next;
   }
 
-  const globalPath = await getLlmAidPathFromDir(
+  const globalPath = await getLlmInstrPathFromDir(
     path.join(os.homedir(), ".config/octofriend/OCTO.md")
   );
-  if(globalPath) paths.add(globalPath);
+  if(globalPath) paths.push(globalPath);
 
-  return Array.from(paths);
+  return paths.reverse();
 }
 
-async function getLlmAidPathFromDir(dir: string): Promise<string | null> {
-  const files = await Promise.all(LLM_AID_FILES.map(async (f) => {
+async function getLlmInstrPathFromDir(dir: string): Promise<{
+  path: string,
+  target: LlmTarget
+} | null> {
+  const files = await Promise.all(LLM_INSTR_FILES.map(async (f) => {
     const filename = path.join(dir, f);
     if(!(await fileExists(filename))) return null;
     try {
-      return filename;
+      return {
+        path: filename,
+        target: f,
+      };
     } catch {
       return null;
     }
   }));
+
   const existing = files.filter(f => f !== null);
   if(existing.length > 0) return existing[0];
   return null;
