@@ -53,10 +53,20 @@ export async function initConfig(configPath: string): Promise<Config> {
       themeStyle("What's the base URL for the API you're connecting to?") +
         " (For example, https://api.synthetic.new/v1) "
     )).trim();
-    apiEnvVar = (await rl.question(
-      themeStyle("What environment variable should Octo read to get the API key?") +
-        " (For example, SYNTHETIC_API_KEY) "
-    )).trim();
+    while(true) {
+      apiEnvVar = (await rl.question(
+        themeStyle("What environment variable should Octo read to get the API key?") +
+          " (For example, SYNTHETIC_API_KEY) "
+      )).trim();
+
+      if(process.env[apiEnvVar]) break;
+      console.error(`
+Looking in your current shell, that env var isn't set. Is there a typo? Or do you need to re-source
+your .bash_profile or .zshrc?
+(CTRL-C to exit, if you need to re-source this shell's config)
+`.trim());
+    }
+
     model = (await rl.question(
       themeStyle("What's the model name for the API you're using?") +
         " (For example, hf:deepseek-ai/DeepSeek-R1-0528) "
