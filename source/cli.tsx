@@ -13,10 +13,20 @@ import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 
 const cli = new Command()
+.description("If run with no subcommands, runs Octo interactively.")
 .option("--config <path>")
 .action(async (opts) => {
-	const config = await loadConfig(opts.config);
 	const metadata = await readMetadata();
+	const config = await loadConfig(opts.config);
+  if(!process.env[config.apiEnvVar]) {
+    console.error(`
+Octo is set to use the ${config.apiEnvVar} env var to authenticate with the API, but that env var
+isn't set in your current shell.
+
+Hint: do you need to re-source your .bash_profile or .zshrc?
+`.trim());
+    process.exit(1);
+  }
 
   // Connect to all MCP servers on boot
   if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -34,6 +44,13 @@ const cli = new Command()
 	const { waitUntilExit } = render(<App config={config} metadata={metadata} />);
   await waitUntilExit();
   console.log(`\nApprox. tokens used: ${totalTokensUsed().toLocaleString()}`);
+});
+
+cli.command("version")
+.description("Prints the current version")
+.action(async () => {
+	const metadata = await readMetadata();
+  console.log(metadata.version);
 });
 
 async function loadConfig(configPath?: string) {
