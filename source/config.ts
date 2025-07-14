@@ -90,7 +90,7 @@ your .bash_profile or .zshrc?
     console.log("\n");
     model = (await rl.question(
       themeStyle("What's the model name for the API you're using?") +
-        "\n(For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-V3-0324)" +
+        "\n(For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)" +
         "\nThis varies by inference provider: you can typically find this information in your " +
         "inference provider's documentation." +
         "\nModel name: "
