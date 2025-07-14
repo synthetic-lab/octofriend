@@ -35,6 +35,7 @@ import { sleep } from "./sleep.ts";
 type Props = {
 	config: Config;
 	metadata: Metadata,
+  unchained: boolean,
 };
 
 type StaticItem = {
@@ -326,7 +327,7 @@ async function tryTransformToolError(
   throw e;
 }
 
-export default function App({ config, metadata }: Props) {
+export default function App({ config, metadata, unchained }: Props) {
 	const client = useMemo(() => {
 		return new OpenAI({
 			baseURL: config.baseUrl,
@@ -376,14 +377,15 @@ export default function App({ config, metadata }: Props) {
         <MessageDisplay item={modeData.inflightResponse} />
     }
 
-    <BottomBar client={client} config={config} metadata={metadata} />
+    <BottomBar client={client} config={config} metadata={metadata} unchained={unchained} />
 	</Box>
 }
 
-function BottomBar({ config, client, metadata }: {
+function BottomBar({ config, client, metadata, unchained }: {
   config: Config,
   client: OpenAI,
   metadata: Metadata,
+  unchained: boolean,
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
 
@@ -401,7 +403,7 @@ function BottomBar({ config, client, metadata }: {
   }, [ metadata ]);
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent config={config} client={client} />
+    <BottomBarContent config={config} client={client} unchained={unchained} />
     <Box
       width="100%"
       justifyContent="flex-end"
@@ -430,7 +432,11 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ config, client }: { config: Config, client: OpenAI }) {
+function BottomBarContent({ config, client, unchained }: {
+  config: Config,
+  client: OpenAI,
+  unchained: boolean,
+}) {
 	const [ query, setQuery ] = useState("");
   const { modeData, input } = useAppStore(
     useShallow(state => ({
@@ -457,6 +463,7 @@ function BottomBarContent({ config, client }: { config: Config, client: OpenAI }
       toolReq={modeData.toolReq}
       client={client}
       config={config}
+      unchained={unchained}
     />;
   }
 
@@ -467,8 +474,9 @@ function BottomBarContent({ config, client }: { config: Config, client: OpenAI }
   />;
 }
 
-function ToolRequestRenderer({ toolReq, client, config }: {
+function ToolRequestRenderer({ toolReq, client, config, unchained }: {
   toolReq: ToolCallItem
+  unchained: boolean;
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
@@ -493,13 +501,14 @@ function ToolRequestRenderer({ toolReq, client, config }: {
     else await runTool({ toolReq, config, client });
 	}, [ toolReq, config, client ]);
 
+  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.tool.function.name);
   useEffect(() => {
-    if(SKIP_CONFIRMATION.includes(toolReq.tool.function.name)) runTool({ toolReq, config, client });
-  }, [ toolReq ]);
+    if(noConfirm) {
+      runTool({ toolReq, config, client });
+    }
+  }, [ toolReq, noConfirm, config, client ]);
 
-  if(SKIP_CONFIRMATION.includes(toolReq.tool.function.name)) {
-    return <Loading />;
-  }
+  if(noConfirm) return <Loading />;
 
   return <SelectInput
     items={items}

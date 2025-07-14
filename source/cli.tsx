@@ -16,6 +16,7 @@ const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
 const cli = new Command()
 .description("If run with no subcommands, runs Octo interactively.")
 .option("--config <path>")
+.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
 .action(async (opts) => {
 	const metadata = await readMetadata();
 	const config = await loadConfig(opts.config);
@@ -42,7 +43,10 @@ Hint: do you need to re-source your .bash_profile or .zshrc?
     console.log("All MCP servers connected.");
   }
 
-	const { waitUntilExit } = render(<App config={config} metadata={metadata} />);
+	const { waitUntilExit } = render(
+    <App config={config} metadata={metadata} unchained={!!opts.unchained} />
+  );
+
   await waitUntilExit();
   console.log(`\nApprox. tokens used: ${totalTokensUsed().toLocaleString()}`);
 });
