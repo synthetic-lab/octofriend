@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ToolError, ToolDef } from "../common.ts";
 import { Config } from "../../config.ts";
+import { getModelFromConfig } from "../../config.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
@@ -96,7 +97,7 @@ export default {
   Schema,
   ArgumentsSchema,
   validate: async () => null,
-  async run(call, _, config) {
+  async run(call, _, config, modelOverride) {
     const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.tool.arguments;
 
     try {
@@ -121,7 +122,8 @@ export default {
 
       // Worst case, the response sizes will be one token per byte. Cap responses to the context
       // length
-      const MAX_SIZE = config.context;
+      const model = getModelFromConfig(config, modelOverride);
+      const MAX_SIZE = model.context;
 
       for (const content of result.content) {
         if (content.type === 'text' && content.text.length > MAX_SIZE) {

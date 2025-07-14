@@ -3,7 +3,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
-import { Config, Metadata } from "./config.ts";
+import { Config, Metadata, ConfigContext, getModelFromConfig } from "./config.ts";
 import OpenAI from "openai";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./loading.tsx";
@@ -21,8 +21,10 @@ import {
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
-import figures from "figures";
-import { useAppStore, RunArgs } from "./state.ts";
+import { useAppStore, RunArgs, useModel } from "./state.ts";
+import { Octo } from "./components/octo.tsx";
+import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
+import { Menu } from "./menu.tsx";
 
 type Props = {
 	config: Config;
@@ -49,20 +51,22 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 }
 
 export default function App({ config, metadata, unchained }: Props) {
-	const client = useMemo(() => {
-		return new OpenAI({
-			baseURL: config.baseUrl,
-			apiKey: process.env[config.apiEnvVar],
-		});
-	}, [ config ]);
-
-  const { history, modeData, context } = useAppStore(
+  const { history, modeData, context, modelOverride } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       context: state.context,
+      modelOverride: state.modelOverride,
     }))
   );
+  const model = getModelFromConfig(config, modelOverride);
+
+	const client = useMemo(() => {
+		return new OpenAI({
+			baseURL: model.baseUrl,
+			apiKey: process.env[model.apiEnvVar],
+		});
+	}, [ config, model ]);
 
   useEffect(() => {
     context.tracker("dirs").permaTrack({
@@ -79,25 +83,26 @@ export default function App({ config, metadata, unchained }: Props) {
     ]
   }, [ history ]);
 
-	return <UnchainedContext.Provider value={unchained}>
-    <Box flexDirection="column" width="100%" height="100%">
-      <Static items={staticItems}>
-        {
-          (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-        }
-      </Static>
+	return <ConfigContext.Provider value={config}>
+    <UnchainedContext.Provider value={unchained}>
+      <Box flexDirection="column" width="100%" height="100%">
+        <Static items={staticItems}>
+          {
+            (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+          }
+        </Static>
 
-      {
-        modeData.mode === "responding" &&
-          (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-          <MessageDisplay item={modeData.inflightResponse} />
-      }
-      {
-        modeData.mode === "menu" ? <Menu /> :
-          <BottomBar client={client} config={config} metadata={metadata} />
-      }
-    </Box>
-  </UnchainedContext.Provider>
+        {
+          modeData.mode === "responding" &&
+            (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+            <MessageDisplay item={modeData.inflightResponse} />
+        }
+        {
+            <BottomBar client={client} config={config} metadata={metadata} />
+        }
+      </Box>
+    </UnchainedContext.Provider>
+  </ConfigContext.Provider>
 }
 
 function BottomBar({ config, client, metadata }: {
@@ -107,6 +112,11 @@ function BottomBar({ config, client, metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    }))
+  );
 
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
@@ -120,6 +130,8 @@ function BottomBar({ config, client, metadata }: {
       }, 5000);
     });
   }, [ metadata ]);
+
+  if(modeData.mode === "menu") return <Menu />
 
   return <Box flexDirection="column" width="100%">
     <BottomBarContent config={config} client={client} />
@@ -149,46 +161,6 @@ async function getLatestVersion() {
   } catch {
     return null;
   }
-}
-
-function Menu() {
-  const { toggleMenu } = useAppStore(
-    useShallow(state => ({
-      toggleMenu: state.toggleMenu,
-    }))
-  );
-
-  useInput((_, key) => {
-    if(key.escape) toggleMenu();
-  });
-
-  const items = [
-    {
-      label: "Yes",
-      value: "yes",
-    },
-    {
-      label: "Return to Octo",
-      value: "return",
-    },
-  ];
-
-	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "return") toggleMenu();
-	}, []);
-
-
-  return <Box flexDirection="column">
-    <Box justifyContent="center">
-      <Octo />
-    </Box>
-    <SelectInput
-      items={items}
-      onSelect={onSelect}
-      indicatorComponent={IndicatorComponent}
-      itemComponent={ItemComponent}
-    />
-  </Box>
 }
 
 function BottomBarContent({ config, client }: {
@@ -289,28 +261,16 @@ function ToolRequestRenderer({ toolReq, client, config }: {
   />
 }
 
-function IndicatorComponent({ isSelected = false }: { isSelected?: boolean }) {
-  const themeColor = useColor();
-  return <Box marginRight={1}>
-    {
-      isSelected ? <Text color={themeColor}>{figures.pointer}</Text> : <Text> </Text>
-    }
-  </Box>
-}
-
-function ItemComponent({ isSelected = false, label }: { isSelected?: boolean, label: string }) {
-  const themeColor = useColor();
-  return <Text color={isSelected ? themeColor : undefined}>{label}</Text>
-}
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
   const themeColor = useColor();
+  const model = useModel();
 
   if(item.type === "header") return <Header />;
   if(item.type === "version") {
     return <Box marginTop={1} marginLeft={1} flexDirection="column">
       <Text color="gray">
-        Model: {item.config.model}
+        Model: {model.nickname}
       </Text>
       <Text color="gray">
         Version: {item.metadata.version}
@@ -337,6 +297,9 @@ const MessageDisplay = React.memo(({ item }: {
 const MessageDisplayInner = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
 }) => {
+  if(item.type === "model-switched") {
+    return <Box marginLeft={1}><Text color="gray">Model: {item.model}</Text></Box>
+  }
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />
 	if(item.type === "tool-output") {
@@ -543,10 +506,6 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
       </Box>
     </Box>
   </Box>
-}
-
-function Octo() {
-  return <Text>🐙</Text>
 }
 
 const InputBox = React.memo((props: {

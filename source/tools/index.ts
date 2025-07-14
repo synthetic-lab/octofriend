@@ -22,9 +22,10 @@ export async function runTool(
   call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
   context: ContextSpace,
   config: Config,
+  modelOverride: string | null,
 ): Promise<string> {
   const def = lookup(call.tool);
-  return await def.run(call, context, config);
+  return await def.run(call, context, config, modelOverride);
 }
 
 export async function validateTool(

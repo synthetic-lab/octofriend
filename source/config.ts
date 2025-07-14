@@ -1,3 +1,4 @@
+import React from "react";
 import { t } from "structural";
 import readline from "readline/promises";
 import fs from "fs/promises";
@@ -18,13 +19,30 @@ const McpServerConfigSchema = t.exact({
 
 const ConfigSchema = t.exact({
   yourName: t.str,
-  baseUrl: t.str,
-  apiEnvVar: t.str,
-  model: t.str,
-  context: t.num,
+  models: t.array(t.exact({
+    nickname: t.str,
+    baseUrl: t.str,
+    apiEnvVar: t.str,
+    model: t.str,
+    context: t.num,
+  })),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
+
+export const ConfigContext = React.createContext<Config>({
+  yourName: "unknown",
+  models: [],
+});
+export function useConfig() {
+  return React.useContext(ConfigContext);
+}
+export function getModelFromConfig(config: Config, modelOverride: string | null) {
+  if(modelOverride == null) return config.models[0];
+  const matching = config.models.find(m => m.nickname === modelOverride);
+  if(matching) return matching;
+  return config.models[0];
+}
 
 export async function readConfig(path: string): Promise<Config> {
   const file = await fs.readFile(path, "utf8");
@@ -121,6 +139,11 @@ your .bash_profile or .zshrc?
 
   console.log("Connection succeeded!");
 
+  const nickname = await rl.question(themeStyle(
+    "Let's give this model a nickname so we can easily reference it later."
+  ) + "\nFor example, if this was set up to talk to DeepSeek-V3-0324, you might want to call it that." +
+  "\n Model nickname: ");
+
   let contextK: number | undefined = undefined;
   while(contextK == null) {
     console.log("\n");
@@ -149,8 +172,11 @@ Maximum input tokens: `
   rl.close();
 
   const config = {
-    yourName, baseUrl, apiEnvVar, model,
-    context: contextK * 1024,
+    yourName,
+    models: [{
+      baseUrl, apiEnvVar, model, nickname,
+      context: contextK * 1024,
+    }],
   };
 
   const dir = path.dirname(configPath);

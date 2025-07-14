@@ -20,14 +20,16 @@ const cli = new Command()
 .action(async (opts) => {
 	const metadata = await readMetadata();
 	const config = await loadConfig(opts.config);
-  if(!process.env[config.apiEnvVar]) {
-    console.error(`
-Octo is set to use the ${config.apiEnvVar} env var to authenticate with the API, but that env var
-isn't set in your current shell.
+  for(const model of config.models) {
+    if(!process.env[model.apiEnvVar]) {
+      console.error(`
+Octo is set to use the ${model.apiEnvVar} env var to authenticate with the ${model.nickname} API,
+but that env var isn't set in your current shell.
 
 Hint: do you need to re-source your .bash_profile or .zshrc?
-`.trim());
-    process.exit(1);
+  `.trim());
+      process.exit(1);
+    }
   }
 
   // Connect to all MCP servers on boot

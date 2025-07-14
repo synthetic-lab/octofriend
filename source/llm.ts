@@ -4,7 +4,7 @@ import path from "path";
 import { getMcpClient } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { t, toTypescript, toJSONSchema } from "structural";
-import { Config } from "./config.ts";
+import { Config, getModelFromConfig } from "./config.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
@@ -279,6 +279,8 @@ function toLlmMessage(
   prev: LlmMessage | null,
   item: HistoryItem,
 ): [LlmMessage | null, LlmMessage | null] {
+  if(item.type === "model-switched") return [ prev, null ];
+
   if(item.type === "tool") {
     if(prev && prev.role === "assistant") {
       return [
@@ -436,12 +438,14 @@ export function totalTokensUsed() {
 export async function runAgent(
   client: OpenAI,
   config: Config,
+  modelOverride: string | null,
   history: HistoryItem[],
   contextSpace: ContextSpace,
   onTokens: (t: string, type: "reasoning" | "content") => any,
   abortSignal: AbortSignal,
 ) {
-  const processedHistory = applyContextWindow(history, config.context);
+  const model = getModelFromConfig(config, modelOverride);
+  const processedHistory = applyContextWindow(history, model.context);
   if(processedHistory.appliedWindow) {
     contextSpace.window(processedHistory.history[0].id);
   }
@@ -454,7 +458,7 @@ export async function runAgent(
   );
 
   const res = await client.chat.completions.create({
-    model: config.model,
+    model: model.model,
     messages,
     stream: true,
     parallel_tool_calls: false,
@@ -480,7 +484,8 @@ export async function runAgent(
     stream_options: {
       include_usage: true,
     },
-    max_completion_tokens: config.context,
+    max_completion_tokens: model.context,
+    max_tokens: model.context,
   }, {
     signal: abortSignal,
   });

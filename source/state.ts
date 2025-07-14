@@ -1,4 +1,4 @@
-import { Config } from "./config.ts";
+import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import OpenAI from "openai";
 import { runAgent } from "./llm.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
@@ -12,6 +12,7 @@ import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import { ContextSpace, contextSpace } from "./context-space.ts";
 import * as path from "path";
 import { sleep } from "./sleep.ts";
+import { useShallow } from "zustand/shallow";
 
 export type RunArgs = {
   client: OpenAI,
@@ -32,6 +33,7 @@ export type UiState = {
   } | {
     mode: "menu",
   },
+  modelOverride: string | null,
   history: Array<HistoryItem>,
   context: ContextSpace,
   input: (args: RunArgs & { query: string }) => Promise<void>,
@@ -39,6 +41,7 @@ export type UiState = {
   rejectTool: (toolCallId: string) => void,
   abortResponse: () => void,
   toggleMenu: () => void,
+  setModelOverride: (m: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -48,6 +51,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
   history: [],
   context: contextSpace(),
+  modelOverride: null,
 
   input: async ({ client, config, query }) => {
     const userMessage: UserItem = {
@@ -100,14 +104,29 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
+  setModelOverride: (model: string) => {
+    set({
+      modelOverride: model,
+      history: [
+        ...get().history,
+        {
+          type: "model-switched",
+          id: sequenceId(),
+          model,
+        },
+      ],
+    });
+  },
+
   runTool: async ({ client, config, toolReq }) => {
     const context = get().context;
+    const modelOverride = get().modelOverride;
 
     try {
       const content = await runTool({
         id: toolReq.id,
         tool: toolReq.tool.function,
-      }, context, config);
+      }, context, config, modelOverride);
 
       const toolHistoryItem: HistoryItem = {
         type: "tool-output",
@@ -156,37 +175,45 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     let history: HistoryItem[];
     try {
-      history = await runAgent(client, config, get().history, context, (tokens, type) => {
-        if(type === "content") {
-          content += tokens;
+      history = await runAgent(
+        client,
+        config,
+        get().modelOverride,
+        get().history,
+        context,
+        (tokens, type) => {
+          if(type === "content") {
+            content += tokens;
 
-          // Skip duplicate updates
-          if (content === lastContent) return;
-          lastContent = content;
+            // Skip duplicate updates
+            if (content === lastContent) return;
+            lastContent = content;
 
-          if (timeout) return;
-        } else {
-          if(reasoningContent == null) reasoningContent = "";
-          reasoningContent += tokens;
-          if(timeout) return;
-        }
+            if (timeout) return;
+          } else {
+            if(reasoningContent == null) reasoningContent = "";
+            reasoningContent += tokens;
+            if(timeout) return;
+          }
 
-        // Schedule the UI update
-        timeout = setTimeout(() => {
-          set({
-            modeData: {
-              mode: "responding",
-              inflightResponse: {
-                type: "assistant",
-                content, reasoningContent,
+          // Schedule the UI update
+          timeout = setTimeout(() => {
+            set({
+              modeData: {
+                mode: "responding",
+                inflightResponse: {
+                  type: "assistant",
+                  content, reasoningContent,
+                },
+                abortController,
               },
-              abortController,
-            },
-          });
+            });
 
-          timeout = null;
-        }, debounceTimeout);
-      }, abortController.signal);
+            timeout = null;
+          }, debounceTimeout);
+        },
+        abortController.signal
+      );
       if(timeout) clearTimeout(timeout);
     } catch(e) {
       if (abortController.signal.aborted) {
@@ -298,4 +325,15 @@ async function tryTransformToolError(
     }
   }
   throw e;
+}
+
+export function useModel() {
+  const { modelOverride } = useAppStore(
+    useShallow(state => ({
+      modelOverride: state.modelOverride,
+    }))
+  );
+  const config = useConfig();
+
+  return getModelFromConfig(config, modelOverride);
 }
