@@ -162,6 +162,7 @@ type AddModelStep<T extends ModelVar> = {
   prompt: string,
   varname: T,
   parse: (val: string) => Config["models"][number][T],
+  validate: (val: string) => { valid: true } | { valid: false, error: string },
 };
 
 const MODEL_STEPS = [
@@ -182,6 +183,7 @@ const MODEL_STEPS = [
     parse(val) {
       return val;
     },
+    validate: () => ({ valid: true }),
   } satisfies AddModelStep<"baseUrl">,
   {
     title: "What environment variable should Octo read to get the API key?",
@@ -212,11 +214,20 @@ const MODEL_STEPS = [
     varname: "apiEnvVar",
     parse(val) {
       return val;
-    }
+    },
+    validate(val) {
+      if(process.env[val]) return { valid: true };
+      return {
+        valid: false,
+        error: `
+Env var ${val} isn't defined in your current shell. Do you need to re-source your .bashrc or .zshrc?
+        `.trim(),
+      };
+    },
   } satisfies AddModelStep<"apiEnvVar">,
   {
-    title: "What's the model name for the API you're using?",
-    prompt: "Model name:",
+    title: "What's the model string for the API you're using?",
+    prompt: "Model string:",
     varname: "model",
     description() {
       return <Box flexDirection="column">
@@ -232,6 +243,7 @@ const MODEL_STEPS = [
     parse(val) {
       return val;
     },
+    validate: () => ({ valid: true }),
   } satisfies AddModelStep<"model">,
   {
     title: "Let's give this model a nickname so we can easily reference it later.",
@@ -248,6 +260,7 @@ const MODEL_STEPS = [
     parse(val) {
       return val;
     },
+    validate: () => ({ valid: true }),
   } satisfies AddModelStep<"nickname">,
   {
     title: "What's the maximum number of tokens Octo should use per request?",
@@ -279,6 +292,13 @@ const MODEL_STEPS = [
     parse(val) {
       return parseInt(val.replace("k", ""), 10) * 1024;
     },
+    validate(value) {
+      if(value.replace("k", "").match(/^\d+$/)) return { valid: true };
+      return {
+        valid: false,
+        error: "Couldn't parse your input as a number: please try again",
+      };
+    },
   } satisfies AddModelStep<"context">,
 ];
 
@@ -291,12 +311,14 @@ function _assertCovered(x: ModelVar) {
 }
 
 function AddModelFlow() {
+  const [ errorMessage, setErrorMessage ] = useState<null | string>(null);
   const [ modelProgress, setModelProgress ] = useState<Partial<Config["models"][number]>>({});
   const [ stepVar, setStepVar ] = useState<ModelVar>(MODEL_STEPS[0].varname);
   const [ varValue, setVarValue ] = useState<string>("");
   const currentStep = MODEL_STEPS.find(step => step.varname === stepVar)!;
 
   const onValueChange = useCallback((value: string) => {
+    setErrorMessage("");
     setVarValue(value);
   }, [currentStep]);
 
@@ -307,9 +329,30 @@ function AddModelFlow() {
   })));
 
   const onSubmit = useCallback(() => {
+    const trimmed = varValue.trim();
+    const validationResult = currentStep.validate(trimmed);
+    if(!validationResult.valid) {
+      setVarValue("");
+      setErrorMessage(validationResult.error);
+      return;
+    }
+
+    let parsed = currentStep.parse(trimmed);
+    if(currentStep.varname === "model") {
+      if(modelProgress["baseUrl"] === "https://api.synthetic.new/v1") {
+        if(!(parsed as string).startsWith("hf:")) {
+          setVarValue("");
+          setErrorMessage(`
+Synthetic model names need to be prefixed with "hf:" (without the quotes)
+          `.trim());
+          return;
+        }
+      }
+    }
+
     const newModelProgress = {
       ...modelProgress,
-      [ currentStep.varname ]: currentStep.parse(varValue),
+      [ currentStep.varname ]: parsed,
     };
     setModelProgress(newModelProgress);
     setVarValue("");
@@ -358,5 +401,11 @@ function AddModelFlow() {
 
       <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
     </Box>
+
+    {
+      errorMessage && <Box width={80}>
+        <Text color="red" bold>{ errorMessage }</Text>
+      </Box>
+    }
   </Box>
 }
