@@ -458,30 +458,31 @@ export async function runAgent(
     config
   );
 
+  const tools = Object.entries(toolMap).map(([ name, tool ]) => {
+    const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
+    // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
+    // @ts-ignore
+    delete argJsonSchema.$schema;
+    delete argJsonSchema.description;
+    // @ts-ignore
+    delete argJsonSchema.title;
+
+    return {
+      type: "function" as const,
+      strict: true,
+      function: {
+        name: name,
+        description: `The ${name} tool`,
+        parameters: argJsonSchema,
+      },
+    };
+  });
+
   const res = await client.chat.completions.create({
     model: model.model,
-    messages,
+    messages, tools,
     stream: true,
     parallel_tool_calls: false,
-    tools: Object.entries(toolMap).map(([ name, tool ]) => {
-      const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
-      // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
-      // @ts-ignore
-      delete argJsonSchema.$schema;
-      delete argJsonSchema.description;
-      // @ts-ignore
-      delete argJsonSchema.title;
-
-      return {
-        type: "function",
-        strict: true,
-        function: {
-          name: name,
-          description: `The ${name} tool`,
-          parameters: argJsonSchema,
-        },
-      };
-    }),
     stream_options: {
       include_usage: true,
     },
