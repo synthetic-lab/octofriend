@@ -56,12 +56,11 @@ export default function App({ config, metadata, unchained }: Props) {
 		});
 	}, [ config ]);
 
-  const { history, modeData, context, abortResponse } = useAppStore(
+  const { history, modeData, context } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       context: state.context,
-      abortResponse: state.abortResponse,
     }))
   );
 
@@ -71,11 +70,6 @@ export default function App({ config, metadata, unchained }: Props) {
     });
   }, [ context ]);
 
-  useInput((_, key) => {
-    if(key.escape) {
-      abortResponse();
-    }
-  });
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
@@ -160,12 +154,17 @@ function BottomBarContent({ config, client }: {
   client: OpenAI,
 }) {
 	const [ query, setQuery ] = useState("");
-  const { modeData, input } = useAppStore(
+  const { modeData, input, abortResponse } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
       input: state.input,
+      abortResponse: state.abortResponse,
     }))
   );
+
+  useInput((_, key) => {
+    if(key.escape) abortResponse();
+  });
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
