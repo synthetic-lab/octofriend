@@ -1,0 +1,285 @@
+import { Config } from "./config.ts";
+import OpenAI from "openai";
+import { runAgent } from "./llm.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
+import {
+  runTool,
+  validateTool,
+  ToolError,
+} from "./tools/index.ts";
+import { create } from "zustand";
+import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
+import { ContextSpace, contextSpace } from "./context-space.ts";
+import * as path from "path";
+import { sleep } from "./sleep.ts";
+
+export type RunArgs = {
+  client: OpenAI,
+  config: Config,
+};
+export type UiState = {
+  modeData: {
+    mode: "input",
+  } | {
+    mode: "responding",
+    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage">,
+    abortController: AbortController,
+  } | {
+    mode: "tool-request",
+    toolReq: ToolCallItem,
+  } | {
+    mode: "error-recovery",
+  },
+  history: Array<HistoryItem>,
+  context: ContextSpace,
+  input: (args: RunArgs & { query: string }) => Promise<void>,
+  runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
+  rejectTool: (toolCallId: string) => void,
+  abortResponse: () => void,
+  _runAgent: (args: RunArgs) => Promise<void>,
+};
+
+export const useAppStore = create<UiState>((set, get) => ({
+  modeData: {
+    mode: "input" as const,
+  },
+  history: [],
+  context: contextSpace(),
+
+  input: async ({ client, config, query }) => {
+    const userMessage: UserItem = {
+			type: "user",
+      id: sequenceId(),
+			content: query,
+		};
+
+		let history = [
+			...get().history,
+			userMessage,
+		];
+    set({ history });
+    await get()._runAgent({ client, config });
+  },
+
+  rejectTool: (toolCallId) => {
+    set({
+      history: [
+        ...get().history,
+        {
+          type: "tool-reject",
+          id: sequenceId(),
+          toolCallId,
+        },
+      ],
+      modeData: {
+        mode: "input",
+      },
+    });
+  },
+
+  abortResponse: () => {
+    const { modeData } = get();
+    if (modeData.mode === "responding") {
+      modeData.abortController.abort();
+    }
+  },
+
+  runTool: async ({ client, config, toolReq }) => {
+    const context = get().context;
+
+    try {
+      const content = await runTool({
+        id: toolReq.id,
+        tool: toolReq.tool.function,
+      }, context, config);
+
+      const toolHistoryItem: HistoryItem = {
+        type: "tool-output",
+        id: sequenceId(),
+        content,
+        toolCallId: toolReq.tool.toolCallId,
+      };
+
+      const history: HistoryItem[] = [
+        ...get().history,
+        toolHistoryItem,
+      ];
+
+      set({ history });
+    } catch(e) {
+      const history = [
+        ...get().history,
+        await tryTransformToolError(toolReq, context, e),
+      ];
+      set({ history });
+    }
+
+    await get()._runAgent({ client, config });
+  },
+
+  _runAgent: async ({ client, config }) => {
+    const context = get().context;
+    let content = "";
+    let reasoningContent: undefined | string = undefined;
+
+    const abortController = new AbortController();
+    set({
+      modeData: {
+        mode: "responding",
+        inflightResponse: {
+          type: "assistant",
+          content,
+        },
+        abortController,
+      }
+    });
+
+    const debounceTimeout = 16;
+    let timeout: NodeJS.Timeout | null = null;
+    let lastContent = "";
+
+    let history: HistoryItem[];
+    try {
+      history = await runAgent(client, config, get().history, context, (tokens, type) => {
+        if(type === "content") {
+          content += tokens;
+
+          // Skip duplicate updates
+          if (content === lastContent) return;
+          lastContent = content;
+
+          if (timeout) return;
+        } else {
+          if(reasoningContent == null) reasoningContent = "";
+          reasoningContent += tokens;
+          if(timeout) return;
+        }
+
+        // Schedule the UI update
+        timeout = setTimeout(() => {
+          set({
+            modeData: {
+              mode: "responding",
+              inflightResponse: {
+                type: "assistant",
+                content, reasoningContent,
+              },
+              abortController,
+            },
+          });
+
+          timeout = null;
+        }, debounceTimeout);
+      }, abortController.signal);
+      if(timeout) clearTimeout(timeout);
+    } catch(e) {
+      if (abortController.signal.aborted) {
+        // Handle abort gracefully - return to input mode
+        set({
+          modeData: {
+            mode: "input",
+          },
+        });
+        return;
+      }
+
+      console.error(e);
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "request-failed",
+            id: sequenceId(),
+          },
+        ],
+      });
+      await sleep(1000);
+      return get()._runAgent({ config, client });
+    }
+
+    const lastHistoryItem = history[history.length - 1];
+    if(lastHistoryItem.type === "assistant") {
+      set({ modeData: { mode: "input" }, history });
+      return;
+    }
+    if(lastHistoryItem.type === "tool-error") {
+      set({
+        modeData: { mode: "error-recovery" },
+        history
+      });
+      return get()._runAgent({ client, config });
+    }
+
+    if(lastHistoryItem.type !== "tool") {
+      throw new Error(`Unexpected role: ${lastHistoryItem.type}`);
+    }
+
+    try {
+      await validateTool(lastHistoryItem.tool.function, config);
+    } catch(e) {
+      set({
+        modeData: {
+          mode: "error-recovery",
+        },
+        history: [
+          ...history,
+          await tryTransformToolError(lastHistoryItem, context, e),
+        ],
+      });
+      return await get()._runAgent({ client, config });
+    }
+
+    set({
+      modeData: {
+        mode: "tool-request",
+        toolReq: lastHistoryItem,
+      },
+      history,
+    });
+  },
+}));
+
+async function tryTransformToolError(
+  toolReq: ToolCallItem, context: ContextSpace, e: unknown
+): Promise<HistoryItem> {
+  if(e instanceof ToolError) {
+    return {
+      type: "tool-error",
+      id: sequenceId(),
+      error: e.message,
+      original: {
+        id: toolReq.tool.toolCallId,
+        function: {
+          name: toolReq.tool.function.name,
+          arguments: toolReq.tool.function.arguments ?
+            JSON.stringify(toolReq.tool.function.arguments) : "{}"
+        },
+      },
+      toolCallId: toolReq.tool.toolCallId,
+    };
+  }
+  if(e instanceof FileOutdatedError) {
+    const absolutePath = path.resolve(e.filePath);
+    // Actually perform the read to ensure it's readable
+    try {
+      await fileTracker.read(absolutePath);
+      context.tracker("files").track({
+        absolutePath,
+        historyId: toolReq.id,
+      });
+      return {
+        type: "file-outdated",
+        id: sequenceId(),
+        toolCallId: toolReq.tool.toolCallId,
+      };
+    } catch {
+      return {
+        type: "file-unreadable",
+        path: e.filePath,
+        id: sequenceId(),
+        toolCallId: toolReq.tool.toolCallId,
+      };
+    }
+  }
+  throw e;
+}
