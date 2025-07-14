@@ -542,7 +542,7 @@ export async function runAgent(
         reasoningContent += delta.reasoning_content;
         onTokens(delta.reasoning_content, "reasoning");
       }
-      else if(delta && "tool_calls" in delta && delta.tool_calls.length > 0) {
+      else if(delta && "tool_calls" in delta && delta.tool_calls && delta.tool_calls.length > 0) {
         for(const deltaCall of delta.tool_calls) {
           if(currTool == null) {
             currTool = {
