@@ -5,3 +5,5 @@ TODO:
 - [ ] `mkdir -p` for file creation, don't fail if the dir doesn't exist
 - [ ] Don't use the context space to perma-track rules files, load them
   directly into the system prompt.
+- [ ] Test the API connection in the add model flow, like you do in the NUX
+- [ ] Port the NUX to Ink, and reuse the Add Model Flow components
