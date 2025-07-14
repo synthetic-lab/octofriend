@@ -9,7 +9,7 @@ import { runAgent } from "./llm.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
 import Loading from "./loading.tsx";
 import { Header } from "./header.tsx";
-import { THEME_COLOR } from "./theme.ts";
+import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./diff-renderer.tsx";
 import {
   runTool,
@@ -364,30 +364,32 @@ export default function App({ config, metadata, unchained }: Props) {
     ]
   }, [ history ]);
 
-	return <Box flexDirection="column" width="100%" height="100%">
-    <Static items={staticItems}>
+	return <UnchainedContext.Provider value={unchained}>
+    <Box flexDirection="column" width="100%" height="100%">
+      <Static items={staticItems}>
+        {
+          (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+        }
+      </Static>
+
       {
-        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+        modeData.mode === "responding" &&
+          (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+          <MessageDisplay item={modeData.inflightResponse} />
       }
-    </Static>
 
-    {
-      modeData.mode === "responding" &&
-        (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-        <MessageDisplay item={modeData.inflightResponse} />
-    }
-
-    <BottomBar client={client} config={config} metadata={metadata} unchained={unchained} />
-	</Box>
+      <BottomBar client={client} config={config} metadata={metadata} />
+    </Box>
+  </UnchainedContext.Provider>
 }
 
-function BottomBar({ config, client, metadata, unchained }: {
+function BottomBar({ config, client, metadata }: {
   config: Config,
   client: OpenAI,
   metadata: Metadata,
-  unchained: boolean,
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
+  const themeColor = useColor();
 
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
@@ -403,7 +405,7 @@ function BottomBar({ config, client, metadata, unchained }: {
   }, [ metadata ]);
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent config={config} client={client} unchained={unchained} />
+    <BottomBarContent config={config} client={client} />
     <Box
       width="100%"
       justifyContent="flex-end"
@@ -411,7 +413,7 @@ function BottomBar({ config, client, metadata, unchained }: {
       flexShrink={0}
       flexGrow={1}
     >
-      <Text color={THEME_COLOR}>{versionCheck}</Text>
+      <Text color={themeColor}>{versionCheck}</Text>
     </Box>
   </Box>
 }
@@ -432,10 +434,9 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ config, client, unchained }: {
+function BottomBarContent({ config, client }: {
   config: Config,
   client: OpenAI,
-  unchained: boolean,
 }) {
 	const [ query, setQuery ] = useState("");
   const { modeData, input } = useAppStore(
@@ -463,7 +464,6 @@ function BottomBarContent({ config, client, unchained }: {
       toolReq={modeData.toolReq}
       client={client}
       config={config}
-      unchained={unchained}
     />;
   }
 
@@ -474,9 +474,8 @@ function BottomBarContent({ config, client, unchained }: {
   />;
 }
 
-function ToolRequestRenderer({ toolReq, client, config, unchained }: {
+function ToolRequestRenderer({ toolReq, client, config }: {
   toolReq: ToolCallItem
-  unchained: boolean;
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
@@ -484,6 +483,7 @@ function ToolRequestRenderer({ toolReq, client, config, unchained }: {
       rejectTool: state.rejectTool,
     }))
   );
+  const unchained = useUnchained();
 
   const items = [
     {
@@ -519,18 +519,22 @@ function ToolRequestRenderer({ toolReq, client, config, unchained }: {
 }
 
 function IndicatorComponent({ isSelected = false }: { isSelected?: boolean }) {
+  const themeColor = useColor();
   return <Box marginRight={1}>
     {
-      isSelected ? <Text color={THEME_COLOR}>{figures.pointer}</Text> : <Text> </Text>
+      isSelected ? <Text color={themeColor}>{figures.pointer}</Text> : <Text> </Text>
     }
   </Box>
 }
 
 function ItemComponent({ isSelected = false, label }: { isSelected?: boolean, label: string }) {
-  return <Text color={isSelected ? THEME_COLOR : undefined}>{label}</Text>
+  const themeColor = useColor();
+  return <Text color={isSelected ? themeColor : undefined}>{label}</Text>
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
+  const themeColor = useColor();
+
   if(item.type === "header") return <Header />;
   if(item.type === "version") {
     return <Box marginTop={1} marginLeft={1} flexDirection="column">
@@ -542,7 +546,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
       </Text>
       <Box marginTop={1}>
         <Text>
-          Octo is your friend. Tell Octo <Text color={THEME_COLOR}>what you want to do.</Text>
+          Octo is your friend. Tell Octo <Text color={themeColor}>what you want to do.</Text>
         </Text>
       </Box>
     </Box>
@@ -621,34 +625,38 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
 }
 
 function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
+  const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
       <Text color="gray">{item.name}: </Text>
-      <Text color={THEME_COLOR}>{item.arguments.cmd}</Text>
+      <Text color={themeColor}>{item.arguments.cmd}</Text>
     </Box>
 		<Text color="gray">timeout: {item.arguments.timeout}</Text>
 	</Box>
 }
 
 function ReadToolRenderer({ item }: { item: t.GetType<typeof read.Schema> }) {
+  const themeColor = useColor();
   return <Box>
 		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
+		<Text color={themeColor}>{item.arguments.filePath}</Text>
 	</Box>
 }
 
 function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
+  const themeColor = useColor();
   return <Box>
 		<Text color="gray">{item.name}: </Text>
-		<Text color={THEME_COLOR}>{item?.arguments?.dirPath || process.cwd()}</Text>
+		<Text color={themeColor}>{item?.arguments?.dirPath || process.cwd()}</Text>
 	</Box>
 }
 
 function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
+  const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
       <Text>Edit: </Text>
-      <Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
+      <Text color={themeColor}>{item.arguments.filePath}</Text>
     </Box>
     <EditRenderer filePath={item.arguments.filePath} item={item.arguments.edit} />
   </Box>
@@ -686,10 +694,11 @@ function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
 }
 
 function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema> }) {
+  const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
       <Text>Create file: </Text>
-      <Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
+      <Text color={themeColor}>{item.arguments.filePath}</Text>
     </Box>
     <Box flexDirection="column">
       <Text>With content:</Text>
@@ -699,10 +708,11 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
 }
 
 function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
+  const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
       <Text color="gray">{item.name}: </Text>
-      <Text color={THEME_COLOR}>Server: {item.arguments.server}, Tool: {item.arguments.tool}</Text>
+      <Text color={themeColor}>Server: {item.arguments.server}, Tool: {item.arguments.tool}</Text>
     </Box>
     <Text color="gray">Arguments: {JSON.stringify(item.arguments.arguments)}</Text>
   </Box>
@@ -769,7 +779,8 @@ const InputBox = React.memo((props: {
 	onChange: (s: string) => any,
 	onSubmit: () => any,
 }) => {
-  return <Box width="100%" borderStyle="round" borderColor={THEME_COLOR}>
+  const themeColor = useColor();
+  return <Box width="100%" borderStyle="round" borderColor={themeColor}>
     <TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
   </Box>
 });

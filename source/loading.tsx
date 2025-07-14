@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
-import { THEME_COLOR } from "./theme.ts";
+import { useColor } from "./theme.ts";
 
 const LOADING_STRINGS = [
 	"Scheming",
@@ -14,6 +14,7 @@ const LOADING_STRINGS = [
 export default function Loading() {
 	const [ idx, setIndex ] = useState(0);
 	const [ dotCount, setDotCount ] = useState(0);
+  const themeColor = useColor();
 
 	useEffect(() => {
 		let fired = false;
@@ -35,6 +36,8 @@ export default function Loading() {
 	return <Box>
 		<Text color="gray"><Spinner type="binary" /></Text>
 		<Text>{ " " }</Text>
-		<Text color={THEME_COLOR}>{LOADING_STRINGS[idx]}</Text><Text>{".".repeat(dotCount)}</Text>
+		<Text color={themeColor}>
+      {LOADING_STRINGS[idx]}</Text><Text>{".".repeat(dotCount)}
+    </Text>
 	</Box>
 }

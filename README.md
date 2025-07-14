@@ -18,7 +18,9 @@ squeeze the best performance out of coding LLMs.
 Octo has helped write some of its own source code, but we're human-first: Octo
 is meant to be a friendly little helper rather than a completely hands-free
 author, and that's how we use it. We don't blindly commit LLM-generated code,
-and typically iterate extensively with any code Octo writes.
+and typically iterate extensively with any code Octo writes. But if you want to
+live dangerously, you can always run `octofriend --unchained`, and skip all
+tool and edit confirmations.
 
 # Install Octo
 ```bash
