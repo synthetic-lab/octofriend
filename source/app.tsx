@@ -92,8 +92,10 @@ export default function App({ config, metadata, unchained }: Props) {
           (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
           <MessageDisplay item={modeData.inflightResponse} />
       }
-
-      <BottomBar client={client} config={config} metadata={metadata} />
+      {
+        modeData.mode === "menu" ? <Menu /> :
+          <BottomBar client={client} config={config} metadata={metadata} />
+      }
     </Box>
   </UnchainedContext.Provider>
 }
@@ -149,21 +151,65 @@ async function getLatestVersion() {
   }
 }
 
+function Menu() {
+  const { toggleMenu } = useAppStore(
+    useShallow(state => ({
+      toggleMenu: state.toggleMenu,
+    }))
+  );
+
+  useInput((_, key) => {
+    if(key.escape) toggleMenu();
+  });
+
+  const items = [
+    {
+      label: "Yes",
+      value: "yes",
+    },
+    {
+      label: "Return to Octo",
+      value: "return",
+    },
+  ];
+
+	const onSelect = useCallback(async (item: (typeof items)[number]) => {
+    if(item.value === "return") toggleMenu();
+	}, []);
+
+
+  return <Box flexDirection="column">
+    <Box justifyContent="center">
+      <Octo />
+    </Box>
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ItemComponent}
+    />
+  </Box>
+}
+
 function BottomBarContent({ config, client }: {
   config: Config,
   client: OpenAI,
 }) {
 	const [ query, setQuery ] = useState("");
-  const { modeData, input, abortResponse } = useAppStore(
+  const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
       input: state.input,
       abortResponse: state.abortResponse,
+      toggleMenu: state.toggleMenu,
     }))
   );
 
   useInput((_, key) => {
-    if(key.escape) abortResponse();
+    if(key.escape) {
+      abortResponse();
+      toggleMenu();
+    }
   });
 
 	const onSubmit = useCallback(async () => {
@@ -187,11 +233,16 @@ function BottomBarContent({ config, client }: {
     />;
   }
 
-  return <InputBox
-    value={query}
-    onChange={setQuery}
-    onSubmit={onSubmit}
-  />;
+  return <Box flexDirection="column">
+    <Box marginLeft={1} justifyContent="flex-end">
+      <Text color="gray">(Press ESC to enter the menu)</Text>
+    </Box>
+    <InputBox
+      value={query}
+      onChange={setQuery}
+      onSubmit={onSubmit}
+    />
+  </Box>
 }
 
 function ToolRequestRenderer({ toolReq, client, config }: {
@@ -461,7 +512,7 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
 
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
 	return <Box>
-    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Text>🐙</Text></Box>
+    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
     <Box flexDirection="column" flexGrow={1}>
       {
         thoughts && thoughts !== "" && <Box flexDirection="column">
@@ -492,6 +543,10 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
       </Box>
     </Box>
   </Box>
+}
+
+function Octo() {
+  return <Text>🐙</Text>
 }
 
 const InputBox = React.memo((props: {

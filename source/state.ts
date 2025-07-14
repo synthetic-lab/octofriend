@@ -29,6 +29,8 @@ export type UiState = {
     toolReq: ToolCallItem,
   } | {
     mode: "error-recovery",
+  } | {
+    mode: "menu",
   },
   history: Array<HistoryItem>,
   context: ContextSpace,
@@ -36,6 +38,7 @@ export type UiState = {
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
   rejectTool: (toolCallId: string) => void,
   abortResponse: () => void,
+  toggleMenu: () => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -81,6 +84,19 @@ export const useAppStore = create<UiState>((set, get) => ({
     const { modeData } = get();
     if (modeData.mode === "responding") {
       modeData.abortController.abort();
+    }
+  },
+
+  toggleMenu: () => {
+    const { modeData } = get();
+    if(modeData.mode === "input") {
+      set({
+        modeData: { mode: "menu" },
+      });
+    } else if(modeData.mode === "menu") {
+      set({
+        modeData: { mode: "input" },
+      });
     }
   },
 
