@@ -1,3 +1,4 @@
+import * as fsOld from "fs";
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
@@ -640,11 +641,14 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
       <Text>Edit: </Text>
       <Text color={THEME_COLOR}>{item.arguments.filePath}</Text>
     </Box>
-    <EditRenderer item={item.arguments.edit} />
+    <EditRenderer filePath={item.arguments.filePath} item={item.arguments.edit} />
   </Box>
 }
 
-function EditRenderer({ item }: { item: t.GetType<typeof edit.AllEdits> }) {
+function EditRenderer({ filePath, item }: {
+  filePath: string,
+  item: t.GetType<typeof edit.AllEdits>
+}) {
   switch(item.type) {
     case "diff": return <DiffEditRenderer item={item} />
     case "append":
@@ -660,7 +664,7 @@ function EditRenderer({ item }: { item: t.GetType<typeof edit.AllEdits> }) {
     case "rewrite-whole":
       return <Box flexDirection="column">
         <Text>Octo wants to rewrite the file:</Text>
-        <Text>{item.text}</Text>
+        <DiffRenderer oldText={fsOld.readFileSync(filePath, "utf8")} newText={item.text} />
       </Box>
   }
 }
