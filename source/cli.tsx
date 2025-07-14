@@ -19,7 +19,7 @@ const cli = new Command()
 .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
 .action(async (opts) => {
 	const metadata = await readMetadata();
-	const config = await loadConfig(opts.config);
+	const { config, configPath } = await loadConfig(opts.config);
   for(const model of config.models) {
     if(!process.env[model.apiEnvVar]) {
       console.error(`
@@ -46,7 +46,7 @@ Hint: do you need to re-source your .bash_profile or .zshrc?
   }
 
 	const { waitUntilExit } = render(
-    <App config={config} metadata={metadata} unchained={!!opts.unchained} />
+    <App config={config} configPath={configPath} metadata={metadata} unchained={!!opts.unchained} />
   );
 
   await waitUntilExit();
@@ -67,17 +67,17 @@ cli.command("init")
 });
 
 async function loadConfig(configPath?: string) {
-  if(configPath) return await readConfig(configPath);
+  if(configPath) return { configPath, config: await readConfig(configPath) };
 
   if(await fileExists(CONFIG_JSON5_FILE)) {
-    return await readConfig(CONFIG_JSON5_FILE);
+    return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
   }
 
   const jsonFile = path.join(CONFIG_STANDARD_DIR, "octofriend.json")
   if(await fileExists(jsonFile)) {
-    return await readConfig(jsonFile);
+    return { configPath: jsonFile, config: await readConfig(jsonFile) };
   }
-  return await initConfig(CONFIG_JSON5_FILE);
+  return { configPath: CONFIG_JSON5_FILE, config: await initConfig(CONFIG_JSON5_FILE) };
 }
 
 cli.parse();

@@ -445,6 +445,7 @@ export async function runAgent(
   abortSignal: AbortSignal,
 ) {
   const model = getModelFromConfig(config, modelOverride);
+
   const processedHistory = applyContextWindow(history, model.context);
   if(processedHistory.appliedWindow) {
     contextSpace.window(processedHistory.history[0].id);

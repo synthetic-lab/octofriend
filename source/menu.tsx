@@ -1,16 +1,19 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { create } from "zustand";
 import { guard, statematch, fallback } from "statematch";
 import { Text, Box, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
-import { useConfig } from "./config.ts";
+import { useConfig, useSetConfig, Config } from "./config.ts";
 import { Octo } from "./components/octo.tsx";
+import { useColor } from "./theme.ts";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
+import TextInput from "ink-text-input";
 
 type MenuMode = "main-menu"
               | "model-select"
+              | "add-model"
               ;
 type MenuState = {
   menuMode: MenuMode,
@@ -30,7 +33,8 @@ export function Menu() {
   })));
 
   if(menuMode === "main-menu") return <MainMenu />
-  return <SwitchModelMenu />
+  if(menuMode === "model-select") return <SwitchModelMenu />
+  return <AddModelFlow />
 }
 
 function SwitchModelMenu() {
@@ -112,6 +116,7 @@ function MainMenu() {
         setMenuMode("model-select");
       }),
       guard(() => item.value === "add-model").run(() => {
+        setMenuMode("add-model");
       }),
       fallback(() => {
         toggleMenu();
@@ -146,6 +151,212 @@ function MenuPanel<V>({ items, onSelect }: MenuPanelProps<V>) {
         indicatorComponent={IndicatorComponent}
         itemComponent={ItemComponent}
       />
+    </Box>
+  </Box>
+}
+
+type ModelVar = keyof (Config["models"][number]);
+type AddModelStep<T extends ModelVar> = {
+  title: string,
+  description: (themeColor: string) => React.ReactNode,
+  prompt: string,
+  varname: T,
+  parse: (val: string) => Config["models"][number][T],
+};
+
+const MODEL_STEPS = [
+  {
+    title: "What's the base URL for the API you're connecting to?",
+    prompt: "Base URL:",
+    description: () => {
+      return <Box flexDirection="column">
+        <Text>
+          (For example, https://api.synthetic.new/v1)
+        </Text>
+        <Text>
+          You can usually find this information in your inference provider's documentation.
+        </Text>
+      </Box>
+    },
+    varname: "baseUrl",
+    parse(val) {
+      return val;
+    },
+  } satisfies AddModelStep<"baseUrl">,
+  {
+    title: "What environment variable should Octo read to get the API key?",
+    prompt: "Environment variable name:",
+    description: () => {
+      return <Box flexDirection="column">
+        <Text>
+          (For example, SYNTHETIC_API_KEY)
+        </Text>
+        <Text>
+          You can typically find your API key on your account or settings page on your
+          inference provider's website.
+        </Text>
+        <Text>
+          For Synthetic, go to: https://synthetic.new/user-settings/api
+        </Text>
+        <Text>
+          After getting an API key, make sure to export it in your shell; for example:
+        </Text>
+        <Text bold>
+          export SYNTHETIC_API_KEY="your-api-key-here"
+        </Text>
+        <Text>
+          (If you're running a local LLM, you can use any non-empty env var.)
+        </Text>
+      </Box>
+    },
+    varname: "apiEnvVar",
+    parse(val) {
+      return val;
+    }
+  } satisfies AddModelStep<"apiEnvVar">,
+  {
+    title: "What's the model name for the API you're using?",
+    prompt: "Model name:",
+    varname: "model",
+    description() {
+      return <Box flexDirection="column">
+        <Text>
+          (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)
+        </Text>
+        <Text>
+          This varies by inference provider: you can typically find this information in your
+          inference provider's documentation.
+        </Text>
+      </Box>
+    },
+    parse(val) {
+      return val;
+    },
+  } satisfies AddModelStep<"model">,
+  {
+    title: "Let's give this model a nickname so we can easily reference it later.",
+    prompt: "Nickname:",
+    varname: "nickname",
+    description() {
+      return <Box flexDirection="column">
+        <Text>
+          For example, if this was set up to talk to DeepSeek-V3-0324, you might want to call it
+          that.
+        </Text>
+      </Box>
+    },
+    parse(val) {
+      return val;
+    },
+  } satisfies AddModelStep<"nickname">,
+  {
+    title: "What's the maximum number of tokens Octo should use per request?",
+    prompt: "Maximum tokens:",
+    varname: "context",
+    description() {
+      const color = useColor();
+
+      return <Box flexDirection="column">
+        <Text>
+          You can usually find this information in the documentation for the model on your inference
+          company's website.
+        </Text>
+        <Text>
+          (This is an estimate: leave some buffer room. Best performance is often at half the number
+          of tokens supported by the API.)
+        </Text>
+        <Text>
+          Format the number in k: for example,
+          { " " }
+          <Text color={color}>32k</Text>
+          { " " }
+          or,
+          { " " }
+          <Text color={color}>64k</Text>.
+        </Text>
+      </Box>
+    },
+    parse(val) {
+      return parseInt(val.replace("k", ""), 10) * 1024;
+    },
+  } satisfies AddModelStep<"context">,
+];
+
+// Assert all model variables have defined steps. This will cause compiler errors if not all steps
+// are defined
+type DefinedVarnames = (typeof MODEL_STEPS)[number]["varname"];
+function checkCovered(_: DefinedVarnames) {}
+function _assertCovered(x: ModelVar) {
+  checkCovered(x);
+}
+
+function AddModelFlow() {
+  const [ modelProgress, setModelProgress ] = useState<Partial<Config["models"][number]>>({});
+  const [ stepVar, setStepVar ] = useState<ModelVar>(MODEL_STEPS[0].varname);
+  const [ varValue, setVarValue ] = useState<string>("");
+  const currentStep = MODEL_STEPS.find(step => step.varname === stepVar)!;
+
+  const onValueChange = useCallback((value: string) => {
+    setVarValue(value);
+  }, [currentStep]);
+
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+
+  const onSubmit = useCallback(() => {
+    const newModelProgress = {
+      ...modelProgress,
+      [ currentStep.varname ]: currentStep.parse(varValue),
+    };
+    setModelProgress(newModelProgress);
+    setVarValue("");
+    const index = MODEL_STEPS.indexOf(currentStep);
+    if(index < MODEL_STEPS.length - 1) {
+      setStepVar(MODEL_STEPS[index + 1].varname);
+    }
+    else {
+      setConfig({
+        ...config,
+        models: [
+          ...config.models,
+          newModelProgress as Config["models"][number],
+        ],
+      });
+      setMenuMode("model-select");
+    }
+  }, [ currentStep, MODEL_STEPS, varValue ]);
+
+  const themeColor = useColor();
+
+
+  useInput((_, key) => {
+    if(key.escape) {
+      const index = MODEL_STEPS.indexOf(currentStep);
+      if(index <= 0) {
+        setMenuMode("main-menu");
+      }
+      else {
+        setVarValue("");
+        setStepVar(MODEL_STEPS[index - 1].varname);
+      }
+    }
+  });
+
+  return <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
+    <Box flexDirection="column" width={80}>
+      <Text color={themeColor}>{ currentStep.title }</Text>
+      <currentStep.description />
+    </Box>
+
+    <Box marginTop={1} width={80}>
+      <Box marginRight={1}>
+        <Text>{currentStep.prompt}</Text>
+      </Box>
+
+      <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
     </Box>
   </Box>
 }

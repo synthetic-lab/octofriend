@@ -3,7 +3,9 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
-import { Config, Metadata, ConfigContext, getModelFromConfig } from "./config.ts";
+import {
+  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, getModelFromConfig, useConfig
+} from "./config.ts";
 import OpenAI from "openai";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./loading.tsx";
@@ -28,6 +30,7 @@ import { Menu } from "./menu.tsx";
 
 type Props = {
 	config: Config;
+  configPath: string,
 	metadata: Metadata,
   unchained: boolean,
 };
@@ -50,7 +53,8 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-export default function App({ config, metadata, unchained }: Props) {
+export default function App({ config, configPath, metadata, unchained }: Props) {
+  const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData, context, modelOverride } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -59,14 +63,14 @@ export default function App({ config, metadata, unchained }: Props) {
       modelOverride: state.modelOverride,
     }))
   );
-  const model = getModelFromConfig(config, modelOverride);
+  const model = getModelFromConfig(currConfig, modelOverride);
 
 	const client = useMemo(() => {
 		return new OpenAI({
 			baseURL: model.baseUrl,
 			apiKey: process.env[model.apiEnvVar],
 		});
-	}, [ config, model ]);
+	}, [ currConfig, model ]);
 
   useEffect(() => {
     context.tracker("dirs").permaTrack({
@@ -78,35 +82,38 @@ export default function App({ config, metadata, unchained }: Props) {
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
-      { type: "version", metadata, config },
+      { type: "version", metadata, config: currConfig },
       ...toStaticItems(history),
     ]
   }, [ history ]);
 
-	return <ConfigContext.Provider value={config}>
-    <UnchainedContext.Provider value={unchained}>
-      <Box flexDirection="column" width="100%" height="100%">
-        <Static items={staticItems}>
-          {
-            (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-          }
-        </Static>
+	return <SetConfigContext.Provider value={setCurrConfig}>
+    <ConfigPathContext.Provider value={configPath}>
+      <ConfigContext.Provider value={currConfig}>
+        <UnchainedContext.Provider value={unchained}>
+          <Box flexDirection="column" width="100%" height="100%">
+            <Static items={staticItems}>
+              {
+                (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+              }
+            </Static>
 
-        {
-          modeData.mode === "responding" &&
-            (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-            <MessageDisplay item={modeData.inflightResponse} />
-        }
-        {
-            <BottomBar client={client} config={config} metadata={metadata} />
-        }
-      </Box>
-    </UnchainedContext.Provider>
-  </ConfigContext.Provider>
+            {
+              modeData.mode === "responding" &&
+                (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                <MessageDisplay item={modeData.inflightResponse} />
+            }
+            {
+                <BottomBar client={client} metadata={metadata} />
+            }
+          </Box>
+        </UnchainedContext.Provider>
+      </ConfigContext.Provider>
+    </ConfigPathContext.Provider>
+  </SetConfigContext.Provider>
 }
 
-function BottomBar({ config, client, metadata }: {
-  config: Config,
+function BottomBar({ client, metadata }: {
   client: OpenAI,
   metadata: Metadata,
 }) {
@@ -134,7 +141,7 @@ function BottomBar({ config, client, metadata }: {
   if(modeData.mode === "menu") return <Menu />
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent config={config} client={client} />
+    <BottomBarContent client={client} />
     <Box
       width="100%"
       justifyContent="flex-end"
@@ -163,10 +170,10 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ config, client }: {
-  config: Config,
+function BottomBarContent({ client }: {
   client: OpenAI,
 }) {
+  const config = useConfig();
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
