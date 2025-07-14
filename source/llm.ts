@@ -135,7 +135,9 @@ You may need to use tools again after some back-and-forth with ${config.yourName
 refine your solution.
 
 You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
-to run more tools or edits in a step-by-step process.
+to run more tools or edits in a step-by-step process. If you want to run multiple tools in a row,
+don't worry: just state your plan out loud, and then follow it over the course of multiple messages.
+Don't overthink.
 
 ${await llmInstrsPrompt(config)}
 

@@ -6,7 +6,7 @@ const DiffEdit = t.subtype({
   type: t.value("diff"),
   search: t.str.comment(`
     The search string to replace. Must EXACTLY match the text you intend to replace, including
-    whitespace, punctuation, etc.
+    whitespace, punctuation, etc. Make sure to give a few lines of context above and below.
   `),
   replace: t.str.comment("The string you want to insert into the file"),
 }).comment("Applies a search/replace edit to a file");
