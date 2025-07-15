@@ -1,8 +1,10 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { t } from "structural";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { Config } from "../config.ts";
 import { useColor } from "../theme.ts";
+import OpenAI from "openai";
 
 type ModelVar = keyof (Config["models"][number]);
 type ValidationResult = { valid: true } | { valid: false, error: string };
@@ -16,6 +18,13 @@ type AddModelStep<T extends ModelVar> = {
   description: () => React.ReactNode;
 };
 
+const MinConnectArgsSchema = t.subtype({
+  model: t.str,
+  apiEnvVar: t.str,
+  baseUrl: t.str,
+});
+type MinConnectArgs = t.GetType<typeof MinConnectArgsSchema>;
+
 const MODEL_STEPS = [
   {
     title: "What's the base URL for the API you're connecting to?",
@@ -27,9 +36,11 @@ const MODEL_STEPS = [
     validate: () => ({ valid: true }),
     description() {
       return <Box flexDirection="column">
-        <Text>
-          (For example, https://api.synthetic.new/v1)
-        </Text>
+        <Box marginBottom={1}>
+          <Text>
+            (For example, https://api.synthetic.new/v1)
+          </Text>
+        </Box>
         <Text>
           You can usually find this information in your inference provider's documentation.
         </Text>
@@ -54,16 +65,20 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
     },
     description() {
       return <Box flexDirection="column">
-        <Text>
-          (For example, SYNTHETIC_API_KEY)
-        </Text>
+        <Box marginBottom={1}>
+          <Text>
+            (For example, SYNTHETIC_API_KEY)
+          </Text>
+        </Box>
         <Text>
           You can typically find your API key on your account or settings page on your
           inference provider's website.
         </Text>
-        <Text>
-          For Synthetic, go to: https://synthetic.new/user-settings/api
-        </Text>
+        <Box marginY={1}>
+          <Text>
+            For Synthetic, go to: https://synthetic.new/user-settings/api
+          </Text>
+        </Box>
         <Text>
           After getting an API key, make sure to export it in your shell; for example:
         </Text>
@@ -86,9 +101,11 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
     validate: () => ({ valid: true }),
     description() {
       return <Box flexDirection="column">
-        <Text>
-          (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)
-        </Text>
+        <Box marginBottom={1}>
+          <Text>
+            (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)
+          </Text>
+        </Box>
         <Text>
           This varies by inference provider: you can typically find this information in your
           inference provider's documentation.
@@ -134,10 +151,12 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
           You can usually find this information in the documentation for the model on your inference
           company's website.
         </Text>
-        <Text>
-          (This is an estimate: leave some buffer room. Best performance is often at half the number
-          of tokens supported by the API.)
-        </Text>
+        <Box marginY={1}>
+          <Text>
+            (This is an estimate: leave some buffer room. Best performance is often at half the number
+            of tokens supported by the API.)
+          </Text>
+        </Box>
         <Text>
           Format the number in k: for example,
           { " " }
@@ -165,11 +184,20 @@ export type AddModelFlowProps = {
   onCancel: () => void;
 };
 
+type TestConnectionState = {
+  testing: false,
+} | {
+  testing: true,
+  args: MinConnectArgs,
+};
 export function AddModelFlow({ onComplete, onCancel }: AddModelFlowProps) {
-  const [errorMessage, setErrorMessage] = useState<null | string>(null);
-  const [modelProgress, setModelProgress] = useState<Partial<Config["models"][number]>>({});
-  const [stepVar, setStepVar] = useState<ModelVar>(MODEL_STEPS[0].varname);
-  const [varValue, setVarValue] = useState<string>("");
+  const [ testingConnection, setTestingConnection ] = useState<TestConnectionState>({
+    testing: false,
+  });
+  const [ errorMessage, setErrorMessage ] = useState<null | string>(null);
+  const [ modelProgress, setModelProgress ] = useState<Partial<Config["models"][number]>>({});
+  const [ stepVar, setStepVar ] = useState<ModelVar>(MODEL_STEPS[0].varname);
+  const [ varValue, setVarValue ] = useState("");
   const currentStep = MODEL_STEPS.find(step => step.varname === stepVar)!;
 
   const onValueChange = useCallback((value: string) => {
@@ -187,6 +215,11 @@ export function AddModelFlow({ onComplete, onCancel }: AddModelFlowProps) {
     }
 
     let parsed = currentStep.parse(trimmed);
+    const newModelProgress = {
+      ...modelProgress,
+      [currentStep.varname]: parsed,
+    };
+
     if (currentStep.varname === "model") {
       if (modelProgress["baseUrl"] === "https://api.synthetic.new/v1") {
         if (!(parsed as string).startsWith("hf:")) {
@@ -197,12 +230,14 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
           return;
         }
       }
+
+      const args = MinConnectArgsSchema.slice(newModelProgress);
+      setTestingConnection({
+        testing: true,
+        args,
+      });
     }
 
-    const newModelProgress = {
-      ...modelProgress,
-      [currentStep.varname]: parsed,
-    };
     setModelProgress(newModelProgress);
     setVarValue("");
 
@@ -226,13 +261,27 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
     }
   });
 
+  if(testingConnection.testing) {
+    return <TestConnection
+      {...testingConnection.args}
+      onError={() => {
+        setTestingConnection({ testing: false });
+        setStepVar(MODEL_STEPS[0].varname);
+        setErrorMessage("Connection failed.");
+      }}
+      onSuccess={() => {
+        setTestingConnection({ testing: false });
+      }}
+    />
+  }
+
   return <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
-    <Box flexDirection="column" width={80}>
+    <Box flexDirection="column" width={80} gap={1}>
       <Text color={themeColor}>{ currentStep.title }</Text>
       <currentStep.description />
     </Box>
 
-    <Box marginTop={1} width={80}>
+    <Box marginY={1} width={80}>
       <Box marginRight={1}>
         <Text>{currentStep.prompt}</Text>
       </Box>
@@ -248,3 +297,40 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
   </Box>
 }
 
+function TestConnection({ model, apiEnvVar, baseUrl, onError, onSuccess }: MinConnectArgs & {
+  onError: () => any,
+  onSuccess: () => any,
+}) {
+  useEffect(() => {
+    testConnection({ model, apiEnvVar, baseUrl }).then(valid => {
+      if(valid) onSuccess();
+      else onError();
+    });
+  }, [ model, apiEnvVar, baseUrl, onError, onSuccess ]);
+
+  return <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
+    <Box flexDirection="column" width={80}>
+      <Text color="yellow" bold>Testing connection...</Text>
+    </Box>
+  </Box>
+}
+
+async function testConnection({ model, apiEnvVar, baseUrl }: MinConnectArgs) {
+  try {
+    const client = new OpenAI({
+      baseURL: baseUrl,
+      apiKey: process.env[apiEnvVar],
+    });
+
+    await client.chat.completions.create({
+      model,
+      messages: [{
+        role: "user",
+        content: "Respond with the word 'hi' and only the word 'hi'",
+      }],
+    });
+    return true;
+  } catch(e) {
+    return false;
+  }
+}
