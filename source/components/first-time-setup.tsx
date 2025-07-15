@@ -1,0 +1,119 @@
+import React, { useState, useCallback } from "react";
+import { Box, Text, useInput } from "ink";
+import fs from "fs/promises";
+import path from "path";
+import json5 from "json5";
+import TextInput from "ink-text-input";
+import { Config } from "../config.ts";
+import { Octo } from "./octo.tsx";
+import { useColor } from "../theme.ts";
+import { AddModelFlow } from "./add-model-flow.tsx";
+
+type SetupStep = {
+  step: "welcome",
+} | {
+  step: "name",
+  model: Config["models"][number],
+} | {
+  step: "add-model",
+};
+
+export function FirstTimeSetup({ configPath }: { configPath: string }) {
+  const [step, setStep] = useState<SetupStep>({ step: "welcome" });
+  const [yourName, setYourName] = useState("");
+  const themeColor = useColor();
+
+  const handleWelcomeContinue = useCallback(() => {
+    setStep({ step: "add-model" });
+  }, []);
+  const addModelComplete = useCallback((model: Config["models"][number]) => {
+    setStep({ step: "name", model });
+  }, []);
+  const addModelCancel = useCallback(() => {
+    setStep({ step: "welcome" });
+  }, []);
+
+  if(step.step === "welcome") return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+  if(step.step === "add-model") {
+    return <AddModelFlow onComplete={addModelComplete} onCancel={addModelCancel} />
+  }
+
+  // Assert from typesystem level that we're handled all cases
+  const _: "name" = step.step;
+
+  return <Box flexDirection="column" justifyContent="center" alignItems="center" height="100%">
+    <Box flexDirection="column" width={80}>
+      <Text color={themeColor}>
+        And finally... What's your name?
+      </Text>
+
+      <Box marginTop={1}>
+        <Box marginRight={1}>
+          <Text>Your name:</Text>
+        </Box>
+        <TextInput
+          value={yourName}
+          onChange={setYourName}
+          onSubmit={async () => {
+            const config = {
+              yourName,
+              models: [step.model],
+            };
+
+            const dir = path.dirname(configPath);
+            await fs.mkdir(dir, { recursive: true });
+            if(configPath.endsWith("json5")) {
+              await fs.writeFile(configPath, json5.stringify(config, null, 2));
+            }
+            else {
+              await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+            }
+          }}
+        />
+      </Box>
+    </Box>
+  </Box>
+}
+
+function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+  const themeColor = useColor();
+
+  useInput((_, key) => {
+    if(key.return) onContinue();
+  });
+
+  return <Box flexDirection="column" justifyContent="center" alignItems="center" height="100%">
+    <Box flexDirection="column" width={80}>
+      <Box justifyContent="center" marginBottom={1}>
+        <Octo />
+        <Box marginLeft={1}>
+          <Text color={themeColor} bold>Welcome to Octo!</Text>
+        </Box>
+      </Box>
+
+      <Text>
+        You don't seem to have a config file yet, so let's get you set up for the first time.
+      </Text>
+
+      <Box marginTop={1}>
+        <Text>
+          Octo lets you choose the LLM that powers it. You'll need a few key pieces of
+          information, but the first decision you have to make is what inference company to use to
+          power your LLM (or, if you're relatively advanced, you can run your own LLM locally on
+          your own computer).
+        </Text>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text>
+          If you don't know what company you want to use, we'd selfishly recommend Synthetic, the
+          privacy-first inference company we run. You can sign up here: https://synthetic.new
+        </Text>
+      </Box>
+
+      <Box marginTop={2} justifyContent="center">
+        <Text color="gray">Press enter whenever you're ready to begin setup.</Text>
+      </Box>
+    </Box>
+  </Box>
+}
