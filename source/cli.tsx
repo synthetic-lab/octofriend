@@ -6,7 +6,7 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import { readConfig, readMetadata, initConfig } from "./config.ts";
+import { readConfig, readMetadata } from "./config.ts";
 import { totalTokensUsed } from "./llm.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
@@ -65,8 +65,10 @@ cli.command("version")
 
 cli.command("init")
 .description("Create a fresh config file for Octo")
-.action(async () => {
-  await initConfig(CONFIG_JSON5_FILE);
+.action(() => {
+  render(
+    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
+  );
 });
 
 cli.command("list")
