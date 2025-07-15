@@ -78,7 +78,7 @@ cli.command("list")
 cli.command("prompt")
 .description("Sends a prompt to a model")
 .option("--system <prompt>", "An optional system prompt")
-.option("--model <model-nickname>", "The nickname you gave this model")
+.option("--model <model-nickname>", "The nickname you gave for the model you want to use. If unspecified, uses your default model")
 .argument("<prompt>", "The prompt you want to send to this model")
 .action(async (prompt, opts) => {
   const { config } = await loadConfig();
