@@ -4,10 +4,10 @@ import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
 import TextInput from "ink-text-input";
-import { Config } from "../config.ts";
-import { Octo } from "./octo.tsx";
-import { useColor } from "../theme.ts";
-import { AddModelFlow } from "./add-model-flow.tsx";
+import { Config } from "./config.ts";
+import { Octo } from "./components/octo.tsx";
+import { useColor } from "./theme.ts";
+import { AddModelFlow } from "./components/add-model-flow.tsx";
 
 type SetupStep = {
   step: "welcome",

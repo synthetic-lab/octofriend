@@ -11,7 +11,7 @@ import { totalTokensUsed } from "./llm.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
-import { FirstTimeSetup } from "./components/first-time-setup.tsx";
+import { FirstTimeSetup } from "./first-time-setup.tsx";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
