@@ -68,6 +68,13 @@ cli.command("init")
   await initConfig(CONFIG_JSON5_FILE);
 });
 
+cli.command("list")
+.description("List all models you've configured with Octo")
+.action(async () => {
+  const { config } = await loadConfig();
+  console.log(config.models.map(m => m.nickname).join("\n"));
+});
+
 cli.command("prompt")
 .description("Sends a prompt to a model")
 .option("--system <prompt>", "An optional system prompt")
