@@ -15,6 +15,7 @@ type MenuMode = "main-menu"
               | "add-model"
               | "set-default-model"
               | "quit-confirm"
+              | "remove-model"
               ;
 type MenuState = {
   menuMode: MenuMode,
@@ -37,6 +38,8 @@ export function Menu() {
   if(menuMode === "model-select") return <SwitchModelMenu />
   if(menuMode === "set-default-model") return <SetDefaultModelMenu />
   if(menuMode === "quit-confirm") return <QuitConfirm />
+  if(menuMode === "remove-model") return <RemoveModelMenu />
+  const _: "add-model" = menuMode;
   return <AddModelFlow />
 }
 
@@ -94,11 +97,13 @@ function MainMenu() {
     setMenuMode: state.setMenuMode,
   })));
 
+  const config = useConfig();
+
   useInput((_, key) => {
     if(key.escape) toggleMenu();
   });
 
-  const items = [
+  let items = [
     {
       label: "Switch model",
       value: "model-select" as const,
@@ -112,6 +117,10 @@ function MainMenu() {
       value: "set-default-model" as const,
     },
     {
+      label: "Remove a model",
+      value: "remove-model" as const,
+    },
+    {
       label: "Return to Octo",
       value: "return" as const,
     },
@@ -120,6 +129,15 @@ function MainMenu() {
       value: "quit" as const,
     },
   ];
+
+  if(config.models.length === 1) {
+    items = items.filter(item => {
+      if(item.value === "model-select") return false;
+      if(item.value === "remove-model") return false;
+      if(item.value === "set-default-model") return false;
+      return true;
+    });
+  }
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "return") toggleMenu();
@@ -209,6 +227,57 @@ function SetDefaultModelMenu() {
 	}, [ config ]);
 
   return <MenuPanel title="Which model should be the default?" items={items} onSelect={onSelect} />
+}
+
+function RemoveModelMenu() {
+  const { setModelOverride, toggleMenu } = useAppStore(useShallow(state => ({
+    setModelOverride: state.setModelOverride,
+    toggleMenu: state.toggleMenu,
+  })));
+
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  const items = [
+    ...config.models.map(model => {
+      return {
+        label: model.nickname,
+        value: `model-${model.nickname}`,
+      };
+    }),
+    {
+      label: "Back to main menu",
+      value: "back",
+    },
+  ];
+
+	const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "back") {
+      setMenuMode("main-menu");
+      return;
+    }
+    const target = item.value.replace("model-", "")
+    const rest = config.models.filter(m => m.nickname !== target);
+    setConfig({
+      ...config,
+      models: [
+        ...rest,
+      ],
+    });
+    const current = rest[0];
+    setModelOverride(current.nickname);
+    setMenuMode("main-menu");
+    toggleMenu();
+	}, [ config ]);
+
+  return <MenuPanel title="Which model do you want to remove?" items={items} onSelect={onSelect} />
 }
 
 type Item<V> = {
