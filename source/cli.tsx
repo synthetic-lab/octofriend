@@ -9,6 +9,8 @@ import App from "./app.tsx";
 import { readConfig, readMetadata, initConfig } from "./config.ts";
 import { totalTokensUsed } from "./llm.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
+import OpenAI from "openai";
+import { LlmMessage } from "./llm.ts";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
@@ -64,6 +66,55 @@ cli.command("init")
 .description("Create a fresh config file for Octo")
 .action(async () => {
   await initConfig(CONFIG_JSON5_FILE);
+});
+
+cli.command("prompt")
+.description("Sends a prompt to a model")
+.option("--system <prompt>", "An optional system prompt")
+.requiredOption("--model <model-nickname>", "The nickname you gave this model")
+.argument("<prompt>", "The prompt you want to send to this model")
+.action(async (prompt, opts) => {
+  const { config } = await loadConfig();
+  const model = config.models.find(m => m.nickname === opts.model);
+
+  if(model == null) {
+    console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+    process.exit(1);
+  }
+
+  if(!process.env[model.apiEnvVar]) {
+    console.error(`${model.nickname} is set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in your current shell. Do you need to re-source your .bash_profile or .zshrc?`);
+    process.exit(1);
+  }
+
+  const client = new OpenAI({
+    apiKey: process.env[model.apiEnvVar],
+    baseURL: model.baseUrl,
+  });
+
+  const messages: LlmMessage[] = [];
+  if(opts.system) {
+    messages.push({
+      role: "system",
+      content: opts.system,
+    });
+  }
+  messages.push({
+    role: "user",
+    content: prompt,
+  });
+
+  const response = await client.chat.completions.create({
+    model: model.model,
+    messages,
+    stream: true,
+  });
+
+  for await(const chunk of response) {
+    const content = chunk.choices[0].delta?.content;
+    if(content) process.stdout.write(content);
+  }
+  process.stdout.write("\n");
 });
 
 async function loadConfig(configPath?: string) {
