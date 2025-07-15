@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { create } from "zustand";
-import { Text, Box, useInput } from "ink";
+import { Text, Box, useInput, useApp } from "ink";
 import SelectInput from "ink-select-input";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
@@ -14,6 +14,7 @@ type MenuMode = "main-menu"
               | "model-select"
               | "add-model"
               | "set-default-model"
+              | "quit-confirm"
               ;
 type MenuState = {
   menuMode: MenuMode,
@@ -35,6 +36,7 @@ export function Menu() {
   if(menuMode === "main-menu") return <MainMenu />
   if(menuMode === "model-select") return <SwitchModelMenu />
   if(menuMode === "set-default-model") return <SetDefaultModelMenu />
+  if(menuMode === "quit-confirm") return <QuitConfirm />
   return <AddModelFlow />
 }
 
@@ -113,14 +115,48 @@ function MainMenu() {
       label: "Return to Octo",
       value: "return" as const,
     },
+    {
+      label: "Quit",
+      value: "quit" as const,
+    },
   ];
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "return") toggleMenu();
+    else if(item.value === "quit") setMenuMode("quit-confirm");
     else setMenuMode(item.value);
 	}, []);
 
   return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />
+}
+
+function QuitConfirm() {
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+  const app = useApp();
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  const items = [
+    {
+      label: "Never mind, take me back",
+      value: "no" as const,
+    },
+    {
+      label: "Yes, quit",
+      value: "yes" as const,
+    }
+  ];
+
+	const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "no") setMenuMode("main-menu");
+    else app.exit();
+	}, []);
+
+  return <MenuPanel title="Are you sure you want to quit?" items={items} onSelect={onSelect} />
 }
 
 function SetDefaultModelMenu() {
