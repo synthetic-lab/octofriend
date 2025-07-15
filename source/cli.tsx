@@ -78,11 +78,11 @@ cli.command("list")
 cli.command("prompt")
 .description("Sends a prompt to a model")
 .option("--system <prompt>", "An optional system prompt")
-.requiredOption("--model <model-nickname>", "The nickname you gave this model")
+.option("--model <model-nickname>", "The nickname you gave this model")
 .argument("<prompt>", "The prompt you want to send to this model")
 .action(async (prompt, opts) => {
   const { config } = await loadConfig();
-  const model = config.models.find(m => m.nickname === opts.model);
+  const model = opts.model ? config.models.find(m => m.nickname === opts.model) : config.models[0];
 
   if(model == null) {
     console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
