@@ -11,6 +11,7 @@ import { totalTokensUsed } from "./llm.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
+import { FirstTimeSetup } from "./components/first-time-setup.tsx";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
@@ -137,7 +138,14 @@ async function loadConfig(configPath?: string) {
   if(await fileExists(jsonFile)) {
     return { configPath: jsonFile, config: await readConfig(jsonFile) };
   }
-  return { configPath: CONFIG_JSON5_FILE, config: await initConfig(CONFIG_JSON5_FILE) };
+	const { waitUntilExit } = render(
+    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
+  );
+  await waitUntilExit();
+  if(await fileExists(CONFIG_JSON5_FILE)) {
+    return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
+  }
+  process.exit(1);
 }
 
 cli.parse();

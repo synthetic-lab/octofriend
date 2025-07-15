@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useState, useCallback, useLayoutEffect } from "react";
+import { Box, Text, useInput, useApp } from "ink";
 import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
@@ -16,12 +16,19 @@ type SetupStep = {
   model: Config["models"][number],
 } | {
   step: "add-model",
+} | {
+  step: "done",
 };
 
 export function FirstTimeSetup({ configPath }: { configPath: string }) {
   const [step, setStep] = useState<SetupStep>({ step: "welcome" });
   const [yourName, setYourName] = useState("");
   const themeColor = useColor();
+  const app = useApp();
+
+  useLayoutEffect(() => {
+    if(step.step === "done") app.exit();
+  }, [ step, app ]);
 
   const handleWelcomeContinue = useCallback(() => {
     setStep({ step: "add-model" });
@@ -37,6 +44,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
   if(step.step === "add-model") {
     return <AddModelFlow onComplete={addModelComplete} onCancel={addModelCancel} />
   }
+  if(step.step === "done") return null;
 
   // Assert from typesystem level that we're handled all cases
   const _: "name" = step.step;
@@ -68,6 +76,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
             else {
               await fs.writeFile(configPath, JSON.stringify(config, null, 2));
             }
+            setStep({ step: "done" });
           }}
         />
       </Box>

@@ -6,4 +6,4 @@ TODO:
 
 # Launch blocking
 - [ ] Test the API connection in the add model flow, like you do in the NUX
-- [ ] Port the NUX to Ink, and reuse the Add Model Flow components
+- [ ] Bug: "impossible tool ordering" when a user rejects and swaps models
