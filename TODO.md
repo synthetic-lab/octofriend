@@ -8,5 +8,4 @@ TODO:
 - [ ] Test the API connection in the add model flow, like you do in the NUX
 - [ ] Port the NUX to Ink, and reuse the Add Model Flow components
 - [ ] Add a remove model flow in-app
-- [ ] Add a change default model flow in-app
 - [ ] Add a "Quit" menu item

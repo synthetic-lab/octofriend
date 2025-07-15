@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from "react";
 import { create } from "zustand";
-import { guard, statematch, fallback } from "statematch";
 import { Text, Box, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { useShallow } from "zustand/react/shallow";
@@ -14,6 +13,7 @@ import TextInput from "ink-text-input";
 type MenuMode = "main-menu"
               | "model-select"
               | "add-model"
+              | "set-default-model"
               ;
 type MenuState = {
   menuMode: MenuMode,
@@ -34,6 +34,7 @@ export function Menu() {
 
   if(menuMode === "main-menu") return <MainMenu />
   if(menuMode === "model-select") return <SwitchModelMenu />
+  if(menuMode === "set-default-model") return <SetDefaultModelMenu />
   return <AddModelFlow />
 }
 
@@ -77,7 +78,7 @@ function SwitchModelMenu() {
     toggleMenu();
 	}, []);
 
-  return <MenuPanel items={items} onSelect={onSelect} />
+  return <MenuPanel title="Which model should Octo use now?" items={items} onSelect={onSelect} />
 }
 
 function MainMenu() {
@@ -98,11 +99,15 @@ function MainMenu() {
   const items = [
     {
       label: "Switch model",
-      value: "switch-model" as const,
+      value: "model-select" as const,
     },
     {
       label: "Add a new model",
       value: "add-model" as const,
+    },
+    {
+      label: "Change the default model",
+      value: "set-default-model" as const,
     },
     {
       label: "Return to Octo",
@@ -111,20 +116,63 @@ function MainMenu() {
   ];
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
-    statematch([
-      guard(() => item.value === "switch-model").run(() => {
-        setMenuMode("model-select");
-      }),
-      guard(() => item.value === "add-model").run(() => {
-        setMenuMode("add-model");
-      }),
-      fallback(() => {
-        toggleMenu();
-      }),
-    ]);
+    if(item.value === "return") toggleMenu();
+    else setMenuMode(item.value);
 	}, []);
 
-  return <MenuPanel items={items} onSelect={onSelect} />
+  return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />
+}
+
+function SetDefaultModelMenu() {
+  const { setModelOverride, toggleMenu } = useAppStore(useShallow(state => ({
+    setModelOverride: state.setModelOverride,
+    toggleMenu: state.toggleMenu,
+  })));
+
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  const items = [
+    ...config.models.map(model => {
+      return {
+        label: model.nickname,
+        value: `model-${model.nickname}`,
+      };
+    }),
+    {
+      label: "Back to main menu",
+      value: "back",
+    },
+  ];
+
+	const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "back") {
+      setMenuMode("main-menu");
+      return;
+    }
+    const target = item.value.replace("model-", "")
+    const model = config.models.find(m => m.nickname === target)!;
+    const rest = config.models.filter(m => m.nickname !== target);
+    setConfig({
+      ...config,
+      models: [
+        model,
+        ...rest,
+      ],
+    });
+    setModelOverride(target);
+    setMenuMode("main-menu");
+    toggleMenu();
+	}, [ config ]);
+
+  return <MenuPanel title="Which model should be the default?" items={items} onSelect={onSelect} />
 }
 
 type Item<V> = {
@@ -134,14 +182,15 @@ type Item<V> = {
 type MenuPanelProps<V> = {
   items: Array<Item<V>>,
   readonly onSelect: (item: Item<V>) => any,
+  title: string,
 };
 
-function MenuPanel<V>({ items, onSelect }: MenuPanelProps<V>) {
+function MenuPanel<V>({ items, onSelect, title }: MenuPanelProps<V>) {
   return <Box flexDirection="column">
     <Box justifyContent="center">
       <Octo />
       <Box marginLeft={1}>
-        <Text>Menu</Text>
+        <Text>{title}</Text>
       </Box>
     </Box>
     <Box justifyContent="center" marginTop={1}>
