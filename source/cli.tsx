@@ -86,6 +86,8 @@ cli.command("prompt")
 
   if(model == null) {
     console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+    console.error("The available models are:");
+    console.error("- " + config.models.map(m => m.nickname).join("\n- "));
     process.exit(1);
   }
 
