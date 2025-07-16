@@ -23,6 +23,7 @@ type SetupStep = {
 export function FirstTimeSetup({ configPath }: { configPath: string }) {
   const [step, setStep] = useState<SetupStep>({ step: "welcome" });
   const [yourName, setYourName] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
   const themeColor = useColor();
   const app = useApp();
 
@@ -61,10 +62,20 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
         </Box>
         <TextInput
           value={yourName}
-          onChange={setYourName}
+          onChange={(value) => {
+            setYourName(value);
+            setNameError(null);
+          }}
           onSubmit={async () => {
+            const trimmedName = yourName.trim();
+            if (!trimmedName) {
+              setNameError("Name can't be empty");
+              return;
+            }
+
+            setNameError(null);
             const config = {
-              yourName,
+              yourName: trimmedName,
               models: [step.model],
             };
 
@@ -80,6 +91,12 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
           }}
         />
       </Box>
+
+      {nameError && (
+        <Box marginTop={1}>
+          <Text color="red">{nameError}</Text>
+        </Box>
+      )}
     </Box>
   </Box>
 }

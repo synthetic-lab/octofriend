@@ -103,7 +103,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
-            (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-R1-0528)
+            (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-V3-0324)
           </Text>
         </Box>
         <Text>

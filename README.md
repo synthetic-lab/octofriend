@@ -10,7 +10,7 @@ Octo has zero telemetry. Using it with a local LLM or privacy-focused inference
 provider ([may we selfishly recommend Synthetic?](https://synthetic.new)) means
 your code stays yours, and not someone else's training data. Or, you can use
 Octo with any of the major inference companies: OpenAI, Grok, Mistral,
-Moonshot, etc. Octo works great with DeepSeek-R1-0528, Kimi K2, Grok 4, and
+Moonshot, etc. Octo works great with DeepSeek-V3-0324, Kimi K2, Grok 4, and
 many other modern coding LLMs.
 
 Octo tries to be a complete product: we iterate on context engineering
