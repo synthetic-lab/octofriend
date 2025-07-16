@@ -13,3 +13,6 @@ TODO:
     type, file creation tool type, or read tool type, it tracks the file path.
     Do another pass to strip out all responses that are outdated, so the LLM
     doesn't see old files and get confused.
+  - [ ] Also make tool rejections show the latest version of the file, to avoid
+    confusing the LLM. As per usual, strip out all earlier references to the
+    file to avoid confusing the LLM and to save context space.
