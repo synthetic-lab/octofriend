@@ -327,7 +327,14 @@ function toLlmMessage(
         null,
       ];
     }
-    throw new Error("Impossible tool rejection ordering: no previous user message");
+    return [
+      prev,
+      {
+        role: "tool",
+        content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user."),
+        tool_call_id: item.toolCallId,
+      },
+    ];
   }
 
   if(item.type === "tool-output") {

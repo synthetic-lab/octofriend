@@ -5,4 +5,4 @@ TODO:
 - [ ] `mkdir -p` for file creation, don't fail if the dir doesn't exist
 
 # Launch blocking
-- [ ] Bug: "impossible tool ordering" when a user rejects and swaps models
+nothing????
