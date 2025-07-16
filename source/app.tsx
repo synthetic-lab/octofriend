@@ -8,10 +8,10 @@ import {
 } from "./config.ts";
 import OpenAI from "openai";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
-import Loading from "./loading.tsx";
+import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
-import { DiffRenderer } from "./diff-renderer.tsx";
+import { DiffRenderer } from "./components/diff-renderer.tsx";
 import {
   bash,
   read,
