@@ -521,7 +521,8 @@ const InputBox = React.memo((props: {
 	onSubmit: () => any,
 }) => {
   const themeColor = useColor();
-  return <Box width="100%" borderStyle="round" borderColor={themeColor}>
+  return <Box width="100%" borderStyle="round" borderColor={themeColor} gap={1}>
+    <Text color="gray">&gt;</Text>
     <TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
   </Box>
 });
