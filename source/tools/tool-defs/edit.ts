@@ -46,7 +46,7 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
-  async run(call, context) {
+  async run(call) {
     const { filePath, edit } = call.tool.arguments;
     await fileTracker.assertCanEdit(filePath);
 
@@ -55,13 +55,8 @@ export default {
       path: filePath,
       file, edit,
     });
-    const absolutePath = await fileTracker.write(filePath, replaced);
-    context.tracker("files").track({
-      absolutePath,
-      historyId: call.id,
-    });
-
-    return `Successfully edited file ${filePath}. The file has been updated in your context space.`;
+    await fileTracker.write(filePath, replaced);
+    return "";
   },
 } satisfies ToolDef<t.GetType<typeof Schema>> & {
   AllEdits: typeof AllEdits,

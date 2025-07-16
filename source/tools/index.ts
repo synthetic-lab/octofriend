@@ -4,7 +4,6 @@ import { unionAll } from "../types.ts";
 import * as toolMap from "./tool-defs/index.ts";
 import { ToolDef } from "./common.ts";
 import { SequenceIdTagged } from "../history.ts";
-import { ContextSpace } from "../context-space.ts";
 import { Config } from "../config.ts";
 
 export { ToolError } from "./common.ts";
@@ -20,12 +19,11 @@ export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> 
 
 export async function runTool(
   call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
-  context: ContextSpace,
   config: Config,
   modelOverride: string | null,
 ): Promise<string> {
   const def = lookup(call.tool);
-  return await def.run(call, context, config, modelOverride);
+  return await def.run(call, config, modelOverride);
 }
 
 export async function validateTool(

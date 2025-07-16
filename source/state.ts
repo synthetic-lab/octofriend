@@ -9,7 +9,6 @@ import {
 } from "./tools/index.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
-import { ContextSpace, contextSpace } from "./context-space.ts";
 import * as path from "path";
 import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
@@ -35,7 +34,6 @@ export type UiState = {
   },
   modelOverride: string | null,
   history: Array<HistoryItem>,
-  context: ContextSpace,
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
   rejectTool: (toolCallId: string) => void,
@@ -50,7 +48,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     mode: "input" as const,
   },
   history: [],
-  context: contextSpace(),
   modelOverride: null,
 
   input: async ({ client, config, query }) => {
@@ -119,14 +116,13 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ client, config, toolReq }) => {
-    const context = get().context;
     const modelOverride = get().modelOverride;
 
     try {
       const content = await runTool({
         id: toolReq.id,
         tool: toolReq.tool.function,
-      }, context, config, modelOverride);
+      }, config, modelOverride);
 
       const toolHistoryItem: HistoryItem = {
         type: "tool-output",
@@ -144,7 +140,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     } catch(e) {
       const history = [
         ...get().history,
-        await tryTransformToolError(toolReq, context, e),
+        await tryTransformToolError(toolReq, e),
       ];
       set({ history });
     }
@@ -153,7 +149,6 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   _runAgent: async ({ client, config }) => {
-    const context = get().context;
     let content = "";
     let reasoningContent: undefined | string = undefined;
 
@@ -180,7 +175,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         config,
         get().modelOverride,
         get().history,
-        context,
         (tokens, type) => {
           if(type === "content") {
             content += tokens;
@@ -266,7 +260,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
         history: [
           ...history,
-          await tryTransformToolError(lastHistoryItem, context, e),
+          await tryTransformToolError(lastHistoryItem, e),
         ],
       });
       return await get()._runAgent({ client, config });
@@ -283,7 +277,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 }));
 
 async function tryTransformToolError(
-  toolReq: ToolCallItem, context: ContextSpace, e: unknown
+  toolReq: ToolCallItem, e: unknown
 ): Promise<HistoryItem> {
   if(e instanceof ToolError) {
     return {
@@ -298,10 +292,6 @@ async function tryTransformToolError(
     // Actually perform the read to ensure it's readable
     try {
       await fileTracker.read(absolutePath);
-      context.tracker("files").track({
-        absolutePath,
-        historyId: toolReq.id,
-      });
       return {
         type: "file-outdated",
         id: sequenceId(),

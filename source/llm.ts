@@ -8,7 +8,7 @@ import { Config, getModelFromConfig } from "./config.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
-import { ContextSpace } from "./context-space.ts";
+
 import { fileExists } from "./fs-utils.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 
@@ -65,6 +65,9 @@ async function systemPrompt({ appliedWindow, config }: {
   appliedWindow: boolean,
   config: Config,
 }) {
+  const currDir = await fs.readdir(process.cwd());
+  const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
+
   return `
 You are a coding assistant called Octo. The user's name is ${config.yourName}, and you're their
 friend. You can help them with coding tasks. Unrelatedly, you are a small, hyper-intelligent
@@ -147,6 +150,12 @@ to run more tools or edits in a step-by-step process. If you want to run multipl
 don't worry: just state your plan out loud, and then follow it over the course of multiple messages.
 Don't overthink.
 
+# Current working directory
+Your current working directory is: ${process.cwd()}
+It contains:
+${currDirStr}
+If you want to list other directories, use the list tool.
+
 ${await llmInstrsPrompt(config)}
 
 ${appliedWindow ?
@@ -227,34 +236,57 @@ ${mcpSections.join('\n\n')}
 async function toLlmMessages(
   messages: HistoryItem[],
   appliedWindow: boolean,
-  contextSpace: ContextSpace,
   config: Config,
 ): Promise<Array<LlmMessage>> {
-  let output: LlmMessage[] = [
-    {
-      role: "system",
-      content: await systemPrompt({
-        appliedWindow,
-        config,
-      }),
-    },
-  ];
+  const output: LlmMessage[] = [];
 
-  const ir = toLlmIR(messages);
-  output = output.concat(ir.map(llmFromIr));
-
-  const context = await contextSpace.toXML();
-  if(context.length > 0) {
-    const lastItem = output[output.length - 1];
-    lastItem.content = context + "\n\n" + lastItem.content;
+  const irs = toLlmIR(messages);
+  irs.reverse();
+  const seenPaths = new Set<string>();
+  for(const ir of irs) {
+    if(ir.role === "file-tool-output") {
+      let seen = seenPaths.has(ir.path);
+      seenPaths.add(ir.path);
+      output.push(await llmFromIr(ir, seen));
+    }
+    else {
+      output.push(await llmFromIr(ir, false));
+    }
   }
+
+  output.reverse();
+  output.unshift({
+    role: "system",
+    content: await systemPrompt({
+      appliedWindow,
+      config,
+    }),
+  });
 
   return output;
 }
 
-function llmFromIr(ir: LlmIR): LlmMessage {
+async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
   if(ir.role === "assistant") {
-    return ir;
+    const { toolCall } = ir;
+    if(toolCall == null) {
+      return {
+        role: "assistant",
+        content: ir.content || " ", // Some APIs don't like zero-length content strings
+      };
+    }
+    return {
+      role: "assistant",
+      content: ir.content,
+      tool_calls: [{
+        type: "function",
+        function: {
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments ? JSON.stringify(toolCall.function.arguments) : "{}",
+        },
+        id: toolCall.toolCallId,
+      }]
+    };
   }
   if(ir.role === "user") {
     return ir;
@@ -264,6 +296,20 @@ function llmFromIr(ir: LlmIR): LlmMessage {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
       content: ir.content,
+    };
+  }
+  if(ir.role === "file-tool-output") {
+    if(seenPath) {
+      return {
+        role: "tool",
+        tool_call_id: ir.toolCall.toolCallId,
+        content: "Tool ran successfully.",
+      };
+    }
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: await fs.readFile(ir.path, "utf8"),
     };
   }
   if(ir.role === "tool-reject") {
@@ -314,21 +360,16 @@ export async function runAgent(
   config: Config,
   modelOverride: string | null,
   history: HistoryItem[],
-  contextSpace: ContextSpace,
   onTokens: (t: string, type: "reasoning" | "content") => any,
   abortSignal: AbortSignal,
 ) {
   const model = getModelFromConfig(config, modelOverride);
 
   const processedHistory = applyContextWindow(history, model.context);
-  if(processedHistory.appliedWindow) {
-    contextSpace.window(processedHistory.history[0].id);
-  }
 
   const messages = await toLlmMessages(
     processedHistory.history,
     processedHistory.appliedWindow,
-    contextSpace,
     config
   );
 
@@ -394,7 +435,6 @@ export async function runAgent(
       },
     },
   });
-
 
   let currTool: Partial<ResponseToolCall> | null = null;
   let doneParsingTools = false;

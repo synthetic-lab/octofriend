@@ -24,16 +24,12 @@ async function validate(toolCall: t.GetType<typeof Schema>) {
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(call, context) {
+  async run(call) {
     await validate(call.tool);
     const { filePath, content } = call.tool.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {
-      const absolutePath = await fileTracker.write(filePath, content);
-      context.tracker("files").track({
-        absolutePath,
-        historyId: call.id,
-      });
-      return `Successfully created file ${filePath}. The file has been added to your context space.`;
+      await fileTracker.write(filePath, content);
+      return "";
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;

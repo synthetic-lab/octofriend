@@ -97,7 +97,7 @@ export default {
   Schema,
   ArgumentsSchema,
   validate: async () => null,
-  async run(call, _, config, modelOverride) {
+  async run(call, config, modelOverride) {
     const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.tool.arguments;
 
     try {

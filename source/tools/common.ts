@@ -1,6 +1,5 @@
 import { t } from "structural";
 import * as fs from "fs/promises";
-import { ContextSpace } from "../context-space.ts";
 import { SequenceIdTagged } from "../history.ts";
 import { Config } from "../config.ts";
 
@@ -37,7 +36,6 @@ export type ToolDef<T> = {
   validate: (t: T, cfg: Config) => Promise<null>,
   run: (
     t: SequenceIdTagged<{ tool: T }>,
-    c: ContextSpace,
     cfg: Config,
     modelOverride: string | null
   ) => Promise<string>,

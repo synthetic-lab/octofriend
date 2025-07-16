@@ -1,3 +1,4 @@
+import path from "path";
 import {
   ToolCallRequest,
   HistoryItem,
@@ -29,6 +30,13 @@ export type ToolOutputMessage = {
   toolCall: ToolCallRequest,
 };
 
+export type FileToolMessage = {
+  role: "file-tool-output",
+  content: string,
+  toolCall: ToolCallRequest,
+  path: string,
+};
+
 export type ToolRejectMessage = {
   role: "tool-reject",
   toolCall: ToolCallRequest,
@@ -54,10 +62,12 @@ export type FileUnreadableMessage = {
 export type LlmIR = AssistantMessage
                   | UserMessage
                   | ToolOutputMessage
+                  | FileToolMessage
                   | ToolRejectMessage
                   | ToolErrorMessage
                   | FileOutdatedMessage
                   | FileUnreadableMessage
+                  | FileToolMessage
                   ;
 
 // Filter out only relevant history items to the LLM IR
@@ -86,7 +96,7 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
   for(let i = 0; i < lowered.length; i++) {
     const item = lowered[i];
     const prev = output.length > 0 ? output[output.length - 1] : null;
-    const [ newPrev, transformed ] = toLlmMessage(prev, item);
+    const [ newPrev, transformed ] = collapseToIR(prev, item);
     if(newPrev) output[output.length - 1] = newPrev;
     if(transformed) output.push(transformed);
   }
@@ -109,7 +119,7 @@ function lowerItem(item: HistoryItem): LoweredHistory | null {
 // position if you don't intend to overwrite anything. However, the transformed history-to-LLM
 // message must be a new object: do not simply return the history item, or it could be modified by
 // future calls.
-function toLlmMessage(
+function collapseToIR(
   prev: LlmIR | null,
   item: LoweredHistory,
 ): [LlmIR | null, LlmIR | null] {
@@ -180,14 +190,30 @@ function toLlmMessage(
 
   if(item.type === "tool-output") {
     return assertPrevAssistantToolCall("tool-output", item, prev, prev => {
-      return [
-        prev,
-        {
-          role: "tool-output",
-          content: item.content,
-          toolCall: prev.toolCall,
-        }
-      ];
+      switch(prev.toolCall.function.name) {
+        case "edit":
+        case "create":
+        case "read": return [
+          prev,
+          {
+            role: "file-tool-output",
+            content: item.content,
+            toolCall: prev.toolCall,
+            path: path.resolve(prev.toolCall.function.arguments.filePath),
+          }
+        ];
+        case "list":
+        case "bash":
+        case "mcp":
+          return [
+            prev,
+            {
+              role: "tool-output",
+              content: item.content,
+              toolCall: prev.toolCall,
+            }
+          ];
+      }
     });
   }
 

@@ -55,11 +55,10 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 export default function App({ config, configPath, metadata, unchained }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
-  const { history, modeData, context, modelOverride } = useAppStore(
+  const { history, modeData, modelOverride } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
-      context: state.context,
       modelOverride: state.modelOverride,
     }))
   );
@@ -71,13 +70,6 @@ export default function App({ config, configPath, metadata, unchained }: Props) 
 			apiKey: process.env[model.apiEnvVar],
 		});
 	}, [ currConfig, model ]);
-
-  useEffect(() => {
-    context.tracker("dirs").permaTrack({
-      absolutePath: process.cwd(),
-    });
-  }, [ context ]);
-
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
