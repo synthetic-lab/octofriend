@@ -1,19 +1,21 @@
 ![octofriend](./octofriend.png)
 
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
-any OpenAI-compatible LLM API, with a few neat tricks for managing context
-space. Octo wants to help you because Octo is your friend.
+any OpenAI-compatible LLM API, and allows you to switch models at will
+mid-conversation when a particular model gets stuck. Octo also has a few neat
+tricks for managing context space. Octo wants to help you because Octo is your
+friend.
 
 Octo has zero telemetry. Using it with a local LLM or privacy-focused inference
 provider ([may we selfishly recommend Synthetic?](https://synthetic.new)) means
 your code stays yours, and not someone else's training data. Or, you can use
 Octo with any of the major inference companies: OpenAI, Grok, Mistral,
-Moonshot, etc. Octo works great with DeepSeek-R1-0528, Kimi K2, Grok 4, and
+Moonshot, etc. Octo works great with DeepSeek-V3-0324, Kimi K2, Grok 4, and
 many other modern coding LLMs.
 
-Octo tries to be a complete product: unlike some other open-source tools, we
-iterate on context engineering strategies in addition to UI, in an attempt to
-squeeze the best performance out of coding LLMs.
+Octo tries to be a complete product: we iterate on context engineering
+strategies in addition to UI, in an attempt to squeeze the best performance out
+of coding LLMs.
 
 Octo has helped write some of its own source code, but we're human-first: Octo
 is meant to be a friendly little helper rather than a completely hands-free

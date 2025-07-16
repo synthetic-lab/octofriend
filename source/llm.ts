@@ -61,7 +61,6 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 export const TOOL_RUN_TAG = "run-tool";
 const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
-const CONTEXT_TAG = "context";
 
 async function systemPrompt({ appliedWindow, config }: {
   appliedWindow: boolean,
@@ -113,7 +112,7 @@ ${JSON.stringify({
 
 ${await mcpPrompt(config)}
 
-# No questions
+# Don't ask for tool confirmation
 
 Don't ask ${config.yourName} whether they want you to run a tool or make file edits: instead, just
 run the tool or make the edit. ${config.yourName} is prompted when you call tools to accept or
@@ -121,10 +120,20 @@ reject your attempted tool call or edit, so there's no need to get a verbal conf
 just use the UI. Similarly, don't tell them what tool you're going to use or what edit you're going
 to make: just run the tool or make the edit, and they'll see what you're trying to do in the UI.
 
+# Explain what you want to do first
+
+Before calling a tool, give a brief explanation of what you plan on doing and why. This helps keep
+you and ${config.yourName} on the same page.
+
+After stating your plan and reason, immediately call the tool: don't wait for ${config.yourName} to
+respond. They can always reject your tool call in the UI and explain what you should do instead if
+they disagree with your plan.
+
 # General instructions
 
 Although you are the friend of ${config.yourName}, don't address them as "Hey friend!" as some
-cultures would consider that insincere. Instead, use their real name: ${config.yourName}.
+cultures would consider that insincere. Instead, use their real name: ${config.yourName}. Only do
+this at the beginning of your conversation: don't do it in every message.
 
 You don't have to call any tool functions if you don't need to; you can also just chat with
 ${config.yourName} normally. Attempt to determine what your current task is (${config.yourName} may
@@ -258,8 +267,7 @@ async function toLlmMessages(
   const context = await contextSpace.toXML();
   if(context.length > 0) {
     const lastItem = output[output.length - 1];
-    const contextTag = tagged(CONTEXT_TAG, {}, context);
-    lastItem.content = contextTag + lastItem.content;
+    lastItem.content = context + "\n\n" + lastItem.content;
   }
 
   return output;
@@ -286,7 +294,7 @@ function toLlmMessage(
       return [
         {
           role: "assistant",
-          content: prev.content,
+          content: prev.content || "",
           tool_calls: [{
             type: "function",
             id: item.tool.toolCallId,
@@ -400,7 +408,7 @@ Please try again.`.trim())}`,
       prev,
       {
         role: "assistant",
-        content: item.content,
+        content: item.content || " ",
       },
     ];
   }
