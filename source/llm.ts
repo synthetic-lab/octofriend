@@ -250,9 +250,14 @@ async function toLlmMessages(
       continue;
     }
     // Got this far? It's a tool rejection. Swap it with the next message and skip ahead
-    const next = messages[i + 1];
-    reorderedHistory.push(next, item);
-    i++;
+    let next: typeof messages[number];
+    while(next = messages[i + 1]) {
+      reorderedHistory.push(next);
+      i++;
+      if(next.type === "user") break;
+      // If it's not a user message (i.e. it's a switch model message), keep going
+    }
+    reorderedHistory.push(item);
   }
 
   // Second pass: transform
