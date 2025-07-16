@@ -479,24 +479,25 @@ export async function runAgent(
 
   let content = "";
   let reasoningContent: undefined | string = undefined;
-  let toolContent = "";
-  let inToolTag = false;
+  let inThinkTag = false;
   let usage = 0;
 
-  // TODO: parse <think> tags (configurable what the tag is)
   const xmlParser = new StreamingXMLParser({
-    whitelist: [ ],
+    whitelist: [ "think" ],
     handlers: {
       onOpenTag: () => {
-        inToolTag = true;
+        if(content === "") inThinkTag = true;
       },
 
       onCloseTag: () => {
-        inToolTag = false;
+        inThinkTag = false;
       },
 
       onText: e => {
-        if(inToolTag) toolContent += e.content;
+        if(inThinkTag) {
+          reasoningContent += e.content;
+          onTokens(e.content, "reasoning");
+        }
         else {
           onTokens(e.content, "content");
           content += e.content;
