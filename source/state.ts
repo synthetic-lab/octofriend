@@ -245,7 +245,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ modeData: { mode: "input" }, history });
       return;
     }
-    if(lastHistoryItem.type === "tool-error") {
+    if(lastHistoryItem.type === "tool-failed" || lastHistoryItem.type === "tool-malformed") {
       set({
         modeData: { mode: "error-recovery" },
         history
@@ -287,17 +287,9 @@ async function tryTransformToolError(
 ): Promise<HistoryItem> {
   if(e instanceof ToolError) {
     return {
-      type: "tool-error",
+      type: "tool-failed",
       id: sequenceId(),
       error: e.message,
-      original: {
-        id: toolReq.tool.toolCallId,
-        function: {
-          name: toolReq.tool.function.name,
-          arguments: toolReq.tool.function.arguments ?
-            JSON.stringify(toolReq.tool.function.arguments) : "{}"
-        },
-      },
       toolCallId: toolReq.tool.toolCallId,
     };
   }

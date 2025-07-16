@@ -11,6 +11,8 @@ export const ToolCallRequestSchema = t.subtype({
   toolCallId: t.str,
 });
 
+export type ToolCallRequest = t.GetType<typeof ToolCallRequestSchema>;
+
 export type ToolCallItem = SequenceIdTagged<{
 	type: "tool",
 	tool: t.GetType<typeof ToolCallRequestSchema>,
@@ -22,8 +24,8 @@ export type ToolOutputItem = SequenceIdTagged<{
   toolCallId: string,
 }>;
 
-export type ToolErrorItem = SequenceIdTagged<{
-  type: "tool-error",
+export type ToolMalformedItem = SequenceIdTagged<{
+  type: "tool-malformed",
   error: string,
   original: Partial<{
     id: string,
@@ -32,6 +34,12 @@ export type ToolErrorItem = SequenceIdTagged<{
       arguments: string,
     },
   }>,
+  toolCallId: string,
+}>;
+
+export type ToolFailedItem = SequenceIdTagged<{
+  type: "tool-failed",
+  error: string,
   toolCallId: string,
 }>;
 
@@ -76,7 +84,8 @@ export type HistoryItem = UserItem
                         | AssistantItem
                         | ToolCallItem
                         | ToolOutputItem
-                        | ToolErrorItem
+                        | ToolFailedItem
+                        | ToolMalformedItem
                         | ToolRejectItem
                         | FileOutdatedItem
                         | FileUnreadableItem

@@ -10,6 +10,7 @@ import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { ContextSpace } from "./context-space.ts";
 import { fileExists } from "./fs-utils.ts";
+import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 
 const LLM_INSTR_FILES = [
   "OCTO.md",
@@ -229,7 +230,7 @@ async function toLlmMessages(
   contextSpace: ContextSpace,
   config: Config,
 ): Promise<Array<LlmMessage>> {
-  const output: LlmMessage[] = [
+  let output: LlmMessage[] = [
     {
       role: "system",
       content: await systemPrompt({
@@ -239,14 +240,8 @@ async function toLlmMessages(
     },
   ];
 
-  // Transform
-  for(let i = 0; i < messages.length; i++) {
-    const item = messages[i];
-    const prev = output.length > 0 ? output[output.length - 1] : null;
-    const [ newPrev, transformed ] = toLlmMessage(prev, item);
-    if(newPrev) output[output.length - 1] = newPrev;
-    if(transformed) output.push(transformed);
-  }
+  const ir = toLlmIR(messages);
+  output = output.concat(ir.map(llmFromIr));
 
   const context = await contextSpace.toXML();
   if(context.length > 0) {
@@ -257,162 +252,56 @@ async function toLlmMessages(
   return output;
 }
 
-// Given a previous LLM message (if one exists) in the conversation, a history item, and the latest
-// edits map, returns a tuple of:
-//
-// 1. What the prev message should be overwritten with
-// 2. The history item transformed to an LLM message
-//
-// The prev message overwrite doesn't need to be a new object: you can just return `prev` for that
-// position if you don't intend to overwrite anything. However, the transformed history-to-LLM
-// message must be a new object: do not simply return the history item, or it could be modified by
-// future calls.
-function toLlmMessage(
-  prev: LlmMessage | null,
-  item: HistoryItem,
-): [LlmMessage | null, LlmMessage | null] {
-  if(item.type === "model-switched") return [ prev, null ];
-
-  if(item.type === "tool") {
-    if(prev && prev.role === "assistant") {
-      return [
-        {
-          role: "assistant",
-          content: prev.content || "",
-          tool_calls: [{
-            type: "function",
-            id: item.tool.toolCallId,
-            function: {
-              name: item.tool.function.name,
-              arguments: item.tool.function.arguments ? JSON.stringify(item.tool.function.arguments) : "{}",
-            },
-          }],
-        },
-        null,
-      ]
-    }
-    return [
-      prev,
-      {
-        role: "assistant",
-        content: "",
-        tool_calls: [{
-          type: "function",
-          id: item.tool.toolCallId,
-          function: {
-            name: item.tool.function.name,
-            arguments: item.tool.function.arguments ? JSON.stringify(item.tool.function.arguments) : "{}",
-          },
-        }],
-      },
-    ];
+function llmFromIr(ir: LlmIR): LlmMessage {
+  if(ir.role === "assistant") {
+    return ir;
   }
-
-  if(item.type === "tool-reject") {
-    return [
-      prev,
-      {
-        role: "tool",
-        content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
-        tool_call_id: item.toolCallId,
-      },
-    ];
+  if(ir.role === "user") {
+    return ir;
   }
-
-  if(item.type === "tool-output") {
-    return [
-      prev,
-      {
-        role: "tool",
-        tool_call_id: item.toolCallId,
-        content: item.content,
-      }
-    ];
+  if(ir.role === "tool-output") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: ir.content,
+    };
   }
-
-  if(item.type === "file-outdated") {
-    return [
-      prev,
-      {
-        role: "tool",
-        tool_call_id: item.toolCallId,
-        content: `\n${tagged(TOOL_ERROR_TAG, {}, `
+  if(ir.role === "tool-reject") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
+    };
+  }
+  if(ir.role === "tool-error") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCallId,
+      content: tagged(TOOL_ERROR_TAG, {}, ir.error),
+    };
+  }
+  if(ir.role === "file-outdated") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: `\n${tagged(TOOL_ERROR_TAG, {}, `
 File could not be updated because it was modified after being last read.
 The latest version of the file has been automatically re-read and placed in your context space.
 Please try again.`.trim())}`,
-      }
-    ];
-  }
-
-  if(item.type === "tool-error") {
-    if(prev && prev.role === "assistant") {
-      return [
-        {
-          role: "assistant",
-          content: prev.content || "",
-          tool_calls: [{
-            type: "function",
-            id: item.original.id || "unknown",
-            function: {
-              name: item.original.function?.name || "unknown",
-              arguments: item.original.function?.arguments || "{}",
-            },
-          }],
-        },
-        {
-          role: "tool",
-          tool_call_id: item.toolCallId,
-          content: tagged(TOOL_ERROR_TAG, {}, item.error),
-        }
-      ];
     }
-    if(prev) {
-      throw new Error("Impossible tool ordering: no prev assistant response for tool error");
-    }
-    // Got this far? We're missing the prev assistant message due to windowing. Just skip this.
-    return [ null, null ];
   }
 
-  if(item.type === "assistant") {
-    return [
-      prev,
-      {
-        role: "assistant",
-        content: item.content || " ",
-      },
-    ];
-  }
+  const _: "file-unreadable" = ir.role;
 
-  if(item.type === "file-unreadable") {
-    return [
-      prev,
-      {
-        role: "tool",
-        tool_call_id: item.toolCallId,
-        content: tagged(
-          TOOL_ERROR_TAG,
-          {},
-          `File ${item.path} could not be read. Has it been deleted?`,
-        ),
-      },
-    ]
-  }
-
-  // Filter out request failed
-  if(item.type === "request-failed") {
-    return [ prev, null ];
-  }
-
-  // Type assertion we've handled all cases other than user
-  const _: "user" = item.type;
-
-  return [
-    prev,
-    {
-      role: "user",
-      content: item.content,
-    },
-  ];
+  return {
+    role: "tool",
+    tool_call_id: ir.toolCall.toolCallId,
+    content: tagged(
+      TOOL_ERROR_TAG,
+      {},
+      `File ${ir.path} could not be read. Has it been deleted?`,
+    ),
+  };
 }
 
 let totalTokensEver = 0;
@@ -598,7 +487,7 @@ export async function runAgent(
       return history.concat([
         assistantHistoryItem,
         {
-          type: "tool-error",
+          type: "tool-malformed",
           id: sequenceId(),
           error: validatedTool.message,
           original: currTool,
@@ -613,7 +502,7 @@ export async function runAgent(
       return history.concat([
         assistantHistoryItem,
         {
-          type: "tool-error",
+          type: "tool-malformed",
           id: sequenceId(),
           error: parseResult.message,
           original: currTool,

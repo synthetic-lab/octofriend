@@ -314,7 +314,7 @@ const MessageDisplayInner = React.memo(({ item }: {
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
 	}
-  if(item.type === "tool-error") {
+  if(item.type === "tool-malformed" || item.type === "tool-failed") {
     return <Text color="red">
       Error: {item.error}
     </Text>
