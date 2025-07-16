@@ -58,8 +58,6 @@ const ResponseToolCallSchema = t.subtype({
 
 type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
-export const TOOL_RUN_TAG = "run-tool";
-const TOOL_RESPONSE_TAG = "tool-output";
 const TOOL_ERROR_TAG = "tool-error";
 
 async function systemPrompt({ appliedWindow, config }: {
@@ -241,28 +239,9 @@ async function toLlmMessages(
     },
   ];
 
-  // First pass: reorder tool rejections to come after user messages, so we don't need lookahead
-  const reorderedHistory = [];
+  // Transform
   for(let i = 0; i < messages.length; i++) {
     const item = messages[i];
-    if(item.type !== "tool-reject") {
-      reorderedHistory.push(item);
-      continue;
-    }
-    // Got this far? It's a tool rejection. Swap it with the next message and skip ahead
-    let next: typeof messages[number];
-    while(next = messages[i + 1]) {
-      reorderedHistory.push(next);
-      i++;
-      if(next.type === "user") break;
-      // If it's not a user message (i.e. it's a switch model message), keep going
-    }
-    reorderedHistory.push(item);
-  }
-
-  // Second pass: transform
-  for(let i = 0; i < reorderedHistory.length; i++) {
-    const item = reorderedHistory[i];
     const prev = output.length > 0 ? output[output.length - 1] : null;
     const [ newPrev, transformed ] = toLlmMessage(prev, item);
     if(newPrev) output[output.length - 1] = newPrev;
@@ -330,21 +309,11 @@ function toLlmMessage(
   }
 
   if(item.type === "tool-reject") {
-    if(prev && prev.role === "user") {
-      return [
-        {
-          role: "tool",
-          content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user.") + "\n" + prev.content,
-          tool_call_id: item.toolCallId,
-        },
-        null,
-      ];
-    }
     return [
       prev,
       {
         role: "tool",
-        content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user."),
+        content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
         tool_call_id: item.toolCallId,
       },
     ];
@@ -356,11 +325,7 @@ function toLlmMessage(
       {
         role: "tool",
         tool_call_id: item.toolCallId,
-        content: tagged(TOOL_RESPONSE_TAG, {}, `
-This is an automated message. The output from the tool was:
-${item.content}
-You may or may not be done with your original task. If you need to make more edits or call more
-tools, continue doing so. If you're done, or stuck, ask the user for help.`.trim())
+        content: item.content,
       }
     ];
   }
