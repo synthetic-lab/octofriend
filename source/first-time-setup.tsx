@@ -134,8 +134,8 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
         <Text>
           Currently, our recommended day-to-day coding model to use with Octo is Kimi K2. We
           recommend using it directly from the Moonshot.ai API: in our testing, other inference
-          providers are either broken or dumber, in some cases due to quantization behind the scenes.
-          We'll update our recommendation as the model hosting landscape evolves.
+          providers are either broken or write lower-quality code, in some cases due to quantization
+          behind the scenes. We'll update our recommendation as the model hosting landscape evolves.
         </Text>
       </Box>
 
