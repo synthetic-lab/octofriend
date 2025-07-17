@@ -132,8 +132,19 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 
       <Box marginTop={1}>
         <Text>
-          If you don't know what company you want to use, we'd selfishly recommend Synthetic, the
-          privacy-first inference company we run. You can sign up here: https://synthetic.new
+          Currently, our recommended day-to-day coding model to use with Octo is Kimi K2. We
+          recommend using it directly from the Moonshot.ai API: in our testing, other inference
+          providers are either broken or dumber, in some cases due to quantization behind the scenes.
+          We'll update our recommendation as the model hosting landscape evolves.
+        </Text>
+      </Box>
+
+      <Box marginTop={1}>
+        <Text>
+          You can also add additional models post-setup using the same flow by accessing Octo's menu
+          via the ESC key. We recommend adding a reasoning model for hard problems in addition to
+          Kimi K2: for example, OpenAI's o3 model or Grok 4. Octo lets you switch models
+          mid-conversation as needed to handle different problems.
         </Text>
       </Box>
 

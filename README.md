@@ -18,12 +18,6 @@ Octo also works with Grok 4, OpenAI o3, local LLMs, and any OpenAI-compatible
 LLM API; I typically use Kimi K2 for day-to-day tasks, and mid-conversation
 swap to a strong reasoning model if Kimi is getting stuck on a harder problem.
 
-Octo has zero telemetry. Using it with a local LLM or privacy-focused inference
-provider ([may I selfishly recommend Synthetic?](https://synthetic.new)) means
-your code stays yours, and not someone else's training data. Or, you can use
-Octo with any of the major inference companies: OpenAI, Grok, Mistral,
-Moonshot, etc.
-
 Octo tries to be a complete product: the project iterates on context engineering
 strategies in addition to UI, in an attempt to squeeze the best performance out
 of coding LLMs.
@@ -33,6 +27,8 @@ human-first: Octo is meant to be a friendly little helper rather than a
 completely hands-free author, and that's how I use it. But if you want to live
 dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
+
+Octo has zero telemetry.
 
 ## Demo
 [![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)

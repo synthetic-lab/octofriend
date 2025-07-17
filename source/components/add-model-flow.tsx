@@ -38,7 +38,7 @@ const MODEL_STEPS = [
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
-            (For example, https://api.synthetic.new/v1)
+            (For example, https://api.moonshot.ai/v1)
           </Text>
         </Box>
         <Text>
@@ -74,11 +74,6 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
           You can typically find your API key on your account or settings page on your
           inference provider's website.
         </Text>
-        <Box marginY={1}>
-          <Text>
-            For Synthetic, go to: https://synthetic.new/user-settings/api
-          </Text>
-        </Box>
         <Text>
           After getting an API key, make sure to export it in your shell; for example:
         </Text>
@@ -103,7 +98,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
-            (For example, with Synthetic, you could use hf:deepseek-ai/DeepSeek-V3-0324)
+            (For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)
           </Text>
         </Box>
         <Text>
@@ -124,8 +119,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
     description() {
       return <Box flexDirection="column">
         <Text>
-          For example, if this was set up to talk to DeepSeek-V3-0324, you might want to call it
-          that.
+          For example, if this was set up to talk to Kimi K2, you might want to call it that.
         </Text>
       </Box>
     },
@@ -154,7 +148,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
         <Box marginY={1}>
           <Text>
             (This is an estimate: leave some buffer room. Best performance is often at half the number
-            of tokens supported by the API.)
+            of tokens supported by the API. For Kimi K2, we recommend 64k.)
           </Text>
         </Box>
         <Text>
