@@ -1,5 +1,9 @@
 ![octofriend](https://raw.githubusercontent.com/reissbaker/octofriend/main/octofriend.png)
 
+```bash
+$ npm install --global octofriend
+```
+
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
 any OpenAI-compatible LLM API, and allows you to switch models at will
 mid-conversation when a particular model gets stuck. Octo also has a few neat
@@ -32,14 +36,6 @@ edit confirmations.
 
 ## Demo
 [![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
-
-## Install Octo
-```bash
-$ npm install --global octofriend
-# Then:
-octofriend
-```
-
 ## Rules
 
 Octo will look for instruction files named like so:
