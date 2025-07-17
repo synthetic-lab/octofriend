@@ -141,10 +141,11 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 
       <Box marginTop={1}>
         <Text>
-          You can also add additional models post-setup using the same flow by accessing Octo's menu
-          via the ESC key. We recommend adding a reasoning model for hard problems in addition to
-          Kimi K2: for example, DeepSeek R1-0528, OpenAI o3 or Grok 4. Octo lets you switch models
-          mid-conversation as needed to handle different problems.
+          You can also add additional models post-setup by accessing Octo's menu. We recommend
+          adding a reasoning model for hard problems in addition to Kimi K2: for example, DeepSeek
+          R1-0528, OpenAI o3 or Grok 4. Octo lets you switch models mid-conversation as needed to
+          handle different problems. These models can also help you come up with an overall plan,
+          and you can then swap in Kimi to do the implementation.
         </Text>
       </Box>
 
