@@ -20,8 +20,6 @@ your code stays yours, and not someone else's training data. Or, you can use
 Octo with any of the major inference companies: OpenAI, Grok, Mistral,
 Moonshot, etc.
 
-[![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
-
 Octo tries to be a complete product: the project iterates on context engineering
 strategies in addition to UI, in an attempt to squeeze the best performance out
 of coding LLMs.
@@ -32,7 +30,10 @@ completely hands-free author, and that's how I use it. But if you want to live
 dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
 
-# Install Octo
+## Demo
+[![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
+
+## Install Octo
 ```bash
 $ npm install --global octofriend
 # Then:
