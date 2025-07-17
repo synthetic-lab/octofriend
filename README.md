@@ -10,13 +10,11 @@ mid-conversation when a particular model gets stuck. Octo also has a few neat
 tricks for managing context space. Octo wants to help you because Octo is your
 friend.
 
-I originally built Octo to try out coding agents with DeepSeek V3-0324; it
-worked alright, but not quite as well as Claude. Kimi K2 is a significant step
-up in capabilities over DeepSeek and with it, Octo feels much more in line with
-Claude Code — but with the ability to swap to many different models on the fly.
-Octo also works with Grok 4, OpenAI o3, local LLMs, and any OpenAI-compatible
-LLM API; I typically use Kimi K2 for day-to-day tasks, and mid-conversation
-swap to a strong reasoning model if Kimi is getting stuck on a harder problem.
+Octo works best with Kimi K2, but allows you to swap to many different models
+on the fly, mid-conversation. It also works with Grok 4, OpenAI o3, local LLMs,
+and any OpenAI-compatible LLM API; I typically use Kimi K2 for day-to-day
+tasks, and mid-conversation swap to a strong reasoning model if Kimi is getting
+stuck on a harder problem.
 
 Octo tries to be a complete product: the project iterates on context engineering
 strategies in addition to UI, in an attempt to squeeze the best performance out
