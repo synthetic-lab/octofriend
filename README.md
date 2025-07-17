@@ -8,17 +8,19 @@ friend.
 
 I originally built Octo to try out coding agents with DeepSeek; it worked
 alright, but not quite as well as Claude. Kimi K2 is a significant step up in
-capabilities over DeepSeek and Octo feels much more in line with Claude Code —
-but with the ability to swap to many different models on the fly. Octo also
-works with Grok 4, OpenAI o3, local LLMs, and any OpenAI-compatible LLM API; I
-typically use Kimi K2 for day-to-day tasks, and mid-conversation swap to a
-strong reasoning model if Kimi is getting stuck on a harder problem.
+capabilities over DeepSeek and with it, Octo feels much more in line with
+Claude Code — but with the ability to swap to many different models on the fly.
+Octo also works with Grok 4, OpenAI o3, local LLMs, and any OpenAI-compatible
+LLM API; I typically use Kimi K2 for day-to-day tasks, and mid-conversation
+swap to a strong reasoning model if Kimi is getting stuck on a harder problem.
 
 Octo has zero telemetry. Using it with a local LLM or privacy-focused inference
 provider ([may I selfishly recommend Synthetic?](https://synthetic.new)) means
 your code stays yours, and not someone else's training data. Or, you can use
 Octo with any of the major inference companies: OpenAI, Grok, Mistral,
 Moonshot, etc.
+
+[![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
 
 Octo tries to be a complete product: the project iterates on context engineering
 strategies in addition to UI, in an attempt to squeeze the best performance out
