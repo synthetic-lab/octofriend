@@ -38,7 +38,7 @@ const MODEL_STEPS = [
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
-            (For example, https://api.moonshot.ai/v1)
+            (For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)
           </Text>
         </Box>
         <Text>
@@ -67,7 +67,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
-            (For example, SYNTHETIC_API_KEY)
+            (For example, MOONSHOT_API_KEY)
           </Text>
         </Box>
         <Text>
@@ -78,7 +78,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
           After getting an API key, make sure to export it in your shell; for example:
         </Text>
         <Text bold>
-          export SYNTHETIC_API_KEY="your-api-key-here"
+          export MOONSHOT_API_KEY="your-api-key-here"
         </Text>
         <Text>
           (If you're running a local LLM, you can use any non-empty env var.)
