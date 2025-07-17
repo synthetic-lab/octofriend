@@ -31,6 +31,8 @@ export type UiState = {
     mode: "error-recovery",
   } | {
     mode: "menu",
+  } | {
+    mode: "tool-waiting",
   },
   modelOverride: string | null,
   history: Array<HistoryItem>,
@@ -117,6 +119,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ client, config, toolReq }) => {
     const modelOverride = get().modelOverride;
+    set({ modeData: { mode: "tool-waiting" } });
 
     try {
       const content = await runTool({

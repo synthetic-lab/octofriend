@@ -195,6 +195,16 @@ function BottomBarContent({ client }: {
     </Box>;
   }
   if(modeData.mode === "error-recovery") return <Loading />;
+  if(modeData.mode === "tool-waiting") {
+    return <Loading overrideStrings={[
+      "Waiting",
+      "Watching",
+      "Smiling",
+      "Hungering",
+      "Splashing",
+      "Writhing",
+    ]} />
+  }
 
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer

@@ -48,9 +48,16 @@ export default {
         if (code === 0) {
           resolve(output);
         } else {
-          reject(new ToolError(
-  `Command exited with code: ${code}
-  output: ${output}`));
+          if(code == null) {
+            reject(new ToolError(
+`Command timed out.
+output: ${output}`));
+          }
+          else {
+            reject(new ToolError(
+`Command exited with code: ${code}
+output: ${output}`));
+          }
         }
       });
 
