@@ -306,11 +306,19 @@ async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
         content: "Tool ran successfully.",
       };
     }
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: await fs.readFile(ir.path, "utf8"),
-    };
+    try {
+      return {
+        role: "tool",
+        tool_call_id: ir.toolCall.toolCallId,
+        content: await fs.readFile(ir.path, "utf8"),
+      };
+    } catch {
+      return {
+        role: "tool",
+        tool_call_id: ir.toolCall.toolCallId,
+        content: "Tool ran successfully.",
+      };
+    }
   }
   if(ir.role === "tool-reject") {
     return {
