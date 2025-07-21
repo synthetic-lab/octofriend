@@ -401,7 +401,6 @@ export async function runAgent(
     stream_options: {
       include_usage: true,
     },
-    max_completion_tokens: model.context,
     max_tokens: model.context,
   }, {
     signal: abortSignal,
