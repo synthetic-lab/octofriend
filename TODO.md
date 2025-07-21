@@ -7,6 +7,10 @@ TODO:
   streamlined setup for the add model flow for them.
 - [ ] Support the Anthropic API
 - [ ] Gemini support
+- [ ] Accurately count tokens used during model setup
+- [ ] Count tokens per-model
+- [ ] Differentiate between input and output tokens in token counting
 
 # Launch blocking
-nothing?
+
+- [ ] Optimized model setup flow for common providers
