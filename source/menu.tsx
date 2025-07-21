@@ -1,13 +1,11 @@
 import React, { useCallback } from "react";
 import { create } from "zustand";
-import { Text, Box, useInput, useApp } from "ink";
-import SelectInput from "ink-select-input";
+import { useInput, useApp } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
-import { Octo } from "./components/octo.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
-import { AddModelFlow } from "./components/add-model-flow.tsx";
+import { MenuPanel } from "./components/menu-panel.tsx";
+import { ModelSetup } from "./components/auto-detect-models.tsx";
 
 type MenuMode = "main-menu"
               | "model-select"
@@ -277,35 +275,6 @@ function RemoveModelMenu() {
 	}, [ config ]);
 
   return <MenuPanel title="Which model do you want to remove?" items={items} onSelect={onSelect} />
-}
-
-type Item<V> = {
-  label: string,
-  value: V,
-}
-type MenuPanelProps<V> = {
-  items: Array<Item<V>>,
-  readonly onSelect: (item: Item<V>) => any,
-  title: string,
-};
-
-function MenuPanel<V>({ items, onSelect, title }: MenuPanelProps<V>) {
-  return <Box flexDirection="column">
-    <Box justifyContent="center">
-      <Octo />
-      <Box marginLeft={1}>
-        <Text>{title}</Text>
-      </Box>
-    </Box>
-    <Box justifyContent="center" marginTop={1}>
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </Box>
-  </Box>
 }
 
 function AddModelMenuFlow() {
