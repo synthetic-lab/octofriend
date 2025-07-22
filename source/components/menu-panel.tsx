@@ -13,15 +13,20 @@ type MenuPanelProps<V> = {
   readonly onSelect: (item: Item<V>) => any,
   title: string,
 };
+
+export function MenuHeader({ title }: { title: string }) {
+  return <Box justifyContent="center" marginBottom={1}>
+    <Octo />
+    <Box marginLeft={1}>
+      <Text>{title}</Text>
+    </Box>
+  </Box>
+}
+
 export function MenuPanel<V>({ items, onSelect, title }: MenuPanelProps<V>) {
   return <Box flexDirection="column">
+    <MenuHeader title={title} />
     <Box justifyContent="center">
-      <Octo />
-      <Box marginLeft={1}>
-        <Text>{title}</Text>
-      </Box>
-    </Box>
-    <Box justifyContent="center" marginTop={1}>
       <SelectInput
         items={items}
         onSelect={onSelect}

@@ -1,14 +1,9 @@
 import React from "react";
 import { t } from "structural";
-import readline from "readline/promises";
 import fs from "fs/promises";
 import path from "path";
-import chalk from "chalk";
 import { fileURLToPath } from "url";
 import json5 from "json5";
-import OpenAI from "openai";
-import figlet from "figlet";
-import { THEME_COLOR } from "./theme.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +21,7 @@ const ConfigSchema = t.exact({
     model: t.str,
     context: t.num,
   })),
+  defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
@@ -74,7 +70,4 @@ export async function readMetadata(): Promise<Metadata> {
   return {
     version: packageJson["version"],
   };
-}
-
-export function addModel(model: Config["models"][number]) {
 }

@@ -15,7 +15,7 @@ type AddModelStep<T extends ModelVar> = {
   varname: T;
   parse: (val: string) => Config["models"][number][T];
   validate: (val: string) => ValidationResult;
-  description: () => React.ReactNode;
+  description: (props: { renderExamples: boolean }) => React.ReactNode;
 };
 
 const MinConnectArgsSchema = t.subtype({
@@ -34,7 +34,7 @@ const MODEL_STEPS = [
       return val;
     },
     validate: () => ({ valid: true }),
-    description() {
+    description(_) {
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
@@ -63,7 +63,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
         `.trim(),
       };
     },
-    description() {
+    description(_) {
       return <Box flexDirection="column">
         <Box marginBottom={1}>
           <Text>
@@ -94,13 +94,15 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       return val;
     },
     validate: () => ({ valid: true }),
-    description() {
+    description({ renderExamples }) {
       return <Box flexDirection="column">
-        <Box marginBottom={1}>
-          <Text>
-            (For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)
-          </Text>
-        </Box>
+        {
+          renderExamples && <Box marginBottom={1}>
+            <Text>
+              (For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)
+            </Text>
+          </Box>
+        }
         <Text>
           This varies by inference provider: you can typically find this information in your
           inference provider's documentation.
@@ -116,11 +118,13 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       return val;
     },
     validate: () => ({ valid: true }),
-    description() {
+    description({ renderExamples }) {
       return <Box flexDirection="column">
-        <Text>
-          For example, if this was set up to talk to Kimi K2, you might want to call it that.
-        </Text>
+        {
+          renderExamples && <Text>
+            For example, if this was set up to talk to Kimi K2, you might want to call it that.
+          </Text>
+        }
       </Box>
     },
   } satisfies AddModelStep<"nickname">,
@@ -138,7 +142,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
         error: "Couldn't parse your input as a number: please try again",
       };
     },
-    description() {
+    description(_) {
       const color = useColor();
       return <Box flexDirection="column">
         <Text>
@@ -147,8 +151,8 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
         </Text>
         <Box marginY={1}>
           <Text>
-            (This is an estimate: leave some buffer room. Best performance is often at half the number
-            of tokens supported by the API. For Kimi K2, we recommend 64k.)
+            (This is an estimate: leave some buffer room. Best performance is often at half the
+            number of tokens supported by the API.)
           </Text>
         </Box>
         <Text>
@@ -176,6 +180,11 @@ function _assertCovered(x: ModelVar) {
 export type AddModelFlowProps = {
   onComplete: (model: Config["models"][number]) => void;
   onCancel: () => void;
+  startingStep?: {
+    modelProgress: Partial<Config["models"][number]>,
+    stepVar: ModelVar,
+  },
+  skipExamples?: boolean
 };
 
 type TestConnectionState = {
@@ -184,13 +193,18 @@ type TestConnectionState = {
   testing: true,
   args: MinConnectArgs,
 };
-export function AddModelFlow({ onComplete, onCancel }: AddModelFlowProps) {
+export function AddModelFlow({ onComplete, onCancel, startingStep, skipExamples }: AddModelFlowProps) {
+  const renderExamples = !skipExamples;
   const [ testingConnection, setTestingConnection ] = useState<TestConnectionState>({
     testing: false,
   });
   const [ errorMessage, setErrorMessage ] = useState<null | string>(null);
-  const [ modelProgress, setModelProgress ] = useState<Partial<Config["models"][number]>>({});
-  const [ stepVar, setStepVar ] = useState<ModelVar>(MODEL_STEPS[0].varname);
+  const [ modelProgress, setModelProgress ] = useState<Partial<Config["models"][number]>>(
+    startingStep?.modelProgress || {}
+  );
+  const [ stepVar, setStepVar ] = useState<ModelVar>(
+    startingStep?.stepVar || MODEL_STEPS[0].varname
+  );
   const [ varValue, setVarValue ] = useState("");
   const currentStep = MODEL_STEPS.find(step => step.varname === stepVar)!;
 
@@ -244,6 +258,11 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
 
   useInput((_, key) => {
     if(key.escape) {
+      if(currentStep.varname === startingStep?.stepVar) {
+        onCancel();
+        return;
+      }
+
       const index = MODEL_STEPS.indexOf(currentStep);
       if(index <= 0) {
         onCancel();
@@ -260,7 +279,7 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
       {...testingConnection.args}
       onError={() => {
         setTestingConnection({ testing: false });
-        setStepVar(MODEL_STEPS[0].varname);
+        setStepVar(startingStep?.stepVar || MODEL_STEPS[0].varname);
         setErrorMessage("Connection failed.");
       }}
       onSuccess={() => {
@@ -272,7 +291,7 @@ Synthetic model names need to be prefixed with "hf:" (without the quotes)
   return <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
     <Box flexDirection="column" width={80} gap={1}>
       <Text color={themeColor}>{ currentStep.title }</Text>
-      <currentStep.description />
+      <currentStep.description renderExamples={renderExamples} />
     </Box>
 
     <Box marginY={1} width={80}>

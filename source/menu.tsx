@@ -284,12 +284,12 @@ function AddModelMenuFlow() {
   const setConfig = useSetConfig();
   const config = useConfig();
 
-  const onComplete = useCallback((model: Config["models"][number]) => {
+  const onComplete = useCallback((models: Config["models"]) => {
     setConfig({
       ...config,
       models: [
         ...config.models,
-        model,
+        ...models,
       ],
     });
     setMenuMode("model-select");
@@ -299,5 +299,20 @@ function AddModelMenuFlow() {
     setMenuMode("main-menu");
   }, [ setMenuMode ]);
 
-  return <AddModelFlow onComplete={onComplete} onCancel={onCancel} />
+  const onOverrideDefaultApiKey = useCallback((overrides: Record<string, string>) => {
+    setConfig({
+      ...config,
+      defaultApiKeyOverrides: {
+        ...(config.defaultApiKeyOverrides || {}),
+        ...overrides,
+      },
+    });
+  }, [ config, setConfig ]);
+
+  return <ModelSetup
+    config={config}
+    onComplete={onComplete}
+    onCancel={onCancel}
+    onOverrideDefaultApiKey={onOverrideDefaultApiKey}
+  />
 }
