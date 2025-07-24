@@ -405,11 +405,9 @@ export async function runAgent(
     model: model.model,
     messages, tools,
     stream: true,
-    parallel_tool_calls: false,
     stream_options: {
       include_usage: true,
     },
-    max_tokens: model.context,
   }, {
     signal: abortSignal,
   });
