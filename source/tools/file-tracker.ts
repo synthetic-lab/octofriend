@@ -38,6 +38,8 @@ export class FileTracker {
 
   async write(filePath: string, content: string): Promise<string> {
     const absolutePath = path.resolve(filePath);
+    const dir = path.dirname(absolutePath);
+    await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(absolutePath, content, 'utf8');
     // Update mod time
     const modified = await getModifiedTime(absolutePath);
