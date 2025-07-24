@@ -14,14 +14,14 @@ type MenuPanelProps<V> = {
   title: string,
 };
 
-export function MenuHeader({ title }: { title: string }) {
+export const MenuHeader = React.memo(({ title }: { title: string }) => {
   return <Box justifyContent="center" marginBottom={1}>
     <Octo />
     <Box marginLeft={1}>
       <Text>{title}</Text>
     </Box>
   </Box>
-}
+});
 
 export function MenuPanel<V>({ items, onSelect, title }: MenuPanelProps<V>) {
   return <Box flexDirection="column">

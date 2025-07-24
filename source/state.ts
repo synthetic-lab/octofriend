@@ -167,7 +167,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     });
 
-    const debounceTimeout = 16;
+    const debounceTimeout = 100;
     let timeout: NodeJS.Timeout | null = null;
     let lastContent = "";
 
