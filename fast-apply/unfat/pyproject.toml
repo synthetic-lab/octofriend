@@ -1,0 +1,20 @@
+[project]
+name = "octofriend-fast-apply"
+version = "0.0.1"
+description = "Train a fast apply model for Octofriend's edit format"
+authors = [
+    {name = "@reissbaker"}
+]
+license = { text = "MIT" }
+keywords = ["fast-apply", "LoRA", "llm", "coding-agent"]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "unfat (>=0.0.13)",
+]
+
+
+[tool.uv]
+default-groups = []
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]

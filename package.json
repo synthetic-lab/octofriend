@@ -4,7 +4,7 @@
 	"license": "MIT",
 	"bin": "dist/cli.js",
 	"type": "module",
-  "preferGlobal": true,
+	"preferGlobal": true,
 	"engines": {
 		"node": ">=16"
 	},
@@ -43,6 +43,8 @@
 		"@types/node": "^22.13.13",
 		"@types/react": "^18.0.32",
 		"ink-testing-library": "^3.0.0",
+		"parse-git-diff": "^0.0.19",
+		"tsx": "^4.20.3",
 		"typescript": "^5.8.3"
 	}
 }
