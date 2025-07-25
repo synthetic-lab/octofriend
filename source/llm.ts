@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import OpenAI from "openai";
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig } from "./config.ts";
@@ -7,6 +6,7 @@ import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
+import { fileTracker } from "./tools/file-tracker.ts";
 
 export type UserMessage = {
   role: "user";
@@ -142,7 +142,7 @@ async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
       return {
         role: "tool",
         tool_call_id: ir.toolCall.toolCallId,
-        content: await fs.readFile(ir.path, "utf8"),
+        content: await fileTracker.read(ir.path),
       };
     } catch {
       return {
