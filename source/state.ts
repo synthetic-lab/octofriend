@@ -1,6 +1,7 @@
+import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import OpenAI from "openai";
-import { runAgent } from "./llm.ts";
+import { runAgent, autofixEdit } from "./llm.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
 import {
   runTool,
@@ -29,6 +30,8 @@ export type UiState = {
     toolReq: ToolCallItem,
   } | {
     mode: "error-recovery",
+  } | {
+    mode: "diff-apply",
   } | {
     mode: "menu",
   } | {
@@ -257,16 +260,35 @@ export const useAppStore = create<UiState>((set, get) => ({
     try {
       await validateTool(lastHistoryItem.tool.function, config);
     } catch(e) {
-      set({
-        modeData: {
-          mode: "error-recovery",
-        },
-        history: [
-          ...history,
-          await tryTransformToolError(lastHistoryItem, e),
-        ],
-      });
-      return await get()._runAgent({ client, config });
+      const fn = lastHistoryItem.tool.function;
+      let fixed = false;
+      if(fn.name === "edit" && fn.arguments.edit.type === "diff") {
+        set({
+          modeData: {
+            mode: "diff-apply",
+          },
+        });
+        const path = fn.arguments.filePath;
+        const file = await fs.readFile(path, "utf8");
+        const fix = await autofixEdit(config, file, fn.arguments.edit);
+        if(fix) {
+          fixed = true;
+          fn.arguments.edit = fix;
+        }
+      }
+
+      if(!fixed) {
+        set({
+          modeData: {
+            mode: "error-recovery",
+          },
+          history: [
+            ...history,
+            await tryTransformToolError(lastHistoryItem, e),
+          ],
+        });
+        return await get()._runAgent({ client, config });
+      }
     }
 
     set({

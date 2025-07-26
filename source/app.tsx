@@ -195,6 +195,11 @@ function BottomBarContent({ client }: {
     </Box>;
   }
   if(modeData.mode === "error-recovery") return <Loading />;
+  if(modeData.mode === "diff-apply") {
+    return <Loading overrideStrings={[
+      "Auto-fixing diff",
+    ]}/>
+  };
   if(modeData.mode === "tool-waiting") {
     return <Loading overrideStrings={[
       "Waiting",
@@ -213,6 +218,8 @@ function BottomBarContent({ client }: {
       config={config}
     />;
   }
+
+  const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
     <Box marginLeft={1} justifyContent="flex-end">

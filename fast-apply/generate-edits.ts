@@ -5,6 +5,7 @@ import parseGitDiff from "parse-git-diff";
 import edits from "../source/tools/tool-defs/edit";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git";
 import { fileURLToPath } from "url";
+import { fixPrompt } from "../source/diffapply";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
@@ -53,11 +54,7 @@ async function genEditsForRepo(repo: string) {
       const messages = [
         {
           role: "user",
-          content:
-`This edit is invalid; please fix it. The search string does not match perfectly with the file contents.
-Respond only with JSON, and only with the edit JSON, not the original file.
-If the edit is ambiguous, respond with null.
-${JSON.stringify(brokenEdit)}`,
+          content: fixPrompt(brokenEdit),
         },
         {
           role: "assistant",

@@ -7,6 +7,7 @@ import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 import { fileTracker } from "./tools/file-tracker.ts";
+import { fixPrompt } from "./diffapply.ts";
 
 export type UserMessage = {
   role: "user";
@@ -193,6 +194,39 @@ Please try again.`.trim())}`,
 let totalTokensEver = 0;
 export function totalTokensUsed() {
   return totalTokensEver;
+}
+
+type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
+export async function autofixEdit(config: Config, file: string, edit: DiffEdit) {
+  if(config.diffApply == null) return null;
+
+  const client = new OpenAI({
+    baseURL: config.diffApply.baseUrl,
+    apiKey: process.env[config.diffApply.apiEnvVar],
+  });
+  const response = await client.chat.completions.create({
+    model: config.diffApply.model,
+    messages: [
+      {
+        role: "user",
+        content: fixPrompt({ file, edit }),
+      },
+    ],
+    response_format: {
+      type: "json_object",
+    },
+  });
+
+  if(response.usage) totalTokensEver += response.usage?.total_tokens;
+  const result = response.choices[0].message.content;
+  if(result == null) return null;
+  try {
+    const parsed = JSON.parse(result);
+    if(parsed == null) return null;
+    return toolMap.edit.DiffEdit.slice(parsed);
+  } catch {
+    return null;
+  }
 }
 
 export async function runAgent(

@@ -21,6 +21,11 @@ const ConfigSchema = t.exact({
     model: t.str,
     context: t.num,
   })),
+  diffApply: t.optional(t.exact({
+    baseUrl: t.str,
+    apiEnvVar: t.str,
+    model: t.str,
+  })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
