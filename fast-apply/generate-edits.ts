@@ -11,6 +11,7 @@ const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 5;
 const MAX_BREAK_ATTEMPTS = 1000;
+const EVAL_PERCENT = 0.1;
 
 async function main() {
   try {
@@ -64,7 +65,7 @@ ${JSON.stringify(brokenEdit)}`,
         },
       ];
       let outputPath = TRAIN_PATH;
-      if(Math.random() > 0.75) {
+      if(Math.random() < EVAL_PERCENT) {
         outputPath = EVAL_PATH;
       }
       await fs.appendFile(outputPath, JSON.stringify({ messages }) + "\n", "utf8");
@@ -73,6 +74,7 @@ ${JSON.stringify(brokenEdit)}`,
       skippedBreaks++;
     }
   }
+
   console.log(
     `Finished generating; failed to break ${skippedBreaks} edits, successfully broke ${successCount} edits`
   );
