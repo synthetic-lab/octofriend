@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import parseGitDiff from "parse-git-diff";
 import edits from "../source/tools/tool-defs/edit";
-import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./get-commits";
+import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git";
 import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,9 +21,20 @@ async function main() {
   await fs.writeFile(TRAIN_PATH, "");
   await fs.writeFile(EVAL_PATH, "");
 
+  console.log("Generating edits for this repo");
+  await genEditsForRepo(".");
+
+  const repos = await fs.readdir(path.join(__dirname, "repos"));
+  for(const repo of repos) {
+    console.log("Generating edits for", repo);
+    await genEditsForRepo(path.join(__dirname, "repos", repo));
+  }
+}
+
+async function genEditsForRepo(repo: string) {
   let skippedBreaks = 0;
   let successCount = 0;
-  for await(const edit of getEdits(".git")) {
+  for await(const edit of getEdits(path.join(repo, ".git"))) {
     try {
       const numBreaks = Math.floor(Math.random() * MAX_NUM_BREAKS);
       let brokenEdit = { file: edit.file, edit: { ...edit.edit } };
@@ -63,7 +74,7 @@ ${JSON.stringify(brokenEdit)}`,
     }
   }
   console.log(
-    `Done; failed to break ${skippedBreaks} edits, successfully broke ${successCount} edits`
+    `Finished generating; failed to break ${skippedBreaks} edits, successfully broke ${successCount} edits`
   );
 }
 
@@ -73,7 +84,8 @@ function defineBreak(cb: (search: string) => string) {
 }
 
 const SPECIAL_CHARS = [
-  " ", "{", "}", "[", "]", "\t", "\n", "(", ")", "$", "@", ",", ";", ":", ".", "\\", "\"", "'",
+  " ", "{", "}", "[", "]", "\t", "\n", "(", ")", "$", "@", ",", ";", ":", ".", "\\", "\"", "'", "<",
+  ">", "&", "|", "-", "+", "#", "/", "*",
 ];
 
 for(const char of SPECIAL_CHARS) {
@@ -160,7 +172,11 @@ async function* getEdits(gitDir: string) {
     if(parsed.type !== "GitDiff") continue;
     for(const file of parsed.files) {
       if(file.type !== "ChangedFile") continue;
-      const [ before, after ] = await getFileContentsBeforeAfter(file.path, sha, gitDir);
+      const [ err, result ] = await tryexpr(async () => {
+        return await getFileContentsBeforeAfter(file.path, sha, gitDir);
+      });
+      if(err) continue;
+      const [ before, after ] = result;
       const beforeLines = parseLines(before);
       const afterLines = parseLines(after);
 
@@ -182,7 +198,6 @@ async function* getEdits(gitDir: string) {
     }
   }
 }
-
 
 async function tryexpr<T>(cb: () => Promise<T>): Promise<[ Error, null ] | [ null, T ]> {
   try {

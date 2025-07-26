@@ -16,4 +16,5 @@ TODO:
 
 # Launch blocking
 
-nothing?
+- [ ] train fast-apply model on messed up edits
+- [ ] include impossible edits in fast-apply training data

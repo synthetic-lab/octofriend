@@ -1,2 +1,3 @@
 node_modules
 dist
+/fast-apply/unfat/output
