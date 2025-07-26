@@ -1,12 +1,11 @@
 import os
-from unfat.together import llama_3_1_8b_together
+from unfat.axolotl import llama_3_1_8b_axolotl
 from unfat.lora import LoraSettings
 from unfat.datasets import JsonlConvos, Dataset
 
 output_dir = "output"
 
-train_config = llama_3_1_8b_together(
-    output_dir=output_dir,
+train_config = llama_3_1_8b_axolotl(
     dataset=Dataset(
         train=[
             JsonlConvos("data/train.jsonl"),
@@ -24,8 +23,7 @@ train_config = llama_3_1_8b_together(
         wandb_api_key=os.environ["WANDB_API_KEY"],
         wandb_project="octofriend-fast-apply",
     ),
-    api_key=os.environ["TOGETHER_API_KEY"],
+    warmup_steps=10,
 )
 
-uploaded_files = train_config.upload_files()
-train_config.finetune(uploaded_files)
+train_config.save(output_dir)
