@@ -16,5 +16,5 @@ TODO:
 
 # Launch blocking
 
-- [ ] train fast-apply model on messed up edits
 - [ ] include impossible edits in fast-apply training data
+- [ ] train a fix-json lora for fixing slightly messed up json
