@@ -6,10 +6,14 @@ import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
 import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
+import { EnableDiffApply } from "./components/enable-diff-apply.tsx";
+import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 
 type MenuMode = "main-menu"
+              | "settings-menu"
               | "model-select"
               | "add-model"
+              | "diff-apply-toggle"
               | "set-default-model"
               | "quit-confirm"
               | "remove-model"
@@ -32,12 +36,60 @@ export function Menu() {
   })));
 
   if(menuMode === "main-menu") return <MainMenu />
+  if(menuMode === "settings-menu") return <SettingsMenu />
   if(menuMode === "model-select") return <SwitchModelMenu />
   if(menuMode === "set-default-model") return <SetDefaultModelMenu />
   if(menuMode === "quit-confirm") return <QuitConfirm />
   if(menuMode === "remove-model") return <RemoveModelMenu />
+  if(menuMode === "diff-apply-toggle") return <DiffApplyToggle />
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />
+}
+
+function DiffApplyToggle() {
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+  const { toggleMenu } = useAppStore(useShallow(state => ({
+    toggleMenu: state.toggleMenu,
+  })));
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  if(config.diffApply) {
+    return <ConfirmDialog
+      rejectLabel="Disable diff-apply"
+      confirmLabel="Keep diff-apply on (recommended)"
+      onReject={() => {
+        const newconf = { ...config };
+        delete newconf.diffApply;
+        setConfig(newconf);
+        setMenuMode("main-menu");
+        toggleMenu();
+      }}
+      onConfirm={() => {
+        setMenuMode("main-menu");
+      }}
+    />
+  }
+  return <EnableDiffApply
+    config={config}
+    onComplete={(diffApply) => {
+      setConfig({
+        ...config,
+        diffApply,
+      });
+      setMenuMode("main-menu");
+      toggleMenu();
+    }}
+    onCancel={() => {
+      setMenuMode("main-menu");
+    }}
+  />
 }
 
 function SwitchModelMenu() {
@@ -83,6 +135,36 @@ function SwitchModelMenu() {
   return <MenuPanel title="Which model should Octo use now?" items={items} onSelect={onSelect} />
 }
 
+const SETTINGS_ITEMS = [
+  {
+    label: "Change the default model",
+    value: "set-default-model" as const,
+  },
+  {
+    label: "Remove a model",
+    value: "remove-model" as const,
+  },
+  {
+    label: "Disable fast diff application",
+    value: "disable-diff-apply" as const,
+  },
+];
+function filterSettings(config: Config) {
+  let items = SETTINGS_ITEMS.concat([]);
+  items = items.filter(item => {
+    if(config.diffApply == null && item.value === "disable-diff-apply") return false;
+    return true;
+  });
+
+  if(config.models.length > 1) return items;
+
+  return items.filter(item => {
+    if(item.value === "remove-model") return false;
+    if(item.value === "set-default-model") return false;
+    return true;
+  });
+}
+
 function MainMenu() {
   const { toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -102,47 +184,78 @@ function MainMenu() {
 
   let items = [
     {
-      label: "Switch model",
+      label: "💫 Enable fast diff application",
+      value: "enable-diff-apply" as const,
+    },
+    {
+      label: "⤭ Switch model",
       value: "model-select" as const,
     },
     {
-      label: "Add a new model",
+      label: "+ Add a new model",
       value: "add-model" as const,
     },
     {
-      label: "Change the default model",
-      value: "set-default-model" as const,
+      label: "* Settings",
+      value: "settings" as const,
     },
     {
-      label: "Remove a model",
-      value: "remove-model" as const,
-    },
-    {
-      label: "Return to Octo",
+      label: "⟵ Return to Octo",
       value: "return" as const,
     },
     {
-      label: "Quit",
+      label: "× Quit",
       value: "quit" as const,
     },
   ];
+  items = items.filter(item => {
+    if(config.diffApply != null && item.value === "enable-diff-apply") return false;
+    return true;
+  });
 
-  if(config.models.length === 1) {
-    items = items.filter(item => {
-      if(item.value === "model-select") return false;
-      if(item.value === "remove-model") return false;
-      if(item.value === "set-default-model") return false;
-      return true;
-    });
+  const settingsItems = filterSettings(config);
+  if(settingsItems.length === 0) {
+    items = items.filter(item => item.value !== "settings");
   }
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "return") toggleMenu();
     else if(item.value === "quit") setMenuMode("quit-confirm");
+    else if(item.value === "enable-diff-apply") setMenuMode("diff-apply-toggle");
+    else if(item.value === "settings") setMenuMode("settings-menu");
     else setMenuMode(item.value);
 	}, []);
 
   return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />
+}
+
+function SettingsMenu() {
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+
+  const config = useConfig();
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  const settingsItems = filterSettings(config);
+  let items = [
+    ...settingsItems,
+    {
+      label: "Back",
+      value: "back" as const,
+    },
+  ];
+
+	const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
+    else if(item.value === "back") setMenuMode("main-menu");
+    else setMenuMode(item.value);
+	}, []);
+
+  return <MenuPanel title="Settings Menu" items={items} onSelect={onSelect} />
 }
 
 function QuitConfirm() {

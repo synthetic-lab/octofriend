@@ -1,88 +1,20 @@
 import React, { useState, useCallback, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "ink-select-input";
-import TextInput from "ink-text-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";
 import { AddModelFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
-import { useColor } from "../theme.ts";
+import { ProviderConfig, PROVIDERS, keyFromName } from "./providers.ts";
+import { OverrideEnvVar } from "./override-env-var.tsx";
+import { ConfirmDialog } from "./confirm-dialog.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void,
   onCancel: () => void,
   onOverrideDefaultApiKey: (o: Record<string, string>) => any,
   config: Config | null,
-};
-
-type ProviderConfig = {
-  name: string,
-  envVar: string,
-  baseUrl: string,
-  models: Array<{
-    model: string,
-    nickname: string,
-    context: number,
-  }>;
-  testModel: string,
-};
-
-const PROVIDERS = {
-  synthetic: {
-    name: "Synthetic",
-    envVar: "SYNTHETIC_API_KEY",
-    baseUrl: "https://api.synthetic.new/v1",
-    models: [
-      {
-        model: "hf:moonshotai/Kimi-K2-Instruct",
-        nickname: "Kimi K2",
-        context: 64 * 1024,
-      },
-      {
-        model: "hf:Qwen/Qwen3-235B-A22B-Instruct-2507",
-        nickname: "Qwen3 235B-A22B-Instruct-2507",
-        context: 64 * 1024,
-      },
-      {
-        model: "hf:deepseek-ai/DeepSeek-R1-0528",
-        nickname: "DeepSeek R1-0528",
-        context: 64 * 1024,
-      },
-    ],
-    testModel: "hf:moonshotai/Kimi-K2-Instruct",
-  } satisfies ProviderConfig,
-
-  openai: {
-    name: "OpenAI",
-    envVar: "OPENAI_API_KEY",
-    baseUrl: "https://api.openai.com/v1",
-    models: [
-      { model: "gpt-4.1-2025-04-14", nickname: "GPT-4.1", context: 64 * 1024 },
-      { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024 },
-    ],
-    testModel: "gpt-4.1-latest",
-  } satisfies ProviderConfig,
-
-  moonshot: {
-    name: "Moonshot",
-    envVar: "MOONSHOT_API_KEY",
-    baseUrl: "https://api.moonshot.ai/v1",
-    models: [
-      { model: "kimi-k2-0711-preview", nickname: "Kimi K2", context: 64 * 1024 },
-    ],
-    testModel: "kimi-k2-0711-preview",
-  } satisfies ProviderConfig,
-
-  grok: {
-    name: "xAI",
-    envVar: "XAI_API_KEY",
-    baseUrl: "https://api.x.ai/v1",
-    models: [
-      { model: "grok-4-latest", nickname: "Grok 4", context: 64 * 1024 },
-    ],
-    testModel: "grok-4-latest",
-  } satisfies ProviderConfig,
 };
 
 type StepData = {
@@ -104,13 +36,6 @@ type StepData = {
   provider: ProviderConfig,
   overrideEnvVar: string | null,
 };
-
-function keyFromName(name: string): keyof typeof PROVIDERS {
-  for(const [key, value] of Object.entries(PROVIDERS)) {
-    if(value.name === name) return key as keyof typeof PROVIDERS;
-  }
-  throw new Error(`No provider named ${name} found`);
-}
 
 function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvVar: string | null) {
   if(overrideEnvVar) return overrideEnvVar;
@@ -420,82 +345,6 @@ function MissingEnvVar({ provider, config, onShouldOverride, onCancel }: {
       onConfirm={onShouldOverride}
       onReject={onCancel}
     />
-  </CenteredBox>
-}
-
-function ConfirmDialog({ confirmLabel, rejectLabel, onConfirm, onReject }: {
-  confirmLabel: string,
-  rejectLabel: string,
-  onConfirm: () => any,
-  onReject: () => any,
-}) {
-  const items = [
-    {
-      label: confirmLabel,
-      value: "confirm" as const,
-    },
-    {
-      label: rejectLabel,
-      value: "reject" as const,
-    },
-  ];
-  const onSelect = useCallback((item: (typeof items)[number]) => {
-    if(item.value === "confirm") return onConfirm();
-    return onReject();
-  }, []);
-
-  return <Box justifyContent="center">
-    <SelectInput
-      items={items}
-      onSelect={onSelect}
-      indicatorComponent={IndicatorComponent}
-      itemComponent={ItemComponent}
-    />
-  </Box>
-}
-
-function OverrideEnvVar({ provider, onSubmit }: {
-  provider: ProviderConfig,
-  onSubmit: (val: string) => any,
-}) {
-  const [ inputVal, setInputVal ] = useState("");
-  const [ missing, setMissing ] = useState<string | null>(null);
-  const themeColor = useColor();
-
-  const handleSubmit = useCallback((val: string) => {
-    if(process.env[val]) onSubmit(val);
-    else {
-      setInputVal("");
-      setMissing(val);
-    }
-  }, []);
-
-  const onChange = useCallback((val: string) => {
-    setMissing(null);
-    setInputVal(val);
-  }, []);
-
-  return <CenteredBox>
-    <MenuHeader title="API key" />
-
-    <Box flexDirection="column">
-      <Text>
-        What environment variable do you use for {provider.name}'s API key?
-      </Text>
-      <Box borderColor={themeColor} borderStyle={"round"} gap={1}>
-        <TextInput value={inputVal} onChange={onChange} onSubmit={handleSubmit} />
-      </Box>
-      {
-        missing && <Box flexDirection="column">
-          <Text color="red">
-            It looks like the {missing} env var isn't exported in your current shell.
-          </Text>
-          <Text color="gray">
-            (Hint: do you need to re-source your .bash_profile or zshrc?)
-          </Text>
-        </Box>
-      }
-    </Box>
   </CenteredBox>
 }
 
