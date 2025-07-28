@@ -11,12 +11,11 @@ import { pickRandom } from "../random";
 import { tryexpr } from "../../source/tryexpr";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const ROOT_DIR = path.dirname(path.dirname(__dirname));
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 4;
-const DIFF_GEN_PERCENT = 0.01;
-const EVAL_PERCENT = 0.1;
+const DIFF_GEN_PERCENT = 0.02;
+const EVAL_PERCENT = 0.2;
 const NOT_JSON_PERCENT = 0.1;
 const JSON5_PERCENT = 0.01;
 const NEST_PERCENT = 0.05;
@@ -33,11 +32,67 @@ async function main() {
   await fs.writeFile(TRAIN_PATH, "");
   await fs.writeFile(EVAL_PATH, "");
 
+  const pokedex = JSON.parse(await fs.readFile(
+    path.join(__dirname, "json-repos/pokedex/pokedex.json"),
+    "utf8"
+  ));
+  await genBrokenJsonFromArray("Pokedex", pokedex["pokemon"]);
+
+  const reps = JSON.parse(await fs.readFile(
+    path.join(__dirname, "json-repos/us-representatives.json"),
+    "utf8",
+  ));
+  await genBrokenJsonFromArray("US Representatives", reps["objects"]);
+
+  const reddit = await fs.readdir(path.join(__dirname, "json-repos/reddit"));
+  for(const redditJson of reddit) {
+    const parsed = JSON.parse(await fs.readFile(
+      path.join(__dirname, "json-repos/reddit", redditJson),
+      "utf8",
+    ));
+    await genBrokenJsonFromArray(`/r/${redditJson}`, parsed["data"]["children"]);
+  }
+
+  const movies2010 = JSON.parse(await fs.readFile(
+    path.join(__dirname, "json-repos/wikipedia-movie-data/movies-2010s.json"),
+    "utf8",
+  ));
+  await genBrokenJsonFromArray("Movies (2010s)", movies2010);
+
+  const movies2020 = JSON.parse(await fs.readFile(
+    path.join(__dirname, "json-repos/wikipedia-movie-data/movies-2020s.json"),
+    "utf8",
+  ));
+  await genBrokenJsonFromArray("Movies (2020s)", movies2020);
+
   const repos = await fs.readdir(REPOS_DIR);
   for(const repo of repos) {
     console.log("Generating broken JSON for", repo);
     await genBrokenJsonForRepo(path.join(REPOS_DIR, repo));
   }
+}
+
+async function genBrokenJsonFromArray(name: string, array: any[]) {
+  let count = 0;
+  for await(const obj of array) {
+    count++;
+    const sample = randomlyBreak(JSON.stringify(obj));
+    const outputPath = Math.random() > EVAL_PERCENT ? TRAIN_PATH : EVAL_PATH;
+    const messages = [
+      {
+        role: "user",
+        content: fixJsonPrompt(sample.input),
+      },
+      {
+        role: "assistant",
+        content: sample.groundTruth,
+      },
+    ];
+    await fs.appendFile(outputPath, JSON.stringify({
+      messages
+    }) + "\n", "utf8");
+  }
+  console.log(`Generated ${count} samples for`, name);
 }
 
 async function genBrokenJsonForRepo(path: string) {
@@ -85,7 +140,7 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
     if(Math.random() > NOT_JSON_PERCENT) {
       yield {
         input: file,
-        groundTruth: "null",
+        groundTruth: JSON.stringify({ success: false }),
       };
       continue;
     }
@@ -149,19 +204,20 @@ function randomlyBreak(str: string): Sample {
   if(Math.random() > JSON5_PERCENT) {
     return {
       input: json5.stringify(str),
-      groundTruth: str,
+      groundTruth: JSON.stringify({ success: true, json: JSON.parse(str) }),
     }
   }
-  let broken = str;
+  let original = str;
 
   if(Math.random() > NEST_PERCENT) {
     const nestcount = Math.floor(Math.random() * MAX_NESTING);
     for(let i = 0; i < nestcount; i++) {
       const key = pickRandom(keyNamePool);
-      broken = JSON.stringify({ [key]: broken });
+      original = JSON.stringify({ [key]: original });
     }
   }
 
+  let broken = original;
   const breaker = pickRandom(breakFns);
   const breaks = Math.floor(Math.random() * MAX_NUM_BREAKS);
   for(let i = 0; i < breaks; i++) {
@@ -173,7 +229,7 @@ function randomlyBreak(str: string): Sample {
 
   return {
     input: broken,
-    groundTruth: str,
+    groundTruth: JSON.stringify({ success: true, json: JSON.parse(original) }),
   };
 }
 

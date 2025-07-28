@@ -46,3 +46,9 @@
 [submodule "fast-apply/repos/unfat"]
 	path = training/repos/unfat
 	url = git@github.com:reissbaker/unfat.git
+[submodule "training/fix-json/json-repos/pokedex"]
+	path = training/fix-json/json-repos/pokedex
+	url = git@github.com:Biuni/PokemonGO-Pokedex.git
+[submodule "training/fix-json/json-repos/wikipedia-movie-data"]
+	path = training/fix-json/json-repos/wikipedia-movie-data
+	url = git@github.com:prust/wikipedia-movie-data.git

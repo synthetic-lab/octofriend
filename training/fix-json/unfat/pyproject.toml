@@ -1,0 +1,19 @@
+[project]
+name = "json-fix"
+version = "0.0.1"
+description = "Train a JSON fixing model"
+authors = [
+    {name = "@reissbaker"}
+]
+license = { text = "MIT" }
+keywords = ["json-fix", "LoRA", "llm", "json"]
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "unfat (>=0.0.13)",
+]
+
+[tool.uv]
+default-groups = []
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]
