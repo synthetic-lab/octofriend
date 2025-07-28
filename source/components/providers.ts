@@ -22,8 +22,8 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
       {
-        model: "hf:Qwen/Qwen3-235B-A22B-Instruct-2507",
-        nickname: "Qwen3 235B-A22B-Instruct-2507",
+        model: "hf:Qwen/Qwen3-235B-A22B-Thinking-2507",
+        nickname: "Qwen3 Thinking-2507",
         context: 64 * 1024,
       },
       {
