@@ -476,11 +476,6 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
 
   let thoughts = item.reasoningContent;
   let content = item.content.trim();
-  if(item.reasoningContent == null && content.includes("<think>")) {
-    const splits = item.content.split("</think>");
-    thoughts = splits[0].replace("<think>", "").replace("</think>", "").trim();
-    content = splits.slice(1).join("").trim();
-  }
 
   useEffect(() => {
     if(thoughtsRef.current) {
