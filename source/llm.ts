@@ -296,6 +296,7 @@ export async function runAgent(
 
       onText: e => {
         if(inThinkTag) {
+          if(reasoningContent == null) reasoningContent = "";
           reasoningContent += e.content;
           onTokens(e.content, "reasoning");
         }
@@ -329,7 +330,7 @@ export async function runAgent(
       } | null;
 
       if(delta && "content" in delta && delta.content) {
-        const tokens = chunk.choices[0].delta.content || "";
+        const tokens = delta.content || "";
         xmlParser.write(tokens);
       }
       else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
