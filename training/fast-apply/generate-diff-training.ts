@@ -1,11 +1,13 @@
 import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
-import parseGitDiff from "parse-git-diff";
 import edits from "../../source/tools/tool-defs/edit";
-import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git";
 import { fileURLToPath } from "url";
-import { fixPrompt } from "../../source/diffapply";
+import { fixEditPrompt } from "../../source/autofix-prompts";
+import { parseLines } from "../parse";
+import { genDiffs } from "../generate-edits";
+import { pickRandom, randomIndex } from "../random";
+import { cutIndex, insertAt } from "../str";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
@@ -38,7 +40,7 @@ async function main() {
 async function genEditsForRepo(repo: string) {
   let skippedBreaks = 0;
   let successCount = 0;
-  for await(const edit of getEdits(path.join(repo, ".git"))) {
+  for await(const edit of genDiffs(path.join(repo, ".git"))) {
     try {
       const numBreaks = Math.floor(Math.random() * MAX_NUM_BREAKS);
       let brokenEdit = { file: edit.file, edit: { ...edit.edit } };
@@ -56,7 +58,7 @@ async function genEditsForRepo(repo: string) {
       const messages = [
         {
           role: "user",
-          content: fixPrompt(brokenEdit),
+          content: fixEditPrompt(brokenEdit),
         },
         {
           role: "assistant",
@@ -146,93 +148,6 @@ function breakSearchStringRandomly(edit: t.GetType<typeof edits.DiffEdit>, file:
   }
 
   throw new Error(`Couldn't break search string after ${MAX_BREAK_ATTEMPTS} attempts`);
-}
-
-function insertAt(str: string, index: number, add: string) {
-  return str.slice(0, index) + add + str.slice(index);
-}
-
-function cutIndex(str: string, index: number) {
-  return str.slice(0, index) + str.slice(index + 1);
-}
-
-function pickRandom<T>(arr: Array<T>): T {
-  const index = randomIndex(arr);
-  return arr[index];
-}
-
-function randomIndex(item: { length: number }) {
-  return Math.floor(Math.random() * item.length);
-}
-
-async function* getEdits(gitDir: string) {
-  for await(const sha of getAllCommits(gitDir)) {
-    const [ err, diff ] = await tryexpr(async () => await getCommitDiff(sha, gitDir));
-    if(err) continue;
-    const parsed = parseGitDiff(diff);
-    if(parsed.type !== "GitDiff") continue;
-    for(const file of parsed.files) {
-      if(file.type !== "ChangedFile") continue;
-      const [ err, result ] = await tryexpr(async () => {
-        return await getFileContentsBeforeAfter(file.path, sha, gitDir);
-      });
-      if(err) continue;
-      const [ before, after ] = result;
-      const beforeLines = parseLines(before);
-      const afterLines = parseLines(after);
-
-      for(const chunk of file.chunks) {
-        if(chunk.type !== "Chunk") continue;
-        const searchLines = getFromRange(beforeLines, chunk.fromFileRange);
-        const replaceLines = getFromRange(afterLines, chunk.toFileRange);
-
-        const edit: t.GetType<typeof edits.DiffEdit> = {
-          type: "diff",
-          search: searchLines.join("\n"),
-          replace: replaceLines.join("\n"),
-        };
-        yield {
-          edit,
-          file: before,
-        };
-      }
-    }
-  }
-}
-
-async function tryexpr<T>(cb: () => Promise<T>): Promise<[ Error, null ] | [ null, T ]> {
-  try {
-    const val = await cb();
-    return [ null, val ];
-  } catch(e) {
-    if(e instanceof Error) return [ e, null ];
-    return [ new Error(`${e}`), null ];
-  }
-}
-
-function getFromRange(lines: string[], range: { start: number, lines: number }) {
-  return lines.slice(range.start - 1, range.start - 1 + range.lines);
-}
-
-function parseLines(str: string): string[] {
-  if(str.length === 0) return [];
-
-  let line: string[] = [];
-  const lines: string[] = [];
-
-  for(const char of str) {
-    if(char === "\n") {
-      lines.push(line.join(""));
-      line = [];
-    }
-    else {
-      line.push(char);
-    }
-  }
-
-  if(line.length > 0) lines.push(line.join(""));
-
-  return lines;
 }
 
 main();

@@ -7,7 +7,7 @@ import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 import { fileTracker } from "./tools/file-tracker.ts";
-import { fixPrompt } from "./diffapply.ts";
+import { fixEditPrompt } from "./autofix-prompts.ts";
 
 export type UserMessage = {
   role: "user";
@@ -209,7 +209,7 @@ export async function autofixEdit(config: Config, file: string, edit: DiffEdit) 
     messages: [
       {
         role: "user",
-        content: fixPrompt({ file, edit }),
+        content: fixEditPrompt({ file, edit }),
       },
     ],
     response_format: {
