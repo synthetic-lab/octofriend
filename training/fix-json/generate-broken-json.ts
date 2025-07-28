@@ -4,12 +4,14 @@ import fs from "fs/promises";
 import json5 from "json5";
 import create from "../../source/tools/tool-defs/create";
 import { fileURLToPath } from "url";
-import { fixJsonPrompt } from "../../source/autofix-prompts";
+import { fixJsonPrompt, JsonFixResponse } from "../../source/autofix-prompts";
 import { genDiffs } from "../generate-edits";
 import { cutIndex, insertAt } from "../str";
 import { pickRandom } from "../random";
 import { tryexpr } from "../../source/tryexpr";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+type FixResponse = t.GetType<typeof JsonFixResponse>;
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
@@ -140,7 +142,7 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
     if(Math.random() > NOT_JSON_PERCENT) {
       yield {
         input: file,
-        groundTruth: JSON.stringify({ success: false }),
+        groundTruth: JSON.stringify({ success: false } satisfies FixResponse),
       };
       continue;
     }
@@ -204,7 +206,7 @@ function randomlyBreak(str: string): Sample {
   if(Math.random() > JSON5_PERCENT) {
     return {
       input: json5.stringify(str),
-      groundTruth: JSON.stringify({ success: true, json: JSON.parse(str) }),
+      groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(str) } satisfies FixResponse),
     }
   }
   let original = str;
@@ -229,7 +231,7 @@ function randomlyBreak(str: string): Sample {
 
   return {
     input: broken,
-    groundTruth: JSON.stringify({ success: true, json: JSON.parse(original) }),
+    groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(original) } satisfies FixResponse),
   };
 }
 
