@@ -52,8 +52,9 @@ function DiffApplyToggle() {
   const { setMenuMode } = useMenuState(useShallow(state => ({
     setMenuMode: state.setMenuMode,
   })));
-  const { toggleMenu } = useAppStore(useShallow(state => ({
+  const { toggleMenu, notify } = useAppStore(useShallow(state => ({
     toggleMenu: state.toggleMenu,
+    notify: state.notify,
   })));
 
   useInput((_, key) => {
@@ -70,6 +71,7 @@ function DiffApplyToggle() {
         setConfig(newconf);
         setMenuMode("main-menu");
         toggleMenu();
+        notify("Fast diff apply disabled");
       }}
       onConfirm={() => {
         setMenuMode("main-menu");
@@ -85,6 +87,7 @@ function DiffApplyToggle() {
       });
       setMenuMode("main-menu");
       toggleMenu();
+      notify("Fast diff apply enabled");
     }}
     onCancel={() => {
       setMenuMode("main-menu");

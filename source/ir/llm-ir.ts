@@ -105,7 +105,7 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
 }
 
 function lowerItem(item: HistoryItem): LoweredHistory | null {
-  if(item.type !== "request-failed" && item.type !== "model-switched") return item;
+  if(item.type !== "request-failed" && item.type !== "notification") return item;
   return null;
 }
 

@@ -75,9 +75,9 @@ export type RequestFailed = SequenceIdTagged<{
   type: "request-failed",
 }>;
 
-export type ModelSwitched = SequenceIdTagged<{
-  type: "model-switched",
-  model: string,
+export type Notification = SequenceIdTagged<{
+  type: "notification",
+  content: string,
 }>;
 
 export type HistoryItem = UserItem
@@ -90,7 +90,7 @@ export type HistoryItem = UserItem
                         | FileOutdatedItem
                         | FileUnreadableItem
                         | RequestFailed
-                        | ModelSwitched
+                        | Notification
                         ;
 
 let monotonicGuid = 0n;

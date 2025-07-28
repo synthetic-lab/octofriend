@@ -313,8 +313,8 @@ const MessageDisplay = React.memo(({ item }: {
 const MessageDisplayInner = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
 }) => {
-  if(item.type === "model-switched") {
-    return <Box marginLeft={1}><Text color="gray">Model: {item.model}</Text></Box>
+  if(item.type === "notification") {
+    return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />

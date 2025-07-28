@@ -45,6 +45,7 @@ export type UiState = {
   abortResponse: () => void,
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
+  notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -106,15 +107,28 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  setModelOverride: (model: string) => {
+  setModelOverride: model => {
     set({
       modelOverride: model,
       history: [
         ...get().history,
         {
-          type: "model-switched",
+          type: "notification",
           id: sequenceId(),
-          model,
+          content: `Model: ${model}`,
+        },
+      ],
+    });
+  },
+
+  notify: notif => {
+    set({
+      history: [
+        ...get().history,
+        {
+          type: "notification",
+          id: sequenceId(),
+          content: notif,
         },
       ],
     });
