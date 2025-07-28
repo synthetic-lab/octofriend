@@ -2,10 +2,10 @@ import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
 import parseGitDiff from "parse-git-diff";
-import edits from "../source/tools/tool-defs/edit";
+import edits from "../../source/tools/tool-defs/edit";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git";
 import { fileURLToPath } from "url";
-import { fixPrompt } from "../source/diffapply";
+import { fixPrompt } from "../../source/diffapply";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
@@ -13,6 +13,8 @@ const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 5;
 const MAX_BREAK_ATTEMPTS = 1000;
 const EVAL_PERCENT = 0.1;
+
+const REPOS_DIR = path.join(path.dirname(__dirname), "repos");
 
 async function main() {
   try {
@@ -26,10 +28,10 @@ async function main() {
   console.log("Generating edits for this repo");
   await genEditsForRepo(".");
 
-  const repos = await fs.readdir(path.join(__dirname, "repos"));
+  const repos = await fs.readdir(REPOS_DIR);
   for(const repo of repos) {
     console.log("Generating edits for", repo);
-    await genEditsForRepo(path.join(__dirname, "repos", repo));
+    await genEditsForRepo(path.join(REPOS_DIR, repo));
   }
 }
 

@@ -1,48 +1,48 @@
 [submodule "fast-apply/repos/antipattern"]
-	path = fast-apply/repos/antipattern
+	path = training/repos/antipattern
 	url = git@github.com:reissbaker/antipattern.git
 [submodule "fast-apply/repos/structural"]
-	path = fast-apply/repos/structural
+	path = training/repos/structural
 	url = git@github.com:reissbaker/structural.git
 [submodule "fast-apply/repos/ink"]
-	path = fast-apply/repos/ink
+	path = training/repos/ink
 	url = git@github.com:vadimdemedes/ink.git
 [submodule "fast-apply/repos/figlet"]
-	path = fast-apply/repos/figlet
+	path = training/repos/figlet
 	url = git@github.com:patorjk/figlet.js.git
 [submodule "fast-apply/repos/asciimatics"]
-	path = fast-apply/repos/asciimatics
+	path = training/repos/asciimatics
 	url = git@github.com:peterbrittain/asciimatics.git
 [submodule "fast-apply/repos/ruby-jwt"]
-	path = fast-apply/repos/ruby-jwt
+	path = training/repos/ruby-jwt
 	url = git@github.com:jwt/ruby-jwt.git
 [submodule "fast-apply/repos/terrapin"]
-	path = fast-apply/repos/terrapin
+	path = training/repos/terrapin
 	url = git@github.com:thoughtbot/terrapin.git
 [submodule "fast-apply/repos/clamp"]
-	path = fast-apply/repos/clamp
+	path = training/repos/clamp
 	url = git@github.com:mdub/clamp.git
 [submodule "fast-apply/repos/colorize"]
-	path = fast-apply/repos/colorize
+	path = training/repos/colorize
 	url = git@github.com:fazibear/colorize.git
 [submodule "fast-apply/repos/toolz"]
-	path = fast-apply/repos/toolz
+	path = training/repos/toolz
 	url = git@github.com:pytoolz/toolz.git
 [submodule "fast-apply/repos/funcy"]
-	path = fast-apply/repos/funcy
+	path = training/repos/funcy
 	url = git@github.com:Suor/funcy.git
 [submodule "fast-apply/repos/chip8-rust"]
-	path = fast-apply/repos/chip8-rust
+	path = training/repos/chip8-rust
 	url = git@github.com:starrhorne/chip8-rust.git
 [submodule "fast-apply/repos/xplr"]
-	path = fast-apply/repos/xplr
+	path = training/repos/xplr
 	url = git@github.com:sayanarijit/xplr.git
 [submodule "fast-apply/repos/lsd"]
-	path = fast-apply/repos/lsd
+	path = training/repos/lsd
 	url = git@github.com:lsd-rs/lsd.git
 [submodule "fast-apply/repos/rust-raytracer"]
-	path = fast-apply/repos/rust-raytracer
+	path = training/repos/rust-raytracer
 	url = git@github.com:dps/rust-raytracer.git
 [submodule "fast-apply/repos/unfat"]
-	path = fast-apply/repos/unfat
+	path = training/repos/unfat
 	url = git@github.com:reissbaker/unfat.git
