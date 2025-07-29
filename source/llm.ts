@@ -7,7 +7,8 @@ import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 import { fileTracker } from "./tools/file-tracker.ts";
-import { fixEditPrompt } from "./autofix-prompts.ts";
+import { fixEditPrompt, fixJsonPrompt, JsonFixResponse } from "./autofix-prompts.ts";
+import { tryexpr } from "./tryexpr.ts";
 
 export type UserMessage = {
   role: "user";
@@ -198,18 +199,47 @@ export function totalTokensUsed() {
 
 type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
 export async function autofixEdit(config: Config, file: string, edit: DiffEdit) {
-  if(config.diffApply == null) return null;
+  const result = await autofix(config.diffApply, fixEditPrompt({ file, edit }));
+  if(result == null) return null;
+  try {
+    const parsed = JSON.parse(result);
+    if(parsed == null) return null;
+    return toolMap.edit.DiffEdit.slice(parsed);
+  } catch {
+    return null;
+  }
+}
+
+async function autofixJson(config: Config, brokenJson: string) {
+  console.error("Fixing JSON...");
+  const result = await autofix(config.fixJson, fixJsonPrompt(brokenJson));
+  if(result == null) return { success: false as const };
+  try {
+    const json = JSON.parse(result);
+    const response = JsonFixResponse.slice(json);
+    if(response.success) return response;
+    return { success: false as const };
+  } catch {
+    return { success: false as const };
+  }
+}
+
+async function autofix(
+  config: { baseUrl: string, apiEnvVar: string, model: string } | null | undefined,
+  message: string
+): Promise<string | null> {
+  if(config == null) return null;
 
   const client = new OpenAI({
-    baseURL: config.diffApply.baseUrl,
-    apiKey: process.env[config.diffApply.apiEnvVar],
+    baseURL: config.baseUrl,
+    apiKey: process.env[config.apiEnvVar],
   });
   const response = await client.chat.completions.create({
-    model: config.diffApply.model,
+    model: config.model,
     messages: [
       {
         role: "user",
-        content: fixEditPrompt({ file, edit }),
+        content: message,
       },
     ],
     response_format: {
@@ -220,13 +250,7 @@ export async function autofixEdit(config: Config, file: string, edit: DiffEdit) 
   if(response.usage) totalTokensEver += response.usage?.total_tokens;
   const result = response.choices[0].message.content;
   if(result == null) return null;
-  try {
-    const parsed = JSON.parse(result);
-    if(parsed == null) return null;
-    return toolMap.edit.DiffEdit.slice(parsed);
-  } catch {
-    return null;
-  }
+  return result;
 }
 
 export async function runAgent(
@@ -408,7 +432,7 @@ export async function runAgent(
       ]);
     }
 
-    const parseResult = parseTool(validatedTool, config);
+    const parseResult = await parseTool(validatedTool, config);
 
     if(parseResult.status === "error") {
       return history.concat([
@@ -507,7 +531,7 @@ function validToolNames(config: Config) {
   });
 }
 
-function parseTool(toolCall: ResponseToolCall, config: Config): ParseToolResult {
+async function parseTool(toolCall: ResponseToolCall, config: Config): Promise<ParseToolResult> {
   const name = toolCall.function.name;
   if(!isValidToolName(name, config)) {
     return {
@@ -523,10 +547,20 @@ Please try calling a valid tool.
   }
 
   const toolSchema = toolMap[name].Schema;
+  let [ err, args ] = tryexpr(() => {
+    return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
+  });
+
+  if(err) {
+    const fixResponse = await autofixJson(config, toolCall.function.arguments);
+    if(!fixResponse.success) throw new Error("Invalid JSON in tool call arguments");
+    args = fixResponse.fixed;
+  }
+
   try {
     const parsed = toolSchema.slice({
       name: toolCall.function.name,
-      arguments: toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {},
+      arguments: args,
     });
 
     return {

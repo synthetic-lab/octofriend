@@ -26,6 +26,11 @@ const ConfigSchema = t.exact({
     apiEnvVar: t.str,
     model: t.str,
   })),
+  fixJson: t.optional(t.exact({
+    baseUrl: t.str,
+    apiEnvVar: t.str,
+    model: t.str,
+  })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
