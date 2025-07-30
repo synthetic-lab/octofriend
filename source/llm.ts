@@ -235,6 +235,7 @@ async function autofix(
   });
   const response = await client.chat.completions.create({
     model: config.model,
+    temperature: 0,
     messages: [
       {
         role: "user",
