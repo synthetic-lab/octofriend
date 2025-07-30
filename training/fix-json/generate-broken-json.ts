@@ -57,7 +57,6 @@ async function main() {
   console.log("Synth data generated; breaking...");
   await genBrokenJsonFromArray("Generated JSON", samples);
 
-
   const pokedex = JSON.parse(await fs.readFile(
     path.join(__dirname, "json-repos/pokedex/pokedex.json"),
     "utf8"
@@ -141,7 +140,7 @@ async function genBrokenJsonForRepo(path: string) {
       messages
     }) + "\n", "utf8");
   }
-  console.log(`Generated ${count} samples for`, path);
+  console.log(`Broke and stored ${count} samples for`, path);
 }
 
 type Sample = {
