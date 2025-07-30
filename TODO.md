@@ -22,3 +22,4 @@ TODO:
     chopping up the search string progressively until it matches multiple lines
   - [ ] definitively wrong edits (i.e. search string is ruby, file is JS)
 - [ ] improve onboarding for fix-json, diff-apply
+- [ ] Menu for enable/disable fix-json
