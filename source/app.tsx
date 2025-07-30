@@ -200,6 +200,11 @@ function BottomBarContent({ client }: {
       "Auto-fixing diff",
     ]}/>
   };
+  if(modeData.mode === "fix-json") {
+    return <Loading overrideStrings={[
+      "Auto-fixing JSON",
+    ]}/>
+  };
   if(modeData.mode === "tool-waiting") {
     return <Loading overrideStrings={[
       "Waiting",

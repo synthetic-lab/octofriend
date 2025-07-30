@@ -33,6 +33,8 @@ export type UiState = {
   } | {
     mode: "diff-apply",
   } | {
+    mode: "fix-json",
+  } | {
     mode: "menu",
   } | {
     mode: "tool-waiting",
@@ -190,12 +192,12 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     let history: HistoryItem[];
     try {
-      history = await runAgent(
-        client,
-        config,
-        get().modelOverride,
-        get().history,
-        (tokens, type) => {
+      history = await runAgent({
+        client, config,
+        modelOverride: get().modelOverride,
+        history: get().history,
+        abortSignal: abortController.signal,
+        onTokens: (tokens, type) => {
           if(type === "content") {
             content += tokens;
 
@@ -226,8 +228,10 @@ export const useAppStore = create<UiState>((set, get) => ({
             timeout = null;
           }, debounceTimeout);
         },
-        abortController.signal
-      );
+        onAutofixJson: () => {
+          set({ modeData: { mode: "fix-json" } });
+        },
+      });
       if(timeout) clearTimeout(timeout);
     } catch(e) {
       if (abortController.signal.aborted) {

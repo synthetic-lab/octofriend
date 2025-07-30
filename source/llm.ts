@@ -211,7 +211,6 @@ export async function autofixEdit(config: Config, file: string, edit: DiffEdit) 
 }
 
 async function autofixJson(config: Config, brokenJson: string) {
-  console.error("Fixing JSON...");
   const result = await autofix(config.fixJson, fixJsonPrompt(brokenJson));
   if(result == null) return { success: false as const };
   try {
@@ -253,14 +252,17 @@ async function autofix(
   return result;
 }
 
-export async function runAgent(
+export async function runAgent({
+  client, config, modelOverride, history, onTokens, onAutofixJson, abortSignal
+}: {
   client: OpenAI,
   config: Config,
   modelOverride: string | null,
   history: HistoryItem[],
   onTokens: (t: string, type: "reasoning" | "content") => any,
+  onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
-) {
+}) {
   const model = getModelFromConfig(config, modelOverride);
 
   const processedHistory = applyContextWindow(history, model.context);
@@ -432,7 +434,7 @@ export async function runAgent(
       ]);
     }
 
-    const parseResult = await parseTool(validatedTool, config);
+    const parseResult = await parseTool(validatedTool, config, onAutofixJson);
 
     if(parseResult.status === "error") {
       return history.concat([
@@ -531,7 +533,11 @@ function validToolNames(config: Config) {
   });
 }
 
-async function parseTool(toolCall: ResponseToolCall, config: Config): Promise<ParseToolResult> {
+async function parseTool(
+  toolCall: ResponseToolCall,
+  config: Config,
+  onAutofixJson: (done: Promise<void>) => any,
+): Promise<ParseToolResult> {
   const name = toolCall.function.name;
   if(!isValidToolName(name, config)) {
     return {
@@ -552,8 +558,15 @@ Please try calling a valid tool.
   });
 
   if(err) {
-    const fixResponse = await autofixJson(config, toolCall.function.arguments);
-    if(!fixResponse.success) throw new Error("Invalid JSON in tool call arguments");
+    const fixPromise = autofixJson(config, toolCall.function.arguments);
+    onAutofixJson(fixPromise.then(() => {}));
+    const fixResponse = await fixPromise;
+    if(!fixResponse.success) {
+      return {
+        status: "error",
+        message: "Syntax error: invalid JSON in tool call arguments",
+      };
+    }
     args = fixResponse.fixed;
   }
 
