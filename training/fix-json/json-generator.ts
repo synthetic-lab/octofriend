@@ -33,7 +33,7 @@ function generateString(): string {
       // Common escape sequences
       const escapes = ['\n', '\r', '\t', '\b', '\f', '"', '\\', '/'];
       result += escapes[Math.floor(Math.random() * escapes.length)];
-    } else if (r < 0.7) {
+    } else {
       // Basic multilingual plane (most common characters)
       let codePoint = Math.floor(Math.random() * 0x10000);
       // Skip surrogate range
@@ -41,14 +41,6 @@ function generateString(): string {
         codePoint = 0x1F600 + Math.floor(Math.random() * 100); // Some emojis instead
       }
       result += String.fromCharCode(codePoint);
-    } else {
-      // Full Unicode range (using fromCodePoint for astral planes)
-      let codePoint = Math.floor(Math.random() * 0x110000);
-      // Skip surrogate range
-      if (codePoint >= 0xD800 && codePoint <= 0xDFFF) {
-        codePoint = 0x1F300 + Math.floor(Math.random() * 0x400); // Emoji range
-      }
-      result += String.fromCodePoint(codePoint);
     }
   }
 
