@@ -1,5 +1,6 @@
 {
-	"include": [ "source" ],
+	"include": [ "source", "training" ],
+  "exclude": ["training/repos" ],
 	"compilerOptions": {
 		"outDir": "dist",
 		"module": "node16",

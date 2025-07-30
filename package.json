@@ -11,7 +11,9 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"exec": "tsc && node ./dist/cli.js"
+		"exec": "tsc && node ./dist/cli.js",
+		"test": "vitest",
+		"test:run": "vitest run"
 	},
 	"files": [
 		"dist",
@@ -23,6 +25,7 @@
 	"dependencies": {
 		"@commander-js/extra-typings": "^13.1.0",
 		"@modelcontextprotocol/sdk": "^1.0.1",
+		"antipattern": "^0.0.7",
 		"chalk": "^5.4.1",
 		"commander": "^13.1.0",
 		"diff": "^8.0.2",
@@ -45,6 +48,7 @@
 		"ink-testing-library": "^3.0.0",
 		"parse-git-diff": "^0.0.19",
 		"tsx": "^4.20.3",
-		"typescript": "^5.8.3"
+		"typescript": "^5.8.3",
+		"vitest": "^3.2.4"
 	}
 }

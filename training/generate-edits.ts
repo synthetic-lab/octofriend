@@ -1,9 +1,9 @@
 import { t } from "structural";
 import parseGitDiff from "parse-git-diff";
-import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git";
-import edits from "../source/tools/tool-defs/edit";
-import { parseLines } from "./parse";
-import { asynctryexpr } from "../source/tryexpr";
+import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
+import edits from "../source/tools/tool-defs/edit.ts";
+import { parseLines } from "./parse.ts";
+import { asynctryexpr } from "../source/tryexpr.ts";
 
 export async function* genDiffs(gitDir: string) {
   for await(const sha of getAllCommits(gitDir)) {

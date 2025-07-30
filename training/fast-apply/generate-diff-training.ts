@@ -1,13 +1,13 @@
 import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
-import edits from "../../source/tools/tool-defs/edit";
+import edits from "../../source/tools/tool-defs/edit.ts";
 import { fileURLToPath } from "url";
-import { fixEditPrompt } from "../../source/autofix-prompts";
-import { parseLines } from "../parse";
-import { genDiffs } from "../generate-edits";
-import { pickRandom, randomIndex } from "../random";
-import { cutIndex, insertAt } from "../str";
+import { fixEditPrompt } from "../../source/autofix-prompts.ts";
+import { parseLines } from "../parse.ts";
+import { genDiffs } from "../generate-edits.ts";
+import { pickRandom, randomIndex } from "../random.ts";
+import { cutIndex, insertAt } from "../str.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
