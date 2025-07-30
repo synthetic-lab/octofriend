@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Config } from "../config.ts";
@@ -9,16 +9,24 @@ import { MenuHeader } from "./menu-panel.tsx";
 import { OverrideEnvVar } from "./override-env-var.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 
-export type EnableDiffApplyProps = {
+export type AutofixModelProps = {
   config: Config | null,
   onComplete: (diffApply: Exclude<Config["diffApply"], undefined>) => any,
   onCancel: () => any,
+  defaultModel: string,
+  modelNickname: string,
+  children: React.ReactNode,
 };
+export type AutofixWrapperProps = Omit<
+  AutofixModelProps,
+  "defaultModel" | "modelNickname" | "children"
+>;
 
-const DEFAULT_MODEL = "hf:syntheticlab/diff-apply";
 const SYNTH_KEY = keyFromName(SYNTHETIC_PROVIDER.name);
 
-export function EnableDiffApply({ config, onComplete, onCancel }: EnableDiffApplyProps) {
+export function AutofixModelMenu({
+  config, onComplete, onCancel, defaultModel, modelNickname, children,
+}: AutofixModelProps) {
   const [step, setStep] = useState<'choose' | 'custom' | 'synthetic-overwrite'>('choose');
 
   useInput((_, key) => {
@@ -27,7 +35,7 @@ export function EnableDiffApply({ config, onComplete, onCancel }: EnableDiffAppl
 
   const items = [
     {
-      label: "Enable diff-apply via Synthetic (recommended)",
+      label: `Enable ${modelNickname} via Synthetic (recommended)`,
       value: "synthetic",
     },
     {
@@ -51,7 +59,7 @@ export function EnableDiffApply({ config, onComplete, onCancel }: EnableDiffAppl
         onComplete({
           baseUrl: SYNTHETIC_PROVIDER.baseUrl,
           apiEnvVar: envVar,
-          model: DEFAULT_MODEL,
+          model: defaultModel,
         });
       } else {
         setStep('synthetic-overwrite');
@@ -84,23 +92,17 @@ export function EnableDiffApply({ config, onComplete, onCancel }: EnableDiffAppl
       onComplete({
         baseUrl: SYNTHETIC_PROVIDER.baseUrl,
         apiEnvVar: envVar,
-        model: DEFAULT_MODEL,
+        model: defaultModel,
       })
     }} provider={SYNTHETIC_PROVIDER} />
   }
 
   return (
     <CenteredBox>
-      <MenuHeader title="Enable diff-apply model" />
+      <MenuHeader title={`Enable ${modelNickname} model`} />
 
-      <Box marginBottom={1}>
-        <Text>
-          Even good coding models sometimes make minor mistakes generating diffs, which can cause
-          slow retries and can confuse them, since models often aren't trained as well to handle
-          edit failures as they are successes. Diff-apply is a fast, small model that fixes minor
-          diff edit inaccuracies. It speeds up iteration and can significantly improve model
-          performance.
-        </Text>
+      <Box marginBottom={1} flexDirection="column" gap={1}>
+        { children }
       </Box>
 
       <SelectInput

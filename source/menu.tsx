@@ -1,12 +1,12 @@
 import React, { useCallback } from "react";
 import { create } from "zustand";
-import { useInput, useApp } from "ink";
+import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
 import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
-import { EnableDiffApply } from "./components/enable-diff-apply.tsx";
+import { AutofixModelMenu, AutofixWrapperProps } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 
 type MenuMode = "main-menu"
@@ -14,6 +14,7 @@ type MenuMode = "main-menu"
               | "model-select"
               | "add-model"
               | "diff-apply-toggle"
+              | "fix-json-toggle"
               | "set-default-model"
               | "quit-confirm"
               | "remove-model"
@@ -42,11 +43,21 @@ export function Menu() {
   if(menuMode === "quit-confirm") return <QuitConfirm />
   if(menuMode === "remove-model") return <RemoveModelMenu />
   if(menuMode === "diff-apply-toggle") return <DiffApplyToggle />
+  if(menuMode === "fix-json-toggle") return <FixJsonToggle />
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />
 }
 
-function DiffApplyToggle() {
+function AutofixToggle({
+  configKey, modelNickname, disableNotification, enableNotification, defaultModel, children
+}: {
+  disableNotification: string,
+  enableNotification: string,
+  defaultModel: string,
+  modelNickname: string,
+  configKey: "diffApply" | "fixJson",
+  children: React.ReactNode,
+}) {
   const config = useConfig();
   const setConfig = useSetConfig();
   const { setMenuMode } = useMenuState(useShallow(state => ({
@@ -61,38 +72,81 @@ function DiffApplyToggle() {
     if(key.escape) setMenuMode("main-menu");
   });
 
-  if(config.diffApply) {
+  if(config[configKey]) {
     return <ConfirmDialog
-      rejectLabel="Disable diff-apply"
-      confirmLabel="Keep diff-apply on (recommended)"
+      rejectLabel={`Disable ${modelNickname}`}
+      confirmLabel={`Keep ${modelNickname} on (recommended)`}
       onReject={() => {
         const newconf = { ...config };
-        delete newconf.diffApply;
+        delete newconf[configKey];
         setConfig(newconf);
         setMenuMode("main-menu");
         toggleMenu();
-        notify("Fast diff apply disabled");
+        notify(disableNotification);
       }}
       onConfirm={() => {
         setMenuMode("main-menu");
       }}
     />
   }
-  return <EnableDiffApply
+  return <AutofixModelMenu
+    defaultModel={defaultModel}
+    modelNickname={modelNickname}
     config={config}
-    onComplete={(diffApply) => {
+    onComplete={(setting) => {
       setConfig({
         ...config,
-        diffApply,
+        [configKey]: setting,
       });
       setMenuMode("main-menu");
       toggleMenu();
-      notify("Fast diff apply enabled");
+      notify(enableNotification);
     }}
     onCancel={() => {
       setMenuMode("main-menu");
     }}
-  />
+  >
+    { children }
+  </AutofixModelMenu>
+}
+
+function DiffApplyToggle() {
+  return <AutofixToggle
+    defaultModel="hf:syntheticlab/diff-apply"
+    configKey="diffApply"
+    modelNickname="diff-apply"
+    enableNotification="Fast diff apply enabled"
+    disableNotification="Fast diff apply disabled"
+  >
+    <Text>
+      Even good coding models sometimes make minor mistakes generating code diffs, which can cause
+      slow retries and can confuse them, since models often aren't trained as well to handle
+      edit failures as they are successes. Diff-apply is a fast, small model that fixes minor
+      code diff edit inaccuracies. It speeds up iteration and can significantly improve model
+      performance.
+    </Text>
+  </AutofixToggle>
+}
+
+function FixJsonToggle() {
+  return <AutofixToggle
+    defaultModel="hf:syntheticlab/fix-json"
+    configKey="fixJson"
+    modelNickname="fix-json"
+    enableNotification="JSON auto-fix enabled"
+    disableNotification="JSON auto-fix disabled"
+  >
+    <Text>
+      Octo uses tools to work with your underlying codebase. Some model providers don't support
+      strict constraints on how tool calls are generated, and models can make mistakes generating
+      JSON, the format used for all of Octo's tool calls.
+    </Text>
+    <Text>
+      The fix-json model can automatically fix broken JSON for Octo, helping models avoid failures
+      more quickly and cheaply than retrying the main model. It also may help reduce the main
+      model's confusion.
+    </Text>
+  </AutofixToggle>
 }
 
 function SwitchModelMenu() {
@@ -151,11 +205,16 @@ const SETTINGS_ITEMS = [
     label: "Disable fast diff application",
     value: "disable-diff-apply" as const,
   },
+  {
+    label: "Disable auto-fixing JSON tool calls",
+    value: "disable-fix-json" as const,
+  },
 ];
 function filterSettings(config: Config) {
   let items = SETTINGS_ITEMS.concat([]);
   items = items.filter(item => {
     if(config.diffApply == null && item.value === "disable-diff-apply") return false;
+    if(config.fixJson == null && item.value === "disable-fix-json") return false;
     return true;
   });
 
@@ -188,7 +247,11 @@ function MainMenu() {
   let items = [
     {
       label: "💫 Enable fast diff application",
-      value: "enable-diff-apply" as const,
+      value: "diff-apply-toggle" as const,
+    },
+    {
+      label: "🪄 Enable auto-fixing JSON tool calls",
+      value: "fix-json-toggle" as const,
     },
     {
       label: "⤭ Switch model",
@@ -200,7 +263,7 @@ function MainMenu() {
     },
     {
       label: "* Settings",
-      value: "settings" as const,
+      value: "settings-menu" as const,
     },
     {
       label: "⟵ Return to Octo",
@@ -212,20 +275,19 @@ function MainMenu() {
     },
   ];
   items = items.filter(item => {
-    if(config.diffApply != null && item.value === "enable-diff-apply") return false;
+    if(config.diffApply != null && item.value === "diff-apply-toggle") return false;
+    if(config.fixJson != null && item.value === "fix-json-toggle") return false;
     return true;
   });
 
   const settingsItems = filterSettings(config);
   if(settingsItems.length === 0) {
-    items = items.filter(item => item.value !== "settings");
+    items = items.filter(item => item.value !== "settings-menu");
   }
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "return") toggleMenu();
     else if(item.value === "quit") setMenuMode("quit-confirm");
-    else if(item.value === "enable-diff-apply") setMenuMode("diff-apply-toggle");
-    else if(item.value === "settings") setMenuMode("settings-menu");
     else setMenuMode(item.value);
 	}, []);
 
@@ -254,6 +316,7 @@ function SettingsMenu() {
 
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
+    else if(item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
     else if(item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
 	}, []);
