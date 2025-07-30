@@ -6,15 +6,22 @@ $ npm install --global octofriend
 
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
 any OpenAI-compatible LLM API, and allows you to switch models at will
-mid-conversation when a particular model gets stuck. Octo also has a few neat
-tricks for managing context space. Octo wants to help you because Octo is your
-friend.
+mid-conversation when a particular model gets stuck. Octo can optionally use
+(and we recommend using) ML models we custom-trained to automatically handle
+tool call and code edit failures from the main coding models you're working
+with: the autofix models work with any coding LLM. Octo wants to help you
+because Octo is your friend.
+
+Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
+selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
+yours. But you can also use it with any OpenAI-compatible API provider, or with
+local LLMs you run on your own machine.
 
 Octo works best with Kimi K2, but allows you to swap to many different models
-on the fly, mid-conversation. It also works with Grok 4, OpenAI o3, local LLMs,
-and any OpenAI-compatible LLM API; I typically use Kimi K2 for day-to-day
-tasks, and mid-conversation swap to a strong reasoning model if Kimi is getting
-stuck on a harder problem.
+on the fly, mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3,
+local LLMs, and any OpenAI-compatible LLM API; I typically use Kimi K2 for
+day-to-day tasks, and mid-conversation swap to a strong reasoning model if Kimi
+is getting stuck on a harder problem.
 
 Octo tries to be a complete product: the project iterates on context engineering
 strategies in addition to UI, in an attempt to squeeze the best performance out
@@ -25,8 +32,6 @@ human-first: Octo is meant to be a friendly little helper rather than a
 completely hands-free author, and that's how I use it. But if you want to live
 dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
-
-Octo has zero telemetry.
 
 ## Demo
 [![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
