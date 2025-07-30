@@ -20,6 +20,7 @@ const ConfigSchema = t.exact({
     apiEnvVar: t.str,
     model: t.str,
     context: t.num,
+    reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
   })),
   diffApply: t.optional(t.exact({
     baseUrl: t.str,

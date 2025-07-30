@@ -173,7 +173,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
 // are defined
 type DefinedVarnames = (typeof MODEL_STEPS)[number]["varname"];
 function checkCovered(_: DefinedVarnames) {}
-function _assertCovered(x: ModelVar) {
+function _assertCovered(x: Exclude<ModelVar, "reasoning">) {
   checkCovered(x);
 }
 

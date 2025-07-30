@@ -294,7 +294,13 @@ export async function runAgent({
     };
   });
 
+  let reasoning: {
+    reasoning_effort?: "low" | "medium" | "high"
+  } = {};
+  if(model.reasoning) reasoning.reasoning_effort = model.reasoning;
+
   const res = await client.chat.completions.create({
+    ...reasoning,
     model: model.model,
     messages, tools,
     stream: true,
