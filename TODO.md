@@ -21,6 +21,5 @@ TODO:
     duplicating the search string in the file (insert at random lines),
     chopping up the search string progressively until it matches multiple lines
   - [ ] definitively wrong edits (i.e. search string is ruby, file is JS)
-- [ ] train a fix-json lora for fixing slightly messed up json
 - [ ] render different loading strings for fix-json
 - [ ] improve onboarding for fix-json, diff-apply
