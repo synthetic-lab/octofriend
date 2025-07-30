@@ -346,11 +346,7 @@ export async function runAgent({
 
   try {
     for await(const chunk of res) {
-      // Check if aborted
-      if (abortSignal.aborted) {
-        break;
-      }
-
+      if (abortSignal.aborted) break;
       if(doneParsingTools) break;
       if(chunk.usage) usage = chunk.usage.total_tokens;
 
