@@ -2,7 +2,7 @@
 	"name": "octofriend",
 	"version": "0.0.14",
 	"license": "MIT",
-	"bin": "dist/cli.js",
+	"bin": "dist/source/cli.js",
 	"type": "module",
 	"preferGlobal": true,
 	"engines": {
@@ -11,7 +11,7 @@
 	"scripts": {
 		"build": "tsc",
 		"dev": "tsc --watch",
-		"exec": "tsc && node ./dist/cli.js",
+		"exec": "tsc && node ./dist/source/cli.js",
 		"test": "vitest",
 		"test:run": "vitest run"
 	},

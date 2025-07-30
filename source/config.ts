@@ -75,7 +75,7 @@ export type Metadata = {
 };
 
 export async function readMetadata(): Promise<Metadata> {
-  const packageFile = await fs.readFile(path.join(__dir, "../package.json"), "utf8");
+  const packageFile = await fs.readFile(path.join(__dir, "../../package.json"), "utf8");
   const packageJson = JSON.parse(packageFile);
   return {
     version: packageJson["version"],
