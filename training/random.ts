@@ -16,10 +16,10 @@ export function randomIndex(item: { length: number }) {
 }
 
 export function oneToN(n: number) {
-  return Math.ceil(deps.random() * (n + 1)) - 1;
+  return Math.ceil(deps.random() * (n - 1)) + 1;
 }
 export function zeroToN(n: number) {
-  return Math.floor(deps.random() * (n + 1)) - 1;
+  return Math.floor(deps.random() * (n + 1));
 }
 export function percentChance(n: number): boolean {
   return deps.random() < n;
