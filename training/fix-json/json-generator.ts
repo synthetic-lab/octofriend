@@ -1,5 +1,5 @@
 import { zeroToN, randomIndex } from "../random.ts";
-const MAX_DEPTH = 6;
+const MAX_DEPTH = 3;
 const MAX_ARRAY_LENGTH = 15;
 const MAX_OBJECT_KEYS = 10;
 const MAX_STRING_LENGTH = 50;
@@ -18,15 +18,8 @@ function generateValue(depth: number): any {
   }
 
   // Pick type uniformly
-  const type = Math.floor(Math.random() * 6);
-  switch (type) {
-    case 0: return generateString();
-    case 1: return generateNumber();
-    case 2: return Math.random() < 0.5;
-    case 3: return null;
-    case 4: return generateArray(depth);
-    case 5: return generateObject(depth);
-  }
+  if(Math.random() > 0.5) return generateArray(depth);
+  return generateObject(depth);
 }
 
 function generateString(): string {
@@ -102,6 +95,7 @@ function generateKey(): string {
   return key;
 }
 
-export function generateJSON(): string {
-  return JSON.stringify(generateValue(zeroToN(MAX_DEPTH)));
+export function generateJSON(allowRaw?: boolean): string {
+  const max = allowRaw ? MAX_DEPTH : MAX_DEPTH - 1;
+  return JSON.stringify(generateValue(zeroToN(max)));
 }

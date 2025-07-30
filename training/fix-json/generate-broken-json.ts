@@ -12,6 +12,7 @@ import { tryexpr } from "../../source/tryexpr.ts";
 import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";
+import { generateJSON } from "./json-generator.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 type FixResponse = t.GetType<typeof JsonFixResponse>;
@@ -33,6 +34,7 @@ const NOT_JSON_PERCENT = 0.1;
 const JSON5_PERCENT = 0.01;
 const NEST_PERCENT = 0.05;
 const MAX_NESTING = 5;
+const NUM_GENERATED_SAMPLES = 10_000;
 
 const REPOS_DIR = path.join(path.dirname(__dirname), "repos");
 
@@ -44,6 +46,17 @@ async function main() {
   await fs.mkdir(path.dirname(TRAIN_PATH), { recursive: true });
   await fs.writeFile(TRAIN_PATH, "");
   await fs.writeFile(EVAL_PATH, "");
+
+  await genBrokenJsonFromArray("Number", [ -1111.8 ]);
+  console.log("Generating synthetic JSON...");
+  const samples: any[] = [];
+  for(let i = 0; i < NUM_GENERATED_SAMPLES; i++) {
+    samples.push(JSON.parse(generateJSON(false)));
+    if(i % 200 === 0) console.log(`Generated ${i}...`);
+  }
+  console.log("Synth data generated; breaking...");
+  await genBrokenJsonFromArray("Generated JSON", samples);
+
 
   const pokedex = JSON.parse(await fs.readFile(
     path.join(__dirname, "json-repos/pokedex/pokedex.json"),
@@ -104,6 +117,7 @@ async function genBrokenJsonFromArray(name: string, array: any[]) {
     await fs.appendFile(outputPath, JSON.stringify({
       messages
     }) + "\n", "utf8");
+    if(count % 200 === 0) console.log(`Broke ${count}...`);
   }
   console.log(`Generated ${count} samples for`, name);
 }
