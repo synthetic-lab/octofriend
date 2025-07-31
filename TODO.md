@@ -16,8 +16,4 @@ TODO:
 
 # Launch blocking
 
-- [ ] include impossible edits in fast-apply training data
-  - [ ] ambiguous edits: search string appears multiple times. can generate by:
-    duplicating the search string in the file (insert at random lines),
-    chopping up the search string progressively until it matches multiple lines
-  - [ ] definitively wrong edits (i.e. search string is ruby, file is JS)
+- [ ] Update to latest diff-apply model once training finishes
