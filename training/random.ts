@@ -27,3 +27,6 @@ export function percentChance(n: number): boolean {
 export function randomLowercase() {
   return String.fromCharCode(zeroToN(25) + "a".charCodeAt(0));
 }
+export function coinFlip() {
+  return deps.random() >= 0.5;
+}

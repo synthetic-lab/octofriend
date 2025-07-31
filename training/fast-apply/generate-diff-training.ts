@@ -3,10 +3,10 @@ import path from "path";
 import fs from "fs/promises";
 import edits from "../../source/tools/tool-defs/edit.ts";
 import { fileURLToPath } from "url";
-import { fixEditPrompt } from "../../source/autofix-prompts.ts";
+import { fixEditPrompt, DiffApplySuccess, DiffApplyFailure } from "../../source/autofix-prompts.ts";
 import { parseLines } from "../parse.ts";
-import { genDiffs } from "../generate-edits.ts";
-import { pickRandom, randomIndex } from "../random.ts";
+import { genDiffs, Diff } from "../generate-edits.ts";
+import { pickRandom, randomIndex, oneToN, percentChance, coinFlip } from "../random.ts";
 import { cutIndex, insertAt } from "../str.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +14,7 @@ const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 5;
 const MAX_BREAK_ATTEMPTS = 1000;
+const AMBIGUOUS_PERCENT = 0.1;
 const EVAL_PERCENT = 0.1;
 
 const REPOS_DIR = path.join(path.dirname(__dirname), "repos");
@@ -40,35 +41,30 @@ async function main() {
 async function genEditsForRepo(repo: string) {
   let skippedBreaks = 0;
   let successCount = 0;
+  let ambiguousCount = 0;
   for await(const edit of genDiffs(path.join(repo, ".git"))) {
     try {
-      const numBreaks = Math.floor(Math.random() * MAX_NUM_BREAKS);
-      let brokenEdit = { file: edit.file, edit: { ...edit.edit } };
-      for(let i = 0; i < numBreaks; i++) {
-        brokenEdit = {
-          file: edit.file,
-          edit: {
-            type: "diff",
-            search: breakSearchStringRandomly(brokenEdit.edit, brokenEdit.file),
-            replace: edit.edit.replace,
-          },
-        };
-      }
+      const response = (() => {
+        if(percentChance(AMBIGUOUS_PERCENT)) {
+          const messages = ambiguousEditMessages(edit);
+          ambiguousCount++;
+          return messages;
+        }
+        return breakEditMessages(edit);
+      })();
 
       const messages = [
         {
           role: "user",
-          content: fixEditPrompt(brokenEdit),
+          content: fixEditPrompt(response.diff),
         },
         {
           role: "assistant",
-          content: JSON.stringify(edit.edit),
+          content: JSON.stringify(response.response),
         },
       ];
       let outputPath = TRAIN_PATH;
-      if(Math.random() < EVAL_PERCENT) {
-        outputPath = EVAL_PATH;
-      }
+      if(percentChance(EVAL_PERCENT)) outputPath = EVAL_PATH;
       await fs.appendFile(outputPath, JSON.stringify({ messages }) + "\n", "utf8");
       successCount++;
     } catch {
@@ -77,8 +73,96 @@ async function genEditsForRepo(repo: string) {
   }
 
   console.log(
-    `Finished generating; failed to break ${skippedBreaks} edits, successfully broke ${successCount} edits`
+    `Finished generating; failed to break ${skippedBreaks} edits, successfully broke ${successCount} edits.`
   );
+  console.log(
+    `Of those successes, ${ambiguousCount} were successfully set to ambiguous.`
+  );
+}
+
+type BreakResponse = {
+  diff: Diff,
+  response: t.GetType<typeof DiffApplySuccess> | t.GetType<typeof DiffApplyFailure>,
+};
+function ambiguousEditMessages(diff: Diff): BreakResponse {
+  if(coinFlip()) return dupeAmbiguous(diff);
+  else return cutAmbiguous(diff);
+}
+
+function insertIndex<T>(arr: T[], index: number, item: T) {
+  if(index === 0) return [ item ].concat(arr);
+  if(index === arr.length - 1) return arr.concat([ item ]);
+  return arr.slice(0, index).concat([ item ]).concat(arr.slice(index));
+}
+
+function dupeAmbiguous(diff: Diff): BreakResponse {
+  const lines = parseLines(diff.file);
+  const lineIndex = randomIndex(lines);
+  const newFile = insertIndex(lines, lineIndex, diff.edit.search);
+
+  return {
+    diff: {
+      file: newFile.join("\n"),
+      edit: diff.edit,
+    },
+    response: { success: false },
+  };
+}
+
+function moreThanOneMatch(file: string, search: string) {
+  const index = file.indexOf(search);
+  if(index < 0) return false;
+
+  const rest = file.slice(index);
+  return rest.indexOf(search) >= 0;
+}
+
+function cutAmbiguous(diff: Diff): BreakResponse {
+  let cut = diff.edit.search;
+
+  while(moreThanOneMatch(diff.file, cut) && cut.length > 1) {
+    if(coinFlip()) cut = cut.slice(1);
+    else cut = cut.slice(0, cut.length - 1);
+  }
+
+  if(!moreThanOneMatch(diff.file, cut)) {
+    throw new Error("Couldn't cut search string to the point of ambiguity");
+  }
+
+  return {
+    diff: {
+      file: diff.file,
+      edit: {
+        type: "diff",
+        search: cut,
+        replace: diff.edit.replace,
+      },
+    },
+    response: { success: false },
+  };
+}
+
+function breakEditMessages(edit: Diff): BreakResponse {
+  const numBreaks = oneToN(MAX_NUM_BREAKS);
+  let brokenEdit: Diff = { file: edit.file, edit: { ...edit.edit } };
+  for(let i = 0; i < numBreaks; i++) {
+    brokenEdit = {
+      file: edit.file,
+      edit: {
+        type: "diff",
+        search: breakSearchStringRandomly(brokenEdit.edit, brokenEdit.file),
+        replace: edit.edit.replace,
+      },
+    };
+  }
+
+  return {
+    diff: brokenEdit,
+    response: {
+      success: true,
+      search: edit.edit.search,
+    },
+  };
 }
 
 const breakFns: Array<(search: string) => string> = [];

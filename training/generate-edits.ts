@@ -5,7 +5,12 @@ import edits from "../source/tools/tool-defs/edit.ts";
 import { parseLines } from "./parse.ts";
 import { asynctryexpr } from "../source/tryexpr.ts";
 
-export async function* genDiffs(gitDir: string) {
+export type Diff = {
+  edit: t.GetType<typeof edits.DiffEdit>,
+  file: string,
+};
+
+export async function* genDiffs(gitDir: string): AsyncGenerator<Diff> {
   for await(const sha of getAllCommits(gitDir)) {
     const [ err, diff ] = await asynctryexpr(async () => await getCommitDiff(sha, gitDir));
     if(err) continue;

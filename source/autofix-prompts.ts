@@ -2,11 +2,27 @@ import { t, toTypescript } from "structural";
 import * as toolMap from "./tools/tool-defs/index.ts";
 type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
 
+export const DiffApplySuccess = t.subtype({
+  success: t.value(true),
+  search: t.str,
+});
+export const DiffApplyFailure = t.subtype({
+  success: t.value(false),
+});
 export function fixEditPrompt(brokenEdit: { file: string, edit: DiffEdit }) {
   return (
-`This edit is invalid; please fix it. The search string does not match perfectly with the file contents.
-Respond only with JSON, and only with the edit JSON, not the original file.
-If the edit is ambiguous, respond with null.
+`The following diff edit is invalid: the search string does not match perfectly with the file contents.
+Your task is to fix the search string if possible.
+
+Respond only with JSON in the following format, defined as TypeScript types:
+
+// Response if you fixed the search string:
+${toTypescript({ DiffApplySuccess })}
+
+// Response if the edit is impossible to fix (search string is ambiguous or has no clear matches):
+${toTypescript({ DiffApplyFailure })}
+
+Here's the broken edit and underlying file it's being applied to:
 ${JSON.stringify(brokenEdit)}`
   );
 }
