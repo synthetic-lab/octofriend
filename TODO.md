@@ -21,4 +21,3 @@ TODO:
     duplicating the search string in the file (insert at random lines),
     chopping up the search string progressively until it matches multiple lines
   - [ ] definitively wrong edits (i.e. search string is ruby, file is JS)
-- [ ] improve onboarding for fix-json, diff-apply
