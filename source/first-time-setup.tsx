@@ -13,13 +13,16 @@ import { THEME_COLOR } from "./theme.ts";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
-import { SYNTHETIC_PROVIDER, keyFromName } from "./components/providers.ts";
+import { SYNTHETIC_PROVIDER } from "./components/providers.ts";
 import { OverrideEnvVar } from "./components/override-env-var.tsx";
 
 type SetupStep = {
   step: "welcome",
 } | {
   step: "autofix-setup",
+} | {
+  step: "autofix-complete",
+  autofixConfig: { diffApply: Config["diffApply"], fixJson: Config["fixJson"] },
 } | {
   step: "name",
   models: Config["models"],
@@ -51,11 +54,16 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
     setStep({ step: "autofix-setup" });
   }, []);
   const autofixComplete = useCallback((autofixConfig: { diffApply: Config["diffApply"], fixJson: Config["fixJson"] }) => {
-    setStep({ step: "add-model", autofixConfig });
+    setStep({ step: "autofix-complete", autofixConfig });
   }, []);
   const autofixSkip = useCallback(() => {
     setStep({ step: "add-model" });
   }, []);
+  const autofixCompleteContinue = useCallback(() => {
+    if (step.step === "autofix-complete") {
+      setStep({ step: "add-model", autofixConfig: step.autofixConfig });
+    }
+  }, [step]);
   const addModelComplete = useCallback((models: Config["models"]) => {
     if (step.step === "add-model" && step.autofixConfig) {
       setStep({ step: "name", models, autofixConfig: step.autofixConfig });
@@ -65,20 +73,29 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
   }, [step]);
   const addModelCancel = useCallback(() => {
     if (step.step === "add-model" && step.autofixConfig) {
-      setStep({ step: "autofix-setup" });
+      setStep({ step: "autofix-complete", autofixConfig: step.autofixConfig });
     } else {
       setStep({ step: "welcome" });
     }
   }, [step]);
 
   if(step.step === "welcome") return <WelcomeScreen onContinue={handleWelcomeContinue} />;
-  if(step.step === "autofix-setup") return <AutofixSetup onComplete={autofixComplete} onSkip={autofixSkip} />;
+  if(step.step === "autofix-setup") {
+    return <AutofixSetup onComplete={autofixComplete} onSkip={autofixSkip} />;
+  }
+  if(step.step === "autofix-complete") {
+    return <AutofixCompleteScreen onContinue={autofixCompleteContinue} />;
+  }
   if(step.step === "add-model") {
     return <ModelSetup
       config={null}
       onComplete={addModelComplete}
       onCancel={addModelCancel}
       onOverrideDefaultApiKey={addOverride}
+      titleOverride={
+        step.autofixConfig ? undefined :
+          "Okay, we'll skip that for now. Let's set you up with a coding model. Which inference provider do you want to use?"
+      }
     />
   }
   if(step.step === "done") return null;
@@ -283,6 +300,32 @@ function AutofixSetup({ onComplete, onSkip }: {
       indicatorComponent={IndicatorComponent}
       itemComponent={ItemComponent}
     />
+  </CenteredBox>
+}
+
+function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
+  useInput((_, key) => {
+    if(key.return) onContinue();
+  });
+
+  return <CenteredBox>
+    <MenuHeader title="✨ Autofix models enabled!" />
+
+    <Text>
+      Your autofix models are now set up and ready to go. These will help improve Octo's performance
+      by automatically fixing minor mistakes in code diffs and JSON tool calls.
+    </Text>
+
+    <Box marginTop={1}>
+      <Text>
+        Now let's set up your main coding model. This is the LLM that will power Octo's code
+        generation, analysis, and conversation capabilities.
+      </Text>
+    </Box>
+
+    <Box marginTop={2} justifyContent="center">
+      <Text color={THEME_COLOR}>Press enter to continue to model setup.</Text>
+    </Box>
   </CenteredBox>
 }
 

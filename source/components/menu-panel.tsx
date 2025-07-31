@@ -16,9 +16,11 @@ type MenuPanelProps<V> = {
 
 export const MenuHeader = React.memo(({ title }: { title: string }) => {
   return <Box justifyContent="center" marginBottom={1}>
-    <Octo />
-    <Box marginLeft={1}>
-      <Text>{title}</Text>
+    <Box justifyContent="center" width={80}>
+      <Octo />
+      <Box marginLeft={1}>
+        <Text>{title}</Text>
+      </Box>
     </Box>
   </Box>
 });

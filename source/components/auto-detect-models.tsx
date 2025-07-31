@@ -15,6 +15,7 @@ export type AutoDetectModelsProps = {
   onCancel: () => void,
   onOverrideDefaultApiKey: (o: Record<string, string>) => any,
   config: Config | null,
+  titleOverride?: string,
 };
 
 type StepData = {
@@ -47,7 +48,7 @@ function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvV
 }
 
 export function ModelSetup({
-  config, onComplete, onCancel, onOverrideDefaultApiKey
+  config, onComplete, onCancel, onOverrideDefaultApiKey, titleOverride
 }: AutoDetectModelsProps) {
   const [ stepData, dispatch ] = useReducer(reducer, { step: "initial" });
 
@@ -89,6 +90,7 @@ export function ModelSetup({
       return <FastProviderList
         onChooseCustom={onChooseCustom}
         onChooseProvider={onChooseProvider}
+        titleOverride={titleOverride}
       />
 
     case "custom":
@@ -187,9 +189,10 @@ export function ModelSetup({
   }
 }
 
-function FastProviderList({ onChooseCustom, onChooseProvider }: {
+function FastProviderList({ onChooseCustom, onChooseProvider, titleOverride }: {
   onChooseProvider: (provider: keyof typeof PROVIDERS) => any,
   onChooseCustom: () => any,
+  titleOverride?: string,
 }) {
   const providerItems = Object.entries(PROVIDERS).map(([ key, provider ]) => {
     const k = key as keyof typeof PROVIDERS;
@@ -211,7 +214,11 @@ function FastProviderList({ onChooseCustom, onChooseProvider }: {
     onChooseProvider(item.value);
   }, []);
 
-  return <MenuPanel title="Choose a model provider:" items={items} onSelect={onSelect} />
+  return <MenuPanel
+    title={titleOverride || "Choose a model provider:"}
+    items={items}
+    onSelect={onSelect}
+  />
 }
 
 function ImportModelsFrom({ config, provider, onImport, onCancel, onCustomModel }: {
