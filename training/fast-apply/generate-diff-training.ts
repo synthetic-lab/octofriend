@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 5;
-const MAX_BREAK_ATTEMPTS = 1000;
+const MAX_BREAK_ATTEMPTS = 100;
 const AMBIGUOUS_PERCENT = 0.1;
 const EVAL_PERCENT = 0.1;
 
@@ -43,6 +43,8 @@ async function genEditsForRepo(repo: string) {
   let successCount = 0;
   let ambiguousCount = 0;
   for await(const edit of genDiffs(path.join(repo, ".git"))) {
+    if(edit.file.length > (1024 * 48)) continue;
+
     try {
       const response = (() => {
         if(percentChance(AMBIGUOUS_PERCENT)) {
