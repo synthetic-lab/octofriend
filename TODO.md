@@ -3,7 +3,10 @@ TODO:
 - [ ] Situational awareness: if it's a git repo, check the gitignore, and get a
   bunch of the directory heirarchy into context space automatically.
 - [ ] Support the Anthropic API
-- [ ] Gemini support
+- [ ] Support the new OpenAI responses API for better reasoning model support
+  for OpenAI models
+- [ ] Gemini API support: their "openai-compatible" API isn't complete enough
+  to work with Octo
 - [ ] Accurately count tokens used during model setup
 - [ ] Count tokens per-model
 - [ ] Differentiate between input and output tokens in token counting
