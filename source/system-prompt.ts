@@ -122,6 +122,10 @@ Look and see if the user has a linter set up: if so, use it. You might want to r
 although you should try to find only the tests relating to your changes, since some codebases will
 have large test suites that take a very long time to run.
 
+# Comments
+
+IMPORTANT: DO NOT ADD ANY COMMENTS unless asked
+
 # Current working directory
 Your current working directory is: ${process.cwd()}
 It contains:
