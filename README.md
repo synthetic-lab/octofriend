@@ -23,10 +23,6 @@ local LLMs, and any OpenAI-compatible LLM API; I typically use Kimi K2 for
 day-to-day tasks, and mid-conversation swap to a strong reasoning model if Kimi
 is getting stuck on a harder problem.
 
-Octo tries to be a complete product: the project iterates on context engineering
-strategies in addition to UI, in an attempt to squeeze the best performance out
-of coding LLMs.
-
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
 completely hands-free author, and that's how I use it. But if you want to live
