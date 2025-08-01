@@ -7,7 +7,7 @@ import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
 import { systemPrompt } from "./system-prompt.ts";
 import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 import { fileTracker } from "./tools/file-tracker.ts";
-import { fixEditPrompt, fixJsonPrompt, JsonFixResponse } from "./autofix-prompts.ts";
+import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "./autofix-prompts.ts";
 import { tryexpr } from "./tryexpr.ts";
 
 export type UserMessage = {
@@ -198,13 +198,23 @@ export function totalTokensUsed() {
 }
 
 type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
-export async function autofixEdit(config: Config, file: string, edit: DiffEdit) {
+export async function autofixEdit(
+  config: Config,
+  file: string,
+  edit: DiffEdit,
+): Promise<DiffEdit | null> {
   const result = await autofix(config.diffApply, fixEditPrompt({ file, edit }));
   if(result == null) return null;
   try {
     const parsed = JSON.parse(result);
     if(parsed == null) return null;
-    return toolMap.edit.DiffEdit.slice(parsed);
+    const sliced = DiffApplyResponse.slice(parsed);
+    if(!sliced.success) return null;
+    return {
+      type: "diff",
+      search: sliced.search,
+      replace: edit.replace,
+    };
   } catch {
     return null;
   }

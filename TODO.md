@@ -18,5 +18,4 @@ TODO:
 - [ ] Link out directly to inference websites for API keys
 
 # Launch blocking
-
-- [ ] Update to latest diff-apply model once training finishes
+nothing?

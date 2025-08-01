@@ -9,6 +9,7 @@ export const DiffApplySuccess = t.subtype({
 export const DiffApplyFailure = t.subtype({
   success: t.value(false),
 });
+export const DiffApplyResponse = DiffApplySuccess.or(DiffApplyFailure);
 export function fixEditPrompt(brokenEdit: { file: string, edit: DiffEdit }) {
   return (
 `The following diff edit is invalid: the search string does not match perfectly with the file contents.
