@@ -16,6 +16,7 @@ import {
 export type AssistantMessage = {
   role: "assistant",
   content: string,
+  reasoningContent?: string | null,
   toolCall?: ToolCallRequest,
 };
 
@@ -249,6 +250,7 @@ function collapseToIR(
       {
         role: "assistant",
         content: item.content || " ",
+        reasoningContent: item.reasoningContent,
       },
     ];
   }

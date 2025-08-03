@@ -103,13 +103,18 @@ async function toLlmMessages(
 async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
+    const reasoning: { reasoning_content?: string } = {};
+    if(ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
+
     if(toolCall == null) {
       return {
+        ...reasoning,
         role: "assistant",
         content: ir.content || " ", // Some APIs don't like zero-length content strings
       };
     }
     return {
+        ...reasoning,
       role: "assistant",
       content: ir.content,
       tool_calls: [{
