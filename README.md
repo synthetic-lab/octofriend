@@ -7,10 +7,12 @@ $ npm install --global octofriend
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
 any OpenAI-compatible LLM API, and allows you to switch models at will
 mid-conversation when a particular model gets stuck. Octo can optionally use
-(and we recommend using) ML models we custom-trained to automatically handle
-tool call and code edit failures from the main coding models you're working
-with: the autofix models work with any coding LLM. Octo wants to help you
-because Octo is your friend.
+(and we recommend using) ML models we custom-trained and open-sourced
+([1](https://huggingface.co/syntheticlab/diff-apply),
+[2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
+call and code edit failures from the main coding models you're working with:
+the autofix models work with any coding LLM. Octo wants to help you because
+Octo is your friend.
 
 Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
 selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
