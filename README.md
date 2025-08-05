@@ -1,8 +1,12 @@
 ![octofriend](https://raw.githubusercontent.com/reissbaker/octofriend/main/octofriend.png)
 
+## Get Started
+
 ```bash
-$ npm install --global octofriend
+npm install --global octofriend
 ```
+
+## About
 
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
 any OpenAI-compatible LLM API, and allows you to switch models at will
