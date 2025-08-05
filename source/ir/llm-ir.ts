@@ -139,7 +139,6 @@ function collapseToIR(
   }
   if(item.type === "tool-malformed") {
     return assertPrevAssistant("tool-malformed", item, prev, prev => {
-      const toolCallId = item.original.id || "unknown";
       // Collapse the malformed tool call into the previous assistant message, and structure the
       // response
       return [
@@ -148,7 +147,7 @@ function collapseToIR(
           content: prev.content || "",
           tool_calls: [{
             type: "function",
-            id: toolCallId,
+            id: item.toolCallId,
             function: {
               name: item.original.function?.name || "unknown",
               arguments: item.original.function?.arguments || "{}",
@@ -157,7 +156,7 @@ function collapseToIR(
         },
         {
           role: "tool-error",
-          toolCallId,
+          toolCallId: item.toolCallId,
           error: item.error,
         },
       ];
