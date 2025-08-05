@@ -31,7 +31,7 @@ dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
 
 ## Demo
-[![Octo asciicast](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ.svg)](https://asciinema.org/a/lPs0ZKoXERpaAdbL7lQD3T4iJ)
+[![Octo asciicast](https://asciinema.org/a/728456.svg)](https://asciinema.org/a/728456)
 ## Rules
 
 Octo will look for instruction files named like so:
