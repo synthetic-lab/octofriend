@@ -265,7 +265,7 @@ function ImportModelsFrom({ config, provider, onImport, onCancel, onCustomModel 
     });
   }
   items.push({
-    label: "Add a custom model string...",
+    label: "Import a custom model string...",
     value: "custom" as const,
   });
   items.push({

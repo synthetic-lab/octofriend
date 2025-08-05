@@ -287,10 +287,8 @@ function AutofixSetup({ onComplete, onSkip }: {
         good coding models can sometimes make mistakes.
       </Text>
       <Text>
-        Auto-fixing the mistakes can help reduce model confusion, since models are often
-        less-well-trained on error recovery than they are at their happy paths. It also improves
-        Octo's speed, since the autofix models are smaller, faster, and cheaper than retrying most
-        large coding models.
+        Auto-fixing mistakes can help reduce model confusion, since models are often
+        less-well-trained on error recovery than they are at their happy paths.
       </Text>
     </Box>
 
@@ -345,26 +343,25 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <Box marginTop={1}>
       <Text>
         Octo lets you choose the LLM that powers it. Currently, our recommended day-to-day coding
-        model to use with Octo is Kimi K2. You can use it via Synthetic, a privacy-focused inference
-        company (that we run!); Moonshot.ai, the makers of Kimi K2 (who might train on your data);
-        or any OpenAI-compatible Kimi provider.
+        model to use with Octo is GPT-OSS-120b. You can use it via Synthetic, a privacy-focused
+        inference company (that we run!), or any OpenAI-compatible inference provider.
       </Text>
     </Box>
 
     <Box marginTop={1}>
       <Text color="gray">
-        Be forewarned if you're considering using OpenRouter: many providers serve very broken
-        versions of the model.
+        Be forewarned if you're considering using OpenRouter: OpenRouter doesn't test model
+        implementations, and quality can vary drastically: newer model architectures are often
+        broken.
       </Text>
     </Box>
 
     <Box marginTop={1}>
       <Text>
         You can add multiple models via Octo's menu: Octo lets you switch models mid-conversation as
-        needed to handle different problems. We recommend adding a reasoning model for hard problems
-        in addition to Kimi K2: for example, DeepSeek R1-0528, OpenAI o3, or Grok 4. These models
-        can also help you come up with an overall plan, and you can then swap in Kimi to do the
-        coding.
+        needed to handle different problems. It's often helpful to add a strong reasoning model in
+        addition to your day-to-day coding model to help with tricky debugging; for example,
+        DeepSeek R1-0528, OpenAI o3, or Grok 4.
       </Text>
     </Box>
 

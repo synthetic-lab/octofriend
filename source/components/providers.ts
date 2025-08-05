@@ -17,13 +17,13 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:moonshotai/Kimi-K2-Instruct",
-        nickname: "Kimi K2",
+        model: "hf:openai/gpt-oss-120b",
+        nickname: "GPT-OSS-120b",
         context: 64 * 1024,
       },
       {
-        model: "hf:Qwen/Qwen3-235B-A22B-Thinking-2507",
-        nickname: "Qwen3 Thinking-2507",
+        model: "hf:zai-org/GLM-4.5",
+        nickname: "GLM-4.5",
         context: 64 * 1024,
       },
       {
@@ -32,7 +32,7 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
     ],
-    testModel: "hf:moonshotai/Kimi-K2-Instruct",
+    testModel: "hf:openai/gpt-oss-120b",
   } satisfies ProviderConfig,
 
   openai: {
@@ -44,16 +44,6 @@ export const PROVIDERS = {
       { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024 },
     ],
     testModel: "gpt-4.1-latest",
-  } satisfies ProviderConfig,
-
-  moonshot: {
-    name: "Moonshot",
-    envVar: "MOONSHOT_API_KEY",
-    baseUrl: "https://api.moonshot.ai/v1",
-    models: [
-      { model: "kimi-k2-0711-preview", nickname: "Kimi K2", context: 64 * 1024 },
-    ],
-    testModel: "kimi-k2-0711-preview",
   } satisfies ProviderConfig,
 
   grok: {

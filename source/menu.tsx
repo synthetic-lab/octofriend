@@ -6,7 +6,7 @@ import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
 import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
-import { AutofixModelMenu, AutofixWrapperProps } from "./components/autofix-model-menu.tsx";
+import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 
 type MenuMode = "main-menu"

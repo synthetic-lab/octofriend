@@ -17,11 +17,10 @@ selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
 yours. But you can also use it with any OpenAI-compatible API provider, or with
 local LLMs you run on your own machine.
 
-Octo works best with Kimi K2, but allows you to swap to many different models
-on the fly, mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3,
-local LLMs, and any OpenAI-compatible LLM API; I typically use Kimi K2 for
-day-to-day tasks, and mid-conversation swap to a strong reasoning model if Kimi
-is getting stuck on a harder problem.
+Octo works great with GLM-4.5, Kimi K2, or the new open-source open-gpt-120b
+model, and it allows you to swap to many different models on the fly,
+mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3, local LLMs, and
+any OpenAI-compatible LLM API.
 
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
