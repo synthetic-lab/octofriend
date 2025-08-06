@@ -1,6 +1,6 @@
 {
 	"name": "octofriend",
-	"version": "0.0.17",
+	"version": "0.0.18",
 	"license": "MIT",
   "repository": "github:synthetic-lab/octofriend",
 	"bin": "dist/source/cli.js",
