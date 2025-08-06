@@ -6,6 +6,12 @@
 npm install --global octofriend
 ```
 
+And then:
+
+```bash
+octofriend
+```
+
 ## About
 
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
