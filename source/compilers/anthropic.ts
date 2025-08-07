@@ -216,7 +216,11 @@ export async function runAnthropicAgent({
   if(modelConfig.reasoning) {
     thinking.thinking = {
       type: "enabled",
-      budget_tokens: 8192,
+      budget_tokens: (() => {
+        if(modelConfig.reasoning === "high") return 8192;
+        if(modelConfig.reasoning === "medium") return 4096;
+        return 2048;
+      })(),
     };
   }
 
