@@ -7,7 +7,6 @@ TODO:
   for OpenAI models
 - [ ] Gemini API support: their "openai-compatible" API isn't complete enough
   to work with Octo
-- [ ] Accurately count tokens used during model setup
 - [ ] Refactor History/IR for type safety: link back between i.e. tool calls,
   tool outputs, and original assistant messages
 - [ ] Refactor menu system to use a stack of screens that can consistently be
