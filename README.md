@@ -36,8 +36,8 @@ can be.
 
 Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
 selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
-yours. But you can also use it with any OpenAI-compatible API provider, or with
-local LLMs you run on your own machine.
+yours. But you can also use it with any OpenAI-compatible API provider, with
+Anthropic, or with local LLMs you run on your own machine.
 
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
