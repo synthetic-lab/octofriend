@@ -41,7 +41,6 @@ export default {
       throw new ToolError(`Error: ${response.status}\n${text}`);
     }
 
-    console.log(text);
     return text;
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
