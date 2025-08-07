@@ -9,6 +9,7 @@ import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
 import { fileTracker } from "./tools/file-tracker.ts";
 import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "./autofix-prompts.ts";
 import { tryexpr } from "./tryexpr.ts";
+import { trackTokens } from "./token-tracker.ts";
 
 export type UserMessage = {
   role: "user";
@@ -197,11 +198,6 @@ Please try again.`.trim())}`,
   };
 }
 
-let totalTokensEver = 0;
-export function totalTokensUsed() {
-  return totalTokensEver;
-}
-
 type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
 export async function autofixEdit(
   config: Config,
@@ -248,8 +244,9 @@ async function autofix(
     baseURL: config.baseUrl,
     apiKey: process.env[config.apiEnvVar],
   });
+  const model = config.model;
   const response = await client.chat.completions.create({
-    model: config.model,
+    model,
     temperature: 0,
     messages: [
       {
@@ -262,7 +259,11 @@ async function autofix(
     },
   });
 
-  if(response.usage) totalTokensEver += response.usage?.total_tokens;
+  if(response.usage) {
+    trackTokens(model, "input", response.usage.prompt_tokens);
+    trackTokens(model, "output", response.usage.completion_tokens);
+  }
+
   const result = response.choices[0].message.content;
   if(result == null) return null;
   return result;
@@ -329,7 +330,10 @@ export async function runAgent({
   let content = "";
   let reasoningContent: undefined | string = undefined;
   let inThinkTag = false;
-  let usage = 0;
+  let usage = {
+    input: 0,
+    output: 0,
+  };
 
   const xmlParser = new StreamingXMLParser({
     whitelist: [ "think" ],
@@ -363,7 +367,10 @@ export async function runAgent({
     for await(const chunk of res) {
       if (abortSignal.aborted) break;
       if(doneParsingTools) break;
-      if(chunk.usage) usage = chunk.usage.total_tokens;
+      if(chunk.usage) {
+        usage.input = chunk.usage.prompt_tokens;
+        usage.output = chunk.usage.completion_tokens;
+      }
 
       const delta = chunk.choices[0]?.delta as {
         content: string
@@ -418,10 +425,13 @@ export async function runAgent({
 
   // Calculate token usage delta from the previous total
   let tokenDelta = 0;
-  totalTokensEver += usage;
-  if(!abortSignal.aborted) {
-    const previousTokens = messageHistoryTokens(processedHistory.history);
-    tokenDelta = usage - previousTokens;
+  if(usage.input !== 0 || usage.output !== 0) {
+    trackTokens(model.model, "input", usage.input);
+    trackTokens(model.model, "output", usage.output);
+    if(!abortSignal.aborted) {
+      const previousTokens = messageHistoryTokens(processedHistory.history);
+      tokenDelta = (usage.input + usage.output) - previousTokens;
+    }
   }
 
   const assistantHistoryItem = {

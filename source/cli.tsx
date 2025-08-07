@@ -7,7 +7,7 @@ import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
 import { readConfig, readMetadata } from "./config.ts";
-import { totalTokensUsed } from "./llm.ts";
+import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
@@ -53,7 +53,13 @@ Hint: do you need to re-source your .bash_profile or .zshrc?
   );
 
   await waitUntilExit();
-  console.log(`\nApprox. tokens used: ${totalTokensUsed().toLocaleString()}`);
+
+  console.log("\nApprox. tokens used:");
+  for(const [ model, count ] of Object.entries(tokenCounts())) {
+    const input = count.input.toLocaleString();
+    const output = count.output.toLocaleString();
+    console.log(`${model}: ${input} input, ${output} output`);
+  }
 });
 
 cli.command("version")

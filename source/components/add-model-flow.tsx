@@ -5,6 +5,7 @@ import TextInput from "ink-text-input";
 import { Config } from "../config.ts";
 import { useColor } from "../theme.ts";
 import OpenAI from "openai";
+import { trackTokens } from "../token-tracker.ts";
 
 type ModelVar = keyof (Config["models"][number]);
 type ValidationResult = { valid: true } | { valid: false, error: string };
@@ -335,13 +336,17 @@ async function testConnection({ model, apiEnvVar, baseUrl }: MinConnectArgs) {
       apiKey: process.env[apiEnvVar],
     });
 
-    await client.chat.completions.create({
+    const response = await client.chat.completions.create({
       model,
       messages: [{
         role: "user",
         content: "Respond with the word 'hi' and only the word 'hi'",
       }],
     });
+    if(response.usage) {
+      trackTokens(model, "input", response.usage.prompt_tokens);
+      trackTokens(model, "output", response.usage.completion_tokens);
+    }
     return true;
   } catch(e) {
     return false;
