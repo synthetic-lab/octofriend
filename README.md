@@ -24,11 +24,6 @@ call and code edit failures from the main coding models you're working with:
 the autofix models work with any coding LLM. Octo wants to help you because
 Octo is your friend.
 
-Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
-selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
-yours. But you can also use it with any OpenAI-compatible API provider, or with
-local LLMs you run on your own machine.
-
 Octo works great with Claude 4, GLM-4.5, Kimi K2, or the new open-source
 open-gpt-120b model, and it allows you to swap to many different models on the
 fly, mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3, local LLMs,
@@ -38,6 +33,11 @@ Correctly handling multi-turn responses, especially with reasoning models like
 Claude 4 and OpenAI o3 (whose content may even be encrypted), can be tricky.
 Octo carefully manages reasoning tokens to ensure it's always as smart as it
 can be.
+
+Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
+selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
+yours. But you can also use it with any OpenAI-compatible API provider, or with
+local LLMs you run on your own machine.
 
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
