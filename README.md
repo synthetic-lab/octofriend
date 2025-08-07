@@ -34,6 +34,11 @@ open-gpt-120b model, and it allows you to swap to many different models on the
 fly, mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3, local LLMs,
 and any OpenAI-compatible LLM API.
 
+Correctly handling multi-turn responses, especially with reasoning models like
+Claude 4 and OpenAI o3 (whose content may even be encrypted), can be tricky.
+Octo carefully manages reasoning tokens to ensure it's always as smart as it
+can be.
+
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
 completely hands-free author, and that's how I use it. But if you want to live
