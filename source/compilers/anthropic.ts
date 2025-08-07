@@ -228,7 +228,8 @@ export async function runAnthropicAgent({
       type: "auto",
       disable_parallel_tool_use: true,
     },
-    max_tokens: Math.min(64 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context),
+    // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
+    max_tokens: Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context),
     ...thinking,
     stream: true,
   });
