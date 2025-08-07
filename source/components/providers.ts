@@ -1,4 +1,5 @@
 export type ProviderConfig = {
+  type?: "standard" | "openai-responses",
   name: string;
   envVar: string;
   baseUrl: string;
@@ -6,6 +7,7 @@ export type ProviderConfig = {
     model: string;
     nickname: string;
     context: number;
+    reasoning?: "low" | "medium" | "high";
   }>;
   testModel: string;
 };
@@ -36,12 +38,13 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 
   openai: {
+    type: "openai-responses",
     name: "OpenAI",
     envVar: "OPENAI_API_KEY",
     baseUrl: "https://api.openai.com/v1",
     models: [
       { model: "gpt-4.1-2025-04-14", nickname: "GPT-4.1", context: 64 * 1024 },
-      { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024 },
+      { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024, reasoning: "medium" },
     ],
     testModel: "gpt-4.1-latest",
   } satisfies ProviderConfig,

@@ -17,6 +17,8 @@ export type AssistantMessage = {
   role: "assistant",
   content: string,
   reasoningContent?: string | null,
+  encryptedReasoningContent?: string | null,
+  reasoningId?: string,
   toolCall?: ToolCallRequest,
 };
 
@@ -46,6 +48,7 @@ export type ToolRejectMessage = {
 export type ToolErrorMessage = {
   role: "tool-error",
   toolCallId: string,
+  toolName: string,
   error: string,
 };
 
@@ -141,6 +144,7 @@ function collapseToIR(
     return assertPrevAssistant("tool-malformed", item, prev, prev => {
       // Collapse the malformed tool call into the previous assistant message, and structure the
       // response
+      const toolName = item.original.function?.name || "unknown";
       return [
         {
           role: "assistant",
@@ -149,7 +153,7 @@ function collapseToIR(
             type: "function",
             id: item.toolCallId,
             function: {
-              name: item.original.function?.name || "unknown",
+              name: toolName,
               arguments: item.original.function?.arguments || "{}",
             },
           }],
@@ -157,6 +161,7 @@ function collapseToIR(
         {
           role: "tool-error",
           toolCallId: item.toolCallId,
+          toolName,
           error: item.error,
         },
       ];
@@ -182,7 +187,8 @@ function collapseToIR(
         {
           role: "tool-error",
           error: item.error,
-          toolCallId: prev.toolCall.toolCallId,
+          toolCallId: item.toolCallId,
+          toolName: item.toolName,
         },
       ];
     });
@@ -251,6 +257,8 @@ function collapseToIR(
         role: "assistant",
         content: item.content || " ",
         reasoningContent: item.reasoningContent,
+        encryptedReasoningContent: item.encryptedReasoningContent,
+        reasoningId: item.reasoningId,
       },
     ];
   }

@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
-import OpenAI from "openai";
-import { runAgent, autofixEdit } from "./llm.ts";
+import { runAgent } from "./llm.ts";
+import { runResponsesAgent } from "./compilers/responses.ts";
+import { autofixEdit } from "./compilers/autofix.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
 import {
   runTool,
@@ -15,7 +16,6 @@ import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
 
 export type RunArgs = {
-  client: OpenAI,
   config: Config,
 };
 export type UiState = {
@@ -58,7 +58,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
 
-  input: async ({ client, config, query }) => {
+  input: async ({ config, query }) => {
     const userMessage: UserItem = {
 			type: "user",
       id: sequenceId(),
@@ -70,7 +70,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 			userMessage,
 		];
     set({ history });
-    await get()._runAgent({ client, config });
+    await get()._runAgent({ config });
   },
 
   rejectTool: (toolCallId) => {
@@ -136,7 +136,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  runTool: async ({ client, config, toolReq }) => {
+  runTool: async ({ config, toolReq }) => {
     const modelOverride = get().modelOverride;
     set({ modeData: { mode: "tool-waiting" } });
 
@@ -167,10 +167,10 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history });
     }
 
-    await get()._runAgent({ client, config });
+    await get()._runAgent({ config });
   },
 
-  _runAgent: async ({ client, config }) => {
+  _runAgent: async ({ config }) => {
     let content = "";
     let reasoningContent: undefined | string = undefined;
 
@@ -191,9 +191,11 @@ export const useAppStore = create<UiState>((set, get) => ({
     let lastContent = "";
 
     let history: HistoryItem[];
+    const modelConfig = getModelFromConfig(config, get().modelOverride);
     try {
-      history = await runAgent({
-        client, config,
+      const run = modelConfig.type === "openai-responses" ? runResponsesAgent : runAgent;
+      history = await run({
+        config,
         modelOverride: get().modelOverride,
         history: get().history,
         abortSignal: abortController.signal,
@@ -255,7 +257,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         ],
       });
       await sleep(1000);
-      return get()._runAgent({ config, client });
+      return get()._runAgent({ config });
     }
 
     const lastHistoryItem = history[history.length - 1];
@@ -268,7 +270,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: { mode: "error-recovery" },
         history
       });
-      return get()._runAgent({ client, config });
+      return get()._runAgent({ config });
     }
 
     if(lastHistoryItem.type !== "tool") {
@@ -305,7 +307,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             await tryTransformToolError(lastHistoryItem, e),
           ],
         });
-        return await get()._runAgent({ client, config });
+        return await get()._runAgent({ config });
       }
     }
 
@@ -328,6 +330,7 @@ async function tryTransformToolError(
       id: sequenceId(),
       error: e.message,
       toolCallId: toolReq.tool.toolCallId,
+      toolName: toolReq.tool.function.name,
     };
   }
   if(e instanceof FileOutdatedError) {

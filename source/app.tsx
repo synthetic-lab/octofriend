@@ -56,21 +56,13 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 export default function App({ config, configPath, metadata, unchained }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
-  const { history, modeData, modelOverride } = useAppStore(
+  const { history, modeData } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       modelOverride: state.modelOverride,
     }))
   );
-  const model = getModelFromConfig(currConfig, modelOverride);
-
-	const client = useMemo(() => {
-		return new OpenAI({
-			baseURL: model.baseUrl,
-			apiKey: process.env[model.apiEnvVar],
-		});
-	}, [ currConfig, model ]);
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
@@ -97,7 +89,7 @@ export default function App({ config, configPath, metadata, unchained }: Props) 
                 <MessageDisplay item={modeData.inflightResponse} />
             }
             {
-                <BottomBar client={client} metadata={metadata} />
+                <BottomBar metadata={metadata} />
             }
           </Box>
         </UnchainedContext.Provider>
@@ -106,8 +98,7 @@ export default function App({ config, configPath, metadata, unchained }: Props) 
   </SetConfigContext.Provider>
 }
 
-function BottomBar({ client, metadata }: {
-  client: OpenAI,
+function BottomBar({ metadata }: {
   metadata: Metadata,
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
@@ -134,7 +125,7 @@ function BottomBar({ client, metadata }: {
   if(modeData.mode === "menu") return <Menu />
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent client={client} />
+    <BottomBarContent />
     <Box
       width="100%"
       justifyContent="flex-end"
@@ -163,9 +154,7 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ client }: {
-  client: OpenAI,
-}) {
+function BottomBarContent() {
   const config = useConfig();
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
@@ -186,8 +175,8 @@ function BottomBarContent({ client }: {
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
-    await input({ query, config, client });
-	}, [ query, config, client ]);
+    await input({ query, config });
+	}, [ query, config ]);
 
   if(modeData.mode === "responding") {
     return <Box justifyContent="space-between">
@@ -220,7 +209,6 @@ function BottomBarContent({ client }: {
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer
       toolReq={modeData.toolReq}
-      client={client}
       config={config}
     />;
   }
@@ -239,7 +227,7 @@ function BottomBarContent({ client }: {
   </Box>
 }
 
-function ToolRequestRenderer({ toolReq, client, config }: {
+function ToolRequestRenderer({ toolReq, config }: {
   toolReq: ToolCallItem
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
@@ -263,15 +251,15 @@ function ToolRequestRenderer({ toolReq, client, config }: {
 
 	const onSelect = useCallback(async (item: (typeof items)[number]) => {
     if(item.value === "no") rejectTool(toolReq.tool.toolCallId);
-    else await runTool({ toolReq, config, client });
-	}, [ toolReq, config, client ]);
+    else await runTool({ toolReq, config });
+	}, [ toolReq, config ]);
 
   const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.tool.function.name);
   useEffect(() => {
     if(noConfirm) {
-      runTool({ toolReq, config, client });
+      runTool({ toolReq, config });
     }
-  }, [ toolReq, noConfirm, config, client ]);
+  }, [ toolReq, noConfirm, config ]);
 
   if(noConfirm) return <Loading />;
 

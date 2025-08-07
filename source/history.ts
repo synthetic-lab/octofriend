@@ -41,6 +41,7 @@ export type ToolFailedItem = SequenceIdTagged<{
   type: "tool-failed",
   error: string,
   toolCallId: string,
+  toolName: string,
 }>;
 
 export type ToolRejectItem = SequenceIdTagged<{
@@ -63,6 +64,8 @@ export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
   reasoningContent?: string;
+  encryptedReasoningContent?: string | null;
+  reasoningId?: string,
   tokenUsage: number; // Delta token usage from previous message
 }>;
 

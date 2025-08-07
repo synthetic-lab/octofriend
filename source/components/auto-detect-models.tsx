@@ -105,13 +105,16 @@ export function ModelSetup({
       return <ImportModelsFrom
         config={config}
         provider={stepData.provider}
-        onImport={(models) => {
+        onImport={models => {
           onComplete(models.map(model => {
+            let t = {};
+            if(stepData.provider.type) t = { type: stepData.provider.type };
             return {
               ...model,
               nickname: `${model.nickname} (${stepData.provider.name})`,
               apiEnvVar: getEnvVar(stepData.provider, config, stepData.overrideEnvVar),
               baseUrl: stepData.provider.baseUrl,
+              ...t,
             };
           }));
         }}
@@ -166,7 +169,13 @@ export function ModelSetup({
 
     case "override-model-string":
       return <AddModelFlow
-        onComplete={model => onComplete([ model ])}
+        onComplete={model => {
+          let modelClone = { ...model };
+          if(stepData.provider.type) {
+            modelClone.type = stepData.provider.type;
+          }
+          onComplete([ modelClone ])
+        }}
         onCancel={() => {
           dispatch({
             from: "override-model-string",

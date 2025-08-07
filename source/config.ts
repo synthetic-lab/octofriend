@@ -15,6 +15,9 @@ const McpServerConfigSchema = t.exact({
 const ConfigSchema = t.exact({
   yourName: t.str,
   models: t.array(t.exact({
+    type: t.optional(
+      t.value("standard").or(t.value("openai-responses")),
+    ),
     nickname: t.str,
     baseUrl: t.str,
     apiEnvVar: t.str,

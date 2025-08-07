@@ -2,7 +2,7 @@
 	"name": "octofriend",
 	"version": "0.0.18",
 	"license": "MIT",
-  "repository": "github:synthetic-lab/octofriend",
+	"repository": "github:synthetic-lab/octofriend",
 	"bin": "dist/source/cli.js",
 	"type": "module",
 	"preferGlobal": true,
@@ -24,8 +24,10 @@
 		"tsconfig.json"
 	],
 	"dependencies": {
+		"@ai-sdk/openai": "^2.0.4",
 		"@commander-js/extra-typings": "^13.1.0",
 		"@modelcontextprotocol/sdk": "^1.0.1",
+		"ai": "^5.0.5",
 		"antipattern": "^0.0.7",
 		"chalk": "^5.4.1",
 		"commander": "^13.1.0",
@@ -36,6 +38,7 @@
 		"ink-select-input": "^6.0.0",
 		"ink-spinner": "^5.0.0",
 		"ink-text-input": "^6.0.0",
+		"json-schema": "^0.4.0",
 		"json5": "^2.2.3",
 		"openai": "^5.9.0",
 		"react": "^18.2.0",
@@ -44,6 +47,7 @@
 	},
 	"devDependencies": {
 		"@types/figlet": "^1.7.0",
+		"@types/json-schema": "^7.0.15",
 		"@types/node": "^22.13.13",
 		"@types/react": "^18.0.32",
 		"ink-testing-library": "^3.0.0",
