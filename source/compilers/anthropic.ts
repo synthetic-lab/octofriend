@@ -212,7 +212,6 @@ export async function runAnthropicAgent({
 
   const thinking: { thinking?: { type: "enabled", budget_tokens: number } }  = {
   };
-  // TODO: allow this to be configurable
   if(modelConfig.reasoning) {
     thinking.thinking = {
       type: "enabled",

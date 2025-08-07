@@ -10,6 +10,8 @@ TODO:
   popped, rather than ad-hoc state linking. The stack entries are typed and
   each different state/internal-URI can have typed data associated with it.
 - [ ] Link out directly to inference websites for API keys
+- [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
+  than low/medium/high corresponding to specific budgets (2048/4096/8192)
 
 # Launch blocking
 nothing?
