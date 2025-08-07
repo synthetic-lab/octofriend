@@ -1,9 +1,20 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
+import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { HistoryItem, ToolCallRequestSchema, sequenceId, AssistantItem } from "../history.ts";
+import {
+  HistoryItem,
+  ToolCallRequestSchema,
+  sequenceId,
+  AssistantItem,
+  AnthropicAssistantData
+} from "../history.ts";
+
+const ThinkingBlockSchema = t.subtype({
+  type: t.value("thinking"),
+  thinking: t.str,
+  signature: t.str,
+});
 import { systemPrompt } from "../system-prompt.ts";
 import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
@@ -14,10 +25,8 @@ import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
 
 async function toModelMessage(
   messages: HistoryItem[],
-  appliedWindow: boolean,
-  config: Config,
-): Promise<Array<ModelMessage>> {
-  const output: ModelMessage[] = [];
+): Promise<Array<Anthropic.MessageParam>> {
+  const output: Anthropic.MessageParam[] = [];
 
   const irs = toLlmIR(messages);
   irs.reverse();
@@ -35,85 +44,27 @@ async function toModelMessage(
 
   output.reverse();
 
-  // Add system message
-  output.unshift({
-    role: "system",
-    content: await systemPrompt({
-      appliedWindow,
-      config,
-      exampleToolCall: JSON.stringify({
-        type: "function",
-        id: "SOME_STRING_ID",
-        function: {
-          name: "bash",
-          arguments: JSON.stringify({
-            cmd: "curl \"https://github.com/reissbaker/antipattern\"",
-            timeout: 10000,
-          } satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
-        },
-      }),
-    }),
-  });
-
   return output;
 }
 
-async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMessage> {
+async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<Anthropic.MessageParam> {
   if(ir.role === "assistant") {
-    if(ir.reasoningContent || ir.openai) {
-      let openai = {};
-      if(ir.openai) {
-        openai = {
-          itemId: ir.openai.reasoningId || "",
-          reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
-        };
-      }
-      const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
-      return {
-        role: "assistant",
-        content: [
-          {
-            type: "reasoning",
-            text: ir.reasoningContent || "",
-            providerOptions: {
-              openai: { ...openai },
-            },
-          },
-          { type: "text", text: ir.content || " " },
-          ...toolCalls.map(t => {
-            return {
-              type: "tool-call" as const,
-              toolCallId: t.toolCallId,
-              toolName: t.function.name,
-              input: t.function.arguments || {},
-            };
-          }),
-        ],
-        providerOptions: {
-          openai: {
-            ...openai,
-          },
-        }
-      };
-    }
+    let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
     return {
       role: "assistant",
       content: [
+        ...thinkingBlocks,
         { type: "text", text: ir.content || " " },
         ...toolCalls.map(t => {
           return {
-            type: "tool-call" as const,
-            toolCallId: t.toolCallId,
-            toolName: t.function.name,
+            type: "tool_use" as const,
+            id: t.toolCallId,
+            name: t.function.name,
             input: t.function.arguments || {},
           };
         }),
       ],
-      providerOptions: {
-        openai: {
-        },
-      }
     };
   }
 
@@ -141,16 +92,12 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
     }
 
     return {
-      role: "tool",
+      role: "user",
       content: [
         {
-          type: "tool-result" as const,
-          toolName: ir.toolCall.function.name,
-          toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: content,
-          },
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          content,
         }
       ],
     };
@@ -158,16 +105,13 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
 
   if(ir.role === "tool-reject") {
     return {
-      role: "tool",
+      role: "user",
       content: [
         {
-          type: "tool-result",
-          toolName: ir.toolCall.function.name,
-          toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: "Tool call rejected by user. Your tool call did not run.",
-          },
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          is_error: true,
+          content: "Tool call rejected by user. Your tool call did not run.",
         }
       ],
     };
@@ -175,16 +119,13 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
 
   if(ir.role === "tool-error") {
     return {
-      role: "tool",
+      role: "user",
       content: [
         {
-          type: "tool-result",
-          toolCallId: ir.toolCallId,
-          toolName: ir.toolName,
-          output: {
-            type: "text" as const,
-            value: `Error: ${ir.error}`,
-          },
+          type: "tool_result",
+          tool_use_id: ir.toolCallId,
+          is_error: true,
+          content: `Error: ${ir.error}`,
         }
       ],
     };
@@ -192,39 +133,34 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
 
   if(ir.role === "file-outdated") {
     return {
-      role: "tool",
+      role: "user",
       content: [
         {
-          type: "tool-result",
-          toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.function.name,
-          output: {
-            type: "text",
-            value: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
-          },
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          is_error: true,
+          content: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
         },
       ],
     };
   }
 
+  // file-unreadable case
   const _: "file-unreadable" = ir.role;
   return {
-    role: "tool",
+    role: "user",
     content: [
       {
-        type: "tool-result",
-        toolCallId: ir.toolCall.toolCallId,
-        toolName: ir.toolCall.function.name,
-        output: {
-          type: "text",
-          value: `File ${(ir as any).path} could not be read. Has it been deleted?`,
-        },
+        type: "tool_result",
+        tool_use_id: ir.toolCall.toolCallId,
+        is_error: true,
+        content: `File ${ir.path} could not be read. Has it been deleted?`,
       }
     ],
   };
 }
 
-export async function runResponsesAgent({
+export async function runAnthropicAgent({
   config, modelOverride, history, onTokens, onAutofixJson, abortSignal
 }: {
   config: Config,
@@ -236,14 +172,23 @@ export async function runResponsesAgent({
 }) {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const processedHistory = applyContextWindow(history, modelConfig.context);
-  const messages = await toModelMessage(
-    processedHistory.history,
-    processedHistory.appliedWindow,
-    config
-  );
+  const messages = await toModelMessage(processedHistory.history);
+  const sysPrompt = await systemPrompt({
+    appliedWindow: processedHistory.appliedWindow,
+    config,
+    exampleToolCall: JSON.stringify({
+      type: "tool_use",
+      id: "SOME_STRING_ID",
+      name: "bash",
+      input: JSON.stringify({
+        cmd: "curl \"https://github.com/reissbaker/antipattern\"",
+        timeout: 10000,
+      } satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
+    }),
+  });
 
   // Convert tools to AI SDK format
-  const tools: Record<string, any> = {};
+  const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
@@ -253,95 +198,157 @@ export async function runResponsesAgent({
     // @ts-ignore
     delete argJsonSchema.title;
 
-    tools[name] = tool({
+    tools.push({
+      name,
       description: `The ${name} tool`,
-      inputSchema: jsonSchema(argJsonSchema),
+      input_schema: argJsonSchema,
     });
   });
 
-  let reasoningConfig: {
-    reasoningEffort?: "low" | "medium" | "high",
-    reasoningSummary?: "auto",
-  } = {};
-  if(modelConfig.reasoning) {
-    reasoningConfig.reasoningEffort = modelConfig.reasoning;
-    reasoningConfig.reasoningSummary = "auto";
-  }
-
-  const openai = createOpenAI({
+  const client = new Anthropic({
     baseURL: modelConfig.baseUrl,
     apiKey: process.env[modelConfig.apiEnvVar],
   });
 
-  const result = streamText({
-    model: openai.responses(modelConfig.model),
-    messages,
-    tools,
-    abortSignal,
-    providerOptions: {
-      openai: {
-        ...reasoningConfig,
-        store: false,
-        include: [ "reasoning.encrypted_content" ],
-      },
+  const thinking: { thinking?: { type: "enabled", budget_tokens: number } }  = {
+  };
+  // TODO: allow this to be configurable
+  if(modelConfig.reasoning) {
+    thinking.thinking = {
+      type: "enabled",
+      budget_tokens: 8192,
+    };
+  }
+
+  const result = await client.messages.create({
+    system: sysPrompt,
+    model: modelConfig.model,
+    tools, messages,
+    tool_choice: {
+      type: "auto",
+      disable_parallel_tool_use: true,
     },
+    max_tokens: Math.min(64 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context),
+    ...thinking,
+    stream: true,
   });
 
   let content = "";
-  let reasoningId: string | undefined = undefined;
   let reasoningContent: string | undefined = undefined;
   let usage = {
     input: 0,
     output: 0,
-    reasoning: 0,
   };
-  let encryptedReasoningContent: string | undefined = undefined;
+  const thinkingBlocks: Array<{
+    type: "thinking",
+    thinking?: string,
+    signature?: string,
+    index: number,
+  } | {
+    type: "redacted_thinking",
+    data: string,
+  }> = [];
+  let inProgressTool: {
+    id: string,
+    index: number,
+    name: string,
+    partialJson: string,
+  } | undefined = undefined;
 
   // Handle streaming chunks
-  for await (const chunk of result.fullStream) {
+  for await (const chunk of result) {
     if (abortSignal.aborted) break;
 
     switch (chunk.type) {
-      case 'text-delta':
-        if (chunk.text) {
-          content += chunk.text;
-          onTokens(chunk.text, "content");
+      case "content_block_delta":
+        switch(chunk.delta.type) {
+          case "text_delta":
+            content += chunk.delta.text;
+            onTokens(chunk.delta.text, "content");
+            break;
+          case "thinking_delta":
+            if(reasoningContent == null) reasoningContent = "";
+            reasoningContent += chunk.delta.thinking;
+            onTokens(chunk.delta.thinking, "reasoning");
+            if(thinkingBlocks.length === 0) {
+              thinkingBlocks.push({
+                type: "thinking",
+                thinking: chunk.delta.thinking,
+                index: chunk.index,
+              });
+            }
+            else {
+              const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+              if(lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                lastBlock.thinking += chunk.delta.thinking;
+              }
+              else {
+                thinkingBlocks.push({
+                  type: "thinking",
+                  thinking: chunk.delta.thinking,
+                  index: chunk.index,
+                });
+              }
+            }
+            break;
+          case "signature_delta":
+            if(thinkingBlocks.length === 0) {
+              thinkingBlocks.push({
+                type: "thinking",
+                signature: chunk.delta.signature,
+                index: chunk.index,
+              });
+            }
+            else {
+              const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+              if(lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                lastBlock.signature = chunk.delta.signature;
+              }
+              else {
+                thinkingBlocks.push({
+                  type: "thinking",
+                  signature: chunk.delta.signature,
+                  index: chunk.index,
+                });
+              }
+            }
+            break;
+          case "input_json_delta":
+            if(inProgressTool != null && inProgressTool.index === chunk.index) {
+              inProgressTool.partialJson += chunk.delta.partial_json;
+            }
+            break;
+        }
+        break;
+      case "content_block_start":
+        switch(chunk.content_block.type) {
+          case "tool_use":
+            if(inProgressTool == null) {
+              inProgressTool = {
+                id: chunk.content_block.id,
+                index: chunk.index,
+                name: chunk.content_block.name,
+                partialJson: "",
+              };
+            }
+            break;
+          case "redacted_thinking":
+            thinkingBlocks.push({
+              type: "redacted_thinking",
+              data: chunk.content_block.data,
+            });
+            break;
         }
         break;
 
-      case 'reasoning-start':
-        break;
-
-      case 'reasoning-delta':
-        if(chunk.text) {
-          if (reasoningContent == null) reasoningContent = "";
-          reasoningContent += chunk.text;
-          onTokens(chunk.text, "reasoning");
+      case "message_delta":
+        usage.output = chunk.usage.output_tokens;
+        if(chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
+          usage.input = chunk.usage.input_tokens;
         }
         break;
-
-      case "reasoning-end":
-        const openai = chunk.providerMetadata ? chunk.providerMetadata["openai"] : {};
-        const encrypted = openai["reasoningEncryptedContent"];
-        if(encrypted && typeof encrypted === "string") {
-          encryptedReasoningContent = encrypted;
-        }
-        const itemId = openai["itemId"];
-        if(itemId && typeof itemId === "string") {
-          reasoningId = itemId;
-        }
-        break;
-
-      case 'tool-call':
-        // Tool call will be handled after streaming is complete
-        break;
-
-      case 'finish':
-        if (chunk.totalUsage) {
-          usage.input = chunk.totalUsage.inputTokens || 0;
-          usage.output = chunk.totalUsage.outputTokens || 0;
-          usage.reasoning = chunk.totalUsage.reasoningTokens || 0;
-        }
+      case "message_start":
+        usage.input = chunk.message.usage.input_tokens;
         break;
     }
   }
@@ -350,7 +357,6 @@ export async function runResponsesAgent({
   if(usage.input !== 0 || usage.output !== 0) {
     trackTokens(modelConfig.model, "input", usage.input);
     trackTokens(modelConfig.model, "output", usage.output);
-    trackTokens(modelConfig.model, "output", usage.reasoning);
   }
 
   // Calculate token usage delta
@@ -358,19 +364,29 @@ export async function runResponsesAgent({
   if(usage.input !== 0 || usage.output !== 0) {
     if(!abortSignal.aborted) {
       const previousTokens = messageHistoryTokens(processedHistory.history);
-      tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
+      tokenDelta = (usage.input + usage.output) - previousTokens;
     }
   }
 
-  let openaiSpecific = {};
-  if(reasoningId || encryptedReasoningContent) {
-    openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
+  let anthropic: { anthropic?: AnthropicAssistantData } = {};
+  if(thinkingBlocks.length > 0) {
+    anthropic.anthropic = {
+      thinkingBlocks: thinkingBlocks.map(b => {
+        if(b.type === "redacted_thinking") return b;
+        return ThinkingBlockSchema.slice({
+          type: "thinking",
+          signature: b.signature || "",
+          thinking: b.thinking || "",
+        });
+      }),
+    };
   }
+
   const assistantHistoryItem: AssistantItem = {
     type: "assistant",
     id: sequenceId(),
     content, reasoningContent,
-    ...openaiSpecific,
+    ...anthropic,
     tokenUsage: tokenDelta,
   };
 
@@ -378,13 +394,11 @@ export async function runResponsesAgent({
   if(abortSignal.aborted) return history.concat([assistantHistoryItem]);
 
   // Get tool calls
-  const toolCalls = await result.toolCalls;
-  if (toolCalls && toolCalls.length > 0) {
-    const firstToolCall = toolCalls[0];
+  if(inProgressTool != null) {
     const chatToolCall = {
-      toolCallId: firstToolCall.toolCallId,
-      toolName: firstToolCall.toolName,
-      args: firstToolCall.input,
+      toolCallId: inProgressTool.id,
+      toolName: inProgressTool.name,
+      args: inProgressTool.partialJson,
     }
     const parseResult = await parseResponsesTool(
       chatToolCall,
@@ -400,13 +414,13 @@ export async function runResponsesAgent({
           id: sequenceId(),
           error: parseResult.message,
           original: {
-            id: firstToolCall.toolCallId,
+            id: inProgressTool.id,
             function: {
-              name: firstToolCall.toolName,
-              arguments: JSON.stringify(firstToolCall.input),
+              name: inProgressTool.name,
+              arguments: inProgressTool.partialJson,
             },
           },
-          toolCallId: firstToolCall.toolCallId,
+          toolCallId: inProgressTool.id,
         },
       ]);
     }

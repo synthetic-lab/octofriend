@@ -11,6 +11,7 @@ import {
   FileUnreadableItem,
   AssistantItem,
   UserItem,
+  AnthropicAssistantData,
 } from "../history.ts";
 
 export type AssistantMessage = {
@@ -21,6 +22,7 @@ export type AssistantMessage = {
     encryptedReasoningContent?: string | null,
     reasoningId?: string,
   },
+  anthropic?: AnthropicAssistantData,
   toolCall?: ToolCallRequest,
 };
 
@@ -138,6 +140,7 @@ function collapseToIR(
           content: prev.content || "",
           toolCall: item.tool,
           openai: prev.openai,
+          anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
         },
         null,
@@ -145,7 +148,7 @@ function collapseToIR(
     });
   }
   if(item.type === "tool-malformed") {
-    return assertPrevAssistant("tool-malformed", item, prev, prev => {
+    return assertPrevAssistant("tool-malformed", item, prev, (prev): [LlmIR | null, LlmIR | null] => {
       // Collapse the malformed tool call into the previous assistant message, and structure the
       // response
       const toolName = item.original.function?.name || "unknown";
@@ -153,17 +156,18 @@ function collapseToIR(
         {
           role: "assistant",
           content: prev.content || "",
-          tool_calls: [{
+          toolCall: {
             type: "function",
-            id: item.toolCallId,
             function: {
-              name: toolName,
+              name: toolName as any,
               arguments: item.original.function?.arguments || "{}",
             },
-          }],
+            toolCallId: item.toolCallId,
+          },
           openai: prev.openai,
+          anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
-        },
+        } satisfies LlmIR,
         {
           role: "tool-error",
           toolCallId: item.toolCallId,
@@ -264,6 +268,7 @@ function collapseToIR(
         content: item.content || " ",
         reasoningContent: item.reasoningContent,
         openai: item.openai,
+        anthropic: item.anthropic,
       },
     ];
   }

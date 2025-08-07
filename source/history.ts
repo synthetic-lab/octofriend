@@ -60,6 +60,17 @@ export type FileUnreadableItem = SequenceIdTagged<{
   toolCallId: string,
 }>;
 
+export type AnthropicAssistantData = {
+  thinkingBlocks: Array<{
+    type: "thinking",
+    thinking: string,
+    signature: string,
+  } | {
+    type: "redacted_thinking",
+    data: string,
+  }>,
+};
+
 export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
@@ -68,6 +79,7 @@ export type AssistantItem = SequenceIdTagged<{
     encryptedReasoningContent?: string | null;
     reasoningId?: string,
   },
+  anthropic?: AnthropicAssistantData,
   tokenUsage: number; // Delta token usage from previous message
 }>;
 

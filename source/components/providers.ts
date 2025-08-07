@@ -1,5 +1,5 @@
 export type ProviderConfig = {
-  type?: "standard" | "openai-responses",
+  type?: "standard" | "openai-responses" | "anthropic",
   name: string;
   envVar: string;
   baseUrl: string;
@@ -52,6 +52,28 @@ export const PROVIDERS = {
       { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024, reasoning: "medium" },
     ],
     testModel: "gpt-4.1-latest",
+  } satisfies ProviderConfig,
+
+  anthropic: {
+    type: "anthropic",
+    name: "Anthropic",
+    envVar: "ANTHROPIC_API_KEY",
+    baseUrl: "https://api.anthropic.com",
+    models: [
+      {
+        model: "claude-sonnet-4-20250514",
+        nickname: "Claude 4 Sonnet",
+        context: 64 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "claude-opus-4-1-20250805",
+        nickname: "Claude 4.1 Opus",
+        context: 64 * 1024,
+        reasoning: "medium",
+      },
+    ],
+    testModel: "claude-sonnet-4-20250514",
   } satisfies ProviderConfig,
 
   grok: {

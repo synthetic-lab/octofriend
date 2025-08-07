@@ -16,7 +16,7 @@ const ConfigSchema = t.exact({
   yourName: t.str,
   models: t.array(t.exact({
     type: t.optional(
-      t.value("standard").or(t.value("openai-responses")),
+      t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic")),
     ),
     nickname: t.str,
     baseUrl: t.str,
