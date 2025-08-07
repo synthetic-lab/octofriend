@@ -202,6 +202,7 @@ function collapseToIR(
             path: path.resolve(prev.toolCall.function.arguments.filePath),
           }
         ];
+        case "fetch":
         case "list":
         case "bash":
         case "mcp":

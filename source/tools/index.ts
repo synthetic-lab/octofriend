@@ -15,6 +15,7 @@ export const ToolCallSchema = unionAll(ALL_TOOLS);
 export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> = [
   "read",
   "list",
+  "fetch",
 ];
 
 export async function runTool(

@@ -19,6 +19,7 @@ import {
   edit,
   create as createTool,
   mcp,
+  fetch as fetchTool,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
@@ -376,7 +377,16 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
     case "edit": return <EditToolRenderer item={item.tool.function} />
     case "create": return <CreateToolRenderer item={item.tool.function} />
     case "mcp": return <McpToolRenderer item={item.tool.function} />
+    case "fetch": return <FetchToolRenderer item={item.tool.function} />
   }
+}
+
+function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> }) {
+  const themeColor = useColor();
+  return <Box>
+		<Text color="gray">{item.name}: </Text>
+		<Text color={themeColor}>{item.arguments.url}</Text>
+	</Box>
 }
 
 function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
