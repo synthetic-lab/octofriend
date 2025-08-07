@@ -30,7 +30,7 @@ export const PROVIDERS = {
       },
       {
         model: "hf:moonshotai/Kimi-K2-Instruct",
-        nickname: "GPT-OSS-120b",
+        nickname: "Kimi K2",
         context: 64 * 1024,
       },
       {
