@@ -19,7 +19,7 @@ export const PROVIDERS = {
     envVar: "OPENAI_API_KEY",
     baseUrl: "https://api.openai.com/v1",
     models: [
-      { model: "gpt-5-2025-08-07", nickname: "GPT-5", context: 128 * 1024 },
+      { model: "gpt-5-2025-08-07", nickname: "GPT-5", context: 128 * 1024, reasoning: "medium" },
       { model: "gpt-4.1-2025-04-14", nickname: "GPT-4.1", context: 64 * 1024 },
       { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024, reasoning: "medium" },
     ],
