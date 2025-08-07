@@ -1,4 +1,4 @@
-![octofriend](https://raw.githubusercontent.com/reissbaker/octofriend/main/octofriend.png)
+![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octofriend.png)
 
 ## Get Started
 
@@ -46,7 +46,7 @@ dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
 
 ## Demo
-[![Octo asciicast](https://asciinema.org/a/728456.svg)](https://asciinema.org/a/728456)
+[![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
 ## Rules
 
 Octo will look for instruction files named like so:
