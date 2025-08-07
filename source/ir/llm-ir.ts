@@ -17,8 +17,10 @@ export type AssistantMessage = {
   role: "assistant",
   content: string,
   reasoningContent?: string | null,
-  encryptedReasoningContent?: string | null,
-  reasoningId?: string,
+  openai?: {
+    encryptedReasoningContent?: string | null,
+    reasoningId?: string,
+  },
   toolCall?: ToolCallRequest,
 };
 
@@ -135,6 +137,8 @@ function collapseToIR(
           role: "assistant",
           content: prev.content || "",
           toolCall: item.tool,
+          openai: prev.openai,
+          reasoningContent: prev.reasoningContent,
         },
         null,
       ];
@@ -157,6 +161,8 @@ function collapseToIR(
               arguments: item.original.function?.arguments || "{}",
             },
           }],
+          openai: prev.openai,
+          reasoningContent: prev.reasoningContent,
         },
         {
           role: "tool-error",
@@ -257,8 +263,7 @@ function collapseToIR(
         role: "assistant",
         content: item.content || " ",
         reasoningContent: item.reasoningContent,
-        encryptedReasoningContent: item.encryptedReasoningContent,
-        reasoningId: item.reasoningId,
+        openai: item.openai,
       },
     ];
   }

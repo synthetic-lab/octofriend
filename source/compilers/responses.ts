@@ -3,7 +3,7 @@ import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { HistoryItem, ToolCallRequestSchema, sequenceId } from "../history.ts";
+import { HistoryItem, ToolCallRequestSchema, sequenceId, AssistantItem } from "../history.ts";
 import { systemPrompt } from "../system-prompt.ts";
 import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
@@ -60,12 +60,12 @@ async function toModelMessage(
 
 async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMessage> {
   if(ir.role === "assistant") {
-    if(ir.reasoningContent || ir.encryptedReasoningContent) {
+    if(ir.reasoningContent || ir.openai) {
       let openai = {};
-      if(ir.encryptedReasoningContent) {
+      if(ir.openai) {
         openai = {
-          itemId: ir.reasoningId || "",
-          reasoningEncryptedContent: ir.encryptedReasoningContent,
+          itemId: ir.openai.reasoningId || "",
+          reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
         };
       }
       const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
@@ -362,11 +362,15 @@ export async function runResponsesAgent({
     }
   }
 
-  const assistantHistoryItem = {
-    type: "assistant" as const,
+  let openaiSpecific = {};
+  if(reasoningId || encryptedReasoningContent) {
+    openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
+  }
+  const assistantHistoryItem: AssistantItem = {
+    type: "assistant",
     id: sequenceId(),
-    content, reasoningContent, reasoningId,
-    encryptedReasoningContent: encryptedReasoningContent,
+    content, reasoningContent,
+    ...openaiSpecific,
     tokenUsage: tokenDelta,
   };
 

@@ -64,8 +64,10 @@ export type AssistantItem = SequenceIdTagged<{
   type: "assistant";
   content: string;
   reasoningContent?: string;
-  encryptedReasoningContent?: string | null;
-  reasoningId?: string,
+  openai?: {
+    encryptedReasoningContent?: string | null;
+    reasoningId?: string,
+  },
   tokenUsage: number; // Delta token usage from previous message
 }>;
 
