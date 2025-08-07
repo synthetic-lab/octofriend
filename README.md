@@ -15,10 +15,10 @@ octofriend
 ## About
 
 Octo is a small, helpful, cephalopod-flavored coding assistant that works with
-any OpenAI-compatible LLM API, and allows you to switch models at will
-mid-conversation when a particular model gets stuck. Octo can optionally use
-(and we recommend using) ML models we custom-trained and open-sourced
-([1](https://huggingface.co/syntheticlab/diff-apply),
+any OpenAI-compatible or Anthropic-compatible LLM API, and allows you to switch
+models at will mid-conversation when a particular model gets stuck. Octo can
+optionally use (and we recommend using) ML models we custom-trained and
+open-sourced ([1](https://huggingface.co/syntheticlab/diff-apply),
 [2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
 call and code edit failures from the main coding models you're working with:
 the autofix models work with any coding LLM. Octo wants to help you because
@@ -29,10 +29,10 @@ selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
 yours. But you can also use it with any OpenAI-compatible API provider, or with
 local LLMs you run on your own machine.
 
-Octo works great with GLM-4.5, Kimi K2, or the new open-source open-gpt-120b
-model, and it allows you to swap to many different models on the fly,
-mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3, local LLMs, and
-any OpenAI-compatible LLM API.
+Octo works great with Claude 4, GLM-4.5, Kimi K2, or the new open-source
+open-gpt-120b model, and it allows you to swap to many different models on the
+fly, mid-conversation. It also works with Grok 4, OpenAI o3, Qwen3, local LLMs,
+and any OpenAI-compatible LLM API.
 
 Octo has helped write some of its own source code, but the codebase is
 human-first: Octo is meant to be a friendly little helper rather than a
