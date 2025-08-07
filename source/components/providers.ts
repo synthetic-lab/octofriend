@@ -19,13 +19,13 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:openai/gpt-oss-120b",
-        nickname: "GPT-OSS-120b",
+        model: "hf:zai-org/GLM-4.5",
+        nickname: "GLM-4.5",
         context: 64 * 1024,
       },
       {
-        model: "hf:zai-org/GLM-4.5",
-        nickname: "GLM-4.5",
+        model: "hf:openai/gpt-oss-120b",
+        nickname: "GPT-OSS-120b",
         context: 64 * 1024,
       },
       {
