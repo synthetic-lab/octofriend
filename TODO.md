@@ -10,7 +10,6 @@ TODO:
   popped, rather than ad-hoc state linking. The stack entries are typed and
   each different state/internal-URI can have typed data associated with it.
 - [ ] Link out directly to inference websites for API keys
-- [ ] Strip html tags by default in fetch tool
 
 # Launch blocking
 nothing?
