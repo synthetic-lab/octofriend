@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { t, toJSONSchema } from "structural";
+import { t, toJSONSchema, toTypescript } from "structural";
 import { Config, getModelFromConfig } from "./config.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "./xml.ts";
@@ -487,6 +487,29 @@ Please try calling a valid tool.
     args = fixResponse.fixed;
   }
 
+  // Handle double-encoded arguments, which models sometimes produce
+  if(typeof args === "string") {
+    let [ err, argsParsed ] = tryexpr(() => {
+      return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
+    });
+
+    if(err) {
+      const fixPromise = autofixJson(config, toolCall.function.arguments);
+      onAutofixJson(fixPromise.then(() => {}));
+      const fixResponse = await fixPromise;
+      if(!fixResponse.success) {
+        return {
+          status: "error",
+          message: "Syntax error: invalid JSON in tool call arguments",
+        };
+      }
+      args = fixResponse.fixed;
+    }
+    else {
+      args = argsParsed;
+    }
+  }
+
   try {
     const parsed = toolSchema.slice({
       name: toolCall.function.name,
@@ -509,6 +532,10 @@ Please try calling a valid tool.
       status: "error",
       message: `
 Failed to parse tool call: ${error}. Make sure your JSON is valid and matches the expected format.
+Your JSON was:
+${JSON.stringify(toolCall.function)}
+Expected:
+${toTypescript(toolSchema)}
       `.trim(),
     };
   }
