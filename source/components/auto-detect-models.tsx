@@ -206,7 +206,7 @@ function FastProviderList({ onChooseCustom, onChooseProvider, titleOverride }: {
   const providerItems = Object.entries(PROVIDERS).map(([ key, provider ]) => {
     const k = key as keyof typeof PROVIDERS;
     return {
-      label: k === "synthetic" ? provider.name + " (recommended)" : provider.name,
+      label: provider.name,
       value: k,
     };
   });

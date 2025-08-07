@@ -343,17 +343,18 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <Box marginTop={1}>
       <Text>
         Octo lets you choose the LLM that powers it. Currently, our recommended day-to-day coding
-        model to use with Octo is GLM-4.5. You can use it via Synthetic, a privacy-focused
-        inference company (that we run!), or any OpenAI-compatible inference provider. Another great
-        day-to-day coding model is Claude 4 Sonnet, which you can use with Octo via Anthropic's API.
+        model to use with Octo is either GPT-5, or Claude 4 Sonnet. If you want more privacy,
+        another great model is GLM-4.5, an open-source coding model you can use via Synthetic, a
+        privacy-focused inference company (that we run!), or any OpenAI-compatible inference
+        provider.
       </Text>
     </Box>
 
     <Box marginTop={1}>
       <Text color="gray">
-        Be forewarned if you're considering using OpenRouter: OpenRouter doesn't test model
-        implementations, and quality can vary drastically: newer model architectures are often
-        broken.
+        Be forewarned if you're considering using OpenRouter for open-source models: OpenRouter
+        doesn't test model implementations, and quality can vary drastically: many implementations
+        are broken. We'd strongly recommend using Synthetic instead.
       </Text>
     </Box>
 
@@ -362,7 +363,7 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
         You can add multiple models via Octo's menu: Octo lets you switch models mid-conversation as
         needed to handle different problems. It's often helpful to add a strong reasoning model in
         addition to your day-to-day coding model to help with tricky debugging; for example,
-        DeepSeek R1-0528, OpenAI o3, Grok 4, or Claude 4.1 Opus.
+        DeepSeek R1-0528, Grok 4, or Claude 4.1 Opus.
       </Text>
     </Box>
 
