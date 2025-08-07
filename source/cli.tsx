@@ -55,10 +55,15 @@ Hint: do you need to re-source your .bash_profile or .zshrc?
   await waitUntilExit();
 
   console.log("\nApprox. tokens used:");
-  for(const [ model, count ] of Object.entries(tokenCounts())) {
-    const input = count.input.toLocaleString();
-    const output = count.output.toLocaleString();
-    console.log(`${model}: ${input} input, ${output} output`);
+  if(Object.keys(tokenCounts()).length === 0) {
+    console.log("0");
+  }
+  else {
+    for(const [ model, count ] of Object.entries(tokenCounts())) {
+      const input = count.input.toLocaleString();
+      const output = count.output.toLocaleString();
+      console.log(`${model}: ${input} input, ${output} output`);
+    }
   }
 });
 
