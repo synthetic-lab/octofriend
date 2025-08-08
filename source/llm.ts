@@ -396,7 +396,7 @@ export async function runAgent({
       ]);
     }
 
-    const parseResult = await parseTool(validatedTool, config, onAutofixJson);
+    const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
 
     if(parseResult.status === "error") {
       return history.concat([
@@ -455,6 +455,7 @@ async function parseTool(
   toolCall: ResponseToolCall,
   config: Config,
   onAutofixJson: (done: Promise<void>) => any,
+  abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.function.name;
   if(!isValidToolName(name, config)) {
@@ -476,7 +477,7 @@ Please try calling a valid tool.
   });
 
   if(err) {
-    const fixPromise = autofixJson(config, toolCall.function.arguments);
+    const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
     onAutofixJson(fixPromise.then(() => {}));
     const fixResponse = await fixPromise;
     if(!fixResponse.success) {
@@ -495,7 +496,7 @@ Please try calling a valid tool.
     });
 
     if(err) {
-      const fixPromise = autofixJson(config, toolCall.function.arguments);
+      const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
       onAutofixJson(fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {

@@ -29,8 +29,8 @@ export async function autofixEdit(
   }
 }
 
-export async function autofixJson(config: Config, brokenJson: string) {
-  const result = await autofix(config.fixJson, fixJsonPrompt(brokenJson));
+export async function autofixJson(config: Config, brokenJson: string, abortSignal: AbortSignal) {
+  const result = await autofix(config.fixJson, fixJsonPrompt(brokenJson), abortSignal);
   if(result == null) return { success: false as const };
   try {
     const json = JSON.parse(result);
@@ -54,26 +54,30 @@ async function autofix(
     apiKey: process.env[config.apiEnvVar],
   });
   const model = config.model;
-  const response = await client.chat.completions.create({
-    model,
-    temperature: 0,
-    messages: [
-      {
-        role: "user",
-        content: message,
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      temperature: 0,
+      messages: [
+        {
+          role: "user",
+          content: message,
+        },
+      ],
+      response_format: {
+        type: "json_object",
       },
-    ],
-    response_format: {
-      type: "json_object",
-    },
-  }, abortSignal ? { signal: abortSignal } : undefined);
+    }, abortSignal ? { signal: abortSignal } : undefined);
 
-  if(response.usage) {
-    trackTokens(model, "input", response.usage.prompt_tokens);
-    trackTokens(model, "output", response.usage.completion_tokens);
+    if(response.usage) {
+      trackTokens(model, "input", response.usage.prompt_tokens);
+      trackTokens(model, "output", response.usage.completion_tokens);
+    }
+
+    const result = response.choices[0].message.content;
+    if(result == null) return null;
+    return result;
+  } catch {
+    return null;
   }
-
-  const result = response.choices[0].message.content;
-  if(result == null) return null;
-  return result;
 }

@@ -390,7 +390,8 @@ export async function runResponsesAgent({
     const parseResult = await parseResponsesTool(
       chatToolCall,
       config,
-      onAutofixJson
+      onAutofixJson,
+      abortSignal,
     );
 
     if(parseResult.status === "error") {
@@ -437,6 +438,7 @@ async function parseResponsesTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
   config: Config,
   onAutofixJson: (done: Promise<void>) => any,
+  abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
   if(!isValidToolName(name, config)) {
@@ -462,7 +464,7 @@ Please try calling a valid tool.
     });
 
     if(err) {
-      const fixPromise = autofixJson(config, args);
+      const fixPromise = autofixJson(config, args, abortSignal);
       onAutofixJson(fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
