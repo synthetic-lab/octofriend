@@ -527,7 +527,7 @@ Please try calling a valid tool.
     };
   } catch (e: unknown) {
     logger.error("verbose", e);
-    console.error("verbose", toolCall);
+    logger.error("verbose", toolCall);
     const error = e instanceof Error ? e.message : "Invalid JSON in tool call";
     return {
       status: "error",

@@ -15,6 +15,7 @@ import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
+import * as logger from "./logger.ts";
 
 export type RunArgs = {
   config: Config,
@@ -253,7 +254,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
-      console.error(e);
+      logger.error("verbose", e);
       set({
         history: [
           ...get().history,
