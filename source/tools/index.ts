@@ -19,12 +19,13 @@ export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> 
 ];
 
 export async function runTool(
+  abortSignal: AbortSignal,
   call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
   config: Config,
   modelOverride: string | null,
 ): Promise<string> {
   const def = lookup(call.tool);
-  return await def.run(call, config, modelOverride);
+  return await def.run(abortSignal, call, config, modelOverride);
 }
 
 export async function validateTool(

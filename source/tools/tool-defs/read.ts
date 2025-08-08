@@ -12,7 +12,7 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(call) {
+  async run(_, call) {
     const { filePath } = call.tool.arguments;
     return attempt(`No such file ${filePath}`, async () => {
       // Actually perform the read to ensure it's readable, and that the timestamps get updated

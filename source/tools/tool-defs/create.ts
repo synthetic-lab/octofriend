@@ -24,7 +24,7 @@ async function validate(toolCall: t.GetType<typeof Schema>) {
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(call) {
+  async run(_, call) {
     await validate(call.tool);
     const { filePath, content } = call.tool.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {

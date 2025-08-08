@@ -35,8 +35,9 @@ export type ToolDef<T> = {
   Schema: t.Type<T>,
   validate: (t: T, cfg: Config) => Promise<null>,
   run: (
+    abortSignal: AbortSignal,
     t: SequenceIdTagged<{ tool: T }>,
     cfg: Config,
-    modelOverride: string | null
+    modelOverride: string | null,
   ) => Promise<string>,
 };

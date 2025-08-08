@@ -40,6 +40,7 @@ export type UiState = {
     mode: "menu",
   } | {
     mode: "tool-waiting",
+    abortController: AbortController,
   },
   modelOverride: string | null,
   history: Array<HistoryItem>,
@@ -93,7 +94,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   abortResponse: () => {
     const { modeData } = get();
-    if (modeData.mode === "responding") {
+    if(modeData.mode === "responding" || modeData.mode === "tool-waiting") {
       modeData.abortController.abort();
     }
   },
@@ -140,10 +141,16 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ config, toolReq }) => {
     const modelOverride = get().modelOverride;
-    set({ modeData: { mode: "tool-waiting" } });
+    const abortController = new AbortController();
+    set({
+      modeData: {
+        mode: "tool-waiting",
+        abortController,
+      },
+    });
 
     try {
-      const content = await runTool({
+      const content = await runTool(abortController.signal, {
         id: toolReq.id,
         tool: toolReq.tool.function,
       }, config, modelOverride);
@@ -169,7 +176,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history });
     }
 
-    await get()._runAgent({ config });
+    if(abortController.signal.aborted) {
+      set({
+        modeData: { mode: "input" },
+      });
+    }
+    else {
+      await get()._runAgent({ config });
+    }
   },
 
   _runAgent: async ({ config }) => {
@@ -244,7 +258,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
       if(timeout) clearTimeout(timeout);
     } catch(e) {
-      if (abortController.signal.aborted) {
+      if(abortController.signal.aborted) {
         // Handle abort gracefully - return to input mode
         set({
           modeData: {

@@ -22,7 +22,7 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(call, config, modelOverride) {
+  async run(_, call, config, modelOverride) {
     const { url, includeMarkup } = call.tool.arguments;
     const response = await fetch(url);
     const full = await response.text();

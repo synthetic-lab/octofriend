@@ -24,7 +24,7 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
-  async run(call) {
+  async run(_, call) {
     const { cmd, timeout } = call.tool.arguments;
     return new Promise<string>((resolve, reject) => {
       const child = spawn(cmd, {

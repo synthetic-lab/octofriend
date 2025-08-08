@@ -14,7 +14,7 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(call) {
+  async run(_, call) {
     const dirpath = call.tool.arguments?.dirPath || process.cwd();
     await validate(call.tool);
     return attempt(`No such directory: ${dirpath}`, async () => {

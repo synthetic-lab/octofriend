@@ -46,7 +46,7 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
-  async run(call) {
+  async run(_, call) {
     const { filePath, edit } = call.tool.arguments;
     await fileTracker.assertCanEdit(filePath);
 
