@@ -99,6 +99,31 @@ mcpServers: {
 },
 ```
 
+## Using Octo with local LLMs
+
+If you're a relatively advanced user, you might want to use Octo with local
+LLMs. Assuming you already have a local LLM API server set up like ollama or
+llama.cpp, using Octo with it is super easy. When adding a model, make sure to
+select `Add a custom model...`. Then it'll prompt you for your API base URL,
+which is probably something like: `http://localhost:3000`, or whatever port
+you're running your local LLM server on. After that it'll prompt you for an
+environment variable to use as a credential; just use any non-empty environment
+variable and it should work (since most local LLM server ignore credentials
+anyway).
+
+You can also edit the Octofriend config directly in
+`~/.config/octofriend/octofriend.json5`. Just add the following to your list of
+models:
+
+```json5
+{
+  nickname: "The string to show in the UI for your model name",
+  baseUrl: "http://localhost:SOME_PORT",
+  apiEnvVar: "any non-empty env var",
+  model: "The model string used by the API server, e.g. openai/gpt-oss-20b",
+}
+```
+
 ## Debugging
 
 By default, Octo tries to present a pretty clean UI. If you want to see
