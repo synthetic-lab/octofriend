@@ -11,6 +11,7 @@ import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
+import * as logger from "../logger.ts";
 
 async function toModelMessage(
   messages: HistoryItem[],
@@ -491,8 +492,8 @@ Please try calling a valid tool.
       },
     };
   } catch (e: unknown) {
-    console.error(e);
-    console.error(toolCall);
+    logger.error("verbose", e);
+    logger.error("verbose", toolCall);
     const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
     return {
       status: "error",

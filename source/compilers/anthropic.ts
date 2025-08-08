@@ -9,6 +9,7 @@ import {
   AssistantItem,
   AnthropicAssistantData
 } from "../history.ts";
+import * as logger from "../logger.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -509,8 +510,8 @@ Please try calling a valid tool.
       },
     };
   } catch (e: unknown) {
-    console.error(e);
-    console.error(toolCall);
+    logger.error("verbose", e);
+    logger.error("verbose", toolCall);
     const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
     return {
       status: "error",

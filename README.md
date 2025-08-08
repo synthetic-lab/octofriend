@@ -98,3 +98,13 @@ mcpServers: {
   },
 },
 ```
+
+## Debugging
+
+By default, Octo tries to present a pretty clean UI. If you want to see
+underlying error messages from APIs or tool calls, run Octo with the
+`OCTO_VERBOSE` environment variable set to any truthy string; for example:
+
+```bash
+OCTO_VERBOSE=1 octofriend
+```

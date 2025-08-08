@@ -6,7 +6,6 @@ import { t } from "structural";
 import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, getModelFromConfig, useConfig
 } from "./config.ts";
-import OpenAI from "openai";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
@@ -28,6 +27,7 @@ import { useAppStore, RunArgs, useModel } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
+import { displayLog } from "./logger.ts";
 
 type Props = {
 	config: Config;
@@ -317,9 +317,24 @@ const MessageDisplayInner = React.memo(({ item }: {
 			Got <Text>{item.content.split("\n").length}</Text> lines of output
 		</Text>
 	}
-  if(item.type === "tool-malformed" || item.type === "tool-failed") {
+  if(item.type === "tool-malformed") {
     return <Text color="red">
-      Error: {item.error}
+      {
+        displayLog({
+          verbose: `Error: ${item.error}`,
+          info: "Malformed tool call. Retrying...",
+        })
+      }
+    </Text>
+  }
+  if(item.type === "tool-failed") {
+    return <Text color="red">
+      {
+        displayLog({
+          verbose: `Error: ${item.error}`,
+          info: "Tool returned an error...",
+        })
+      }
     </Text>
   }
   if(item.type === "tool-reject") {
