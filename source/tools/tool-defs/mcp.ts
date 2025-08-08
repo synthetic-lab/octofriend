@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ToolError, ToolDef } from "../common.ts";
+import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 
@@ -97,14 +97,33 @@ export default {
   Schema,
   ArgumentsSchema,
   validate: async () => null,
-  async run(_, call, config, modelOverride) {
+  async run(abortSignal, call, config, modelOverride) {
     const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.tool.arguments;
 
+    // Helper to race any promise against the abort signal
+    const withAbort = async <T>(p: Promise<T>): Promise<T> => {
+      if (abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      return await new Promise<T>((resolve, reject) => {
+        const onAbort = () => {
+          abortSignal.removeEventListener('abort', onAbort);
+          reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
+        };
+        abortSignal.addEventListener('abort', onAbort);
+        p.then((v) => {
+          abortSignal.removeEventListener('abort', onAbort);
+          resolve(v);
+        }, (e) => {
+          abortSignal.removeEventListener('abort', onAbort);
+          reject(e);
+        });
+      });
+    };
+
     try {
-      const client = await getMcpClient(serverName, config);
+      const client = await withAbort(getMcpClient(serverName, config));
 
       // List available tools to check if the requested tool exists
-      const tools = await client.listTools();
+      const tools = await withAbort(client.listTools());
       const tool = tools.tools.find(t => t.name === toolName);
 
       if (!tool) {
@@ -114,11 +133,11 @@ export default {
         );
       }
 
-      // Call the tool
-      const result = await client.callTool({
+      // Call the tool (cannot truly cancel, but we can ignore result post-abort)
+      const result = await withAbort(client.callTool({
         name: toolName,
         arguments: toolArgs,
-      }) as MCPResult;
+      }) as Promise<MCPResult>);
 
       // Worst case, the response sizes will be one token per byte. Cap responses to the context
       // length

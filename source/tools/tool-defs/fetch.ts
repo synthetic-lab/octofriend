@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, ToolDef } from "../common.ts";
+import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 
@@ -22,26 +22,33 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(_, call, config, modelOverride) {
+  async run(abortSignal, call, config, modelOverride) {
     const { url, includeMarkup } = call.tool.arguments;
-    const response = await fetch(url);
-    const full = await response.text();
-    const text = includeMarkup ? full : converter(full);
-    const { context } = getModelFromConfig(config, modelOverride);
-    if(text.length > context) {
-      throw new ToolError(
-        `Web content too large: ${text.length} bytes (max: ${context} bytes)`
-      );
-    }
-
-    if(!response.ok) {
-      if(response.status === 403) {
-        throw new ToolError(`Error: ${response.status}\n${text}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
+    try {
+      const response = await fetch(url, { signal: abortSignal });
+      const full = await response.text();
+      const text = includeMarkup ? full : converter(full);
+      const { context } = getModelFromConfig(config, modelOverride);
+      if(text.length > context) {
+        throw new ToolError(
+          `Web content too large: ${text.length} bytes (max: ${context} bytes)`
+        );
       }
-      throw new ToolError(`Error: ${response.status}\n${text}`);
-    }
 
-    return text;
+      if(!response.ok) {
+        if(response.status === 403) {
+          throw new ToolError(`Error: ${response.status}\n${text}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
+        }
+        throw new ToolError(`Error: ${response.status}\n${text}`);
+      }
+
+      return text;
+    } catch (e) {
+      if ((e as any)?.name === 'AbortError' || abortSignal.aborted) {
+        throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      }
+      throw e;
+    }
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
 

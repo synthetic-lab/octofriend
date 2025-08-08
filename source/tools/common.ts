@@ -10,6 +10,8 @@ export class ToolError extends Error {
   }
 }
 
+export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
+
 export async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promise<T> {
   try {
     return await callback();

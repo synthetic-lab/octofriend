@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { spawn } from "child_process";
-import { ToolError, ToolDef } from "../common.ts";
+import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 
 const ArgumentsSchema = t.subtype({
   cmd: t.str.comment("The command to run"),
@@ -24,7 +24,7 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
-  async run(_, call) {
+  async run(abortSignal, call) {
     const { cmd, timeout } = call.tool.arguments;
     return new Promise<string>((resolve, reject) => {
       const child = spawn(cmd, {
@@ -35,6 +35,24 @@ export default {
       });
 
       let output = '';
+      let aborted = false;
+
+      const onAbort = () => {
+        aborted = true;
+        // Try graceful termination first
+        child.kill('SIGTERM');
+        // Fallback to SIGKILL if it doesn't exit quickly
+        setTimeout(() => {
+          try { child.kill('SIGKILL'); } catch {}
+        }, 500).unref?.();
+      };
+
+      if (abortSignal.aborted) onAbort();
+      abortSignal.addEventListener('abort', onAbort);
+
+      const cleanup = () => {
+        abortSignal.removeEventListener('abort', onAbort);
+      };
 
       child.stdout.on('data', (data) => {
         output += data.toString();
@@ -45,6 +63,11 @@ export default {
       });
 
       child.on('close', (code) => {
+        cleanup();
+        if (aborted) {
+          reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
+          return;
+        }
         if (code === 0) {
           resolve(output);
         } else {
@@ -62,6 +85,11 @@ output: ${output}`));
       });
 
       child.on('error', (err) => {
+        cleanup();
+        if (aborted) {
+          reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
+          return;
+        }
         reject(new ToolError(`Command failed: ${err.message}`));
       });
     });
