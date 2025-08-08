@@ -10,8 +10,9 @@ export async function autofixEdit(
   config: Config,
   file: string,
   edit: DiffEdit,
+  abortSignal: AbortSignal,
 ): Promise<DiffEdit | null> {
-  const result = await autofix(config.diffApply, fixEditPrompt({ file, edit }));
+  const result = await autofix(config.diffApply, fixEditPrompt({ file, edit }), abortSignal);
   if(result == null) return null;
   try {
     const parsed = JSON.parse(result);
@@ -43,7 +44,8 @@ export async function autofixJson(config: Config, brokenJson: string) {
 
 async function autofix(
   config: { baseUrl: string, apiEnvVar: string, model: string } | null | undefined,
-  message: string
+  message: string,
+  abortSignal?: AbortSignal,
 ): Promise<string | null> {
   if(config == null) return null;
 
@@ -64,7 +66,7 @@ async function autofix(
     response_format: {
       type: "json_object",
     },
-  });
+  }, abortSignal ? { signal: abortSignal } : undefined);
 
   if(response.usage) {
     trackTokens(model, "input", response.usage.prompt_tokens);

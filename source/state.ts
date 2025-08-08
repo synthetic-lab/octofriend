@@ -34,6 +34,7 @@ export type UiState = {
     mode: "error-recovery",
   } | {
     mode: "diff-apply",
+    abortController: AbortController,
   } | {
     mode: "fix-json",
   } | {
@@ -94,7 +95,11 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   abortResponse: () => {
     const { modeData } = get();
-    if(modeData.mode === "responding" || modeData.mode === "tool-waiting") {
+    if(
+      modeData.mode === "responding" ||
+      modeData.mode === "tool-waiting" ||
+      modeData.mode === "diff-apply"
+    ) {
       modeData.abortController.abort();
     }
   },
@@ -308,11 +313,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({
           modeData: {
             mode: "diff-apply",
+            abortController,
           },
         });
         const path = fn.arguments.filePath;
         const file = await fs.readFile(path, "utf8");
-        const fix = await autofixEdit(config, file, fn.arguments.edit);
+        const fix = await autofixEdit(config, file, fn.arguments.edit, abortController.signal);
+        if (abortController.signal.aborted) {
+          set({ modeData: { mode: "input" } });
+          return;
+        }
         if(fix) {
           fixed = true;
           fn.arguments.edit = fix;
