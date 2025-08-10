@@ -14,5 +14,9 @@ TODO:
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Allow people to just copy/paste API keys in, rather than relying on env
   vars for everything
+- [ ] Prompt on app start for an API key if no API key is set up for the
+  default model
+- [ ] Prompt for api key for the cli prompt subcommand
+- [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use
   wandb-style authorize URLs if they exist!
