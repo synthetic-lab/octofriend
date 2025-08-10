@@ -20,3 +20,5 @@ TODO:
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use
   wandb-style authorize URLs if they exist!
+- [ ] Generate desktop notifs with configurable debounce when waiting for user
+  input via https://github.com/Aetherinox/node-toasted-notifier
