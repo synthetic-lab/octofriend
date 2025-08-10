@@ -12,5 +12,7 @@ TODO:
 - [ ] Link out directly to inference websites for API keys
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
-
-# Launch blocking
+- [ ] Allow people to just copy/paste API keys in, rather than relying on env
+  vars for everything
+- [ ] Add clickable URLs for known inference hosts to get an API key — use
+  wandb-style authorize URLs if they exist!
