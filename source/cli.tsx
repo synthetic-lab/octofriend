@@ -6,7 +6,7 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import { readConfig, readMetadata } from "./config.ts";
+import { readConfig, readMetadata, readKeyForModel } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
@@ -23,16 +23,15 @@ const cli = new Command()
 .action(async (opts) => {
 	const metadata = await readMetadata();
 	const { config, configPath } = await loadConfig(opts.config);
-  for(const model of config.models) {
-    if(!process.env[model.apiEnvVar]) {
-      console.error(`
-Octo is set to use the ${model.apiEnvVar} env var to authenticate with the ${model.nickname} API,
-but that env var isn't set in your current shell.
+  const defaultModel = config.models[0];
+  if(!await readKeyForModel(defaultModel)) {
+    console.error(`
+Octo is configured to use ${defaultModel.nickname} with the ${defaultModel.baseUrl} API,
+but there aren't API keys for that model set up.
 
 Hint: do you need to re-source your .bash_profile or .zshrc?
   `.trim());
-      process.exit(1);
-    }
+    process.exit(1);
   }
 
   // Connect to all MCP servers on boot
@@ -105,13 +104,17 @@ cli.command("prompt")
     process.exit(1);
   }
 
-  if(!process.env[model.apiEnvVar]) {
-    console.error(`${model.nickname} is set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in your current shell. Do you need to re-source your .bash_profile or .zshrc?`);
+  const apiKey = await readKeyForModel(model);
+  if(apiKey == null) {
+    console.error(`${model.nickname} doesn't have an API key set up.`);
+    if(model.apiEnvVar) {
+      console.error(`It was set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in the current shell. Hint: do you need to re-source your .bash_profile or .zshrc?`);
+    }
     process.exit(1);
   }
 
   const client = new OpenAI({
-    apiKey: process.env[model.apiEnvVar],
+    apiKey,
     baseURL: model.baseUrl,
   });
 

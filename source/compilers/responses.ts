@@ -1,7 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
-import { Config, getModelFromConfig } from "../config.ts";
+import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId, AssistantItem } from "../history.ts";
 import { systemPrompt } from "../system-prompt.ts";
@@ -269,9 +269,10 @@ export async function runResponsesAgent({
     reasoningConfig.reasoningSummary = "auto";
   }
 
+  const apiKey = await assertKeyForModel(modelConfig);
   const openai = createOpenAI({
     baseURL: modelConfig.baseUrl,
-    apiKey: process.env[modelConfig.apiEnvVar],
+    apiKey,
   });
 
   const result = streamText({

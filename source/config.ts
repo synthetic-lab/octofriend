@@ -1,11 +1,16 @@
 import React from "react";
 import { t } from "structural";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
+import { fileExists } from "./fs-utils.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
+
+const KEY_FILE = path.join(os.homedir(), ".config/octofriend/keys");
+const KeyConfigSchema = t.dict(t.str);
 
 const McpServerConfigSchema = t.exact({
   command: t.str,
@@ -20,19 +25,19 @@ const ConfigSchema = t.exact({
     ),
     nickname: t.str,
     baseUrl: t.str,
-    apiEnvVar: t.str,
+    apiEnvVar: t.optional(t.str),
     model: t.str,
     context: t.num,
     reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
   })),
   diffApply: t.optional(t.exact({
     baseUrl: t.str,
-    apiEnvVar: t.str,
+    apiEnvVar: t.optional(t.str),
     model: t.str,
   })),
   fixJson: t.optional(t.exact({
     baseUrl: t.str,
-    apiEnvVar: t.str,
+    apiEnvVar: t.optional(t.str),
     model: t.str,
   })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
@@ -60,6 +65,35 @@ export function useSetConfig() {
     await fs.writeFile(configPath, json5.stringify(c, null, 2));
     set(c);
   };
+}
+
+export async function assertKeyForModel(model: { baseUrl: string, apiEnvVar?: string }): Promise<string> {
+  const key = await readKeyForModel(model);
+  if(key == null) throw new Error(`No API key defined for ${model.baseUrl}`);
+  return key;
+}
+
+export async function readKeyForModel(model: { baseUrl: string, apiEnvVar?: string }) {
+  if(model.apiEnvVar) return process.env[model.apiEnvVar] || null;
+  const keys = await readKeys();
+  return keys[model.baseUrl] || null;
+}
+
+export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {
+  const keys = await readKeys();
+  keys[model.baseUrl] = apiKey;
+  await fs.writeFile(KEY_FILE, json5.stringify({
+    [model.baseUrl]: apiKey,
+  }), {
+    mode: 0o600,
+  });
+}
+
+async function readKeys() {
+  const exists = await fileExists(KEY_FILE);
+  if(!exists) return {};
+  const keyFile = await fs.readFile(KEY_FILE, "utf8");
+  return KeyConfigSchema.slice(json5.parse(keyFile));
 }
 
 export function getModelFromConfig(config: Config, modelOverride: string | null) {

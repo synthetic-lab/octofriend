@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
-import { Config, getModelFromConfig } from "../config.ts";
+import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import {
   HistoryItem,
@@ -206,13 +206,13 @@ export async function runAnthropicAgent({
     });
   });
 
+  const apiKey = await assertKeyForModel(modelConfig);
   const client = new Anthropic({
     baseURL: modelConfig.baseUrl,
-    apiKey: process.env[modelConfig.apiEnvVar],
+    apiKey,
   });
 
-  const thinking: { thinking?: { type: "enabled", budget_tokens: number } }  = {
-  };
+  const thinking: { thinking?: { type: "enabled", budget_tokens: number } } = {};
   if(modelConfig.reasoning) {
     thinking.thinking = {
       type: "enabled",

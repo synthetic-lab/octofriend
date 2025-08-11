@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { t } from "structural";
-import { Config } from "../config.ts";
+import { Config, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "../autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -43,15 +43,16 @@ export async function autofixJson(config: Config, brokenJson: string, abortSigna
 }
 
 async function autofix(
-  config: { baseUrl: string, apiEnvVar: string, model: string } | null | undefined,
+  config: { baseUrl: string, apiEnvVar?: string, model: string } | null | undefined,
   message: string,
   abortSignal?: AbortSignal,
 ): Promise<string | null> {
   if(config == null) return null;
 
+  const apiKey = await assertKeyForModel({ baseUrl: config.baseUrl });
   const client = new OpenAI({
     baseURL: config.baseUrl,
-    apiKey: process.env[config.apiEnvVar],
+    apiKey,
   });
   const model = config.model;
   try {

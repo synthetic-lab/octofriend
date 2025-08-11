@@ -4,11 +4,12 @@ import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";
-import { AddModelFlow } from "./add-model-flow.tsx";
+import { FullAddModelFlow, CustomModelFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "./providers.ts";
 import { OverrideEnvVar } from "./override-env-var.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
+import { SetApiKey } from "./set-api-key.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void,
@@ -29,6 +30,7 @@ type StepData = {
   step: "found",
   provider: ProviderConfig,
   overrideEnvVar: string | null,
+  useEnvVar: boolean,
 } | {
   step: "missing",
   provider: ProviderConfig,
@@ -36,6 +38,10 @@ type StepData = {
   step: "override-model-string",
   provider: ProviderConfig,
   overrideEnvVar: string | null,
+  useEnvVar: boolean,
+} | {
+  step: "set-api-key",
+  provider: ProviderConfig,
 };
 
 function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvVar: string | null) {
@@ -55,7 +61,9 @@ export function ModelSetup({
   useInput((_, key) => {
     if(key.escape) {
       if(stepData.step === "initial") onCancel();
-      else dispatch({ force: true, to: { step: "initial" } });
+      else if(stepData.step !== "custom") { // custom handles its own cancellation
+        dispatch({ force: true, to: { step: "initial" } });
+      }
     }
   });
 
@@ -69,6 +77,7 @@ export function ModelSetup({
           step: "found",
           provider,
           overrideEnvVar: null,
+          useEnvVar: true,
         },
       });
     }
@@ -94,7 +103,7 @@ export function ModelSetup({
       />
 
     case "custom":
-      return <AddModelFlow onComplete={(model) => onComplete([ model ])} onCancel={() => {
+      return <FullAddModelFlow onComplete={(model) => onComplete([ model ])} onCancel={() => {
         dispatch({
           from: "custom",
           to: { step: "initial" },
@@ -107,15 +116,18 @@ export function ModelSetup({
         provider={stepData.provider}
         onImport={models => {
           onComplete(models.map(model => {
-            let t = {};
+            let t: Partial<Config["models"][number]> = {};
             if(stepData.provider.type) t = { type: stepData.provider.type };
-            return {
+            const base: Config["models"][number] = {
               ...model,
               nickname: `${model.nickname} (${stepData.provider.name})`,
-              apiEnvVar: getEnvVar(stepData.provider, config, stepData.overrideEnvVar),
               baseUrl: stepData.provider.baseUrl,
               ...t,
             };
+            if(stepData.useEnvVar) {
+              base.apiEnvVar = getEnvVar(stepData.provider, config, stepData.overrideEnvVar);
+            }
+            return base;
           }));
         }}
         onCancel={() => {
@@ -126,6 +138,7 @@ export function ModelSetup({
             step: "override-model-string",
             provider: stepData.provider,
             overrideEnvVar: stepData.overrideEnvVar,
+            useEnvVar: stepData.useEnvVar,
           } });
         }}
       />
@@ -142,6 +155,9 @@ export function ModelSetup({
               provider: stepData.provider,
             },
           });
+        }}
+        onSetApiKey={() => {
+          dispatch({ from: "missing", to: { step: "set-api-key", provider: stepData.provider } });
         }}
         onCancel={() => {
           dispatch({ from: "missing", to: { step: "initial" } });
@@ -162,13 +178,34 @@ export function ModelSetup({
               step: "found",
               provider: stepData.provider,
               overrideEnvVar: envVar,
+              useEnvVar: true,
             },
           });
         }}
       />
 
+    case "set-api-key":
+      return <SetApiKey
+        providerName={stepData.provider.name}
+        baseUrl={stepData.provider.baseUrl}
+        onComplete={() => {
+          dispatch({
+            from: "set-api-key",
+            to: {
+              step: "found",
+              provider: stepData.provider,
+              overrideEnvVar: null,
+              useEnvVar: false,
+            },
+          });
+        }}
+        onCancel={() => {
+          dispatch({ from: "set-api-key", to: { step: "missing", provider: stepData.provider } });
+        }}
+      />
+
     case "override-model-string":
-      return <AddModelFlow
+      return <CustomModelFlow
         onComplete={model => {
           let modelClone = { ...model };
           if(stepData.provider.type) {
@@ -183,17 +220,14 @@ export function ModelSetup({
               step: "found",
               provider: stepData.provider,
               overrideEnvVar: stepData.overrideEnvVar,
+              useEnvVar: stepData.useEnvVar,
             },
           });
         }}
-        startingStep={{
-          stepVar: "model",
-          modelProgress: {
-            baseUrl: stepData.provider.baseUrl,
-            apiEnvVar: getEnvVar(stepData.provider, config, stepData.overrideEnvVar),
-          },
-        }}
-        skipExamples
+        baseUrl={stepData.provider.baseUrl}
+        envVar={
+          stepData.useEnvVar ? stepData.overrideEnvVar || stepData.provider.envVar : undefined
+        }
       />
   }
 }
@@ -334,13 +368,35 @@ function ImportModelsFrom({ config, provider, onImport, onCancel, onCustomModel 
   </CenteredBox>
 }
 
-function MissingEnvVar({ provider, config, onShouldOverride, onCancel }: {
+function MissingEnvVar({ provider, config, onShouldOverride, onSetApiKey, onCancel }: {
   provider: ProviderConfig,
   config: Config | null,
   onShouldOverride: () => any,
+  onSetApiKey: () => any,
   onCancel: () => any,
 }) {
   const envVar = getEnvVar(provider, config, null);
+  const items = [
+    {
+      label: `I use a different environment variable for ${provider.name}`,
+      value: "override" as const,
+    },
+    {
+      label: `Enter an API key now for ${provider.name}`,
+      value: "set-key" as const,
+    },
+    {
+      label: "Go back",
+      value: "back" as const,
+    },
+  ];
+
+  const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "override") onShouldOverride();
+    else if(item.value === "set-key") onSetApiKey();
+    else onCancel();
+  }, [ onShouldOverride, onSetApiKey, onCancel ]);
+
   return <CenteredBox>
     <MenuHeader title="Default API key is missing" />
 
@@ -355,11 +411,11 @@ function MissingEnvVar({ provider, config, onShouldOverride, onCancel }: {
       </Text>
     </Box>
 
-    <ConfirmDialog
-      confirmLabel={`I use a different environment variable for ${provider.name}`}
-      rejectLabel="Go back"
-      onConfirm={onShouldOverride}
-      onReject={onCancel}
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ItemComponent}
     />
   </CenteredBox>
 }

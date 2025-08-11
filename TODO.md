@@ -6,19 +6,29 @@ TODO:
   to work with Octo
 - [ ] Refactor History/IR for type safety: link back between i.e. tool calls,
   tool outputs, and original assistant messages
-- [ ] Refactor menu system to use a stack of screens that can consistently be
-  popped, rather than ad-hoc state linking. The stack entries are typed and
-  each different state/internal-URI can have typed data associated with it.
+- [ ] Refactor menu system to use the new Router/Back stuff built for the add
+  model flow.
 - [ ] Link out directly to inference websites for API keys
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Allow people to just copy/paste API keys in, rather than relying on env
   vars for everything
+  * port first time setup + fast model import flow to use the new auth stuff,
+    instead of hardcoding separate flows
+  * make sure first-time setup automatically stores the synthetic override env
+    var if there is one
+  * make sure enabling autofix from the menu automatically stores the synthetic
+    override env var if there is one
+  * auto-detect missing API keys for diff-apply and fix-json at boot if they're
+    configured to be on, similar to detecting default model issues
 - [ ] Prompt on app start for an API key if no API key is set up for the
-  default model
+  default model. Ditto for autofix models if they're turned on
 - [ ] Prompt for api key for the cli prompt subcommand
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use
   wandb-style authorize URLs if they exist!
 - [ ] Generate desktop notifs with configurable debounce when waiting for user
   input via https://github.com/Aetherinox/node-toasted-notifier
+- [ ] Consider not keeping the current files up-to-date and instead only
+  updating them on read tool call. Could be confusing to see a bunch of stuff
+  change in the history without telling the LLM what's going on

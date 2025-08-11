@@ -2,12 +2,12 @@ import React, { useState, useCallback } from "react";
 import { Box, useInput } from "ink";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
-import { Config } from "../config.ts";
-import { AddModelFlow } from "./add-model-flow.tsx";
+import { Config, readKeyForModel } from "../config.ts";
+import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
-import { OverrideEnvVar } from "./override-env-var.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
+import { CustomAuthFlow } from "./add-model-flow.tsx";
 
 export type AutofixModelProps = {
   config: Config | null,
@@ -27,7 +27,7 @@ const SYNTH_KEY = keyFromName(SYNTHETIC_PROVIDER.name);
 export function AutofixModelMenu({
   config, onComplete, onCancel, defaultModel, modelNickname, children,
 }: AutofixModelProps) {
-  const [step, setStep] = useState<'choose' | 'custom' | 'synthetic-overwrite'>('choose');
+  const [step, setStep] = useState<'choose' | 'custom' | 'missing-auth'>('choose');
 
   useInput((_, key) => {
     if(key.escape) onCancel();
@@ -48,7 +48,7 @@ export function AutofixModelMenu({
     },
   ];
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback(async (item: (typeof items)[number]) => {
     if(item.value === "synthetic") {
       const defaultEnvVar = SYNTHETIC_PROVIDER.envVar;
 
@@ -62,7 +62,16 @@ export function AutofixModelMenu({
           model: defaultModel,
         });
       } else {
-        setStep('synthetic-overwrite');
+        const key = await readKeyForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl });
+        if(key !== null) {
+          onComplete({
+            baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            model: defaultModel,
+          });
+        }
+        else {
+          setStep('missing-auth');
+        }
       }
       return;
     }
@@ -73,28 +82,40 @@ export function AutofixModelMenu({
 
   if(step === 'custom') {
     return (
-      <AddModelFlow
+      <CustomAutofixFlow
         onComplete={(model) => {
-          onComplete({
+          const val = {
             baseUrl: model.baseUrl,
             apiEnvVar: model.apiEnvVar,
             model: model.model,
-          });
+          };
+          if(model.apiEnvVar == null) delete val.apiEnvVar;
+          onComplete(val);
         }}
         onCancel={() => setStep('choose')}
-        skipExamples={true}
       />
     );
   }
 
-  if (step === 'synthetic-overwrite') {
-    return <OverrideEnvVar onSubmit={(envVar) => {
-      onComplete({
-        baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-        apiEnvVar: envVar,
-        model: defaultModel,
-      })
-    }} provider={SYNTHETIC_PROVIDER} />
+  if (step === 'missing-auth') {
+    return <CustomAuthFlow
+      baseUrl={SYNTHETIC_PROVIDER.baseUrl}
+      onCancel={() => setStep("choose")}
+      onComplete={(envVar) => {
+        if(envVar) {
+          onComplete({
+            baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            apiEnvVar: envVar,
+            model: defaultModel,
+          })
+        } else {
+          onComplete({
+            baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            model: defaultModel,
+          });
+        }
+      }}
+    />
   }
 
   return (

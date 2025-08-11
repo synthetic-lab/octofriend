@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
-import { Config, getModelFromConfig } from "./config.ts";
+import { Config, getModelFromConfig, assertKeyForModel } from "./config.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "./xml.ts";
 import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
@@ -211,9 +211,10 @@ export async function runAgent({
   abortSignal: AbortSignal,
 }) {
   const model = getModelFromConfig(config, modelOverride);
+  const apiKey = await assertKeyForModel(model);
   const client = new OpenAI({
     baseURL: model.baseUrl,
-    apiKey: process.env[model.apiEnvVar],
+    apiKey,
   });
 
   const processedHistory = applyContextWindow(history, model.context);
