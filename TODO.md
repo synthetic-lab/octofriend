@@ -17,6 +17,7 @@ TODO:
     override env var if there is one
   * auto-detect missing API keys for diff-apply and fix-json at boot if they're
     configured to be on, similar to detecting default model issues
+  * unify first-time-setup autofix setup with the rest of auth
 - [ ] Prompt on app start for an API key if no API key is set up for the
   default model. Ditto for autofix models if they're turned on
 - [ ] Prompt for api key for the cli prompt subcommand
