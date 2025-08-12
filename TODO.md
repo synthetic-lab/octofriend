@@ -8,7 +8,6 @@ TODO:
   tool outputs, and original assistant messages
 - [ ] Refactor menu system to use the new Router/Back stuff built for the add
   model flow.
-- [ ] Link out directly to inference websites for API keys
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Allow people to just copy/paste API keys in, rather than relying on env
