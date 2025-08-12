@@ -10,12 +10,8 @@ TODO:
   model flow.
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
-- [ ] Allow people to just copy/paste API keys in, rather than relying on env
-  vars for everything
-  * make sure enabling autofix from the menu automatically stores the synthetic
-    override env var if there is one
-  * auto-detect missing API keys for diff-apply and fix-json at boot if they're
-    configured to be on, similar to detecting default model issues
+- [ ] Auto-detect missing API keys for diff-apply and fix-json at boot if they're
+  configured to be on, similar to detecting default model issues
 - [ ] Prompt on app start for an API key if no API key is set up for the
   default model. Ditto for autofix models if they're turned on
 - [ ] Prompt for api key for the cli prompt subcommand

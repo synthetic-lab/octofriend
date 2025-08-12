@@ -13,7 +13,7 @@ import { THEME_COLOR } from "./theme.ts";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
-import { SYNTHETIC_PROVIDER } from "./components/providers.ts";
+import { SYNTHETIC_PROVIDER, keyFromName } from "./components/providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 
 type SetupStep = {
@@ -43,7 +43,10 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
   const app = useApp();
 
   const addOverride = useCallback((override: Record<string, string>) => {
-    setDefaultApiKeyOverrides(override);
+    setDefaultApiKeyOverrides({
+      ...defaultApiKeyOverrides,
+      ...override,
+    });
   }, [ defaultApiKeyOverrides ]);
 
   useLayoutEffect(() => {
@@ -81,7 +84,15 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
 
   if(step.step === "welcome") return <WelcomeScreen onContinue={handleWelcomeContinue} />;
   if(step.step === "autofix-setup") {
-    return <AutofixSetup onComplete={autofixComplete} onSkip={autofixSkip} />;
+    return <AutofixSetup
+      onComplete={autofixComplete}
+      onSkip={autofixSkip}
+      onOverrideDefaultApiKey={envVar => {
+        addOverride({
+          [keyFromName(SYNTHETIC_PROVIDER.name)]: envVar,
+        });
+      }}
+    />;
   }
   if(step.step === "autofix-complete") {
     return <AutofixCompleteScreen onContinue={autofixCompleteContinue} />;
@@ -164,9 +175,10 @@ type AutofixStates = "choose"
                    | "diff-apply-custom"
                    | "fix-json-custom"
                    ;
-function AutofixSetup({ onComplete, onSkip }: {
+function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
   onComplete: (config: { diffApply: Config["diffApply"], fixJson: Config["fixJson"] }) => void,
   onSkip: () => void,
+  onOverrideDefaultApiKey: (envVar: string) => void,
 }) {
   const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
   const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
@@ -218,7 +230,10 @@ function AutofixSetup({ onComplete, onSkip }: {
         const auth: {
           apiEnvVar?: string
         } = {};
-        if(envVar) auth.apiEnvVar = envVar;
+        if(envVar) {
+          auth.apiEnvVar = envVar;
+          onOverrideDefaultApiKey(envVar);
+        }
         onComplete({
           diffApply: {
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,

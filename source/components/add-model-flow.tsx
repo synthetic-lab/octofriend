@@ -90,11 +90,13 @@ const baseUrl = fullFlow.withRoutes(
       }}
     >
       <Box flexDirection="column">
-        <Box marginBottom={1}>
-          <Text>
-            (For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)
-          </Text>
-        </Box>
+        {
+          props.renderExamples && <Box marginBottom={1}>
+            <Text>
+              (For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)
+            </Text>
+          </Box>
+        }
         <Text>
           You can usually find this information in your inference provider's documentation.
         </Text>
@@ -166,24 +168,30 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
       onSubmit={envVar => to.postAuth({ ...props, envVar })}
     >
       <Box flexDirection="column">
-        <Box marginBottom={1}>
-          <Text>
-            (For example, MOONSHOT_API_KEY)
-          </Text>
-        </Box>
+        {
+          props.renderExamples && <Box marginBottom={1}>
+            <Text>
+              (For example, MOONSHOT_API_KEY)
+            </Text>
+          </Box>
+        }
         <Text>
           You can typically find your API key on your account or settings page on your
           inference provider's website.
         </Text>
-        <Text>
-          After getting an API key, make sure to export it in your shell; for example:
-        </Text>
-        <Text bold>
-          export MOONSHOT_API_KEY="your-api-key-here"
-        </Text>
-        <Text>
-          (If you're running a local LLM, you can use any non-empty env var.)
-        </Text>
+        {
+          props.renderExamples && <>
+            <Text>
+              After getting an API key, make sure to export it in your shell; for example:
+            </Text>
+            <Text bold>
+              export MOONSHOT_API_KEY="your-api-key-here"
+            </Text>
+            <Text>
+              (If you're running a local LLM, you can use any non-empty env var.)
+            </Text>
+          </>
+        }
       </Box>
     </Step>
   </Back>
@@ -205,7 +213,7 @@ const apiKey = fullFlow.withRoutes(
 });
 
 function PostAuth(props: FullFlowRouteData["postAuth"] & {
-  handleAuth: () => any,
+  handleAuth: () => void,
 }) {
   useEffect(() => {
     props.handleAuth();
@@ -459,7 +467,7 @@ const customAuthRoutes = customAuthFlow.route({
   envVar, apiKey,
   postAuth: _ => props => {
     const done = useContext(customAuthDoneCtx);
-    return <PostAuth { ...props } handleAuth={done(props.envVar)} />
+    return <PostAuth { ...props } handleAuth={() => done(props.envVar)} />
   },
 });
 
