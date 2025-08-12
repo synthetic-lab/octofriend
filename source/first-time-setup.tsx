@@ -360,33 +360,32 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <MenuHeader title="Welcome to Octo!" />
 
     <Text>
-      You don't seem to have a config file yet, so let's get you set up for the first time.
+      You don't seem to have a config file, so let's set you up for the first time.
     </Text>
 
     <Box marginTop={1}>
       <Text>
-        Octo lets you choose the LLM that powers it. Currently, our recommended day-to-day coding
-        model to use with Octo is either GPT-5, or Claude 4 Sonnet. If you want more privacy,
+        Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
+        model to use with Octo is either GPT-5, or Claude 4 Sonnet. If you want more data privacy,
         another great model is GLM-4.5, an open-source coding model you can use via Synthetic, a
-        privacy-focused inference company (that we run!), or any OpenAI-compatible inference
-        provider.
+        privacy-focused inference company (that we run!).
       </Text>
     </Box>
 
     <Box marginTop={1}>
       <Text color="gray">
-        Be forewarned if you're considering using OpenRouter for open-source models: OpenRouter
-        doesn't test model implementations, and quality can vary drastically: many implementations
-        are broken. We'd strongly recommend using Synthetic instead.
+        Be forewarned about using OpenRouter for open-source models: OpenRouter doesn't test model
+        implementations, and quality can vary drastically. Many are broken.
+        We'd strongly recommend using Synthetic instead.
       </Text>
     </Box>
 
     <Box marginTop={1}>
       <Text>
         You can add multiple models via Octo's menu: Octo lets you switch models mid-conversation as
-        needed to handle different problems. It's often helpful to add a strong reasoning model in
-        addition to your day-to-day coding model to help with tricky debugging; for example,
-        DeepSeek R1-0528, Grok 4, or Claude 4.1 Opus.
+        needed to handle different problems. It's often helpful to add a couple of strong models; if
+        one gets stuck, another may often be able to solve your problem. Octo works with any OpenAI-
+        or Anthropic-compatible API.
       </Text>
     </Box>
 
