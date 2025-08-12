@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   variables for API key management. If the default env var isn't detected —
   like, say, `SYNTHETIC_API_KEY` for Synthetic models — you're now able to set
   an API key within Octo. Keys are stored in a special
-  `~/.config/octofriend/keys.json5`, so that you can keep your main
+  `~/.config/octofriend/keys.json5` file, so that you can keep your main
   `~/.config/octofriend.json5` config in dotfiles repositories without leaking
   secret API keys.
 
