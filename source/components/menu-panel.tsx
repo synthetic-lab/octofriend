@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
+import { CenteredBox } from "./centered-box.tsx";
 
 type Item<V> = {
   label: string,
@@ -12,6 +13,7 @@ type MenuPanelProps<V> = {
   items: Array<Item<V>>,
   readonly onSelect: (item: Item<V>) => any,
   title: string,
+  children?: React.ReactNode,
 };
 
 export const MenuHeader = React.memo(({ title }: { title: string }) => {
@@ -25,9 +27,16 @@ export const MenuHeader = React.memo(({ title }: { title: string }) => {
   </Box>
 });
 
-export function MenuPanel<V>({ items, onSelect, title }: MenuPanelProps<V>) {
+export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProps<V>) {
   return <Box flexDirection="column">
     <MenuHeader title={title} />
+    {
+      children && <CenteredBox>
+        <Box marginBottom={1} marginTop={-1}>
+          { children }
+        </Box>
+      </CenteredBox>
+    }
     <Box justifyContent="center">
       <SelectInput
         items={items}

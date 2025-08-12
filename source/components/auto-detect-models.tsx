@@ -4,12 +4,10 @@ import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";
-import { FullAddModelFlow, CustomModelFlow } from "./add-model-flow.tsx";
+import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "./providers.ts";
-import { OverrideEnvVar } from "./override-env-var.tsx";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
-import { SetApiKey } from "./set-api-key.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void,
@@ -24,9 +22,6 @@ type StepData = {
 } | {
   step: "custom",
 } | {
-  step: "override-env-var",
-  provider: ProviderConfig,
-} | {
   step: "found",
   provider: ProviderConfig,
   overrideEnvVar: string | null,
@@ -39,9 +34,6 @@ type StepData = {
   provider: ProviderConfig,
   overrideEnvVar: string | null,
   useEnvVar: boolean,
-} | {
-  step: "set-api-key",
-  provider: ProviderConfig,
 };
 
 function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvVar: string | null) {
@@ -144,64 +136,27 @@ export function ModelSetup({
       />
 
     case "missing":
-      return <MissingEnvVar
-        provider={stepData.provider}
-        config={config}
-        onShouldOverride={() => {
+      return <CustomAuthFlow
+        onComplete={envVar => {
+          if(envVar) {
+            onOverrideDefaultApiKey({
+              [keyFromName(stepData.provider.name)]: envVar,
+            });
+          }
           dispatch({
             from: "missing",
             to: {
-              step: "override-env-var",
+              step: "found",
               provider: stepData.provider,
-            },
+              overrideEnvVar: envVar || null,
+              useEnvVar: false,
+            }
           });
-        }}
-        onSetApiKey={() => {
-          dispatch({ from: "missing", to: { step: "set-api-key", provider: stepData.provider } });
         }}
         onCancel={() => {
           dispatch({ from: "missing", to: { step: "initial" } });
         }}
-      />
-
-    case "override-env-var":
-      return <OverrideEnvVar
-        provider={stepData.provider}
-        onSubmit={envVar => {
-          onOverrideDefaultApiKey({
-            [keyFromName(stepData.provider.name)]: envVar,
-          });
-
-          dispatch({
-            from: "override-env-var",
-            to: {
-              step: "found",
-              provider: stepData.provider,
-              overrideEnvVar: envVar,
-              useEnvVar: true,
-            },
-          });
-        }}
-      />
-
-    case "set-api-key":
-      return <SetApiKey
-        providerName={stepData.provider.name}
         baseUrl={stepData.provider.baseUrl}
-        onComplete={() => {
-          dispatch({
-            from: "set-api-key",
-            to: {
-              step: "found",
-              provider: stepData.provider,
-              overrideEnvVar: null,
-              useEnvVar: false,
-            },
-          });
-        }}
-        onCancel={() => {
-          dispatch({ from: "set-api-key", to: { step: "missing", provider: stepData.provider } });
-        }}
       />
 
     case "override-model-string":
@@ -356,58 +311,6 @@ function ImportModelsFrom({ config, provider, onImport, onCancel, onCustomModel 
     <Box marginBottom={1}>
       <Text>
         Which of the following models would you like to import?
-      </Text>
-    </Box>
-
-    <SelectInput
-      items={items}
-      onSelect={onSelect}
-      indicatorComponent={IndicatorComponent}
-      itemComponent={ItemComponent}
-    />
-  </CenteredBox>
-}
-
-function MissingEnvVar({ provider, config, onShouldOverride, onSetApiKey, onCancel }: {
-  provider: ProviderConfig,
-  config: Config | null,
-  onShouldOverride: () => any,
-  onSetApiKey: () => any,
-  onCancel: () => any,
-}) {
-  const envVar = getEnvVar(provider, config, null);
-  const items = [
-    {
-      label: `I use a different environment variable for ${provider.name}`,
-      value: "override" as const,
-    },
-    {
-      label: `Enter an API key now for ${provider.name}`,
-      value: "set-key" as const,
-    },
-    {
-      label: "Go back",
-      value: "back" as const,
-    },
-  ];
-
-  const onSelect = useCallback((item: (typeof items)[number]) => {
-    if(item.value === "override") onShouldOverride();
-    else if(item.value === "set-key") onSetApiKey();
-    else onCancel();
-  }, [ onShouldOverride, onSetApiKey, onCancel ]);
-
-  return <CenteredBox>
-    <MenuHeader title="Default API key is missing" />
-
-    <Text>
-      It looks like the default environment variable for {provider.name} — {envVar} — isn't
-      exported in your current shell.
-    </Text>
-
-    <Box marginY={1}>
-      <Text>
-        (Hint: do you need to re-source your .bash_profile or .zshrc?)
       </Text>
     </Box>
 

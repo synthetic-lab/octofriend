@@ -4,14 +4,17 @@ import TextInput from "ink-text-input";
 import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
 import { writeKeyForModel } from "../config.ts";
+import { PROVIDERS } from "./providers.ts";
 
-export function SetApiKey({ providerName, baseUrl, onComplete, onCancel }: {
-  providerName?: string,
+export function SetApiKey({ baseUrl, onComplete, onCancel }: {
   baseUrl: string,
   onComplete: (apiKey: string) => any,
   onCancel: () => any,
 }) {
-  const name = providerName || baseUrl;
+  const provider = Object.values(PROVIDERS).find(provider => {
+    return provider.baseUrl === baseUrl;
+  });
+  const name = provider?.name || baseUrl;
   const [ saving, setSaving ] = useState(false);
   const [ varValue, setVarValue ] = useState("");
   const [ errorMessage, setErrorMessage ] = useState<null | string>(null);
@@ -46,10 +49,10 @@ export function SetApiKey({ providerName, baseUrl, onComplete, onCancel }: {
   }
 
   return <CenteredBox>
-    <MenuHeader title="Set default API key" />
+    <MenuHeader title="Set the API key" />
 
     <Text>
-      Enter your API key for {name}
+      Enter your API key for {name}{name !== baseUrl ? "" : "." }
     </Text>
 
     <Box marginY={1} width={80}>

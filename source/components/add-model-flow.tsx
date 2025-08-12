@@ -9,6 +9,7 @@ import { trackTokens } from "../token-tracker.ts";
 import { SetApiKey } from "./set-api-key.tsx";
 import { MenuPanel } from "./menu-panel.tsx";
 import { router, Back } from "../router.tsx";
+import { PROVIDERS } from "./providers.ts";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false, error: string };
@@ -24,7 +25,7 @@ type AddModelStep<T> = {
 
 type ModelStepRoute<T> = T & {
   renderExamples: boolean,
-  done: (data: Model) => any,
+  done: (data: Model) =>  any,
   cancel: () => any,
 };
 
@@ -124,12 +125,23 @@ function AuthAsk(props: FullFlowRouteData["authAsk"] & Pick<Transitions<void>, "
     else props.onSelect(item.value);
   }, []);
 
+  const provider = Object.values(PROVIDERS).find(provider => {
+    return provider.baseUrl === props.baseUrl;
+  });
+
   return <Back go={props.back}>
     <MenuPanel
       title="How do you want to authenticate?"
       items={items}
       onSelect={onSelect}
-    />
+    >
+      {
+        provider && <Text>
+          It looks like you don't have the default {provider.envVar} environment variable defined
+          in your current shell. How do you want to authenticate with {provider.name}?
+        </Text>
+      }
+    </MenuPanel>
   </Back>
 }
 

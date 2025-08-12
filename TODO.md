@@ -13,10 +13,6 @@ TODO:
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Allow people to just copy/paste API keys in, rather than relying on env
   vars for everything
-  * port first time setup + fast model import flow to use the new auth stuff,
-    instead of hardcoding separate flows
-  * make sure first-time setup automatically stores the synthetic override env
-    var if there is one
   * make sure enabling autofix from the menu automatically stores the synthetic
     override env var if there is one
   * auto-detect missing API keys for diff-apply and fix-json at boot if they're
