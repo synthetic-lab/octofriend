@@ -171,7 +171,6 @@ function SwitchModelMenu() {
 
   if(pendingModel) {
     return <SetApiKey
-      providerName={pendingModel.nickname}
       baseUrl={pendingModel.baseUrl}
       onComplete={() => {
         setModelOverride(pendingModel.nickname);

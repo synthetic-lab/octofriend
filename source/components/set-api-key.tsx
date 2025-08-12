@@ -7,6 +7,7 @@ import { writeKeyForModel } from "../config.ts";
 import { PROVIDERS } from "./providers.ts";
 
 export function SetApiKey({ baseUrl, onComplete, onCancel }: {
+  nickname?: string,
   baseUrl: string,
   onComplete: (apiKey: string) => any,
   onCancel: () => any,

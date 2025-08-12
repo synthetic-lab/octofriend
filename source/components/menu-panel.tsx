@@ -3,7 +3,6 @@ import { Box, Text } from "ink";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
-import { CenteredBox } from "./centered-box.tsx";
 
 type Item<V> = {
   label: string,
@@ -31,11 +30,11 @@ export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProp
   return <Box flexDirection="column">
     <MenuHeader title={title} />
     {
-      children && <CenteredBox>
-        <Box marginBottom={1} marginTop={-1}>
+      children && <Box justifyContent="center" alignItems="center" marginBottom={1}>
+        <Box flexDirection="column" width={80}>
           { children }
         </Box>
-      </CenteredBox>
+      </Box>
     }
     <Box justifyContent="center">
       <SelectInput

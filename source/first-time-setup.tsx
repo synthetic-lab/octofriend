@@ -14,7 +14,7 @@ import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER } from "./components/providers.ts";
-import { OverrideEnvVar } from "./components/override-env-var.tsx";
+import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 
 type SetupStep = {
   step: "welcome",
@@ -213,20 +213,28 @@ function AutofixSetup({ onComplete, onSkip }: {
   }, [onComplete, onSkip]);
 
   if (autofixStep === "synthetic-setup") {
-    return <OverrideEnvVar onSubmit={(envVar) => {
-      onComplete({
-        diffApply: {
-          baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-          apiEnvVar: envVar,
-          model: "hf:syntheticlab/diff-apply",
-        },
-        fixJson: {
-          baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-          apiEnvVar: envVar,
-          model: "hf:syntheticlab/fix-json",
-        },
-      });
-    }} provider={SYNTHETIC_PROVIDER} />
+    return <CustomAuthFlow
+      onComplete={envVar => {
+        const auth: {
+          apiEnvVar?: string
+        } = {};
+        if(envVar) auth.apiEnvVar = envVar;
+        onComplete({
+          diffApply: {
+            baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            model: "hf:syntheticlab/diff-apply",
+            ...auth,
+          },
+          fixJson: {
+            baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            model: "hf:syntheticlab/fix-json",
+            ...auth,
+          },
+        });
+      }}
+      onCancel={() => setAutofixStep("choose")}
+      baseUrl={SYNTHETIC_PROVIDER.baseUrl}
+    />
   }
 
   if (autofixStep === "diff-apply-custom") {
