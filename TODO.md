@@ -8,6 +8,8 @@ TODO:
   tool outputs, and original assistant messages
 - [ ] Refactor menu system to use the new Router/Back stuff built for the add
   model flow.
+- [ ] Refactor first-time setup to use the new Router/Back stuff built for the
+  add model flow.
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Auto-detect missing API keys for diff-apply and fix-json at boot if they're
@@ -23,3 +25,5 @@ TODO:
 - [ ] Consider not keeping the current files up-to-date and instead only
   updating them on read tool call. Could be confusing to see a bunch of stuff
   change in the history without telling the LLM what's going on
+- [ ] Add special rendering for certain classes of errors, e.g. auth failures
+  or payment-related failures
