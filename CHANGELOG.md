@@ -22,6 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   longer have a `keys.json5` file — for example, if you're setting up a new
   machine and have synced your `octofriend.json5` via a dotfiles repo).
 
+- Config files are now sanitized before being written, to prevent duplicate env
+  var definitions for the same built-in providers.
+
 ## [0.0.24] - 2025-08-07
 
 ### Added
