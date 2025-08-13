@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `~/.config/octofriend.json5` config in dotfiles repositories without leaking
   secret API keys.
 
+- Octo will automatically prompt you to re-auth on boot if your config lists a
+  default model or autofix models for which you no longer have auth info for
+  (either you no longer export the API key env var in your shell, or you no
+  longer have a `keys.json5` file — for example, if you're setting up a new
+  machine and have synced your `octofriend.json5` via a dotfiles repo).
+
 ## [0.0.24] - 2025-08-07
 
 ### Added
