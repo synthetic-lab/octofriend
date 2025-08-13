@@ -99,3 +99,9 @@ export function keyFromName(name: string): keyof typeof PROVIDERS {
   }
   throw new Error(`No provider named ${name} found`);
 }
+
+export function providerForBaseUrl(baseUrl: string): (typeof PROVIDERS)[keyof (typeof PROVIDERS)] | null {
+  const provider = Object.values(PROVIDERS).find(p => p.baseUrl === baseUrl);
+  if(provider == null) return null;
+  return provider;
+}

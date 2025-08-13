@@ -6,10 +6,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
 import { fileExists } from "./fs-utils.ts";
+import { providerForBaseUrl, keyFromName } from "./components/providers.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
-const KEY_FILE = path.join(os.homedir(), ".config/octofriend/keys");
+const KEY_FILE = path.join(os.homedir(), ".config/octofriend/keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 
 const McpServerConfigSchema = t.exact({
@@ -60,21 +61,42 @@ export function useSetConfig() {
   const configPath = React.useContext(ConfigPathContext);
 
   return async (c: Config) => {
-    const dir = path.dirname(configPath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(configPath, json5.stringify(c, null, 2));
+    await writeConfig(c, configPath);
     set(c);
   };
 }
 
-export async function assertKeyForModel(model: { baseUrl: string, apiEnvVar?: string }): Promise<string> {
-  const key = await readKeyForModel(model);
+export async function writeConfig(c: Config, configPath: string) {
+  const dir = path.dirname(configPath);
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(configPath, json5.stringify(c, null, 2));
+}
+
+export async function assertKeyForModel(
+  model: { baseUrl: string, apiEnvVar?: string },
+  config: Config | null,
+): Promise<string> {
+  const key = await readKeyForModel(model, config);
   if(key == null) throw new Error(`No API key defined for ${model.baseUrl}`);
   return key;
 }
 
-export async function readKeyForModel(model: { baseUrl: string, apiEnvVar?: string }) {
-  if(model.apiEnvVar) return process.env[model.apiEnvVar] || null;
+export async function readKeyForModel(
+  model: { baseUrl: string, apiEnvVar?: string },
+  config: Config | null,
+) {
+  if(model.apiEnvVar && process.env[model.apiEnvVar]) return process.env[model.apiEnvVar];
+  const provider = providerForBaseUrl(model.baseUrl);
+  if(provider) {
+    const envVar = (() => {
+      const key = keyFromName(provider.name);
+      if(config == null) return provider.envVar;
+      if(config.defaultApiKeyOverrides == null) return provider.envVar;
+      if(config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+      return config.defaultApiKeyOverrides[key];
+    })();
+    if(process.env[envVar]) return process.env[envVar];
+  }
   const keys = await readKeys();
   return keys[model.baseUrl] || null;
 }

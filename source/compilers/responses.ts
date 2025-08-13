@@ -269,7 +269,7 @@ export async function runResponsesAgent({
     reasoningConfig.reasoningSummary = "auto";
   }
 
-  const apiKey = await assertKeyForModel(modelConfig);
+  const apiKey = await assertKeyForModel(modelConfig, config);
   const openai = createOpenAI({
     baseURL: modelConfig.baseUrl,
     apiKey,

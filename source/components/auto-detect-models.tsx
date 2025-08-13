@@ -95,12 +95,16 @@ export function ModelSetup({
       />
 
     case "custom":
-      return <FullAddModelFlow onComplete={(model) => onComplete([ model ])} onCancel={() => {
-        dispatch({
-          from: "custom",
-          to: { step: "initial" },
-        });
-      }} />
+      return <FullAddModelFlow
+        config={config}
+        onComplete={(model) => onComplete([ model ])}
+        onCancel={() => {
+          dispatch({
+            from: "custom",
+            to: { step: "initial" },
+          });
+        }}
+      />
 
     case "found":
       return <ImportModelsFrom
@@ -137,6 +141,7 @@ export function ModelSetup({
 
     case "missing":
       return <CustomAuthFlow
+        config={config}
         onComplete={envVar => {
           if(envVar) {
             onOverrideDefaultApiKey({
@@ -161,6 +166,7 @@ export function ModelSetup({
 
     case "override-model-string":
       return <CustomModelFlow
+        config={config}
         onComplete={model => {
           let modelClone = { ...model };
           if(stepData.provider.type) {

@@ -206,7 +206,7 @@ export async function runAnthropicAgent({
     });
   });
 
-  const apiKey = await assertKeyForModel(modelConfig);
+  const apiKey = await assertKeyForModel(modelConfig, config);
   const client = new Anthropic({
     baseURL: modelConfig.baseUrl,
     apiKey,

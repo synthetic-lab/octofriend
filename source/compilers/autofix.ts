@@ -12,7 +12,7 @@ export async function autofixEdit(
   edit: DiffEdit,
   abortSignal: AbortSignal,
 ): Promise<DiffEdit | null> {
-  const result = await autofix(config.diffApply, fixEditPrompt({ file, edit }), abortSignal);
+  const result = await autofix(config.diffApply, config, fixEditPrompt({ file, edit }), abortSignal);
   if(result == null) return null;
   try {
     const parsed = JSON.parse(result);
@@ -30,7 +30,7 @@ export async function autofixEdit(
 }
 
 export async function autofixJson(config: Config, brokenJson: string, abortSignal: AbortSignal) {
-  const result = await autofix(config.fixJson, fixJsonPrompt(brokenJson), abortSignal);
+  const result = await autofix(config.fixJson, config, fixJsonPrompt(brokenJson), abortSignal);
   if(result == null) return { success: false as const };
   try {
     const json = JSON.parse(result);
@@ -43,18 +43,19 @@ export async function autofixJson(config: Config, brokenJson: string, abortSigna
 }
 
 async function autofix(
-  config: { baseUrl: string, apiEnvVar?: string, model: string } | null | undefined,
+  modelConf: { baseUrl: string, apiEnvVar?: string, model: string } | null | undefined,
+  config: Config,
   message: string,
   abortSignal?: AbortSignal,
 ): Promise<string | null> {
-  if(config == null) return null;
+  if(modelConf == null) return null;
 
-  const apiKey = await assertKeyForModel({ baseUrl: config.baseUrl });
+  const apiKey = await assertKeyForModel({ baseUrl: modelConf.baseUrl }, config);
   const client = new OpenAI({
-    baseURL: config.baseUrl,
+    baseURL: modelConf.baseUrl,
     apiKey,
   });
-  const model = config.model;
+  const model = modelConf.model;
   try {
     const response = await client.chat.completions.create({
       model,

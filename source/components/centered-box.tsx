@@ -8,3 +8,11 @@ export const CenteredBox = React.memo(({ children }: { children?: React.ReactNod
     </Box>
   </Box>
 });
+
+export const HeightlessCenteredBox = React.memo(({ children }: { children?: React.ReactNode }) => {
+  return <Box flexDirection="column" justifyContent="center" alignItems="center">
+    <Box flexDirection="column" width={80}>
+      { children }
+    </Box>
+  </Box>
+});

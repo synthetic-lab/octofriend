@@ -226,6 +226,7 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
 
   if (autofixStep === "synthetic-setup") {
     return <CustomAuthFlow
+      config={null}
       onComplete={envVar => {
         const auth: {
           apiEnvVar?: string

@@ -12,6 +12,7 @@ import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
+import { PreflightAuth } from "./preflight-auth.tsx";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
@@ -22,16 +23,17 @@ const cli = new Command()
 .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
 .action(async (opts) => {
 	const metadata = await readMetadata();
-	const { config, configPath } = await loadConfig(opts.config);
-  const defaultModel = config.models[0];
-  if(!await readKeyForModel(defaultModel)) {
-    console.error(`
-Octo is configured to use ${defaultModel.nickname} with the ${defaultModel.baseUrl} API,
-but there aren't API keys for that model set up.
-
-Hint: do you need to re-source your .bash_profile or .zshrc?
-  `.trim());
-    process.exit(1);
+	let { config, configPath } = await loadConfig(opts.config);
+  let defaultModel = config.models[0];
+  if(!await readKeyForModel(defaultModel, config)) {
+    const { waitUntilExit } = render(
+      <PreflightAuth model={defaultModel} config={config} configPath={configPath} />
+    );
+    await waitUntilExit();
+    const reloaded = await loadConfig(opts.config);
+    config = reloaded.config;
+    defaultModel = config.models[0];
+    if(!await readKeyForModel(defaultModel, config)) process.exit(1);
   }
 
   // Connect to all MCP servers on boot
@@ -104,7 +106,7 @@ cli.command("prompt")
     process.exit(1);
   }
 
-  const apiKey = await readKeyForModel(model);
+  const apiKey = await readKeyForModel(model, config);
   if(apiKey == null) {
     console.error(`${model.nickname} doesn't have an API key set up.`);
     if(model.apiEnvVar) {

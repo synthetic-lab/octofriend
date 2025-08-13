@@ -8,6 +8,8 @@ import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
+import { SetApiKey } from "./components/set-api-key.tsx";
+import { readKeyForModel } from "./config.ts";
 
 type MenuMode = "main-menu"
               | "settings-menu"
@@ -149,9 +151,6 @@ function FixJsonToggle() {
   </AutofixToggle>
 }
 
-import { SetApiKey } from "./components/set-api-key.tsx";
-import { readKeyForModel } from "./config.ts";
-
 function SwitchModelMenu() {
   const { setModelOverride, toggleMenu } = useAppStore(useShallow(state => ({
     setModelOverride: state.setModelOverride,
@@ -207,7 +206,7 @@ function SwitchModelMenu() {
     const model = config.models.find(m => m.nickname === target)!;
 
     if(!model.apiEnvVar) {
-      const key = await readKeyForModel(model);
+      const key = await readKeyForModel(model, config);
       if(key == null) {
         setPendingModel(model);
         return;

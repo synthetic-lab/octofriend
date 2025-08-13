@@ -12,10 +12,11 @@ TODO:
   add model flow.
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
-- [ ] Auto-detect missing API keys for diff-apply and fix-json at boot if they're
-  configured to be on, similar to detecting default model issues
-- [ ] Prompt on app start for an API key if no API key is set up for the
-  default model. Ditto for autofix models if they're turned on
+- [ ] Prompt on app start for an API key if no API key is set up for autofix
+  models if they're turned on
+- [ ] Make CustomAuthFlow (and CustomModelFlow) automatically handle overriding
+  the default API key for a built-in provider, or make it simple for callers to
+  do so. Currently they don't, and it's a pain to handle it at each callsite.
 - [ ] Prompt for api key for the cli prompt subcommand
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use

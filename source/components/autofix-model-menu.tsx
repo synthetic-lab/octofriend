@@ -62,7 +62,7 @@ export function AutofixModelMenu({
           model: defaultModel,
         });
       } else {
-        const key = await readKeyForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl });
+        const key = await readKeyForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
         if(key !== null) {
           onComplete({
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
@@ -83,6 +83,7 @@ export function AutofixModelMenu({
   if(step === 'custom') {
     return (
       <CustomAutofixFlow
+        config={config}
         onComplete={(model) => {
           const val = {
             baseUrl: model.baseUrl,
@@ -99,6 +100,7 @@ export function AutofixModelMenu({
 
   if (step === 'missing-auth') {
     return <CustomAuthFlow
+      config={config}
       baseUrl={SYNTHETIC_PROVIDER.baseUrl}
       onCancel={() => setStep("choose")}
       onComplete={(envVar) => {

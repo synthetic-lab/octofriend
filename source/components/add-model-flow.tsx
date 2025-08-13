@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from "react";
-import { t } from "structural";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
 import { Config, assertKeyForModel } from "../config.ts";
@@ -27,6 +26,7 @@ type ModelStepRoute<T> = T & {
   renderExamples: boolean,
   done: (data: Model) =>  any,
   cancel: () => any,
+  config: Config | null,
 };
 
 type FullFlowRouteData = {
@@ -264,6 +264,7 @@ function TestConnection(props: FullFlowRouteData["testConnection"] & {
       model: props.model,
       apiEnvVar: props.envVar,
       baseUrl: props.baseUrl,
+      config: props.config,
     }).then(valid => {
       if(valid) {
         props.onSubmit();
@@ -386,9 +387,10 @@ const fullFlowRoutes = fullFlow.route({
   },
 });
 
-export function FullAddModelFlow({ onComplete, onCancel }: {
+export function FullAddModelFlow({ onComplete, onCancel, config }: {
   onComplete: (args: Model) => any,
   onCancel: () => any,
+  config: Config | null,
 }) {
   const [ errorMessage, setErrorMessage ] = useState("");
   return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
@@ -396,6 +398,7 @@ export function FullAddModelFlow({ onComplete, onCancel }: {
       renderExamples: true,
       done: onComplete,
       cancel: onCancel,
+      config: config,
     }} />
   </errorContext.Provider>
 }
@@ -431,11 +434,12 @@ const customModelFlowRoutes = customModelFlow.route({
   },
 });
 
-export function CustomModelFlow({ onComplete, onCancel, baseUrl, envVar }: {
+export function CustomModelFlow({ onComplete, onCancel, baseUrl, envVar, config }: {
   onComplete: (args: Model) => any,
   onCancel: () => any,
   baseUrl: string,
   envVar: string | undefined,
+  config: Config | null,
 }) {
   const [ errorMessage, setErrorMessage ] = useState("");
   return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
@@ -443,7 +447,7 @@ export function CustomModelFlow({ onComplete, onCancel, baseUrl, envVar }: {
       renderExamples: false,
       done: onComplete,
       cancel: onCancel,
-      baseUrl, envVar,
+      baseUrl, envVar, config,
     }} />
   </errorContext.Provider>
 }
@@ -471,10 +475,11 @@ const customAuthRoutes = customAuthFlow.route({
   },
 });
 
-export function CustomAuthFlow({ onComplete, onCancel, baseUrl }: {
+export function CustomAuthFlow({ onComplete, onCancel, baseUrl, config }: {
   onComplete: (apiEnvVar?: string) => any,
   onCancel: () => any,
   baseUrl: string,
+  config: Config | null,
 }) {
   const [ errorMessage, setErrorMessage ] = useState("");
   return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
@@ -483,7 +488,7 @@ export function CustomAuthFlow({ onComplete, onCancel, baseUrl }: {
         renderExamples: false,
         done: () => {},
         cancel: onCancel,
-        baseUrl,
+        baseUrl, config,
       }} />
     </customAuthDoneCtx.Provider>
   </errorContext.Provider>
@@ -535,9 +540,10 @@ const customAutofixRoutes = customAutofixFlow.route({
   },
 });
 
-export function CustomAutofixFlow({ onComplete, onCancel }: {
+export function CustomAutofixFlow({ onComplete, onCancel, config }: {
   onComplete: (args: Model) => any,
   onCancel: () => any,
+  config: Config | null,
 }) {
   const [ errorMessage, setErrorMessage ] = useState("");
   return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
@@ -545,6 +551,7 @@ export function CustomAutofixFlow({ onComplete, onCancel }: {
       renderExamples: false,
       done: onComplete,
       cancel: onCancel,
+      config,
     }} />
   </errorContext.Provider>
 }
@@ -599,15 +606,15 @@ function Step<T>(props: AddModelStep<T>) {
   </Box>
 }
 
-const MinConnectArgsSchema = t.subtype({
-  model: t.str,
-  apiEnvVar: t.optional(t.str),
-  baseUrl: t.str,
-});
-type MinConnectArgs = t.GetType<typeof MinConnectArgsSchema>;
-async function testConnection({ model, apiEnvVar, baseUrl }: MinConnectArgs) {
+type MinConnectArgs = {
+  model: string,
+  apiEnvVar?: string,
+  baseUrl: string,
+  config: Config | null,
+};
+async function testConnection({ model, apiEnvVar, baseUrl, config }: MinConnectArgs) {
   try {
-    const apiKey = await assertKeyForModel({ baseUrl, apiEnvVar });
+    const apiKey = await assertKeyForModel({ baseUrl, apiEnvVar }, config);
     const client = new OpenAI({
       baseURL: baseUrl,
       apiKey,

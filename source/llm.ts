@@ -211,7 +211,7 @@ export async function runAgent({
   abortSignal: AbortSignal,
 }) {
   const model = getModelFromConfig(config, modelOverride);
-  const apiKey = await assertKeyForModel(model);
+  const apiKey = await assertKeyForModel(model, config);
   const client = new OpenAI({
     baseURL: model.baseUrl,
     apiKey,

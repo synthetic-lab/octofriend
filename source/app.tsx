@@ -4,7 +4,7 @@ import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import {
-  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, getModelFromConfig, useConfig
+  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
 } from "./config.ts";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
