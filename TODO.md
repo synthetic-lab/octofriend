@@ -17,6 +17,7 @@ TODO:
 - [ ] Make CustomAuthFlow (and CustomModelFlow) automatically handle overriding
   the default API key for a built-in provider, or make it simple for callers to
   do so. Currently they don't, and it's a pain to handle it at each callsite.
+- [ ] Handle missing auth when switching models
 - [ ] Prompt for api key for the cli prompt subcommand
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use
