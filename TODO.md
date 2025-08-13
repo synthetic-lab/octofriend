@@ -24,6 +24,8 @@ TODO:
   change in the history without telling the LLM what's going on
 - [ ] Add special rendering for certain classes of errors, e.g. auth failures
   or payment-related failures
+- [ ] Run the test-connection code for autofix models and all supported auth
+  providers, and show billing- or auth-related errors immediately
 - [ ] Remove explicit function-calling-syntax examples from the system prompt,
   since different LLMs have different underlying function calling templates,
   and the models may or may not know what those templates get translated into
