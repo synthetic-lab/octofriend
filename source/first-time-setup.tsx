@@ -42,7 +42,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
   const themeColor = useColor();
   const app = useApp();
 
-  const addOverride = useCallback((override: Record<string, string>) => {
+  const addOverride = useCallback(async (override: Record<string, string>) => {
     setDefaultApiKeyOverrides({
       ...defaultApiKeyOverrides,
       ...override,
@@ -87,7 +87,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
     return <AutofixSetup
       onComplete={autofixComplete}
       onSkip={autofixSkip}
-      onOverrideDefaultApiKey={envVar => {
+      onOverrideDefaultApiKey={async (envVar) => {
         addOverride({
           [keyFromName(SYNTHETIC_PROVIDER.name)]: envVar,
         });
@@ -178,7 +178,7 @@ type AutofixStates = "choose"
 function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
   onComplete: (config: { diffApply: Config["diffApply"], fixJson: Config["fixJson"] }) => void,
   onSkip: () => void,
-  onOverrideDefaultApiKey: (envVar: string) => void,
+  onOverrideDefaultApiKey: (envVar: string) => Promise<void>,
 }) {
   const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
   const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
@@ -205,12 +205,10 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
         onComplete({
           diffApply: {
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-            apiEnvVar: defaultEnvVar,
             model: "hf:syntheticlab/diff-apply",
           },
           fixJson: {
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-            apiEnvVar: defaultEnvVar,
             model: "hf:syntheticlab/fix-json",
           },
         });
@@ -227,24 +225,16 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
   if (autofixStep === "synthetic-setup") {
     return <CustomAuthFlow
       config={null}
-      onComplete={envVar => {
-        const auth: {
-          apiEnvVar?: string
-        } = {};
-        if(envVar) {
-          auth.apiEnvVar = envVar;
-          onOverrideDefaultApiKey(envVar);
-        }
+      onComplete={async (envVar) => {
+        if(envVar) await onOverrideDefaultApiKey(envVar);
         onComplete({
           diffApply: {
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
             model: "hf:syntheticlab/diff-apply",
-            ...auth,
           },
           fixJson: {
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
             model: "hf:syntheticlab/fix-json",
-            ...auth,
           },
         });
       }}
@@ -258,6 +248,7 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
       config={null}
       defaultModel="hf:syntheticlab/diff-apply"
       modelNickname="diff-apply"
+      onOverrideDefaultApiKey={onOverrideDefaultApiKey}
       onComplete={(config) => {
         setDiffApplyConfig(config);
         setAutofixStep("fix-json-custom");
@@ -279,6 +270,7 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
       config={null}
       defaultModel="hf:syntheticlab/fix-json"
       modelNickname="fix-json"
+      onOverrideDefaultApiKey={onOverrideDefaultApiKey}
       onComplete={(config) => {
         onComplete({
           diffApply: diffApplyConfig!,

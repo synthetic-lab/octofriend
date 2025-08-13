@@ -10,6 +10,7 @@ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
+import { keyFromName, SYNTHETIC_PROVIDER } from "./components/providers.ts";
 
 type MenuMode = "main-menu"
               | "settings-menu"
@@ -78,10 +79,10 @@ function AutofixToggle({
     return <ConfirmDialog
       rejectLabel={`Disable ${modelNickname}`}
       confirmLabel={`Keep ${modelNickname} on (recommended)`}
-      onReject={() => {
+      onReject={async () => {
         const newconf = { ...config };
         delete newconf[configKey];
-        setConfig(newconf);
+        await setConfig(newconf);
         setMenuMode("main-menu");
         toggleMenu();
         notify(disableNotification);
@@ -95,8 +96,17 @@ function AutofixToggle({
     defaultModel={defaultModel}
     modelNickname={modelNickname}
     config={config}
-    onComplete={(setting) => {
-      setConfig({
+    onOverrideDefaultApiKey={async (apiEnvVar) => {
+      await setConfig({
+        ...config,
+        defaultApiKeyOverrides: {
+          ...(config.defaultApiKeyOverrides || {}),
+          [keyFromName(SYNTHETIC_PROVIDER.name)]: apiEnvVar,
+        },
+      });
+    }}
+    onComplete={async (setting) => {
+      await setConfig({
         ...config,
         [configKey]: setting,
       });
@@ -411,7 +421,7 @@ function SetDefaultModelMenu() {
     },
   ];
 
-	const onSelect = useCallback((item: (typeof items)[number]) => {
+	const onSelect = useCallback(async (item: (typeof items)[number]) => {
     if(item.value === "back") {
       setMenuMode("main-menu");
       return;
@@ -419,7 +429,7 @@ function SetDefaultModelMenu() {
     const target = item.value.replace("model-", "")
     const model = config.models.find(m => m.nickname === target)!;
     const rest = config.models.filter(m => m.nickname !== target);
-    setConfig({
+    await setConfig({
       ...config,
       models: [
         model,
@@ -463,14 +473,14 @@ function RemoveModelMenu() {
     },
   ];
 
-	const onSelect = useCallback((item: (typeof items)[number]) => {
+	const onSelect = useCallback(async (item: (typeof items)[number]) => {
     if(item.value === "back") {
       setMenuMode("main-menu");
       return;
     }
     const target = item.value.replace("model-", "")
     const rest = config.models.filter(m => m.nickname !== target);
-    setConfig({
+    await setConfig({
       ...config,
       models: [
         ...rest,
@@ -492,8 +502,8 @@ function AddModelMenuFlow() {
   const setConfig = useSetConfig();
   const config = useConfig();
 
-  const onComplete = useCallback((models: Config["models"]) => {
-    setConfig({
+  const onComplete = useCallback(async (models: Config["models"]) => {
+    await setConfig({
       ...config,
       models: [
         ...config.models,
@@ -507,8 +517,8 @@ function AddModelMenuFlow() {
     setMenuMode("main-menu");
   }, [ setMenuMode ]);
 
-  const onOverrideDefaultApiKey = useCallback((overrides: Record<string, string>) => {
-    setConfig({
+  const onOverrideDefaultApiKey = useCallback(async (overrides: Record<string, string>) => {
+    await setConfig({
       ...config,
       defaultApiKeyOverrides: {
         ...(config.defaultApiKeyOverrides || {}),

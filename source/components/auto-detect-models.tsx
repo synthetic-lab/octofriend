@@ -12,7 +12,7 @@ import { ConfirmDialog } from "./confirm-dialog.tsx";
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void,
   onCancel: () => void,
-  onOverrideDefaultApiKey: (o: Record<string, string>) => any,
+  onOverrideDefaultApiKey: (o: Record<string, string>) => Promise<any>,
   config: Config | null,
   titleOverride?: string,
 };
@@ -142,9 +142,9 @@ export function ModelSetup({
     case "missing":
       return <CustomAuthFlow
         config={config}
-        onComplete={envVar => {
+        onComplete={async (envVar) => {
           if(envVar) {
-            onOverrideDefaultApiKey({
+            await onOverrideDefaultApiKey({
               [keyFromName(stepData.provider.name)]: envVar,
             });
           }

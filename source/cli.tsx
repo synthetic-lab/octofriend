@@ -6,13 +6,13 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import { readConfig, readMetadata, readKeyForModel } from "./config.ts";
+import { readConfig, readMetadata, readKeyForModel, AUTOFIX_KEYS } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
-import { PreflightAuth } from "./preflight-auth.tsx";
+import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
@@ -24,17 +24,6 @@ const cli = new Command()
 .action(async (opts) => {
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
-  let defaultModel = config.models[0];
-  if(!await readKeyForModel(defaultModel, config)) {
-    const { waitUntilExit } = render(
-      <PreflightAuth model={defaultModel} config={config} configPath={configPath} />
-    );
-    await waitUntilExit();
-    const reloaded = await loadConfig(opts.config);
-    config = reloaded.config;
-    defaultModel = config.models[0];
-    if(!await readKeyForModel(defaultModel, config)) process.exit(1);
-  }
 
   // Connect to all MCP servers on boot
   if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -86,7 +75,7 @@ cli.command("init")
 cli.command("list")
 .description("List all models you've configured with Octo")
 .action(async () => {
-  const { config } = await loadConfig();
+  const { config } = await loadConfigWithoutReauth();
   console.log(config.models.map(m => m.nickname).join("\n"));
 });
 
@@ -145,7 +134,47 @@ cli.command("prompt")
   process.stdout.write("\n");
 });
 
-async function loadConfig(configPath?: string) {
+async function loadConfig(path?: string) {
+	let { config, configPath } = await loadConfigWithoutReauth(path);
+  let defaultModel = config.models[0];
+  if(!await readKeyForModel(defaultModel, config)) {
+    const { waitUntilExit } = render(
+      <PreflightModelAuth model={defaultModel} config={config} configPath={configPath} />
+    );
+    await waitUntilExit();
+    const reloaded = await loadConfigWithoutReauth(path);
+    config = reloaded.config;
+    configPath = reloaded.configPath;
+    defaultModel = config.models[0];
+    if(!await readKeyForModel(defaultModel, config)) process.exit(1);
+  }
+
+  for(const key of AUTOFIX_KEYS) {
+    let autofixModel = config[key];
+    if(autofixModel) {
+      if(!await readKeyForModel(autofixModel, config)) {
+        const { waitUntilExit } = render(
+          <PreflightAutofixAuth
+            autofixKey={key}
+            model={autofixModel}
+            config={config}
+            configPath={configPath}
+          />
+        );
+        await waitUntilExit();
+        const reloaded = await loadConfigWithoutReauth(path);
+        config = reloaded.config;
+        configPath = reloaded.configPath;
+        autofixModel = config[key];
+        if(autofixModel && !await readKeyForModel(autofixModel, config)) process.exit(1);
+      }
+    }
+  }
+
+  return { config, configPath };
+}
+
+async function loadConfigWithoutReauth(configPath?: string) {
   if(configPath) return { configPath, config: await readConfig(configPath) };
 
   if(await fileExists(CONFIG_JSON5_FILE)) {

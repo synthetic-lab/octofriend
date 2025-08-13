@@ -12,6 +12,7 @@ import { CustomAuthFlow } from "./add-model-flow.tsx";
 export type AutofixModelProps = {
   config: Config | null,
   onComplete: (diffApply: Exclude<Config["diffApply"], undefined>) => any,
+  onOverrideDefaultApiKey: (apiEnvVar: string) => Promise<void>,
   onCancel: () => any,
   defaultModel: string,
   modelNickname: string,
@@ -25,7 +26,7 @@ export type AutofixWrapperProps = Omit<
 const SYNTH_KEY = keyFromName(SYNTHETIC_PROVIDER.name);
 
 export function AutofixModelMenu({
-  config, onComplete, onCancel, defaultModel, modelNickname, children,
+  config, onComplete, onOverrideDefaultApiKey, onCancel, defaultModel, modelNickname, children,
 }: AutofixModelProps) {
   const [step, setStep] = useState<'choose' | 'custom' | 'missing-auth'>('choose');
 
@@ -103,11 +104,11 @@ export function AutofixModelMenu({
       config={config}
       baseUrl={SYNTHETIC_PROVIDER.baseUrl}
       onCancel={() => setStep("choose")}
-      onComplete={(envVar) => {
+      onComplete={async (envVar) => {
         if(envVar) {
+          await onOverrideDefaultApiKey(envVar);
           onComplete({
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
-            apiEnvVar: envVar,
             model: defaultModel,
           })
         } else {

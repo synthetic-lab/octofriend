@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
 import { fileExists } from "./fs-utils.ts";
-import { providerForBaseUrl, keyFromName } from "./components/providers.ts";
+import { providerForBaseUrl, keyFromName, ProviderConfig } from "./components/providers.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +45,10 @@ const ConfigSchema = t.exact({
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
+export const AUTOFIX_KEYS = [
+  "diffApply",
+  "fixJson",
+] as const;
 
 export const ConfigContext = React.createContext<Config>({
   yourName: "unknown",
@@ -66,10 +70,102 @@ export function useSetConfig() {
   };
 }
 
+export function mergeEnvVar(config: Config, model: Config["models"][number], apiEnvVar: string) {
+  const provider = providerForBaseUrl(model.baseUrl);
+  let merged = { ...config, models: [ ...config.models ] };
+  const index = merged.models.indexOf(model);
+  if(index < 0) throw new Error("Couldn't find model in models list");
+
+  if(provider) {
+    const key = keyFromName(provider.name);
+    const defaultEnvVar = getDefaultEnvVar(provider, config);
+    if(defaultEnvVar === apiEnvVar) return merged;
+    const overrides = merged.defaultApiKeyOverrides || {};
+    overrides[key] = apiEnvVar;
+    merged.defaultApiKeyOverrides = overrides;
+    delete merged.models[index].apiEnvVar;
+    return merged;
+  }
+
+  merged.models[index] = {
+    ...model,
+    apiEnvVar,
+  };
+
+  return merged;
+}
+
+export function mergeAutofixEnvVar<
+  K extends (typeof AUTOFIX_KEYS)[number]
+>(config: Config, key: K, model: Exclude<Config[K], undefined>, apiEnvVar: string) {
+  const provider = providerForBaseUrl(model.baseUrl);
+  let merged = { ...config };
+  if(provider) {
+    const providerKey = keyFromName(provider.name);
+    const defaultEnvVar = getDefaultEnvVar(provider, config);
+    if(defaultEnvVar === apiEnvVar) return merged;
+    const overrides = merged.defaultApiKeyOverrides || {};
+    overrides[providerKey] = apiEnvVar;
+    merged.defaultApiKeyOverrides = overrides;
+    if(merged[key]) delete merged[key].apiEnvVar;
+    return merged;
+  }
+
+  merged[key] = {
+    ...model,
+    apiEnvVar,
+  };
+
+  return merged;
+}
+
+function getDefaultEnvVar(provider: ProviderConfig, config: Config) {
+  const key = keyFromName(provider.name);
+  const defaultEnvVar = (() => {
+    if(config.defaultApiKeyOverrides == null) return provider.envVar;
+    if(config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+    return config.defaultApiKeyOverrides[key];
+  })();
+  return defaultEnvVar;
+}
+
 export async function writeConfig(c: Config, configPath: string) {
   const dir = path.dirname(configPath);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(configPath, json5.stringify(c, null, 2));
+  await fs.writeFile(configPath, json5.stringify(sanitizeConfig(c), null, 2));
+}
+
+function sanitizeConfig(c: Config): Config {
+  const sanitized = { ...c, models: [ ...c.models ] };
+  for(let index  = 0; index < sanitized.models.length; index++) {
+    const model = sanitized.models[index];
+    const provider = providerForBaseUrl(model.baseUrl);
+    if(provider) {
+      const envVar = getDefaultEnvVar(provider, c);
+      if(envVar === model.apiEnvVar) {
+        sanitized.models[index] = { ...model };
+        delete sanitized.models[index].apiEnvVar;
+      }
+    }
+  }
+
+  for(const key of AUTOFIX_KEYS) {
+    const model = sanitized[key];
+    if(model) {
+      const provider = providerForBaseUrl(model.baseUrl);
+      if(provider) {
+        const envVar = getDefaultEnvVar(provider, sanitized);
+        if(envVar === model.apiEnvVar) {
+          sanitized[key] = {
+            ...model,
+          };
+          delete sanitized[key].apiEnvVar;
+        }
+      }
+    }
+  }
+
+  return sanitized;
 }
 
 export async function assertKeyForModel(
