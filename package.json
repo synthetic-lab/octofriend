@@ -3,7 +3,10 @@
 	"version": "0.0.24",
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofriend",
-	"bin": "dist/source/cli.js",
+	"bin": {
+    "octofriend": "dist/source/cli.js",
+    "octo": "dist/source/cli.js"
+  },
 	"type": "module",
 	"preferGlobal": true,
 	"engines": {
