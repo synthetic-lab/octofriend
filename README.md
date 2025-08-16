@@ -1,4 +1,5 @@
-![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octofriend.png)
+Octo is a small, helpful, cephalopod-flavored coding assistant. Octo is your
+friend.
 
 ## Get Started
 
@@ -13,6 +14,8 @@ octofriend
 # or, for short:
 octo
 ```
+
+![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octofriend.png)
 
 ## About
 
