@@ -2,6 +2,7 @@
 import React from "react";
 import path from "path";
 import os from "os";
+import fs from "fs/promises";
 import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
@@ -13,6 +14,7 @@ import OpenAI from "openai";
 import { LlmMessage } from "./llm.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
+const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
@@ -70,6 +72,13 @@ cli.command("init")
   render(
     <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
   );
+});
+
+cli.command("changelog")
+.description("List the changelog")
+.action(async () => {
+  const changelog = await fs.readFile(path.join(__dirname, "../../CHANGELOG.md"), "utf8");
+  console.log(changelog);
 });
 
 cli.command("list")

@@ -28,3 +28,5 @@ TODO:
 - [ ] Remove explicit function-calling-syntax examples from the system prompt,
   since different LLMs have different underlying function calling templates,
   and the models may or may not know what those templates get translated into
+- [ ] Add a boot-time notification system, where short messages can be printed
+  on boot the first time Octo is run post-install or post-update
