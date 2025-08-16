@@ -12,7 +12,6 @@ TODO:
   add model flow.
 - [ ] Allow Anthropic models to configure the thinking budget by tokens, rather
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
-- [ ] Show nice UI when prompting for auth for default or autofix models at boot
 - [ ] Handle missing auth when switching models
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
 - [ ] Add clickable URLs for known inference hosts to get an API key — use

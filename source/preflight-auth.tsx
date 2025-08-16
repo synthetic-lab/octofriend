@@ -4,10 +4,11 @@ import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Config, writeConfig, mergeEnvVar, mergeAutofixEnvVar } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
 
-export function PreflightModelAuth({ model, config, configPath }: {
+export function PreflightModelAuth({ model, config, configPath, error }: {
   model: Config["models"][number],
   config: Config,
   configPath: string,
+  error?: string,
 }) {
   const app = useApp();
   const [ exitMessage, setExitMessage ] = useState<string | null>(null);
@@ -17,6 +18,14 @@ export function PreflightModelAuth({ model, config, configPath }: {
   });
 
   return <Box flexDirection="column" gap={1}>
+    {
+      error && <HeightlessCenteredBox>
+        <Box justifyContent="center">
+          <Text color="red">{ error }</Text>
+        </Box>
+      </HeightlessCenteredBox>
+    }
+
     <CustomAuthFlow
       config={config}
       baseUrl={model.baseUrl}
@@ -54,8 +63,21 @@ export function PreflightAutofixAuth<
   useInput((_, key) => {
     if(!key.escape) setExitMessage(null);
   });
+  const modelName = (() => {
+    if(autofixKey === "diffApply") return "diff-apply";
+    const _: "fixJson" = autofixKey;
+    return "fix-json";
+  })();
 
   return <Box flexDirection="column" gap={1}>
+    <HeightlessCenteredBox>
+      <Box justifyContent="center">
+        <Text color="red">
+          {`It looks like we need to set up auth for the ${modelName} model`}
+        </Text>
+      </Box>
+    </HeightlessCenteredBox>
+
     <CustomAuthFlow
       config={config}
       baseUrl={model.baseUrl}

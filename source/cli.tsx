@@ -139,7 +139,12 @@ async function loadConfig(path?: string) {
   let defaultModel = config.models[0];
   if(!await readKeyForModel(defaultModel, config)) {
     const { waitUntilExit } = render(
-      <PreflightModelAuth model={defaultModel} config={config} configPath={configPath} />
+      <PreflightModelAuth
+        error="It looks like we need to set up auth for your default model"
+        model={defaultModel}
+        config={config}
+        configPath={configPath}
+      />
     );
     await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path);
