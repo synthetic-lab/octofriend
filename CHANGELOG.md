@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   longer have a `keys.json5` file — for example, if you're setting up a new
   machine and have synced your `octofriend.json5` via a dotfiles repo).
 
+- Octo can now be accessed either via `octofriend` or just `octo` for short.
+
 ### Changed
 
 - Config files are now sanitized before being written, to prevent duplicate env

@@ -10,6 +10,8 @@ And then:
 
 ```bash
 octofriend
+# or, for short:
+octo
 ```
 
 ## About
