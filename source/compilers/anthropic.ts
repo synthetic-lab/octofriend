@@ -2,34 +2,28 @@ import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import {
-  HistoryItem,
-  ToolCallRequestSchema,
-  sequenceId,
-  AssistantItem,
-  AnthropicAssistantData
-} from "../history.ts";
+import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
+import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
+import { AssistantMessage, OutputIR, LlmIR } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
+import { systemPrompt } from "../system-prompt.ts";
+import { fileTracker } from "../tools/file-tracker.ts";
+import { autofixJson } from './autofix.ts';
+import { tryexpr } from "../tryexpr.ts";
+import { trackTokens } from "../token-tracker.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
   thinking: t.str,
   signature: t.str,
 });
-import { systemPrompt } from "../system-prompt.ts";
-import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
-import { autofixJson } from './autofix.ts';
-import { tryexpr } from "../tryexpr.ts";
-import { trackTokens } from "../token-tracker.ts";
-import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
 
 async function toModelMessage(
-  messages: HistoryItem[],
+  messages: LlmIR[],
 ): Promise<Array<Anthropic.MessageParam>> {
   const output: Anthropic.MessageParam[] = [];
 
-  const irs = toLlmIR(messages);
+  const irs = [ ...messages ];
   irs.reverse();
   const seenPaths = new Set<string>();
 
@@ -162,20 +156,19 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<Anthrop
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, history, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
 }: {
   config: Config,
   modelOverride: string | null,
-  history: HistoryItem[],
+  windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
-}) {
+}): Promise<OutputIR[]> {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const processedHistory = applyContextWindow(history, modelConfig.context);
-  const messages = await toModelMessage(processedHistory.history);
+  const messages = await toModelMessage(windowedIR.ir);
   const sysPrompt = await systemPrompt({
-    appliedWindow: processedHistory.appliedWindow,
+    appliedWindow: windowedIR.appliedWindow,
     config,
     exampleToolCall: JSON.stringify({
       type: "tool_use",
@@ -188,7 +181,6 @@ export async function runAnthropicAgent({
     }),
   });
 
-  // Convert tools to AI SDK format
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
@@ -368,7 +360,7 @@ export async function runAnthropicAgent({
   let tokenDelta = 0;
   if(usage.input !== 0 || usage.output !== 0) {
     if(!abortSignal.aborted) {
-      const previousTokens = messageHistoryTokens(processedHistory.history);
+      const previousTokens = countIRTokens(windowedIR.ir);
       tokenDelta = (usage.input + usage.output) - previousTokens;
     }
   }
@@ -387,61 +379,47 @@ export async function runAnthropicAgent({
     };
   }
 
-  const assistantHistoryItem: AssistantItem = {
-    type: "assistant",
-    id: sequenceId(),
+  const assistantMessage: AssistantMessage = {
+    role: "assistant",
     content, reasoningContent,
     ...anthropic,
     tokenUsage: tokenDelta,
   };
 
   // If aborted, don't try to parse tool calls
-  if(abortSignal.aborted) return history.concat([assistantHistoryItem]);
+  if(abortSignal.aborted) return [ assistantMessage ];
+
+  // No tools? Return
+  if(inProgressTool == null) return [ assistantMessage ];
 
   // Get tool calls
-  if(inProgressTool != null) {
-    const chatToolCall = {
-      toolCallId: inProgressTool.id,
-      toolName: inProgressTool.name,
-      args: inProgressTool.partialJson,
-    }
-    const parseResult = await parseResponsesTool(
-      chatToolCall,
-      config,
-      onAutofixJson,
-      abortSignal,
-    );
+  const chatToolCall = {
+    toolCallId: inProgressTool.id,
+    toolName: inProgressTool.name,
+    args: inProgressTool.partialJson,
+  }
+  const parseResult = await parseResponsesTool(
+    chatToolCall,
+    config,
+    onAutofixJson,
+    abortSignal,
+  );
 
-    if(parseResult.status === "error") {
-      return history.concat([
-        assistantHistoryItem,
-        {
-          type: "tool-malformed",
-          id: sequenceId(),
-          error: parseResult.message,
-          original: {
-            id: inProgressTool.id,
-            function: {
-              name: inProgressTool.name,
-              arguments: inProgressTool.partialJson,
-            },
-          },
-          toolCallId: inProgressTool.id,
-        },
-      ]);
-    }
-
-    return history.concat([
-      assistantHistoryItem,
+  if(parseResult.status === "error") {
+    return [
+      assistantMessage,
       {
-        type: "tool",
-        id: sequenceId(),
-        tool: parseResult.tool,
+        role: "tool-malformed",
+        error: parseResult.message,
+        toolName: inProgressTool.name,
+        arguments: inProgressTool.partialJson,
+        toolCallId: inProgressTool.id,
       },
-    ]);
+    ];
   }
 
-  return history.concat([assistantHistoryItem]);
+  assistantMessage.toolCall = parseResult.tool;
+  return [ assistantMessage ];
 }
 
 type ParseToolResult = {

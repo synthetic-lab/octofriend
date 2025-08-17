@@ -13,6 +13,7 @@ import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
+import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 
 export type RunArgs = {
@@ -209,12 +210,12 @@ export const useAppStore = create<UiState>((set, get) => ({
     let timeout: NodeJS.Timeout | null = null;
     let lastContent = "";
 
-    let history: HistoryItem[];
+    const history = [ ...get().history ];
     try {
-      history = await run({
+      const newMessages = await run({
         config,
         modelOverride: get().modelOverride,
-        history: get().history,
+        messages: toLlmIR(history),
         abortSignal: abortController.signal,
         onTokens: (tokens, type) => {
           if(type === "content") {
@@ -252,6 +253,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       if(timeout) clearTimeout(timeout);
+      history.push(...outputToHistory(newMessages));
     } catch(e) {
       if(abortController.signal.aborted) {
         // Handle abort gracefully - return to input mode

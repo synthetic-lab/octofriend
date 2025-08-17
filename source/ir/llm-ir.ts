@@ -12,6 +12,7 @@ import {
   AssistantItem,
   UserItem,
   AnthropicAssistantData,
+  sequenceId,
 } from "../history.ts";
 
 export type AssistantMessage = {
@@ -60,7 +61,8 @@ export type ToolErrorMessage = {
 export type ToolMalformedMessage = {
   role: "tool-malformed",
   toolCallId: string,
-  toolName: string,
+  toolName?: string,
+  arguments?: string,
   error: string,
 };
 
@@ -87,6 +89,10 @@ export type LlmIR = AssistantMessage
                   | FileToolMessage
                   ;
 
+export type OutputIR = AssistantMessage
+                     | ToolMalformedMessage
+                     ;
+
 // Filter out only relevant history items to the LLM IR
 type LoweredHistory = ToolCallItem
                     | ToolOutputItem
@@ -98,6 +104,63 @@ type LoweredHistory = ToolCallItem
                     | AssistantItem
                     | UserItem
                     ;
+
+// Decompile LLM output IR to History items
+export function outputToHistory(output: OutputIR[]): HistoryItem[] {
+  let history: HistoryItem[] = [];
+  for(const ir of output) {
+    history = history.concat(singleOutputDecompile(ir));
+  }
+  return history;
+}
+
+function singleOutputDecompile(output: OutputIR): HistoryItem[] {
+  if(output.role === "tool-malformed") {
+    return [
+      {
+        type: "tool-malformed",
+        id: sequenceId(),
+        error: output.error,
+        toolCallId: output.toolCallId,
+        original: {
+          id: output.toolCallId,
+          function: {
+            name: output.toolName,
+            arguments: output.arguments,
+          },
+        },
+      },
+    ];
+  }
+
+  const history: HistoryItem[] = [];
+  const reasoningContent: { reasoningContent?: string } = {};
+  if(output.reasoningContent) reasoningContent.reasoningContent = output.reasoningContent;
+
+  history.push({
+    type: "assistant",
+    id: sequenceId(),
+    content: output.content,
+    ...reasoningContent,
+    openai: output.openai,
+    anthropic: output.anthropic,
+    tokenUsage: output.tokenUsage,
+  });
+
+  if(output.toolCall) {
+    history.push({
+      type: "tool",
+      id: sequenceId(),
+      tool: {
+        type: output.toolCall.type,
+        function: output.toolCall.function,
+        toolCallId: output.toolCall.toolCallId,
+      },
+    });
+  }
+
+  return history;
+}
 
 export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
   const output: LlmIR[] = [];
@@ -183,6 +246,7 @@ function collapseToIR(
           role: "tool-malformed",
           toolCallId: item.toolCallId,
           toolName,
+          arguments: item.original.function?.arguments || "",
           error: item.error,
         },
       ];

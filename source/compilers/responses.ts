@@ -3,24 +3,24 @@ import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { HistoryItem, ToolCallRequestSchema, sequenceId, AssistantItem } from "../history.ts";
+import { ToolCallRequestSchema } from "../history.ts";
 import { systemPrompt } from "../system-prompt.ts";
-import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
+import { LlmIR, OutputIR, AssistantMessage } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
+import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 
 async function toModelMessage(
-  messages: HistoryItem[],
+  messages: LlmIR[],
   appliedWindow: boolean,
   config: Config,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
-  const irs = toLlmIR(messages);
+  const irs = [ ...messages ];
   irs.reverse();
   const seenPaths = new Set<string>();
 
@@ -181,7 +181,7 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
         {
           type: "tool-result",
           toolCallId: ir.toolCallId,
-          toolName: ir.toolName,
+          toolName: ir.toolName || "unknown",
           output: {
             type: "text" as const,
             value: `Error: ${ir.error}`,
@@ -226,20 +226,19 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, history, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
 }: {
   config: Config,
   modelOverride: string | null,
-  history: HistoryItem[],
+  windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
-}) {
+}): Promise<OutputIR[]> {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const processedHistory = applyContextWindow(history, modelConfig.context);
   const messages = await toModelMessage(
-    processedHistory.history,
-    processedHistory.appliedWindow,
+    windowedIR.ir,
+    windowedIR.appliedWindow,
     config
   );
 
@@ -359,7 +358,7 @@ export async function runResponsesAgent({
   let tokenDelta = 0;
   if(usage.input !== 0 || usage.output !== 0) {
     if(!abortSignal.aborted) {
-      const previousTokens = messageHistoryTokens(processedHistory.history);
+      const previousTokens = countIRTokens(windowedIR.ir);
       tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
     }
   }
@@ -368,63 +367,50 @@ export async function runResponsesAgent({
   if(reasoningId || encryptedReasoningContent) {
     openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
   }
-  const assistantHistoryItem: AssistantItem = {
-    type: "assistant",
-    id: sequenceId(),
+  const assistantHistoryItem: AssistantMessage = {
+    role: "assistant",
     content, reasoningContent,
     ...openaiSpecific,
     tokenUsage: tokenDelta,
   };
 
   // If aborted, don't try to parse tool calls
-  if(abortSignal.aborted) return history.concat([assistantHistoryItem]);
+  if(abortSignal.aborted) return [ assistantHistoryItem ];
 
   // Get tool calls
   const toolCalls = await result.toolCalls;
-  if (toolCalls && toolCalls.length > 0) {
-    const firstToolCall = toolCalls[0];
-    const chatToolCall = {
-      toolCallId: firstToolCall.toolCallId,
-      toolName: firstToolCall.toolName,
-      args: firstToolCall.input,
-    }
-    const parseResult = await parseResponsesTool(
-      chatToolCall,
-      config,
-      onAutofixJson,
-      abortSignal,
-    );
-
-    if(parseResult.status === "error") {
-      return history.concat([
-        assistantHistoryItem,
-        {
-          type: "tool-malformed",
-          id: sequenceId(),
-          error: parseResult.message,
-          original: {
-            id: firstToolCall.toolCallId,
-            function: {
-              name: firstToolCall.toolName,
-              arguments: JSON.stringify(firstToolCall.input),
-            },
-          },
-          toolCallId: firstToolCall.toolCallId,
-        },
-      ]);
-    }
-
-    return history.concat([
-      assistantHistoryItem,
-      {
-        type: "tool",
-        id: sequenceId(),
-        tool: parseResult.tool,
-      },
-    ]);
+  if(toolCalls == null || toolCalls.length === 0) {
+    return [ assistantHistoryItem ];
   }
 
-  return history.concat([assistantHistoryItem]);
+  const firstToolCall = toolCalls[0];
+  const chatToolCall = {
+    toolCallId: firstToolCall.toolCallId,
+    toolName: firstToolCall.toolName,
+    args: firstToolCall.input,
+  }
+  const parseResult = await parseResponsesTool(
+    chatToolCall,
+    config,
+    onAutofixJson,
+    abortSignal,
+  );
+
+  if(parseResult.status === "error") {
+    return [
+      assistantHistoryItem,
+      {
+        role: "tool-malformed",
+        error: parseResult.message,
+        toolName: firstToolCall.toolName,
+        arguments: JSON.stringify(firstToolCall.input),
+        toolCallId: firstToolCall.toolCallId,
+      },
+    ];
+  }
+
+  assistantHistoryItem.toolCall = parseResult.tool;
+  return [ assistantHistoryItem ];
 }
 
 type ParseToolResult = {

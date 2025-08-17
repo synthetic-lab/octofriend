@@ -2,14 +2,15 @@ import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { Config, getModelFromConfig } from "../config.ts";
-import { HistoryItem } from "../history.ts";
+import { LlmIR } from "../ir/llm-ir.ts";
+import { applyContextWindow } from "../ir/ir-windowing.ts";
 
 export async function run({
-  config, modelOverride, history, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal
 }: {
   config: Config,
   modelOverride: string | null,
-  history: HistoryItem[],
+  messages: LlmIR[],
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
@@ -22,5 +23,7 @@ export async function run({
     return runAnthropicAgent;
   })();
 
-  return await run({ config, modelOverride, history, onTokens, onAutofixJson, abortSignal });
+  const windowedIR = applyContextWindow(messages, modelConfig.context);
+
+  return await run({ config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal });
 }

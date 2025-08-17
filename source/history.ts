@@ -29,10 +29,10 @@ export type ToolMalformedItem = SequenceIdTagged<{
   error: string,
   original: Partial<{
     id: string,
-    function: {
+    function: Partial<{
       name: string,
       arguments: string,
-    },
+    }>,
   }>,
   toolCallId: string,
 }>;

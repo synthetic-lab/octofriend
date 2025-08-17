@@ -3,14 +3,14 @@ import { t, toJSONSchema, toTypescript } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import { HistoryItem, ToolCallRequestSchema, sequenceId } from "../history.ts";
+import { ToolCallRequestSchema } from "../history.ts";
 import { systemPrompt } from "../system-prompt.ts";
-import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
+import { LlmIR, OutputIR, AssistantMessage as AssistantIR } from "../ir/llm-ir.ts";
+import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from "../compilers/autofix.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
 import * as logger from "../logger.ts";
 
 export type UserMessage = {
@@ -56,15 +56,14 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
 const TOOL_ERROR_TAG = "tool-error";
 
-
 async function toLlmMessages(
-  messages: HistoryItem[],
+  messages: LlmIR[],
   appliedWindow: boolean,
   config: Config,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
+  const irs = [ ...messages ];
 
-  const irs = toLlmIR(messages);
   irs.reverse();
   const seenPaths = new Set<string>();
   for(const ir of irs) {
@@ -201,15 +200,15 @@ Please try again.`.trim())}`,
 }
 
 export async function runAgent({
-  config, modelOverride, history, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
 }: {
   config: Config,
   modelOverride: string | null,
-  history: HistoryItem[],
+  windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
-}) {
+}): Promise<OutputIR[]> {
   const model = getModelFromConfig(config, modelOverride);
   const apiKey = await assertKeyForModel(model, config);
   const client = new OpenAI({
@@ -217,11 +216,9 @@ export async function runAgent({
     apiKey,
   });
 
-  const processedHistory = applyContextWindow(history, model.context);
-
   const messages = await toLlmMessages(
-    processedHistory.history,
-    processedHistory.appliedWindow,
+    windowedIR.ir,
+    windowedIR.appliedWindow,
     config
   );
 
@@ -364,65 +361,57 @@ export async function runAgent({
     trackTokens(model.model, "input", usage.input);
     trackTokens(model.model, "output", usage.output);
     if(!abortSignal.aborted) {
-      const previousTokens = messageHistoryTokens(processedHistory.history);
+      const previousTokens = countIRTokens(windowedIR.ir);
       tokenDelta = (usage.input + usage.output) - previousTokens;
     }
   }
 
-  const assistantHistoryItem = {
-    type: "assistant" as const,
-    id: sequenceId(),
+  const assistantIr: AssistantIR = {
+    role: "assistant" as const,
     content, reasoningContent,
     tokenUsage: tokenDelta,
   };
 
   // If aborted, don't try to parse tool calls - just return the assistant response
-  if(abortSignal.aborted) return history.concat([ assistantHistoryItem ]);
+  if(abortSignal.aborted) return [ assistantIr ];
 
-  // Check if we found a tool call
-  if (currTool) {
-    const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
-    if(validatedTool instanceof t.Err) {
-      const toolCallId = currTool["id"];
-      if(toolCallId == null) throw new Error("Impossible tool call: no id given");
-      return history.concat([
-        assistantHistoryItem,
-        {
-          type: "tool-malformed",
-          id: sequenceId(),
-          error: validatedTool.message,
-          original: currTool,
-          toolCallId,
-        },
-      ]);
-    }
+  // If no tool call, we're done
+  if(currTool == null) return [ assistantIr ];
 
-    const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
-
-    if(parseResult.status === "error") {
-      return history.concat([
-        assistantHistoryItem,
-        {
-          type: "tool-malformed",
-          id: sequenceId(),
-          error: parseResult.message,
-          original: currTool,
-          toolCallId: validatedTool.id,
-        },
-      ]);
-    }
-
-    return history.concat([
-      assistantHistoryItem,
+  // Got this far? Parse out the tool call
+  const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
+  if(validatedTool instanceof t.Err) {
+    const toolCallId = currTool["id"];
+    if(toolCallId == null) throw new Error("Impossible tool call: no id given");
+    return [
+      assistantIr,
       {
-        type: "tool",
-        id: sequenceId(),
-        tool: parseResult.tool,
+        role: "tool-malformed",
+        error: validatedTool.message,
+        toolCallId,
+        toolName: currTool.function?.name,
+        arguments: currTool.function?.arguments,
       },
-    ]);
+    ];
   }
 
-  return history.concat([ assistantHistoryItem ]);
+  const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
+
+  if(parseResult.status === "error") {
+    return [
+      assistantIr,
+      {
+        role: "tool-malformed",
+        error: parseResult.message,
+        toolName: validatedTool.function.name,
+        arguments: validatedTool.function.arguments,
+        toolCallId: validatedTool.id,
+      },
+    ];
+  }
+
+  assistantIr.toolCall = parseResult.tool;
+  return [ assistantIr ];
 }
 
 type ParseToolResult = {
