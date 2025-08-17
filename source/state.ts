@@ -15,6 +15,7 @@ import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
+import { PaymentError } from "./errors.ts";
 
 export type RunArgs = {
   config: Config,
@@ -31,6 +32,9 @@ export type UiState = {
     toolReq: ToolCallItem,
   } | {
     mode: "error-recovery",
+  } | {
+    mode: "payment-error",
+    error: string,
   } | {
     mode: "diff-apply",
     abortController: AbortController,
@@ -50,6 +54,7 @@ export type UiState = {
   abortResponse: () => void,
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
+  retryPayment: (config: Config) => Promise<void>,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -74,6 +79,12 @@ export const useAppStore = create<UiState>((set, get) => ({
 		];
     set({ history });
     await get()._runAgent({ config });
+  },
+
+  retryPayment: async (config: Config) => {
+    if(get().modeData.mode === "payment-error") {
+      await get()._runAgent({ config });
+    }
   },
 
   rejectTool: (toolCallId) => {
@@ -265,7 +276,15 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
-      logger.error("verbose", e);
+      if(e instanceof PaymentError) {
+        set({
+          modeData: { mode: "payment-error", error: e.message },
+        });
+        return;
+      }
+      else {
+        logger.error("verbose", e);
+      }
       set({
         history: [
           ...get().history,

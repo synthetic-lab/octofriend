@@ -12,6 +12,7 @@ import { autofixJson } from "../compilers/autofix.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
+import { PaymentError } from "../errors.ts";
 
 export type UserMessage = {
   role: "user";
@@ -199,6 +200,20 @@ Please try again.`.trim())}`,
   };
 }
 
+const PaymentErrorSchema = t.subtype({
+  status: t.value(402),
+  error: t.str,
+});
+async function handlePaymentError<T>(cb: () => Promise<T>): Promise<T> {
+  try {
+    return await cb();
+  } catch(e) {
+    const result = PaymentErrorSchema.sliceResult(e);
+    if(result instanceof t.Err) throw e;
+    throw new PaymentError(result.error);
+  }
+}
+
 export async function runAgent({
   config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
 }: {
@@ -209,209 +224,211 @@ export async function runAgent({
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
 }): Promise<OutputIR[]> {
-  const model = getModelFromConfig(config, modelOverride);
-  const apiKey = await assertKeyForModel(model, config);
-  const client = new OpenAI({
-    baseURL: model.baseUrl,
-    apiKey,
-  });
+  return await handlePaymentError(async () => {
+    const model = getModelFromConfig(config, modelOverride);
+    const apiKey = await assertKeyForModel(model, config);
+    const client = new OpenAI({
+      baseURL: model.baseUrl,
+      apiKey,
+    });
 
-  const messages = await toLlmMessages(
-    windowedIR.ir,
-    windowedIR.appliedWindow,
-    config
-  );
+    const messages = await toLlmMessages(
+      windowedIR.ir,
+      windowedIR.appliedWindow,
+      config
+    );
 
-  const tools = Object.entries(toolMap).map(([ name, tool ]) => {
-    const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
-    // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
-    // @ts-ignore
-    delete argJsonSchema.$schema;
-    delete argJsonSchema.description;
-    // @ts-ignore
-    delete argJsonSchema.title;
+    const tools = Object.entries(toolMap).map(([ name, tool ]) => {
+      const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
+      // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
+      // @ts-ignore
+      delete argJsonSchema.$schema;
+      delete argJsonSchema.description;
+      // @ts-ignore
+      delete argJsonSchema.title;
 
-    return {
-      type: "function" as const,
-      strict: true,
-      function: {
-        name: name,
-        description: `The ${name} tool`,
-        parameters: argJsonSchema,
+      return {
+        type: "function" as const,
+        strict: true,
+        function: {
+          name: name,
+          description: `The ${name} tool`,
+          parameters: argJsonSchema,
+        },
+      };
+    });
+
+    let reasoning: {
+      reasoning_effort?: "low" | "medium" | "high"
+    } = {};
+    if(model.reasoning) reasoning.reasoning_effort = model.reasoning;
+
+    const res = await client.chat.completions.create({
+      ...reasoning,
+      model: model.model,
+      messages, tools,
+      stream: true,
+      stream_options: {
+        include_usage: true,
       },
+    }, {
+      signal: abortSignal,
+    });
+
+    let content = "";
+    let reasoningContent: undefined | string = undefined;
+    let inThinkTag = false;
+    let usage = {
+      input: 0,
+      output: 0,
     };
-  });
 
-  let reasoning: {
-    reasoning_effort?: "low" | "medium" | "high"
-  } = {};
-  if(model.reasoning) reasoning.reasoning_effort = model.reasoning;
+    const xmlParser = new StreamingXMLParser({
+      whitelist: [ "think" ],
+      handlers: {
+        onOpenTag: () => {
+          if(content === "") inThinkTag = true;
+        },
 
-  const res = await client.chat.completions.create({
-    ...reasoning,
-    model: model.model,
-    messages, tools,
-    stream: true,
-    stream_options: {
-      include_usage: true,
-    },
-  }, {
-    signal: abortSignal,
-  });
+        onCloseTag: () => {
+          inThinkTag = false;
+        },
 
-  let content = "";
-  let reasoningContent: undefined | string = undefined;
-  let inThinkTag = false;
-  let usage = {
-    input: 0,
-    output: 0,
-  };
-
-  const xmlParser = new StreamingXMLParser({
-    whitelist: [ "think" ],
-    handlers: {
-      onOpenTag: () => {
-        if(content === "") inThinkTag = true;
-      },
-
-      onCloseTag: () => {
-        inThinkTag = false;
-      },
-
-      onText: e => {
-        if(inThinkTag) {
-          if(reasoningContent == null) reasoningContent = "";
-          reasoningContent += e.content;
-          onTokens(e.content, "reasoning");
-        }
-        else {
-          onTokens(e.content, "content");
-          content += e.content;
-        }
-      },
-    },
-  });
-
-  let currTool: Partial<ResponseToolCall> | null = null;
-  let doneParsingTools = false;
-
-  try {
-    for await(const chunk of res) {
-      if (abortSignal.aborted) break;
-      if(doneParsingTools) break;
-      if(chunk.usage) {
-        usage.input = chunk.usage.prompt_tokens;
-        usage.output = chunk.usage.completion_tokens;
-      }
-
-      const delta = chunk.choices[0]?.delta as {
-        content: string
-      } | {
-        reasoning_content: string
-      } | {
-        tool_calls: Array<ResponseToolCall>
-      } | null;
-
-      if(delta && "content" in delta && delta.content) {
-        const tokens = delta.content || "";
-        xmlParser.write(tokens);
-      }
-      else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
-        if(reasoningContent == null) reasoningContent = "";
-        reasoningContent += delta.reasoning_content;
-        onTokens(delta.reasoning_content, "reasoning");
-      }
-      else if(delta && "tool_calls" in delta && delta.tool_calls && delta.tool_calls.length > 0) {
-        for(const deltaCall of delta.tool_calls) {
-          if(currTool == null) {
-            currTool = {
-              id: deltaCall.id,
-              function: {
-                name: deltaCall.function.name || "",
-                arguments: deltaCall.function.arguments || "",
-              },
-            };
+        onText: e => {
+          if(inThinkTag) {
+            if(reasoningContent == null) reasoningContent = "";
+            reasoningContent += e.content;
+            onTokens(e.content, "reasoning");
           }
           else {
-            if(deltaCall.id && deltaCall.id !== currTool.id) {
-              doneParsingTools = true;
-              break;
+            onTokens(e.content, "content");
+            content += e.content;
+          }
+        },
+      },
+    });
+
+    let currTool: Partial<ResponseToolCall> | null = null;
+    let doneParsingTools = false;
+
+    try {
+      for await(const chunk of res) {
+        if (abortSignal.aborted) break;
+        if(doneParsingTools) break;
+        if(chunk.usage) {
+          usage.input = chunk.usage.prompt_tokens;
+          usage.output = chunk.usage.completion_tokens;
+        }
+
+        const delta = chunk.choices[0]?.delta as {
+          content: string
+        } | {
+          reasoning_content: string
+        } | {
+          tool_calls: Array<ResponseToolCall>
+        } | null;
+
+        if(delta && "content" in delta && delta.content) {
+          const tokens = delta.content || "";
+          xmlParser.write(tokens);
+        }
+        else if(delta && "reasoning_content" in delta && delta.reasoning_content) {
+          if(reasoningContent == null) reasoningContent = "";
+          reasoningContent += delta.reasoning_content;
+          onTokens(delta.reasoning_content, "reasoning");
+        }
+        else if(delta && "tool_calls" in delta && delta.tool_calls && delta.tool_calls.length > 0) {
+          for(const deltaCall of delta.tool_calls) {
+            if(currTool == null) {
+              currTool = {
+                id: deltaCall.id,
+                function: {
+                  name: deltaCall.function.name || "",
+                  arguments: deltaCall.function.arguments || "",
+                },
+              };
             }
-            if(deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
-            if(deltaCall.function.arguments) currTool.function!.arguments += deltaCall.function.arguments;
+            else {
+              if(deltaCall.id && deltaCall.id !== currTool.id) {
+                doneParsingTools = true;
+                break;
+              }
+              if(deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
+              if(deltaCall.function.arguments) currTool.function!.arguments += deltaCall.function.arguments;
+            }
           }
         }
       }
+    } catch (e) {
+      // Handle abort errors gracefully
+      if (abortSignal.aborted) {
+        // Fall through to return abbreviated response
+      } else {
+        throw e;
+      }
     }
-  } catch (e) {
-    // Handle abort errors gracefully
-    if (abortSignal.aborted) {
-      // Fall through to return abbreviated response
-    } else {
-      throw e;
+
+    // Make sure to close the parser to flush any remaining data
+    xmlParser.close();
+
+    // Calculate token usage delta from the previous total
+    let tokenDelta = 0;
+    if(usage.input !== 0 || usage.output !== 0) {
+      trackTokens(model.model, "input", usage.input);
+      trackTokens(model.model, "output", usage.output);
+      if(!abortSignal.aborted) {
+        const previousTokens = countIRTokens(windowedIR.ir);
+        tokenDelta = (usage.input + usage.output) - previousTokens;
+      }
     }
-  }
 
-  // Make sure to close the parser to flush any remaining data
-  xmlParser.close();
+    const assistantIr: AssistantIR = {
+      role: "assistant" as const,
+      content, reasoningContent,
+      tokenUsage: tokenDelta,
+    };
 
-  // Calculate token usage delta from the previous total
-  let tokenDelta = 0;
-  if(usage.input !== 0 || usage.output !== 0) {
-    trackTokens(model.model, "input", usage.input);
-    trackTokens(model.model, "output", usage.output);
-    if(!abortSignal.aborted) {
-      const previousTokens = countIRTokens(windowedIR.ir);
-      tokenDelta = (usage.input + usage.output) - previousTokens;
+    // If aborted, don't try to parse tool calls - just return the assistant response
+    if(abortSignal.aborted) return [ assistantIr ];
+
+    // If no tool call, we're done
+    if(currTool == null) return [ assistantIr ];
+
+    // Got this far? Parse out the tool call
+    const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
+    if(validatedTool instanceof t.Err) {
+      const toolCallId = currTool["id"];
+      if(toolCallId == null) throw new Error("Impossible tool call: no id given");
+      return [
+        assistantIr,
+        {
+          role: "tool-malformed",
+          error: validatedTool.message,
+          toolCallId,
+          toolName: currTool.function?.name,
+          arguments: currTool.function?.arguments,
+        },
+      ];
     }
-  }
 
-  const assistantIr: AssistantIR = {
-    role: "assistant" as const,
-    content, reasoningContent,
-    tokenUsage: tokenDelta,
-  };
+    const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
 
-  // If aborted, don't try to parse tool calls - just return the assistant response
-  if(abortSignal.aborted) return [ assistantIr ];
+    if(parseResult.status === "error") {
+      return [
+        assistantIr,
+        {
+          role: "tool-malformed",
+          error: parseResult.message,
+          toolName: validatedTool.function.name,
+          arguments: validatedTool.function.arguments,
+          toolCallId: validatedTool.id,
+        },
+      ];
+    }
 
-  // If no tool call, we're done
-  if(currTool == null) return [ assistantIr ];
-
-  // Got this far? Parse out the tool call
-  const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
-  if(validatedTool instanceof t.Err) {
-    const toolCallId = currTool["id"];
-    if(toolCallId == null) throw new Error("Impossible tool call: no id given");
-    return [
-      assistantIr,
-      {
-        role: "tool-malformed",
-        error: validatedTool.message,
-        toolCallId,
-        toolName: currTool.function?.name,
-        arguments: currTool.function?.arguments,
-      },
-    ];
-  }
-
-  const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
-
-  if(parseResult.status === "error") {
-    return [
-      assistantIr,
-      {
-        role: "tool-malformed",
-        error: parseResult.message,
-        toolName: validatedTool.function.name,
-        arguments: validatedTool.function.arguments,
-        toolCallId: validatedTool.id,
-      },
-    ];
-  }
-
-  assistantIr.toolCall = parseResult.tool;
-  return [ assistantIr ];
+    assistantIr.toolCall = parseResult.tool;
+    return [ assistantIr ];
+  });
 }
 
 type ParseToolResult = {

@@ -23,6 +23,12 @@ TODO:
   change in the history without telling the LLM what's going on
 - [ ] Add special rendering for certain classes of errors, e.g. auth failures
   or payment-related failures
+  - [x] Synthetic payment errors
+  - [ ] Anthropic payment errors
+  - [ ] OpenAI payment errors
+  - [ ] Synthetic auth failures
+  - [ ] Anthropic auth failures
+  - [ ] OpenAI auth failures
 - [ ] Run the test-connection code for autofix models and all supported auth
   providers, and show billing- or auth-related errors immediately
 - [ ] Remove explicit function-calling-syntax examples from the system prompt,

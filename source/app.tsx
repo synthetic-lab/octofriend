@@ -28,6 +28,7 @@ import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
 import { displayLog } from "./logger.ts";
+import { CenteredBox } from "./components/centered-box.tsx";
 
 type Props = {
 	config: Config;
@@ -205,6 +206,9 @@ function BottomBarContent() {
       "Writhing",
     ]} />
   }
+  if(modeData.mode === "payment-error") {
+    return <PaymentErrorScreen error={modeData.error}/>
+  }
 
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer
@@ -225,6 +229,25 @@ function BottomBarContent() {
       onSubmit={onSubmit}
     />
   </Box>
+}
+
+function PaymentErrorScreen({ error }: { error: string }) {
+  const config = useConfig();
+  const { retryPayment } = useAppStore(
+    useShallow(state => ({
+      retryPayment: state.retryPayment,
+    }))
+  );
+
+  useInput(() => {
+    retryPayment(config);
+  });
+
+  return <CenteredBox>
+    <Text color="red">Payment error:</Text>
+    <Text>{error}</Text>
+    <Text color="gray">Once you've paid, press any key to continue.</Text>
+  </CenteredBox>
 }
 
 function ToolRequestRenderer({ toolReq, config }: {
