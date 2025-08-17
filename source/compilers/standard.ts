@@ -84,19 +84,6 @@ async function toLlmMessages(
     content: await systemPrompt({
       appliedWindow,
       config,
-      exampleToolCall: JSON.stringify({
-        type: "function",
-        id: "SOME_STRING_ID",
-        function: {
-          name: "bash",
-          arguments: JSON.stringify({
-            cmd: "curl \"https://github.com/reissbaker/antipattern\"",
-            timeout: 10000,
-          } satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
-        },
-      } satisfies ResponseToolCall & {
-        type: "function",
-      }),
     }),
   });
 

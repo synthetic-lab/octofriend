@@ -170,15 +170,6 @@ export async function runAnthropicAgent({
   const sysPrompt = await systemPrompt({
     appliedWindow: windowedIR.appliedWindow,
     config,
-    exampleToolCall: JSON.stringify({
-      type: "tool_use",
-      id: "SOME_STRING_ID",
-      name: "bash",
-      input: JSON.stringify({
-        cmd: "curl \"https://github.com/reissbaker/antipattern\"",
-        timeout: 10000,
-      } satisfies t.GetType<typeof toolMap.bash.ArgumentsSchema>),
-    }),
   });
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];

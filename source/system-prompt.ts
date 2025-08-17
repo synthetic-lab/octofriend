@@ -15,10 +15,9 @@ const LLM_INSTR_FILES = [
 ] as const;
 
 
-export async function systemPrompt({ appliedWindow, config, exampleToolCall }: {
+export async function systemPrompt({ appliedWindow, config }: {
   appliedWindow: boolean,
   config: Config,
-  exampleToolCall: string,
 }) {
   const currDir = await fs.readdir(process.cwd());
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
@@ -51,9 +50,11 @@ ${
   }).join("\n\n")
 }
 
-You can call them by calling them as tools; for example:
+You can call them by calling them as tools; for example, if you were trying to read the GitHub repo
+for the reissbaker/antipattern library, you might use the fetch tool:
 
-${exampleToolCall}
+tool: fetch
+url: "https://github.com/reissbaker/antipattern"
 
 ${await mcpPrompt(config)}
 
@@ -199,8 +200,8 @@ async function mcpPrompt(config: Config) {
 
 # Model-Context-Protocol (MCP) Tools
 
-You have access to the following MCP servers and their sub-tools. Use the mcp tool to call them,
-specifying the server and tool name:
+You also have access to the following MCP servers and their sub-tools. Use the mcp tool to call
+them, specifying the server and tool name:
 
 ${mcpSections.join('\n\n')}
 
