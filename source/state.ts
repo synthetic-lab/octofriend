@@ -1,8 +1,6 @@
 import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
-import { runAgent } from "./llm.ts";
-import { runResponsesAgent } from "./compilers/responses.ts";
-import { runAnthropicAgent } from "./compilers/anthropic.ts";
+import { run } from "./compilers/run.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
 import {
@@ -212,15 +210,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     let lastContent = "";
 
     let history: HistoryItem[];
-    const modelConfig = getModelFromConfig(config, get().modelOverride);
     try {
-      const run = (() => {
-        if(modelConfig.type == null || modelConfig.type === "standard") return runAgent;
-        if(modelConfig.type === "openai-responses") return runResponsesAgent;
-        const _: "anthropic" = modelConfig.type;
-        return runAnthropicAgent;
-      })();
-
       history = await run({
         config,
         modelOverride: get().modelOverride,

@@ -11,7 +11,7 @@ import { readConfig, readMetadata, readKeyForModel, AUTOFIX_KEYS } from "./confi
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
-import { LlmMessage } from "./llm.ts";
+import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 const __dirname = import.meta.dirname;

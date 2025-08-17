@@ -1,17 +1,17 @@
 import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
-import { Config, getModelFromConfig, assertKeyForModel } from "./config.ts";
-import * as toolMap from "./tools/tool-defs/index.ts";
-import { StreamingXMLParser, tagged } from "./xml.ts";
-import { HistoryItem, ToolCallRequestSchema, sequenceId } from "./history.ts";
-import { systemPrompt } from "./system-prompt.ts";
-import { toLlmIR, LlmIR } from "./ir/llm-ir.ts";
-import { fileTracker } from "./tools/file-tracker.ts";
-import { autofixJson } from "./compilers/autofix.ts";
-import { tryexpr } from "./tryexpr.ts";
-import { trackTokens } from "./token-tracker.ts";
-import { applyContextWindow, messageHistoryTokens } from "./windowing.ts";
-import * as logger from "./logger.ts";
+import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
+import { StreamingXMLParser, tagged } from "../xml.ts";
+import { HistoryItem, ToolCallRequestSchema, sequenceId } from "../history.ts";
+import { systemPrompt } from "../system-prompt.ts";
+import { toLlmIR, LlmIR } from "../ir/llm-ir.ts";
+import { fileTracker } from "../tools/file-tracker.ts";
+import { autofixJson } from "../compilers/autofix.ts";
+import { tryexpr } from "../tryexpr.ts";
+import { trackTokens } from "../token-tracker.ts";
+import { applyContextWindow, messageHistoryTokens } from "../windowing.ts";
+import * as logger from "../logger.ts";
 
 export type UserMessage = {
   role: "user";
