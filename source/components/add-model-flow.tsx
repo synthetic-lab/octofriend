@@ -8,7 +8,7 @@ import { trackTokens } from "../token-tracker.ts";
 import { SetApiKey } from "./set-api-key.tsx";
 import { MenuPanel } from "./menu-panel.tsx";
 import { router, Back } from "../router.tsx";
-import { PROVIDERS } from "./providers.ts";
+import { PROVIDERS } from "../providers.ts";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false, error: string };

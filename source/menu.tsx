@@ -10,7 +10,7 @@ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
-import { keyFromName, SYNTHETIC_PROVIDER } from "./components/providers.ts";
+import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 
 type MenuMode = "main-menu"
               | "settings-menu"

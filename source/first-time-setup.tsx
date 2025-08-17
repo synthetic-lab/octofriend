@@ -13,7 +13,7 @@ import { THEME_COLOR } from "./theme.ts";
 import SelectInput from "ink-select-input";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
-import { SYNTHETIC_PROVIDER, keyFromName } from "./components/providers.ts";
+import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 
 type SetupStep = {

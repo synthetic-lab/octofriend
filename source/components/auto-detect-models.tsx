@@ -6,7 +6,7 @@ import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
-import { ProviderConfig, PROVIDERS, keyFromName } from "./providers.ts";
+import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { ConfirmDialog } from "./confirm-dialog.tsx";
 
 export type AutoDetectModelsProps = {

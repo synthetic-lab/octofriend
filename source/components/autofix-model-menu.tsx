@@ -6,7 +6,7 @@ import { Config, readKeyForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
-import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
+import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
 
 export type AutofixModelProps = {

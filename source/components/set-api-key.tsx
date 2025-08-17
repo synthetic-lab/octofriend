@@ -4,7 +4,7 @@ import TextInput from "ink-text-input";
 import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
 import { writeKeyForModel } from "../config.ts";
-import { PROVIDERS } from "./providers.ts";
+import { PROVIDERS } from "../providers.ts";
 
 export function SetApiKey({ baseUrl, onComplete, onCancel }: {
   nickname?: string,

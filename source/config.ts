@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
 import { fileExists } from "./fs-utils.ts";
-import { providerForBaseUrl, keyFromName, ProviderConfig } from "./components/providers.ts";
+import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
