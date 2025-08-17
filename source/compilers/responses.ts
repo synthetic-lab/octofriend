@@ -174,7 +174,7 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<ModelMe
     };
   }
 
-  if(ir.role === "tool-error") {
+  if(ir.role === "tool-error" || ir.role === "tool-malformed") {
     return {
       role: "tool",
       content: [

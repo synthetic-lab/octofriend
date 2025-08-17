@@ -169,7 +169,7 @@ async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
       content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
     };
   }
-  if(ir.role === "tool-error") {
+  if(ir.role === "tool-error" || ir.role === "tool-malformed") {
     return {
       role: "tool",
       tool_call_id: ir.toolCallId,

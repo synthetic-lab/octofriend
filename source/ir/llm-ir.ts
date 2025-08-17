@@ -24,6 +24,7 @@ export type AssistantMessage = {
   },
   anthropic?: AnthropicAssistantData,
   toolCall?: ToolCallRequest,
+  tokenUsage: number;
 };
 
 export type UserMessage = {
@@ -56,6 +57,13 @@ export type ToolErrorMessage = {
   error: string,
 };
 
+export type ToolMalformedMessage = {
+  role: "tool-malformed",
+  toolCallId: string,
+  toolName: string,
+  error: string,
+};
+
 export type FileOutdatedMessage = {
   role: "file-outdated",
   toolCall: ToolCallRequest,
@@ -73,6 +81,7 @@ export type LlmIR = AssistantMessage
                   | FileToolMessage
                   | ToolRejectMessage
                   | ToolErrorMessage
+                  | ToolMalformedMessage
                   | FileOutdatedMessage
                   | FileUnreadableMessage
                   | FileToolMessage
@@ -142,6 +151,7 @@ function collapseToIR(
           openai: prev.openai,
           anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
+          tokenUsage: prev.tokenUsage,
         },
         null,
       ];
@@ -167,9 +177,10 @@ function collapseToIR(
           openai: prev.openai,
           anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
+          tokenUsage: prev.tokenUsage,
         } satisfies LlmIR,
         {
-          role: "tool-error",
+          role: "tool-malformed",
           toolCallId: item.toolCallId,
           toolName,
           error: item.error,
@@ -269,6 +280,7 @@ function collapseToIR(
         reasoningContent: item.reasoningContent,
         openai: item.openai,
         anthropic: item.anthropic,
+        tokenUsage: item.tokenUsage,
       },
     ];
   }
