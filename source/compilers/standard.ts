@@ -13,6 +13,7 @@ import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { PaymentError } from "../errors.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 export type UserMessage = {
   role: "user";
@@ -61,6 +62,8 @@ async function toLlmMessages(
   messages: LlmIR[],
   appliedWindow: boolean,
   config: Config,
+  transport: Transport,
+  signal: AbortSignal,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
   const irs = [ ...messages ];
@@ -71,10 +74,10 @@ async function toLlmMessages(
     if(ir.role === "file-tool-output") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await llmFromIr(ir, seen));
+      output.push(await llmFromIr(transport, signal, ir, seen));
     }
     else {
-      output.push(await llmFromIr(ir, false));
+      output.push(await llmFromIr(transport, signal, ir, false));
     }
   }
 
@@ -90,7 +93,9 @@ async function toLlmMessages(
   return output;
 }
 
-async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
+async function llmFromIr(
+  transport: Transport, signal: AbortSignal, ir: LlmIR, seenPath: boolean
+): Promise<LlmMessage> {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -139,7 +144,7 @@ async function llmFromIr(ir: LlmIR, seenPath: boolean): Promise<LlmMessage> {
       return {
         role: "tool",
         tool_call_id: ir.toolCall.toolCallId,
-        content: await fileTracker.read(ir.path),
+        content: await fileTracker.read(transport, signal, ir.path),
       };
     } catch {
       return {
@@ -202,7 +207,7 @@ async function handlePaymentError<T>(cb: () => Promise<T>): Promise<T> {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
 }: {
   config: Config,
   modelOverride: string | null,
@@ -210,6 +215,7 @@ export async function runAgent({
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
+  transport: Transport,
 }): Promise<OutputIR[]> {
   return await handlePaymentError(async () => {
     const model = getModelFromConfig(config, modelOverride);
@@ -222,7 +228,9 @@ export async function runAgent({
     const messages = await toLlmMessages(
       windowedIR.ir,
       windowedIR.appliedWindow,
-      config
+      config,
+      transport,
+      abortSignal,
     );
 
     const tools = Object.entries(toolMap).map(([ name, tool ]) => {

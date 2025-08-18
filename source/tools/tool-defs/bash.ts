@@ -1,6 +1,6 @@
 import { t } from "structural";
-import { spawn } from "child_process";
 import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
   cmd: t.str.comment("The command to run"),
@@ -24,74 +24,14 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
-  async run(abortSignal, call) {
+  async run(abortSignal, transport, call) {
     const { cmd, timeout } = call.tool.arguments;
-    return new Promise<string>((resolve, reject) => {
-      const child = spawn(cmd, {
-        cwd: process.cwd(),
-        shell: "/bin/bash",
-        timeout,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
-      let output = '';
-      let aborted = false;
-
-      const onAbort = () => {
-        aborted = true;
-        // Try graceful termination first
-        child.kill('SIGTERM');
-        // Fallback to SIGKILL if it doesn't exit quickly
-        setTimeout(() => {
-          try { child.kill('SIGKILL'); } catch {}
-        }, 500).unref?.();
-      };
-
-      if (abortSignal.aborted) onAbort();
-      abortSignal.addEventListener('abort', onAbort);
-
-      const cleanup = () => {
-        abortSignal.removeEventListener('abort', onAbort);
-      };
-
-      child.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.stderr.on('data', (data) => {
-        output += data.toString();
-      });
-
-      child.on('close', (code) => {
-        cleanup();
-        if (aborted) {
-          reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
-          return;
-        }
-        if (code === 0) {
-          resolve(output);
-        } else {
-          if(code == null) {
-            reject(new ToolError(
-`Command timed out.
-output: ${output}`));
-          }
-          else {
-            reject(new ToolError(
-`Command exited with code: ${code}
-output: ${output}`));
-          }
-        }
-      });
-
-      child.on('error', (err) => {
-        cleanup();
-        if (aborted) {
-          reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
-          return;
-        }
-        reject(new ToolError(`Command failed: ${err.message}`));
-      });
-    });
+    try {
+      return await transport.shell(abortSignal, cmd, timeout);
+    } catch(e) {
+      if(e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      if(e instanceof CommandFailedError) throw new ToolError(e.message);
+      throw e;
+    }
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;

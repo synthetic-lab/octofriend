@@ -1,5 +1,7 @@
 import * as fsOld from "fs";
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, {
+  useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
+} from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
@@ -29,12 +31,15 @@ import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
+import { Transport } from "./transports/transport-common.ts";
+import { LocalTransport } from "./transports/local.ts";
 
 type Props = {
 	config: Config;
   configPath: string,
 	metadata: Metadata,
   unchained: boolean,
+  transport: Transport,
 };
 
 type StaticItem = {
@@ -60,7 +65,9 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-export default function App({ config, configPath, metadata, unchained }: Props) {
+const TransportContext = createContext<Transport>(new LocalTransport());
+
+export default function App({ config, configPath, metadata, unchained, transport }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData } = useAppStore(
     useShallow(state => ({
@@ -88,22 +95,24 @@ export default function App({ config, configPath, metadata, unchained }: Props) 
     <ConfigPathContext.Provider value={configPath}>
       <ConfigContext.Provider value={currConfig}>
         <UnchainedContext.Provider value={unchained}>
-          <Box flexDirection="column" width="100%" height="100%">
-            <Static items={staticItems}>
-              {
-                (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-              }
-            </Static>
+          <TransportContext.Provider value={transport}>
+            <Box flexDirection="column" width="100%" height="100%">
+              <Static items={staticItems}>
+                {
+                  (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                }
+              </Static>
 
-            {
-              modeData.mode === "responding" &&
-                (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                <MessageDisplay item={modeData.inflightResponse} />
-            }
-            {
-                <BottomBar metadata={metadata} />
-            }
-          </Box>
+              {
+                modeData.mode === "responding" &&
+                  (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                  <MessageDisplay item={modeData.inflightResponse} />
+              }
+              {
+                  <BottomBar metadata={metadata} />
+              }
+            </Box>
+          </TransportContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
     </ConfigPathContext.Provider>
@@ -168,6 +177,7 @@ async function getLatestVersion() {
 
 function BottomBarContent() {
   const config = useConfig();
+  const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -187,8 +197,8 @@ function BottomBarContent() {
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
-    await input({ query, config });
-	}, [ query, config ]);
+    await input({ query, config, transport });
+	}, [ query, config, transport ]);
 
   if(modeData.mode === "responding") {
     return <Box justifyContent="space-between">
@@ -225,6 +235,7 @@ function BottomBarContent() {
     return <ToolRequestRenderer
       toolReq={modeData.toolReq}
       config={config}
+      transport={transport}
     />;
   }
 
@@ -244,6 +255,7 @@ function BottomBarContent() {
 
 function PaymentErrorScreen({ error }: { error: string }) {
   const config = useConfig();
+  const transport = useContext(TransportContext);
   const { retryPayment } = useAppStore(
     useShallow(state => ({
       retryPayment: state.retryPayment,
@@ -251,7 +263,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 
   useInput(() => {
-    retryPayment(config);
+    retryPayment({ config, transport });
   });
 
   return <CenteredBox>
@@ -261,7 +273,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
   </CenteredBox>
 }
 
-function ToolRequestRenderer({ toolReq, config }: {
+function ToolRequestRenderer({ toolReq, config, transport }: {
   toolReq: ToolCallItem
 } & RunArgs) {
   const { runTool, rejectTool } = useAppStore(
@@ -285,15 +297,15 @@ function ToolRequestRenderer({ toolReq, config }: {
 
 	const onSelect = useCallback(async (item: (typeof items)[number]) => {
     if(item.value === "no") rejectTool(toolReq.tool.toolCallId);
-    else await runTool({ toolReq, config });
-	}, [ toolReq, config ]);
+    else await runTool({ toolReq, config, transport });
+	}, [ toolReq, config, transport ]);
 
   const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.tool.function.name);
   useEffect(() => {
     if(noConfirm) {
-      runTool({ toolReq, config });
+      runTool({ toolReq, config, transport });
     }
-  }, [ toolReq, noConfirm, config ]);
+  }, [ toolReq, noConfirm, config, transport ]);
 
   if(noConfirm) return <Loading />;
 

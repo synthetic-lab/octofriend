@@ -4,9 +4,10 @@ import { runAgent } from "./standard.ts";
 import { Config, getModelFromConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 export async function run({
-  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport
 }: {
   config: Config,
   modelOverride: string | null,
@@ -14,6 +15,7 @@ export async function run({
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
+  transport: Transport,
 }) {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const run = (() => {
@@ -25,5 +27,7 @@ export async function run({
 
   const windowedIR = applyContextWindow(messages, modelConfig.context);
 
-  return await run({ config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal });
+  return await run({
+    config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
+  });
 }

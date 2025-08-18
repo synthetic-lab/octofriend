@@ -16,9 +16,11 @@ import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError } from "./errors.ts";
+import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
   config: Config,
+  transport: Transport,
 };
 export type UiState = {
   modeData: {
@@ -54,7 +56,7 @@ export type UiState = {
   abortResponse: () => void,
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
-  retryPayment: (config: Config) => Promise<void>,
+  retryPayment: (args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -66,7 +68,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
 
-  input: async ({ config, query }) => {
+  input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
 			type: "user",
       id: sequenceId(),
@@ -78,12 +80,12 @@ export const useAppStore = create<UiState>((set, get) => ({
 			userMessage,
 		];
     set({ history });
-    await get()._runAgent({ config });
+    await get()._runAgent({ config, transport });
   },
 
-  retryPayment: async (config: Config) => {
+  retryPayment: async (args) => {
     if(get().modeData.mode === "payment-error") {
-      await get()._runAgent({ config });
+      await get()._runAgent(args);
     }
   },
 
@@ -154,7 +156,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  runTool: async ({ config, toolReq }) => {
+  runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
     set({
@@ -165,7 +167,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
 
     try {
-      const content = await runTool(abortController.signal, {
+      const content = await runTool(abortController.signal, transport, {
         id: toolReq.id,
         tool: toolReq.tool.function,
       }, config, modelOverride);
@@ -186,7 +188,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     } catch(e) {
       const history = [
         ...get().history,
-        await tryTransformToolError(toolReq, e),
+        await tryTransformToolError(abortController.signal, transport, toolReq, e),
       ];
       set({ history });
     }
@@ -197,11 +199,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     }
     else {
-      await get()._runAgent({ config });
+      await get()._runAgent({ config, transport });
     }
   },
 
-  _runAgent: async ({ config }) => {
+  _runAgent: async ({ config, transport }) => {
     let content = "";
     let reasoningContent: undefined | string = undefined;
 
@@ -224,7 +226,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const history = [ ...get().history ];
     try {
       const newMessages = await run({
-        config,
+        config, transport,
         modelOverride: get().modelOverride,
         messages: toLlmIR(history),
         abortSignal: abortController.signal,
@@ -295,7 +297,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         ],
       });
       await sleep(1000);
-      return get()._runAgent({ config });
+      return get()._runAgent({ config, transport });
     }
 
     const lastHistoryItem = history[history.length - 1];
@@ -308,7 +310,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: { mode: "error-recovery" },
         history
       });
-      return get()._runAgent({ config });
+      return get()._runAgent({ config, transport });
     }
 
     if(lastHistoryItem.type !== "tool") {
@@ -316,7 +318,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     try {
-      await validateTool(lastHistoryItem.tool.function, config);
+      await validateTool(abortController.signal, transport, lastHistoryItem.tool.function, config);
     } catch(e) {
       const fn = lastHistoryItem.tool.function;
       let fixed = false;
@@ -347,10 +349,10 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
           history: [
             ...history,
-            await tryTransformToolError(lastHistoryItem, e),
+            await tryTransformToolError(abortController.signal, transport, lastHistoryItem, e),
           ],
         });
-        return await get()._runAgent({ config });
+        return await get()._runAgent({ config, transport });
       }
     }
 
@@ -365,7 +367,10 @@ export const useAppStore = create<UiState>((set, get) => ({
 }));
 
 async function tryTransformToolError(
-  toolReq: ToolCallItem, e: unknown
+  signal: AbortSignal,
+  transport: Transport,
+  toolReq: ToolCallItem,
+  e: unknown,
 ): Promise<HistoryItem> {
   if(e instanceof ToolError) {
     return {
@@ -380,7 +385,7 @@ async function tryTransformToolError(
     const absolutePath = path.resolve(e.filePath);
     // Actually perform the read to ensure it's readable
     try {
-      await fileTracker.read(absolutePath);
+      await fileTracker.read(transport, signal, absolutePath);
       return {
         type: "file-outdated",
         id: sequenceId(),

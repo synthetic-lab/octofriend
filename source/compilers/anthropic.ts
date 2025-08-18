@@ -11,6 +11,7 @@ import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -19,6 +20,8 @@ const ThinkingBlockSchema = t.subtype({
 });
 
 async function toModelMessage(
+  transport: Transport,
+  signal: AbortSignal,
   messages: LlmIR[],
 ): Promise<Array<Anthropic.MessageParam>> {
   const output: Anthropic.MessageParam[] = [];
@@ -31,9 +34,9 @@ async function toModelMessage(
     if(ir.role === "file-tool-output") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(ir, seen));
+      output.push(await modelMessageFromIr(transport, signal, ir, seen));
     } else {
-      output.push(await modelMessageFromIr(ir, false));
+      output.push(await modelMessageFromIr(transport, signal, ir, false));
     }
   }
 
@@ -42,7 +45,12 @@ async function toModelMessage(
   return output;
 }
 
-async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<Anthropic.MessageParam> {
+async function modelMessageFromIr(
+  transport: Transport,
+  signal: AbortSignal,
+  ir: LlmIR,
+  seenPath: boolean,
+): Promise<Anthropic.MessageParam> {
   if(ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
@@ -77,7 +85,7 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<Anthrop
         content = "Tool ran successfully.";
       } else {
         try {
-          content = await fileTracker.read(ir.path);
+          content = await fileTracker.read(transport, signal, ir.path);
         } catch {
           content = "Tool ran successfully.";
         }
@@ -156,7 +164,7 @@ async function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Promise<Anthrop
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
 }: {
   config: Config,
   modelOverride: string | null,
@@ -164,9 +172,10 @@ export async function runAnthropicAgent({
   onTokens: (t: string, type: "reasoning" | "content") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
+  transport: Transport,
 }): Promise<OutputIR[]> {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const messages = await toModelMessage(windowedIR.ir);
+  const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
   const sysPrompt = await systemPrompt({
     appliedWindow: windowedIR.appliedWindow,
     config,

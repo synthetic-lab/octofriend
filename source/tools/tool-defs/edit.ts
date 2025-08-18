@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { ToolError, attemptUntrackedRead, ToolDef } from "../common.ts";
+import { Transport } from "../../transports/transport-common.ts";
 
 const DiffEdit = t.subtype({
   type: t.value("diff"),
@@ -46,16 +47,16 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate, AllEdits, PrependEdit, AppendEdit, DiffEdit, RewriteEdit,
-  async run(_, call) {
+  async run(signal, transport, call) {
     const { filePath, edit } = call.tool.arguments;
-    await fileTracker.assertCanEdit(filePath);
+    await fileTracker.assertCanEdit(transport, signal, filePath);
 
-    const file = await attemptUntrackedRead(filePath);
+    const file = await attemptUntrackedRead(transport, signal, filePath);
     const replaced = runEdit({
       path: filePath,
       file, edit,
     });
-    await fileTracker.write(filePath, replaced);
+    await fileTracker.write(transport, signal, filePath, replaced);
     return "";
   },
 } satisfies ToolDef<t.GetType<typeof Schema>> & {
@@ -66,9 +67,9 @@ export default {
   RewriteEdit: typeof RewriteEdit,
 };
 
-async function validate(toolCall: t.GetType<typeof Schema>) {
-  await fileTracker.assertCanEdit(toolCall.arguments.filePath);
-  const file = await attemptUntrackedRead(toolCall.arguments.filePath);
+async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
+  await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
+  const file = await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
   switch(toolCall.arguments.edit.type) {
     case "append": return null;
     case "prepend": return null;

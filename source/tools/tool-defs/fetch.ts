@@ -2,6 +2,7 @@ import { t } from "structural";
 import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
+import { AuthError, RequestError, AbortError } from "../../transports/transport-common.ts";
 
 const converter = compile({
   wordwrap: 130,
@@ -21,12 +22,12 @@ const Schema = t.subtype({
 }).comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
 
 export default {
-  Schema, ArgumentsSchema, validate,
-  async run(abortSignal, call, config, modelOverride) {
+  Schema, ArgumentsSchema,
+  validate: async () => null,
+  async run(abortSignal, transport, call, config, modelOverride) {
     const { url, includeMarkup } = call.tool.arguments;
     try {
-      const response = await fetch(url, { signal: abortSignal });
-      const full = await response.text();
+      const full = await transport.getRequest(abortSignal, url);
       const text = includeMarkup ? full : converter(full);
       const { context } = getModelFromConfig(config, modelOverride);
       if(text.length > context) {
@@ -35,23 +36,14 @@ export default {
         );
       }
 
-      if(!response.ok) {
-        if(response.status === 403) {
-          throw new ToolError(`Error: ${response.status}\n${text}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
-        }
-        throw new ToolError(`Error: ${response.status}\n${text}`);
-      }
-
       return text;
     } catch (e) {
-      if ((e as any)?.name === 'AbortError' || abortSignal.aborted) {
-        throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      if(e instanceof AbortError || abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      if(e instanceof AuthError) {
+        throw new ToolError(`Authorization failed: ${e.message}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
       }
+      if(e instanceof RequestError) throw new ToolError(`Request failed: ${e.message}`);
       throw e;
     }
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
-
-export async function validate(_: t.GetType<typeof Schema>) {
-  return null;
-}

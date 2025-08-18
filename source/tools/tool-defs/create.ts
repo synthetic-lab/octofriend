@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
 import { ToolError, attempt, ToolDef } from "../common.ts";
+import { Transport } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),
@@ -12,9 +13,9 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 }).comment("Creates a new file with the specified content");
 
-async function validate(toolCall: t.GetType<typeof Schema>) {
+async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
   try {
-    await fileTracker.assertCanCreate(toolCall.arguments.filePath);
+    await fileTracker.assertCanCreate(transport, signal, toolCall.arguments.filePath);
   } catch(e) {
     if(e instanceof FileExistsError) throw new ToolError(e.message);
     throw e;
@@ -24,11 +25,11 @@ async function validate(toolCall: t.GetType<typeof Schema>) {
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(_, call) {
-    await validate(call.tool);
+  async run(signal, transport, call) {
+    await validate(signal, transport, call.tool);
     const { filePath, content } = call.tool.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {
-      await fileTracker.write(filePath, content);
+      await fileTracker.write(transport, signal, filePath, content);
       return "";
     });
   },

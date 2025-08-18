@@ -1,6 +1,6 @@
 import { t } from "structural";
-import * as fs from "fs/promises";
-import { ToolError, attempt, attemptUntrackedStat, ToolDef } from "../common.ts";
+import { ToolError, attempt, ToolDef } from "../common.ts";
+import { Transport } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
@@ -14,21 +14,19 @@ const Schema = t.subtype({
 
 export default {
   Schema, ArgumentsSchema, validate,
-  async run(_, call) {
+  async run(abortSignal, transport, call) {
     const dirpath = call.tool.arguments?.dirPath || process.cwd();
-    await validate(call.tool);
+    await validate(abortSignal, transport, call.tool);
     return attempt(`No such directory: ${dirpath}`, async () => {
-      const entries = await fs.readdir(dirpath, {
-        withFileTypes: true,
-      });
+      const entries = await transport.readdir(abortSignal, dirpath);
       return entries.map(entry => JSON.stringify(entry)).join("\n");
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
 
-async function validate(toolCall: t.GetType<typeof Schema>) {
-  const dirpath = toolCall?.arguments?.dirPath || process.cwd();
-  const stat = await attemptUntrackedStat(dirpath);
-  if(!stat.isDirectory()) throw new ToolError(`${dirpath} is not a directory`);
+async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
+  const dirpath = toolCall?.arguments?.dirPath || ".";
+  const isDir = await transport.isDirectory(signal, dirpath);
+  if(!isDir) throw new ToolError(`${dirpath} is not a directory`);
   return null;
 }

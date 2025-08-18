@@ -97,7 +97,7 @@ export default {
   Schema,
   ArgumentsSchema,
   validate: async () => null,
-  async run(abortSignal, call, config, modelOverride) {
+  async run(abortSignal, _, call, config, modelOverride) {
     const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.tool.arguments;
 
     // Helper to race any promise against the abort signal

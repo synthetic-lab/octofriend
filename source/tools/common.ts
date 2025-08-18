@@ -1,7 +1,7 @@
 import { t } from "structural";
-import * as fs from "fs/promises";
 import { SequenceIdTagged } from "../history.ts";
 import { Config } from "../config.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -20,24 +20,26 @@ export async function attempt<T>(errMessage: string, callback: () => Promise<T>)
   }
 }
 
-export async function attemptUntrackedStat(path: string) {
+export async function attemptUntrackedStat(transport: Transport, signal: AbortSignal, path: string) {
   return attempt(`Could not stat(${path}): does the file exist?`, async () => {
-    return await fs.stat(path);
+    const exists = await transport.pathExists(signal, path);
+    if(!exists) throw new Error("Path doesn't exist");
   });
 }
 
-export async function attemptUntrackedRead(path: string) {
+export async function attemptUntrackedRead(transport: Transport, signal: AbortSignal, path: string) {
   return await attempt(`${path} couldn't be read`, async () => {
-    return fs.readFile(path, "utf8");
+    return transport.readFile(signal, path);
   });
 }
 
 export type ToolDef<T> = {
   ArgumentsSchema: t.Type<any>,
   Schema: t.Type<T>,
-  validate: (t: T, cfg: Config) => Promise<null>,
+  validate: (abortSignal: AbortSignal, transport: Transport, t: T, cfg: Config) => Promise<null>,
   run: (
     abortSignal: AbortSignal,
+    transport: Transport,
     t: SequenceIdTagged<{ tool: T }>,
     cfg: Config,
     modelOverride: string | null,

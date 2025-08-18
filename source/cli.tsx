@@ -14,6 +14,7 @@ import OpenAI from "openai";
 import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
+import { LocalTransport } from "./transports/local.ts";
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -41,7 +42,13 @@ const cli = new Command()
   }
 
 	const { waitUntilExit } = render(
-    <App config={config} configPath={configPath} metadata={metadata} unchained={!!opts.unchained} />
+    <App
+      config={config}
+      configPath={configPath}
+      metadata={metadata}
+      unchained={!!opts.unchained}
+      transport={new LocalTransport()}
+    />
   );
 
   await waitUntilExit();

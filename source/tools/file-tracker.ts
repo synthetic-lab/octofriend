@@ -1,14 +1,5 @@
-import * as fs from 'fs/promises';
 import * as path from 'path';
-
-async function getModifiedTime(filePath: string): Promise<number> {
-  try {
-    const stat = await fs.stat(filePath);
-    return stat.mtimeMs;
-  } catch (e) {
-    throw new Error(`Could not get modified time for ${filePath}: ${e}`);
-  }
-}
+import { Transport } from '../transports/transport-common.ts';
 
 export class FileOutdatedError extends Error {
   readonly filePath: string;
@@ -28,52 +19,54 @@ export class FileExistsError extends Error {
 export class FileTracker {
   private readTimestamps = new Map<string, number>();
 
-  async read(filePath: string): Promise<string> {
-    const absolutePath = path.resolve(filePath);
-    const content = await fs.readFile(absolutePath, 'utf8');
-    const modified = await getModifiedTime(absolutePath);
+  async read(transport: Transport, signal: AbortSignal, filePath: string): Promise<string> {
+    const absolutePath = await transport.resolvePath(signal, filePath);
+    const content = await transport.readFile(signal, absolutePath);
+    const modified = await transport.modTime(signal, absolutePath);
     this.readTimestamps.set(absolutePath, modified);
     return content;
   }
 
-  async write(filePath: string, content: string): Promise<string> {
-    const absolutePath = path.resolve(filePath);
+  async write(
+    transport: Transport, signal: AbortSignal, filePath: string, content: string
+  ): Promise<string> {
+    const absolutePath = await transport.resolvePath(signal, filePath);
     const dir = path.dirname(absolutePath);
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(absolutePath, content, 'utf8');
+    await transport.mkdir(signal, dir);
+    await transport.writeFile(signal, absolutePath, content);
     // Update mod time
-    const modified = await getModifiedTime(absolutePath);
+    const modified = await transport.modTime(signal, absolutePath);
     this.readTimestamps.set(absolutePath, modified);
     return absolutePath;
   }
 
-  async canEdit(filePath: string): Promise<boolean> {
-    const absolutePath = path.resolve(filePath);
+  async canEdit(transport: Transport, signal: AbortSignal, filePath: string): Promise<boolean> {
+    const absolutePath = await transport.resolvePath(signal, filePath);
     if (!this.readTimestamps.has(absolutePath)) return false;
 
     const lastReadTime = this.readTimestamps.get(absolutePath)!;
-    const currentModified = await getModifiedTime(absolutePath);
+    const currentModified = await transport.modTime(signal, absolutePath);
 
     return currentModified <= lastReadTime;
   }
 
-  async canCreate(filePath: string) {
-    const absolutePath = path.resolve(filePath);
+  async canCreate(transport: Transport, signal: AbortSignal, filePath: string) {
+    const absolutePath = await transport.resolvePath(signal, filePath);
     try {
-      await getModifiedTime(absolutePath);
+      await transport.modTime(signal, absolutePath);
       return false;
     } catch {
       return true;
     }
   }
 
-  async assertCanCreate(filePath: string) {
-    const canCreate = await this.canCreate(filePath);
+  async assertCanCreate(transport: Transport, signal: AbortSignal, filePath: string) {
+    const canCreate = await this.canCreate(transport, signal, filePath);
     if(!canCreate) throw new FileExistsError("File already exists");
   }
 
-  async assertCanEdit(filePath: string) {
-    const canEdit = await this.canEdit(filePath);
+  async assertCanEdit(transport: Transport, signal: AbortSignal, filePath: string) {
+    const canEdit = await this.canEdit(transport, signal, filePath);
     if (!canEdit) {
       throw new FileOutdatedError("File was modified or never read", {
         path: filePath,
