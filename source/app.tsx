@@ -4,7 +4,7 @@ import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import {
-  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
+  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig, markUpdatesSeen
 } from "./config.ts";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
@@ -44,6 +44,11 @@ type StaticItem = {
   metadata: Metadata,
   config: Config,
 } | {
+  type: "updates",
+  updates: string,
+} | {
+  type: "slogan",
+} | {
   type: "history-item",
   item: HistoryItem,
 };
@@ -65,10 +70,16 @@ export default function App({ config, configPath, metadata, unchained }: Props) 
     }))
   );
 
+  useEffect(() => {
+    if(metadata.updates) markUpdatesSeen();
+  }, []);
+
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
       { type: "version", metadata, config: currConfig },
+      ...(metadata.updates ? [{ type: "updates" as const, updates: metadata.updates }] : []),
+      { type: "slogan" },
       ...toStaticItems(history),
     ]
   }, [ history ]);
@@ -308,11 +319,23 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
       <Text color="gray">
         Version: {item.metadata.version}
       </Text>
-      <Box marginTop={1}>
-        <Text>
-          Octo is your friend. Tell Octo <Text color={themeColor}>what you want to do.</Text>
-        </Text>
+    </Box>
+  }
+  if(item.type === "slogan") {
+    return <Box marginLeft={1} marginTop={1}>
+      <Text>
+        Octo is your friend. Tell Octo <Text color={themeColor}>what you want to do.</Text>
+      </Text>
+    </Box>
+  }
+  if(item.type === "updates") {
+    return <Box marginTop={1} marginLeft={1} flexDirection="column">
+      <Text bold>Updates:</Text>
+      <Box marginTop={1} marginLeft={1}>
+        <Text>{ item.updates }</Text>
       </Box>
+      <Text color="gray">Thanks for updating!</Text>
+      <Text color="gray">See the full changelog by running: `octo changelog`</Text>
     </Box>
   }
 

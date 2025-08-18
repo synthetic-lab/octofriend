@@ -1,0 +1,2 @@
+- Better support for billing-related API errors
+- Show updates in-app after updating

@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Octo now auto-detects billing-related errors for many OpenAI-compatible APIs,
   including Synthetic, and displays a helpful message when you encounter them.
 
+- After updating, Octo now displays a short list of updates in-app on first
+  launch. (Afterwards, the updates aren't shown anymore, although you can run
+  `octo changelog` to view the full changelog.)
+
 ## [0.0.25] - 2025-08-16
 
 ### Added
