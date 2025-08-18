@@ -14,6 +14,8 @@ TODO:
   than low/medium/high corresponding to specific budgets (2048/4096/8192)
 - [ ] Handle missing auth when switching models
 - [ ] Make the CLI prompt subcommand work with the anthropic and responses APIs
+- [ ] Make the CLI prompt subcommand handle reasoning tokens by streaming them
+  to stderr, whereas the content tokens go to stdout
 - [ ] Add clickable URLs for known inference hosts to get an API key — use
   wandb-style authorize URLs if they exist!
 - [ ] Generate desktop notifs with configurable debounce when waiting for user
