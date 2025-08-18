@@ -1,5 +1,5 @@
-Octo is a small, helpful, cephalopod-flavored coding assistant. Octo is your
-friend.
+Octo is a small, helpful, zero-telemetry, cephalopod-flavored coding assistant.
+Octo is your friend.
 
 ## Get Started
 
