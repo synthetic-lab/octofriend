@@ -23,6 +23,7 @@ import {
   fetch as fetchTool,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
+import { renderMarkdown } from "./markdown.ts";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "ink-select-input";
 import { useAppStore, RunArgs, useModel } from "./state.ts";
@@ -589,7 +590,7 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
         </Box>
       }
       <Box flexGrow={1}>
-        <Text>{content}</Text>
+        <Text>{renderMarkdown(content)}</Text>
       </Box>
     </Box>
   </Box>

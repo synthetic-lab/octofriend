@@ -4,9 +4,9 @@
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofriend",
 	"bin": {
-    "octofriend": "dist/source/cli.js",
-    "octo": "dist/source/cli.js"
-  },
+		"octofriend": "dist/source/cli.js",
+		"octo": "dist/source/cli.js"
+	},
 	"type": "module",
 	"preferGlobal": true,
 	"engines": {
@@ -45,6 +45,8 @@
 		"ink-text-input": "^6.0.0",
 		"json-schema": "^0.4.0",
 		"json5": "^2.2.3",
+		"marked": "^15.0.12",
+		"marked-terminal": "^7.3.0",
 		"openai": "^5.9.0",
 		"react": "^18.2.0",
 		"structural": "^0.0.29",
@@ -54,6 +56,8 @@
 		"@types/figlet": "^1.7.0",
 		"@types/html-to-text": "^9.0.4",
 		"@types/json-schema": "^7.0.15",
+		"@types/marked": "^5.0.2",
+		"@types/marked-terminal": "^6.1.1",
 		"@types/node": "^22.13.13",
 		"@types/react": "^18.0.32",
 		"ink-testing-library": "^3.0.0",
