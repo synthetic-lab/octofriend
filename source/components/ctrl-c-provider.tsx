@@ -6,25 +6,20 @@ type CtrlCContextType = {
   registerClearInputFn: (clearFn: () => void) => void;
 };
 
-const CtrlCContext = createContext<CtrlCContextType>({
-  ctrlCPressed: false,
-  registerClearInputFn: () => {},
-});
-
-export function useCtrlC() {
-  return useContext(CtrlCContext);
-}
-
 type CtrlCProviderProps = {
   children: React.ReactNode;
 };
+
+export const CtrlCContext = createContext<CtrlCContextType>({
+  ctrlCPressed: false,
+  registerClearInputFn: () => {},
+});
 
 export function CtrlCProvider({ children }: CtrlCProviderProps) {
   const [ctrlCPressed, setCtrlCPressed] = useState(false);
   const clearInputRef = useRef<(() => void) | null>(null);
   const { exit } = useApp();
 
-  // Global input handler to capture Ctrl+C
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
       if (ctrlCPressed) {

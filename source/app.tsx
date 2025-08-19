@@ -33,7 +33,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
-import { CtrlCProvider, useCtrlC } from "./components/ctrl-c-provider.tsx";
+import { CtrlCContext, CtrlCProvider } from "./components/ctrl-c-provider.tsx";
 
 type Props = {
 	config: Config;
@@ -127,7 +127,7 @@ function BottomBar({ metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
-  const { ctrlCPressed } = useCtrlC();
+  const { ctrlCPressed } = useContext(CtrlCContext);
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -153,7 +153,7 @@ function BottomBar({ metadata }: {
     <BottomBarContent />
     <Box
       width="100%"
-      justifyContent={ctrlCPressed ? "space-between" : "flex-end"}
+      justifyContent="space-between"
       height={1}
       flexShrink={0}
       flexGrow={1}
@@ -185,7 +185,7 @@ async function getLatestVersion() {
 function BottomBarContent() {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const { registerClearInputFn } = useCtrlC();
+  const { registerClearInputFn } = useContext(CtrlCContext);
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
