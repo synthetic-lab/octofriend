@@ -11,7 +11,7 @@ export interface Transport {
   modTime: (signal: AbortSignal, file: string) => Promise<number>;
   resolvePath: (signal: AbortSignal, path: string) => Promise<string>;
   shell: (signal: AbortSignal, command: string, timeout: number) => Promise<string>;
-  getRequest: (signal: AbortSignal, url: string) => Promise<string>;
+  close: () => Promise<void>;
 }
 
 export class TransportError extends Error {
@@ -26,5 +26,3 @@ export class AbortError extends TransportError {
     super("Aborted");
   }
 }
-export class RequestError extends TransportError {}
-export class AuthError extends RequestError {}

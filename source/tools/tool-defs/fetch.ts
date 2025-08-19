@@ -24,11 +24,21 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
-  async run(abortSignal, transport, call, config, modelOverride) {
+  async run(signal, _, call, config, modelOverride) {
     const { url, includeMarkup } = call.tool.arguments;
     try {
-      const full = await transport.getRequest(abortSignal, url);
+
+      const response = await fetch(url, { signal });
+      const full = await response.text();
       const text = includeMarkup ? full : converter(full);
+
+      if(!response.ok) {
+        if(response.status === 403) {
+          throw new ToolError(`Authorization failed: status code ${403}\n${text}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
+        }
+        throw new ToolError(`Request failed: ${text}`);
+      }
+
       const { context } = getModelFromConfig(config, modelOverride);
       if(text.length > context) {
         throw new ToolError(
@@ -38,11 +48,9 @@ export default {
 
       return { content: text };
     } catch (e) {
-      if(e instanceof AbortError || abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
-      if(e instanceof AuthError) {
-        throw new ToolError(`Authorization failed: ${e.message}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`);
+      if(e instanceof AbortError || signal.aborted) {
+        throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
       }
-      if(e instanceof RequestError) throw new ToolError(`Request failed: ${e.message}`);
       throw e;
     }
   },
