@@ -3,7 +3,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
-import TextInput from "ink-text-input";
+import TextInput from "./components/text-input.tsx";
 import { Config } from "./config.ts";
 import { useColor } from "./theme.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
