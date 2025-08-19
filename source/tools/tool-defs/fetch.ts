@@ -2,7 +2,7 @@ import { t } from "structural";
 import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
-import { AuthError, RequestError, AbortError } from "../../transports/transport-common.ts";
+import { AbortError } from "../../transports/transport-common.ts";
 
 const converter = compile({
   wordwrap: 130,
