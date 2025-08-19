@@ -387,7 +387,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 const MessageDisplay = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
 }) => {
-  return <Box marginBottom={1} flexDirection="column" paddingRight={4}>
+  return <Box flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
   </Box>
 });
@@ -452,7 +452,7 @@ const MessageDisplayInner = React.memo(({ item }: {
   // Type assertion proving we've handled all types other than user
   const _: "user" = item.type;
 
-	return <Box>
+	return <Box marginY={1}>
     <Box marginRight={1}>
       <Text color="white">
         ▶
