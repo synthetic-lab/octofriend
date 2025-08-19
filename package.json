@@ -22,6 +22,10 @@
 	"files": [
 		"dist",
 		"source",
+    "drizzle",
+    "drizzle.config.ts",
+    "CHANGELOG.md",
+    "IN-APP-UPDATES.txt",
 		"package.json",
 		"package-lock.json",
 		"tsconfig.json"
