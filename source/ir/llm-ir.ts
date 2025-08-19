@@ -295,7 +295,7 @@ function collapseToIR(
         ];
         case "fetch":
         case "list":
-        case "bash":
+        case "shell":
         case "mcp":
           return [
             prev,

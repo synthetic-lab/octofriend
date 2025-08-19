@@ -18,6 +18,7 @@ import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { LocalTransport } from "./transports/local.ts";
+import { DockerTransport } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 const __dirname = import.meta.dirname;
@@ -25,11 +26,16 @@ const __dirname = import.meta.dirname;
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
 
+const DOCKER_REGEX = /^docker:(.+)$/;
+
 const cli = new Command()
 .description("If run with no subcommands, runs Octo interactively.")
 .option("--config <path>")
 .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-.action(async (opts) => {
+.option(
+  "--connect <target>",
+  "Connect to a Docker container. For example, octo --connect docker:some-container-name"
+).action(async (opts) => {
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
 
@@ -46,13 +52,25 @@ const cli = new Command()
     console.log("All MCP servers connected.");
   }
 
+  const transport = (() => {
+    if(opts.connect) {
+      const match = DOCKER_REGEX.exec(opts.connect);
+      if(match == null) {
+        console.error("Invalid --connect flag: must be of form docker:running-container-name");
+        process.exit(1);
+      }
+      return new DockerTransport(match[1]);
+    }
+    return new LocalTransport();
+  })();
+
 	const { waitUntilExit } = render(
     <App
       config={config}
       configPath={configPath}
       metadata={metadata}
       unchained={!!opts.unchained}
-      transport={new LocalTransport()}
+      transport={transport}
       updates={await readUpdates()}
     />
   );

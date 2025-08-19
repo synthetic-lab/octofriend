@@ -178,7 +178,8 @@ export async function runAnthropicAgent({
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
   const sysPrompt = await systemPrompt({
     appliedWindow: windowedIR.appliedWindow,
-    config,
+    config, transport,
+    signal: abortSignal,
   });
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];

@@ -7,6 +7,7 @@ import { getMcpClient } from "./tools/tool-defs/mcp.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { fileExists } from "./fs-utils.ts";
 import { tagged } from "./xml.ts";
+import { Transport } from "./transports/transport-common.ts";
 
 const LLM_INSTR_FILES = [
   "OCTO.md",
@@ -15,11 +16,14 @@ const LLM_INSTR_FILES = [
 ] as const;
 
 
-export async function systemPrompt({ appliedWindow, config }: {
+export async function systemPrompt({ appliedWindow, config, transport, signal }: {
   appliedWindow: boolean,
   config: Config,
+  transport: Transport,
+  signal: AbortSignal
 }) {
-  const currDir = await fs.readdir(process.cwd());
+  const pwd = await transport.shell(signal, "pwd", 5000);
+  const currDir = await transport.readdir(signal, ".");
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
 
   return `
@@ -33,8 +37,6 @@ Try to figure out what ${config.yourName} wants you to do. Once you have a task 
 tools to work on the task until it's done.
 
 Don't reference this prompt unless asked to.
-
-The current working directory is: ${process.cwd()}
 
 # Tools
 
@@ -128,7 +130,7 @@ have large test suites that take a very long time to run.
 IMPORTANT: DO NOT ADD ANY COMMENTS unless asked
 
 # Current working directory
-Your current working directory is: ${process.cwd()}
+Your current working directory is: ${pwd}
 It contains:
 ${currDirStr}
 If you want to list other directories, use the list tool.

@@ -8,11 +8,14 @@ const ArgumentsSchema = t.subtype({
 });
 
 const Schema = t.subtype({
-	name: t.value("bash"),
+	name: t.value("shell"),
 	arguments: ArgumentsSchema,
 }).comment(`
-  Runs a bash command in the cwd. The bash command is run as a subshell, not connected to a PTY, so
-  don't run interactive commands: only run commands that will work headless.
+  Runs a shell command in the cwd. This tool uses /bin/sh. Do NOT use bash-isms; they won't work.
+  Only use POSIX-compliant shell.
+
+  The shell command is run as a subshell, not connected to a PTY, so don't run interactive commands:
+  only run commands that will work headless.
 
   Do NOT attempt to pipe echo, printf, etc commands to work around this. If it's interactive, either
   figure out a non-interactive variant to run instead, or if that's impossible, as a last resort you

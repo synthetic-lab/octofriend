@@ -1,20 +1,13 @@
 import { spawn } from "child_process";
 import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
-type DockerTarget = { type: "container", container: string };
-
 export class DockerTransport implements Transport {
-  private _container: string;
 
-  constructor(target: DockerTarget) {
-    this._container = target.container;
-  }
-
-  async close() {
+  constructor(private readonly _container: string) {
   }
 
   private async dockerExec(signal: AbortSignal, command: string[], timeout: number): Promise<string> {
-    const dockerCmd = ["docker", "exec", this._container, ...command];
+    const dockerCmd = ["docker", "exec", this._container, "/bin/sh", "-c", command.join(" ")];
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(dockerCmd[0], dockerCmd.slice(1), {

@@ -14,7 +14,7 @@ import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import {
-  bash,
+  shell,
   read,
   list,
   edit,
@@ -110,9 +110,7 @@ export default function App({ config, configPath, metadata, unchained, transport
                   (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
                   <MessageDisplay item={modeData.inflightResponse} />
               }
-              {
-                  <BottomBar metadata={metadata} />
-              }
+              <BottomBar metadata={metadata} />
             </Box>
           </TransportContext.Provider>
         </UnchainedContext.Provider>
@@ -303,7 +301,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
           <Text>?</Text>
         </Box>
       case "read":
-      case "bash":
+      case "shell":
       case "fetch":
       case "list":
       case "mcp":
@@ -398,16 +396,24 @@ const MessageDisplayInner = React.memo(({ item }: {
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
-	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
-	if(item.type === "tool") return <ToolMessageRenderer item={item} />
+	if(item.type === "assistant") {
+    return <AssistantMessageRenderer item={item} />
+  }
+	if(item.type === "tool") {
+    return <Box marginTop={1}>
+      <ToolMessageRenderer item={item} />
+    </Box>
+  }
 	if(item.type === "tool-output") {
     const lines = (() => {
       if(item.result.lines == null) return item.result.content.split("\n").length;
       return item.result.lines;
     })();
-		return <Text color="gray">
-			Got <Text>{lines}</Text> lines of output
-		</Text>
+		return <Box marginBottom={1}>
+      <Text color="gray">
+        Got <Text>{lines}</Text> lines of output
+      </Text>
+    </Box>
 	}
   if(item.type === "tool-malformed") {
     return <Text color="red">
@@ -468,7 +474,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
   switch(item.tool.function.name) {
     case "read": return <ReadToolRenderer item={item.tool.function} />
     case "list": return <ListToolRenderer item={item.tool.function} />
-    case "bash": return <BashToolRenderer item={item.tool.function} />
+    case "shell": return <ShellToolRenderer item={item.tool.function} />
     case "edit": return <EditToolRenderer item={item.tool.function} />
     case "create": return <CreateToolRenderer item={item.tool.function} />
     case "mcp": return <McpToolRenderer item={item.tool.function} />
@@ -484,7 +490,7 @@ function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> 
 	</Box>
 }
 
-function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
+function ShellToolRenderer({ item }: { item: t.GetType<typeof shell.Schema> }) {
   const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>

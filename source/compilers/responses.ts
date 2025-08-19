@@ -44,7 +44,7 @@ async function toModelMessage(
     role: "system",
     content: await systemPrompt({
       appliedWindow,
-      config,
+      config, transport, signal,
     }),
   });
 

@@ -126,7 +126,4 @@ output: ${output}`));
       });
     });
   }
-
-  // No-op for local transport
-  async close() {}
 }
