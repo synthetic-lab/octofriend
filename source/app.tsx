@@ -242,7 +242,7 @@ function BottomBarContent() {
   const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
-    <Box marginLeft={1} justifyContent="flex-end">
+    <Box marginTop={1} marginLeft={1} justifyContent="flex-end">
       <Text color="gray">(Press ESC to enter the menu)</Text>
     </Box>
     <InputBox
