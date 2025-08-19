@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Octo is Docker-aware and works with any Docker container. Use it like so:
   `octo --connect docker:my-container-name`.
 
+- Octo can also launch Docker images for you and auto-connect to them with:
+  `octo --connect docker:repo/image-name`. To run root-owned images like
+  `alpine`, run `--connect docker:_/image-name`. When you're done running Octo,
+  it'll automatically clean up the Docker container it launched for you.
+
 ### Changed
 
 - Octo no longer shows a list of updates on first install: the update list only

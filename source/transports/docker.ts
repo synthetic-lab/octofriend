@@ -1,9 +1,56 @@
 import { spawn } from "child_process";
 import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
-export class DockerTransport implements Transport {
+export async function manageContainer(image: string) {
+  let normalized = image;
+  if(normalized.startsWith("_/")) normalized = normalized.slice(2);
+  const name = `octo-${randomSuffix()}`;
+  console.log("Spawning Docker container...");
+  const child = spawn("docker", [ "run", "--name", name, "-d", "--rm", "-i", "-t", normalized ], {
+    stdio: ['ignore', 'inherit', 'inherit']
+  });
 
-  constructor(private readonly _container: string) {
+  return new Promise<{
+    container: string,
+    close: () => Promise<void>,
+  }>((resolve, reject) => {
+    child.on("exit", code => {
+      if(code != null && code !== 0) {
+        reject(new Error("Docker exited with a non-zero exit code"));
+      }
+      else {
+        resolve({
+          container: name,
+          close: async () => {
+            spawn("docker", [ "kill", name ]);
+          },
+        });
+      }
+    });
+  });
+}
+
+function randomSuffix() {
+  return `${Date.now()}_${Math.random().toString(16)}`;
+}
+
+type DockerTarget = {
+  type: "container",
+  container: string,
+} | {
+  type: "image",
+  image: Awaited<ReturnType<typeof manageContainer>>,
+};
+export class DockerTransport implements Transport {
+  private readonly _container: string;
+
+  constructor(private readonly _target: DockerTarget) {
+    if(this._target.type === "image") this._container = this._target.image.container;
+    else this._container = this._target.container;
+  }
+
+  async close() {
+    if(this._target.type === "image") await this._target.image.close();
   }
 
   private async dockerExec(signal: AbortSignal, command: string[], timeout: number): Promise<string> {
@@ -78,7 +125,7 @@ output: ${output}`));
 
   async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
     // Create a temporary file with the contents
-    const tempFile = `/tmp/octo_write_${Date.now()}_${Math.random().toString(16)}`;
+    const tempFile = `/tmp/octo_write_${randomSuffix()}`;
 
     // First, write the contents to the temp file using a base64 to avoid shellescape issues
     const base64Contents = Buffer.from(contents).toString('base64');

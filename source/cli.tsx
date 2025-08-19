@@ -18,7 +18,7 @@ import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { LocalTransport } from "./transports/local.ts";
-import { DockerTransport } from "./transports/docker.ts";
+import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 const __dirname = import.meta.dirname;
@@ -52,14 +52,21 @@ const cli = new Command()
     console.log("All MCP servers connected.");
   }
 
-  const transport = (() => {
+  const transport = await (async () => {
     if(opts.connect) {
       const match = DOCKER_REGEX.exec(opts.connect);
       if(match == null) {
         console.error("Invalid --connect flag: must be of form docker:running-container-name");
         process.exit(1);
       }
-      return new DockerTransport(match[1]);
+      const target = match[1];
+      if(target.indexOf("/") >= 0) {
+        return new DockerTransport({
+          type: "image",
+          image: await manageContainer(target),
+        });
+      }
+      return new DockerTransport({ type: "container", container: target });
     }
     return new LocalTransport();
   })();
@@ -76,6 +83,7 @@ const cli = new Command()
   );
 
   await waitUntilExit();
+  await transport.close();
 
   console.log("\nApprox. tokens used:");
   if(Object.keys(tokenCounts()).length === 0) {

@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
 export class LocalTransport implements Transport {
+  async close() {}
+
   async writeFile(_: AbortSignal, file: string, contents: string) {
     return await fs.writeFile(file, contents, "utf8");
   }
