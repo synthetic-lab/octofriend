@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   launch. (Afterwards, the updates aren't shown anymore, although you can run
   `octo changelog` to view the full changelog.)
 
+### Changed
+
+- Fixed crash that occurred when adding custom models
+
+- Correctly show lines read in the UI when Octo reads files
+
+- General UI improvements
+
 ## [0.0.25] - 2025-08-16
 
 ### Added
