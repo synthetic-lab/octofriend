@@ -295,7 +295,7 @@ const nickname = fullFlow.withRoutes(
       validate={() => ({ valid: true })}
       onSubmit={nickname => router.context({ ...props, nickname })}
     >
-      return <Box flexDirection="column">
+     <Box flexDirection="column">
         {
           props.renderExamples && <Text>
             For example, if this was set up to talk to Kimi K2, you might want to call it that.
