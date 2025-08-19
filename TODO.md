@@ -41,7 +41,9 @@ TODO:
     not), and TBH it's not a particularly valuable thing to sandbox — you don't
     even prompt for permission to run it bc it's so safe.
   - [x] Add a docker transport
-  - [ ] CLI args to connect to a running Docker container
-  - [ ] Support starting/stopping an image
+  - [x] CLI args to connect to a running Docker container
+  - [x] Support starting/stopping an image
+  - [ ] More explicit syntax for images: use docker:image:... rather than
+    overriding the docker:... syntax.
 - [ ] Port Aider Polyglot benchmarks to Octo, run inside a container
 - [ ] Add SSH transport
