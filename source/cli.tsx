@@ -18,7 +18,7 @@ import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { LocalTransport } from "./transports/local.ts";
-import { readUpdates } from "./update-notifs/update-notifs.ts";
+import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 const __dirname = import.meta.dirname;
 
@@ -208,17 +208,17 @@ async function loadConfigWithoutReauth(configPath?: string) {
     return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
   }
 
-  const jsonFile = path.join(CONFIG_STANDARD_DIR, "octofriend.json")
-  if(await fileExists(jsonFile)) {
-    return { configPath: jsonFile, config: await readConfig(jsonFile) };
-  }
+  // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
+  await markUpdatesSeen();
 	const { waitUntilExit } = render(
     <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
   );
   await waitUntilExit();
+
   if(await fileExists(CONFIG_JSON5_FILE)) {
     return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
   }
+
   process.exit(1);
 }
 
