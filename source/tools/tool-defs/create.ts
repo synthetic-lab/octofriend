@@ -30,7 +30,10 @@ export default {
     const { filePath, content } = call.tool.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
-      return "";
+      return {
+        content: "",
+        lines: content.length,
+      };
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;

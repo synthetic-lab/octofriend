@@ -27,7 +27,7 @@ export default {
   async run(abortSignal, transport, call) {
     const { cmd, timeout } = call.tool.arguments;
     try {
-      return await transport.shell(abortSignal, cmd, timeout);
+      return { content: await transport.shell(abortSignal, cmd, timeout) };
     } catch(e) {
       if(e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
       if(e instanceof CommandFailedError) throw new ToolError(e.message);

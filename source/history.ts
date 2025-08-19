@@ -1,5 +1,6 @@
 import { t } from "structural";
 import { ToolCallSchema } from "./tools/index.ts";
+import { ToolResult } from "./tools/common.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint
@@ -20,7 +21,7 @@ export type ToolCallItem = SequenceIdTagged<{
 
 export type ToolOutputItem = SequenceIdTagged<{
 	type: "tool-output",
-	content: string,
+  result: ToolResult,
   toolCallId: string,
 }>;
 

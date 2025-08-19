@@ -2,7 +2,7 @@ import { t } from "structural";
 
 import { unionAll } from "../types.ts";
 import * as toolMap from "./tool-defs/index.ts";
-import { ToolDef } from "./common.ts";
+import { ToolDef, ToolResult } from "./common.ts";
 import { SequenceIdTagged } from "../history.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -25,7 +25,7 @@ export async function runTool(
   call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
   config: Config,
   modelOverride: string | null,
-): Promise<string> {
+): Promise<ToolResult> {
   const def = lookup(call.tool);
   return await def.run(abortSignal, transport, call, config, modelOverride);
 }

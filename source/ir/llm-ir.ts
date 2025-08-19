@@ -288,7 +288,7 @@ function collapseToIR(
           prev,
           {
             role: "file-tool-output",
-            content: item.content,
+            content: item.result.content,
             toolCall: prev.toolCall,
             path: path.resolve(prev.toolCall.function.arguments.filePath),
           }
@@ -301,7 +301,7 @@ function collapseToIR(
             prev,
             {
               role: "tool-output",
-              content: item.content,
+              content: item.result.content,
               toolCall: prev.toolCall,
             }
           ];

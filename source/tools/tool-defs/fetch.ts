@@ -36,7 +36,7 @@ export default {
         );
       }
 
-      return text;
+      return { content: text };
     } catch (e) {
       if(e instanceof AbortError || abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
       if(e instanceof AuthError) {

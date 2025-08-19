@@ -167,7 +167,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
 
     try {
-      const content = await runTool(abortController.signal, transport, {
+      const result = await runTool(abortController.signal, transport, {
         id: toolReq.id,
         tool: toolReq.tool.function,
       }, config, modelOverride);
@@ -175,7 +175,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       const toolHistoryItem: HistoryItem = {
         type: "tool-output",
         id: sequenceId(),
-        content,
+        result,
         toolCallId: toolReq.tool.toolCallId,
       };
 

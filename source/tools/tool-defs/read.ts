@@ -20,8 +20,11 @@ export default {
     const { filePath } = call.tool.arguments;
     return attempt(`No such file ${filePath}`, async () => {
       // Actually perform the read to ensure it's readable, and that the timestamps get updated
-      await fileTracker.read(transport, abortSignal, filePath)
-      return "";
+      const content = await fileTracker.read(transport, abortSignal, filePath)
+      return {
+        content,
+        lines: content.split("\n").length,
+      };
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;

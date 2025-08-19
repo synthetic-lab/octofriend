@@ -399,8 +399,12 @@ const MessageDisplayInner = React.memo(({ item }: {
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />
 	if(item.type === "tool-output") {
+    const lines = (() => {
+      if(item.result.lines == null) return item.result.content.split("\n").length;
+      return item.result.lines;
+    })();
 		return <Text color="gray">
-			Got <Text>{item.content.split("\n").length}</Text> lines of output
+			Got <Text>{lines}</Text> lines of output
 		</Text>
 	}
   if(item.type === "tool-malformed") {
