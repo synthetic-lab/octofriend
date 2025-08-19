@@ -48,7 +48,10 @@ const cli = new Command()
       metadata={metadata}
       unchained={!!opts.unchained}
       transport={new LocalTransport()}
-    />
+    />,
+    {
+      exitOnCtrlC: false
+    }
   );
 
   await waitUntilExit();

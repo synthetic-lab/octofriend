@@ -2,7 +2,7 @@ import * as fsOld from "fs";
 import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
-import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
+import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import {
@@ -66,9 +66,19 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 }
 
 const TransportContext = createContext<Transport>(new LocalTransport());
+const CtrlCContext = createContext<{
+  ctrlCPressed: boolean;
+  registerClearInput: (clearFn: () => void) => void;
+}>({
+  ctrlCPressed: false,
+  registerClearInput: () => {},
+});
 
 export default function App({ config, configPath, metadata, unchained, transport }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
+  const [ ctrlCPressed, setCtrlCPressed ] = useState(false);
+  const clearInputRef = useRef<(() => void) | null>(null);
+  const { exit } = useApp();
   const { history, modeData } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -80,6 +90,21 @@ export default function App({ config, configPath, metadata, unchained, transport
   useEffect(() => {
     if(metadata.updates) markUpdatesSeen();
   }, []);
+
+  // Global input handler to capture Ctrl+C
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      if (ctrlCPressed) {
+        exit();
+      } else {
+        if (clearInputRef.current) {
+          clearInputRef.current();
+        }
+        setCtrlCPressed(true);
+        setTimeout(() => setCtrlCPressed(false), 2000);
+      }
+    }
+  });
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
@@ -96,22 +121,27 @@ export default function App({ config, configPath, metadata, unchained, transport
       <ConfigContext.Provider value={currConfig}>
         <UnchainedContext.Provider value={unchained}>
           <TransportContext.Provider value={transport}>
-            <Box flexDirection="column" width="100%" height="100%">
-              <Static items={staticItems}>
-                {
-                  (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-                }
-              </Static>
+            <CtrlCContext.Provider value={{
+              ctrlCPressed,
+              registerClearInput: (clearFn) => { clearInputRef.current = clearFn; }
+            }}>
+              <Box flexDirection="column" width="100%" height="100%">
+                <Static items={staticItems}>
+                  {
+                    (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                  }
+                </Static>
 
-              {
-                modeData.mode === "responding" &&
-                  (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                  <MessageDisplay item={modeData.inflightResponse} />
-              }
-              {
-                  <BottomBar metadata={metadata} />
-              }
-            </Box>
+                {
+                  modeData.mode === "responding" &&
+                    (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                    <MessageDisplay item={modeData.inflightResponse} />
+                }
+                {
+                    <BottomBar metadata={metadata} />
+                }
+              </Box>
+            </CtrlCContext.Provider>
           </TransportContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
@@ -124,6 +154,7 @@ function BottomBar({ metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
+  const { ctrlCPressed } = useContext(CtrlCContext);
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -149,11 +180,12 @@ function BottomBar({ metadata }: {
     <BottomBarContent />
     <Box
       width="100%"
-      justifyContent="flex-end"
+      justifyContent={ctrlCPressed ? "space-between" : "flex-end"}
       height={1}
       flexShrink={0}
       flexGrow={1}
     >
+      <BottomStatusLine />
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
   </Box>
@@ -178,6 +210,7 @@ async function getLatestVersion() {
 function BottomBarContent() {
   const config = useConfig();
   const transport = useContext(TransportContext);
+  const { registerClearInput } = useContext(CtrlCContext);
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -188,7 +221,11 @@ function BottomBarContent() {
     }))
   );
 
-  useInput((_, key) => {
+  useEffect(() => {
+    registerClearInput(() => setQuery(""));
+  }, [registerClearInput]);
+
+  useInput((input, key) => {
     if(key.escape) {
       abortResponse();
       toggleMenu();
@@ -353,6 +390,15 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 
   return <MessageDisplay item={item.item} />
 });
+
+function BottomStatusLine() {
+  const { ctrlCPressed } = useContext(CtrlCContext);
+  const themeColor = useColor();
+
+  if (!ctrlCPressed) return null;
+
+  return <Text color={themeColor}>Press Ctrl + C again to exit.</Text>
+}
 
 const MessageDisplay = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
