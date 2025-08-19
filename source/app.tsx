@@ -276,6 +276,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
 function ToolRequestRenderer({ toolReq, config, transport }: {
   toolReq: ToolCallItem
 } & RunArgs) {
+  const themeColor = useColor();
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
@@ -283,6 +284,30 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
     }))
   );
   const unchained = useUnchained();
+
+  const prompt = (() => {
+    const fn = toolReq.tool.function;
+    switch (fn.name) {
+      case "create":
+        return <Box>
+          <Text>Create file </Text>
+          <Text color={themeColor}>{fn.arguments.filePath}</Text>
+          <Text>?</Text>
+        </Box>
+      case "edit":
+        return <Box>
+          <Text>Make these changes to </Text>
+          <Text color={themeColor}>{fn.arguments.filePath}</Text>
+          <Text>?</Text>
+        </Box>
+      case "read":
+      case "bash":
+      case "fetch":
+      case "list":
+      case "mcp":
+        return null;
+    }
+  })();
 
   const items = [
     {
@@ -309,12 +334,15 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
 
   if(noConfirm) return <Loading />;
 
-  return <SelectInput
-    items={items}
-    onSelect={onSelect}
-    indicatorComponent={IndicatorComponent}
-    itemComponent={ItemComponent}
-  />
+  return <Box flexDirection="column" gap={1}>
+    { prompt }
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ItemComponent}
+    />
+  </Box>
 }
 
 
@@ -521,13 +549,13 @@ function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
 
 function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema> }) {
   const themeColor = useColor();
-  return <Box flexDirection="column">
+  return <Box flexDirection="column" gap={1}>
     <Box>
-      <Text>Create file: </Text>
+      <Text>Creating file </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
+      <Text>:</Text>
     </Box>
-    <Box flexDirection="column">
-      <Text>With content:</Text>
+    <Box>
       <Text>{item.arguments.content}</Text>
     </Box>
   </Box>
