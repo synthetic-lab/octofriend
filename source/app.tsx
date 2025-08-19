@@ -371,8 +371,12 @@ const MessageDisplayInner = React.memo(({ item }: {
 	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
 	if(item.type === "tool") return <ToolMessageRenderer item={item} />
 	if(item.type === "tool-output") {
+    // The read tool outputs the number of lines read instead of file content.
+    const numLines = item.tool.name === "read"
+      ? item.content
+      : item.content.split("\n").length;
 		return <Text color="gray">
-			Got <Text>{item.content.split("\n").length}</Text> lines of output
+			Got {numLines} lines of output
 		</Text>
 	}
   if(item.type === "tool-malformed") {

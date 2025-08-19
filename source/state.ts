@@ -177,6 +177,10 @@ export const useAppStore = create<UiState>((set, get) => ({
         id: sequenceId(),
         content,
         toolCallId: toolReq.tool.toolCallId,
+        tool: {
+          type: "function",
+          name: toolReq.tool.function.name,
+        }
       };
 
       const history: HistoryItem[] = [

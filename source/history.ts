@@ -20,6 +20,10 @@ export type ToolCallItem = SequenceIdTagged<{
 
 export type ToolOutputItem = SequenceIdTagged<{
 	type: "tool-output",
+  tool: {
+    type: "function",
+    name: t.GetType<typeof ToolCallSchema>["name"],
+  },
 	content: string,
   toolCallId: string,
 }>;

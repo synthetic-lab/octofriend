@@ -8,7 +8,7 @@ const ArgumentsSchema = t.subtype({
 const Schema = t.subtype({
  name: t.value("read"),
  arguments: ArgumentsSchema,
-}).comment("Reads file contents as UTF-8. Prefer this to Unix tools like `cat`");
+}).comment("Reads file contents as UTF-8. Prefer this to Unix tools like `cat`. Returns number of lines in file as string.");
 
 export default {
   Schema, ArgumentsSchema,
@@ -20,8 +20,8 @@ export default {
     const { filePath } = call.tool.arguments;
     return attempt(`No such file ${filePath}`, async () => {
       // Actually perform the read to ensure it's readable, and that the timestamps get updated
-      await fileTracker.read(transport, abortSignal, filePath)
-      return "";
+      const content = await fileTracker.read(transport, abortSignal, filePath)
+      return content.split("\n").length.toString();
     });
   },
 } satisfies ToolDef<t.GetType<typeof Schema>>;
