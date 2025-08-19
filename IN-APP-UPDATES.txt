@@ -1,4 +1,3 @@
-- Better support for billing-related API errors
-- Show updates in-app after updating
-- Fixed crash when adding custom models
+- Octo can now automatically be sandboxed inside Docker containers with the
+  `--connect docker:my-container-name` argument!
 - UI improvements + bugfixes

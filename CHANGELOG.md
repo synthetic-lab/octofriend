@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- You can now run Octo inside any Docker container: all filesystem commands and
+  shell commands will run inside the container, instead of on your host system.
+  You don't need to install anything or configure the container in any way:
+  Octo is Docker-aware and works with any Docker container. Use it like so:
+  `octo --connect docker:my-container-name`.
+
 ### Changed
 
 - Octo no longer shows a list of updates on first install: the update list only
