@@ -1,14 +1,13 @@
 import path from "path";
 import fs from "fs/promises";
-import * as schema from "../db/schema.ts";
-import { db } from "../db/conn.ts";
+import { db, schema } from "../db/db.ts";
 const __dirname = import.meta.dirname;
 
 const UPDATES_FILE = path.join(__dirname, "../../../IN-APP-UPDATES.txt");
 
 export async function readUpdates() {
   const updates = await currentUpdates();
-  const mostRecentSeen = await db.query.shownUpdateNotifs.findFirst({
+  const mostRecentSeen = await db().query.shownUpdateNotifs.findFirst({
     orderBy: (table, { desc }) => desc(table.id),
   });
   if(mostRecentSeen == null) return updates;
@@ -18,7 +17,7 @@ export async function readUpdates() {
 
 export async function markUpdatesSeen() {
   const update = await currentUpdates();
-  await db.insert(schema.shownUpdateNotifs).values({
+  await db().insert(schema.shownUpdateNotifs).values({
     update,
   }).onConflictDoNothing();
 }

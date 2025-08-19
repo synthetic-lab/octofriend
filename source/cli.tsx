@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { setupDb } from "./db/setup.ts";
+setupDb();
+
 import React from "react";
 import path from "path";
 import os from "os";
