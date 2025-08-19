@@ -242,7 +242,7 @@ function BottomBarContent() {
   const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
-    <Box marginTop={1} marginLeft={1} justifyContent="flex-end">
+    <Box marginLeft={1} justifyContent="flex-end">
       <Text color="gray">(Press ESC to enter the menu)</Text>
     </Box>
     <InputBox
@@ -397,7 +397,9 @@ const MessageDisplayInner = React.memo(({ item }: {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
 	if(item.type === "assistant") {
-    return <AssistantMessageRenderer item={item} />
+    return <Box marginBottom={1}>
+      <AssistantMessageRenderer item={item} />
+    </Box>
   }
 	if(item.type === "tool") {
     return <Box marginTop={1}>
