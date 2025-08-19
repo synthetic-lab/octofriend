@@ -35,6 +35,8 @@ export async function attemptUntrackedRead(transport: Transport, signal: AbortSi
 
 export type ToolResult = {
   content: string,
+
+  // The line count to show in the UI, if it's not just the number of lines in the content
   lines?: number,
 };
 
