@@ -6,12 +6,16 @@ import { DB_PATH } from "./setup.ts";
 export * as schema from "./schema.ts";
 
 let sqliteDb: Database.Database;
+let client: ReturnType<typeof drizzle<typeof schema>>;
 
 export function db() {
   if(sqliteDb == null) sqliteDb = new Database(DB_PATH);
-  return drizzle({
-    client: sqliteDb,
-    casing: "snake_case",
-    schema,
-  });
+  if(client == null) {
+    client = drizzle({
+      client: sqliteDb,
+      casing: "snake_case",
+      schema,
+    });
+  }
+  return client;
 }
