@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.0.27] - 2025-08-19
+
+### Changed
+
+- Urgent bugfix for crash-on-boot when data dir is uninitialized
+
+## [0.0.26] - 2025-08-19
 
 ### Added
 
