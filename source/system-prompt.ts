@@ -1,11 +1,8 @@
-import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
 import { getMcpClient } from "./tools/tool-defs/mcp.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
-import { fileExists } from "./fs-utils.ts";
 import { tagged } from "./xml.ts";
 import { Transport } from "./transports/transport-common.ts";
 
@@ -135,15 +132,15 @@ It contains:
 ${currDirStr}
 If you want to list other directories, use the list tool.
 
-${await llmInstrsPrompt(config)}
+${await llmInstrsPrompt(transport, signal, config)}
 
 ${appliedWindow ?
 "\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
 `.trim();
 }
 
-async function llmInstrsPrompt(config: Config) {
-  const instrs = await getLlmInstrs();
+async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
+  const instrs = await getLlmInstrs(transport, signal);
   if(instrs.length === 0) return "";
 
   function instrHeader(instr: LlmInstr) {
@@ -218,12 +215,12 @@ type LlmInstr = {
   path: string,
   target: LlmTarget,
 };
-async function getLlmInstrs() {
-  const targetPaths = await getLlmInstrPaths();
+async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
+  const targetPaths = await getLlmInstrPaths(transport, signal);
   const instrs: LlmInstr[] = [];
 
   for(const targetPath of targetPaths) {
-    const contents = await fs.readFile(targetPath.path, "utf8");
+    const contents = await transport.readFile(signal, targetPath.path);
     instrs.push({
       ...targetPath, contents
     });
@@ -232,13 +229,13 @@ async function getLlmInstrs() {
   return instrs;
 }
 
-async function getLlmInstrPaths() {
-  const stop = os.homedir();
-  let curr = process.cwd();
+async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
+  const home = await transport.shell(signal, "echo \"$HOME\"", 5000);
+  let curr = await transport.shell(signal, "pwd", 5000);
   const paths: Array<{ path: string, target: LlmTarget }> = [];
 
-  while(curr !== stop && curr && curr !== "/") {
-    const aidPath = await getLlmInstrPathFromDir(curr);
+  while(curr !== home && curr && curr !== "/") {
+    const aidPath = await getLlmInstrPathFromDir(transport, signal, curr);
     if(aidPath) paths.push(aidPath);
     const next = path.dirname(curr);
     if(next === curr) break;
@@ -246,20 +243,26 @@ async function getLlmInstrPaths() {
   }
 
   const globalPath = await getLlmInstrPathFromDir(
-    path.join(os.homedir(), ".config/octofriend/OCTO.md")
+    transport,
+    signal,
+    path.join(home, ".config/octofriend/OCTO.md")
   );
   if(globalPath) paths.push(globalPath);
 
   return paths.reverse();
 }
 
-async function getLlmInstrPathFromDir(dir: string): Promise<{
+async function getLlmInstrPathFromDir(
+  transport: Transport,
+  signal: AbortSignal,
+  dir: string
+): Promise<{
   path: string,
   target: LlmTarget
 } | null> {
   const files = await Promise.all(LLM_INSTR_FILES.map(async (f) => {
     const filename = path.join(dir, f);
-    if(!(await fileExists(filename))) return null;
+    if(!(await transport.pathExists(signal, filename))) return null;
     try {
       return {
         path: filename,
