@@ -357,7 +357,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 const MessageDisplay = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
 }) => {
-  return <Box marginTop={1} marginBottom={1} flexDirection="column" paddingRight={4}>
+  return <Box marginBottom={1} flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
   </Box>
 });
