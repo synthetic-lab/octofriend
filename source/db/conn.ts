@@ -1,3 +1,4 @@
+import * as fsSync from "fs";
 import os from "os";
 import path from "path";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -6,6 +7,8 @@ import * as schema from "./schema.ts";
 
 export const DATA_DIR = path.join(os.homedir(), ".local/share/octofriend");
 const DB_PATH = path.join(DATA_DIR, "sqlite.db");
+
+fsSync.mkdirSync(DATA_DIR, { recursive: true });
 
 const sqliteDb = new Database(DB_PATH);
 export const db = drizzle({
