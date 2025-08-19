@@ -15,6 +15,8 @@ import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { LocalTransport } from "./transports/local.ts";
+import { readUpdates } from "./update-notifs/update-notifs.ts";
+import { migrate } from "./db/migrate.ts";
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -48,6 +50,7 @@ const cli = new Command()
       metadata={metadata}
       unchained={!!opts.unchained}
       transport={new LocalTransport()}
+      updates={await readUpdates()}
     />
   );
 
@@ -216,4 +219,6 @@ async function loadConfigWithoutReauth(configPath?: string) {
   process.exit(1);
 }
 
-cli.parse();
+migrate().then(() => {
+  cli.parse();
+});

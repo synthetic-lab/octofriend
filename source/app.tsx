@@ -6,7 +6,7 @@ import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import {
-  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig, markUpdatesSeen
+  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
 } from "./config.ts";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
@@ -33,11 +33,13 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
+import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 
 type Props = {
 	config: Config;
   configPath: string,
 	metadata: Metadata,
+  updates: string | null,
   unchained: boolean,
   transport: Transport,
 };
@@ -67,7 +69,7 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
-export default function App({ config, configPath, metadata, unchained, transport }: Props) {
+export default function App({ config, configPath, metadata, unchained, transport, updates }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData } = useAppStore(
     useShallow(state => ({
@@ -78,14 +80,14 @@ export default function App({ config, configPath, metadata, unchained, transport
   );
 
   useEffect(() => {
-    if(metadata.updates) markUpdatesSeen();
+    if(updates != null) markUpdatesSeen();
   }, []);
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
       { type: "version", metadata, config: currConfig },
-      ...(metadata.updates ? [{ type: "updates" as const, updates: metadata.updates }] : []),
+      ...(updates ? [{ type: "updates" as const, updates }] : []),
       { type: "slogan" },
       ...toStaticItems(history),
     ]

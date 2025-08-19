@@ -1,7 +1,8 @@
 {
 	"include": [ "source", "training" ],
-  "exclude": ["training/repos" ],
+  "exclude": [ "training/repos", "node_modules" ],
 	"compilerOptions": {
+    "skipLibCheck": true,
 		"outDir": "dist",
 		"module": "node16",
 		"moduleResolution": "node16",
