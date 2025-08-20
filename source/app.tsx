@@ -198,7 +198,7 @@ function BottomBarContent() {
     setQuery("");
   });
 
-  useInput((input, key) => {
+  useInput((_, key) => {
     if(key.escape) {
       abortResponse();
       toggleMenu();

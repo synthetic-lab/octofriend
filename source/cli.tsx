@@ -77,7 +77,7 @@ const cli = new Command()
       configPath={configPath}
       metadata={metadata}
       unchained={!!opts.unchained}
-      transport={new LocalTransport()}
+      transport={transport}
       updates={await readUpdates()}
     />,
     {
