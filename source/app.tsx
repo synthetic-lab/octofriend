@@ -5,7 +5,6 @@ import React, {
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "./components/text-input.tsx";
 import { InputWithHistory } from "./components/input-with-history.tsx";
-import { addToInputHistory } from "./input-history.ts";
 import { t } from "structural";
 import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
@@ -208,9 +207,6 @@ function BottomBarContent() {
   });
 
 	const onSubmit = useCallback(async () => {
-		if (query.trim()) {
-			await addToInputHistory(query.trim());
-		}
 		setQuery("");
     await input({ query, config, transport });
 	}, [ query, config, transport ]);
