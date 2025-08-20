@@ -49,6 +49,27 @@ edit confirmations.
 
 ## Demo
 [![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
+
+## Sandboxing Octo
+
+Octo has native Docker support. To make Octo run inside an *existing* container
+you have running — for example, if you already have a Docker Compose setup —
+run `octo docker connect your-container-name`.
+
+To have Octo launch a Docker image and shut it down when Octo quits, you can
+run:
+
+```bash
+# Make sure to add the -- before the docker run args!
+octo docker run -- ordinary-docker-run-args
+```
+
+For example, to launch Octo inside an Alpine Linux container:
+
+```bash
+octo docker run -- -d -i -t alpine /bin/sh
+```
+
 ## Rules
 
 Octo will look for instruction files named like so:
