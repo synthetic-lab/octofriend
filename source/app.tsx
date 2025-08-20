@@ -6,7 +6,7 @@ import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { t } from "structural";
 import {
-  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig, markUpdatesSeen
+  Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
 } from "./config.ts";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
@@ -14,7 +14,7 @@ import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import {
-  bash,
+  shell,
   read,
   list,
   edit,
@@ -33,12 +33,14 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
+import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { useCtrlC, ExitOnDoubleCtrlC } from "./components/exit-on-double-ctrl-c.tsx";
 
 type Props = {
 	config: Config;
   configPath: string,
 	metadata: Metadata,
+  updates: string | null,
   unchained: boolean,
   transport: Transport,
 };
@@ -68,7 +70,7 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
-export default function App({ config, configPath, metadata, unchained, transport }: Props) {
+export default function App({ config, configPath, metadata, unchained, transport, updates }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData } = useAppStore(
     useShallow(state => ({
@@ -79,14 +81,14 @@ export default function App({ config, configPath, metadata, unchained, transport
   );
 
   useEffect(() => {
-    if(metadata.updates) markUpdatesSeen();
+    if(updates != null) markUpdatesSeen();
   }, []);
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
       { type: "version", metadata, config: currConfig },
-      ...(metadata.updates ? [{ type: "updates" as const, updates: metadata.updates }] : []),
+      ...(updates ? [{ type: "updates" as const, updates }] : []),
       { type: "slogan" },
       ...toStaticItems(history),
     ]
@@ -104,15 +106,12 @@ export default function App({ config, configPath, metadata, unchained, transport
                     (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
                   }
                 </Static>
-
                 {
                   modeData.mode === "responding" &&
                     (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
                     <MessageDisplay item={modeData.inflightResponse} />
                 }
-                {
-                    <BottomBar metadata={metadata} />
-                }
+                <BottomBar metadata={metadata} />
               </Box>
             </ExitOnDoubleCtrlC>
           </TransportContext.Provider>
@@ -136,7 +135,7 @@ function BottomBar({ metadata }: {
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
       if(latestVersion && metadata.version < latestVersion) {
-        setVersionCheck("New version released! Run npm install -g octofriend to update.");
+        setVersionCheck("New version released! Run `npm install -g --omit=dev octofriend` to update.");
         return;
       }
       setVersionCheck("Octo is up-to-date.");
@@ -285,6 +284,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
 function ToolRequestRenderer({ toolReq, config, transport }: {
   toolReq: ToolCallItem
 } & RunArgs) {
+  const themeColor = useColor();
   const { runTool, rejectTool } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
@@ -292,6 +292,30 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
     }))
   );
   const unchained = useUnchained();
+
+  const prompt = (() => {
+    const fn = toolReq.tool.function;
+    switch (fn.name) {
+      case "create":
+        return <Box>
+          <Text>Create file </Text>
+          <Text color={themeColor}>{fn.arguments.filePath}</Text>
+          <Text>?</Text>
+        </Box>
+      case "edit":
+        return <Box>
+          <Text>Make these changes to </Text>
+          <Text color={themeColor}>{fn.arguments.filePath}</Text>
+          <Text>?</Text>
+        </Box>
+      case "read":
+      case "shell":
+      case "fetch":
+      case "list":
+      case "mcp":
+        return null;
+    }
+  })();
 
   const items = [
     {
@@ -318,12 +342,15 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
 
   if(noConfirm) return <Loading />;
 
-  return <SelectInput
-    items={items}
-    onSelect={onSelect}
-    indicatorComponent={IndicatorComponent}
-    itemComponent={ItemComponent}
-  />
+  return <Box flexDirection="column" gap={1}>
+    { prompt }
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ItemComponent}
+    />
+  </Box>
 }
 
 
@@ -366,7 +393,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 const MessageDisplay = React.memo(({ item }: {
   item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
 }) => {
-  return <Box marginTop={1} marginBottom={1} flexDirection="column" paddingRight={4}>
+  return <Box flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
   </Box>
 });
@@ -377,12 +404,26 @@ const MessageDisplayInner = React.memo(({ item }: {
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
-	if(item.type === "assistant") return <AssistantMessageRenderer item={item} />
-	if(item.type === "tool") return <ToolMessageRenderer item={item} />
+	if(item.type === "assistant") {
+    return <Box marginBottom={1}>
+      <AssistantMessageRenderer item={item} />
+    </Box>
+  }
+	if(item.type === "tool") {
+    return <Box marginTop={1}>
+      <ToolMessageRenderer item={item} />
+    </Box>
+  }
 	if(item.type === "tool-output") {
-		return <Text color="gray">
-			Got <Text>{item.content.split("\n").length}</Text> lines of output
-		</Text>
+    const lines = (() => {
+      if(item.result.lines == null) return item.result.content.split("\n").length;
+      return item.result.lines;
+    })();
+		return <Box marginBottom={1}>
+      <Text color="gray">
+        Got <Text>{lines}</Text> lines of output
+      </Text>
+    </Box>
 	}
   if(item.type === "tool-malformed") {
     return <Text color="red">
@@ -427,7 +468,7 @@ const MessageDisplayInner = React.memo(({ item }: {
   // Type assertion proving we've handled all types other than user
   const _: "user" = item.type;
 
-	return <Box>
+	return <Box marginY={1}>
     <Box marginRight={1}>
       <Text color="white">
         ▶
@@ -443,7 +484,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
   switch(item.tool.function.name) {
     case "read": return <ReadToolRenderer item={item.tool.function} />
     case "list": return <ListToolRenderer item={item.tool.function} />
-    case "bash": return <BashToolRenderer item={item.tool.function} />
+    case "shell": return <ShellToolRenderer item={item.tool.function} />
     case "edit": return <EditToolRenderer item={item.tool.function} />
     case "create": return <CreateToolRenderer item={item.tool.function} />
     case "mcp": return <McpToolRenderer item={item.tool.function} />
@@ -459,7 +500,7 @@ function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> 
 	</Box>
 }
 
-function BashToolRenderer({ item }: { item: t.GetType<typeof bash.Schema> }) {
+function ShellToolRenderer({ item }: { item: t.GetType<typeof shell.Schema> }) {
   const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
@@ -530,13 +571,13 @@ function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
 
 function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema> }) {
   const themeColor = useColor();
-  return <Box flexDirection="column">
+  return <Box flexDirection="column" gap={1}>
     <Box>
-      <Text>Create file: </Text>
+      <Text>Creating file </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
+      <Text>:</Text>
     </Box>
-    <Box flexDirection="column">
-      <Text>With content:</Text>
+    <Box>
       <Text>{item.arguments.content}</Text>
     </Box>
   </Box>

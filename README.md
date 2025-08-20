@@ -4,7 +4,7 @@ Octo is your friend.
 ## Get Started
 
 ```bash
-npm install --global octofriend
+npm install --global --omit=dev octofriend
 ```
 
 And then:

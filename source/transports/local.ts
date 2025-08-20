@@ -1,11 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import {
-  Transport, AbortError, AuthError, RequestError, CommandFailedError, TransportError
-} from "./transport-common.ts";
+import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
 export class LocalTransport implements Transport {
+  async close() {}
+
   async writeFile(_: AbortSignal, file: string, contents: string) {
     return await fs.writeFile(file, contents, "utf8");
   }
@@ -127,22 +127,5 @@ output: ${output}`));
         reject(new CommandFailedError(`Command failed: ${err.message}`));
       });
     });
-  }
-
-  async getRequest(signal: AbortSignal, url: string) {
-    try {
-      const response = await fetch(url, { signal });
-      const full = await response.text();
-
-      if(!response.ok) {
-        if(response.status === 403) throw new AuthError(full);
-        throw new RequestError(full);
-      }
-
-      return full;
-    } catch (e) {
-      if ((e as any)?.name === 'AbortError' || signal.aborted) throw new AbortError();
-      throw e;
-    }
   }
 }

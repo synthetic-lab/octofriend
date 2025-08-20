@@ -14,13 +14,6 @@ const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 
-const DATA_DIR = path.join(os.homedir(), ".local/share/octofriend");
-const METADATA_FILE = path.join(DATA_DIR, "metadata.json5");
-const MetadataFileSchema = t.subtype({
-  lastUpdate: t.optional(t.str),
-});
-const UPDATES_FILE = path.join(__dir, "../../IN-APP-UPDATES.txt");
-
 const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
@@ -236,44 +229,13 @@ export async function readConfig(path: string): Promise<Config> {
 
 export type Metadata = {
   version: string,
-  updates?: string,
 };
 
 export async function readMetadata(): Promise<Metadata> {
   const packageFile = await fs.readFile(path.join(__dir, "../../package.json"), "utf8");
   const packageJson = JSON.parse(packageFile);
 
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  let updates: { updates?: string } = {};
-
-  updates.updates = await currentUpdates();
-  const metadataFile = await loadMetadataFile();
-  if(metadataFile.lastUpdate) {
-    if(metadataFile.lastUpdate === updates.updates) delete updates.updates;
-  }
-
   return {
     version: packageJson["version"],
-    ...updates,
   };
-}
-
-export async function markUpdatesSeen() {
-  const metadataFile = await loadMetadataFile();
-  metadataFile.lastUpdate = await currentUpdates();
-  await fs.writeFile(METADATA_FILE, json5.stringify(metadataFile), "utf8");
-}
-
-async function currentUpdates() {
-  return await fs.readFile(UPDATES_FILE, "utf8");
-}
-
-async function loadMetadataFile(): Promise<t.GetType<typeof MetadataFileSchema>> {
-  if(await fileExists(METADATA_FILE)) {
-    try {
-      const metadataFile = await fs.readFile(METADATA_FILE, "utf8");
-      return MetadataFileSchema.slice(json5.parse(metadataFile));
-    } catch {}
-  }
-  return {};
 }

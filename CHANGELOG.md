@@ -8,12 +8,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- You can now run Octo inside any Docker container: all filesystem commands and
+  shell commands will run inside the container, instead of on your host system.
+  You don't need to install anything or configure the container in any way:
+  Octo is Docker-aware and works with any Docker container. Use it like so:
+  `octo --connect docker:my-container-name`.
+
+- Octo can also launch Docker images for you and auto-connect to them with:
+  `octo --connect docker:repo/image-name`. To run root-owned images like
+  `alpine`, run `--connect docker:_/image-name`. When you're done running Octo,
+  it'll automatically clean up the Docker container it launched for you.
+
+### Changed
+
+- Octo no longer shows a list of updates on first install: the update list only
+  appears when you actually *update* Octo.
+
+## [0.0.27] - 2025-08-19
+
+### Changed
+
+- Urgent bugfix for crash-on-boot when data dir is uninitialized
+
+## [0.0.26] - 2025-08-19
+
+### Added
+
 - Octo now auto-detects billing-related errors for many OpenAI-compatible APIs,
   including Synthetic, and displays a helpful message when you encounter them.
 
 - After updating, Octo now displays a short list of updates in-app on first
   launch. (Afterwards, the updates aren't shown anymore, although you can run
   `octo changelog` to view the full changelog.)
+
+### Changed
+
+- Fixed crash that occurred when adding custom models
+
+- Correctly show lines read in the UI when Octo reads files
+
+- General UI improvements
 
 ## [0.0.25] - 2025-08-16
 

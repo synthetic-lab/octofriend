@@ -57,7 +57,9 @@ export default {
       file, edit,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
-    return "";
+    return {
+      content: "",
+    };
   },
 } satisfies ToolDef<t.GetType<typeof Schema>> & {
   AllEdits: typeof AllEdits,

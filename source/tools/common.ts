@@ -33,6 +33,13 @@ export async function attemptUntrackedRead(transport: Transport, signal: AbortSi
   });
 }
 
+export type ToolResult = {
+  content: string,
+
+  // The line count to show in the UI, if it's not just the number of lines in the content
+  lines?: number,
+};
+
 export type ToolDef<T> = {
   ArgumentsSchema: t.Type<any>,
   Schema: t.Type<T>,
@@ -43,5 +50,5 @@ export type ToolDef<T> = {
     t: SequenceIdTagged<{ tool: T }>,
     cfg: Config,
     modelOverride: string | null,
-  ) => Promise<string>,
+  ) => Promise<ToolResult>,
 };

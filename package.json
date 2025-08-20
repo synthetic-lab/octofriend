@@ -1,12 +1,12 @@
 {
 	"name": "octofriend",
-	"version": "0.0.25",
+	"version": "0.0.27",
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofriend",
 	"bin": {
-    "octofriend": "dist/source/cli.js",
-    "octo": "dist/source/cli.js"
-  },
+		"octofriend": "dist/source/cli.js",
+		"octo": "dist/source/cli.js"
+	},
 	"type": "module",
 	"preferGlobal": true,
 	"engines": {
@@ -22,6 +22,10 @@
 	"files": [
 		"dist",
 		"source",
+    "drizzle",
+    "drizzle.config.ts",
+    "CHANGELOG.md",
+    "IN-APP-UPDATES.txt",
 		"package.json",
 		"package-lock.json",
 		"tsconfig.json"
@@ -33,9 +37,11 @@
 		"@modelcontextprotocol/sdk": "^1.0.1",
 		"ai": "^5.0.5",
 		"antipattern": "^0.0.7",
+		"better-sqlite3": "^12.2.0",
 		"chalk": "^5.4.1",
 		"commander": "^13.1.0",
 		"diff": "^8.0.2",
+		"drizzle-orm": "^0.44.4",
 		"figlet": "^1.8.0",
 		"figures": "^6.1.0",
 		"html-to-text": "^9.0.5",
@@ -51,15 +57,29 @@
 		"zustand": "^5.0.3"
 	},
 	"devDependencies": {
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/figlet": "^1.7.0",
 		"@types/html-to-text": "^9.0.4",
 		"@types/json-schema": "^7.0.15",
 		"@types/node": "^22.13.13",
 		"@types/react": "^18.0.32",
+		"drizzle-kit": "^0.31.4",
 		"ink-testing-library": "^3.0.0",
 		"parse-git-diff": "^0.0.19",
 		"tsx": "^4.20.3",
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.4"
-	}
+	},
+
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.0"
+    },
+    "@esbuild-kit/esm-loader": {
+      "esbuild": "0.25.0"
+    },
+    "drizzle-kit": {
+      "esbuild": "0.25.0"
+    }
+  }
 }

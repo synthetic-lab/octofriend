@@ -186,7 +186,7 @@ export default {
         }
       }
 
-      return output.trim();
+      return { content: output.trim() };
     } catch (error) {
       if (error instanceof ToolError) {
         throw error;

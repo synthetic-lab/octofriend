@@ -85,8 +85,7 @@ async function toLlmMessages(
   output.unshift({
     role: "system",
     content: await systemPrompt({
-      appliedWindow,
-      config,
+      appliedWindow, config, transport, signal
     }),
   });
 

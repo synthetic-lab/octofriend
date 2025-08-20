@@ -1,2 +1,6 @@
-- Better support for billing-related API errors
-- Show updates in-app after updating
+- Octo can now automatically be sandboxed inside Docker containers with the
+  `octo --connect docker:my-container-name` argument!
+- Octo can also launch images and sandbox itself inside them with the `octo
+  --connect docker:repo/image-name` argument. Octo will clean up the image for
+  you when it's done.
+- UI improvements + bugfixes

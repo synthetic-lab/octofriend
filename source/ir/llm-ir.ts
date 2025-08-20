@@ -288,20 +288,20 @@ function collapseToIR(
           prev,
           {
             role: "file-tool-output",
-            content: item.content,
+            content: item.result.content,
             toolCall: prev.toolCall,
             path: path.resolve(prev.toolCall.function.arguments.filePath),
           }
         ];
         case "fetch":
         case "list":
-        case "bash":
+        case "shell":
         case "mcp":
           return [
             prev,
             {
               role: "tool-output",
-              content: item.content,
+              content: item.result.content,
               toolCall: prev.toolCall,
             }
           ];
