@@ -52,9 +52,11 @@ edit confirmations.
 
 ## Sandboxing Octo
 
-Octo has native Docker support. To make Octo run inside an *existing* container
-you have running — for example, if you already have a Docker Compose setup —
-run `octo docker connect your-container-name`.
+Octo has built-in Docker support, and can attach to any Docker container
+without needing special configuration or editing the image or container. To
+make Octo run inside an *existing* container you have running — for example, if
+you already have a Docker Compose setup — run `octo docker connect
+your-container-name`.
 
 To have Octo launch a Docker image and shut it down when Octo quits, you can
 run:
