@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { useColor } from "../theme.ts";
-import { InputHistoryNavigator } from "../input-history.ts";
+import { getCurrentHistory, appendToInputHistory } from "../input-history/index.ts";
 
 interface Props {
   value: string;
@@ -12,32 +12,38 @@ interface Props {
 
 export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
-  const historyNavigator = useRef(new InputHistoryNavigator());
+  const [history, setHistory] = useState<string[]>(getCurrentHistory());
   const [isNavigating, setIsNavigating] = useState(false);
-
-  // Update the navigator's current input when props.value changes from external sources
-  useEffect(() => {
-    if (!isNavigating) {
-      historyNavigator.current.setCurrentInput(props.value);
-    }
-  }, [props.value, isNavigating]);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+  const [originalInput, setOriginalInput] = useState("");
 
   useInput((input, key) => {
     if (key.upArrow) {
-      setIsNavigating(true);
-      historyNavigator.current.setCurrentInput(props.value);
-      const historyItem = historyNavigator.current.navigateUp();
-      if (historyItem !== null) {
-        props.onChange(historyItem);
+      if (!isNavigating) {
+        setIsNavigating(true);
+        setOriginalInput(props.value);
       }
+
+      if (history.length === 0) return;
+
+      const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
+      setCurrentIndex(newIndex);
+      props.onChange(history[newIndex]);
       return;
     }
 
     if (key.downArrow) {
-      setIsNavigating(true);
-      const historyItem = historyNavigator.current.navigateDown();
-      if (historyItem !== null) {
-        props.onChange(historyItem);
+      if (!isNavigating || history.length === 0) return;
+
+      if (currentIndex < history.length - 1) {
+        const newIndex = currentIndex + 1;
+        setCurrentIndex(newIndex);
+        props.onChange(history[newIndex]);
+      } else {
+        // Reset to original input
+        setCurrentIndex(-1);
+        setIsNavigating(false);
+        props.onChange(originalInput);
       }
       return;
     }
@@ -46,21 +52,30 @@ export const InputWithHistory = React.memo((props: Props) => {
     if (input || key.return || key.escape || key.backspace || key.delete) {
       if (isNavigating) {
         setIsNavigating(false);
-        historyNavigator.current.reset();
+        setCurrentIndex(-1);
+        setOriginalInput("");
       }
     }
   });
 
   const handleSubmit = () => {
+    if (props.value.trim()) {
+      // Add to history
+      appendToInputHistory(props.value.trim());
+      setHistory(prev => [...prev, props.value.trim()]);
+    }
+
     setIsNavigating(false);
-    historyNavigator.current.reset();
+    setCurrentIndex(-1);
+    setOriginalInput("");
     props.onSubmit();
   };
 
   const handleChange = (value: string) => {
     if (isNavigating) {
       setIsNavigating(false);
-      historyNavigator.current.reset();
+      setCurrentIndex(-1);
+      setOriginalInput("");
     }
     props.onChange(value);
   };
