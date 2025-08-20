@@ -5,7 +5,7 @@ import { expectOne } from "../db/query.ts";
 
 const MAX_HISTORY_ITEMS = 100;
 
-let currentHistory: { input: string; createdAt: Date }[] = [];
+let currentHistory: { input: string; timestamp: Date }[] = [];
 let isInitialized = false;
 
 export function getCurrentHistory(): string[] {
@@ -22,7 +22,7 @@ export function appendToInputHistory(input: string): void {
   if (input.trim()) {
     currentHistory.push({
       input: input.trim(),
-      createdAt: new Date()
+      timestamp: new Date()
     });
   }
 }
@@ -32,14 +32,14 @@ export async function loadInputHistory() {
 
   try {
     const historyRecords = await db()
-      .select({ input: inputHistoryTable.input, createdAt: inputHistoryTable.createdAt })
+      .select({ input: inputHistoryTable.input, timestamp: inputHistoryTable.timestamp })
       .from(inputHistoryTable)
-      .orderBy(asc(inputHistoryTable.createdAt))
+      .orderBy(asc(inputHistoryTable.timestamp))
       .limit(MAX_HISTORY_ITEMS);
 
     currentHistory = historyRecords.map(record => ({
       input: record.input,
-      createdAt: record.createdAt
+      timestamp: record.timestamp
     }));
     isInitialized = true;
   } catch (error) {
@@ -53,7 +53,7 @@ export async function saveInputHistory(): Promise<void> {
   try {
     const historyItems = currentHistory.map(item => ({
       input: item.input.trim(),
-      createdAt: item.createdAt,
+      timestamp: item.timestamp,
     })).filter(item => item.input);
 
     if (historyItems.length > 0) {
@@ -62,7 +62,7 @@ export async function saveInputHistory(): Promise<void> {
         .values(historyItems);
     }
 
-    // Truncate old entries by createdAt, keeping only the most recent MAX_HISTORY_ITEMS
+    // Truncate old entries by timestamp, keeping only the most recent MAX_HISTORY_ITEMS
     const { count: totalCount } = expectOne(await db()
       .select({ count: count() })
       .from(inputHistoryTable));
@@ -71,7 +71,7 @@ export async function saveInputHistory(): Promise<void> {
       const recordsToDelete = await db()
         .select({ id: inputHistoryTable.id })
         .from(inputHistoryTable)
-        .orderBy(asc(inputHistoryTable.createdAt))
+        .orderBy(asc(inputHistoryTable.timestamp))
         .limit(totalCount - MAX_HISTORY_ITEMS);
 
       if (recordsToDelete.length > 0) {

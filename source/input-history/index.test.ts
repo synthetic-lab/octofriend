@@ -32,7 +32,7 @@ describe('Input History', () => {
     const rows = await db()
       .select({ input: inputHistoryTable.input })
       .from(inputHistoryTable)
-      .orderBy(inputHistoryTable.createdAt);
+      .orderBy(inputHistoryTable.timestamp);
 
     expect(rows.map(r => r.input)).toContain('command 1');
     expect(rows.map(r => r.input)).toContain('command 2');
@@ -55,8 +55,8 @@ describe('Input History', () => {
   it('should load existing data from database', async () => {
     // Insert test data directly into database
     await db().insert(inputHistoryTable).values([
-      { input: 'existing 1', createdAt: new Date(Date.now()) },
-      { input: 'existing 2', createdAt: new Date(Date.now() + 1000) }
+      { input: 'existing 1', timestamp: new Date(Date.now()) },
+      { input: 'existing 2', timestamp: new Date(Date.now() + 1000) }
     ]);
 
     // Load should pick up existing data
