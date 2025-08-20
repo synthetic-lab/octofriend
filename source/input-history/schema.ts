@@ -2,8 +2,8 @@ import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 
 export const inputHistoryTable = sqliteTable("input_history", {
   id: integer().primaryKey({ autoIncrement: true }),
-  createdAt: integer({ mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  timestamp: integer({ mode: "timestamp" }).notNull(),
   input: text().notNull(),
 }, table => [
-  index("createdAt_idx").on(table.createdAt),
+  index("timestamp_idx").on(table.timestamp),
 ]);
