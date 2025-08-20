@@ -23,6 +23,8 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
+import { saveInputHistory, getCurrentHistory, loadInputHistory } from "./input-history/index.ts";
+
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -99,6 +101,7 @@ async function runMain(opts: {
   unchained?: boolean,
   transport: Transport,
 }) {
+  await loadInputHistory();
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
 
@@ -130,6 +133,8 @@ async function runMain(opts: {
   );
 
   await waitUntilExit();
+
+  await saveInputHistory();
 
   console.log("\nApprox. tokens used:");
   if(Object.keys(tokenCounts()).length === 0) {
