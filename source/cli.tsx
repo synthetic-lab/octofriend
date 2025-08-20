@@ -21,7 +21,7 @@ import { LocalTransport } from "./transports/local.ts";
 import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
-import { saveInputHistory, getCurrentHistory, loadInputHistory } from "./input-history/index.ts";
+import { saveInputHistory, loadInputHistory } from "./input-history/index.ts";
 
 const __dirname = import.meta.dirname;
 
