@@ -70,6 +70,14 @@ For example, to launch Octo inside an Alpine Linux container:
 octo docker run -- -d -i -t alpine /bin/sh
 ```
 
+All of Octo shell commands and filesystem edits and reads will happen inside
+the container. However, Octo will continue to use any MCP servers you have
+defined in your config via your host machine (since the MCP servers are
+presumably running on your machine, not inside the container), and will make
+HTTP requests from your machine as well if it uses the built-in `fetch` tool,
+so that you can use arbitrary containers that may not have `wget` or `curl`
+installed.
+
 ## Rules
 
 Octo will look for instruction files named like so:
