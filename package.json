@@ -23,10 +23,10 @@
 	"files": [
 		"dist",
 		"source",
-    "drizzle",
-    "drizzle.config.ts",
-    "CHANGELOG.md",
-    "IN-APP-UPDATES.txt",
+		"drizzle",
+		"drizzle.config.ts",
+		"CHANGELOG.md",
+		"IN-APP-UPDATES.txt",
 		"package.json",
 		"package-lock.json",
 		"tsconfig.json"
@@ -51,8 +51,10 @@
 		"ink-spinner": "^5.0.0",
 		"json-schema": "^0.4.0",
 		"json5": "^2.2.3",
+		"marked": "^16.2.0",
 		"openai": "^5.9.0",
 		"react": "^18.2.0",
+		"string-width": "^7.2.0",
 		"structural": "^0.0.29",
 		"zustand": "^5.0.3"
 	},
@@ -70,16 +72,15 @@
 		"typescript": "^5.8.3",
 		"vitest": "^3.2.4"
 	},
-
-  "overrides": {
-    "@esbuild-kit/core-utils": {
-      "esbuild": "0.25.0"
-    },
-    "@esbuild-kit/esm-loader": {
-      "esbuild": "0.25.0"
-    },
-    "drizzle-kit": {
-      "esbuild": "0.25.0"
-    }
-  }
+	"overrides": {
+		"@esbuild-kit/core-utils": {
+			"esbuild": "0.25.0"
+		},
+		"@esbuild-kit/esm-loader": {
+			"esbuild": "0.25.0"
+		},
+		"drizzle-kit": {
+			"esbuild": "0.25.0"
+		}
+	}
 }
