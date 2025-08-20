@@ -34,6 +34,7 @@ import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 type Props = {
 	config: Config;
@@ -631,7 +632,7 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
         </Box>
       }
       <Box flexGrow={1}>
-        <Text>{content}</Text>
+        <Text>{renderMarkdown(content)}</Text>
       </Box>
     </Box>
   </Box>
