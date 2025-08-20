@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.0.28] - 2025-08-20
 
 ### Added
 
@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Octo no longer shows a list of updates on first install: the update list only
   appears when you actually *update* Octo.
+
+- Fix a crash
 
 ## [0.0.27] - 2025-08-19
 
