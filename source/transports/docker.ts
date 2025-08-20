@@ -1,33 +1,41 @@
 import { spawn } from "child_process";
 import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
-export async function manageContainer(image: string) {
-  let normalized = image;
-  if(normalized.startsWith("_/")) normalized = normalized.slice(2);
-  const name = `octo-${randomSuffix()}`;
+export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
-  const child = spawn("docker", [ "run", "--name", name, "-d", "--rm", "-i", "-t", normalized ], {
-    stdio: ['ignore', 'inherit', 'inherit']
-  });
 
-  return new Promise<{
-    container: string,
-    close: () => Promise<void>,
+  const { stdout } = await new Promise<{
+    stdout: string,
   }>((resolve, reject) => {
-    child.on("exit", code => {
+    const stdout: string[] = [];
+    let error = false;
+    const child = spawn("docker", [ "run", ...args ], {
+      stdio: ['ignore', 'pipe', 'inherit']
+    });
+    child.on("error", e => {
+      error = true;
+      reject(e);
+    });
+    child.stdout.on("data", data => stdout.push(data));
+    child.on("close", (code) => {
       if(code != null && code !== 0) {
-        reject(new Error("Docker exited with a non-zero exit code"));
+        if(!error) reject("Command exited with non-zero exit code: " + code);
       }
-      else {
+      else if(!error) {
         resolve({
-          container: name,
-          close: async () => {
-            spawn("docker", [ "kill", name ]);
-          },
+          stdout: stdout.join(""),
         });
       }
     });
   });
+
+  const name = stdout.trim();
+  return {
+    container: name,
+    close: async () => {
+      spawn("docker", [ "kill", name ]);
+    },
+  };
 }
 
 function randomSuffix() {

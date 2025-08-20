@@ -48,7 +48,7 @@ const cli = new Command()
 });
 
 const docker = cli.command("docker").description("Sandbox Octo inside Docker");
-docker.command("container")
+docker.command("connect")
 .description("Sandbox Octo inside an already-running container")
 .option("--config <path>")
 .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
@@ -69,17 +69,17 @@ docker.command("container")
   }
 });
 
-docker.command("image")
-.description("Run a Docker image and sandbox Octo inside of it, shutting it down when Octo shuts down")
+docker.command("run")
+.description("Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down")
 .option("--config <path>")
 .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
 .argument(
-  "<target>",
-  "The Docker image"
-).action(async (target, opts) => {
+  "[args...]",
+  "The args to pass to `docker run`"
+).action(async (args, opts) => {
   const transport = new DockerTransport({
     type: "image",
-    image: await manageContainer(target),
+    image: await manageContainer(args),
   });
 
   try {
