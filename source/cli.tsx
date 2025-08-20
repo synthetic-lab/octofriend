@@ -79,7 +79,10 @@ const cli = new Command()
       unchained={!!opts.unchained}
       transport={transport}
       updates={await readUpdates()}
-    />
+    />,
+    {
+      exitOnCtrlC: false,
+    }
   );
 
   await waitUntilExit();

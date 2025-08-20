@@ -34,6 +34,7 @@ import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
+import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
 
 type Props = {
 	config: Config;
@@ -98,20 +99,21 @@ export default function App({ config, configPath, metadata, unchained, transport
       <ConfigContext.Provider value={currConfig}>
         <UnchainedContext.Provider value={unchained}>
           <TransportContext.Provider value={transport}>
-            <Box flexDirection="column" width="100%" height="100%">
-              <Static items={staticItems}>
+            <ExitOnDoubleCtrlC>
+              <Box flexDirection="column" width="100%" height="100%">
+                <Static items={staticItems}>
+                  {
+                    (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                  }
+                </Static>
                 {
-                  (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                  modeData.mode === "responding" &&
+                    (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                    <MessageDisplay item={modeData.inflightResponse} />
                 }
-              </Static>
-
-              {
-                modeData.mode === "responding" &&
-                  (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                  <MessageDisplay item={modeData.inflightResponse} />
-              }
-              <BottomBar metadata={metadata} />
-            </Box>
+                <BottomBar metadata={metadata} />
+              </Box>
+            </ExitOnDoubleCtrlC>
           </TransportContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
@@ -124,6 +126,7 @@ function BottomBar({ metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
+  const ctrlCPressed = useCtrlCPressed();
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -149,11 +152,14 @@ function BottomBar({ metadata }: {
     <BottomBarContent />
     <Box
       width="100%"
-      justifyContent="flex-end"
+      justifyContent="space-between"
       height={1}
       flexShrink={0}
       flexGrow={1}
     >
+      <Text color={themeColor}>
+        { ctrlCPressed && "Press Ctrl+C again to exit." }
+      </Text>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
   </Box>
@@ -187,6 +193,10 @@ function BottomBarContent() {
       toggleMenu: state.toggleMenu,
     }))
   );
+
+  useCtrlC(() => {
+    setQuery("");
+  });
 
   useInput((_, key) => {
     if(key.escape) {
