@@ -14,14 +14,6 @@ const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 
-export const DATA_DIR = path.join(os.homedir(), ".local/share/octofriend");
-export const INPUT_HISTORY_FILE = path.join(DATA_DIR, "input-history.json5");
-const METADATA_FILE = path.join(DATA_DIR, "metadata.json5");
-const MetadataFileSchema = t.subtype({
-  lastUpdate: t.optional(t.str),
-});
-const UPDATES_FILE = path.join(__dir, "../../IN-APP-UPDATES.txt");
-
 const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
