@@ -21,6 +21,8 @@ import { LocalTransport } from "./transports/local.ts";
 import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
+import { saveInputHistory, loadInputHistory } from "./input-history/index.ts";
+
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -36,6 +38,7 @@ const cli = new Command()
   "--connect <target>",
   "Connect to a Docker container. For example, octo --connect docker:some-container-name"
 ).action(async (opts) => {
+  await loadInputHistory();
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
 
@@ -87,6 +90,8 @@ const cli = new Command()
 
   await waitUntilExit();
   await transport.close();
+
+  await saveInputHistory();
 
   console.log("\nApprox. tokens used:");
   if(Object.keys(tokenCounts()).length === 0) {

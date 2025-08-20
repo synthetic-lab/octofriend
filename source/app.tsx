@@ -4,6 +4,7 @@ import React, {
 } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
 import TextInput from "ink-text-input";
+import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
 import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
@@ -255,7 +256,7 @@ function BottomBarContent() {
     <Box marginLeft={1} justifyContent="flex-end">
       <Text color="gray">(Press ESC to enter the menu)</Text>
     </Box>
-    <InputBox
+    <InputWithHistory
       value={query}
       onChange={setQuery}
       onSubmit={onSubmit}
