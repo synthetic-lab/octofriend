@@ -17,6 +17,7 @@ import OpenAI from "openai";
 import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
+import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
@@ -26,8 +27,6 @@ const __dirname = import.meta.dirname;
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
 
-const DOCKER_REGEX = /^docker:(.+)$/;
-
 const cli = new Command()
 .description("If run with no subcommands, runs Octo interactively.")
 .option("--config <path>")
@@ -36,6 +35,69 @@ const cli = new Command()
   "--connect <target>",
   "Connect to a Docker container. For example, octo --connect docker:some-container-name"
 ).action(async (opts) => {
+  const transport = new LocalTransport();
+  try {
+    await runMain({
+      config: opts.config,
+      unchained: opts.unchained,
+      transport,
+    });
+  } finally {
+    await transport.close();
+  }
+});
+
+const docker = cli.command("docker").description("Sandbox Octo inside Docker");
+docker.command("container")
+.description("Sandbox Octo inside an already-running container")
+.option("--config <path>")
+.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+.argument(
+  "<target>",
+  "The Docker container"
+).action(async (target, opts) => {
+  const transport = new DockerTransport({ type: "container", container: target });
+
+  try {
+    await runMain({
+      config: opts.config,
+      unchained: opts.unchained,
+      transport,
+    });
+  } finally {
+    await transport.close();
+  }
+});
+
+docker.command("image")
+.description("Run a Docker image and sandbox Octo inside of it, shutting it down when Octo shuts down")
+.option("--config <path>")
+.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+.argument(
+  "<target>",
+  "The Docker image"
+).action(async (target, opts) => {
+  const transport = new DockerTransport({
+    type: "image",
+    image: await manageContainer(target),
+  });
+
+  try {
+    await runMain({
+      config: opts.config,
+      unchained: opts.unchained,
+      transport,
+    });
+  } finally {
+    await transport.close();
+  }
+});
+
+async function runMain(opts: {
+  config?: string,
+  unchained?: boolean,
+  transport: Transport,
+}) {
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
 
@@ -52,32 +114,13 @@ const cli = new Command()
     console.log("All MCP servers connected.");
   }
 
-  const transport = await (async () => {
-    if(opts.connect) {
-      const match = DOCKER_REGEX.exec(opts.connect);
-      if(match == null) {
-        console.error("Invalid --connect flag: must be of form docker:running-container-name");
-        process.exit(1);
-      }
-      const target = match[1];
-      if(target.indexOf("/") >= 0) {
-        return new DockerTransport({
-          type: "image",
-          image: await manageContainer(target),
-        });
-      }
-      return new DockerTransport({ type: "container", container: target });
-    }
-    return new LocalTransport();
-  })();
-
 	const { waitUntilExit } = render(
     <App
       config={config}
       configPath={configPath}
       metadata={metadata}
       unchained={!!opts.unchained}
-      transport={transport}
+      transport={opts.transport}
       updates={await readUpdates()}
     />,
     {
@@ -86,7 +129,6 @@ const cli = new Command()
   );
 
   await waitUntilExit();
-  await transport.close();
 
   console.log("\nApprox. tokens used:");
   if(Object.keys(tokenCounts()).length === 0) {
@@ -99,7 +141,7 @@ const cli = new Command()
       console.log(`${model}: ${input} input, ${output} output`);
     }
   }
-});
+}
 
 cli.command("version")
 .description("Prints the current version")
