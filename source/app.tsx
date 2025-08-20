@@ -33,7 +33,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
-import { CtrlCContext, CtrlCProvider } from "./components/ctrl-c-provider.tsx";
+import { useCtrlC, ExitOnDoubleCtrlC } from "./components/exit-on-double-ctrl-c.tsx";
 
 type Props = {
 	config: Config;
@@ -97,7 +97,7 @@ export default function App({ config, configPath, metadata, unchained, transport
       <ConfigContext.Provider value={currConfig}>
         <UnchainedContext.Provider value={unchained}>
           <TransportContext.Provider value={transport}>
-            <CtrlCProvider>
+            <ExitOnDoubleCtrlC>
               <Box flexDirection="column" width="100%" height="100%">
                 <Static items={staticItems}>
                   {
@@ -114,7 +114,7 @@ export default function App({ config, configPath, metadata, unchained, transport
                     <BottomBar metadata={metadata} />
                 }
               </Box>
-            </CtrlCProvider>
+            </ExitOnDoubleCtrlC>
           </TransportContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
@@ -127,7 +127,6 @@ function BottomBar({ metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
-  const { ctrlCPressed } = useContext(CtrlCContext);
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -159,7 +158,6 @@ function BottomBar({ metadata }: {
       flexGrow={1}
     >
       <Text color={themeColor}>
-        { ctrlCPressed && "Press Ctrl + C again to exit." }
       </Text>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
@@ -185,7 +183,6 @@ async function getLatestVersion() {
 function BottomBarContent() {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const { registerClearInputFn } = useContext(CtrlCContext);
 	const [ query, setQuery ] = useState("");
   const { modeData, input, abortResponse, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -196,9 +193,9 @@ function BottomBarContent() {
     }))
   );
 
-  useEffect(() => {
-    registerClearInputFn(() => setQuery(""));
-  }, [registerClearInputFn]);
+  useCtrlC(() => {
+    setQuery("");
+  });
 
   useInput((input, key) => {
     if(key.escape) {
