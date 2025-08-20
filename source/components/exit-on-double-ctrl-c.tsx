@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, createContext, useContext } from "react";
 import { useInput, useApp } from "ink";
 
 export function useCtrlC(callback: () => void) {
@@ -7,6 +7,12 @@ export function useCtrlC(callback: () => void) {
       callback();
     }
   });
+}
+
+const CtrlCPressedContext = createContext(false);
+
+export function useCtrlCPressed() {
+  return useContext(CtrlCPressedContext);
 }
 
 export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
@@ -22,5 +28,9 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
     }
   });
 
-  return <>{children}</>;
+  return (
+    <CtrlCPressedContext.Provider value={ctrlCPressed}>
+      {children}
+    </CtrlCPressedContext.Provider>
+  );
 }

@@ -34,7 +34,7 @@ import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
-import { useCtrlC, ExitOnDoubleCtrlC } from "./components/exit-on-double-ctrl-c.tsx";
+import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
 
 type Props = {
 	config: Config;
@@ -126,6 +126,7 @@ function BottomBar({ metadata }: {
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
   const themeColor = useColor();
+  const ctrlCPressed = useCtrlCPressed();
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -157,6 +158,7 @@ function BottomBar({ metadata }: {
       flexGrow={1}
     >
       <Text color={themeColor}>
+        { ctrlCPressed && "Press Ctrl+C again to exit." }
       </Text>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
