@@ -5,14 +5,14 @@ import { expectOne } from "../db/query.ts";
 
 const MAX_HISTORY_ITEMS = 100;
 
-let currentHistory: string[] = [];
+let currentHistory: { input: string; createdAt: Date }[] = [];
 let isInitialized = false;
 
 export function getCurrentHistory(): string[] {
   if (!isInitialized) {
     throw new Error("Input history was not initalized.");
   }
-  return currentHistory;
+  return currentHistory.map(item => item.input);
 }
 
 export function appendToInputHistory(input: string): void {
@@ -20,7 +20,10 @@ export function appendToInputHistory(input: string): void {
     throw new Error("Input history was not initalized.");
   }
   if (input.trim()) {
-    currentHistory.push(input.trim());
+    currentHistory.push({
+      input: input.trim(),
+      createdAt: new Date()
+    });
   }
 }
 
@@ -29,12 +32,15 @@ export async function loadInputHistory() {
 
   try {
     const historyRecords = await db()
-      .select({ input: inputHistoryTable.input })
+      .select({ input: inputHistoryTable.input, createdAt: inputHistoryTable.createdAt })
       .from(inputHistoryTable)
       .orderBy(asc(inputHistoryTable.createdAt))
       .limit(MAX_HISTORY_ITEMS);
 
-    currentHistory = historyRecords.map(record => record.input);
+    currentHistory = historyRecords.map(record => ({
+      input: record.input,
+      createdAt: record.createdAt
+    }));
     isInitialized = true;
   } catch (error) {
     console.warn("Failed to load input history:", error);
@@ -45,9 +51,9 @@ export async function saveInputHistory(): Promise<void> {
   if (currentHistory.length === 0) return;
 
   try {
-    const historyItems = currentHistory.map((input, index) => ({
-      input: input.trim(),
-      createdAt: new Date(Date.now() + index),
+    const historyItems = currentHistory.map(item => ({
+      input: item.input.trim(),
+      createdAt: item.createdAt,
     })).filter(item => item.input);
 
     if (historyItems.length > 0) {
