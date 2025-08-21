@@ -245,6 +245,7 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
 
   if (autofixStep === "diff-apply-custom") {
     return <AutofixModelMenu
+      key="diff-apply-custom"
       config={null}
       defaultModel="hf:syntheticlab/diff-apply"
       modelNickname="diff-apply"
@@ -267,6 +268,7 @@ function AutofixSetup({ onComplete, onSkip, onOverrideDefaultApiKey }: {
 
   if (autofixStep === "fix-json-custom") {
     return <AutofixModelMenu
+      key="fix-json-custom"
       config={null}
       defaultModel="hf:syntheticlab/fix-json"
       modelNickname="fix-json"
