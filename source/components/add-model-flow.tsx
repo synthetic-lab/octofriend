@@ -9,6 +9,7 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { MenuPanel } from "./menu-panel.tsx";
 import { router, Back } from "../router.tsx";
 import { PROVIDERS } from "../providers.ts";
+import * as logger from "../logger.ts";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false, error: string };
@@ -198,8 +199,8 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
 });
 
 type Transitions<T> = {
-  back: () => any,
-  onSubmit: (data: T) => any,
+  back: () => void,
+  onSubmit: (data: T) => void,
 };
 
 const apiKey = fullFlow.withRoutes(
@@ -536,7 +537,7 @@ const customAutofixRoutes = customAutofixFlow.route({
   },
 
   context: to => props => {
-    return <Context {...props} back={to.model(props)} />
+    return <Context {...props} back={() => to.model(props)} />
   },
 });
 
@@ -635,6 +636,7 @@ async function testConnection({ model, apiEnvVar, baseUrl, config }: MinConnectA
 
     return true;
   } catch(e) {
+    logger.error("verbose", e);
     return false;
   }
 }
