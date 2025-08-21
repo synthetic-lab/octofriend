@@ -384,7 +384,7 @@ const fullFlowRoutes = fullFlow.route({
   },
 
   context: to => props => {
-    return <Context {...props} back={to.nickname(props)} />
+    return <Context {...props} back={() => to.nickname(props)} />
   },
 });
 
@@ -431,7 +431,7 @@ const customModelFlowRoutes = customModelFlow.route({
   nickname,
 
   context: to => props => {
-    return <Context {...props} back={to.nickname(props)} />
+    return <Context {...props} back={() => to.nickname(props)} />
   },
 });
 

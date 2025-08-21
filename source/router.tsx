@@ -80,7 +80,7 @@ export class RouteBuilder<T extends Record<string, any>> {
 }
 
 export type ToRoute<T extends Record<string, any>> = {
-  [K in keyof T]: (props: T[K]) => any
+  [K in keyof T]: (props: T[K]) => void
 };
 
 class Router<T extends Record<string, any>, Initial extends keyof T> {
