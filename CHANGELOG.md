@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.29] - 2025-08-21
+
+### Changed
+
+- Fixed rendering error when adding custom models during setup.
+
 ## [0.0.28] - 2025-08-20
 
 ### Added
