@@ -1,6 +1,6 @@
 {
 	"name": "octofriend",
-	"version": "0.0.29",
+	"version": "0.0.30",
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofriend",
 	"bin": {
@@ -17,7 +17,8 @@
 		"dev": "tsc --watch",
 		"exec": "tsc && node ./dist/source/cli.js",
 		"test": "vitest",
-		"test:run": "vitest run"
+		"test:run": "vitest run",
+    "prepublishOnly": "tsc"
 	},
 	"files": [
 		"dist",
