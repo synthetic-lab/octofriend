@@ -3,7 +3,7 @@ import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
-import TextInput from "ink-text-input";
+import TextInput from "./components/text-input.tsx";
 import { t } from "structural";
 import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
