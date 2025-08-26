@@ -32,7 +32,7 @@ export default {
       await fileTracker.write(transport, signal, filePath, content);
       return {
         content: "",
-        lines: content.length,
+        lines: content.split("\n").length,
       };
     });
   },
