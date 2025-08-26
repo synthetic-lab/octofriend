@@ -47,3 +47,6 @@ TODO:
     overriding the docker:... syntax.
 - [ ] Port Aider Polyglot benchmarks to Octo, run inside a container
 - [ ] Add SSH transport
+- [ ] When Octo returns input back to the user, run a special loop with a basic
+  prompt that checks whether Octo forgot anything (i.e. did it run tests, run a
+  compiler, etc).
