@@ -38,4 +38,3 @@ TODO:
 - [ ] When Octo returns input back to the user, run a special loop with a basic
   prompt that checks whether Octo forgot anything (i.e. did it run tests, run a
   compiler, etc).
-- [ ] Fix crash related to FS reads during autofix for impossible files (?)

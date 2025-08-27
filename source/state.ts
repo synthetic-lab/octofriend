@@ -339,16 +339,18 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
         });
         const path = fn.arguments.filePath;
-        const file = await fs.readFile(path, "utf8");
-        const fix = await autofixEdit(config, file, fn.arguments.edit, abortController.signal);
-        if (abortController.signal.aborted) {
-          set({ modeData: { mode: "input" } });
-          return;
-        }
-        if(fix) {
-          fixed = true;
-          fn.arguments.edit = fix;
-        }
+        try {
+          const file = await fs.readFile(path, "utf8");
+          const fix = await autofixEdit(config, file, fn.arguments.edit, abortController.signal);
+          if (abortController.signal.aborted) {
+            set({ modeData: { mode: "input" } });
+            return;
+          }
+          if(fix) {
+            fixed = true;
+            fn.arguments.edit = fix;
+          }
+        } catch {}
       }
 
       if(!fixed) {

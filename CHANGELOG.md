@@ -14,8 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Fixed the line count shown in the UI for file creation
 - Swapped the recommended Synthetic-hosted DeepSeek model to DeepSeek V3.1
+- Fixed the line count shown in the UI for file creation
+- Fix crash when models hallucinate impossible file names
 
 ## [0.0.30] - 2025-08-23
 
