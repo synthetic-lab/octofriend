@@ -33,18 +33,6 @@ TODO:
   - [ ] OpenAI auth failures
 - [ ] Run the test-connection code for autofix models and all supported auth
   providers, and show billing- or auth-related errors immediately
-- [ ] Allow running Octo inside Docker configuration-free
-  - [x] Remove getRequest from the transport interface: there's just no way to
-    guarantee being able to make an HTTP req inside a container using standard
-    POSIX tooling without incredible amounts of work (since neither `curl` nor
-    `wget` are guaranteed to exist, and esp in minimal dev containers might
-    not), and TBH it's not a particularly valuable thing to sandbox — you don't
-    even prompt for permission to run it bc it's so safe.
-  - [x] Add a docker transport
-  - [x] CLI args to connect to a running Docker container
-  - [x] Support starting/stopping an image
-  - [ ] More explicit syntax for images: use docker:image:... rather than
-    overriding the docker:... syntax.
 - [ ] Port Aider Polyglot benchmarks to Octo, run inside a container
 - [ ] Add SSH transport
 - [ ] When Octo returns input back to the user, run a special loop with a basic
