@@ -12,7 +12,7 @@ import { autofixJson } from "../compilers/autofix.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
-import { PaymentError } from "../errors.ts";
+import { PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 export type UserMessage = {
@@ -191,17 +191,30 @@ Please try again.`.trim())}`,
   };
 }
 
+
 const PaymentErrorSchema = t.subtype({
   status: t.value(402),
   error: t.str,
 });
-async function handlePaymentError<T>(cb: () => Promise<T>): Promise<T> {
+const RateLimitErrorSchema = t.subtype({
+  status: t.value(429),
+  error: t.str,
+});
+
+const ERROR_SCHEMAS = [
+  [ PaymentError, PaymentErrorSchema ] as const,
+  [ RateLimitError, RateLimitErrorSchema ] as const,
+];
+
+async function handleKnownErrors<T>(cb: () => Promise<T>): Promise<T> {
   try {
     return await cb();
   } catch(e) {
-    const result = PaymentErrorSchema.sliceResult(e);
-    if(result instanceof t.Err) throw e;
-    throw new PaymentError(result.error);
+    for(const [ ErrorClass, schema ] of ERROR_SCHEMAS) {
+      const result = schema.sliceResult(e);
+      if(!(result instanceof t.Err)) throw new ErrorClass(result.error);
+    }
+    throw e;
   }
 }
 
@@ -216,7 +229,7 @@ export async function runAgent({
   abortSignal: AbortSignal,
   transport: Transport,
 }): Promise<OutputIR[]> {
-  return await handlePaymentError(async () => {
+  return await handleKnownErrors(async () => {
     const model = getModelFromConfig(config, modelOverride);
     const apiKey = await assertKeyForModel(model, config);
     const client = new OpenAI({

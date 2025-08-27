@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Octo can now automatically detect rate limit errors for any standard
+  OpenAI-compatible client, and shows a special error message in the UI for
+  them.
+
+### Changed
+
+- Fixed the line count shown in the UI for file creation
+- Swapped the recommended Synthetic-hosted DeepSeek model to DeepSeek V3.1
+
 ## [0.0.30] - 2025-08-23
 
 - Fixed rendering error in model nickname flow

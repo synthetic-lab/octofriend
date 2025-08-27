@@ -240,6 +240,9 @@ function BottomBarContent() {
   if(modeData.mode === "payment-error") {
     return <PaymentErrorScreen error={modeData.error}/>
   }
+  if(modeData.mode === "rate-limit-error") {
+    return <RateLimitErrorScreen error={modeData.error}/>
+  }
 
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer
@@ -263,17 +266,39 @@ function BottomBarContent() {
   </Box>
 }
 
-function PaymentErrorScreen({ error }: { error: string }) {
+function RateLimitErrorScreen({ error }: { error: string }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const { retryPayment } = useAppStore(
+  const { retryFrom } = useAppStore(
     useShallow(state => ({
-      retryPayment: state.retryPayment,
+      retryFrom: state.retryFrom,
     }))
   );
 
   useInput(() => {
-    retryPayment({ config, transport });
+    retryFrom("rate-limit-error", { config, transport });
+  });
+
+  return <CenteredBox>
+    <Text color="red">
+      It looks like you've hit a rate limit! Here's the error from the backend:
+    </Text>
+    <Text>{error}</Text>
+    <Text color="gray">Press any key when you're ready to retry.</Text>
+  </CenteredBox>
+}
+
+function PaymentErrorScreen({ error }: { error: string }) {
+  const config = useConfig();
+  const transport = useContext(TransportContext);
+  const { retryFrom } = useAppStore(
+    useShallow(state => ({
+      retryFrom: state.retryFrom,
+    }))
+  );
+
+  useInput(() => {
+    retryFrom("payment-error", { config, transport });
   });
 
   return <CenteredBox>

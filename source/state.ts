@@ -15,7 +15,7 @@ import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError } from "./errors.ts";
+import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -38,6 +38,9 @@ export type UiState = {
     mode: "payment-error",
     error: string,
   } | {
+    mode: "rate-limit-error",
+    error: string,
+  } | {
     mode: "diff-apply",
     abortController: AbortController,
   } | {
@@ -56,7 +59,7 @@ export type UiState = {
   abortResponse: () => void,
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
-  retryPayment: (args: RunArgs) => Promise<void>,
+  retryFrom: (mode: "payment-error" | "rate-limit-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -83,8 +86,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     await get()._runAgent({ config, transport });
   },
 
-  retryPayment: async (args) => {
-    if(get().modeData.mode === "payment-error") {
+  retryFrom: async (mode, args) => {
+    if(get().modeData.mode === mode) {
       await get()._runAgent(args);
     }
   },
@@ -281,6 +284,12 @@ export const useAppStore = create<UiState>((set, get) => ({
       if(e instanceof PaymentError) {
         set({
           modeData: { mode: "payment-error", error: e.message },
+        });
+        return;
+      }
+      else if(e instanceof RateLimitError) {
+        set({
+          modeData: { mode: "rate-limit-error", error: e.message },
         });
         return;
       }
