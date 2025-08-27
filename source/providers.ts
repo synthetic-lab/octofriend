@@ -47,8 +47,8 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
       {
-        model: "hf:deepseek-ai/DeepSeek-R1-0528",
-        nickname: "DeepSeek R1-0528",
+        model: "hf:deepseek-ai/DeepSeek-V3.1",
+        nickname: "DeepSeek V3.1",
         context: 64 * 1024,
       },
     ],
