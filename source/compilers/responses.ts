@@ -279,11 +279,9 @@ export async function runResponsesAgent({
     apiKey,
   });
 
-  const toolData = skipSystemPrompt ? {} : { tools };
   const result = streamText({
     model: openai.responses(modelConfig.model),
-    messages,
-    ...toolData,
+    messages, tools,
     abortSignal,
     providerOptions: {
       openai: {

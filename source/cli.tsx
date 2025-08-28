@@ -187,13 +187,11 @@ bench.command("tps")
     console.error("- " + config.models.map(m => m.nickname).join("\n- "));
     process.exit(1);
   }
+  console.log("Benchmarking", model.nickname);
   const abortController = new AbortController();
-
-  const story = "Write me a very long story about a frog going to the moon."
-  console.log(`User:\n${story}`);
-  console.log("Assistant:");
-  let printedThinking = false;
-  let printedResponse = false;
+  const timer = setInterval(() => {
+    console.log("Still working...");
+  }, 5000);
   const start = new Date();
   const result = await run({
     config,
@@ -202,28 +200,15 @@ bench.command("tps")
     messages: [
       {
         role: "user",
-        content: story,
+        content: "Write me a short story about a frog going to the moon. Do not use ANY tools.",
       }
     ],
-    onTokens: (str, type) => {
-      if(type === "reasoning") {
-        if(!printedThinking) {
-          printedThinking = true;
-          process.stderr.write("Thoughts:\n");
-        }
-      }
-      else {
-        if(printedThinking && !printedResponse) {
-          printedResponse = true;
-          process.stderr.write("\n\nResponse:\n");
-        }
-      }
-      process.stderr.write(str);
-    },
+    onTokens: () => {},
     onAutofixJson: () => {},
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });
+  clearInterval(timer);
   const end = new Date();
   const elapsed = end.getTime() - start.getTime();
 

@@ -275,11 +275,10 @@ export async function runAgent({
     } = {};
     if(model.reasoning) reasoning.reasoning_effort = model.reasoning;
 
-    const toolData = skipSystemPrompt ? {} : { tools };
     const res = await client.chat.completions.create({
-      ...reasoning, ...toolData,
+      ...reasoning,
       model: model.model,
-      messages,
+      messages, tools,
       stream: true,
       stream_options: {
         include_usage: true,
