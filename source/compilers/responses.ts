@@ -20,6 +20,7 @@ async function toModelMessage(
   messages: LlmIR[],
   appliedWindow: boolean,
   config: Config,
+  skipSystemPrompt: boolean,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -39,14 +40,16 @@ async function toModelMessage(
 
   output.reverse();
 
-  // Add system message
-  output.unshift({
-    role: "system",
-    content: await systemPrompt({
-      appliedWindow,
-      config, transport, signal,
-    }),
-  });
+  if(!skipSystemPrompt) {
+    // Add system message
+    output.unshift({
+      role: "system",
+      content: await systemPrompt({
+        appliedWindow,
+        config, transport, signal,
+      }),
+    });
+  }
 
   return output;
 }
@@ -223,7 +226,7 @@ async function modelMessageFromIr(
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -232,6 +235,7 @@ export async function runResponsesAgent({
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
+  skipSystemPrompt?: boolean,
 }): Promise<OutputIR[]> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(
@@ -239,7 +243,8 @@ export async function runResponsesAgent({
     abortSignal,
     windowedIR.ir,
     windowedIR.appliedWindow,
-    config
+    config,
+    !!skipSystemPrompt,
   );
 
   // Convert tools to AI SDK format

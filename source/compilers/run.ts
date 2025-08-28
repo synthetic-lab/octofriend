@@ -7,7 +7,7 @@ import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 export async function run({
-  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport
+  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -16,6 +16,7 @@ export async function run({
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
+  skipSystemPrompt?: boolean,
 }) {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const run = (() => {
@@ -28,6 +29,6 @@ export async function run({
   const windowedIR = applyContextWindow(messages, modelConfig.context);
 
   return await run({
-    config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
+    config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
   });
 }

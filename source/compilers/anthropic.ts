@@ -164,7 +164,7 @@ async function modelMessageFromIr(
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -173,6 +173,7 @@ export async function runAnthropicAgent({
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
+  skipSystemPrompt?: boolean,
 }): Promise<OutputIR[]> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
@@ -217,8 +218,9 @@ export async function runAnthropicAgent({
     };
   }
 
+  const system = skipSystemPrompt ? {} : { system: sysPrompt };
   const result = await client.messages.create({
-    system: sysPrompt,
+    ...system,
     model: modelConfig.model,
     tools, messages,
     tool_choice: {

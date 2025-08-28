@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.32] - 2025-08-28
+
+### Added
+
+- Adds a new `octo bench tps` subcommand, that benchmarks the tokens-per-second
+  you're getting from your API provider. Uses your default model if none is
+  specified, or you can run `octo bench tps --model "<model-nickname>"` to
+  benchmark any model you've set up inside Octo.
+
 ## [0.0.31] - 2025-08-27
 
 ### Added

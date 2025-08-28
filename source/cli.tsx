@@ -22,6 +22,7 @@ import { LocalTransport } from "./transports/local.ts";
 import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
+import { run } from "./compilers/run.ts";
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -170,6 +171,67 @@ cli.command("list")
 .action(async () => {
   const { config } = await loadConfigWithoutReauth();
   console.log(config.models.map(m => m.nickname).join("\n"));
+});
+
+const bench = cli.command("bench");
+bench.command("tps")
+.description("Benchmark tokens/sec from your API provider")
+.option("--model <model-nickname>", "The nickname you gave for the model you want to use. If unspecified, uses your default model")
+.action(async (opts) => {
+  const { config } = await loadConfigWithoutReauth();
+  const model = opts.model ? config.models.find(m => m.nickname === opts.model) : config.models[0];
+
+  if(model == null) {
+    console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+    console.error("The available models are:");
+    console.error("- " + config.models.map(m => m.nickname).join("\n- "));
+    process.exit(1);
+  }
+  const abortController = new AbortController();
+
+  const story = "Write me a very long story about a frog going to the moon."
+  console.log(`User:\n${story}`);
+  console.log("Assistant:");
+  let printedThinking = false;
+  let printedResponse = false;
+  const start = new Date();
+  const result = await run({
+    config,
+    skipSystemPrompt: true,
+    modelOverride: model.nickname,
+    messages: [
+      {
+        role: "user",
+        content: story,
+      }
+    ],
+    onTokens: (str, type) => {
+      if(type === "reasoning") {
+        if(!printedThinking) {
+          printedThinking = true;
+          process.stderr.write("Thoughts:\n");
+        }
+      }
+      else {
+        if(printedThinking && !printedResponse) {
+          printedResponse = true;
+          process.stderr.write("\n\nResponse:\n");
+        }
+      }
+      process.stderr.write(str);
+    },
+    onAutofixJson: () => {},
+    abortSignal: abortController.signal,
+    transport: new LocalTransport(),
+  });
+  const end = new Date();
+  const elapsed = end.getTime() - start.getTime();
+
+  const firstResult = result[0];
+  if(firstResult.role !== "assistant") throw new Error("No assistant response");
+  const tokens = firstResult.tokenUsage;
+  const seconds = elapsed/1000;
+  console.log(`\n\nTokens: ${tokens}\nTime: ${seconds}s\nTok/sec: ${tokens/seconds}`);
 });
 
 cli.command("prompt")

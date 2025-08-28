@@ -1,6 +1,6 @@
 {
 	"name": "octofriend",
-	"version": "0.0.31",
+	"version": "0.0.32",
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofriend",
 	"bin": {

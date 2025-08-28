@@ -64,6 +64,7 @@ async function toLlmMessages(
   config: Config,
   transport: Transport,
   signal: AbortSignal,
+  skipSystemPrompt?: boolean,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
   const irs = [ ...messages ];
@@ -82,12 +83,14 @@ async function toLlmMessages(
   }
 
   output.reverse();
-  output.unshift({
-    role: "system",
-    content: await systemPrompt({
-      appliedWindow, config, transport, signal
-    }),
-  });
+  if(!skipSystemPrompt) {
+    output.unshift({
+      role: "system",
+      content: await systemPrompt({
+        appliedWindow, config, transport, signal
+      }),
+    });
+  }
 
   return output;
 }
@@ -228,6 +231,7 @@ export async function runAgent({
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
+  skipSystemPrompt?: boolean,
 }): Promise<OutputIR[]> {
   return await handleKnownErrors(async () => {
     const model = getModelFromConfig(config, modelOverride);
