@@ -219,14 +219,17 @@ export async function runAnthropicAgent({
   }
 
   const system = skipSystemPrompt ? {} : { system: sysPrompt };
-  const result = await client.messages.create({
-    ...system,
-    model: modelConfig.model,
-    tools, messages,
+  const toolData = skipSystemPrompt ? {} : {
+    tools,
     tool_choice: {
-      type: "auto",
+      type: "auto" as const,
       disable_parallel_tool_use: true,
-    },
+    } as const,
+  };
+  const result = await client.messages.create({
+    ...system, ...toolData,
+    model: modelConfig.model,
+    messages,
     // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
     max_tokens: Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context),
     ...thinking,
