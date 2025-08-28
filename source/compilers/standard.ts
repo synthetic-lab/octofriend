@@ -222,7 +222,7 @@ async function handleKnownErrors<T>(cb: () => Promise<T>): Promise<T> {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -247,6 +247,7 @@ export async function runAgent({
       config,
       transport,
       abortSignal,
+      skipSystemPrompt,
     );
 
     const tools = Object.entries(toolMap).map(([ name, tool ]) => {
@@ -274,10 +275,11 @@ export async function runAgent({
     } = {};
     if(model.reasoning) reasoning.reasoning_effort = model.reasoning;
 
+    const toolData = skipSystemPrompt ? {} : { tools };
     const res = await client.chat.completions.create({
-      ...reasoning,
+      ...reasoning, ...toolData,
       model: model.model,
-      messages, tools,
+      messages,
       stream: true,
       stream_options: {
         include_usage: true,
