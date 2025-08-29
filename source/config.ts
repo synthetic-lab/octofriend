@@ -17,6 +17,7 @@ const KeyConfigSchema = t.dict(t.str);
 const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
+  arguments: t.optional(t.array(t.str)),
 });
 
 const ConfigSchema = t.exact({
