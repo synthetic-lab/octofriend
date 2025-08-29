@@ -78,6 +78,10 @@ export async function connectMcpServer(
     throw new ToolError(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
   }
 
+  if (serverConfig.args && serverConfig.arguments) {
+    throw new ToolError(`MCP server "${serverName}" cannot have both "args" and "arguments" fields defined. Please use only one of them.`);
+  }
+
   const client = new Client({
     name: `octofriend-${serverName}`,
     version: "1.0.0",
@@ -85,7 +89,7 @@ export async function connectMcpServer(
 
   const transport = new StdioClientTransport({
     command: serverConfig.command,
-    args: serverConfig.args || [],
+    args: serverConfig.args || serverConfig.arguments || [],
     stderr: log ? "inherit" : "ignore",
   });
 
