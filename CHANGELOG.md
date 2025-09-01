@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.34] - 2025-09-01
+
+- Ensure config dir exists before writing to API key file
+
 ## [0.0.33] - 2025-08-28
 
 ### Changed
