@@ -201,6 +201,7 @@ export async function readKeyForModel(
 export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {
   const keys = await readKeys();
   keys[model.baseUrl] = apiKey;
+  await fs.mkdir(CONFIG_DIR, { recursive: true });
   await fs.writeFile(KEY_FILE, json5.stringify({
     [model.baseUrl]: apiKey,
   }), {
