@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.35] - 2025-09-02
+
+- Fixes to path detection for OCTO.md, AGENTS.md, etc
+
 ## [0.0.34] - 2025-09-01
 
 - Ensure config dir exists before writing to API key file
