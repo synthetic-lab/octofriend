@@ -230,8 +230,8 @@ async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
 }
 
 async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
-  const home = await transport.shell(signal, "echo \"$HOME\"", 5000);
-  let curr = await transport.shell(signal, "pwd", 5000);
+  const home = (await transport.shell(signal, "echo \"$HOME\"", 5000)).trim();
+  let curr = (await transport.shell(signal, "pwd", 5000)).trim();
   const paths: Array<{ path: string, target: LlmTarget }> = [];
 
   while(curr !== home && curr && curr !== "/") {
