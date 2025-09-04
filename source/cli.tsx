@@ -177,6 +177,7 @@ const bench = cli.command("bench");
 bench.command("tps")
 .description("Benchmark tokens/sec from your API provider")
 .option("--model <model-nickname>", "The nickname you gave for the model you want to use. If unspecified, uses your default model")
+.option("--prompt <prompt>", "Custom prompt to benchmark with. If omitted, uses the default prompt.")
 .action(async (opts) => {
   const { config } = await loadConfigWithoutReauth();
   const model = opts.model ? config.models.find(m => m.nickname === opts.model) : config.models[0];
@@ -200,7 +201,7 @@ bench.command("tps")
     messages: [
       {
         role: "user",
-        content: "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+        content: opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.",
       }
     ],
     onTokens: () => {},
@@ -208,6 +209,7 @@ bench.command("tps")
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });
+
   clearInterval(timer);
   const end = new Date();
   const elapsed = end.getTime() - start.getTime();
@@ -218,6 +220,7 @@ bench.command("tps")
   const seconds = elapsed/1000;
   console.log(`\n\nTokens: ${tokens}\nTime: ${seconds}s\nTok/sec: ${tokens/seconds}`);
 });
+
 
 cli.command("prompt")
 .description("Sends a prompt to a model")
