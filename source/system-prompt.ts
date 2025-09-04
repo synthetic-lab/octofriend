@@ -50,10 +50,7 @@ ${
 }
 
 You can call them by calling them as tools; for example, if you were trying to read the GitHub repo
-for the reissbaker/antipattern library, you might use the fetch tool:
-
-tool: fetch
-url: "https://github.com/reissbaker/antipattern"
+for the reissbaker/antipattern library, you might use the fetch tool to look up "https://github.com/reissbaker/antipattern"
 
 ${await mcpPrompt(config)}
 
