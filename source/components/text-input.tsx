@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Text, useInput } from 'ink';
 import chalk from 'chalk';
 
-export type Props = {
+type Props = {
 	readonly placeholder?: string;
 	readonly focus?: boolean;
 	readonly mask?: string;
@@ -13,7 +13,7 @@ export type Props = {
 	readonly onSubmit?: (value: string) => void;
 };
 
-export function TextInput({
+export default function TextInput({
 	value: originalValue,
 	placeholder = '',
 	focus = true,
@@ -105,7 +105,82 @@ export function TextInput({
 			let nextValue = originalValue;
 			let nextCursorWidth = 0;
 
-			if (key.leftArrow) {
+			if (key.ctrl && input === 'a') {
+				nextCursorOffset = 0;
+			} else if (key.ctrl && input === 'e') {
+				nextCursorOffset = originalValue.length;
+			} else if (key.ctrl && input === 'b') {
+				if (showCursor && cursorOffset > 0) {
+					nextCursorOffset = cursorOffset - 1;
+				}
+			} else if (key.ctrl && input === 'f') {
+				if (showCursor && cursorOffset < originalValue.length) {
+					nextCursorOffset = cursorOffset + 1;
+				}
+			} else if (key.meta && input === 'b') {
+				if (showCursor && cursorOffset > 0) {
+					let wordStart = cursorOffset;
+					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
+						wordStart--;
+					}
+					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
+						wordStart--;
+					}
+					nextCursorOffset = wordStart;
+				}
+			} else if (key.meta && input === 'f') {
+				if (showCursor && cursorOffset < originalValue.length) {
+					let wordEnd = cursorOffset;
+					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
+						wordEnd++;
+					}
+					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
+						wordEnd++;
+					}
+					nextCursorOffset = wordEnd;
+				}
+			} else if (key.ctrl && input === 'w') {
+				if (cursorOffset > 0) {
+					let wordStart = cursorOffset;
+					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
+						wordStart--;
+					}
+					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
+						wordStart--;
+					}
+					nextValue = originalValue.slice(0, wordStart) + originalValue.slice(cursorOffset);
+					nextCursorOffset = wordStart;
+				}
+			} else if (key.ctrl && input === 'h') {
+				if (cursorOffset > 0) {
+					nextValue =
+						originalValue.slice(0, cursorOffset - 1) +
+						originalValue.slice(cursorOffset, originalValue.length);
+					nextCursorOffset = cursorOffset - 1;
+				}
+			} else if (key.ctrl && input === 'd') {
+				if (cursorOffset < originalValue.length) {
+					nextValue =
+						originalValue.slice(0, cursorOffset) +
+						originalValue.slice(cursorOffset + 1, originalValue.length);
+				}
+			} else if (key.meta && input === 'd') {
+				if (cursorOffset < originalValue.length) {
+					let wordEnd = cursorOffset;
+					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
+						wordEnd++;
+					}
+					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
+						wordEnd++;
+					}
+					nextValue = originalValue.slice(0, cursorOffset) + originalValue.slice(wordEnd);
+				}
+			} else if (key.ctrl && input === 'k') {
+				nextValue = originalValue.slice(0, cursorOffset);
+			} else if (key.ctrl && input === 'u') {
+				nextValue = originalValue.slice(cursorOffset);
+				nextCursorOffset = 0;
+			} else if (key.leftArrow) {
 				if (showCursor) {
 					nextCursorOffset--;
 				}
