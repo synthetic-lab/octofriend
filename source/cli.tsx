@@ -23,7 +23,7 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
-import { saveInputHistory, loadInputHistory } from "./input-history/index.ts";
+import { InputHistory, loadInputHistory } from "./input-history/index.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -101,7 +101,6 @@ async function runMain(opts: {
   unchained?: boolean,
   transport: Transport,
 }) {
-  await loadInputHistory();
 	const metadata = await readMetadata();
 	let { config, configPath } = await loadConfig(opts.config);
 
@@ -126,6 +125,7 @@ async function runMain(opts: {
       unchained={!!opts.unchained}
       transport={opts.transport}
       updates={await readUpdates()}
+      inputHistory={await loadInputHistory()}
     />,
     {
       exitOnCtrlC: false,
@@ -133,8 +133,6 @@ async function runMain(opts: {
   );
 
   await waitUntilExit();
-
-  await saveInputHistory();
 
   console.log("\nApprox. tokens used:");
   if(Object.keys(tokenCounts()).length === 0) {

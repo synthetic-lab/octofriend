@@ -36,6 +36,7 @@ import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
+import { InputHistory } from "./input-history/index.ts";
 
 type Props = {
 	config: Config;
@@ -44,6 +45,7 @@ type Props = {
   updates: string | null,
   unchained: boolean,
   transport: Transport,
+  inputHistory: InputHistory,
 };
 
 type StaticItem = {
@@ -71,7 +73,7 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
-export default function App({ config, configPath, metadata, unchained, transport, updates }: Props) {
+export default function App({ config, configPath, metadata, unchained, transport, updates, inputHistory }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData } = useAppStore(
     useShallow(state => ({
@@ -112,7 +114,7 @@ export default function App({ config, configPath, metadata, unchained, transport
                     (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
                     <MessageDisplay item={modeData.inflightResponse} />
                 }
-                <BottomBar metadata={metadata} />
+                <BottomBar inputHistory={inputHistory} metadata={metadata} />
               </Box>
             </ExitOnDoubleCtrlC>
           </TransportContext.Provider>
@@ -122,7 +124,8 @@ export default function App({ config, configPath, metadata, unchained, transport
   </SetConfigContext.Provider>
 }
 
-function BottomBar({ metadata }: {
+function BottomBar({ inputHistory, metadata }: {
+  inputHistory: InputHistory
   metadata: Metadata,
 }) {
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
@@ -150,7 +153,7 @@ function BottomBar({ metadata }: {
   if(modeData.mode === "menu") return <Menu />
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent />
+    <BottomBarContent inputHistory={inputHistory} />
     <Box
       width="100%"
       justifyContent="space-between"
@@ -182,7 +185,7 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent() {
+function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
@@ -260,6 +263,7 @@ function BottomBarContent() {
       <Text color="gray">(Press ESC to enter the menu)</Text>
     </Box>
     <InputWithHistory
+      inputHistory={inputHistory}
       value={query}
       onChange={setQuery}
       onSubmit={onSubmit}
