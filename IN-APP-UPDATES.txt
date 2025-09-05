@@ -1,6 +1,2 @@
-- Octo can now automatically be sandboxed inside Docker containers with the
-  `octo docker connect my-container-name` command!
-- Octo can also launch Docker images and sandbox itself inside them with the
-  `octo docker run -- <docker run args>` command. Octo will stop the image for
-  you when you quit.
-- UI improvements + bugfixes
+- Kimi K2 0905 is out! Try it via the built-in Synthetic provider, or your
+  favorite OpenAI-compatible API.
