@@ -1,91 +1,62 @@
-import { asc, count, inArray } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "../db/db.ts";
-import { inputHistoryTable } from "./schema.ts";
-import { expectOne } from "../db/query.ts";
+import { inputHistoryTable } from "./schema/input-history-table.ts";
 
 const MAX_HISTORY_ITEMS = 100;
+const MAX_HISTORY_TRUNCATION_BATCH = 20;
 
-let currentHistory: { input: string; timestamp: Date }[] = [];
-let isInitialized = false;
+export class InputHistory {
+  constructor(private readonly history: string[]) {}
 
-export function getCurrentHistory(): string[] {
-  if (!isInitialized) {
-    throw new Error("Input history was not initalized.");
+  getCurrentHistory(): string[] {
+    return this.history;
   }
-  return currentHistory.map(item => item.input);
-}
 
-export function appendToInputHistory(input: string): void {
-  if (!isInitialized) {
-    throw new Error("Input history was not initalized.");
-  }
-  if (input.trim()) {
-    currentHistory.push({
-      input: input.trim(),
-      timestamp: new Date()
-    });
-  }
-}
+  async appendToInputHistory(input: string): Promise<void> {
+    const trimmedInput = input.trim();
+    if (!trimmedInput) return;
 
-export async function loadInputHistory() {
-  if (isInitialized) return;
+    this.history.push(input);
 
-  try {
-    const historyRecords = await db()
-      .select({ input: inputHistoryTable.input, timestamp: inputHistoryTable.timestamp })
-      .from(inputHistoryTable)
-      .orderBy(asc(inputHistoryTable.timestamp))
-      .limit(MAX_HISTORY_ITEMS);
-
-    currentHistory = historyRecords.map(record => ({
-      input: record.input,
-      timestamp: record.timestamp
-    }));
-    isInitialized = true;
-  } catch (error) {
-    console.warn("Failed to load input history:", error);
-  }
-}
-
-export async function saveInputHistory(): Promise<void> {
-  if (currentHistory.length === 0) return;
-
-  try {
-    const historyItems = currentHistory.map(item => ({
-      input: item.input.trim(),
-      timestamp: item.timestamp,
-    })).filter(item => item.input);
-
-    if (historyItems.length > 0) {
+    try {
       await db()
         .insert(inputHistoryTable)
-        .values(historyItems);
+        .values({ input });
+
+      await this.truncateOldEntries();
+    } catch (error) {
+      console.warn("Failed to save input history:", error);
     }
+  }
 
-    // Truncate old entries by timestamp, keeping only the most recent MAX_HISTORY_ITEMS
-    const { count: totalCount } = expectOne(await db()
-      .select({ count: count() })
-      .from(inputHistoryTable));
-
-    if (totalCount > MAX_HISTORY_ITEMS) {
-      const recordsToDelete = await db()
-        .select({ id: inputHistoryTable.id })
-        .from(inputHistoryTable)
-        .orderBy(asc(inputHistoryTable.timestamp))
-        .limit(totalCount - MAX_HISTORY_ITEMS);
-
-      if (recordsToDelete.length > 0) {
-        const idsToDelete = recordsToDelete.map(r => r.id);
-        await db()
-          .delete(inputHistoryTable)
-          .where(inArray(inputHistoryTable.id, idsToDelete));
-      }
+  private async truncateOldEntries(): Promise<void> {
+    if (this.history.length % MAX_HISTORY_TRUNCATION_BATCH === 0) {
+      db().run(sql`
+        DELETE FROM ${inputHistoryTable}
+        WHERE id NOT IN (
+          SELECT id FROM ${inputHistoryTable}
+          ORDER BY id DESC
+          LIMIT ${MAX_HISTORY_ITEMS}
+        )
+      `);
     }
-  } catch (error) {
-    console.warn("Failed to save input history:", error);
   }
 }
 
-export const _exportedForTest = {
-  resetCurrentHistory() { currentHistory = []; isInitialized = false; },
-};
+export async function loadInputHistory(): Promise<InputHistory> {
+  try {
+    const historyRecords = await db().query.inputHistoryTable.findMany({
+      orderBy: (table, { asc }) => asc(table.id),
+      limit: MAX_HISTORY_ITEMS,
+    });
+
+    const history = historyRecords.map(({ input }) => input);
+
+    return new InputHistory(history);
+  } catch (error) {
+    console.warn("Failed to load input history:", error);
+    return new InputHistory([]);
+  }
+}
+
+export const _exportedForTest = { MAX_HISTORY_ITEMS, MAX_HISTORY_TRUNCATION_BATCH }

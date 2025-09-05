@@ -1,9 +1,33 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9066fb53-ddc4-42fe-8f1d-a072d6542bbd",
+  "id": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "prevId": "1c8bfbb8-b0b3-470b-9b92-5b59d5413a5b",
   "tables": {
+    "input_history": {
+      "name": "input_history",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "input": {
+          "name": "input",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "shown_update_notifs": {
       "name": "shown_update_notifs",
       "columns": {
@@ -29,45 +53,6 @@
             "update"
           ],
           "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "input_history": {
-      "name": "input_history",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "timestamp": {
-          "name": "timestamp",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "input": {
-          "name": "input",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "timestamp_idx": {
-          "name": "timestamp_idx",
-          "columns": [
-            "timestamp"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
