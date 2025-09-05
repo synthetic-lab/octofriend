@@ -37,18 +37,18 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
       {
-        model: "hf:openai/gpt-oss-120b",
-        nickname: "GPT-OSS-120b",
-        context: 64 * 1024,
-      },
-      {
-        model: "hf:moonshotai/Kimi-K2-Instruct",
-        nickname: "Kimi K2",
-        context: 64 * 1024,
+        model: "hf:moonshotai/Kimi-K2-Instruct-0905",
+        nickname: "Kimi K2 0905",
+        context: 128 * 1024,
       },
       {
         model: "hf:deepseek-ai/DeepSeek-V3.1",
         nickname: "DeepSeek V3.1",
+        context: 64 * 1024,
+      },
+      {
+        model: "hf:openai/gpt-oss-120b",
+        nickname: "GPT-OSS-120b",
         context: 64 * 1024,
       },
     ],
