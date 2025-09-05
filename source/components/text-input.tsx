@@ -3,89 +3,164 @@ import { Text, useInput } from 'ink';
 import chalk from 'chalk';
 
 export type Props = {
-  readonly placeholder?: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly onSubmit?: (value: string) => void;
+	readonly placeholder?: string;
+	readonly focus?: boolean;
+	readonly mask?: string;
+	readonly showCursor?: boolean;
+	readonly highlightPastedText?: boolean;
+	readonly value: string;
+	readonly onChange: (value: string) => void;
+	readonly onSubmit?: (value: string) => void;
 };
 
-function TextInput({ placeholder = '', value, onChange, onSubmit }: Props): React.JSX.Element {
-  const [cursorOffset, setCursorOffset] = useState(value.length);
+export function TextInput({
+	value: originalValue,
+	placeholder = '',
+	focus = true,
+	mask,
+	highlightPastedText = false,
+	showCursor = true,
+	onChange,
+	onSubmit,
+}: Props) {
+	const [state, setState] = useState({
+		cursorOffset: (originalValue || '').length,
+		cursorWidth: 0,
+	});
 
-  useEffect(() => {
-    setCursorOffset(prevOffset => Math.min(prevOffset, value.length));
-  }, [value]);
+	const {cursorOffset, cursorWidth} = state;
 
-  const renderWithCursor = () => {
-    if (value.length === 0) {
-      return placeholder.length > 0
-        ? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
-        : chalk.inverse(' ');
-    }
+  // Correct cursor position if dependencies change or text is shortened.
+	useEffect(() => {
+		setState(previousState => {
+			if (!focus || !showCursor) {
+				return previousState;
+			}
 
-    let result = '';
-    for (let i = 0; i < value.length; i++) {
-      result += i === cursorOffset ? chalk.inverse(value[i]) : value[i];
-    }
-    if (cursorOffset === value.length) {
-      result += chalk.inverse(' ');
-    }
-    return result;
-  };
+			const newValue = originalValue || '';
 
-  useInput((input, key) => {
-    if (key.upArrow || key.downArrow || (key.ctrl && input === 'c') || key.tab || (key.shift && key.tab)) {
-      return;
-    }
+			if (previousState.cursorOffset > newValue.length - 1) {
+				return {
+					cursorOffset: newValue.length,
+					cursorWidth: 0,
+				};
+			}
 
-    if (key.return) {
-      onSubmit?.(value);
-      return;
-    }
+			return previousState;
+		});
+	}, [originalValue, focus, showCursor]);
 
-    let nextCursorOffset = cursorOffset;
-    let nextValue = value;
+	const cursorActualWidth = highlightPastedText ? cursorWidth : 0;
 
-    if (key.ctrl && input === 'a') {
-      nextCursorOffset = 0;
-    } else if (key.ctrl && input === 'e') {
-      nextCursorOffset = value.length;
-    } else if (key.ctrl && input === 'w') {
-      if (cursorOffset > 0) {
-        let wordStart = cursorOffset;
-        while (wordStart > 0 && /\s/.test(value[wordStart - 1])) {
-          wordStart--;
-        }
-        while (wordStart > 0 && !/\s/.test(value[wordStart - 1])) {
-          wordStart--;
-        }
-        nextValue = value.slice(0, wordStart) + value.slice(cursorOffset);
-        nextCursorOffset = wordStart;
-      }
-    } else if (key.leftArrow) {
-      nextCursorOffset--;
-    } else if (key.rightArrow) {
-      nextCursorOffset++;
-    } else if (key.backspace || key.delete) {
-      if (cursorOffset > 0) {
-        nextValue = value.slice(0, cursorOffset - 1) + value.slice(cursorOffset);
-        nextCursorOffset--;
-      }
-    } else {
-      nextValue = value.slice(0, cursorOffset) + input + value.slice(cursorOffset);
-      nextCursorOffset += input.length;
-    }
+	const value = mask ? mask.repeat(originalValue.length) : originalValue;
+	let renderedValue = value;
+	let renderedPlaceholder = placeholder ? chalk.grey(placeholder) : undefined;
 
-    nextCursorOffset = Math.max(0, Math.min(nextCursorOffset, nextValue.length));
+	// Fake mouse cursor, because it's too inconvenient to deal with actual cursor and ansi escapes
+	if (showCursor && focus) {
+		renderedPlaceholder =
+			placeholder.length > 0
+				? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
+				: chalk.inverse(' ');
 
-    setCursorOffset(nextCursorOffset);
+		renderedValue = value.length > 0 ? '' : chalk.inverse(' ');
 
-    if (nextValue !== value) {
-      onChange(nextValue);
-    }
-  });
+		let i = 0;
 
-  return <Text>{renderWithCursor()}</Text>;
+		for (const char of value) {
+			renderedValue +=
+				i >= cursorOffset - cursorActualWidth && i <= cursorOffset
+					? chalk.inverse(char)
+					: char;
+
+			i++;
+		}
+
+		if (value.length > 0 && cursorOffset === value.length) {
+			renderedValue += chalk.inverse(' ');
+		}
+	}
+
+	useInput(
+		(input, key) => {
+			if (
+				key.upArrow ||
+				key.downArrow ||
+				(key.ctrl && input === 'c') ||
+				key.tab ||
+				(key.shift && key.tab)
+			) {
+				return;
+			}
+
+			if (key.return) {
+				if (onSubmit) {
+					onSubmit(originalValue);
+				}
+
+				return;
+			}
+
+			let nextCursorOffset = cursorOffset;
+			let nextValue = originalValue;
+			let nextCursorWidth = 0;
+
+			if (key.leftArrow) {
+				if (showCursor) {
+					nextCursorOffset--;
+				}
+			} else if (key.rightArrow) {
+				if (showCursor) {
+					nextCursorOffset++;
+				}
+			} else if (key.backspace || key.delete) {
+				if (cursorOffset > 0) {
+					nextValue =
+						originalValue.slice(0, cursorOffset - 1) +
+						originalValue.slice(cursorOffset, originalValue.length);
+
+					nextCursorOffset--;
+				}
+			} else {
+				nextValue =
+					originalValue.slice(0, cursorOffset) +
+					input +
+					originalValue.slice(cursorOffset, originalValue.length);
+
+				nextCursorOffset += input.length;
+
+				if (input.length > 1) {
+					nextCursorWidth = input.length;
+				}
+			}
+
+			if (cursorOffset < 0) {
+				nextCursorOffset = 0;
+			}
+
+			if (cursorOffset > originalValue.length) {
+				nextCursorOffset = originalValue.length;
+			}
+
+			setState({
+				cursorOffset: nextCursorOffset,
+				cursorWidth: nextCursorWidth,
+			});
+
+			if (nextValue !== originalValue) {
+				onChange(nextValue);
+			}
+		},
+		{isActive: focus},
+	);
+
+	return (
+		<Text>
+			{placeholder
+				? value.length > 0
+					? renderedValue
+					: renderedPlaceholder
+				: renderedValue}
+		</Text>
+	);
 }
-
-export default TextInput;
