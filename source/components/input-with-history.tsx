@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
 import { useColor } from "../theme.ts";
-import { getCurrentHistory, appendToInputHistory } from "../input-history/index.ts";
+import { InputHistory } from "../input-history/index.ts";
 
 interface Props {
+  inputHistory: InputHistory,
   value: string;
   onChange: (s: string) => any;
   onSubmit: () => any;
@@ -23,7 +24,7 @@ export const InputWithHistory = React.memo((props: Props) => {
         setOriginalInput(props.value);
       }
 
-      const history = getCurrentHistory();
+      const history = props.inputHistory.getCurrentHistory();
       if (history.length === 0) return;
 
       const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
@@ -33,7 +34,7 @@ export const InputWithHistory = React.memo((props: Props) => {
     }
 
     if (key.downArrow) {
-      const history = getCurrentHistory();
+      const history = props.inputHistory.getCurrentHistory();
       if (!isNavigating || history.length === 0) return;
 
       if (currentIndex < history.length - 1) {
@@ -61,8 +62,7 @@ export const InputWithHistory = React.memo((props: Props) => {
 
   const handleSubmit = () => {
     if (props.value.trim()) {
-      // Add to history
-      appendToInputHistory(props.value.trim());
+      props.inputHistory.appendToInputHistory(props.value.trim());
     }
 
     setIsNavigating(false);
