@@ -1,68 +1,78 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '../db/db.ts';
-import { migrate } from '../db/migrate.ts';
-import { inputHistoryTable } from './schema.ts';
-import { getCurrentHistory, appendToInputHistory, loadInputHistory, saveInputHistory, _exportedForTest } from './index.ts';
+import { inputHistoryTable } from './schema/input-history-table.ts';
+import { _exportedForTest, InputHistory, loadInputHistory } from './index.ts';
+import { count } from "drizzle-orm";
 
 describe('Input History', () => {
-  beforeAll(async () => {
-    await migrate();
-  });
-
   beforeEach(async () => {
     await db().delete(inputHistoryTable);
-    _exportedForTest.resetCurrentHistory();
   });
 
-  it('should load and save history', async () => {
-    // Load empty history
-    await loadInputHistory();
-    expect(getCurrentHistory()).toEqual([]);
+  it('should load empty history and append items', async () => {
+    const inputHistory = await loadInputHistory();
+    expect(inputHistory.getCurrentHistory()).toEqual([]);
 
-    // Add some history
-    appendToInputHistory('command 1');
-    appendToInputHistory('command 2');
-    expect(getCurrentHistory()).toContain('command 1');
-    expect(getCurrentHistory()).toContain('command 2');
+    await inputHistory.appendToInputHistory('command 1');
+    await inputHistory.appendToInputHistory('command 2');
 
-    // Save history
-    await saveInputHistory();
+    expect(inputHistory.getCurrentHistory()).toContain('command 1');
+    expect(inputHistory.getCurrentHistory()).toContain('command 2');
 
-    // Verify it was saved to database
     const rows = await db()
       .select({ input: inputHistoryTable.input })
       .from(inputHistoryTable)
-      .orderBy(inputHistoryTable.timestamp);
-
+      .orderBy(inputHistoryTable.id);
     expect(rows.map(r => r.input)).toContain('command 1');
     expect(rows.map(r => r.input)).toContain('command 2');
   });
 
   it('should handle empty and whitespace input correctly', async () => {
-    await loadInputHistory();
+    const inputHistory = await loadInputHistory();
 
-    appendToInputHistory('valid command');
-    appendToInputHistory('  trimmed  ');
-    appendToInputHistory('');
-    appendToInputHistory('   ');
+    await inputHistory.appendToInputHistory('valid command');
+    await inputHistory.appendToInputHistory('  trimmed  ');
+    await inputHistory.appendToInputHistory('');
+    await inputHistory.appendToInputHistory('   ');
 
-    const history = getCurrentHistory();
+    const history = inputHistory.getCurrentHistory();
     expect(history).toContain('valid command');
-    expect(history).toContain('trimmed');
+    expect(history).toContain('  trimmed  ');
     expect(history.filter(h => h === '' || h.trim() === '')).toHaveLength(0);
   });
 
   it('should load existing data from database', async () => {
-    // Insert test data directly into database
     await db().insert(inputHistoryTable).values([
-      { input: 'existing 1', timestamp: new Date(Date.now()) },
-      { input: 'existing 2', timestamp: new Date(Date.now() + 1000) }
+      { input: 'existing 1' },
+      { input: 'existing 2' }
     ]);
 
-    // Load should pick up existing data
-    await loadInputHistory();
-    const history = getCurrentHistory();
+    const inputHistory = await loadInputHistory();
+    const history = inputHistory.getCurrentHistory();
     expect(history).toContain('existing 1');
     expect(history).toContain('existing 2');
+  });
+
+  it('should truncate old entries when history exceeds limit', async () => {
+    const inputHistory = await loadInputHistory();
+
+    const numCommandsToTest = _exportedForTest.MAX_HISTORY_ITEMS + _exportedForTest.MAX_HISTORY_TRUNCATION_BATCH;
+    for (let i = 1; i <= numCommandsToTest; i++) {
+      await inputHistory.appendToInputHistory(`command ${i}`);
+    }
+
+    const totalRows = await db()
+      .select({ count: count() })
+      .from(inputHistoryTable);
+
+    expect(totalRows[0].count).toBeLessThanOrEqual(_exportedForTest.MAX_HISTORY_ITEMS);
+
+    const remainingRows = await db()
+      .select({ input: inputHistoryTable.input })
+      .from(inputHistoryTable)
+      .orderBy(inputHistoryTable.id);
+
+    expect(remainingRows.map(r => r.input)).toContain(`command ${numCommandsToTest}`);
+    expect(remainingRows.map(r => r.input)).not.toContain('command 1');
   });
 });
