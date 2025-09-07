@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from "react";
 import { Box, Text } from "ink";
-import TextInput from "ink-text-input";
+import TextInput from "./text-input.tsx";
 import { Config, assertKeyForModel } from "../config.ts";
 import { useColor } from "../theme.ts";
 import OpenAI from "openai";
