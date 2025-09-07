@@ -38,3 +38,6 @@ TODO:
 - [ ] When Octo returns input back to the user, run a special loop with a basic
   prompt that checks whether Octo forgot anything (i.e. did it run tests, run a
   compiler, etc).
+- [ ] Don't retry requests infinitely, and show helpful error messages when a
+  request fails too many times (maybe prompt the user with "do you want to see
+  the full error?")
