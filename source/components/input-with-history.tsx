@@ -13,14 +13,12 @@ interface Props {
 
 export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
-  const [isNavigating, setIsNavigating] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
 
   useInput((input, key) => {
     if (key.upArrow) {
-      if (!isNavigating) {
-        setIsNavigating(true);
+      if (currentIndex === -1) {
         setOriginalInput(props.value);
       }
 
@@ -35,7 +33,7 @@ export const InputWithHistory = React.memo((props: Props) => {
 
     if (key.downArrow) {
       const history = props.inputHistory.getCurrentHistory();
-      if (!isNavigating || history.length === 0) return;
+      if (currentIndex === -1 || history.length === 0) return;
 
       if (currentIndex < history.length - 1) {
         const newIndex = currentIndex + 1;
@@ -44,7 +42,6 @@ export const InputWithHistory = React.memo((props: Props) => {
       } else {
         // Reset to original input
         setCurrentIndex(-1);
-        setIsNavigating(false);
         props.onChange(originalInput);
       }
       return;
@@ -52,8 +49,7 @@ export const InputWithHistory = React.memo((props: Props) => {
 
     // Reset navigation state when user types anything else
     if (input || key.return || key.escape || key.backspace || key.delete) {
-      if (isNavigating) {
-        setIsNavigating(false);
+      if (currentIndex !== -1) {
         setCurrentIndex(-1);
         setOriginalInput("");
       }
@@ -65,15 +61,13 @@ export const InputWithHistory = React.memo((props: Props) => {
       props.inputHistory.appendToInputHistory(props.value.trim());
     }
 
-    setIsNavigating(false);
     setCurrentIndex(-1);
     setOriginalInput("");
     props.onSubmit();
   };
 
   const handleChange = (value: string) => {
-    if (isNavigating) {
-      setIsNavigating(false);
+    if (currentIndex !== -1) {
       setCurrentIndex(-1);
       setOriginalInput("");
     }
