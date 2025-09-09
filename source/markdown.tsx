@@ -91,9 +91,9 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Text color="gray">{langTag}</Text>
-        <Box paddingLeft={2}>
+        <Box paddingLeft={2} flexDirection="column">
           {lines.map((line, index) => (
-            <Text key={index} color="white">{line}</Text>
+            <Text key={index} color="white">{line || ' '}</Text>
           ))}
         </Box>
         <Text color="gray">{footer}</Text>
@@ -104,7 +104,7 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
   return (
     <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
       {lines.map((line, index) => (
-        <Text key={index} color="white">{line}</Text>
+        <Text key={index} color="white">{line || ' '}</Text>
       ))}
     </Box>
   );
@@ -231,8 +231,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
       ...allRows.map(row => {
         const cell = row[colIndex];
         if (cell) {
-          // For React components, we'll use a simplified width calculation
-          const cellText = cell.tokens?.map(t => 'text' in t ? t.text : '').join('') || '';
+          const cellText = renderTokensAsText(cell.tokens);
           return stringWidth(cellText);
         }
         return 0;
@@ -262,16 +261,18 @@ function TableRowRenderer({ cells, columnWidths, isHeader }: {
   return (
     <Box flexDirection="row">
       <Text color="gray">│ </Text>
-      {cells.map((cell, index) => (
-        <React.Fragment key={index}>
-          <Box width={columnWidths[index]}>
+      {cells.map((cell, index) => {
+        const cellText = renderTokensAsText(cell.tokens);
+        const paddedText = cellText.padEnd(columnWidths[index]);
+        return (
+          <React.Fragment key={index}>
             <Text color={isHeader ? "cyan" : "white"} bold={isHeader}>
-              <TableCellRenderer token={cell} />
+              {paddedText}
             </Text>
-          </Box>
-          <Text color="gray"> │ </Text>
-        </React.Fragment>
-      ))}
+            <Text color="gray"> │ </Text>
+          </React.Fragment>
+        );
+      })}
     </Box>
   );
 }

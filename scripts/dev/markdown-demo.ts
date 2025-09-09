@@ -1,4 +1,6 @@
-import { renderMarkdown } from "../../source/markdown.ts";
+import React from "react";
+import { render } from "ink";
+import { renderMarkdown } from "../../source/markdown.tsx";
 
 const demoMarkdown = `# Markdown Rendering Demo
 
@@ -185,8 +187,8 @@ console.log("🎨 Markdown Rendering Demo");
 console.log("=" .repeat(50));
 console.log();
 
-const rendered = renderMarkdown(demoMarkdown);
-console.log(rendered);
+const markdownComponent = renderMarkdown(demoMarkdown);
+render(markdownComponent);
 
 console.log("=" .repeat(50));
 console.log("✨ Demo complete! All markdown features rendered above.");
