@@ -37,7 +37,7 @@ import { LocalTransport } from "./transports/local.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
-import { renderMarkdown } from "./markdown.ts";
+import { renderMarkdown } from "./markdown.tsx";
 
 type Props = {
 	config: Config;
@@ -672,7 +672,7 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
         </Box>
       }
       <Box flexGrow={1}>
-        <Text>{renderMarkdown(content)}</Text>
+        {renderMarkdown(content)}
       </Box>
     </Box>
   </Box>
