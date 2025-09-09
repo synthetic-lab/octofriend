@@ -180,7 +180,7 @@ function LinkRenderer({ token }: { token: Tokens.Link }) {
 
 function ListRenderer({ token }: { token: Tokens.List }) {
   return (
-    <Box flexDirection="column" paddingLeft={2} marginBottom={1}>
+    <Box flexDirection="column" paddingLeft={0} marginBottom={1}>
       {token.items.map((item, index) => (
         <Box key={index} flexDirection="row">
           <Text color="cyan">
@@ -206,7 +206,7 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
       )}
       <Box flexDirection="column" paddingLeft={token.task ? 0 : 0}>
         {token.tokens.map((childToken, index) => (
-          <Box key={index} paddingLeft={childToken.type === 'list' || childToken.type === 'code' || childToken.type === 'blockquote' ? 4 : 0}>
+          <Box key={index} paddingLeft={childToken.type === 'list' || childToken.type === 'code' || childToken.type === 'blockquote' ? 1 : 0}>
             <TokenRenderer token={childToken} />
           </Box>
         ))}
