@@ -23,6 +23,8 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
+import { InputHistory, loadInputHistory } from "./input-history/index.ts";
+
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -123,6 +125,7 @@ async function runMain(opts: {
       unchained={!!opts.unchained}
       transport={opts.transport}
       updates={await readUpdates()}
+      inputHistory={await loadInputHistory()}
     />,
     {
       exitOnCtrlC: false,
