@@ -2,14 +2,11 @@ import React from "react";
 import { Box, Text } from "ink";
 import { marked, MarkedToken, Token, Tokens } from "marked";
 import stringWidth from "string-width";
-import hljs from "highlight.js";
+import { isImageToken, isLinkToken, isTextToken, isStrongToken, isEmToken, isDelToken, isCodespanToken } from "./types.ts";
+import { highlightCode } from "./highlight-code.tsx";
 
 export function renderMarkdown(markdown: string): React.ReactElement {
   const tokens = marked.lexer(markdown);
-  return <MarkdownRenderer tokens={tokens} />;
-}
-
-function MarkdownRenderer({ tokens }: { tokens: Token[] }): React.ReactElement {
   return <Box flexDirection="column">
     { tokens.map((token, index) => <TokenRenderer key={index} token={token} />) }
   </Box>;
@@ -17,7 +14,7 @@ function MarkdownRenderer({ tokens }: { tokens: Token[] }): React.ReactElement {
 
 function TokenRenderer({ token }: { token: Token }): React.ReactElement {
   if (!isMarkedToken(token)) {
-    return <GenericRenderer token={token} />;
+    throw new Error(`Unknown markdown token type: ${token.type}`);
   }
 
   switch (token.type) {
@@ -61,181 +58,21 @@ function TokenRenderer({ token }: { token: Token }): React.ReactElement {
       return <TextRenderer token={token} />;
     case "space":
       return <SpaceRenderer />;
-    default:
-      return <GenericRenderer token={token} />;
   }
 }
 
 
 function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
-  return (
-    <Box paddingLeft={2}>
-      <Text color="gray">│ </Text>
-      <Text italic>
-        {renderTokensAsText(token.tokens)}
-      </Text>
-    </Box>
-  );
+  return <Box paddingLeft={2}>
+    <Text color="gray">│ </Text>
+    <Text italic>
+      {renderTokensAsPlaintext(token.tokens)}
+    </Text>
+  </Box>
 }
 
 function BrRenderer() {
   return <Text>{'\n'}</Text>;
-}
-
-interface CodeSegment {
-  text: string;
-  className?: string;
-}
-
-function parseHighlightedHTML(html: string): CodeSegment[] {
-  const segments: CodeSegment[] = [];
-  let currentIndex = 0;
-
-  // Simple state machine to parse HTML
-  while (currentIndex < html.length) {
-    const nextOpenTag = html.indexOf('<span class="', currentIndex);
-
-    if (nextOpenTag === -1) {
-      // No more spans, add remaining text
-      const remainingText = html.substring(currentIndex);
-      if (remainingText) {
-        segments.push({
-          text: decodeHtmlEntities(remainingText)
-        });
-      }
-      break;
-    }
-
-    // Add any text before the span
-    if (nextOpenTag > currentIndex) {
-      const textBefore = html.substring(currentIndex, nextOpenTag);
-      segments.push({
-        text: decodeHtmlEntities(textBefore)
-      })
-    }
-
-    // Find the end of the opening tag
-    const classStart = nextOpenTag + 13; // '<span class="'.length
-    const classEnd = html.indexOf('"', classStart);
-    const tagEnd = html.indexOf('>', classEnd);
-
-    if (classEnd === -1 || tagEnd === -1) break;
-
-    const className = html.substring(classStart, classEnd);
-
-    // Find the closing tag
-    const closingTag = '</span>';
-    const contentStart = tagEnd + 1;
-    let closingTagStart = html.indexOf(closingTag, contentStart);
-
-    // Handle nested spans by counting open/close tags
-    let openCount = 1;
-    let searchFrom = contentStart;
-    while (openCount > 0 && closingTagStart !== -1) {
-      const nextOpen = html.indexOf('<span', searchFrom);
-      if (nextOpen !== -1 && nextOpen < closingTagStart) {
-        openCount++;
-        searchFrom = nextOpen + 5;
-      } else {
-        openCount--;
-        if (openCount > 0) {
-          searchFrom = closingTagStart + closingTag.length;
-          closingTagStart = html.indexOf(closingTag, searchFrom);
-        }
-      }
-    }
-
-    if (closingTagStart === -1) break;
-
-    const content = html.substring(contentStart, closingTagStart);
-
-    // Recursively parse content for nested spans
-    if (content.includes('<span')) {
-      const nestedSegments = parseHighlightedHTML(content);
-      segments.push(...nestedSegments);
-    } else {
-      segments.push({
-        text: decodeHtmlEntities(content),
-        className: className
-      });
-    }
-
-    currentIndex = closingTagStart + closingTag.length;
-  }
-
-  return segments;
-}
-
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-}
-
-function getColorForClass(className: string): string | undefined {
-  const colorMap: Record<string, string> = {
-    'hljs-keyword': 'blue',
-    'hljs-string': 'green',
-    'hljs-comment': 'gray',
-    'hljs-number': 'yellow',
-    'hljs-title': 'cyan',
-    'hljs-title function_': 'cyan',
-    'hljs-variable': 'magenta',
-    'hljs-type': 'blue',
-    'hljs-attr': 'yellow',
-    'hljs-built_in': 'red',
-    'hljs-literal': 'cyan',
-    'hljs-name': 'cyan',
-    'hljs-selector-tag': 'blue',
-    'hljs-selector-class': 'yellow',
-    'hljs-selector-id': 'magenta',
-    'hljs-property': 'cyan',
-    'hljs-value': 'green',
-  };
-
-  return colorMap[className];
-}
-
-function renderCodeLine(segments: CodeSegment[]): React.ReactElement {
-  return (
-    <Text>
-      {segments.map((segment, index) => {
-        const color = segment.className ? getColorForClass(segment.className) : undefined;
-        return (
-          <Text key={index} color={color}>
-            {segment.text}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-}
-
-function highlightCode(code: string, language?: string): React.ReactElement[] {
-  try {
-    let result;
-    if (language && hljs.getLanguage(language)) {
-      result = hljs.highlight(code, { language });
-    } else {
-      result = hljs.highlightAuto(code);
-    }
-
-    const lines = result.value.split('\n');
-    return lines.map((line, index) => {
-      const segments = parseHighlightedHTML(line);
-      return renderCodeLine(segments);
-    });
-  } catch (error) {
-    // If highlighting fails, return plain text lines
-    return code.split('\n').map((line, index) => (
-      <Text key={index}>{line}</Text>
-    ));
-  }
 }
 
 function CodeRenderer({ token }: { token: Tokens.Code }) {
@@ -277,11 +114,11 @@ function DefRenderer({ token }: { token: Tokens.Def }) {
 }
 
 function DelRenderer({ token }: { token: Tokens.Del }) {
-  return <Text strikethrough dimColor>{renderTokensAsText(token.tokens)}</Text>;
+  return <Text strikethrough dimColor>{renderTokensAsPlaintext(token.tokens)}</Text>;
 }
 
 function EmRenderer({ token }: { token: Tokens.Em }) {
-  return <Text italic>{renderTokensAsText(token.tokens)}</Text>;
+  return <Text italic>{renderTokensAsPlaintext(token.tokens)}</Text>;
 }
 
 function EscapeRenderer({ token }: { token: Tokens.Escape }) {
@@ -306,7 +143,7 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   return (
     <Box marginTop={1} marginBottom={1} paddingLeft={indent}>
       <Text color={color} bold>
-        {marker} {renderTokensAsText(token.tokens)}
+        {marker} {renderTokensAsPlaintext(token.tokens)}
       </Text>
     </Box>
   );
@@ -331,7 +168,7 @@ function ImageRenderer({ token }: { token: Tokens.Image }) {
 
 function LinkRenderer({ token }: { token: Tokens.Link }) {
   // For now, combine link text and URL in a single text element
-  const linkText = renderTokensAsText(token.tokens);
+  const linkText = renderTokensAsPlaintext(token.tokens);
   return <Text color="blue">{linkText} ({token.href})</Text>;
 }
 
@@ -389,11 +226,11 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
 }
 
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
-  return <Box marginBottom={1}><Text>{renderTokensAsText(token.tokens)}</Text></Box>;
+  return <Box marginBottom={1}><Text>{renderTokensAsPlaintext(token.tokens)}</Text></Box>;
 }
 
 function StrongRenderer({ token }: { token: Tokens.Strong }) {
-  return <Text bold>{renderTokensAsText(token.tokens)}</Text>;
+  return <Text bold>{renderTokensAsPlaintext(token.tokens)}</Text>;
 }
 
 function TableRenderer({ token }: { token: Tokens.Table }) {
@@ -404,7 +241,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
       ...allRows.map(row => {
         const cell = row[colIndex];
         if (cell) {
-          const cellText = renderTokensAsText(cell.tokens);
+          const cellText = renderTokensAsPlaintext(cell.tokens);
           return stringWidth(cellText);
         }
         return 0;
@@ -435,7 +272,7 @@ function TableRowRenderer({ cells, columnWidths, isHeader }: {
     <Box flexDirection="row">
       <Text color="gray">│ </Text>
       {cells.map((cell, index) => {
-        const cellText = renderTokensAsText(cell.tokens);
+        const cellText = renderTokensAsPlaintext(cell.tokens);
         const paddedText = cellText.padEnd(columnWidths[index]);
         return (
           <React.Fragment key={index}>
@@ -450,13 +287,9 @@ function TableRowRenderer({ cells, columnWidths, isHeader }: {
   );
 }
 
-function TableCellRenderer({ token }: { token: Tokens.TableCell }) {
-  return <Text>{renderTokensAsText(token.tokens)}</Text>;
-}
-
 function TextRenderer({ token }: { token: Tokens.Text }) {
   if (token.tokens) {
-    return <Text>{renderTokensAsText(token.tokens)}</Text>;
+    return <Text>{renderTokensAsPlaintext(token.tokens)}</Text>;
   }
   return <Text>{token.text}</Text>;
 }
@@ -467,9 +300,42 @@ function SpaceRenderer() {
 
 function GenericRenderer({ token }: { token: Tokens.Generic }) {
   if (token.tokens) {
-    return <Text>{renderTokensAsText(token.tokens)}</Text>;
+    return <Text>{renderTokensAsPlaintext(token.tokens)}</Text>;
   }
   return <Text>{token.raw || ""}</Text>;
+}
+
+function renderTokensAsPlaintext(tokens: Token[]): string {
+  return tokens.map(token => {
+    if (isTextToken(token)) {
+      return token.text;
+    }
+    if (isLinkToken(token)) {
+      return `${renderTokensAsPlaintext(token.tokens)} (${token.href})`;
+    }
+    if (isImageToken(token)) {
+      return `[Image: ${token.text}]`;
+    }
+    if (isStrongToken(token)) {
+      return renderTokensAsPlaintext(token.tokens);
+    }
+    if (isEmToken(token)) {
+      return renderTokensAsPlaintext(token.tokens);
+    }
+    if (isDelToken(token)) {
+      return renderTokensAsPlaintext(token.tokens);
+    }
+    if (isCodespanToken(token)) {
+      return ` ${token.text} `;
+    }
+    if ('tokens' in token && Array.isArray(token.tokens)) {
+      return renderTokensAsPlaintext(token.tokens);
+    }
+    if ('text' in token) {
+      return token.text;
+    }
+    return '';
+  }).join('');
 }
 
 const MARKED_TOKEN_TYPES = [
@@ -495,48 +361,10 @@ const MARKED_TOKEN_TYPES = [
   "text",
 ];
 
-function renderTokensAsText(tokens: Token[]): string {
-  return tokens.map(token => {
-    if (token.type === 'text') {
-      return (token as Tokens.Text).text;
-    }
-    if (token.type === 'link') {
-      const linkToken = token as Tokens.Link;
-      return `${renderTokensAsText(linkToken.tokens)} (${linkToken.href})`;
-    }
-    if (token.type === 'image') {
-      const imageToken = token as Tokens.Image;
-      return `[Image: ${imageToken.text}]`;
-    }
-    if (token.type === 'strong') {
-      const strongToken = token as Tokens.Strong;
-      return renderTokensAsText(strongToken.tokens);
-    }
-    if (token.type === 'em') {
-      const emToken = token as Tokens.Em;
-      return renderTokensAsText(emToken.tokens);
-    }
-    if (token.type === 'del') {
-      const delToken = token as Tokens.Del;
-      return renderTokensAsText(delToken.tokens);
-    }
-    if (token.type === 'codespan') {
-      const codespanToken = token as Tokens.Codespan;
-      return ` ${codespanToken.text} `;
-    }
-    if ('tokens' in token && Array.isArray(token.tokens)) {
-      return renderTokensAsText(token.tokens);
-    }
-    if ('text' in token) {
-      return (token as any).text;
-    }
-    return '';
-  }).join('');
-}
-
 /**
- * Marked provides a `Tokens.Generic` interface with a string type for extensions, which breaks
- * type narrowing for `Token`, so we check that the token is not generic (ie. a `MarkedToken`) here.
+ * Marked provides a `Tokens.Generic` interface that accepts any string for `type`, which breaks
+ * type narrowing for `Token`. We check that the token is not generic (ie. a `MarkedToken`) before
+ * filtering for token types to preserve type narrowing.
  * https://github.com/markedjs/marked/issues/2938
  */
 function isMarkedToken(token: Token): token is MarkedToken {

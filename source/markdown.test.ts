@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { renderMarkdown } from "./markdown.tsx";
+import { renderMarkdown } from "./markdown/index.tsx";
 import { render } from "ink-testing-library";
 
 describe("renderToString", () => {
