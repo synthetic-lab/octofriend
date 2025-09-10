@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import TextInput from "ink-text-input";
+import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 
