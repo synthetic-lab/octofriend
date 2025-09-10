@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "ink";
-import { renderMarkdown } from "../../source/markdown.tsx";
+import { renderMarkdown } from "../../source/markdown";
 
 const demoMarkdown = `# Markdown Rendering Demo
 
