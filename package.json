@@ -18,7 +18,7 @@
 		"exec": "tsc && node ./dist/source/cli.js",
 		"test": "vitest",
 		"test:run": "vitest run",
-    "prepublishOnly": "tsc"
+		"prepublishOnly": "tsc"
 	},
 	"files": [
 		"dist",
@@ -45,6 +45,7 @@
 		"drizzle-orm": "^0.44.4",
 		"figlet": "^1.8.0",
 		"figures": "^6.1.0",
+		"highlight.js": "^11.11.1",
 		"html-to-text": "^9.0.5",
 		"ink": "^5.2.0",
 		"ink-select-input": "^6.0.0",
