@@ -1,8 +1,11 @@
-import { Text } from "ink";
+import { Box, Text } from "ink";
 import hljs from "highlight.js";
 import React from "react";
 
-export function highlightCode(code: string, language?: string): React.ReactElement[] {
+export function HighlightedCode({ code, language }: {
+  code: string,
+  language?: string,
+}) {
   try {
     let result;
     if (language && hljs.getLanguage(language)) {
@@ -12,15 +15,23 @@ export function highlightCode(code: string, language?: string): React.ReactEleme
     }
 
     const lines = result.value.split('\n');
-    return lines.map((line, index) => {
-      const segments = parseHighlightedHTML(line);
-      return renderCodeLine(segments);
-    });
+    return <>
+      {
+        lines.map((line, index) => {
+          const segments = parseHighlightedHTML(line);
+          return <CodeLine segments={segments} />;
+        })
+      }
+    </>;
   } catch (error) {
     // If highlighting fails, return plain text lines
-    return code.split('\n').map((line, index) => (
-      <Text key={index}>{line}</Text>
-    ));
+    return <>
+      {
+        code.split('\n').map((line, index) => (
+          <Text key={index}>{line}</Text>
+        ))
+      }
+    </>;
   }
 }
 
@@ -108,19 +119,17 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
   return segments;
 }
 
-function renderCodeLine(segments: CodeSegment[]): React.ReactElement {
-  return (
-    <Text>
-      {segments.map((segment, index) => {
-        const color = segment.className ? getColorForClass(segment.className) : undefined;
-        return (
-          <Text key={index} color={color}>
-            {segment.text}
-          </Text>
-        );
-      })}
-    </Text>
-  );
+function CodeLine({ segments }: { segments: CodeSegment[] }) {
+  return <Text>
+    {segments.map((segment, index) => {
+      const color = segment.className ? getColorForClass(segment.className) : undefined;
+      return (
+        <Text key={index} color={color}>
+          {segment.text}
+        </Text>
+      );
+    })}
+  </Text>;
 }
 
 function decodeHtmlEntities(text: string): string {

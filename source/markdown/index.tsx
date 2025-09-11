@@ -3,9 +3,9 @@ import { Box, Text } from "ink";
 import { marked, MarkedToken, Token, Tokens } from "marked";
 import stringWidth from "string-width";
 import { isImageToken, isLinkToken, isTextToken, isStrongToken, isEmToken, isDelToken, isCodespanToken } from "./types.ts";
-import { highlightCode } from "./highlight-code.tsx";
+import { HighlightedCode } from "./highlight-code.tsx";
 
-export function renderMarkdown(markdown: string): React.ReactElement {
+export function Markdown({ markdown }: { markdown: string }) {
   const tokens = marked.lexer(markdown);
   return <Box flexDirection="column">
     { tokens.map((token, index) => <TokenRenderer key={index} token={token} />) }
@@ -76,8 +76,6 @@ function BrRenderer() {
 }
 
 function CodeRenderer({ token }: { token: Tokens.Code }) {
-  const highlightedLines = highlightCode(token.text, token.lang || undefined);
-
   if (token.lang || token.codeBlockStyle !== "indented") {
     const langTag = token.lang ? `┌─ ${token.lang} ` + '─'.repeat(Math.max(0, 40 - token.lang.length)) : '┌' + '─'.repeat(42);
     const footer = '└' + '─'.repeat(42);
@@ -86,22 +84,16 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
       <Box flexDirection="column" marginBottom={1}>
         <Text color="gray">{langTag}</Text>
         <Box paddingLeft={2} flexDirection="column">
-          {highlightedLines.map((line, index) => (
-            <Box key={index}>{line}</Box>
-          ))}
+          <HighlightedCode code={token.text} language={token.lang} />
         </Box>
         <Text color="gray">{footer}</Text>
       </Box>
     );
   }
 
-  return (
-    <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
-      {highlightedLines.map((line, index) => (
-        <Box key={index}>{line}</Box>
-      ))}
-    </Box>
-  );
+  return <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
+    <HighlightedCode code={token.text} language={token.lang} />
+  </Box>;
 }
 
 function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
@@ -296,13 +288,6 @@ function TextRenderer({ token }: { token: Tokens.Text }) {
 
 function SpaceRenderer() {
   return <></>;
-}
-
-function GenericRenderer({ token }: { token: Tokens.Generic }) {
-  if (token.tokens) {
-    return <Text>{renderTokensAsPlaintext(token.tokens)}</Text>;
-  }
-  return <Text>{token.raw || ""}</Text>;
 }
 
 function renderTokensAsPlaintext(tokens: Token[]): string {

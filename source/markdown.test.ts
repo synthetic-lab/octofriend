@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { renderMarkdown } from "./markdown/index.tsx";
 import { render } from "ink-testing-library";
+import { Markdown } from "./markdown/index.tsx";
 
 describe("renderToString", () => {
   describe("basic functionality", () => {
@@ -277,7 +277,7 @@ describe("renderToString", () => {
 });
 
 function renderToString(markdown: string): string {
-  const component = renderMarkdown(markdown);
+  const component = Markdown({ markdown });
   const { lastFrame } = render(component);
   return lastFrame() || "";
 }
