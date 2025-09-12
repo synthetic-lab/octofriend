@@ -1,4 +1,4 @@
-import { sql, notInArray, desc } from "drizzle-orm";
+import { notInArray, desc } from "drizzle-orm";
 import { db } from "../db/db.ts";
 import { inputHistoryTable } from "./schema/input-history-table.ts";
 
