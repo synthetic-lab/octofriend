@@ -19,7 +19,7 @@ export function HighlightedCode({ code, language }: {
       {
         lines.map((line, index) => {
           const segments = parseHighlightedHTML(line);
-          return <CodeLine segments={segments} />;
+          return <CodeLine segments={segments} key={`code-${index}`} />;
         })
       }
     </>;
@@ -28,7 +28,7 @@ export function HighlightedCode({ code, language }: {
     return <>
       {
         code.split('\n').map((line, index) => (
-          <Text key={index}>{line}</Text>
+          <Text key={`code-failed-${index}`}>{line}</Text>
         ))
       }
     </>;
