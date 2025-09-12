@@ -1,5 +1,5 @@
 - Markdown is now rendered beautifully
-- Code inside Markdown uses syntax highlighting (diffs coming soon!)
+- Code inside Markdown uses syntax highlighting (improved diffs coming soon!)
 - Pressing up or down in the input box cycles through prompt history
 - Emacs-style keybindings like ctrl-e, ctrl-a, etc work
 - Improved rendering and UX for request errors
