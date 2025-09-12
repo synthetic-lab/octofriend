@@ -71,15 +71,17 @@ async function toLlmMessages(
 
   irs.reverse();
   const seenPaths = new Set<string>();
+  let prev: LlmIR | null = null;
   for(const ir of irs) {
     if(ir.role === "file-tool-output") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await llmFromIr(transport, signal, ir, seen));
+      output.push(await llmFromIr(transport, signal, ir, prev, seen));
     }
     else {
-      output.push(await llmFromIr(transport, signal, ir, false));
+      output.push(await llmFromIr(transport, signal, ir, prev, false));
     }
+    prev = ir;
   }
 
   output.reverse();
@@ -96,14 +98,14 @@ async function toLlmMessages(
 }
 
 async function llmFromIr(
-  transport: Transport, signal: AbortSignal, ir: LlmIR, seenPath: boolean
+  transport: Transport, signal: AbortSignal, ir: LlmIR, prev: LlmIR | null, seenPath: boolean
 ): Promise<LlmMessage> {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
     if(ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
 
-    if(toolCall == null || !Object.keys(toolMap).includes(toolCall.function.name)) {
+    if(toolCall == null || prev?.role === "tool-malformed") {
       return {
         ...reasoning,
         role: "assistant",
