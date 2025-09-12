@@ -413,7 +413,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
     return <Box marginTop={1} marginLeft={1} flexDirection="column">
       <Text bold>Updates:</Text>
       <Box marginTop={1} marginLeft={1}>
-        <Text>{ item.updates }</Text>
+        <Markdown markdown={item.updates} />
       </Box>
       <Text color="gray">Thanks for updating!</Text>
       <Text color="gray">See the full changelog by running: `octo changelog`</Text>
