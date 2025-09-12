@@ -2,6 +2,7 @@
 - Code inside Markdown uses syntax highlighting (diffs coming soon!)
 - Pressing up or down in the input box cycles through prompt history
 - Emacs-style keybindings like ctrl-e, ctrl-a, etc work
+- Improved rendering and UX for request errors
+- Various bugfixes
 - Kimi K2 0905 is out! Try it via the built-in Synthetic provider, or your
   favorite OpenAI-compatible API.
-- Improved rendering and UX for request errors

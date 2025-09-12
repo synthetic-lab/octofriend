@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   optionally show you the error from the backend to help you debug what's gone
   wrong.
 
+- Fix for backends that don't support strict tool calling, and yet error out
+  when input doesn't match the provided JSON schema
+
 ## [0.0.36] - 2025-09-04
 
 ### Added
