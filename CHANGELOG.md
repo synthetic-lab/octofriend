@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Markdown is now rendered beautifully
+
+- Code inside Markdown uses syntax highlighting
+
+- Pressing up or down in the input box cycles through prompt history
+
+- Emacs-style keybindings like ctrl-e, ctrl-a, etc work
+
 ## [0.0.36] - 2025-09-04
 
 ### Added
