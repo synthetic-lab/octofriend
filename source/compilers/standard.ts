@@ -103,7 +103,7 @@ async function llmFromIr(
     const reasoning: { reasoning_content?: string } = {};
     if(ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
 
-    if(toolCall == null) {
+    if(toolCall == null || !Object.keys(toolMap).includes(toolCall.function.name)) {
       return {
         ...reasoning,
         role: "assistant",
@@ -163,11 +163,17 @@ async function llmFromIr(
       content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
     };
   }
-  if(ir.role === "tool-error" || ir.role === "tool-malformed") {
+  if(ir.role === "tool-malformed") {
+    return {
+      role: "system",
+      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+    };
+  }
+  if(ir.role === "tool-error") {
     return {
       role: "tool",
       tool_call_id: ir.toolCallId,
-      content: tagged(TOOL_ERROR_TAG, {}, ir.error),
+      content: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
   if(ir.role === "file-outdated") {
@@ -278,7 +284,8 @@ export async function runAgent({
     const res = await client.chat.completions.create({
       ...reasoning,
       model: model.model,
-      messages, tools,
+      messages,
+      tools,
       stream: true,
       stream_options: {
         include_usage: true,
