@@ -2,8 +2,7 @@ import * as fsOld from "fs";
 import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
-import { Text, Box, Static, measureElement, DOMElement, useInput } from "ink";
-import TextInput from "./components/text-input.tsx";
+import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
 import {
@@ -248,6 +247,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if(modeData.mode === "rate-limit-error") {
     return <RateLimitErrorScreen error={modeData.error}/>
   }
+  if(modeData.mode === "request-error") {
+    return <RequestErrorScreen error={modeData.error}/>
+  }
 
   if(modeData.mode === "tool-request") {
     return <ToolRequestRenderer
@@ -270,6 +272,69 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       onSubmit={onSubmit}
     />
   </Box>
+}
+
+function RequestErrorScreen({ error }: { error: string }) {
+  const config = useConfig();
+  const transport = useContext(TransportContext);
+  const { retryFrom } = useAppStore(
+    useShallow(state => ({
+      retryFrom: state.retryFrom,
+    }))
+  );
+  const { exit } = useApp();
+
+  const [viewError, setViewError] = useState(false);
+
+  const items = [
+    {
+      label: "View error",
+      value: "view" as const,
+    },
+    {
+      label: "Retry",
+      value: "retry" as const,
+    },
+    {
+      label: "Quit Octo",
+      value: "quit" as const,
+    },
+  ].filter(item => {
+    if(viewError && item.value === "view") return false;
+    return true;
+  });
+
+  const onSelect = useCallback((item: (typeof items)[number]) => {
+    if(item.value === "view") {
+      setViewError(true);
+    }
+    else if(item.value === "retry") {
+      retryFrom("request-error", { config, transport });
+    }
+    else {
+      const _: "quit" = item.value;
+      exit();
+    }
+  }, []);
+
+  return <CenteredBox>
+    <Text color="red">
+      It looks like you've hit a request error!
+    </Text>
+    {
+      viewError && <Box marginY={1}>
+        <Text>
+          { error }
+        </Text>
+      </Box>
+    }
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ItemComponent}
+    />
+  </CenteredBox>
 }
 
 function RateLimitErrorScreen({ error }: { error: string }) {
@@ -495,7 +560,7 @@ const MessageDisplayInner = React.memo(({ item }: {
   }
 
   if(item.type === "request-failed") {
-    return <Text color="red">Request failed. Retrying...</Text>
+    return <Text color="red">Request failed.</Text>
   }
 
   // Type assertion proving we've handled all types other than user
@@ -677,15 +742,3 @@ function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "
     </Box>
   </Box>
 }
-
-const InputBox = React.memo((props: {
-	value: string,
-	onChange: (s: string) => any,
-	onSubmit: () => any,
-}) => {
-  const themeColor = useColor();
-  return <Box width="100%" borderStyle="round" borderColor={themeColor} gap={1}>
-    <Text color="gray">&gt;</Text>
-    <TextInput value={props.value} onChange={props.onChange} onSubmit={props.onSubmit} />
-  </Box>
-});

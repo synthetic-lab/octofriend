@@ -11,11 +11,10 @@ import {
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
-import { sleep } from "./sleep.ts";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError } from "./errors.ts";
+import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -41,6 +40,9 @@ export type UiState = {
     mode: "rate-limit-error",
     error: string,
   } | {
+    mode: "request-error",
+    error: string,
+  } | {
     mode: "diff-apply",
     abortController: AbortController,
   } | {
@@ -59,7 +61,7 @@ export type UiState = {
   abortResponse: () => void,
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
-  retryFrom: (mode: "payment-error" | "rate-limit-error", args: RunArgs) => Promise<void>,
+  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -293,10 +295,13 @@ export const useAppStore = create<UiState>((set, get) => ({
         });
         return;
       }
-      else {
-        logger.error("verbose", e);
-      }
+
+      logger.error("verbose", e);
       set({
+        modeData: {
+          mode: "request-error",
+          error: errorToString(e),
+        },
         history: [
           ...get().history,
           {
@@ -305,8 +310,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
         ],
       });
-      await sleep(1000);
-      return get()._runAgent({ config, transport });
+      return;
     }
 
     const lastHistoryItem = history[history.length - 1];

@@ -4,3 +4,4 @@
 - Emacs-style keybindings like ctrl-e, ctrl-a, etc work
 - Kimi K2 0905 is out! Try it via the built-in Synthetic provider, or your
   favorite OpenAI-compatible API.
+- Improved rendering and UX for request errors

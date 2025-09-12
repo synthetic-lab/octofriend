@@ -16,6 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Emacs-style keybindings like ctrl-e, ctrl-a, etc work
 
+### Changed
+
+- Improved rendering and UX for request errors: instead of retrying forever,
+  Octo will prompt you as to whether or not you want to retry, and can
+  optionally show you the error from the backend to help you debug what's gone
+  wrong.
+
 ## [0.0.36] - 2025-09-04
 
 ### Added
