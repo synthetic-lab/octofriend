@@ -177,19 +177,29 @@ async function mcpPrompt(config: Config) {
   const mcpSections = [];
 
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
-    const client = await getMcpClient(serverName, config);
-    const listed = await client.listTools();
+    try {
+      const client = await getMcpClient(serverName, config);
+      const listed = await client.listTools();
 
-    const tools = listed.tools.map((t: {name: string, description?: string}) => ({
-      name: t.name,
-      description: t.description
-    }));
+      const tools = listed.tools.map((t: {name: string, description?: string}) => ({
+        name: t.name,
+        description: t.description
+      }));
 
-    const toolStrings = tools.map((t: {name: string, description?: string}) => {
-      return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
-    }).join('\n');
+      const toolStrings = tools.map((t: {name: string, description?: string}) => {
+        // Sanitize tool names and descriptions
+        const cleanName = t.name ? String(t.name).replace(/[^\w-.]/g, '').substring(0, 100) : 'unknown';
+        const cleanDesc = t.description ? String(t.description).replace(/[\x00-\x1F\x7F]/g, '').substring(0, 500) : '';
+        return `- ${cleanName}${cleanDesc ? `: ${cleanDesc}` : ''}`;
+      }).join('\n');
 
-    mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
+      // Sanitize server name for display
+      const cleanServerName = String(serverName).replace(/[^\w-.]/g, '').substring(0, 100);
+      mcpSections.push(`Server: ${cleanServerName}\n${toolStrings || 'No tools available'}`);
+    } catch (error) {
+      // Skip servers that fail to connect
+      continue;
+    }
   }
 
   const mcpPrompt = `
