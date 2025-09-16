@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
 - Diff edits are shown in a side-by-side view with syntax highlighting
 
 - Running local bash commands works better on Nix and other systems that don't
