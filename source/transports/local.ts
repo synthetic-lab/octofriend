@@ -63,7 +63,7 @@ export class LocalTransport implements Transport {
     return new Promise<string>((resolve, reject) => {
       const child = spawn(cmd, {
         cwd: process.cwd(),
-        shell: "/bin/bash",
+        shell: "bash",
         timeout,
         stdio: ['ignore', 'pipe', 'pipe']
       });
