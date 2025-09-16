@@ -38,7 +38,6 @@ export function DiffRenderer({ oldText, newText, language }: {
     }
     diffWithChanged.push(curr);
   }
-  console.error(diffWithChanged);
 
   return (
     <Box flexDirection="column">
