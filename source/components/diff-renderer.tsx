@@ -138,8 +138,8 @@ function LineSegments({ value, language, children }: {
   }
   return <Box width="50%" paddingX={1} flexDirection="column">
     {
-      value.split("\n").map(line => {
-        return <Box>
+      value.split("\n").map((line, index) => {
+        return <Box key={`${index}-${line}`}>
           { children }
           <Box flexGrow={1} width="100%" flexDirection="column">
             <MaybeHighlighted line={line} language={language} />
