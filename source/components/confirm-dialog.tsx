@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { Box } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 
 export function ConfirmDialog({ confirmLabel, rejectLabel, onConfirm, onReject }: {

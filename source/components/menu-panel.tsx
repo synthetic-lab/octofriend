@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
 

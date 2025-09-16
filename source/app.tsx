@@ -24,7 +24,7 @@ import {
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
-import SelectInput from "ink-select-input";
+import SelectInput from "./components/ink/select-input.tsx";
 import { useAppStore, RunArgs, useModel } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
@@ -627,21 +627,31 @@ function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
 
 function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
   const themeColor = useColor();
+  const dotParts = item.arguments.filePath.split(".");
+  let lang = "txt";
+  if(dotParts.length > 1) {
+    lang = dotParts[dotParts.length - 1];
+  }
   return <Box flexDirection="column">
     <Box>
       <Text>Edit: </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
     </Box>
-    <EditRenderer filePath={item.arguments.filePath} item={item.arguments.edit} />
+    <EditRenderer
+      filePath={item.arguments.filePath}
+      item={item.arguments.edit}
+      language={lang}
+    />
   </Box>
 }
 
-function EditRenderer({ filePath, item }: {
+function EditRenderer({ filePath, item, language }: {
   filePath: string,
-  item: t.GetType<typeof edit.AllEdits>
+  item: t.GetType<typeof edit.AllEdits>,
+  language: string,
 }) {
   switch(item.type) {
-    case "diff": return <DiffEditRenderer item={item} />
+    case "diff": return <DiffEditRenderer item={item} language={language}/>
     case "append":
       return <Box flexDirection="column">
         <Text>Octo wants to add the following to the end of the file:</Text>
@@ -655,15 +665,22 @@ function EditRenderer({ filePath, item }: {
     case "rewrite-whole":
       return <Box flexDirection="column">
         <Text>Octo wants to rewrite the file:</Text>
-        <DiffRenderer oldText={fsOld.readFileSync(filePath, "utf8")} newText={item.text} />
+        <DiffRenderer
+          oldText={fsOld.readFileSync(filePath, "utf8")}
+          newText={item.text}
+          language={language}
+        />
       </Box>
   }
 }
 
-function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
+function DiffEditRenderer({ item, language }: {
+  item: t.GetType<typeof edit.DiffEdit>,
+  language: string,
+}) {
   return <Box flexDirection="column">
     <Text>Octo wants to make the following changes:</Text>
-    <DiffRenderer oldText={item.search} newText={item.replace} />
+    <DiffRenderer oldText={item.search} newText={item.replace} language={language} />
   </Box>
 }
 

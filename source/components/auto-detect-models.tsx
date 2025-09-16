@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";

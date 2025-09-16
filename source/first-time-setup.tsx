@@ -10,7 +10,7 @@ import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { MenuHeader } from "./components/menu-panel.tsx";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { THEME_COLOR } from "./theme.ts";
-import SelectInput from "ink-select-input";
+import SelectInput from "./components/ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
