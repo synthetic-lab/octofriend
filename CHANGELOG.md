@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Diff edits are shown in a side-by-side view with syntax highlighting
+
+- Running local bash commands works better on Nix and other systems that don't
+  have `bash` in the typical `/bin/bash` location
+
+## [0.0.37] - 2025-09-11
+
 ### Added
 
 - Markdown is now rendered beautifully
