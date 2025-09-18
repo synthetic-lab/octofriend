@@ -351,6 +351,14 @@ export const useAppStore = create<UiState>((set, get) => ({
             return;
           }
           if(fix) {
+            // Validate that the edit applies before marking as fixed
+            await validateTool(abortController.signal, transport, {
+              name: "edit",
+              arguments: {
+                filePath: fn.arguments.filePath,
+                edit: fix,
+              },
+            }, config);
             fixed = true;
             fn.arguments.edit = fix;
           }
