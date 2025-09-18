@@ -1,8 +1,4 @@
-- Markdown is now rendered beautifully
-- Code inside Markdown uses syntax highlighting (improved diffs coming soon!)
-- Pressing up or down in the input box cycles through prompt history
-- Emacs-style keybindings like ctrl-e, ctrl-a, etc work
-- Improved rendering and UX for request errors
+- All code uses syntax highlighting
+- Edits and file creations render with line numbers
+- Running local bash commands works better on Nix
 - Various bugfixes
-- Kimi K2 0905 is out! Try it via the built-in Synthetic provider, or your
-  favorite OpenAI-compatible API.

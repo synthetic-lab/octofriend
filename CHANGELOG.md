@@ -4,14 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.0.38] - 2025-09-18
 
 ### Changed
 
-- Diff edits are shown in a side-by-side view with syntax highlighting
+- All edits and file creations are shown with syntax highlighting and line
+  numbers.
 
 - Running local bash commands works better on Nix and other systems that don't
   have `bash` in the typical `/bin/bash` location
+
+- Various bugfixes
 
 ## [0.0.37] - 2025-09-11
 
