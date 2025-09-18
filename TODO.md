@@ -44,7 +44,7 @@ TODO:
   - [ ] File creation
   - [ ] Append edits
   - [ ] Prepend edits
-  - [ ] Rewrite-whole edits
+  - [x] Rewrite-whole edits
 - [ ] Fix crash when model tries to load a non-existent file
 - [ ] If the terminal window is small, show diffs stacked on top of each other
   instead of side-by-side
