@@ -502,22 +502,22 @@ const MessageDisplayInner = React.memo(({ item }: {
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
-	if(item.type === "assistant") {
+  if(item.type === "assistant") {
     return <Box marginBottom={1}>
       <AssistantMessageRenderer item={item} />
     </Box>
   }
-	if(item.type === "tool") {
+  if(item.type === "tool") {
     return <Box marginTop={1}>
       <ToolMessageRenderer item={item} />
     </Box>
   }
-	if(item.type === "tool-output") {
+  if(item.type === "tool-output") {
     const lines = (() => {
       if(item.result.lines == null) return item.result.content.split("\n").length;
       return item.result.lines;
     })();
-		return <Box marginBottom={1}>
+    return <Box marginBottom={1}>
       <Text color="gray">
         Got <Text>{lines}</Text> lines of output
       </Text>
