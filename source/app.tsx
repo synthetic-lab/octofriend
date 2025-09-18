@@ -627,11 +627,6 @@ function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
 
 function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
   const themeColor = useColor();
-  const dotParts = item.arguments.filePath.split(".");
-  let lang = "txt";
-  if(dotParts.length > 1) {
-    lang = dotParts[dotParts.length - 1];
-  }
   return <Box flexDirection="column">
     <Box>
       <Text>Edit: </Text>
@@ -640,18 +635,16 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
     <EditRenderer
       filePath={item.arguments.filePath}
       item={item.arguments.edit}
-      language={lang}
     />
   </Box>
 }
 
-function EditRenderer({ filePath, item, language }: {
+function EditRenderer({ filePath, item }: {
   filePath: string,
   item: t.GetType<typeof edit.AllEdits>,
-  language: string,
 }) {
   switch(item.type) {
-    case "diff": return <DiffEditRenderer item={item} language={language}/>
+    case "diff": return <DiffEditRenderer item={item} filePath={filePath}/>
     case "append":
       return <Box flexDirection="column">
         <Text>Octo wants to add the following to the end of the file:</Text>
@@ -668,19 +661,19 @@ function EditRenderer({ filePath, item, language }: {
         <DiffRenderer
           oldText={fsOld.readFileSync(filePath, "utf8")}
           newText={item.text}
-          language={language}
+          filepath={filePath}
         />
       </Box>
   }
 }
 
-function DiffEditRenderer({ item, language }: {
+function DiffEditRenderer({ item, filePath }: {
   item: t.GetType<typeof edit.DiffEdit>,
-  language: string,
+  filePath: string,
 }) {
   return <Box flexDirection="column">
     <Text>Octo wants to make the following changes:</Text>
-    <DiffRenderer oldText={item.search} newText={item.replace} language={language} />
+    <DiffRenderer oldText={item.search} newText={item.replace} filepath={filePath} />
   </Box>
 }
 
