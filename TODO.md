@@ -38,13 +38,6 @@ TODO:
 - [ ] When Octo returns input back to the user, run a special loop with a basic
   prompt that checks whether Octo forgot anything (i.e. did it run tests, run a
   compiler, etc).
-- [ ] Syntax highlighting for:
-  - [x] Diff edits
-    - [x] Handle long line wrapping better
-  - [ ] File creation
-  - [ ] Append edits
-  - [ ] Prepend edits
-  - [x] Rewrite-whole edits
 - [ ] Fix crash when model tries to load a non-existent file
 - [ ] If the terminal window is small, show diffs stacked on top of each other
   instead of side-by-side

@@ -13,6 +13,7 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
+import { FileRenderer } from "./components/file-renderer.tsx";
 import {
   shell,
   read,
@@ -37,6 +38,7 @@ import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
+import { countLines } from "./str.ts";
 
 type Props = {
 	config: Config;
@@ -646,14 +648,16 @@ function EditRenderer({ filePath, item }: {
   switch(item.type) {
     case "diff": return <DiffEditRenderer item={item} filePath={filePath}/>
     case "append":
+      const file = fsOld.readFileSync(filePath, "utf8");
+      const lines = countLines(file);
       return <Box flexDirection="column">
         <Text>Octo wants to add the following to the end of the file:</Text>
-        <Text>{item.text}</Text>
+        <FileRenderer contents={item.text} filePath={filePath} startLineNr={lines} />
       </Box>
     case "prepend":
       return <Box flexDirection="column">
         <Text>Octo wants to add the following to the beginning of the file:</Text>
-        <Text>{item.text}</Text>
+        <FileRenderer contents={item.text} filePath={filePath} />
       </Box>
     case "rewrite-whole":
       return <Box flexDirection="column">
@@ -681,12 +685,12 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
   const themeColor = useColor();
   return <Box flexDirection="column" gap={1}>
     <Box>
-      <Text>Creating file </Text>
+      <Text>Octo wants to create </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
       <Text>:</Text>
     </Box>
     <Box>
-      <Text>{item.arguments.content}</Text>
+      <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
     </Box>
   </Box>
 }

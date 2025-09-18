@@ -4,16 +4,14 @@ import { diffLines } from "diff";
 import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 import { readFileSync } from "fs";
+import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 
 export function DiffRenderer({ oldText, newText, filepath }: {
   oldText: string,
   newText: string,
   filepath: string,
 }) {
-  const dotParts = filepath.split(".");
-  let language = "txt";
-  if(dotParts.length > 1) language = dotParts[dotParts.length - 1];
-
+  const language = fileExtLanguage(filepath);
   const file = readFileSync(filepath, "utf8");
 
   const diff = diffLines(oldText, newText);
@@ -51,7 +49,7 @@ export function DiffRenderer({ oldText, newText, filepath }: {
   const newLineCounter = buildLineCounter(startLine);
   const maxOldLines = startLine + countLines(oldText);
   const maxNewLines = startLine + countLines(newText);
-  const lineNrWidth = Math.max(numSize(maxOldLines), numSize(maxNewLines));
+  const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
 
   return (
     <Box flexDirection="column">
@@ -137,14 +135,6 @@ function getStartLine(file: string, search: string) {
     if(char === "\n") line++;
   }
   return line;
-}
-
-function countLines(content: string) {
-  return content.split("\n").length;
-}
-
-function numSize(num: number) {
-  return num.toString().length;
 }
 
 type LineCounter = {
@@ -303,9 +293,6 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
     // Get the original line using the relative line number to find the correct whitespace
     const originalLines = originalText.split("\n");
 
-    let spaceBefore = "";
-    let spaceAfter = "";
-
     if(relativeLineNum >= originalLines.length) {
       console.error(originalLines);
       console.error("Current overall line", currentLine);
@@ -314,13 +301,7 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
     }
 
     const originalLine = originalLines[relativeLineNum];
-    const leadingWhitespace = originalLine.match(/(^\s+)/);
-    const trailingWhitespace = originalLine.match(/(\s+$)/);
-
-    if(leadingWhitespace) spaceBefore = leadingWhitespace[1];
-    if(trailingWhitespace) spaceAfter = trailingWhitespace[1];
-
-    return [ spaceBefore, originalLine.trim(), spaceAfter ];
+    return extractTrim(originalLine);
   })();
 
 
