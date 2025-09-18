@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { diffLines } from "diff";
-import { DIFF_ADDED, DIFF_REMOVED } from "../theme.ts";
+import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 import { readFileSync } from "fs";
 
@@ -182,7 +182,7 @@ function DiffSet({
       language={language}
       gutterWidth={gutterWidth}
       lineNrWidth={lineNrWidth}
-      gutterColor={oldRemoved ? DIFF_REMOVED : "gray"}
+      gutterColor={oldRemoved ? DIFF_REMOVED : CODE_GUTTER_COLOR}
       lineCounter={oldLineCounter}
       originalText={oldText}
     >
@@ -197,7 +197,7 @@ function DiffSet({
       language={language}
       gutterWidth={gutterWidth}
       lineNrWidth={lineNrWidth}
-      gutterColor={newAdded ? DIFF_ADDED : "gray"}
+      gutterColor={newAdded ? DIFF_ADDED : CODE_GUTTER_COLOR}
       lineCounter={newLineCounter}
       originalText={newText}
     >
