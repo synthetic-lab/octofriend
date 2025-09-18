@@ -45,3 +45,8 @@ TODO:
   - [ ] Append edits
   - [ ] Prepend edits
   - [ ] Rewrite-whole edits
+- [ ] Fix when autofix diff fails; don't try to apply the diff, it can crash
+  the renderer
+- [ ] Fix crash when model tries to load a non-existent file
+- [ ] If the terminal window is small, show diffs stacked on top of each other
+  instead of side-by-side
