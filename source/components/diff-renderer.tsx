@@ -72,6 +72,8 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                 newValue={part.value}
                 newAdded
                 language={language}
+                oldText={oldText}
+                newText={newText}
                 oldLineCounter={oldLineCounter}
                 newLineCounter={newLineCounter}
                 lineNrWidth={lineNrWidth}
@@ -84,6 +86,8 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                 oldValue={part.value}
                 oldRemoved
                 language={language}
+                oldText={oldText}
+                newText={newText}
                 oldLineCounter={oldLineCounter}
                 newLineCounter={newLineCounter}
                 lineNrWidth={lineNrWidth}
@@ -98,6 +102,8 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                 oldRemoved
                 newAdded
                 language={language}
+                oldText={oldText}
+                newText={newText}
                 oldLineCounter={oldLineCounter}
                 newLineCounter={newLineCounter}
                 lineNrWidth={lineNrWidth}
@@ -109,6 +115,8 @@ export function DiffRenderer({ oldText, newText, filepath }: {
               oldValue={part.value}
               newValue={part.value}
               language={language}
+              oldText={oldText}
+              newText={newText}
               oldLineCounter={oldLineCounter}
               newLineCounter={newLineCounter}
               lineNrWidth={lineNrWidth}
@@ -142,17 +150,19 @@ function numSize(num: number) {
 type LineCounter = {
   getLine: () => number,
   incrementLine: () => number,
+  getStartLine: () => number,
 };
 function buildLineCounter(startLine: number): LineCounter {
   let curr = startLine;
   return {
     getLine: () => curr,
     incrementLine: () => curr++,
+    getStartLine: () => startLine,
   };
 }
 
 function DiffSet({
-  oldValue, newValue, newAdded, oldRemoved, language, oldLineCounter, newLineCounter, lineNrWidth
+  oldValue, newValue, newAdded, oldRemoved, language, oldLineCounter, newLineCounter, lineNrWidth, oldText, newText
 }: {
   oldValue?: string,
   newValue?: string,
@@ -162,6 +172,8 @@ function DiffSet({
   newLineCounter: LineCounter,
   lineNrWidth: number,
   language: string,
+  oldText: string,
+  newText: string,
 }) {
   const gutterWidth = 3 + lineNrWidth;
   return <Box flexDirection="row">
@@ -172,6 +184,7 @@ function DiffSet({
       lineNrWidth={lineNrWidth}
       gutterColor={oldRemoved ? DIFF_REMOVED : "gray"}
       lineCounter={oldLineCounter}
+      originalText={oldText}
     >
       {
         oldRemoved ?
@@ -186,6 +199,7 @@ function DiffSet({
       lineNrWidth={lineNrWidth}
       gutterColor={newAdded ? DIFF_ADDED : "gray"}
       lineCounter={newLineCounter}
+      originalText={newText}
     >
       {
         newAdded ?
@@ -197,7 +211,7 @@ function DiffSet({
 }
 
 function LineSegments({
-  value, language, gutterColor, gutterWidth, lineNrWidth, lineCounter, children
+  value, language, gutterColor, gutterWidth, lineNrWidth, lineCounter, children, originalText
 }: {
   value: string | undefined,
   language: string,
@@ -206,6 +220,7 @@ function LineSegments({
   lineNrWidth: number,
   lineCounter: LineCounter,
   children: React.ReactNode,
+  originalText: string,
 }) {
   // Frustratingly, the diffLines function adds newlines at the end of diffs; remove them
   const valueLines = value == null ? [] : value.split("\n");
@@ -236,6 +251,7 @@ function LineSegments({
   return <Box width="50%" paddingX={1} flexDirection="column">
     {
       valueLines.map((line, index) => {
+        const lineNumber = lineCounter.incrementLine();
         return <Box key={`${index}-${line}`}>
           <Box
             width={gutterWidth}
@@ -244,12 +260,18 @@ function LineSegments({
             marginRight={1}
           >
             <Text>
-              { lineCounter.incrementLine() }
+              { lineNumber }
             </Text>
             { children }
           </Box>
           <Box flexGrow={1} width="100%" flexDirection="column">
-            <MaybeHighlighted line={line} language={language} />
+            <MaybeHighlighted
+              line={line}
+              language={language}
+              originalText={originalText}
+              currentLine={lineNumber}
+              startLine={lineCounter.getStartLine()}
+            />
           </Box>
         </Box>
       })
@@ -257,35 +279,63 @@ function LineSegments({
   </Box>
 }
 
-function MaybeHighlighted({ line, language }: {
+function MaybeHighlighted({ line, language, originalText, currentLine, startLine }: {
   line: string | undefined,
   language: string,
+  originalText: string,
+  currentLine: number,
+  startLine: number,
 }) {
-  // TODO: we need to actually find the FULL line from the original string (the oldText if
-  // applicable, or the newText). The diffs in some cases strip preceding whitespace, and we need
-  // that whitespace to correctly render the diff
+  // Annoyingly, the diffs only include the start of the line from the first character; not the
+  // start of the actual line including whitespace. This means we need to find the actual, original
+  // line and parse out the whitespace from it rather than using the lines unchanged.
+  // Depending on the language, the syntax highlighter might strip some amount of whitespace (my
+  // life is pain) and therefore we definitely need the whitespace parsed out, rather than just
+  // passing the string as-is to the highlighter.
+  const matchedLine = (() => {
+    if(line == null) return line;
+
+    // Calculate relative line number within the original text
+    const relativeLineNum = currentLine - startLine;
+
+    // Get the original line using the relative line number to find the correct whitespace
+    const originalLines = originalText.split("\n");
+
+    let spaceBefore = "";
+    let spaceAfter = "";
+
+    if(relativeLineNum >= originalLines.length) {
+      console.error(originalLines);
+      console.error("Current overall line", currentLine);
+      console.error("Relative line", relativeLineNum);
+      throw new Error(`Impossible relative line count: ${relativeLineNum} vs original ${originalLines.length}`);
+    }
+
+    const originalLine = originalLines[relativeLineNum];
+    const leadingWhitespace = originalLine.match(/(^\s+)/);
+    const trailingWhitespace = originalLine.match(/(\s+$)/);
+
+    if(leadingWhitespace) spaceBefore = leadingWhitespace[1];
+    if(trailingWhitespace) spaceAfter = trailingWhitespace[1];
+
+    return [ spaceBefore, originalLine.trim(), spaceAfter ];
+  })();
+
 
   if(language == "txt") {
-    if(line) return <Text>{line}</Text>
+    if(matchedLine) return <Text>{matchedLine[0]}{matchedLine[1]}{matchedLine[2]}</Text>
     return <Text>{ " " }</Text>
   }
-  if(line) {
-    // Ensure spacing is preserved during higlighting by stripping it out and then re-adding it
-    // This is annoying but it is what it is
-    const spaceBefore = line.match(/(^\s+)/);
-    const spaceAfter = line.match(/(\s+$)/);
 
+  if(matchedLine) {
     return <Box flexDirection="row">
-      {
-        spaceBefore && <Text>{ spaceBefore[1] }</Text>
-      }
+      <Text>{ matchedLine[0] }</Text>
       <Box flexDirection="column">
-        <HighlightedCode code={line.trim()} language={language} />
+        <HighlightedCode code={matchedLine[1]} language={language} />
       </Box>
-      {
-        spaceAfter && <Text>{ spaceAfter[1] }</Text>
-      }
+      <Text>{ matchedLine[2] }</Text>
     </Box>
   }
+
   return <Text>{ " " }</Text>
 }
