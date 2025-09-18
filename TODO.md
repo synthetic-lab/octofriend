@@ -40,7 +40,7 @@ TODO:
   compiler, etc).
 - [ ] Syntax highlighting for:
   - [x] Diff edits
-    - [ ] Handle long line wrapping better
+    - [x] Handle long line wrapping better
   - [ ] File creation
   - [ ] Append edits
   - [ ] Prepend edits

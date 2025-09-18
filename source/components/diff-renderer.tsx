@@ -103,7 +103,7 @@ function DiffSet({ oldValue, newValue, newAdded, oldRemoved, language }: {
 }) {
   return <Box flexDirection="row">
     <LineSegments value={oldValue} language={language}>
-      <Box width={3} backgroundColor={oldRemoved ? UNCHAINED_COLOR : "gray"}>
+      <Box width={3} flexShrink={0} backgroundColor={oldRemoved ? UNCHAINED_COLOR : "gray"} marginRight={1}>
         {
           oldRemoved ?
             <Text color="black"> - </Text> :
@@ -112,7 +112,7 @@ function DiffSet({ oldValue, newValue, newAdded, oldRemoved, language }: {
       </Box>
     </LineSegments>
     <LineSegments value={newValue} language={language}>
-      <Box width={3} backgroundColor={newAdded ? THEME_COLOR : "gray"}>
+      <Box width={3} flexShrink={0} backgroundColor={newAdded ? THEME_COLOR : "gray"} marginRight={1}>
         {
           newAdded ?
             <Text color="black"> + </Text> :
