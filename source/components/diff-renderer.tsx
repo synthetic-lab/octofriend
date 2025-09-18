@@ -228,10 +228,11 @@ function LineSegments({
     valueLines.pop();
   }
   if(valueLines.length === 0) {
-    return <Box width="50%" paddingX={1}>
+    return <Box width="50%" paddingX={1} flexGrow={1}>
       <Box
         width={gutterWidth}
         flexShrink={0}
+        flexGrow={1}
         backgroundColor={gutterColor}
         marginRight={1}
       >
@@ -248,14 +249,15 @@ function LineSegments({
     </Box>
   }
 
-  return <Box width="50%" paddingX={1} flexDirection="column">
+  return <Box width="50%" paddingX={1} flexDirection="column" flexGrow={1}>
     {
       valueLines.map((line, index) => {
         const lineNumber = lineCounter.incrementLine();
-        return <Box key={`${index}-${line}`}>
+        return <Box key={`${index}-${line}`} flexGrow={1}>
           <Box
             width={gutterWidth}
             flexShrink={0}
+            flexGrow={1}
             backgroundColor={gutterColor}
             marginRight={1}
           >
