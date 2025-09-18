@@ -650,17 +650,17 @@ function EditRenderer({ filePath, item }: {
     case "append":
       const file = fsOld.readFileSync(filePath, "utf8");
       const lines = countLines(file);
-      return <Box flexDirection="column">
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to add the following to the end of the file:</Text>
         <FileRenderer contents={item.text} filePath={filePath} startLineNr={lines} />
       </Box>
     case "prepend":
-      return <Box flexDirection="column">
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to add the following to the beginning of the file:</Text>
         <FileRenderer contents={item.text} filePath={filePath} />
       </Box>
     case "rewrite-whole":
-      return <Box flexDirection="column">
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to rewrite the file:</Text>
         <DiffRenderer
           oldText={fsOld.readFileSync(filePath, "utf8")}
