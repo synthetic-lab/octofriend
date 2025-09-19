@@ -187,15 +187,10 @@ async function mcpPrompt(config: Config) {
       }));
 
       const toolStrings = tools.map((t: {name: string, description?: string}) => {
-        // Sanitize tool names and descriptions
-        const cleanName = t.name ? String(t.name).replace(/[^\w-.]/g, '').substring(0, 100) : 'unknown';
-        const cleanDesc = t.description ? String(t.description).replace(/[\x00-\x1F\x7F]/g, '').substring(0, 500) : '';
-        return `- ${cleanName}${cleanDesc ? `: ${cleanDesc}` : ''}`;
+        return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
       }).join('\n');
 
-      // Sanitize server name for display
-      const cleanServerName = String(serverName).replace(/[^\w-.]/g, '').substring(0, 100);
-      mcpSections.push(`Server: ${cleanServerName}\n${toolStrings || 'No tools available'}`);
+      mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
     } catch (error) {
       // Skip servers that fail to connect
       continue;
