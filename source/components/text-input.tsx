@@ -24,11 +24,12 @@ export default function TextInput({
 	onSubmit,
 }: Props) {
 	const [state, setState] = useState({
-		cursorOffset: (originalValue || '').length,
+		cursorOffset: 0,
 		cursorWidth: 0,
 	});
 
 	const {cursorOffset, cursorWidth} = state;
+  const cursorPosition = originalValue.length + cursorOffset;
 
   // Correct cursor position if dependencies change or text is shortened.
 	useEffect(() => {
@@ -37,11 +38,9 @@ export default function TextInput({
 				return previousState;
 			}
 
-			const newValue = originalValue || '';
-
-			if (previousState.cursorOffset > newValue.length - 1) {
+			if (previousState.cursorOffset === 0) {
 				return {
-					cursorOffset: newValue.length,
+					cursorOffset: 0,
 					cursorWidth: 0,
 				};
 			}
@@ -69,14 +68,14 @@ export default function TextInput({
 
 		for (const char of value) {
 			renderedValue +=
-				i >= cursorOffset - cursorActualWidth && i <= cursorOffset
+				i >= cursorPosition - cursorActualWidth && i <= cursorPosition
 					? chalk.inverse(char)
 					: char;
 
 			i++;
 		}
 
-		if (value.length > 0 && cursorOffset === value.length) {
+		if (value.length > 0 && cursorPosition === value.length) {
 			renderedValue += chalk.inverse(' ');
 		}
 	}
@@ -101,126 +100,129 @@ export default function TextInput({
 				return;
 			}
 
-			let nextCursorOffset = cursorOffset;
+			let nextCursorPosition = cursorPosition;
 			let nextValue = originalValue;
 			let nextCursorWidth = 0;
 
 			if (key.ctrl && input === 'a') {
-				nextCursorOffset = 0;
+				nextCursorPosition = 0;
 			} else if (key.ctrl && input === 'e') {
-				nextCursorOffset = originalValue.length;
+				nextCursorPosition = originalValue.length;
 			} else if (key.ctrl && input === 'b') {
-				if (showCursor && cursorOffset > 0) {
-					nextCursorOffset = cursorOffset - 1;
+				if (showCursor && cursorPosition > 0) {
+					nextCursorPosition = cursorPosition - 1;
 				}
 			} else if (key.ctrl && input === 'f') {
-				if (showCursor && cursorOffset < originalValue.length) {
-					nextCursorOffset = cursorOffset + 1;
+				if (showCursor && cursorPosition < originalValue.length) {
+					nextCursorPosition = cursorPosition + 1;
 				}
 			} else if (key.meta && input === 'b') {
-				if (showCursor && cursorOffset > 0) {
-					let wordStart = cursorOffset;
+				if (showCursor && cursorPosition > 0) {
+					let wordStart = cursorPosition;
 					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
 						wordStart--;
 					}
 					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
 						wordStart--;
 					}
-					nextCursorOffset = wordStart;
+					nextCursorPosition = wordStart;
 				}
 			} else if (key.meta && input === 'f') {
-				if (showCursor && cursorOffset < originalValue.length) {
-					let wordEnd = cursorOffset;
+				if (showCursor && cursorPosition < originalValue.length) {
+					let wordEnd = cursorPosition;
 					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
 						wordEnd++;
 					}
 					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
 						wordEnd++;
 					}
-					nextCursorOffset = wordEnd;
+					nextCursorPosition = wordEnd;
 				}
 			} else if (key.ctrl && input === 'w') {
-				if (cursorOffset > 0) {
-					let wordStart = cursorOffset;
+				if (cursorPosition > 0) {
+					let wordStart = cursorPosition;
 					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
 						wordStart--;
 					}
 					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
 						wordStart--;
 					}
-					nextValue = originalValue.slice(0, wordStart) + originalValue.slice(cursorOffset);
-					nextCursorOffset = wordStart;
+					nextValue = originalValue.slice(0, wordStart) + originalValue.slice(cursorPosition);
+					nextCursorPosition = wordStart;
 				}
 			} else if (key.ctrl && input === 'h') {
-				if (cursorOffset > 0) {
+				if (cursorPosition > 0) {
 					nextValue =
-						originalValue.slice(0, cursorOffset - 1) +
-						originalValue.slice(cursorOffset, originalValue.length);
-					nextCursorOffset = cursorOffset - 1;
+						originalValue.slice(0, cursorPosition - 1) +
+						originalValue.slice(cursorPosition, originalValue.length);
+					nextCursorPosition = cursorPosition - 1;
 				}
 			} else if (key.ctrl && input === 'd') {
-				if (cursorOffset < originalValue.length) {
+				if (cursorPosition < originalValue.length) {
 					nextValue =
-						originalValue.slice(0, cursorOffset) +
-						originalValue.slice(cursorOffset + 1, originalValue.length);
+						originalValue.slice(0, cursorPosition) +
+						originalValue.slice(cursorPosition + 1, originalValue.length);
 				}
 			} else if (key.meta && input === 'd') {
-				if (cursorOffset < originalValue.length) {
-					let wordEnd = cursorOffset;
+				if (cursorPosition < originalValue.length) {
+					let wordEnd = cursorPosition;
 					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
 						wordEnd++;
 					}
 					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
 						wordEnd++;
 					}
-					nextValue = originalValue.slice(0, cursorOffset) + originalValue.slice(wordEnd);
+					nextValue = originalValue.slice(0, cursorPosition) + originalValue.slice(wordEnd);
 				}
 			} else if (key.ctrl && input === 'k') {
-				nextValue = originalValue.slice(0, cursorOffset);
+				nextValue = originalValue.slice(0, cursorPosition);
 			} else if (key.ctrl && input === 'u') {
-				nextValue = originalValue.slice(cursorOffset);
-				nextCursorOffset = 0;
+				nextValue = originalValue.slice(cursorPosition);
+				nextCursorPosition = 0;
 			} else if (key.leftArrow) {
 				if (showCursor) {
-					nextCursorOffset--;
+					nextCursorPosition--;
 				}
 			} else if (key.rightArrow) {
 				if (showCursor) {
-					nextCursorOffset++;
+					nextCursorPosition++;
 				}
 			} else if (key.backspace || key.delete) {
-				if (cursorOffset > 0) {
+				if (cursorPosition > 0) {
 					nextValue =
-						originalValue.slice(0, cursorOffset - 1) +
-						originalValue.slice(cursorOffset, originalValue.length);
+						originalValue.slice(0, cursorPosition - 1) +
+						originalValue.slice(cursorPosition, originalValue.length);
 
-					nextCursorOffset--;
+					nextCursorPosition--;
 				}
 			} else {
 				nextValue =
-					originalValue.slice(0, cursorOffset) +
+					originalValue.slice(0, cursorPosition) +
 					input +
-					originalValue.slice(cursorOffset, originalValue.length);
+					originalValue.slice(cursorPosition, originalValue.length);
 
-				nextCursorOffset += input.length;
+				nextCursorPosition += input.length;
 
 				if (input.length > 1) {
 					nextCursorWidth = input.length;
 				}
 			}
 
-			if (cursorOffset < 0) {
-				nextCursorOffset = 0;
+			if (cursorPosition < 0 || nextCursorPosition < 0) {
+				nextCursorPosition = 0;
 			}
 
-			if (cursorOffset > originalValue.length) {
-				nextCursorOffset = originalValue.length;
+			if (cursorPosition > originalValue.length) {
+				nextCursorPosition = originalValue.length;
 			}
 
-			setState({
-				cursorOffset: nextCursorOffset,
-				cursorWidth: nextCursorWidth,
-			});
+      const nextCursorOffset = nextCursorPosition - nextValue.length;
+      if(nextCursorOffset !== cursorOffset || nextCursorWidth !== cursorWidth) {
+        setState({
+          cursorOffset: nextCursorOffset,
+          cursorWidth: nextCursorWidth,
+        });
+      }
 
 			if (nextValue !== originalValue) {
 				onChange(nextValue);
