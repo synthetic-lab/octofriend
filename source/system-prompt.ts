@@ -177,19 +177,24 @@ async function mcpPrompt(config: Config) {
   const mcpSections = [];
 
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
-    const client = await getMcpClient(serverName, config);
-    const listed = await client.listTools();
+    try {
+      const client = await getMcpClient(serverName, config);
+      const listed = await client.listTools();
 
-    const tools = listed.tools.map((t: {name: string, description?: string}) => ({
-      name: t.name,
-      description: t.description
-    }));
+      const tools = listed.tools.map((t: {name: string, description?: string}) => ({
+        name: t.name,
+        description: t.description
+      }));
 
-    const toolStrings = tools.map((t: {name: string, description?: string}) => {
-      return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
-    }).join('\n');
+      const toolStrings = tools.map((t: {name: string, description?: string}) => {
+        return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
+      }).join('\n');
 
-    mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
+      mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
+    } catch (error) {
+      // Skip servers that fail to connect
+      continue;
+    }
   }
 
   const mcpPrompt = `
