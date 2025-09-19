@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Text } from "ink";
 import hljs from "highlight.js";
 import React from "react";
 

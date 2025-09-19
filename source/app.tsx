@@ -13,6 +13,7 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
+import { FileRenderer } from "./components/file-renderer.tsx";
 import {
   shell,
   read,
@@ -24,7 +25,7 @@ import {
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
-import SelectInput from "ink-select-input";
+import SelectInput from "./components/ink/select-input.tsx";
 import { useAppStore, RunArgs, useModel } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
@@ -37,6 +38,7 @@ import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
+import { countLines } from "./str.ts";
 
 type Props = {
 	config: Config;
@@ -502,22 +504,22 @@ const MessageDisplayInner = React.memo(({ item }: {
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
-	if(item.type === "assistant") {
+  if(item.type === "assistant") {
     return <Box marginBottom={1}>
       <AssistantMessageRenderer item={item} />
     </Box>
   }
-	if(item.type === "tool") {
+  if(item.type === "tool") {
     return <Box marginTop={1}>
       <ToolMessageRenderer item={item} />
     </Box>
   }
-	if(item.type === "tool-output") {
+  if(item.type === "tool-output") {
     const lines = (() => {
       if(item.result.lines == null) return item.result.content.split("\n").length;
       return item.result.lines;
     })();
-		return <Box marginBottom={1}>
+    return <Box marginBottom={1}>
       <Text color="gray">
         Got <Text>{lines}</Text> lines of output
       </Text>
@@ -632,38 +634,50 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
       <Text>Edit: </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
     </Box>
-    <EditRenderer filePath={item.arguments.filePath} item={item.arguments.edit} />
+    <EditRenderer
+      filePath={item.arguments.filePath}
+      item={item.arguments.edit}
+    />
   </Box>
 }
 
 function EditRenderer({ filePath, item }: {
   filePath: string,
-  item: t.GetType<typeof edit.AllEdits>
+  item: t.GetType<typeof edit.AllEdits>,
 }) {
   switch(item.type) {
-    case "diff": return <DiffEditRenderer item={item} />
+    case "diff": return <DiffEditRenderer item={item} filePath={filePath}/>
     case "append":
-      return <Box flexDirection="column">
+      const file = fsOld.readFileSync(filePath, "utf8");
+      const lines = countLines(file);
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to add the following to the end of the file:</Text>
-        <Text>{item.text}</Text>
+        <FileRenderer contents={item.text} filePath={filePath} startLineNr={lines} />
       </Box>
     case "prepend":
-      return <Box flexDirection="column">
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to add the following to the beginning of the file:</Text>
-        <Text>{item.text}</Text>
+        <FileRenderer contents={item.text} filePath={filePath} />
       </Box>
     case "rewrite-whole":
-      return <Box flexDirection="column">
+      return <Box flexDirection="column" gap={1}>
         <Text>Octo wants to rewrite the file:</Text>
-        <DiffRenderer oldText={fsOld.readFileSync(filePath, "utf8")} newText={item.text} />
+        <DiffRenderer
+          oldText={fsOld.readFileSync(filePath, "utf8")}
+          newText={item.text}
+          filepath={filePath}
+        />
       </Box>
   }
 }
 
-function DiffEditRenderer({ item }: { item: t.GetType<typeof edit.DiffEdit> }) {
+function DiffEditRenderer({ item, filePath }: {
+  item: t.GetType<typeof edit.DiffEdit>,
+  filePath: string,
+}) {
   return <Box flexDirection="column">
     <Text>Octo wants to make the following changes:</Text>
-    <DiffRenderer oldText={item.search} newText={item.replace} />
+    <DiffRenderer oldText={item.search} newText={item.replace} filepath={filePath} />
   </Box>
 }
 
@@ -671,12 +685,12 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
   const themeColor = useColor();
   return <Box flexDirection="column" gap={1}>
     <Box>
-      <Text>Creating file </Text>
+      <Text>Octo wants to create </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
       <Text>:</Text>
     </Box>
     <Box>
-      <Text>{item.arguments.content}</Text>
+      <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
     </Box>
   </Box>
 }

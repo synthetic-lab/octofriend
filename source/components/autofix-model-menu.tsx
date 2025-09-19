@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Box, useInput } from "ink";
-import SelectInput from "ink-select-input";
+import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Config, readKeyForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
+import Spinner from "./ink/spinner.tsx";
 import { useColor } from "../theme.ts";
 
 const DEFAULT_LOADING_STRINGS = [
