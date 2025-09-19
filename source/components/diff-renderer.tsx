@@ -11,78 +11,108 @@ export function DiffRenderer({ oldText, newText, filepath }: {
   newText: string,
   filepath: string,
 }) {
-  const language = fileExtLanguage(filepath);
-  const file = readFileSync(filepath, "utf8");
+  try {
+    const language = fileExtLanguage(filepath);
+    const file = readFileSync(filepath, "utf8");
 
-  const diff = diffLines(oldText, newText);
-  const diffWithChanged: Array<(typeof diff)[number] | {
-    added: false,
-    removed: false,
-    changed: true,
-    oldValue: string,
-    newValue: string,
-  }> = [];
+    const diff = diffLines(oldText, newText);
+    const diffWithChanged: Array<(typeof diff)[number] | {
+      added: false,
+      removed: false,
+      changed: true,
+      oldValue: string,
+      newValue: string,
+    }> = [];
 
-  for(let i = 0; i < diff.length; i++) {
-    const curr = diff[i];
-    const prev = diffWithChanged.length === 0 ? null : diffWithChanged[diffWithChanged.length - 1];
-    if(prev == null) {
+    for(let i = 0; i < diff.length; i++) {
+      const curr = diff[i];
+      const prev = diffWithChanged.length === 0 ? null : diffWithChanged[diffWithChanged.length - 1];
+      if(prev == null) {
+        diffWithChanged.push(curr);
+        continue;
+      }
+      if(prev.removed && curr.added) {
+        diffWithChanged.pop();
+        diffWithChanged.push({
+          added: false,
+          removed: false,
+          changed: true,
+          oldValue: prev.value,
+          newValue: curr.value,
+        });
+        continue;
+      }
       diffWithChanged.push(curr);
-      continue;
     }
-    if(prev.removed && curr.added) {
-      diffWithChanged.pop();
-      diffWithChanged.push({
-        added: false,
-        removed: false,
-        changed: true,
-        oldValue: prev.value,
-        newValue: curr.value,
-      });
-      continue;
-    }
-    diffWithChanged.push(curr);
-  }
 
-  const startLine = getStartLine(file, oldText);
-  const oldLineCounter = buildLineCounter(startLine);
-  const newLineCounter = buildLineCounter(startLine);
-  const maxOldLines = startLine + countLines(oldText);
-  const maxNewLines = startLine + countLines(newText);
-  const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
+    const startLine = getStartLine(file, oldText);
+    const oldLineCounter = buildLineCounter(startLine);
+    const newLineCounter = buildLineCounter(startLine);
+    const maxOldLines = startLine + countLines(oldText);
+    const maxNewLines = startLine + countLines(newText);
+    const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
 
-  return (
-    <Box flexDirection="column">
-      <Box flexDirection="column" marginY={1}>
-        <Box>
-          <Box width="50%" paddingX={1}>
-            <Text color="gray">Old</Text>
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="column" marginY={1}>
+          <Box>
+            <Box width="50%" paddingX={1}>
+              <Text color="gray">Old</Text>
+            </Box>
+            <Box width="50%" paddingX={1}>
+              <Text color="gray">New</Text>
+            </Box>
           </Box>
-          <Box width="50%" paddingX={1}>
-            <Text color="gray">New</Text>
-          </Box>
-        </Box>
-        {
-          diffWithChanged.map((part, index) => {
-            if(part.added) {
-              return <DiffSet
-                key={index}
-                newValue={part.value}
-                newAdded
-                language={language}
-                oldText={oldText}
-                newText={newText}
-                oldLineCounter={oldLineCounter}
-                newLineCounter={newLineCounter}
-                lineNrWidth={lineNrWidth}
-              />
-            }
+          {
+            diffWithChanged.map((part, index) => {
+              if(part.added) {
+                return <DiffSet
+                  key={index}
+                  newValue={part.value}
+                  newAdded
+                  language={language}
+                  oldText={oldText}
+                  newText={newText}
+                  oldLineCounter={oldLineCounter}
+                  newLineCounter={newLineCounter}
+                  lineNrWidth={lineNrWidth}
+                />
+              }
 
-            if(part.removed) {
+              if(part.removed) {
+                return <DiffSet
+                  key={index}
+                  oldValue={part.value}
+                  oldRemoved
+                  language={language}
+                  oldText={oldText}
+                  newText={newText}
+                  oldLineCounter={oldLineCounter}
+                  newLineCounter={newLineCounter}
+                  lineNrWidth={lineNrWidth}
+                />
+              }
+
+              if("changed" in part) {
+                return <DiffSet
+                  key={index}
+                  oldValue={part.oldValue}
+                  newValue={part.newValue}
+                  oldRemoved
+                  newAdded
+                  language={language}
+                  oldText={oldText}
+                  newText={newText}
+                  oldLineCounter={oldLineCounter}
+                  newLineCounter={newLineCounter}
+                  lineNrWidth={lineNrWidth}
+                />
+              }
+
               return <DiffSet
                 key={index}
                 oldValue={part.value}
-                oldRemoved
+                newValue={part.value}
                 language={language}
                 oldText={oldText}
                 newText={newText}
@@ -90,40 +120,14 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                 newLineCounter={newLineCounter}
                 lineNrWidth={lineNrWidth}
               />
-            }
-
-            if("changed" in part) {
-              return <DiffSet
-                key={index}
-                oldValue={part.oldValue}
-                newValue={part.newValue}
-                oldRemoved
-                newAdded
-                language={language}
-                oldText={oldText}
-                newText={newText}
-                oldLineCounter={oldLineCounter}
-                newLineCounter={newLineCounter}
-                lineNrWidth={lineNrWidth}
-              />
-            }
-
-            return <DiffSet
-              key={index}
-              oldValue={part.value}
-              newValue={part.value}
-              language={language}
-              oldText={oldText}
-              newText={newText}
-              oldLineCounter={oldLineCounter}
-              newLineCounter={newLineCounter}
-              lineNrWidth={lineNrWidth}
-            />
-          })
-        }
+            })
+          }
+        </Box>
       </Box>
-    </Box>
-  );
+    );
+  } catch {
+    return null;
+  }
 }
 
 function getStartLine(file: string, search: string) {
