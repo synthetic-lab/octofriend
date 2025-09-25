@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.41] - 2025-09-24
+
+- Correct output token/sec benchmarking
+
 ## [0.0.40] - 2025-09-19
 
 - Performance improvement for typing in the input box
