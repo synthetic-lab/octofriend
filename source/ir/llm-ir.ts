@@ -26,6 +26,7 @@ export type AssistantMessage = {
   anthropic?: AnthropicAssistantData,
   toolCall?: ToolCallRequest,
   tokenUsage: number;
+  outputTokens: number,
 };
 
 export type UserMessage = {
@@ -145,6 +146,7 @@ function singleOutputDecompile(output: OutputIR): HistoryItem[] {
     openai: output.openai,
     anthropic: output.anthropic,
     tokenUsage: output.tokenUsage,
+    outputTokens: output.outputTokens,
   });
 
   if(output.toolCall) {
@@ -215,6 +217,7 @@ function collapseToIR(
           anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
           tokenUsage: prev.tokenUsage,
+          outputTokens: prev.outputTokens,
         },
         null,
       ];
@@ -241,6 +244,7 @@ function collapseToIR(
           anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
           tokenUsage: prev.tokenUsage,
+          outputTokens: prev.outputTokens,
         } satisfies LlmIR,
         {
           role: "tool-malformed",
@@ -345,6 +349,7 @@ function collapseToIR(
         openai: item.openai,
         anthropic: item.anthropic,
         tokenUsage: item.tokenUsage,
+        outputTokens: item.outputTokens,
       },
     ];
   }

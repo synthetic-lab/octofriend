@@ -388,6 +388,7 @@ export async function runAnthropicAgent({
     content, reasoningContent,
     ...anthropic,
     tokenUsage: tokenDelta,
+    outputTokens: usage.output,
   };
 
   // If aborted, don't try to parse tool calls

@@ -219,7 +219,7 @@ bench.command("tps")
 
   const firstResult = result[0];
   if(firstResult.role !== "assistant") throw new Error("No assistant response");
-  const tokens = firstResult.tokenUsage;
+  const tokens = firstResult.outputTokens;
   const seconds = elapsed/1000;
   console.log(`\n\nTokens: ${tokens}\nTime: ${seconds}s\nTok/sec: ${tokens/seconds}`);
 });

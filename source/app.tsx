@@ -491,7 +491,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 });
 
 const MessageDisplay = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
+  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
 }) => {
   return <Box flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
@@ -499,7 +499,7 @@ const MessageDisplay = React.memo(({ item }: {
 });
 
 const MessageDisplayInner = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage"> // Allow inflight assistant messages
+  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
 }) => {
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
@@ -708,7 +708,9 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
 const MAX_THOUGHTBOX_WIDTH = 80;
-function AssistantMessageRenderer({ item }: { item: Omit<AssistantItem, "id" | "tokenUsage"> }) {
+function AssistantMessageRenderer({ item }: {
+  item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
+}) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 

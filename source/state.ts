@@ -26,7 +26,7 @@ export type UiState = {
     mode: "input",
   } | {
     mode: "responding",
-    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage">,
+    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
     abortController: AbortController,
   } | {
     mode: "tool-request",

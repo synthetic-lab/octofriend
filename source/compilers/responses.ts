@@ -376,6 +376,7 @@ export async function runResponsesAgent({
     content, reasoningContent,
     ...openaiSpecific,
     tokenUsage: tokenDelta,
+    outputTokens: usage.output,
   };
 
   // If aborted, don't try to parse tool calls

@@ -407,6 +407,7 @@ export async function runAgent({
       role: "assistant" as const,
       content, reasoningContent,
       tokenUsage: tokenDelta,
+      outputTokens: usage.output,
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response

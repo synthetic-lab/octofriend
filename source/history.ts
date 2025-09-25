@@ -82,6 +82,7 @@ export type AssistantItem = SequenceIdTagged<{
   },
   anthropic?: AnthropicAssistantData,
   tokenUsage: number; // Delta token usage from previous message
+  outputTokens: number,
 }>;
 
 export type UserItem = SequenceIdTagged<{
