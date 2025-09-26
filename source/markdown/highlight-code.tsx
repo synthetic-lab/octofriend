@@ -15,9 +15,6 @@ export function HighlightedCode({ code, language }: {
       result = hljs.highlightAuto(code);
     }
 
-    const file = readFileSync("/tmp/file.txt", "utf-8");
-    result.value = file;
-
     const segments = parseHighlightedHTML(result.value);
     return <CodeSegments segments={segments} />;
   } catch (error) {
