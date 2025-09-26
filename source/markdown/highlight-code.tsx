@@ -1,6 +1,7 @@
 import { Text } from "ink";
 import hljs from "highlight.js";
 import React from "react";
+import { readFileSync } from "fs";
 
 export function HighlightedCode({ code, language }: {
   code: string,
@@ -14,15 +15,11 @@ export function HighlightedCode({ code, language }: {
       result = hljs.highlightAuto(code);
     }
 
-    const lines = result.value.split('\n');
-    return <>
-      {
-        lines.map((line, index) => {
-          const segments = parseHighlightedHTML(line);
-          return <CodeLine segments={segments} key={`code-${index}`} />;
-        })
-      }
-    </>;
+    const file = readFileSync("/tmp/file.txt", "utf-8");
+    result.value = file;
+
+    const segments = parseHighlightedHTML(result.value);
+    return <CodeSegments segments={segments} />;
   } catch (error) {
     // If highlighting fails, return plain text lines
     return <>
@@ -117,6 +114,41 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
   }
 
   return segments;
+}
+
+function CodeSegments({ segments }: { segments: CodeSegment[] }) {
+  const lines: CodeSegment[][] = [];
+  let currentLine: CodeSegment[] = [];
+
+  segments.forEach(segment => {
+    const linesInSegment = segment.text.split('\n');
+
+    linesInSegment.forEach((lineText, lineIndex) => {
+      if (lineIndex > 0) {
+        // This is a new line, push current line and start fresh
+        lines.push(currentLine);
+        currentLine = [];
+      }
+
+      if (lineText || lineIndex === linesInSegment.length - 1) {
+        currentLine.push({
+          text: lineText,
+          className: segment.className
+        });
+      }
+    });
+  });
+
+  // Push the last line if it has content
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  return <>
+    {lines.map((lineSegments, index) => (
+      <CodeLine segments={lineSegments} key={`code-${index}`} />
+    ))}
+  </>;
 }
 
 function CodeLine({ segments }: { segments: CodeSegment[] }) {
