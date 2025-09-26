@@ -23,7 +23,7 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
-import { InputHistory, loadInputHistory } from "./input-history/index.ts";
+import { loadInputHistory } from "./input-history/index.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -197,6 +197,8 @@ bench.command("tps")
     console.log("Still working...");
   }, 5000);
   const start = new Date();
+  let firstToken: Date | null = null;
+  const tokenTimestamps: Date[] = [];
   const result = await run({
     config,
     skipSystemPrompt: true,
@@ -207,7 +209,11 @@ bench.command("tps")
         content: opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.",
       }
     ],
-    onTokens: () => {},
+    onTokens: () => {
+      const now = new Date();
+      tokenTimestamps.push(now);
+      if(firstToken == null) firstToken = now;
+    },
     onAutofixJson: () => {},
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
@@ -215,13 +221,41 @@ bench.command("tps")
 
   clearInterval(timer);
   const end = new Date();
-  const elapsed = end.getTime() - start.getTime();
+
+  const first: null | Date = firstToken as null | Date;
+  if(first == null) {
+    console.log("No tokens sent");
+    return;
+  }
+
+  const ttft = first.getTime() - start.getTime();
+  const tokenElapsed = end.getTime() - first.getTime();
 
   const firstResult = result[0];
   if(firstResult.role !== "assistant") throw new Error("No assistant response");
   const tokens = firstResult.outputTokens;
-  const seconds = elapsed/1000;
-  console.log(`\n\nTokens: ${tokens}\nTime: ${seconds}s\nTok/sec output: ${tokens/seconds}`);
+  const seconds = tokenElapsed/1000;
+  // Calculate inter-token latencies
+  const interTokenLatencies: number[] = [];
+  for(let i = 1; i < tokenTimestamps.length; i++) {
+    const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i-1].getTime();
+    interTokenLatencies.push(latency);
+  }
+
+  const minLatency = Math.min(...interTokenLatencies);
+  const maxLatency = Math.max(...interTokenLatencies);
+  const avgLatency = interTokenLatencies.reduce((a, b) => a + b, 0) / interTokenLatencies.length;
+
+  console.log(`\n
+Tokens: ${tokens}
+Time: ${seconds}s
+Time to first token: ${ttft / 1000}s
+Inter-token latencies:
+  Min: ${minLatency}ms
+  Max: ${maxLatency}ms
+  Avg: ${avgLatency.toFixed(2)}ms
+Tok/sec output: ${tokens/seconds}
+`);
 });
 
 
