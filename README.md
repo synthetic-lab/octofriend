@@ -115,7 +115,7 @@ server, add the following to the config file:
 mcpServers: {
   serverName: {
     command: "command-string",
-    arguments: [
+    args: [
       "arguments",
       "to",
       "pass",
@@ -130,7 +130,7 @@ For example, to plug Octo into your Linear workspace:
 mcpServers: {
   linear: {
     command: "npx",
-    arguments: [ "-y", "mcp-remote", "https://mcp.linear.app/sse" ],
+    args: [ "-y", "mcp-remote", "https://mcp.linear.app/sse" ],
   },
 },
 ```
