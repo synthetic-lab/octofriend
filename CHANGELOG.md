@@ -4,15 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.42] - 2025-09-26
+
+### Added
+
+- Add time-to-first-token and inter-token-latency calculation to `octo bench
+  tps`.
+
 ## [0.0.41] - 2025-09-24
+
+### Changed
 
 - Correct output token/sec benchmarking
 
 ## [0.0.40] - 2025-09-19
 
+### Changed
+
 - Performance improvement for typing in the input box
 
 ## [0.0.39] - 2025-09-18
+
+### Changed
 
 - Crash fix for when Octo proposes impossible edits
 
