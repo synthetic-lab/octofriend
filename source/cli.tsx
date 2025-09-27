@@ -12,7 +12,7 @@ import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
 import { readConfig, readMetadata, readKeyForModel, AUTOFIX_KEYS } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
-import { getMcpClient, connectMcpServer } from "./tools/tool-defs/mcp.ts";
+import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./compilers/standard.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
@@ -101,49 +101,53 @@ async function runMain(opts: {
   unchained?: boolean,
   transport: Transport,
 }) {
-	const metadata = await readMetadata();
-	let { config, configPath } = await loadConfig(opts.config);
+  try {
+	  const metadata = await readMetadata();
+	  let { config, configPath } = await loadConfig(opts.config);
 
-  // Connect to all MCP servers on boot
-  if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-    for(const server of Object.keys(config.mcpServers)) {
-      console.log("Connecting to", server, "MCP server...");
-      // Run the basic connection setup with logging enabled, so that first-time setup gets logged
-      const client = await connectMcpServer(server, config, true);
-      await client.close();
-      // Then run the cache setup codepath, so future results use a cached client with logging off
-      await getMcpClient(server, config);
+    // Connect to all MCP servers on boot
+    if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+      for(const server of Object.keys(config.mcpServers)) {
+        console.log("Connecting to", server, "MCP server...");
+        // Run the basic connection setup with logging enabled, so that first-time setup gets logged
+        const client = await connectMcpServer(server, config, true);
+        await client.close();
+        // Then run the cache setup codepath, so future results use a cached client with logging off
+        await getMcpClient(server, config);
+      }
+      console.log("All MCP servers connected.");
     }
-    console.log("All MCP servers connected.");
-  }
 
-	const { waitUntilExit } = render(
-    <App
-      config={config}
-      configPath={configPath}
-      metadata={metadata}
-      unchained={!!opts.unchained}
-      transport={opts.transport}
-      updates={await readUpdates()}
-      inputHistory={await loadInputHistory()}
-    />,
-    {
-      exitOnCtrlC: false,
+	  const { waitUntilExit } = render(
+      <App
+        config={config}
+        configPath={configPath}
+        metadata={metadata}
+        unchained={!!opts.unchained}
+        transport={opts.transport}
+        updates={await readUpdates()}
+        inputHistory={await loadInputHistory()}
+      />,
+      {
+        exitOnCtrlC: false,
+      }
+    );
+
+    await waitUntilExit();
+
+    console.log("\nApprox. tokens used:");
+    if(Object.keys(tokenCounts()).length === 0) {
+      console.log("0");
     }
-  );
-
-  await waitUntilExit();
-
-  console.log("\nApprox. tokens used:");
-  if(Object.keys(tokenCounts()).length === 0) {
-    console.log("0");
-  }
-  else {
-    for(const [ model, count ] of Object.entries(tokenCounts())) {
-      const input = count.input.toLocaleString();
-      const output = count.output.toLocaleString();
-      console.log(`${model}: ${input} input, ${output} output`);
+    else {
+      for(const [ model, count ] of Object.entries(tokenCounts())) {
+        const input = count.input.toLocaleString();
+        const output = count.output.toLocaleString();
+        console.log(`${model}: ${input} input, ${output} output`);
+      }
     }
+  } finally {
+    await shutdownMcpClients();
   }
 }
 
