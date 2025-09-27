@@ -78,6 +78,14 @@ export async function connectMcpServer(
     throw new ToolError(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
   }
 
+  // Prepare environment variables
+  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  
+  // Merge user-provided environment variables from config
+  if (serverConfig.env && typeof serverConfig.env === 'object') {
+    Object.assign(env, serverConfig.env);
+  }
+
   const client = new Client({
     name: `octofriend-${serverName}`,
     version: "1.0.0",
@@ -87,6 +95,7 @@ export async function connectMcpServer(
     command: serverConfig.command,
     args: serverConfig.args || [],
     stderr: log ? "inherit" : "ignore",
+    env, // Pass the merged environment variables
   });
 
   await client.connect(transport);
