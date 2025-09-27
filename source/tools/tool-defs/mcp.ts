@@ -83,9 +83,20 @@ export async function connectMcpServer(
     version: "1.0.0",
   });
 
+  const baseEnvEntries = Object.entries(process.env).filter(
+    (entry): entry is [string, string] => entry[1] != null,
+  );
+
+  const baseEnv: Record<string, string> = Object.fromEntries(baseEnvEntries);
+
+  const env: Record<string, string> = serverConfig.env
+    ? { ...baseEnv, ...serverConfig.env }
+    : baseEnv;
+
   const transport = new StdioClientTransport({
     command: serverConfig.command,
     args: serverConfig.args || [],
+    env,
     stderr: log ? "inherit" : "ignore",
   });
 
