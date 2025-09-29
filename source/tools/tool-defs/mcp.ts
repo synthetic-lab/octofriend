@@ -104,6 +104,20 @@ export async function connectMcpServer(
   return client;
 }
 
+export async function shutdownMcpClients(): Promise<void> {
+  const entries = Array.from(clientCache.entries());
+  clientCache.clear();
+
+  for (const [serverName, client] of entries) {
+    try {
+      await client.close();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`Warning: failed to close MCP client "${serverName}": ${reason}`);
+    }
+  }
+}
+
 export default {
   Schema,
   ArgumentsSchema,
