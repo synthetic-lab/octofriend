@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.44] - 2025-09-30
+
+### Changed
+
+- Added Claude 4.5 Sonnet as a featured model for Anthropic
+
+- Added GLM-4.6 as a featured model for Synthetic
+
+- Allowed configuring environment variables for MCP servers
+
+- Auto-shut-down MCP servers on exit
+
 ## [0.0.43] - 2025-09-26
 
 ### Changed

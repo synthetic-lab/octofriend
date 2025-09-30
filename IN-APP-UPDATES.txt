@@ -1,4 +1,3 @@
-- All code uses syntax highlighting
-- Edits and file creations render with line numbers
-- Running local bash commands works better on Nix
-- Various bugfixes
+- GLM-4.6 is out for Synthetic
+- Claude 4.5 is out for Anthropic
+- MCP server improvements
