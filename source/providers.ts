@@ -32,19 +32,14 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:zai-org/GLM-4.5",
-        nickname: "GLM-4.5",
-        context: 64 * 1024,
+        model: "hf:zai-org/GLM-4.6",
+        nickname: "GLM-4.6",
+        context: 128 * 1024,
       },
       {
         model: "hf:moonshotai/Kimi-K2-Instruct-0905",
         nickname: "Kimi K2 0905",
         context: 128 * 1024,
-      },
-      {
-        model: "hf:deepseek-ai/DeepSeek-V3.1",
-        nickname: "DeepSeek V3.1",
-        context: 64 * 1024,
       },
       {
         model: "hf:openai/gpt-oss-120b",
@@ -63,8 +58,8 @@ export const PROVIDERS = {
     baseUrl: "https://api.anthropic.com",
     models: [
       {
-        model: "claude-sonnet-4-20250514",
-        nickname: "Claude 4 Sonnet",
+        model: "claude-sonnet-4-5-20250929",
+        nickname: "Claude 4.5 Sonnet",
         context: 64 * 1024,
         reasoning: "medium",
       },
