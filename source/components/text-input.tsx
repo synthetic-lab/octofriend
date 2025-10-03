@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Text, useInput } from 'ink';
 import chalk from 'chalk';
 
@@ -29,9 +29,21 @@ export default function TextInput({
 	});
 
 	const {cursorOffset, cursorWidth} = state;
-  const cursorPosition = originalValue.length + cursorOffset;
+	const valueRef = useRef(originalValue);
+	const cursorOffsetRef = useRef(cursorOffset);
+	const cursorWidthRef = useRef(cursorWidth);
+	const renderCursorPosition = originalValue.length + cursorOffset;
 
-  // Correct cursor position if dependencies change or text is shortened.
+	useEffect(() => {
+		valueRef.current = originalValue;
+	}, [originalValue]);
+
+	useEffect(() => {
+		cursorOffsetRef.current = cursorOffset;
+		cursorWidthRef.current = cursorWidth;
+	}, [cursorOffset, cursorWidth]);
+
+	// Correct cursor position if dependencies change or text is shortened.
 	useEffect(() => {
 		setState(previousState => {
 			if (!focus || !showCursor) {
@@ -68,20 +80,25 @@ export default function TextInput({
 
 		for (const char of value) {
 			renderedValue +=
-				i >= cursorPosition - cursorActualWidth && i <= cursorPosition
+				i >= renderCursorPosition - cursorActualWidth && i <= renderCursorPosition
 					? chalk.inverse(char)
 					: char;
 
 			i++;
 		}
 
-		if (value.length > 0 && cursorPosition === value.length) {
+		if (value.length > 0 && renderCursorPosition === value.length) {
 			renderedValue += chalk.inverse(' ');
 		}
 	}
 
 	useInput(
 		(input, key) => {
+			const currentValue = valueRef.current;
+			const previousCursorOffset = cursorOffsetRef.current;
+			const previousCursorWidth = cursorWidthRef.current;
+			let cursorPosition = currentValue.length + previousCursorOffset;
+
 			if (
 				key.upArrow ||
 				key.downArrow ||
@@ -94,46 +111,46 @@ export default function TextInput({
 
 			if (key.return) {
 				if (onSubmit) {
-					onSubmit(originalValue);
+					onSubmit(valueRef.current);
 				}
 
 				return;
 			}
 
 			let nextCursorPosition = cursorPosition;
-			let nextValue = originalValue;
+			let nextValue = currentValue;
 			let nextCursorWidth = 0;
 
 			if (key.ctrl && input === 'a') {
 				nextCursorPosition = 0;
 			} else if (key.ctrl && input === 'e') {
-				nextCursorPosition = originalValue.length;
+				nextCursorPosition = currentValue.length;
 			} else if (key.ctrl && input === 'b') {
 				if (showCursor && cursorPosition > 0) {
 					nextCursorPosition = cursorPosition - 1;
 				}
 			} else if (key.ctrl && input === 'f') {
-				if (showCursor && cursorPosition < originalValue.length) {
+				if (showCursor && cursorPosition < currentValue.length) {
 					nextCursorPosition = cursorPosition + 1;
 				}
 			} else if (key.meta && input === 'b') {
 				if (showCursor && cursorPosition > 0) {
 					let wordStart = cursorPosition;
-					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
+					while (wordStart > 0 && /\s/.test(currentValue[wordStart - 1])) {
 						wordStart--;
 					}
-					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
+					while (wordStart > 0 && !/\s/.test(currentValue[wordStart - 1])) {
 						wordStart--;
 					}
 					nextCursorPosition = wordStart;
 				}
 			} else if (key.meta && input === 'f') {
-				if (showCursor && cursorPosition < originalValue.length) {
+				if (showCursor && cursorPosition < currentValue.length) {
 					let wordEnd = cursorPosition;
-					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
+					while (wordEnd < currentValue.length && /\s/.test(currentValue[wordEnd])) {
 						wordEnd++;
 					}
-					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
+					while (wordEnd < currentValue.length && !/\s/.test(currentValue[wordEnd])) {
 						wordEnd++;
 					}
 					nextCursorPosition = wordEnd;
@@ -141,43 +158,44 @@ export default function TextInput({
 			} else if (key.ctrl && input === 'w') {
 				if (cursorPosition > 0) {
 					let wordStart = cursorPosition;
-					while (wordStart > 0 && /\s/.test(originalValue[wordStart - 1])) {
+					while (wordStart > 0 && /\s/.test(currentValue[wordStart - 1])) {
 						wordStart--;
 					}
-					while (wordStart > 0 && !/\s/.test(originalValue[wordStart - 1])) {
+					while (wordStart > 0 && !/\s/.test(currentValue[wordStart - 1])) {
 						wordStart--;
 					}
-					nextValue = originalValue.slice(0, wordStart) + originalValue.slice(cursorPosition);
+					nextValue = currentValue.slice(0, wordStart) + currentValue.slice(cursorPosition);
 					nextCursorPosition = wordStart;
 				}
 			} else if (key.ctrl && input === 'h') {
 				if (cursorPosition > 0) {
 					nextValue =
-						originalValue.slice(0, cursorPosition - 1) +
-						originalValue.slice(cursorPosition, originalValue.length);
+						currentValue.slice(0, cursorPosition - 1) +
+						currentValue.slice(cursorPosition, currentValue.length);
+
 					nextCursorPosition = cursorPosition - 1;
 				}
 			} else if (key.ctrl && input === 'd') {
-				if (cursorPosition < originalValue.length) {
+				if (cursorPosition < currentValue.length) {
 					nextValue =
-						originalValue.slice(0, cursorPosition) +
-						originalValue.slice(cursorPosition + 1, originalValue.length);
+						currentValue.slice(0, cursorPosition) +
+						currentValue.slice(cursorPosition + 1, currentValue.length);
 				}
 			} else if (key.meta && input === 'd') {
-				if (cursorPosition < originalValue.length) {
+				if (cursorPosition < currentValue.length) {
 					let wordEnd = cursorPosition;
-					while (wordEnd < originalValue.length && /\s/.test(originalValue[wordEnd])) {
+					while (wordEnd < currentValue.length && /\s/.test(currentValue[wordEnd])) {
 						wordEnd++;
 					}
-					while (wordEnd < originalValue.length && !/\s/.test(originalValue[wordEnd])) {
+					while (wordEnd < currentValue.length && !/\s/.test(currentValue[wordEnd])) {
 						wordEnd++;
 					}
-					nextValue = originalValue.slice(0, cursorPosition) + originalValue.slice(wordEnd);
+					nextValue = currentValue.slice(0, cursorPosition) + currentValue.slice(wordEnd);
 				}
 			} else if (key.ctrl && input === 'k') {
-				nextValue = originalValue.slice(0, cursorPosition);
+				nextValue = currentValue.slice(0, cursorPosition);
 			} else if (key.ctrl && input === 'u') {
-				nextValue = originalValue.slice(cursorPosition);
+				nextValue = currentValue.slice(cursorPosition);
 				nextCursorPosition = 0;
 			} else if (key.leftArrow) {
 				if (showCursor) {
@@ -190,16 +208,16 @@ export default function TextInput({
 			} else if (key.backspace || key.delete) {
 				if (cursorPosition > 0) {
 					nextValue =
-						originalValue.slice(0, cursorPosition - 1) +
-						originalValue.slice(cursorPosition, originalValue.length);
+						currentValue.slice(0, cursorPosition - 1) +
+						currentValue.slice(cursorPosition, currentValue.length);
 
 					nextCursorPosition--;
 				}
 			} else {
 				nextValue =
-					originalValue.slice(0, cursorPosition) +
+					currentValue.slice(0, cursorPosition) +
 					input +
-					originalValue.slice(cursorPosition, originalValue.length);
+					currentValue.slice(cursorPosition, currentValue.length);
 
 				nextCursorPosition += input.length;
 
@@ -212,19 +230,22 @@ export default function TextInput({
 				nextCursorPosition = 0;
 			}
 
-			if (cursorPosition > originalValue.length) {
-				nextCursorPosition = originalValue.length;
+			if (nextCursorPosition > nextValue.length) {
+				nextCursorPosition = nextValue.length;
 			}
 
-      const nextCursorOffset = nextCursorPosition - nextValue.length;
-      if(nextCursorOffset !== cursorOffset || nextCursorWidth !== cursorWidth) {
-        setState({
-          cursorOffset: nextCursorOffset,
-          cursorWidth: nextCursorWidth,
-        });
-      }
+			const nextCursorOffset = nextCursorPosition - nextValue.length;
+			if (nextCursorOffset !== previousCursorOffset || nextCursorWidth !== previousCursorWidth) {
+				cursorOffsetRef.current = nextCursorOffset;
+				cursorWidthRef.current = nextCursorWidth;
+				setState({
+					cursorOffset: nextCursorOffset,
+					cursorWidth: nextCursorWidth,
+				});
+			}
 
-			if (nextValue !== originalValue) {
+			if (nextValue !== currentValue) {
+				valueRef.current = nextValue;
 				onChange(nextValue);
 			}
 		},
