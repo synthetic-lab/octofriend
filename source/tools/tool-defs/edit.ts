@@ -3,17 +3,20 @@ import { fileTracker } from "../file-tracker.ts";
 import { ToolError, attemptUntrackedRead, ToolDef } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
-const DiffEdit = t.subtype({
+// Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
+const DiffParts = {
   search: t.str.comment(`
     The search string to replace. Must EXACTLY match the text you intend to replace, including
     whitespace, punctuation, etc. Make sure to give a few lines of context above and below so you
     don't accidentally replace a different matching substring in the same file.
   `),
   replace: t.str.comment("The string you want to insert into the file"),
-});
-const ArgumentsSchema = DiffEdit.and(t.subtype({
+}
+const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
-})).comment("Applies a search/replace edit to a file. This should be your default tool to edit existing files.");
+  ...DiffParts,
+}).comment("Applies a search/replace edit to a file. This should be your default tool to edit existing files.");
+const DiffEdit = t.subtype(DiffParts);
 
 const Schema = t.subtype({
   name: t.value("edit"),
