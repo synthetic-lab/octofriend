@@ -19,6 +19,9 @@ import {
   read,
   list,
   edit,
+  append,
+  prepend,
+  rewrite,
   create as createTool,
   mcp,
   fetch as fetchTool,
@@ -402,6 +405,9 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
           <Text color={themeColor}>{fn.arguments.filePath}</Text>
           <Text>?</Text>
         </Box>
+      case "rewrite":
+      case "append":
+      case "prepend":
       case "edit":
         return <Box>
           <Text>Make these changes to </Text>
@@ -589,7 +595,20 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
     case "create": return <CreateToolRenderer item={item.tool.function} />
     case "mcp": return <McpToolRenderer item={item.tool.function} />
     case "fetch": return <FetchToolRenderer item={item.tool.function} />
+    case "append": return <AppendToolRenderer item={item.tool.function} />
+    case "prepend": return <PrependToolRenderer item={item.tool.function} />
+    case "rewrite": return <RewriteToolRenderer item={item.tool.function} />
   }
+}
+
+function AppendToolRenderer({ item }: { item: t.GetType<typeof append.Schema> }) {
+  const { filePath, text } = item.arguments;
+  const file = fsOld.readFileSync(filePath, "utf8");
+  const lines = countLines(file);
+  return <Box flexDirection="column" gap={1}>
+    <Text>Octo wants to add the following to the end of the file:</Text>
+    <FileRenderer contents={text} filePath={filePath} startLineNr={lines} />
+  </Box>
 }
 
 function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> }) {
@@ -634,45 +653,35 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
       <Text>Edit: </Text>
       <Text color={themeColor}>{item.arguments.filePath}</Text>
     </Box>
-    <EditRenderer
+    <DiffEditRenderer
       filePath={item.arguments.filePath}
-      item={item.arguments.edit}
+      item={item.arguments}
     />
   </Box>
 }
 
-function EditRenderer({ filePath, item }: {
-  filePath: string,
-  item: t.GetType<typeof edit.AllEdits>,
-}) {
-  switch(item.type) {
-    case "diff": return <DiffEditRenderer item={item} filePath={filePath}/>
-    case "append":
-      const file = fsOld.readFileSync(filePath, "utf8");
-      const lines = countLines(file);
-      return <Box flexDirection="column" gap={1}>
-        <Text>Octo wants to add the following to the end of the file:</Text>
-        <FileRenderer contents={item.text} filePath={filePath} startLineNr={lines} />
-      </Box>
-    case "prepend":
-      return <Box flexDirection="column" gap={1}>
-        <Text>Octo wants to add the following to the beginning of the file:</Text>
-        <FileRenderer contents={item.text} filePath={filePath} />
-      </Box>
-    case "rewrite-whole":
-      return <Box flexDirection="column" gap={1}>
-        <Text>Octo wants to rewrite the file:</Text>
-        <DiffRenderer
-          oldText={fsOld.readFileSync(filePath, "utf8")}
-          newText={item.text}
-          filepath={filePath}
-        />
-      </Box>
-  }
+function PrependToolRenderer({ item }: { item: t.GetType<typeof prepend.Schema> }) {
+  const { text, filePath } = item.arguments;
+  return <Box flexDirection="column" gap={1}>
+    <Text>Octo wants to add the following to the beginning of the file:</Text>
+    <FileRenderer contents={text} filePath={filePath} />
+  </Box>
+}
+
+function RewriteToolRenderer({ item }: { item: t.GetType<typeof rewrite.Schema> }) {
+  const { text, filePath } = item.arguments;
+  return <Box flexDirection="column" gap={1}>
+    <Text>Octo wants to rewrite the file:</Text>
+    <DiffRenderer
+      oldText={fsOld.readFileSync(filePath, "utf8")}
+      newText={text}
+      filepath={filePath}
+    />
+  </Box>
 }
 
 function DiffEditRenderer({ item, filePath }: {
-  item: t.GetType<typeof edit.DiffEdit>,
+  item: t.GetType<typeof edit.ArgumentsSchema>,
   filePath: string,
 }) {
   return <Box flexDirection="column">

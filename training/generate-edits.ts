@@ -32,7 +32,6 @@ export async function* genDiffs(gitDir: string): AsyncGenerator<Diff> {
         const replaceLines = getFromRange(afterLines, chunk.toFileRange);
 
         const edit: t.GetType<typeof edits.DiffEdit> = {
-          type: "diff",
           search: searchLines.join("\n"),
           replace: replaceLines.join("\n"),
         };

@@ -335,7 +335,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     } catch(e) {
       const fn = lastHistoryItem.tool.function;
       let fixed = false;
-      if(fn.name === "edit" && fn.arguments.edit.type === "diff") {
+      if(fn.name === "edit") {
         set({
           modeData: {
             mode: "diff-apply",
@@ -345,7 +345,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         const path = fn.arguments.filePath;
         try {
           const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.arguments.edit, abortController.signal);
+          const fix = await autofixEdit(config, file, fn.arguments, abortController.signal);
           if (abortController.signal.aborted) {
             set({ modeData: { mode: "input" } });
             return;
@@ -354,13 +354,13 @@ export const useAppStore = create<UiState>((set, get) => ({
             // Validate that the edit applies before marking as fixed
             await validateTool(abortController.signal, transport, {
               name: "edit",
-              arguments: {
-                filePath: fn.arguments.filePath,
-                edit: fix,
-              },
+              arguments: fix,
             }, config);
             fixed = true;
-            fn.arguments.edit = fix;
+            fn.arguments = {
+              ...fn.arguments,
+              ...fix,
+            };
           }
         } catch {}
       }
