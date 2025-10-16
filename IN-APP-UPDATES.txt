@@ -1,3 +1,4 @@
-- GLM-4.6 is out for Synthetic
-- Claude 4.5 is out for Anthropic
-- MCP server improvements
+- Improve long text pasting
+- Better text rendering performance while typing
+- Simplify text edit tooling for better LLM accuracy
+- Show byte counts during tool call streaming
