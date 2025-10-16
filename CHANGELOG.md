@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Changed
+
+- Fixed copy/pasting long amounts of text and improved typing performance
+
+- Simplify tool call formats for more-accurate editing for LLMs like the GLM
+  4.x series that internally don't produce JSON during tool streaming
+
+### Added
+
+- Show byte counts during LLM responses
+
 ## [0.0.44] - 2025-09-30
 
 ### Changed
