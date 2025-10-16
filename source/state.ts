@@ -54,6 +54,7 @@ export type UiState = {
     abortController: AbortController,
   },
   modelOverride: string | null,
+  byteCount: number,
   history: Array<HistoryItem>,
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
@@ -72,6 +73,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
   history: [],
   modelOverride: null,
+  byteCount: 0,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -227,6 +229,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const debounceTimeout = 100;
     let timeout: NodeJS.Timeout | null = null;
     let lastContent = "";
+    let byteCount = get().byteCount;
 
     const history = [ ...get().history ];
     try {
@@ -236,21 +239,20 @@ export const useAppStore = create<UiState>((set, get) => ({
         messages: toLlmIR(history),
         abortSignal: abortController.signal,
         onTokens: (tokens, type) => {
+          byteCount += tokens.length;
+
           if(type === "content") {
             content += tokens;
 
             // Skip duplicate updates
             if (content === lastContent) return;
             lastContent = content;
-
-            if (timeout) return;
-          } else {
+          } else if(type === "reasoning") {
             if(reasoningContent == null) reasoningContent = "";
             reasoningContent += tokens;
-            if(timeout) return;
           }
+          if (timeout) return;
 
-          // Schedule the UI update
           timeout = setTimeout(() => {
             set({
               modeData: {
@@ -261,8 +263,8 @@ export const useAppStore = create<UiState>((set, get) => ({
                 },
                 abortController,
               },
+              byteCount,
             });
-
             timeout = null;
           }, debounceTimeout);
         },
@@ -311,6 +313,8 @@ export const useAppStore = create<UiState>((set, get) => ({
         ],
       });
       return;
+    } finally {
+      set({ byteCount: 0 });
     }
 
     const lastHistoryItem = history[history.length - 1];

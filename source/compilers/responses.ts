@@ -231,7 +231,7 @@ export async function runResponsesAgent({
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content") => any,
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
@@ -338,7 +338,9 @@ export async function runResponsesAgent({
         break;
 
       case 'tool-call':
-        // Tool call will be handled after streaming is complete
+        // Tool call will be handled after streaming is complete; just let callers know the chunk
+        // came through
+        onTokens(`${chunk.input}`, "tool");
         break;
 
       case 'finish':

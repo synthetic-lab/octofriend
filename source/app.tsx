@@ -9,7 +9,7 @@ import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
 } from "./config.ts";
 import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
-import Loading from "./components/loading.tsx";
+import Loading  from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
@@ -194,12 +194,13 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
-  const { modeData, input, abortResponse, toggleMenu } = useAppStore(
+  const { modeData, input, abortResponse, toggleMenu, byteCount } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
       input: state.input,
       abortResponse: state.abortResponse,
       toggleMenu: state.toggleMenu,
+      byteCount: state.byteCount,
     }))
   );
 
@@ -213,6 +214,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       toggleMenu();
     }
   });
+  const color = useColor();
 
 	const onSubmit = useCallback(async () => {
 		setQuery("");
@@ -222,7 +224,15 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if(modeData.mode === "responding") {
     return <Box justifyContent="space-between">
       <Loading />
-      <Text color="gray">(Press ESC to interrupt)</Text>
+      <Box>
+        {
+          byteCount === 0 ? null : <Text color={color}>
+            ⇩ {byteCount} bytes
+          </Text>
+        }
+        <Text>{" "}</Text>
+        <Text color="gray">(Press ESC to interrupt)</Text>
+      </Box>
     </Box>;
   }
   if(modeData.mode === "error-recovery") return <Loading />;

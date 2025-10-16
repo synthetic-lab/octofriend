@@ -235,7 +235,7 @@ export async function runAgent({
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content") => any,
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
@@ -360,6 +360,7 @@ export async function runAgent({
         }
         else if(delta && "tool_calls" in delta && delta.tool_calls && delta.tool_calls.length > 0) {
           for(const deltaCall of delta.tool_calls) {
+            onTokens((deltaCall.function.name || "") + (deltaCall.function.arguments || ""), "tool");
             if(currTool == null) {
               currTool = {
                 id: deltaCall.id,

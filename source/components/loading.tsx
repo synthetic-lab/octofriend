@@ -11,6 +11,16 @@ const DEFAULT_LOADING_STRINGS = [
 	"Yearning",
 	"Calculating",
 ];
+export const LONGEST_LOADING_STRING = (() => {
+  let longest = DEFAULT_LOADING_STRINGS[0];
+  for(let i = 1; i < DEFAULT_LOADING_STRINGS.length; i++) {
+    const curr = DEFAULT_LOADING_STRINGS[i];
+    if(longest.length < curr.length) {
+      longest = curr;
+    }
+  }
+  return longest;
+})();
 
 export default function Loading({ overrideStrings }: { overrideStrings?: Array<string> }) {
 	const [ idx, setIndex ] = useState(0);

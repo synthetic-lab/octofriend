@@ -169,7 +169,7 @@ export async function runAnthropicAgent({
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content") => any,
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
@@ -316,6 +316,7 @@ export async function runAnthropicAgent({
             break;
           case "input_json_delta":
             if(inProgressTool != null && inProgressTool.index === chunk.index) {
+              onTokens(chunk.delta.partial_json, "tool");
               inProgressTool.partialJson += chunk.delta.partial_json;
             }
             break;
@@ -324,6 +325,7 @@ export async function runAnthropicAgent({
       case "content_block_start":
         switch(chunk.content_block.type) {
           case "tool_use":
+            onTokens(chunk.content_block.name, "tool");
             if(inProgressTool == null) {
               inProgressTool = {
                 id: chunk.content_block.id,

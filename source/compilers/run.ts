@@ -12,7 +12,7 @@ export async function run({
   config: Config,
   modelOverride: string | null,
   messages: LlmIR[],
-  onTokens: (t: string, type: "reasoning" | "content") => any,
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
