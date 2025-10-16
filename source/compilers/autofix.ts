@@ -5,13 +5,13 @@ import * as toolMap from "../tools/tool-defs/index.ts";
 import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "../autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
 
-type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
+type Edit = t.GetType<typeof toolMap.edit.ArgumentsSchema>;
 export async function autofixEdit(
   config: Config,
   file: string,
-  edit: DiffEdit,
+  edit: Edit,
   abortSignal: AbortSignal,
-): Promise<DiffEdit | null> {
+): Promise<Edit | null> {
   const result = await autofix(config.diffApply, config, fixEditPrompt({ file, edit }), abortSignal);
   if(result == null) return null;
   try {
@@ -20,7 +20,7 @@ export async function autofixEdit(
     const sliced = DiffApplyResponse.slice(parsed);
     if(!sliced.success) return null;
     return {
-      type: "diff",
+      ...edit,
       search: sliced.search,
       replace: edit.replace,
     };

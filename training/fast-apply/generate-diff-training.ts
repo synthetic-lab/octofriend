@@ -135,7 +135,6 @@ function cutAmbiguous(diff: Diff): BreakResponse {
     diff: {
       file: diff.file,
       edit: {
-        type: "diff",
         search: cut,
         replace: diff.edit.replace,
       },
@@ -151,7 +150,6 @@ function breakEditMessages(edit: Diff): BreakResponse {
     brokenEdit = {
       file: edit.file,
       edit: {
-        type: "diff",
         search: breakSearchStringRandomly(brokenEdit.edit, brokenEdit.file),
         replace: edit.edit.replace,
       },

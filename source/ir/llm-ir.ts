@@ -286,6 +286,9 @@ function collapseToIR(
   if(item.type === "tool-output") {
     return assertPrevAssistantToolCall("tool-output", item, prev, prev => {
       switch(prev.toolCall.function.name) {
+        case "append":
+        case "prepend":
+        case "rewrite":
         case "edit":
         case "create":
         case "read": return [
