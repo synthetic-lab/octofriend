@@ -14,7 +14,7 @@ import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
+import { PaymentError, RateLimitError, errorToString, buildCurlCommandString } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -42,6 +42,7 @@ export type UiState = {
   } | {
     mode: "request-error",
     error: string,
+    curlCommand: string | null,
   } | {
     mode: "diff-apply",
     abortController: AbortController,
@@ -63,6 +64,7 @@ export type UiState = {
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
   retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
+  generateLatestCurlString: (args: RunArgs) => string,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -93,6 +95,22 @@ export const useAppStore = create<UiState>((set, get) => ({
   retryFrom: async (mode, args) => {
     if(get().modeData.mode === mode) {
       await get()._runAgent(args);
+    }
+  },
+
+  generateLatestCurlString: ({ config }) => {
+    try {
+      const history = [ ...get().history ];
+      const messages = toLlmIR(history);
+      const modelConfig = getModelFromConfig(config, get().modelOverride);
+
+      return buildCurlCommandString({
+        baseURL: modelConfig.baseUrl,
+        model: modelConfig.model,
+        messages,
+      });
+    } catch(err) {
+      return "Failed to generate curl command";
     }
   },
 
@@ -299,10 +317,13 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
 
       logger.error("verbose", e);
+      // Generate cURL Command as a string for user to copy
+      const curlCommand = get().generateLatestCurlString({ config, transport });
       set({
         modeData: {
           mode: "request-error",
           error: errorToString(e),
+          curlCommand,
         },
         history: [
           ...get().history,
