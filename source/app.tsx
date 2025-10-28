@@ -334,9 +334,9 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
     if(item.value === "view") {
       setViewError(true);
     }
-    else if(item.value === "copy-curl" && curlCommand) {
+    else if(item.value === "copy-curl") {
       setCopiedCurl(true);
-      clipboardy.writeSync(curlCommand);
+      clipboardy.writeSync(curlCommand || "Failed to generate cURL command");
     }
     else if(item.value === "retry") {
       retryFrom("request-error", { config, transport });
