@@ -5,13 +5,14 @@ import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
 import { systemPrompt } from "../system-prompt.ts";
-import { LlmIR, OutputIR, AssistantMessage } from "../ir/llm-ir.ts";
+import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
+import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
@@ -225,6 +226,36 @@ async function modelMessageFromIr(
   };
 }
 
+// TODO: More specific headers needed
+function generateCurlFrom(params: {
+  baseURL: string;
+  model: string;
+  messages: Array<ModelMessage>;
+  tools: Record<string, any>;
+  reasoningConfig: {
+    reasoningEffort?: "low" | "medium" | "high",
+    reasoningSummary?: "auto",
+  };
+}): string {
+  const { baseURL, model, messages, reasoningConfig } = params;
+
+  const requestBody = {
+    model,
+    messages,
+    stream: true,
+    ...reasoningConfig,
+    store: false,
+    include: [ "reasoning.encrypted_content" ],
+  };
+
+  const jsonBody = JSON.stringify(requestBody)
+
+  return `curl -X POST '${baseURL}/responses' \\
+  -H 'Content-Type: application/json' \\
+  -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
+  -d '${jsonBody}'`;
+}
+
 export async function runResponsesAgent({
   config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
@@ -236,7 +267,7 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-}): Promise<OutputIR[]> {
+}): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(
     transport,
@@ -273,151 +304,172 @@ export async function runResponsesAgent({
     reasoningConfig.reasoningSummary = "auto";
   }
 
-  const apiKey = await assertKeyForModel(modelConfig, config);
-  const openai = createOpenAI({
-    baseURL: modelConfig.baseUrl,
-    apiKey,
-  });
+  try {
+    const apiKey = await assertKeyForModel(modelConfig, config);
+    const openai = createOpenAI({
+      baseURL: modelConfig.baseUrl,
+      apiKey,
+    });
 
-  const result = streamText({
-    model: openai.responses(modelConfig.model),
-    messages, tools,
-    abortSignal,
-    providerOptions: {
-      openai: {
-        ...reasoningConfig,
-        store: false,
-        include: [ "reasoning.encrypted_content" ],
+    const result = streamText({
+      model: openai.responses(modelConfig.model),
+      messages, tools,
+      abortSignal,
+      providerOptions: {
+        openai: {
+          ...reasoningConfig,
+          store: false,
+          include: [ "reasoning.encrypted_content" ],
+        },
       },
-    },
-  });
+    });
 
-  let content = "";
-  let reasoningId: string | undefined = undefined;
-  let reasoningContent: string | undefined = undefined;
-  let usage = {
-    input: 0,
-    output: 0,
-    reasoning: 0,
-  };
-  let encryptedReasoningContent: string | undefined = undefined;
+    let content = "";
+    let reasoningId: string | undefined = undefined;
+    let reasoningContent: string | undefined = undefined;
+    let usage = {
+      input: 0,
+      output: 0,
+      reasoning: 0,
+    };
+    let encryptedReasoningContent: string | undefined = undefined;
 
-  // Handle streaming chunks
-  for await (const chunk of result.fullStream) {
-    if (abortSignal.aborted) break;
+    // Handle streaming chunks
+    for await (const chunk of result.fullStream) {
+      if (abortSignal.aborted) break;
 
-    switch (chunk.type) {
-      case 'text-delta':
-        if (chunk.text) {
-          content += chunk.text;
-          onTokens(chunk.text, "content");
-        }
-        break;
+      switch (chunk.type) {
+        case 'text-delta':
+          if (chunk.text) {
+            content += chunk.text;
+            onTokens(chunk.text, "content");
+          }
+          break;
 
-      case 'reasoning-start':
-        break;
+        case 'reasoning-start':
+          break;
 
-      case 'reasoning-delta':
-        if(chunk.text) {
-          if (reasoningContent == null) reasoningContent = "";
-          reasoningContent += chunk.text;
-          onTokens(chunk.text, "reasoning");
-        }
-        break;
+        case 'reasoning-delta':
+          if(chunk.text) {
+            if (reasoningContent == null) reasoningContent = "";
+            reasoningContent += chunk.text;
+            onTokens(chunk.text, "reasoning");
+          }
+          break;
 
-      case "reasoning-end":
-        const openai = chunk.providerMetadata ? chunk.providerMetadata["openai"] : {};
-        const encrypted = openai["reasoningEncryptedContent"];
-        if(encrypted && typeof encrypted === "string") {
-          encryptedReasoningContent = encrypted;
-        }
-        const itemId = openai["itemId"];
-        if(itemId && typeof itemId === "string") {
-          reasoningId = itemId;
-        }
-        break;
+        case "reasoning-end":
+          const openai = chunk.providerMetadata ? chunk.providerMetadata["openai"] : {};
+          const encrypted = openai["reasoningEncryptedContent"];
+          if(encrypted && typeof encrypted === "string") {
+            encryptedReasoningContent = encrypted;
+          }
+          const itemId = openai["itemId"];
+          if(itemId && typeof itemId === "string") {
+            reasoningId = itemId;
+          }
+          break;
 
-      case 'tool-call':
-        // Tool call will be handled after streaming is complete; just let callers know the chunk
-        // came through
-        onTokens(`${chunk.input}`, "tool");
-        break;
+        case 'tool-call':
+          // Tool call will be handled after streaming is complete; just let callers know the chunk
+          // came through
+          onTokens(`${chunk.input}`, "tool");
+          break;
 
-      case 'finish':
-        if (chunk.totalUsage) {
-          usage.input = chunk.totalUsage.inputTokens || 0;
-          usage.output = chunk.totalUsage.outputTokens || 0;
-          usage.reasoning = chunk.totalUsage.reasoningTokens || 0;
-        }
-        break;
+        case 'finish':
+          if (chunk.totalUsage) {
+            usage.input = chunk.totalUsage.inputTokens || 0;
+            usage.output = chunk.totalUsage.outputTokens || 0;
+            usage.reasoning = chunk.totalUsage.reasoningTokens || 0;
+          }
+          break;
+      }
     }
-  }
 
-  // Track usage
-  if(usage.input !== 0 || usage.output !== 0) {
-    trackTokens(modelConfig.model, "input", usage.input);
-    trackTokens(modelConfig.model, "output", usage.output);
-    trackTokens(modelConfig.model, "output", usage.reasoning);
-  }
-
-  // Calculate token usage delta
-  let tokenDelta = 0;
-  if(usage.input !== 0 || usage.output !== 0) {
-    if(!abortSignal.aborted) {
-      const previousTokens = countIRTokens(windowedIR.ir);
-      tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
+    // Track usage
+    if(usage.input !== 0 || usage.output !== 0) {
+      trackTokens(modelConfig.model, "input", usage.input);
+      trackTokens(modelConfig.model, "output", usage.output);
+      trackTokens(modelConfig.model, "output", usage.reasoning);
     }
+
+    // Calculate token usage delta
+    let tokenDelta = 0;
+    if(usage.input !== 0 || usage.output !== 0) {
+      if(!abortSignal.aborted) {
+        const previousTokens = countIRTokens(windowedIR.ir);
+        tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
+      }
+    }
+
+    let openaiSpecific = {};
+    if(reasoningId || encryptedReasoningContent) {
+      openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
+    }
+    const assistantHistoryItem: AssistantMessage = {
+      role: "assistant",
+      content, reasoningContent,
+      ...openaiSpecific,
+      tokenUsage: tokenDelta,
+      outputTokens: usage.output,
+    };
+
+    // If aborted, don't try to parse tool calls
+    if(abortSignal.aborted) {
+      return { success: true, output: [ assistantHistoryItem ] };
+    }
+
+    // Get tool calls
+    const toolCalls = await result.toolCalls;
+    if(toolCalls == null || toolCalls.length === 0) {
+      return { success: true, output: [ assistantHistoryItem ] };
+    }
+
+    const firstToolCall = toolCalls[0];
+    const chatToolCall = {
+      toolCallId: firstToolCall.toolCallId,
+      toolName: firstToolCall.toolName,
+      args: firstToolCall.input,
+    }
+    const parseResult = await parseResponsesTool(
+      chatToolCall,
+      config,
+      onAutofixJson,
+      abortSignal,
+    );
+
+    if(parseResult.status === "error") {
+      return {
+        success: true,
+        output: [
+          assistantHistoryItem,
+          {
+            role: "tool-malformed",
+            error: parseResult.message,
+            toolName: firstToolCall.toolName,
+            arguments: JSON.stringify(firstToolCall.input),
+            toolCallId: firstToolCall.toolCallId,
+          },
+        ]
+      };
+    }
+
+    assistantHistoryItem.toolCall = parseResult.tool;
+    return { success: true, output: [ assistantHistoryItem ] };
+  } catch (e) {
+    const curl = generateCurlFrom({
+      baseURL: modelConfig.baseUrl,
+      model: modelConfig.model,
+      messages,
+      tools,
+      reasoningConfig,
+    });
+
+    return {
+      success: false,
+      requestError: errorToString(e),
+      curl,
+    };
   }
-
-  let openaiSpecific = {};
-  if(reasoningId || encryptedReasoningContent) {
-    openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
-  }
-  const assistantHistoryItem: AssistantMessage = {
-    role: "assistant",
-    content, reasoningContent,
-    ...openaiSpecific,
-    tokenUsage: tokenDelta,
-    outputTokens: usage.output,
-  };
-
-  // If aborted, don't try to parse tool calls
-  if(abortSignal.aborted) return [ assistantHistoryItem ];
-
-  // Get tool calls
-  const toolCalls = await result.toolCalls;
-  if(toolCalls == null || toolCalls.length === 0) {
-    return [ assistantHistoryItem ];
-  }
-
-  const firstToolCall = toolCalls[0];
-  const chatToolCall = {
-    toolCallId: firstToolCall.toolCallId,
-    toolName: firstToolCall.toolName,
-    args: firstToolCall.input,
-  }
-  const parseResult = await parseResponsesTool(
-    chatToolCall,
-    config,
-    onAutofixJson,
-    abortSignal,
-  );
-
-  if(parseResult.status === "error") {
-    return [
-      assistantHistoryItem,
-      {
-        role: "tool-malformed",
-        error: parseResult.message,
-        toolName: firstToolCall.toolName,
-        arguments: JSON.stringify(firstToolCall.input),
-        toolCallId: firstToolCall.toolCallId,
-      },
-    ];
-  }
-
-  assistantHistoryItem.toolCall = parseResult.tool;
-  return [ assistantHistoryItem ];
 }
 
 type ParseToolResult = {

@@ -222,6 +222,11 @@ bench.command("tps")
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });
+  if (!result.success) {
+    console.error(result.requestError);
+    console.error(`cURL: ${result.curl}`)
+    process.exit(1);
+  }
 
   clearInterval(timer);
   const end = new Date();
@@ -235,7 +240,7 @@ bench.command("tps")
   const ttft = first.getTime() - start.getTime();
   const tokenElapsed = end.getTime() - first.getTime();
 
-  const firstResult = result[0];
+  const firstResult = result.output[0];
   if(firstResult.role !== "assistant") throw new Error("No assistant response");
   const tokens = firstResult.outputTokens;
   const seconds = tokenElapsed/1000;

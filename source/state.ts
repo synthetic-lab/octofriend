@@ -14,7 +14,7 @@ import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError, errorToString, buildCurlCommandString } from "./errors.ts";
+import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -64,7 +64,7 @@ export type UiState = {
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
   retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
-  generateLatestCurlString: (args: RunArgs) => string,
+  generateCurlFrom: (args: RunArgs) => string,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -98,17 +98,23 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  generateLatestCurlString: ({ config }) => {
+  generateCurlFrom: ({ config }) => {
     try {
       const history = [ ...get().history ];
       const messages = toLlmIR(history);
-      const modelConfig = getModelFromConfig(config, get().modelOverride);
+      const { model, baseUrl} = getModelFromConfig(config, get().modelOverride);
 
-      return buildCurlCommandString({
-        baseURL: modelConfig.baseUrl,
-        model: modelConfig.model,
+      const requestBody = {
+        model,
         messages,
-      });
+      };
+
+      const jsonBody = JSON.stringify(requestBody);
+
+      return `curl -X POST '${baseUrl}' \\
+      -H 'Content-Type: application/json' \\
+      -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
+      -d '${jsonBody}'`;
     } catch(err) {
       return "Failed to generate curl command";
     }
@@ -251,7 +257,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const history = [ ...get().history ];
     try {
-      const newMessages = await run({
+      const result = await run({
         config, transport,
         modelOverride: get().modelOverride,
         messages: toLlmIR(history),
@@ -291,7 +297,27 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       if(timeout) clearTimeout(timeout);
-      history.push(...outputToHistory(newMessages));
+
+      // Successful result has an output with the OutputIR
+      // Failed result has the requestError and associated curl
+      if (result.success) {
+        history.push(...outputToHistory(result.output));
+      } else {
+        set({
+          modeData: {
+            mode: "request-error",
+            error: result.requestError,
+            curlCommand: result.curl,
+          },
+          history: [
+            ...get().history,
+            {
+              type: "request-failed",
+              id: sequenceId(),
+            },
+          ],
+        });
+      }
     } catch(e) {
       if(abortController.signal.aborted) {
         // Handle abort gracefully - return to input mode
@@ -318,7 +344,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       logger.error("verbose", e);
       // Generate cURL Command as a string for user to copy
-      const curlCommand = get().generateLatestCurlString({ config, transport });
+      const curlCommand = get().generateCurlFrom({ config, transport });
       set({
         modeData: {
           mode: "request-error",

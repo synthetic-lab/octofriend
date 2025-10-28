@@ -36,27 +36,3 @@ export function errorToString(error: unknown): string {
   // Fallback for null/undefined/everything else
   return String(error);
 }
-
-// Used for support on failed requests
-export function buildCurlCommandString(params: {
-  baseURL: string;
-  model: string;
-  messages: any[];
-}): string {
-  const { baseURL, model, messages } = params;
-
-  // Redact API key for security
-  const REDACTED_API_KEY = "[REDACTED_API_KEY]";
-
-  const requestBody = {
-    model,
-    messages,
-  };
-
-  const jsonBody = JSON.stringify(requestBody);
-
-  return `curl -X POST '${baseURL}' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer ${REDACTED_API_KEY}' \\
-  -d '${jsonBody}'`;
-}
