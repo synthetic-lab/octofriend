@@ -4,7 +4,7 @@ import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import { ToolCallRequestSchema, ToolMalformedItem } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
@@ -87,7 +87,7 @@ JSON`;
 
 async function toLlmMessages(
   messages: LlmIR[],
-  appliedWindow: boolean,
+  systemPromptData: SystemPromptData,
   config: Config,
   transport: Transport,
   signal: AbortSignal,
@@ -115,9 +115,7 @@ async function toLlmMessages(
   if(!skipSystemPrompt) {
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow, config, transport, signal
-      }),
+      content: await systemPrompt(systemPromptData, config, transport, signal),
     });
   }
 
@@ -216,6 +214,13 @@ Please try again.`.trim())}`,
     }
   }
 
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "user",
+      content: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
+    };
+  }
+
   const _: "file-unreadable" = ir.role;
 
   return {
@@ -268,7 +273,7 @@ async function handleKnownErrors(params: {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
@@ -278,12 +283,20 @@ export async function runAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const model = getModelFromConfig(config, modelOverride);
 
+  const systemPromptData: SystemPromptData = {
+    appliedWindow: windowedIR.appliedWindow,
+    appliedCompaction,
+    compactSummary,
+  };
+  
   const messages = await toLlmMessages(
     windowedIR.ir,
-    windowedIR.appliedWindow,
+    systemPromptData,
     config,
     transport,
     abortSignal,

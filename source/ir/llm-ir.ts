@@ -78,6 +78,11 @@ export type FileUnreadableMessage = {
   toolCall: ToolCallRequest,
 }
 
+export type CompactionCheckpoint = {
+  role: "compaction-checkpoint",
+  summary: string,
+};
+
 export type LlmIR = AssistantMessage
                   | UserMessage
                   | ToolOutputMessage
@@ -88,6 +93,7 @@ export type LlmIR = AssistantMessage
                   | FileOutdatedMessage
                   | FileUnreadableMessage
                   | FileToolMessage
+                  | CompactionCheckpoint
                   ;
 
 export type OutputIR = AssistantMessage
@@ -196,8 +202,8 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
 }
 
 function lowerItem(item: HistoryItem): LoweredHistory | null {
-  if(item.type !== "request-failed" && item.type !== "notification") return item;
-  return null;
+  if(item.type === "request-failed" || item.type === "notification" || item.type === "compaction-checkpoint") return null;
+  return item;
 }
 
 // Given a previous LLM message (if one exists) in the conversation, a history item, and the latest

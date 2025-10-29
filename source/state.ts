@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
+import { generateCompactionSummary } from "./compilers/autocompact.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, sequenceId } from "./history.ts";
 import {
   runTool,
   validateTool,
@@ -225,6 +226,30 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   _runAgent: async ({ config, transport }) => {
+    // Check if we should autocompact
+    const historyCopy = [ ...get().history ];
+    const messages = toLlmIR(historyCopy);
+    
+    // Simple autocompact check: if we have >20 messages, autocompact
+    if (messages.length > 50000) {
+      console.log("Messages length: ", messages.length)
+      try {
+        const checkpointSummary = await generateCompactionSummary(messages, config, transport);
+        if (checkpointSummary) {
+          const checkpointItem: CompactionCheckpointItem = {
+            type: "compaction-checkpoint",
+            id: sequenceId(),
+            summary: checkpointSummary,
+          };
+          historyCopy.push(checkpointItem);
+          set({ history: historyCopy });
+        }
+      } catch (e) {
+        // If compaction fails, continue without it
+        console.error("Autocompaction failed:", e);
+      }
+    }
+    
     let content = "";
     let reasoningContent: undefined | string = undefined;
 

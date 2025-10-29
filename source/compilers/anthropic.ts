@@ -6,7 +6,7 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
@@ -149,6 +149,13 @@ async function modelMessageFromIr(
     };
   }
 
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "user",
+      content: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
+    };
+  }
+
   // file-unreadable case
   const _: "file-unreadable" = ir.role;
   return {
@@ -200,7 +207,7 @@ JSON`;
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
@@ -210,14 +217,17 @@ export async function runAnthropicAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
-  const sysPrompt = await systemPrompt({
+  const systemPromptData: SystemPromptData = {
     appliedWindow: windowedIR.appliedWindow,
-    config, transport,
-    signal: abortSignal,
-  });
+    appliedCompaction,
+    compactSummary,
+  };
+  const sysPrompt = await systemPrompt(systemPromptData, config, transport, abortSignal);
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {

@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import json5 from "json5";
 import create from "../../source/tools/tool-defs/create.ts";
 import { fileURLToPath } from "url";
-import { fixJsonPrompt, JsonFixResponse } from "../../source/autofix-prompts.ts";
+import { fixJsonPrompt, JsonFixResponse } from "../../source/prompts/autofix-prompts.ts";
 import { genDiffs } from "../generate-edits.ts";
 import { cutIndex, insertAt } from "../str.ts";
 import { randomIndex, pickRandom, zeroToN, percentChance, randomLowercase } from "../random.ts";

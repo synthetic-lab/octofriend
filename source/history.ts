@@ -99,6 +99,11 @@ export type Notification = SequenceIdTagged<{
   content: string,
 }>;
 
+export type CompactionCheckpointItem = SequenceIdTagged<{
+  type: "compaction-checkpoint",
+  summary: string,
+}>;
+
 export type HistoryItem = UserItem
                         | AssistantItem
                         | ToolCallItem
@@ -110,6 +115,7 @@ export type HistoryItem = UserItem
                         | FileUnreadableItem
                         | RequestFailed
                         | Notification
+                        | CompactionCheckpointItem
                         ;
 
 let monotonicGuid = 0n;
