@@ -18,6 +18,7 @@ type MenuMode = "main-menu"
               | "add-model"
               | "diff-apply-toggle"
               | "fix-json-toggle"
+              | "autocompaction-toggle"
               | "set-default-model"
               | "quit-confirm"
               | "remove-model"
@@ -47,6 +48,7 @@ export function Menu() {
   if(menuMode === "remove-model") return <RemoveModelMenu />
   if(menuMode === "diff-apply-toggle") return <DiffApplyToggle />
   if(menuMode === "fix-json-toggle") return <FixJsonToggle />
+  if(menuMode === "autocompaction-toggle") return <AutocompactionToggle />
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />
 }
@@ -161,6 +163,65 @@ function FixJsonToggle() {
   </AutofixToggle>
 }
 
+function AutocompactionToggle() {
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(useShallow(state => ({
+    setMenuMode: state.setMenuMode,
+  })));
+  const { toggleMenu, notify } = useAppStore(useShallow(state => ({
+    toggleMenu: state.toggleMenu,
+    notify: state.notify,
+  })));
+
+  useInput((_, key) => {
+    if(key.escape) setMenuMode("main-menu");
+  });
+
+  if(config.autoCompact) {
+    return <ConfirmDialog
+      rejectLabel="Disable autocompaction"
+      confirmLabel="Keep autocompaction on (recommended)"
+      onReject={async () => {
+        const newconf = { ...config };
+        delete newconf.autoCompact;
+        await setConfig(newconf);
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("Autocompaction disabled");
+      }}
+      onConfirm={() => {
+        setMenuMode("main-menu");
+      }}
+    />
+  }
+  return <ConfirmDialog
+    rejectLabel="Cancel"
+    confirmLabel="Enable autocompaction"
+    onReject={() => {
+      setMenuMode("main-menu");
+    }}
+    onConfirm={async () => {
+      await setConfig({
+        ...config,
+        autoCompact: {
+          enabled: true,
+          contextThreshold: 100,
+        },
+      });
+      setMenuMode("main-menu");
+      toggleMenu();
+      notify("Autocompaction enabled");
+    }}
+  >
+    <Text>
+      Autocompaction automatically manages your conversation history to keep context manageable for
+      models. When enabled, Octo will automatically compact older conversation turns when the context
+      length exceeds the threshold, helping maintain model performance and preventing context overflow errors.
+    </Text>
+  </ConfirmDialog>
+}
+
 function SwitchModelMenu() {
   const { setModelOverride, toggleMenu } = useAppStore(useShallow(state => ({
     setModelOverride: state.setModelOverride,
@@ -248,12 +309,17 @@ const SETTINGS_ITEMS = [
     label: "Disable auto-fixing JSON tool calls",
     value: "disable-fix-json" as const,
   },
+  {
+    label: "Disable autocompaction",
+    value: "disable-autocompaction" as const,
+  },
 ];
 function filterSettings(config: Config) {
   let items = SETTINGS_ITEMS.concat([]);
   items = items.filter(item => {
     if(config.diffApply == null && item.value === "disable-diff-apply") return false;
     if(config.fixJson == null && item.value === "disable-fix-json") return false;
+    if(config.autoCompact == null && item.value === "disable-autocompaction") return false;
     return true;
   });
 
@@ -295,6 +361,10 @@ function MainMenu() {
       value: "fix-json-toggle" as const,
     },
     {
+      label: "📚 Enable autocompaction",
+      value: "autocompaction-toggle" as const,
+    },
+    {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
@@ -323,6 +393,7 @@ function MainMenu() {
   items = items.filter(item => {
     if(config.diffApply != null && item.value === "diff-apply-toggle") return false;
     if(config.fixJson != null && item.value === "fix-json-toggle") return false;
+    if(config.autoCompact != null && item.value === "autocompaction-toggle") return false;
     return true;
   });
 
@@ -373,6 +444,7 @@ function SettingsMenu() {
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if(item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
+    else if(item.value === "disable-autocompaction") setMenuMode("autocompaction-toggle");
     else if(item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
 	}, []);
