@@ -4,7 +4,7 @@ import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import { ToolCallRequestSchema, ToolMalformedItem } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
