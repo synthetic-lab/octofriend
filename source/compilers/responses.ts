@@ -242,8 +242,6 @@ function generateCurlFrom(params: {
     include: [ "reasoning.encrypted_content" ],
   };
 
-  const jsonBody = JSON.stringify(requestBody)
-
   return `curl -X POST '${baseURL}/responses' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
