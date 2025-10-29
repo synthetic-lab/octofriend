@@ -269,11 +269,11 @@ export async function runAgent({
 
       return {
         type: "function" as const,
-        strict: true,
         function: {
           name: name,
           description: `The ${name} tool`,
           parameters: argJsonSchema,
+          strict: true,
         },
       };
     });
