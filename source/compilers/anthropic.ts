@@ -6,7 +6,7 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
