@@ -4,7 +4,7 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -15,11 +15,12 @@ import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 
+
 async function toModelMessage(
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
-  appliedWindow: boolean,
+  systemPromptData: SystemPromptData,
   config: Config,
   skipSystemPrompt: boolean,
 ): Promise<Array<ModelMessage>> {
@@ -45,10 +46,7 @@ async function toModelMessage(
     // Add system message
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow,
-        config, transport, signal,
-      }),
+      content: await systemPrompt(systemPromptData, config, transport, signal),
     });
   }
 
@@ -209,21 +207,42 @@ async function modelMessageFromIr(
     };
   }
 
-  const _: "file-unreadable" = ir.role;
-  return {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: ir.toolCall.toolCallId,
-        toolName: ir.toolCall.function.name,
-        output: {
-          type: "text",
-          value: `File ${(ir as any).path} could not be read. Has it been deleted?`,
-        },
-      }
-    ],
-  };
+  if(ir.role === "file-unreadable") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: ir.toolCall.toolCallId,
+          toolName: ir.toolCall.function.name,
+          output: {
+            type: "text",
+            value: `File ${ir.path} could not be read. Has it been deleted?`,
+          },
+        }
+      ],
+    };
+  }
+
+  // compaction-checkpoint case
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "__system__",
+          toolName: "system",
+          output: {
+            type: "text",
+            value: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
+          },
+        }
+      ],
+    };
+  }
+
+  throw new Error(`Unknown IR type: ${(ir as LlmIR).role}`);
 }
 
 function generateCurlFrom(params: {
@@ -251,7 +270,7 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
@@ -261,13 +280,21 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
+  const systemPromptData: SystemPromptData = {
+    appliedWindow: windowedIR.appliedWindow,
+    appliedCompaction,
+    compactSummary,
+  };
+  
   const messages = await toModelMessage(
     transport,
     abortSignal,
     windowedIR.ir,
-    windowedIR.appliedWindow,
+    systemPromptData,
     config,
     !!skipSystemPrompt,
   );
