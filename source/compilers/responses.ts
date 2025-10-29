@@ -226,24 +226,18 @@ async function modelMessageFromIr(
   };
 }
 
-// TODO: More specific headers needed
 function generateCurlFrom(params: {
   baseURL: string;
   model: string;
   messages: Array<ModelMessage>;
   tools: Record<string, any>;
-  reasoningConfig: {
-    reasoningEffort?: "low" | "medium" | "high",
-    reasoningSummary?: "auto",
-  };
 }): string {
-  const { baseURL, model, messages, reasoningConfig } = params;
+  const { baseURL, model, messages } = params;
 
   const requestBody = {
     model,
-    messages,
+    input: messages,
     stream: true,
-    ...reasoningConfig,
     store: false,
     include: [ "reasoning.encrypted_content" ],
   };
@@ -253,7 +247,9 @@ function generateCurlFrom(params: {
   return `curl -X POST '${baseURL}/responses' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
-  -d '${jsonBody}'`;
+  -d @- <<'JSON'
+${JSON.stringify(requestBody)}
+JSON`;
 }
 
 export async function runResponsesAgent({
@@ -461,7 +457,6 @@ export async function runResponsesAgent({
       model: modelConfig.model,
       messages,
       tools,
-      reasoningConfig,
     });
 
     return {

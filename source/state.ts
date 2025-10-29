@@ -64,7 +64,6 @@ export type UiState = {
   toggleMenu: () => void,
   setModelOverride: (m: string) => void,
   retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
-  generateCurlFrom: (args: RunArgs) => string,
   notify: (notif: string) => void,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -95,28 +94,6 @@ export const useAppStore = create<UiState>((set, get) => ({
   retryFrom: async (mode, args) => {
     if(get().modeData.mode === mode) {
       await get()._runAgent(args);
-    }
-  },
-
-  generateCurlFrom: ({ config }) => {
-    try {
-      const history = [ ...get().history ];
-      const messages = toLlmIR(history);
-      const { model, baseUrl} = getModelFromConfig(config, get().modelOverride);
-
-      const requestBody = {
-        model,
-        messages,
-      };
-
-      const jsonBody = JSON.stringify(requestBody);
-
-      return `curl -X POST '${baseUrl}' \\
-      -H 'Content-Type: application/json' \\
-      -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
-      -d '${jsonBody}'`;
-    } catch(err) {
-      return "Failed to generate curl command";
     }
   },
 
@@ -317,6 +294,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             },
           ],
         });
+        return;
       }
     } catch(e) {
       if(abortController.signal.aborted) {
@@ -343,22 +321,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
 
       logger.error("verbose", e);
-      // Generate cURL Command as a string for user to copy
-      const curlCommand = get().generateCurlFrom({ config, transport });
-      set({
-        modeData: {
-          mode: "request-error",
-          error: errorToString(e),
-          curlCommand,
-        },
-        history: [
-          ...get().history,
-          {
-            type: "request-failed",
-            id: sequenceId(),
-          },
-        ],
-      });
       return;
     } finally {
       set({ byteCount: 0 });

@@ -164,7 +164,6 @@ async function modelMessageFromIr(
   };
 }
 
-// TODO: More specific headers needed
 function generateCurlFrom(params: {
   baseURL: string;
   model: string;
@@ -186,17 +185,18 @@ function generateCurlFrom(params: {
     max_tokens: maxTokens,
     stream: true,
   };
-  const jsonBody = JSON.stringify(requestBody);
 
   // Curl requests need an API Version
   // Currently hardcoded in Anthropic SDK
   const ANTHROPIC_API_VERSION  = "2023-06-01"
 
-  return `curl -X POST '${baseURL}/v1/messages' \\
-  -H 'Content-Type: application/json' \\
-  -H 'x-api-key: [REDACTED_API_KEY]' \\
-  -H 'anthropic-version: ${ANTHROPIC_API_VERSION}' \\
-  -d '${jsonBody}'`;
+  return `curl -X POST "${baseURL}/v1/messages" \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-key: [REDACTED_API_KEY]" \\
+  -H "anthropic-version: ${ANTHROPIC_API_VERSION}" \\
+  -d @- <<'JSON'
+${JSON.stringify(requestBody)}
+JSON`;
 }
 
 export async function runAnthropicAgent({

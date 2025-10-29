@@ -58,7 +58,6 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
 const TOOL_ERROR_TAG = "tool-error";
 
-// TODO: More specific headers needed
 function generateCurlFrom(params: {
   baseURL: string;
   model: string;
@@ -77,12 +76,12 @@ function generateCurlFrom(params: {
     },
   };
 
-  const jsonBody = JSON.stringify(requestBody)
-
   return `curl -X POST '${baseURL}/chat/completions' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
-  -d '${jsonBody}'`;
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer [REDACTED_API_KEY]" \\
+  -d @- <<'JSON'
+${JSON.stringify(requestBody)}
+JSON`;
 }
 
 
