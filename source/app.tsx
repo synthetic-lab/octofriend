@@ -302,6 +302,7 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
 
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
 
   const items = [
     {
@@ -335,8 +336,12 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
       setViewError(true);
     }
     else if(item.value === "copy-curl") {
-      setCopiedCurl(true);
-      clipboardy.writeSync(curlCommand || "Failed to generate cURL command");
+      try {
+        clipboardy.writeSync(curlCommand || "Failed to generate cURL command");
+        setCopiedCurl(true);
+      } catch (error) {
+        setClipboardError(error instanceof Error ? error.message : "Failed to copy to clipboard");
+      }
     }
     else if(item.value === "retry") {
       retryFrom("request-error", { config, transport });
@@ -362,6 +367,13 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
       copiedCurl && <Box marginY={1}>
         <Text>
           { curlCommand }
+        </Text>
+      </Box>
+    }
+    {
+      clipboardError && <Box marginY={1}>
+        <Text color="red">
+          { clipboardError }
         </Text>
       </Box>
     }
