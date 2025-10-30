@@ -14,6 +14,7 @@ import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from "../state.ts";
 
 export type UserMessage = {
   role: "user";
@@ -156,6 +157,12 @@ async function llmFromIr(
   if(ir.role === "user") {
     return ir;
   }
+  if(ir.role === "compact-summary") {
+    return {
+      role: "assistant",
+      content: ir.content,
+    };
+  }
   if(ir.role === "tool-output") {
     return {
       role: "tool",
@@ -268,13 +275,13 @@ async function handleKnownErrors(params: {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
@@ -480,7 +487,7 @@ export async function runAgent({
         };
       }
 
-      const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
+      const parseResult = await parseTool(validatedTool, config, onActivity, abortSignal);
 
       if(parseResult.status === "error") {
         return {
@@ -533,7 +540,7 @@ function validToolNames(config: Config) {
 async function parseTool(
   toolCall: ResponseToolCall,
   config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.function.name;
@@ -557,7 +564,7 @@ Please try calling a valid tool.
 
   if(err) {
     const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
-    onAutofixJson(fixPromise.then(() => {}));
+    onActivity("fix-json", fixPromise.then(() => {}));
     const fixResponse = await fixPromise;
     if(!fixResponse.success) {
       return {
@@ -576,7 +583,7 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      onActivity("fix-json", fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {

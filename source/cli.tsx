@@ -223,7 +223,7 @@ bench.command("tps")
       tokenTimestamps.push(now);
       if(firstToken == null) firstToken = now;
     },
-    onAutofixJson: () => {},
+    onActivity: () => {},
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });
