@@ -3,6 +3,7 @@ import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
+import clipboardy from "clipboardy";
 import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
 import {
@@ -263,7 +264,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     return <RateLimitErrorScreen error={modeData.error}/>
   }
   if(modeData.mode === "request-error") {
-    return <RequestErrorScreen error={modeData.error}/>
+    return <RequestErrorScreen error={modeData.error} curlCommand={modeData.curlCommand}/>
   }
 
   if(modeData.mode === "tool-request") {
@@ -289,7 +290,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   </Box>
 }
 
-function RequestErrorScreen({ error }: { error: string }) {
+function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand: string | null }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const { retryFrom } = useAppStore(
@@ -300,12 +301,23 @@ function RequestErrorScreen({ error }: { error: string }) {
   const { exit } = useApp();
 
   const [viewError, setViewError] = useState(false);
+  const [copiedCurl, setCopiedCurl] = useState(false);
+  const [clipboardError, setClipboardError] = useState<string | null>(null);
 
   const items = [
     {
       label: "View error",
       value: "view" as const,
     },
+    ... (
+      curlCommand ? 
+      [
+        {
+          label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
+          value: "copy-curl" as const,
+        }
+      ] : []
+    ),
     {
       label: "Retry",
       value: "retry" as const,
@@ -323,6 +335,14 @@ function RequestErrorScreen({ error }: { error: string }) {
     if(item.value === "view") {
       setViewError(true);
     }
+    else if(item.value === "copy-curl") {
+      try {
+        clipboardy.writeSync(curlCommand || "Failed to generate cURL command");
+        setCopiedCurl(true);
+      } catch (error) {
+        setClipboardError(error instanceof Error ? error.message : "Failed to copy to clipboard");
+      }
+    }
     else if(item.value === "retry") {
       retryFrom("request-error", { config, transport });
     }
@@ -330,7 +350,7 @@ function RequestErrorScreen({ error }: { error: string }) {
       const _: "quit" = item.value;
       exit();
     }
-  }, []);
+  }, [curlCommand]);
 
   return <CenteredBox>
     <Text color="red">
@@ -340,6 +360,20 @@ function RequestErrorScreen({ error }: { error: string }) {
       viewError && <Box marginY={1}>
         <Text>
           { error }
+        </Text>
+      </Box>
+    }
+    {
+      copiedCurl && <Box marginY={1}>
+        <Text>
+          { curlCommand }
+        </Text>
+      </Box>
+    }
+    {
+      clipboardError && <Box marginY={1}>
+        <Text color="red">
+          { clipboardError }
         </Text>
       </Box>
     }

@@ -94,6 +94,15 @@ export type OutputIR = AssistantMessage
                      | ToolMalformedMessage
                      ;
 
+export type AgentResult = {
+  success: true,
+  output: OutputIR[],
+} | {
+  success: false,
+  requestError: string,
+  curl: string,
+};
+
 // Filter out only relevant history items to the LLM IR
 type LoweredHistory = ToolCallItem
                     | ToolOutputItem

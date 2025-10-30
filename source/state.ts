@@ -42,6 +42,7 @@ export type UiState = {
   } | {
     mode: "request-error",
     error: string,
+    curlCommand: string | null,
   } | {
     mode: "diff-apply",
     abortController: AbortController,
@@ -233,7 +234,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const history = [ ...get().history ];
     try {
-      const newMessages = await run({
+      const result = await run({
         config, transport,
         modelOverride: get().modelOverride,
         messages: toLlmIR(history),
@@ -273,7 +274,28 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       if(timeout) clearTimeout(timeout);
-      history.push(...outputToHistory(newMessages));
+
+      // Successful result has an output with the OutputIR
+      // Failed result has the requestError and associated curl
+      if (result.success) {
+        history.push(...outputToHistory(result.output));
+      } else {
+        set({
+          modeData: {
+            mode: "request-error",
+            error: result.requestError,
+            curlCommand: result.curl,
+          },
+          history: [
+            ...get().history,
+            {
+              type: "request-failed",
+              id: sequenceId(),
+            },
+          ],
+        });
+        return;
+      }
     } catch(e) {
       if(abortController.signal.aborted) {
         // Handle abort gracefully - return to input mode
@@ -299,19 +321,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
 
       logger.error("verbose", e);
-      set({
-        modeData: {
-          mode: "request-error",
-          error: errorToString(e),
-        },
-        history: [
-          ...get().history,
-          {
-            type: "request-failed",
-            id: sequenceId(),
-          },
-        ],
-      });
       return;
     } finally {
       set({ byteCount: 0 });
