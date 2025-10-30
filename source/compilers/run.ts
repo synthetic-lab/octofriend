@@ -5,15 +5,16 @@ import { Config, getModelFromConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from "../state.ts";
 
 export async function run({
-  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, messages, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
   messages: LlmIR[],
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
@@ -29,6 +30,6 @@ export async function run({
   const windowedIR = applyContextWindow(messages, modelConfig.context);
 
   return await run({
-    config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+    config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
   });
 }

@@ -13,6 +13,7 @@ import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from "../state.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -149,6 +150,13 @@ async function modelMessageFromIr(
     };
   }
 
+  if(ir.role === "compact-summary") {
+    return {
+      role: "assistant",
+      content: ir.content,
+    };
+  }
+
   // file-unreadable case
   const _: "file-unreadable" = ir.role;
   return {
@@ -200,13 +208,13 @@ JSON`;
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
@@ -453,7 +461,7 @@ export async function runAnthropicAgent({
     const parseResult = await parseResponsesTool(
       chatToolCall,
       config,
-      onAutofixJson,
+      onActivity,
       abortSignal,
     );
 
@@ -504,7 +512,7 @@ type ParseToolResult = {
 async function parseResponsesTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
   config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
@@ -532,7 +540,7 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(config, args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      onActivity("fix-json", fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
