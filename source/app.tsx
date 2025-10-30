@@ -275,6 +275,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     />;
   }
 
+  // TODO: add UI for compacting results
   const _: "menu" | "input" | "compact" = modeData.mode;
 
   return <Box flexDirection="column">
