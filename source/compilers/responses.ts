@@ -4,7 +4,7 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -14,6 +14,7 @@ import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from '../state.ts';
 
 async function toModelMessage(
   transport: Transport,
@@ -209,6 +210,13 @@ async function modelMessageFromIr(
     };
   }
 
+  if(ir.role === "compact-summary") {
+    return {
+      role: "assistant",
+      content: ir.content,
+    };
+  }
+
   const _: "file-unreadable" = ir.role;
   return {
     role: "tool",
@@ -251,13 +259,13 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
@@ -427,7 +435,7 @@ export async function runResponsesAgent({
     const parseResult = await parseResponsesTool(
       chatToolCall,
       config,
-      onAutofixJson,
+      onActivity,
       abortSignal,
     );
 
@@ -476,7 +484,7 @@ type ParseToolResult = {
 async function parseResponsesTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
   config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
@@ -504,7 +512,7 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(config, args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      onActivity("fix-json", fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
