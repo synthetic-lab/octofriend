@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- Added a new feature to copy failed requests as cURL commands for easy
+  debugging.
+
+### Changes
+
+- Minor modifications to tool call schemas for improved GLM-4.6 usage
+
+## [0.0.45] - 2025-10-16
+
 ### Changed
 
 - Fixed copy/pasting long amounts of text and improved typing performance
