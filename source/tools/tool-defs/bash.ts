@@ -3,8 +3,8 @@ import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
+  timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous. You MUST specify this."),
   cmd: t.str.comment("The command to run"),
-  timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous."),
 });
 
 const Schema = t.subtype({

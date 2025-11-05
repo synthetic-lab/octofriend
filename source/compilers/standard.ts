@@ -617,6 +617,9 @@ Your JSON was:
 ${JSON.stringify(toolCall.function)}
 Expected:
 ${toTypescript(toolSchema)}
+
+This is an error in your JSON formatting. You MUST try again, correcting this error. Think about
+what the error is and fix it.
       `.trim(),
     };
   }
