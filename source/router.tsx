@@ -35,7 +35,7 @@ export function Back({ go, children }: { go: () => any, children: React.ReactNod
   useInput((_, key) => {
     if(key.escape) go();
   });
-  return children;
+  return <>{children}</>;
 }
 
 export class RouteBuilder<T extends Record<string, any>> {
