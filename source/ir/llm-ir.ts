@@ -11,6 +11,7 @@ import {
   FileUnreadableItem,
   AssistantItem,
   UserItem,
+  CompactSummaryItem,
   AnthropicAssistantData,
   sequenceId,
 } from "../history.ts";
@@ -78,6 +79,13 @@ export type FileUnreadableMessage = {
   toolCall: ToolCallRequest,
 }
 
+export type CompactSummaryMessage = {
+  role: "compact-summary",
+  content: string,
+  tokensBeforeCompact?: number,
+  tokensAfterCompact?: number,
+}
+
 export type LlmIR = AssistantMessage
                   | UserMessage
                   | ToolOutputMessage
@@ -88,6 +96,7 @@ export type LlmIR = AssistantMessage
                   | FileOutdatedMessage
                   | FileUnreadableMessage
                   | FileToolMessage
+                  | CompactSummaryMessage
                   ;
 
 export type OutputIR = AssistantMessage
@@ -113,6 +122,7 @@ type LoweredHistory = ToolCallItem
                     | FileUnreadableItem
                     | AssistantItem
                     | UserItem
+                    | CompactSummaryItem
                     ;
 
 // Decompile LLM output IR to History items
@@ -362,6 +372,18 @@ function collapseToIR(
         anthropic: item.anthropic,
         tokenUsage: item.tokenUsage,
         outputTokens: item.outputTokens,
+      },
+    ];
+  }
+
+  if(item.type === "compact-summary") {
+    return [
+      prev,
+      {
+        role: "compact-summary",
+        content: item.content,
+        tokensBeforeCompact: item.tokensBeforeCompact,
+        tokensAfterCompact: item.tokensAfterCompact
       },
     ];
   }

@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactSummaryItem, sequenceId } from "./history.ts";
 import {
   runTool,
   validateTool,
@@ -16,11 +16,16 @@ import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
+import { formatHistoryForSummary, getSummary } from "./compilers/autocompact.ts";
+import { countIRTokens } from "./ir/ir-windowing.ts";
 
 export type RunArgs = {
   config: Config,
   transport: Transport,
 };
+
+export type ActivityMode = "fix-json" | "compact";
+
 export type UiState = {
   modeData: {
     mode: "input",
@@ -48,6 +53,8 @@ export type UiState = {
     abortController: AbortController,
   } | {
     mode: "fix-json",
+  } | {
+    mode: "compact",
   } | {
     mode: "menu",
   } | {
@@ -233,6 +240,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     let byteCount = get().byteCount;
 
     const history = [ ...get().history ];
+
     try {
       const result = await run({
         config, transport,
@@ -269,8 +277,8 @@ export const useAppStore = create<UiState>((set, get) => ({
             timeout = null;
           }, debounceTimeout);
         },
-        onAutofixJson: () => {
-          set({ modeData: { mode: "fix-json" } });
+        onActivity: (activity: ActivityMode) => {
+          set({ modeData: { mode: activity } });
         },
       });
       if(timeout) clearTimeout(timeout);
@@ -437,6 +445,49 @@ async function tryTransformToolError(
     }
   }
   throw e;
+}
+
+// TODO: Integrate with autocompact
+async function compactHistory(
+  history: HistoryItem[],
+  config: Config,
+  transport: Transport,
+  abortSignal: AbortSignal,
+  onTokens: (tokens: string, type: "content" | "reasoning" | "tool") => void,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => void,
+): Promise<HistoryItem[]> {
+  if (history.length === 0) return history;
+
+  const irBeforeCompact = toLlmIR(history);
+  const tokensBeforeCompact = countIRTokens(irBeforeCompact);
+
+  const conversationText = formatHistoryForSummary(history);
+
+  const summary = await getSummary(
+    config,
+    transport,
+    conversationText,
+    abortSignal,
+    onTokens,
+    onActivity
+  );
+
+  if (!summary) {
+    // TODO: surface an error
+    return history;
+  }
+
+  const summaryMessage: CompactSummaryItem = {
+    type: "compact-summary",
+    id: sequenceId(),
+    content: summary,
+    tokensBeforeCompact,
+  };
+
+  const irAfterCompact = toLlmIR([summaryMessage]);
+  summaryMessage.tokensAfterCompact = countIRTokens(irAfterCompact);
+
+  return [summaryMessage];
 }
 
 export function useModel() {
