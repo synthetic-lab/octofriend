@@ -267,9 +267,10 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu } = useAppStore(
+  const { toggleMenu, notify } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
+      notify: state.notify,
     }))
   );
 
@@ -278,6 +279,7 @@ function MainMenu() {
   })));
 
   const config = useConfig();
+  const setConfig = useSetConfig();
 
   useInput((_, key) => {
     if(key.escape) toggleMenu();
@@ -291,6 +293,10 @@ function MainMenu() {
     {
       label: "🪄 Enable auto-fixing JSON tool calls",
       value: "fix-json-toggle" as const,
+    },
+    {
+      label: (config.vimEmulation?.['enabled'] ?? false) ? "📝 Switch to Emacs mode" : "⌨️ Switch to Vim mode",
+      value: "vim-toggle" as const,
     },
     {
       label: "⤭ Switch model",
@@ -313,6 +319,7 @@ function MainMenu() {
       value: "quit" as const,
     },
   ];
+
   items = items.filter(item => {
     if(config.diffApply != null && item.value === "diff-apply-toggle") return false;
     if(config.fixJson != null && item.value === "fix-json-toggle") return false;
@@ -324,11 +331,21 @@ function MainMenu() {
     items = items.filter(item => item.value !== "settings-menu");
   }
 
-	const onSelect = useCallback((item: (typeof items)[number]) => {
-    if(item.value === "return") toggleMenu();
-    else if(item.value === "quit") setMenuMode("quit-confirm");
+  const onSelect = useCallback(async (item: (typeof items)[number]) => {
+    if (item.value === "return") toggleMenu();
+    else if (item.value === "quit") setMenuMode("quit-confirm");
+    else if (item.value === "vim-toggle") {
+      const wasEnabled = config.vimEmulation?.['enabled'] ?? false;
+
+      // Write ONLY to config - single source of truth
+      await setConfig({ ...config, vimEmulation: { enabled: !wasEnabled } });
+
+      // Notify user
+      notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
+      return;
+    }
     else setMenuMode(item.value);
-	}, []);
+  }, [config, setConfig, notify]);
 
   return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />
 }
