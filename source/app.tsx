@@ -43,6 +43,7 @@ import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-
 import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
+import { VimModeIndicator } from "./components/vim-mode.tsx";
 
 type Props = {
 	config: Config;
@@ -88,6 +89,13 @@ export default function App({ config, configPath, metadata, unchained, transport
       modelOverride: state.modelOverride,
     }))
   );
+
+  // Initialize vim state from config on first render
+  const vimInitialized = useRef(false);
+  if (!vimInitialized.current && config.vimEnabled !== undefined) {
+    useAppStore.getState().setVimEnabled(config.vimEnabled);
+    vimInitialized.current = true;
+  }
 
   useEffect(() => {
     if(updates != null) markUpdatesSeen();
@@ -195,13 +203,16 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
-  const { modeData, input, abortResponse, toggleMenu, byteCount } = useAppStore(
+  const { modeData, input, abortResponse, toggleMenu, byteCount, vimEnabled, vimMode, setVimMode } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
       input: state.input,
       abortResponse: state.abortResponse,
       toggleMenu: state.toggleMenu,
       byteCount: state.byteCount,
+      vimEnabled: state.vimEnabled,
+      vimMode: state.vimMode,
+      setVimMode: state.setVimMode,
     }))
   );
 
@@ -211,7 +222,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
   useInput((_, key) => {
     if(key.escape) {
-      abortResponse();
+      // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
+      if (vimEnabled && vimMode === 'INSERT') {
+        setVimMode('NORMAL');
+        return;
+      }
+
+      // All other cases: abort response (if active) and open menu
+      abortResponse();  // Safe to call even if no response is active
       toggleMenu();
     }
   });
@@ -286,7 +304,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       value={query}
       onChange={setQuery}
       onSubmit={onSubmit}
+      vimEnabled={vimEnabled}
+      vimMode={vimMode}
+      setVimMode={setVimMode}
     />
+    <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
   </Box>
 }
 

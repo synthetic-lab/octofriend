@@ -57,6 +57,11 @@ export type UiState = {
   modelOverride: string | null,
   byteCount: number,
   history: Array<HistoryItem>,
+  vimEnabled: boolean,
+  vimMode: 'NORMAL' | 'INSERT',
+  toggleVimEnabled: () => void,
+  setVimEnabled: (enabled: boolean) => void,
+  setVimMode: (mode: 'NORMAL' | 'INSERT') => void,
   input: (args: RunArgs & { query: string }) => Promise<void>,
   runTool: (args: RunArgs & { toolReq: ToolCallItem }) => Promise<void>,
   rejectTool: (toolCallId: string) => void,
@@ -75,6 +80,21 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
   byteCount: 0,
+
+  vimEnabled: false,
+  vimMode: 'NORMAL' as const,
+
+  toggleVimEnabled: () => set(state => ({
+    vimEnabled: !state.vimEnabled,
+    vimMode: 'NORMAL',
+  })),
+
+  setVimEnabled: (enabled) => set({
+    vimEnabled: enabled,
+    vimMode: 'NORMAL',
+  }),
+
+  setVimMode: (mode) => set({ vimMode: mode }),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {

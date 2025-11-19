@@ -267,9 +267,12 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu } = useAppStore(
+  const { toggleMenu, vimEnabled, toggleVimEnabled, notify } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
+      vimEnabled: state.vimEnabled,
+      toggleVimEnabled: state.toggleVimEnabled,
+      notify: state.notify,
     }))
   );
 
@@ -278,6 +281,7 @@ function MainMenu() {
   })));
 
   const config = useConfig();
+  const setConfig = useSetConfig();
 
   useInput((_, key) => {
     if(key.escape) toggleMenu();
@@ -291,6 +295,10 @@ function MainMenu() {
     {
       label: "🪄 Enable auto-fixing JSON tool calls",
       value: "fix-json-toggle" as const,
+    },
+    {
+      label: vimEnabled ? "📝 Switch to Emacs mode" : "⌨️ Switch to Vim mode",
+      value: "vim-toggle" as const,
     },
     {
       label: "⤭ Switch model",
@@ -313,7 +321,12 @@ function MainMenu() {
       value: "quit" as const,
     },
   ];
+
   items = items.filter(item => {
+    // vim toggle should always be visible
+    if(item.value === "vim-toggle") return true;
+
+    // existing filtering logic
     if(config.diffApply != null && item.value === "diff-apply-toggle") return false;
     if(config.fixJson != null && item.value === "fix-json-toggle") return false;
     return true;
@@ -324,11 +337,27 @@ function MainMenu() {
     items = items.filter(item => item.value !== "settings-menu");
   }
 
-	const onSelect = useCallback((item: (typeof items)[number]) => {
-    if(item.value === "return") toggleMenu();
-    else if(item.value === "quit") setMenuMode("quit-confirm");
+  const onSelect = useCallback(async (item: (typeof items)[number]) => {
+    if (item.value === "return") toggleMenu();
+    else if (item.value === "quit") setMenuMode("quit-confirm");
+    else if (item.value === "vim-toggle") {
+      const wasEnabled = vimEnabled;
+
+      // Update Zustand state
+      toggleVimEnabled();
+
+      // Persist to config file
+      await setConfig({
+        ...config,
+        vimEnabled: !wasEnabled,
+      });
+
+      // Notify user
+      notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
+      return;
+    }
     else setMenuMode(item.value);
-	}, []);
+  }, [config, setConfig, toggleVimEnabled, notify, vimEnabled]);
 
   return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />
 }

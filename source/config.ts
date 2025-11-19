@@ -43,6 +43,7 @@ const ConfigSchema = t.exact({
     apiEnvVar: t.optional(t.str),
     model: t.str,
   })),
+  vimEnabled: t.optional(t.bool),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
 });

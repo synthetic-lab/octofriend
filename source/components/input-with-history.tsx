@@ -9,6 +9,9 @@ interface Props {
   value: string;
   onChange: (s: string) => any;
   onSubmit: () => any;
+  vimEnabled?: boolean;
+  vimMode?: 'NORMAL' | 'INSERT';
+  setVimMode?: (mode: 'NORMAL' | 'INSERT') => void;
 }
 
 export const InputWithHistory = React.memo((props: Props) => {
@@ -81,6 +84,9 @@ export const InputWithHistory = React.memo((props: Props) => {
         value={props.value}
         onChange={handleChange}
         onSubmit={handleSubmit}
+        vimEnabled={props.vimEnabled}
+        vimMode={props.vimMode}
+        setVimMode={props.setVimMode}
       />
     </Box>
   );
