@@ -2,11 +2,12 @@ import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { AutoCompactConfig, Config, getModelFromConfig } from "../config.ts";
-import { LlmIR, toLlmIR } from "../ir/llm-ir.ts";
-import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
+import { LlmIR, toLlmIR, OutputIR, outputToHistory, AgentResult } from "../ir/llm-ir.ts";
+import { applyContextWindow, countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ActivityMode } from "../state.ts";
-import { HistoryItem } from "../history.ts";
+import { HistoryItem, sequenceId } from "../history.ts";
+import { formatMessagesForSummary, processCompactedHistory } from "./autocompact.ts";
 
 function shouldAutoCompactHistory(
   messages: LlmIR[],
@@ -17,6 +18,10 @@ function shouldAutoCompactHistory(
   if (!autoCompactSettings?.enabled) return false;
 
   const contextThreshold = autoCompactSettings.contextThreshold;
+
+  if (contextThreshold <= 0 || contextThreshold > 1) {
+    // TODO (steph): surface error that contextThreshold must be between 0 and 1.
+  }
   const maxAllowedTokens = Math.floor(context * contextThreshold);
   const currentTokens = countIRTokens(messages);
 
@@ -36,26 +41,51 @@ export async function run({
   skipSystemPrompt?: boolean,
 }) {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const run = (() => {
+  const runInternal = (() => {
     if(modelConfig.type == null || modelConfig.type === "standard") return runAgent;
     if(modelConfig.type === "openai-responses") return runResponsesAgent;
     const _: "anthropic" = modelConfig.type;
     return runAnthropicAgent;
   })();
 
-  let processedMessages = messages;
-  let appliedCompaction = false;
   let compactSummary: string | undefined;
+  let windowedIR: WindowedIR;
+  let processedMessages = messages
 
-  // Apply compaction first if needed
   if (shouldAutoCompactHistory(messages, modelConfig.context, config.autoCompact)) {
-    compactSummary = "[Conversation history compacted due to context limits]";
-    appliedCompaction = true;
+    processedMessages = formatMessagesForSummary(messages);
+    windowedIR = applyContextWindow(processedMessages, modelConfig.context);
+    
+    try {
+      const compactSummaryResult = await runInternal({
+        config,
+        transport, 
+        windowedIR,
+        abortSignal,
+        onTokens,
+        onActivity,
+        modelOverride: null,
+      });
+      compactSummary = processCompactedHistory(compactSummaryResult)
+    } catch (error) {
+      // TODO: surface an error message
+    }
   }
+  
+  windowedIR = applyContextWindow(processedMessages, modelConfig.context);
 
-  const windowedIR = applyContextWindow(processedMessages, modelConfig.context);
 
-  return await run({
-    config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
+  return await runInternal({
+    config,
+    modelOverride,
+    windowedIR,
+    onTokens,
+    onActivity,
+    abortSignal,
+    transport,
+    skipSystemPrompt,
+    appliedCompaction:
+    !!compactSummary,
+    compactSummary
   });
 }

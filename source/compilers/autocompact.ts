@@ -10,75 +10,59 @@
  * 3. Preserves the conversation context while significantly reducing token count
  */
 import { Config } from "../config.ts";
-import { HistoryItem, sequenceId } from "../history.ts";
-import { toLlmIR } from "../ir/llm-ir.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
+import { sequenceId } from "../history.ts";
+import { AgentResult, LlmIR, toLlmIR } from "../ir/llm-ir.ts";
 import { compactPrompt, CompactResponse } from "../prompts/compact-prompt.ts";
 import { ActivityMode } from "../state.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "./run.ts";
 
-export function formatHistoryForSummary(history: HistoryItem[]): string {
+export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {
   const lines: string[] = [];
 
-  for (const item of history) {
+  for (const message of messages) {
     // Create a copy without the id field and stringify
-    const { id, ...rest } = item;
-    lines.push(`${item.type}: ${JSON.stringify(rest)}`);
+    const { role, ...rest } = message;
+    lines.push(`${message.role}: ${JSON.stringify(rest)}`);
   }
 
-  return lines.join("\n");
+  const conjoinedMessages = lines.join("\n");
+  const promptText = compactPrompt(conjoinedMessages);
+
+  return toLlmIR([
+    {
+      type: "user" as const,
+      id: sequenceId(),
+      content: promptText,
+    },
+  ]);
 }
 
-export async function getSummary(
-  config: Config,
-  transport: Transport,
-  conversationText: string,
-  abortSignal: AbortSignal,
-  onTokens: (tokens: string, type: "content" | "reasoning" | "tool") => void,
-  onActivity: (activity: ActivityMode, done: Promise<void>) => void,
-): Promise<string | null> {
-  const promptText = compactPrompt(conversationText);
-
-  try {
-    const messages = toLlmIR([
-      {
-        type: "user" as const,
-        id: sequenceId(),
-        content: promptText,
-      },
-    ]);
-
-    const result = await run({
-      config,
-      transport,
-      modelOverride: null,
-      messages,
-      abortSignal,
-      onTokens,
-      onActivity,
-      skipSystemPrompt: true,
-    });
-
-    if (!result.success) {
-      // TODO: surface an error
-      return null;
-    }
-
-    const assistantMessage = result.output.find(msg => msg.role === "assistant");
-    if (!assistantMessage || assistantMessage.role !== "assistant") {
-      // TODO: surface an error
-      return null;
-    }
-    const parsed = JSON.parse(assistantMessage.content);
-    const validated = CompactResponse.slice(parsed);
-
-    if (!validated.success) {
-      // TODO: surface an error
-      return null;
-    }
-    return validated.summary;
-  } catch {
-    return null;
+export function processCompactedHistory(
+  compactSummaryAgentResult: AgentResult
+): string | undefined {
+  if (!compactSummaryAgentResult.success) {
+    return;
   }
+
+  const assistantMessage = compactSummaryAgentResult.output.find(
+    (msg) => msg.role === "assistant"
+  );
+  if (!assistantMessage || assistantMessage.role !== "assistant") {
+    return;
+  }
+  
+  let parsed;
+  try {
+    parsed = JSON.parse(assistantMessage.content);
+  } catch {
+    return;
+  }
+  
+  const validated = CompactResponse.slice(parsed);
+
+  if (!validated.success) {
+    return;
+  }
+  return validated.summary;
 }

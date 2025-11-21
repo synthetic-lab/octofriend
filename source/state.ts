@@ -16,8 +16,6 @@ import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { formatHistoryForSummary, getSummary } from "./compilers/autocompact.ts";
-import { countIRTokens } from "./ir/ir-windowing.ts";
 
 export type RunArgs = {
   config: Config,
@@ -445,49 +443,6 @@ async function tryTransformToolError(
     }
   }
   throw e;
-}
-
-// TODO: Integrate with autocompact
-async function compactHistory(
-  history: HistoryItem[],
-  config: Config,
-  transport: Transport,
-  abortSignal: AbortSignal,
-  onTokens: (tokens: string, type: "content" | "reasoning" | "tool") => void,
-  onActivity: (activity: ActivityMode, done: Promise<void>) => void,
-): Promise<HistoryItem[]> {
-  if (history.length === 0) return history;
-
-  const irBeforeCompact = toLlmIR(history);
-  const tokensBeforeCompact = countIRTokens(irBeforeCompact);
-
-  const conversationText = formatHistoryForSummary(history);
-
-  const summary = await getSummary(
-    config,
-    transport,
-    conversationText,
-    abortSignal,
-    onTokens,
-    onActivity
-  );
-
-  if (!summary) {
-    // TODO: surface an error
-    return history;
-  }
-
-  const summaryMessage: CompactSummaryItem = {
-    type: "compact-summary",
-    id: sequenceId(),
-    content: summary,
-    tokensBeforeCompact,
-  };
-
-  const irAfterCompact = toLlmIR([summaryMessage]);
-  summaryMessage.tokensAfterCompact = countIRTokens(irAfterCompact);
-
-  return [summaryMessage];
 }
 
 export function useModel() {
