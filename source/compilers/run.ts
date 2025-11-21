@@ -65,6 +65,7 @@ export async function run({
         onTokens,
         onActivity,
         modelOverride: null,
+        appliedCompaction: false,
       });
       compactSummary = processCompactedHistory(compactSummaryResult)
     } catch (error) {

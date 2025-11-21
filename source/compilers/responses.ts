@@ -266,7 +266,7 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedCompaction?: boolean,
+  appliedCompaction: boolean,
   compactSummary?: string,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);

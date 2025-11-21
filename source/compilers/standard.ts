@@ -283,7 +283,7 @@ export async function runAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedCompaction?: boolean,
+  appliedCompaction: boolean,
   compactSummary?: string,
 }): Promise<AgentResult> {
   const model = getModelFromConfig(config, modelOverride);
