@@ -99,13 +99,6 @@ export type Notification = SequenceIdTagged<{
   content: string,
 }>;
 
-export type CompactSummaryItem = SequenceIdTagged<{
-  type: "compact-summary",
-  content: string,
-  tokensBeforeCompact?: number,
-  tokensAfterCompact?: number,
-}>;
-
 export type HistoryItem = UserItem
                         | AssistantItem
                         | ToolCallItem
@@ -117,7 +110,6 @@ export type HistoryItem = UserItem
                         | FileUnreadableItem
                         | RequestFailed
                         | Notification
-                        | CompactSummaryItem
                         ;
 
 let monotonicGuid = 0n;

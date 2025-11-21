@@ -5,17 +5,13 @@
  * when it exceeds a token threshold set in the config. 
 
  * The compaction process:
- * 1. Summarizes all messages using an LLM
- * 2. Replaces entire history with a single CompactSummaryItem
- * 3. Preserves the conversation context while significantly reducing token count
+ * 1. Summarizes all past messages (that are still in the context window) using an LLM
+ * 2. Replaces the conversation history with the summary embedded in the system prompt.
  */
 import { Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
 import { AgentResult, LlmIR, toLlmIR } from "../ir/llm-ir.ts";
 import { compactPrompt, CompactResponse } from "../prompts/compact-prompt.ts";
-import { ActivityMode } from "../state.ts";
-import { Transport } from "../transports/transport-common.ts";
-import { run } from "./run.ts";
 
 export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {
   const lines: string[] = [];

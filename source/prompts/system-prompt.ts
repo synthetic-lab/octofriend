@@ -8,7 +8,7 @@ import { Transport } from "../transports/transport-common.ts";
 
 export type SystemPromptData = {
   appliedWindow: boolean,
-  appliedCompaction?: boolean,
+  appliedCompaction: boolean,
   compactSummary?: string,
 };
 
@@ -142,8 +142,7 @@ ${systemPromptData.appliedWindow ?
 
 ${systemPromptData.appliedCompaction ?
 "\n# Context compaction note\nDue to context length limits, part of the conversation history has been summarized. Treat the conversation history as if it was part of the current conversation thread.\n\nThis is the conversation history summary:\n" + (systemPromptData.compactSummary || "[No summary provided]") : ""}
-`.trim();
-}
+`;}
 
 async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const instrs = await getLlmInstrs(transport, signal);

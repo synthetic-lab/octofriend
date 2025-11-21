@@ -2,7 +2,7 @@ import { t, toTypescript } from "structural";
 
 export const CompactSuccess = t.subtype({
   success: t.value(true),
-  summary: t.str.comment("A concise summary of the conversation history"),
+  summary: t.str,
 });
 export const CompactFailure = t.subtype({
   success: t.value(false),

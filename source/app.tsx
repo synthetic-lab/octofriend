@@ -276,7 +276,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   }
 
   // TODO: add UI for compacting results
-  const _: "menu" | "input" | "compact" = modeData.mode;
+  const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
     <Box marginLeft={1} justifyContent="flex-end">
@@ -616,8 +616,7 @@ const MessageDisplayInner = React.memo(({ item }: {
     return <Text color="red">Request failed.</Text>
   }
 
-  // TODO: Add rendering for compact-summary when autoCompact feature is integrated
-  const _: "user" | "compact-summary" = item.type;
+  const _: "user" = item.type;
 
 	return <Box marginY={1}>
     <Box marginRight={1}>

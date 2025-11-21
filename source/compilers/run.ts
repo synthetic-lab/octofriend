@@ -5,8 +5,7 @@ import { AutoCompactConfig, Config, getModelFromConfig } from "../config.ts";
 import { LlmIR, toLlmIR, OutputIR, outputToHistory, AgentResult } from "../ir/llm-ir.ts";
 import { applyContextWindow, countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { ActivityMode } from "../state.ts";
-import { HistoryItem, sequenceId } from "../history.ts";
+
 import { formatMessagesForSummary, processCompactedHistory } from "./autocompact.ts";
 
 function shouldAutoCompactHistory(
@@ -29,13 +28,13 @@ function shouldAutoCompactHistory(
 }
 
 export async function run({
-  config, modelOverride, messages, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
   messages: LlmIR[],
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
+  onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
@@ -63,16 +62,24 @@ export async function run({
         windowedIR,
         abortSignal,
         onTokens,
-        onActivity,
-        modelOverride: null,
+        onAutofixJson,
+        modelOverride,
+        appliedCompaction: false,
       });
       compactSummary = processCompactedHistory(compactSummaryResult)
+      windowedIR = {
+        appliedWindow: true,
+        ir: new Array<LlmIR>(),
+      }
+      windowedIR = applyContextWindow(windowedIR.ir, modelConfig.context)
+      // Clear history and just pass in compactSummary into system prompt
     } catch (error) {
       // TODO: surface an error message
     }
+  } else {
+    windowedIR = applyContextWindow(processedMessages, modelConfig.context);
   }
   
-  windowedIR = applyContextWindow(processedMessages, modelConfig.context);
 
 
   return await runInternal({
@@ -80,12 +87,11 @@ export async function run({
     modelOverride,
     windowedIR,
     onTokens,
-    onActivity,
+    onAutofixJson,
     abortSignal,
     transport,
     skipSystemPrompt,
-    appliedCompaction:
-    !!compactSummary,
+    appliedCompaction: !!compactSummary,
     compactSummary
   });
 }
