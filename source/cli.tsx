@@ -40,6 +40,11 @@ const cli = new Command()
 ).action(async (opts) => {
   const transport = new LocalTransport();
   try {
+    // Set terminal title for tmux
+    process.title = "\\_o_O.//"
+    // Set terminal title for xterm-compatible term emulators
+    process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
+
     await runMain({
       config: opts.config,
       unchained: opts.unchained,
