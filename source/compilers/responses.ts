@@ -4,7 +4,7 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -20,7 +20,7 @@ async function toModelMessage(
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
-  appliedWindow: boolean,
+  systemPromptData: SystemPromptData,
   config: Config,
   skipSystemPrompt: boolean,
 ): Promise<Array<ModelMessage>> {
@@ -46,10 +46,7 @@ async function toModelMessage(
     // Add system message
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow,
-        config, transport, signal,
-      }),
+      content: await systemPrompt(systemPromptData, config, transport, signal),
     });
   }
 
@@ -259,7 +256,7 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
@@ -269,13 +266,21 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction?: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
+  const systemPromptData: SystemPromptData = {
+    appliedWindow: windowedIR.appliedWindow,
+    appliedCompaction,
+    compactSummary,
+  };
+  
   const messages = await toModelMessage(
     transport,
     abortSignal,
     windowedIR.ir,
-    windowedIR.appliedWindow,
+    systemPromptData,
     config,
     !!skipSystemPrompt,
   );

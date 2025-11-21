@@ -6,6 +6,12 @@ import * as toolMap from "../tools/tool-defs/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport } from "../transports/transport-common.ts";
 
+export type SystemPromptData = {
+  appliedWindow: boolean,
+  appliedCompaction?: boolean,
+  compactSummary?: string,
+};
+
 const LLM_INSTR_FILES = [
   "OCTO.md",
   "CLAUDE.md",
@@ -13,12 +19,12 @@ const LLM_INSTR_FILES = [
 ] as const;
 
 
-export async function systemPrompt({ appliedWindow, config, transport, signal }: {
-  appliedWindow: boolean,
+export async function systemPrompt(
+  systemPromptData: SystemPromptData,
   config: Config,
   transport: Transport,
   signal: AbortSignal
-}) {
+) {
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
@@ -131,8 +137,11 @@ If you want to list other directories, use the list tool.
 
 ${await llmInstrsPrompt(transport, signal, config)}
 
-${appliedWindow ?
+${systemPromptData.appliedWindow ?
 "\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
+
+${systemPromptData.appliedCompaction ?
+"\n# Context compaction note\nDue to context length limits, part of the conversation history has been summarized. Treat the conversation history as if it was part of the current conversation thread.\n\nThis is the conversation history summary:\n" + (systemPromptData.compactSummary || "[No summary provided]") : ""}
 `.trim();
 }
 

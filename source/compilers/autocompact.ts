@@ -18,19 +18,6 @@ import { ActivityMode } from "../state.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "./run.ts";
 
-export function shouldCompactHistory(
-  history: HistoryItem[],
-  config: Config,
-): boolean {
-  if (!config.autoCompact?.enabled) return false;
-
-  const tokenThreshold = config.autoCompact.tokenThreshold;
-  const ir = toLlmIR(history);
-  const currentTokens = countIRTokens(ir);
-
-  return currentTokens >= tokenThreshold;
-}
-
 export function formatHistoryForSummary(history: HistoryItem[]): string {
   const lines: string[] = [];
 
@@ -54,7 +41,6 @@ export async function getSummary(
   const promptText = compactPrompt(conversationText);
 
   try {
-    // Create a simple user message to get a summary
     const messages = toLlmIR([
       {
         type: "user" as const,

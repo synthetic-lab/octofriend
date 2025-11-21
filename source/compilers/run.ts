@@ -1,11 +1,27 @@
 import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
-import { Config, getModelFromConfig } from "../config.ts";
-import { LlmIR } from "../ir/llm-ir.ts";
-import { applyContextWindow } from "../ir/ir-windowing.ts";
+import { AutoCompactConfig, Config, getModelFromConfig } from "../config.ts";
+import { LlmIR, toLlmIR } from "../ir/llm-ir.ts";
+import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ActivityMode } from "../state.ts";
+import { HistoryItem } from "../history.ts";
+
+function shouldAutoCompactHistory(
+  messages: LlmIR[],
+  context: number,
+  autoCompactSettings?: AutoCompactConfig,
+): boolean {
+  // TODO (steph): make return default to true once connected with app.tsx
+  if (!autoCompactSettings?.enabled) return false;
+
+  const contextThreshold = autoCompactSettings.contextThreshold;
+  const maxAllowedTokens = Math.floor(context * contextThreshold);
+  const currentTokens = countIRTokens(messages);
+
+  return currentTokens >= maxAllowedTokens;
+}
 
 export async function run({
   config, modelOverride, messages, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
@@ -27,9 +43,19 @@ export async function run({
     return runAnthropicAgent;
   })();
 
-  const windowedIR = applyContextWindow(messages, modelConfig.context);
+  let processedMessages = messages;
+  let appliedCompaction = false;
+  let compactSummary: string | undefined;
+
+  // Apply compaction first if needed
+  if (shouldAutoCompactHistory(messages, modelConfig.context, config.autoCompact)) {
+    compactSummary = "[Conversation history compacted due to context limits]";
+    appliedCompaction = true;
+  }
+
+  const windowedIR = applyContextWindow(processedMessages, modelConfig.context);
 
   return await run({
-    config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt
+    config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
   });
 }

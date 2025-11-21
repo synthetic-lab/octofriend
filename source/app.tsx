@@ -617,7 +617,6 @@ const MessageDisplayInner = React.memo(({ item }: {
   }
 
   // TODO: Add rendering for compact-summary when autoCompact feature is integrated
-  // Type assertion proving we've handled all types other than user
   const _: "user" | "compact-summary" = item.type;
 
 	return <Box marginY={1}>
