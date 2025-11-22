@@ -113,14 +113,20 @@ async function runMain(opts: {
     // Connect to all MCP servers on boot
     if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
       for(const server of Object.keys(config.mcpServers)) {
-        console.log("Connecting to", server, "MCP server...");
-        // Run the basic connection setup with logging enabled, so that first-time setup gets logged
-        const client = await connectMcpServer(server, config, true);
-        await client.close();
-        // Then run the cache setup codepath, so future results use a cached client with logging off
-        await getMcpClient(server, config);
+        try {
+          console.log("Connecting to", server, "MCP server...");
+          // Run the basic connection setup with logging enabled, so that first-time setup gets logged
+          const client = await connectMcpServer(server, config, true);
+          await client.close();
+          // Then run the cache setup codepath, so future results use a cached client with logging off
+          await getMcpClient(server, config);
+          console.log("Connected to", server, "MCP server");
+        } catch (error) {
+          console.warn(`Warning: Failed to connect to "${server}" MCP server: ${error instanceof Error ? error.message : String(error)}`);
+          console.warn("Octo will continue without this MCP server.");
+        }
       }
-      console.log("All MCP servers connected.");
+      console.log("MCP server initialization complete.");
     }
 
 	  const { waitUntilExit } = render(
