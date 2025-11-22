@@ -6,13 +6,14 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from "../state.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -149,6 +150,13 @@ async function modelMessageFromIr(
     };
   }
 
+  if(ir.role === "compact-summary") {
+    return {
+      role: "assistant",
+      content: ir.content,
+    };
+  }
+
   // file-unreadable case
   const _: "file-unreadable" = ir.role;
   return {
@@ -200,24 +208,27 @@ JSON`;
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
-  const sysPrompt = await systemPrompt({
+  const systemPromptData: SystemPromptData = {
     appliedWindow: windowedIR.appliedWindow,
-    config, transport,
-    signal: abortSignal,
-  });
+    appliedCompaction,
+    compactSummary,
+  };
+  const sysPrompt = await systemPrompt(systemPromptData, config, transport, abortSignal);
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {
@@ -453,7 +464,7 @@ export async function runAnthropicAgent({
     const parseResult = await parseResponsesTool(
       chatToolCall,
       config,
-      onAutofixJson,
+      onActivity,
       abortSignal,
     );
 
@@ -504,7 +515,7 @@ type ParseToolResult = {
 async function parseResponsesTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
   config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
@@ -532,7 +543,7 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(config, args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      onActivity("fix-json", fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {

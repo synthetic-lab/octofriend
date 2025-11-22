@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactSummaryItem, sequenceId } from "./history.ts";
 import {
   runTool,
   validateTool,
@@ -21,6 +21,9 @@ export type RunArgs = {
   config: Config,
   transport: Transport,
 };
+
+export type ActivityMode = "fix-json" | "compact";
+
 export type UiState = {
   modeData: {
     mode: "input",
@@ -48,6 +51,8 @@ export type UiState = {
     abortController: AbortController,
   } | {
     mode: "fix-json",
+  } | {
+    mode: "compact",
   } | {
     mode: "menu",
   } | {
@@ -233,6 +238,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     let byteCount = get().byteCount;
 
     const history = [ ...get().history ];
+
     try {
       const result = await run({
         config, transport,
@@ -269,8 +275,8 @@ export const useAppStore = create<UiState>((set, get) => ({
             timeout = null;
           }, debounceTimeout);
         },
-        onAutofixJson: () => {
-          set({ modeData: { mode: "fix-json" } });
+        onActivity: (activity: ActivityMode) => {
+          set({ modeData: { mode: activity } });
         },
       });
       if(timeout) clearTimeout(timeout);

@@ -4,7 +4,7 @@ import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import { ToolCallRequestSchema, ToolMalformedItem } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
@@ -14,6 +14,7 @@ import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ActivityMode } from "../state.ts";
 
 export type UserMessage = {
   role: "user";
@@ -87,7 +88,7 @@ JSON`;
 
 async function toLlmMessages(
   messages: LlmIR[],
-  appliedWindow: boolean,
+  systemPromptData: SystemPromptData,
   config: Config,
   transport: Transport,
   signal: AbortSignal,
@@ -115,9 +116,7 @@ async function toLlmMessages(
   if(!skipSystemPrompt) {
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow, config, transport, signal
-      }),
+      content: await systemPrompt(systemPromptData, config, transport, signal),
     });
   }
 
@@ -155,6 +154,12 @@ async function llmFromIr(
   }
   if(ir.role === "user") {
     return ir;
+  }
+  if(ir.role === "compact-summary") {
+    return {
+      role: "assistant",
+      content: ir.content,
+    };
   }
   if(ir.role === "tool-output") {
     return {
@@ -268,22 +273,30 @@ async function handleKnownErrors(params: {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  config, modelOverride, windowedIR, onTokens, onActivity, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
 }: {
   config: Config,
   modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
+  appliedCompaction: boolean,
+  compactSummary?: string,
 }): Promise<AgentResult> {
   const model = getModelFromConfig(config, modelOverride);
 
+  const systemPromptData: SystemPromptData = {
+    appliedWindow: windowedIR.appliedWindow,
+    appliedCompaction,
+    compactSummary,
+  };
+  
   const messages = await toLlmMessages(
     windowedIR.ir,
-    windowedIR.appliedWindow,
+    systemPromptData,
     config,
     transport,
     abortSignal,
@@ -480,7 +493,7 @@ export async function runAgent({
         };
       }
 
-      const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
+      const parseResult = await parseTool(validatedTool, config, onActivity, abortSignal);
 
       if(parseResult.status === "error") {
         return {
@@ -533,7 +546,7 @@ function validToolNames(config: Config) {
 async function parseTool(
   toolCall: ResponseToolCall,
   config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  onActivity: (activity: ActivityMode, done: Promise<void>) => any,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.function.name;
@@ -557,7 +570,7 @@ Please try calling a valid tool.
 
   if(err) {
     const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
-    onAutofixJson(fixPromise.then(() => {}));
+    onActivity("fix-json", fixPromise.then(() => {}));
     const fixResponse = await fixPromise;
     if(!fixResponse.success) {
       return {
@@ -576,7 +589,7 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      onActivity("fix-json", fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
