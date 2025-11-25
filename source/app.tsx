@@ -82,16 +82,17 @@ const TransportContext = createContext<Transport>(new LocalTransport());
 
 export default function App({ config, configPath, metadata, unchained, transport, updates, inputHistory }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
-  const { history, modeData } = useAppStore(
+  const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
-      modelOverride: state.modelOverride,
+      setVimMode: state.setVimMode,
     }))
   );
 
   useEffect(() => {
     if(updates != null) markUpdatesSeen();
+    if(currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
 
   const staticItems: StaticItem[] = useMemo(() => {
