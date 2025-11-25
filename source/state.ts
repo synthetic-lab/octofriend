@@ -14,7 +14,7 @@ import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError, errorToString } from "./errors.ts";
+import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -24,6 +24,7 @@ export type RunArgs = {
 export type UiState = {
   modeData: {
     mode: "input",
+    vimMode: "NORMAL" | "INSERT",
   } | {
     mode: "responding",
     inflightResponse: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
@@ -62,6 +63,7 @@ export type UiState = {
   rejectTool: (toolCallId: string) => void,
   abortResponse: () => void,
   toggleMenu: () => void,
+  setVimMode: (vimMode: "INSERT" | "NORMAL") => void,
   setModelOverride: (m: string) => void,
   retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
@@ -71,6 +73,7 @@ export type UiState = {
 export const useAppStore = create<UiState>((set, get) => ({
   modeData: {
     mode: "input" as const,
+    vimMode: "NORMAL" as const,
   },
   history: [],
   modelOverride: null,
@@ -109,6 +112,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       ],
       modeData: {
         mode: "input",
+        vimMode: "NORMAL",
       },
     });
   },
@@ -132,7 +136,16 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     } else if(modeData.mode === "menu") {
       set({
-        modeData: { mode: "input" },
+        modeData: { mode: "input", vimMode: "NORMAL" },
+      });
+    }
+  },
+
+  setVimMode: (vimMode: "INSERT" | "NORMAL") => {
+    const { modeData } = get();
+    if(modeData.mode === "input") {
+      set({
+        modeData: { mode: "input", vimMode },
       });
     }
   },
@@ -203,7 +216,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     if(abortController.signal.aborted) {
       set({
-        modeData: { mode: "input" },
+        modeData: { mode: "input", vimMode: "NORMAL" },
       });
     }
     else {
@@ -302,6 +315,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({
           modeData: {
             mode: "input",
+            vimMode: "NORMAL",
           },
         });
         return;
@@ -328,7 +342,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const lastHistoryItem = history[history.length - 1];
     if(lastHistoryItem.type === "assistant") {
-      set({ modeData: { mode: "input" }, history });
+      set({ modeData: { mode: "input", vimMode: "NORMAL" }, history });
       return;
     }
     if(lastHistoryItem.type === "tool-failed" || lastHistoryItem.type === "tool-malformed") {
@@ -360,7 +374,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           const file = await fs.readFile(path, "utf8");
           const fix = await autofixEdit(config, file, fn.arguments, abortController.signal);
           if (abortController.signal.aborted) {
-            set({ modeData: { mode: "input" } });
+            set({ modeData: { mode: "input", vimMode: "NORMAL" } });
             return;
           }
           if(fix) {

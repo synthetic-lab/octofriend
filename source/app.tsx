@@ -197,25 +197,28 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
   const vimEnabled = !!config.vimEmulation?.enabled;
-  const [vimMode, setVimMode] = useState<'NORMAL' | 'INSERT'>('NORMAL');
-  const { modeData, input, abortResponse, toggleMenu, byteCount } = useAppStore(
+  const { modeData, input, abortResponse, toggleMenu, byteCount, setVimMode } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
       input: state.input,
       abortResponse: state.abortResponse,
       toggleMenu: state.toggleMenu,
       byteCount: state.byteCount,
+      setVimMode: state.setVimMode,
     }))
   );
 
+  const vimMode = (vimEnabled && vimEnabled && modeData.mode === "input") ? modeData.vimMode : "NORMAL";
+
   useCtrlC(() => {
+    if(vimEnabled) return;
     setQuery("");
   });
 
   useInput((_, key) => {
     if(key.escape) {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
-      if (vimEnabled && vimMode === 'INSERT') {
+      if (vimEnabled && vimMode === "INSERT") {
         setVimMode('NORMAL');
         return;
       }
@@ -324,7 +327,7 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
       value: "view" as const,
     },
     ... (
-      curlCommand ? 
+      curlCommand ?
       [
         {
           label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",

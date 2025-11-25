@@ -295,10 +295,6 @@ function MainMenu() {
       value: "fix-json-toggle" as const,
     },
     {
-      label: (config.vimEmulation?.['enabled'] ?? false) ? "📝 Switch to Emacs mode" : "⌨️ Switch to Vim mode",
-      value: "vim-toggle" as const,
-    },
-    {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
@@ -309,6 +305,10 @@ function MainMenu() {
     {
       label: "* Settings",
       value: "settings-menu" as const,
+    },
+    {
+      label: config.vimEmulation?.enabled ? "- Switch to Emacs mode" : "- Enable Vim mode",
+      value: "vim-toggle" as const,
     },
     {
       label: "⟵ Return to Octo",

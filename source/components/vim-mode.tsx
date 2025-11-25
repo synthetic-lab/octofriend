@@ -50,7 +50,7 @@ export function useVimKeyHandler(
       currentValue: string
     ): { consumed: boolean, newCursorPosition?: number, newValue?: string } {
       if (vimMode === 'INSERT') {
-        if (key.escape) {
+        if (key.escape || (key.ctrl && input === 'c')) {
           // When returning from INSERT to NORMAL, move cursor left to be ON a character
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
@@ -59,6 +59,14 @@ export function useVimKeyHandler(
           setVimMode('NORMAL');
           return { consumed: true, newCursorPosition };
         }
+
+        if(key.return) {
+          return {
+            consumed: true,
+            newValue: currentValue.slice(0, cursorPosition) + "\n" + currentValue.slice(cursorPosition),
+          };
+        }
+
         return { consumed: false };
       }
       const commands: Record<string, () => { consumed: boolean, newCursorPosition?: number, newValue?: string }> = {
