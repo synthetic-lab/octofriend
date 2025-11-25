@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Optional Vim mode emulation for text input: enable it through the menu.
 
+## [0.0.46] - 2025-11-06
+
+### Added
+
 - Added a new feature to copy failed requests as cURL commands for easy
   debugging.
 
