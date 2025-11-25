@@ -19,6 +19,39 @@ const vimEarlyExit = (condition: boolean) => {
   return null;
 };
 
+const getLineInfo = (text: string, position: number): { lineIndex: number, columnIndex: number } => {
+  const lines = text.split('\n');
+  let currentPos = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lineLength = lines[i].length;
+    if (position >= currentPos && position <= currentPos + lineLength) {
+      return {
+        lineIndex: i,
+        columnIndex: position - currentPos
+      };
+    }
+    currentPos += lineLength + 1; // +1 for the newline
+  }
+
+  // If position is at the very end (after last newline), return last line
+  return {
+    lineIndex: lines.length - 1,
+    columnIndex: lines[lines.length - 1]?.length || 0
+  };
+};
+
+const getLineStart = (text: string, lineIndex: number): number => {
+  const lines = text.split('\n');
+  let position = 0;
+
+  for (let i = 0; i < lineIndex && i < lines.length; i++) {
+    position += lines[i].length + 1; // +1 for the newline
+  }
+
+  return position;
+};
+
 export function VimModeIndicator({
   vimEnabled,
   vimMode
@@ -94,6 +127,60 @@ export function useVimKeyHandler(
             return vimCommandResult(cursorPosition + 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
+        },
+        'k': () => {
+          // Move up one line
+          const lines = currentValue.split('\n');
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+
+          if (currentLineInfo.lineIndex > 0) {
+            const targetLineIndex = currentLineInfo.lineIndex - 1;
+            const targetLine = lines[targetLineIndex];
+            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
+            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            return vimCommandResult(newCursorPosition, valueLength);
+          }
+
+          return vimCommandResult(cursorPosition, valueLength);
+        },
+        'j': () => {
+          // Move down one line
+          const lines = currentValue.split('\n');
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+
+          if (currentLineInfo.lineIndex < lines.length - 1) {
+            const targetLineIndex = currentLineInfo.lineIndex + 1;
+            const targetLine = lines[targetLineIndex];
+            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
+            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            return vimCommandResult(newCursorPosition, valueLength);
+          }
+
+          return vimCommandResult(cursorPosition, valueLength);
+        },
+        'o': () => {
+          // Create new line below and enter insert mode
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex + 1);
+
+          setVimMode('INSERT');
+          return {
+            consumed: true,
+            newCursorPosition: insertPosition,
+            newValue: currentValue.slice(0, insertPosition) + '\n' + currentValue.slice(insertPosition)
+          };
+        },
+        'O': () => {
+          // Create new line above and enter insert mode
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex);
+
+          setVimMode('INSERT');
+          return {
+            consumed: true,
+            newCursorPosition: insertPosition,
+            newValue: currentValue.slice(0, insertPosition) + '\n' + currentValue.slice(insertPosition)
+          };
         },
         'x': () => {
           // Delete character under cursor - position N means ON Nth character
@@ -228,6 +315,14 @@ export function useVimKeyHandler(
 
       if (key.rightArrow) {
         return commands['l']();
+      }
+
+      if (key.upArrow) {
+        return commands['k']();
+      }
+
+      if (key.downArrow) {
+        return commands['j']();
       }
 
       // Check character commands
