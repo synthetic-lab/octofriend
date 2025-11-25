@@ -69,6 +69,9 @@ export function useVimKeyHandler(
 
         return { consumed: false };
       }
+
+      if(key.return) return { consumed: false };
+
       const commands: Record<string, () => { consumed: boolean, newCursorPosition?: number, newValue?: string }> = {
         'i': () => {
           setVimMode('INSERT');
