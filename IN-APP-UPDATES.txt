@@ -1,4 +1,2 @@
-- Improve long text pasting
-- Better text rendering performance while typing
-- Simplify text edit tooling for better LLM accuracy
-- Show byte counts during tool call streaming
+- Optional Vim emulation! Enable it through the menu.
+- When requests fail, you can now copy-as-cURL for easy debugging.

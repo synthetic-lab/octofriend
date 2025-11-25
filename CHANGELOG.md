@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Optional Vim mode emulation for text input: enable it through the menu.
+
 - Added a new feature to copy failed requests as cURL commands for easy
   debugging.
 
