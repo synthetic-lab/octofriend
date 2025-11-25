@@ -196,7 +196,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
-  const [vimEnabled, setVimEnabled] = useState(config.vimEmulation?.['enabled'] ?? false);
+  const vimEnabled = !!config.vimEmulation?.enabled;
   const [vimMode, setVimMode] = useState<'NORMAL' | 'INSERT'>('NORMAL');
   const { modeData, input, abortResponse, toggleMenu, byteCount } = useAppStore(
     useShallow(state => ({
@@ -207,13 +207,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       byteCount: state.byteCount,
     }))
   );
-
-  // Sync local vimEnabled state when vimEmulation config changes
-  useEffect(() => {
-    if (config.vimEmulation?.['enabled'] !== undefined) {
-      setVimEnabled(config.vimEmulation['enabled']);
-    }
-  }, [config.vimEmulation]);
 
   useCtrlC(() => {
     setQuery("");
