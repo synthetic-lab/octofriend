@@ -43,6 +43,7 @@ import { useCtrlC, ExitOnDoubleCtrlC, useCtrlCPressed } from "./components/exit-
 import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
+import { VimModeIndicator } from "./components/vim-mode.tsx";
 
 type Props = {
 	config: Config;
@@ -195,6 +196,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
+  const [vimEnabled, setVimEnabled] = useState(config.vimEmulation?.['enabled'] ?? false);
+  const [vimMode, setVimMode] = useState<'NORMAL' | 'INSERT'>('NORMAL');
   const { modeData, input, abortResponse, toggleMenu, byteCount } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -205,13 +208,27 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     }))
   );
 
+  // Sync local vimEnabled state when vimEmulation config changes
+  useEffect(() => {
+    if (config.vimEmulation?.['enabled'] !== undefined) {
+      setVimEnabled(config.vimEmulation['enabled']);
+    }
+  }, [config.vimEmulation]);
+
   useCtrlC(() => {
     setQuery("");
   });
 
   useInput((_, key) => {
     if(key.escape) {
-      abortResponse();
+      // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
+      if (vimEnabled && vimMode === 'INSERT') {
+        setVimMode('NORMAL');
+        return;
+      }
+
+      // All other cases: abort response (if active) and open menu
+      abortResponse();  // Safe to call even if no response is active
       toggleMenu();
     }
   });
@@ -286,7 +303,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       value={query}
       onChange={setQuery}
       onSubmit={onSubmit}
+      vimEnabled={vimEnabled}
+      vimMode={vimMode}
+      setVimMode={setVimMode}
     />
+    <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
   </Box>
 }
 

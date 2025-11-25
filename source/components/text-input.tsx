@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Text, useInput } from 'ink';
 import chalk from 'chalk';
+import { useVimKeyHandler } from './vim-mode.tsx';
 
 type Props = {
 	readonly placeholder?: string;
@@ -11,6 +12,9 @@ type Props = {
 	readonly value: string;
 	readonly onChange: (value: string) => void;
 	readonly onSubmit?: (value: string) => void;
+	readonly vimEnabled?: boolean;
+	readonly vimMode?: 'NORMAL' | 'INSERT';
+	readonly setVimMode?: (mode: 'NORMAL' | 'INSERT') => void;
 };
 
 export default function TextInput({
@@ -22,6 +26,9 @@ export default function TextInput({
 	showCursor = true,
 	onChange,
 	onSubmit,
+	vimEnabled = false,
+	vimMode = 'NORMAL',
+	setVimMode,
 }: Props) {
 	const [state, setState] = useState({
 		cursorOffset: 0,
@@ -42,6 +49,12 @@ export default function TextInput({
 		cursorOffsetRef.current = cursorOffset;
 		cursorWidthRef.current = cursorWidth;
 	}, [cursorOffset, cursorWidth]);
+
+	// Create Vim handler
+	const vimHandler = useVimKeyHandler(
+		vimMode,
+		setVimMode || (() => {})
+	);
 
 	// Correct cursor position if dependencies change or text is shortened.
 	useEffect(() => {
@@ -98,6 +111,30 @@ export default function TextInput({
 			const previousCursorOffset = cursorOffsetRef.current;
 			const previousCursorWidth = cursorWidthRef.current;
 			let cursorPosition = currentValue.length + previousCursorOffset;
+
+			// Try Vim handler first if Vim mode is enabled
+			if (vimEnabled) {
+				const vimResult = vimHandler.handle(input, key, cursorPosition, currentValue.length, currentValue);
+				if (vimResult.consumed) {
+					// Vim consumed the key - check if we need to update value or cursor position
+					if (vimResult.newValue !== undefined) {
+						// Vim modified the text value (e.g., 'x' deleted a character)
+						onChange(vimResult.newValue);
+					}
+					if (vimResult.newCursorPosition !== undefined) {
+						const valueLength = vimResult.newValue !== undefined ? vimResult.newValue.length : currentValue.length;
+						const newCursorOffset = vimResult.newCursorPosition - valueLength;
+						cursorOffsetRef.current = newCursorOffset;
+						cursorWidthRef.current = 0;
+						setState({
+							cursorOffset: newCursorOffset,
+							cursorWidth: 0,
+						});
+					}
+					return;  // Vim consumed the key
+				}
+				// Vim didn't consume it, continue with normal processing
+			}
 
 			if (
 				key.upArrow ||
