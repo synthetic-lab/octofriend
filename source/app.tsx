@@ -2,7 +2,7 @@ import * as fsOld from "fs";
 import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
-import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
+import { Text, Box, Static, measureElement, DOMElement, useInput, useApp, useStdout } from "ink";
 import clipboardy from "clipboardy";
 import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
@@ -44,6 +44,7 @@ import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
+import ScrollView from "./components/scroll-view.tsx";
 
 type Props = {
 	config: Config;
@@ -782,11 +783,25 @@ const MAX_THOUGHTBOX_WIDTH = 80;
 function AssistantMessageRenderer({ item }: {
   item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
 }) {
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    }))
+  );
+  const { stdout } = useStdout();
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
 
+  const terminalHeight = stdout?.rows;
+
   let thoughts = item.reasoningContent;
   let content = item.content.trim();
+  const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
+
+  const reservedSpace = 6; // bottom bar + padding
+  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace);
+
+  const isStreamingContent = modeData.mode == "responding";
 
   useEffect(() => {
     if(thoughtsRef.current) {
@@ -795,7 +810,6 @@ function AssistantMessageRenderer({ item }: {
     }
   }, [ thoughts ]);
 
-  const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
 	return <Box>
     <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
     <Box flexDirection="column" flexGrow={1}>
@@ -823,9 +837,13 @@ function AssistantMessageRenderer({ item }: {
           </Box>
         </Box>
       }
-      <Box flexGrow={1}>
+      {isStreamingContent ? (
+        <ScrollView height={scrollViewHeight}>
+          <Markdown markdown={content} />
+        </ScrollView>
+      ) : (
         <Markdown markdown={content} />
-      </Box>
+      )}
     </Box>
   </Box>
 }

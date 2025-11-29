@@ -2,3 +2,4 @@ node_modules
 dist
 /training/fast-apply/unfat/output
 /training/fix-json/unfat/output
+source/.DS_Store
