@@ -361,9 +361,9 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <Box marginTop={1}>
       <Text>
         Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
-        model to use with Octo is either GPT-5, or Claude 4 Sonnet. If you want more data privacy,
-        another great model is GLM-4.5, an open-source coding model you can use via Synthetic, a
-        privacy-focused inference company (that we run!).
+        model to use with Octo is GLM-4.6, an open-source coding model you can use via Synthetic, a
+        privacy-focused inference company (that we run!). You can also add closed-source models from
+        OpenAI and Anthropic, like GPT-5.1 and Claude 4.5.
       </Text>
     </Box>
 

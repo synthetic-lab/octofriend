@@ -19,11 +19,20 @@ export const PROVIDERS = {
     envVar: "OPENAI_API_KEY",
     baseUrl: "https://api.openai.com/v1",
     models: [
-      { model: "gpt-5-2025-08-07", nickname: "GPT-5", context: 128 * 1024, reasoning: "medium" },
-      { model: "gpt-4.1-2025-04-14", nickname: "GPT-4.1", context: 64 * 1024 },
-      { model: "o3-2025-04-16", nickname: "o3", context: 128 * 1024, reasoning: "medium" },
+      {
+        model: "gpt-5.1-2025-11-13",
+        nickname: "GPT-5.1",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "gpt-5-mini-2025-08-07",
+        nickname: "GPT-5 Mini",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
     ],
-    testModel: "gpt-4.1-2025-04-14",
+    testModel: "gpt-5-mini-2025-08-07",
   } satisfies ProviderConfig,
 
   synthetic: {
@@ -37,9 +46,14 @@ export const PROVIDERS = {
         context: 128 * 1024,
       },
       {
-        model: "hf:moonshotai/Kimi-K2-Instruct-0905",
+        model: "hf:moonshotai/Kimi-K2-Thinking",
         nickname: "Kimi K2 0905",
         context: 128 * 1024,
+      },
+      {
+        model: "hf:MiniMaxAI/MiniMax-M2",
+        nickname: "MiniMax M2",
+        context: 96 * 1024,
       },
       {
         model: "hf:openai/gpt-oss-120b",
@@ -47,7 +61,7 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
     ],
-    testModel: "hf:openai/gpt-oss-120b",
+    testModel: "hf:zai-org/GLM-4.6",
   } satisfies ProviderConfig,
 
 
@@ -60,17 +74,23 @@ export const PROVIDERS = {
       {
         model: "claude-sonnet-4-5-20250929",
         nickname: "Claude 4.5 Sonnet",
-        context: 64 * 1024,
+        context: 100 * 1024,
         reasoning: "medium",
       },
       {
-        model: "claude-opus-4-1-20250805",
-        nickname: "Claude 4.1 Opus",
-        context: 64 * 1024,
+        model: "claude-opus-4-5-20251101",
+        nickname: "Claude 4.5 Opus",
+        context: 100 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "claude-haiku-4-5-20251001",
+        nickname: "Claude 4.5 Haiku",
+        context: 100 * 1024,
         reasoning: "medium",
       },
     ],
-    testModel: "claude-sonnet-4-20250514",
+    testModel: "claude-haiku-4-5-20251001",
   } satisfies ProviderConfig,
 
   grok: {
