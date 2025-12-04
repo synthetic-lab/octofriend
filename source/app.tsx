@@ -289,6 +289,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     />;
   }
 
+  // TODO: add UI for compacting results
   const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
@@ -633,7 +634,6 @@ const MessageDisplayInner = React.memo(({ item }: {
     return <Text color="red">Request failed.</Text>
   }
 
-  // Type assertion proving we've handled all types other than user
   const _: "user" = item.type;
 
 	return <Box marginY={1}>
