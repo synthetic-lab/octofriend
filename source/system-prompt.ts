@@ -242,7 +242,7 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
   const globalPath = await getLlmInstrPathFromDir(
     transport,
     signal,
-    path.join(home, ".config/octofriend/OCTO.md")
+    path.join(home, ".config/octofriend")
   );
   if(globalPath) paths.push(globalPath);
 
