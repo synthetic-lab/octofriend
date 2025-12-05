@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
@@ -239,14 +240,33 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
     curr = next;
   }
 
+  // User-level configs from host filesystem
+  const userConfigs = getHostUserConfigs();
+  paths.push(...userConfigs);
+
   const globalPath = await getLlmInstrPathFromDir(
     transport,
     signal,
-    path.join(home, ".config/octofriend/OCTO.md")
+    path.join(home, ".config/octofriend")
   );
   if(globalPath) paths.push(globalPath);
 
   return paths.reverse();
+}
+
+function getHostUserConfigs(): Array<{ path: string, target: LlmTarget }> {
+  const configs: Array<{ path: string, target: LlmTarget }> = [];
+  const xdgConfigHome = process.env["XDG_CONFIG_HOME"]
+    ?? (process.env["HOME"] ? path.join(process.env["HOME"], ".config") : null);
+
+  if (xdgConfigHome) {
+    const userAgentsPath = path.join(xdgConfigHome, "AGENTS.md");
+    if (fs.existsSync(userAgentsPath)) {
+      configs.push({ path: userAgentsPath, target: "AGENTS.md" });
+    }
+  }
+
+  return configs;
 }
 
 async function getLlmInstrPathFromDir(
