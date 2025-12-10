@@ -26,3 +26,12 @@ export class AbortError extends TransportError {
     super("Aborted");
   }
 }
+
+export async function getEnvVar(
+  signal: AbortSignal,
+  transport: Transport,
+  envVarName: string,
+  timeout: number,
+): Promise<string> {
+  return (await transport.shell(signal, "echo $" + envVarName, timeout)).replace(/\n$/, "");
+}

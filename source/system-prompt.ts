@@ -1,11 +1,11 @@
-import fs from "fs";
+import { fileExists } from "./fs-utils.ts";
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "./config.ts";
 import { getMcpClient } from "./tools/tool-defs/mcp.ts";
 import * as toolMap from "./tools/tool-defs/index.ts";
 import { tagged } from "./xml.ts";
-import { Transport } from "./transports/transport-common.ts";
+import { Transport, getEnvVar } from "./transports/transport-common.ts";
 
 const LLM_INSTR_FILES = [
   "OCTO.md",
@@ -240,8 +240,8 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
     curr = next;
   }
 
-  // User-level configs from host filesystem
-  const userConfigs = getHostUserConfigs();
+  // User-level configs from filesystem
+  const userConfigs = await getUserConfigs(transport, signal);
   paths.push(...userConfigs);
 
   const globalPath = await getLlmInstrPathFromDir(
@@ -254,16 +254,23 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
   return paths.reverse();
 }
 
-function getHostUserConfigs(): Array<{ path: string, target: LlmTarget }> {
+async function getUserConfigs(
+  transport: Transport,
+  signal: AbortSignal,
+): Promise<Array<{ path: string, target: LlmTarget }>> {
   const configs: Array<{ path: string, target: LlmTarget }> = [];
-  const xdgConfigHome = process.env["XDG_CONFIG_HOME"]
-    ?? (process.env["HOME"] ? path.join(process.env["HOME"], ".config") : null);
-
-  if (xdgConfigHome) {
-    const userAgentsPath = path.join(xdgConfigHome, "AGENTS.md");
-    if (fs.existsSync(userAgentsPath)) {
-      configs.push({ path: userAgentsPath, target: "AGENTS.md" });
+  let configHome = await getEnvVar(signal, transport, "XDG_CONFIG_HOME", 5000);
+  if(!configHome) {
+    const home = await getEnvVar(signal, transport, "HOME", 5000);
+    if(home) {
+      configHome = await getEnvVar(signal, transport, path.join(home, ".config"), 5000);
     }
+  }
+
+  if(configHome) {
+    const userAgentsPath = path.join(configHome, "AGENTS.md");
+    const exists = await transport.pathExists(signal, userAgentsPath);
+    if(exists) configs.push({ path: userAgentsPath, target: "AGENTS.md" });
   }
 
   return configs;
