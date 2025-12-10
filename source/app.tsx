@@ -799,7 +799,7 @@ function AssistantMessageRenderer({ item }: {
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
 
   const reservedSpace = 6; // bottom bar + padding
-  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace);
+  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace - 1);
 
   const isStreamingContent = modeData.mode == "responding";
 
@@ -837,13 +837,15 @@ function AssistantMessageRenderer({ item }: {
           </Box>
         </Box>
       }
-      {isStreamingContent ? (
-        <ScrollView height={scrollViewHeight}>
+      <Box flexGrow={1}>
+        {isStreamingContent ? (
+          <ScrollView height={scrollViewHeight}>
+            <Markdown markdown={content} />
+          </ScrollView>
+        ) : (
           <Markdown markdown={content} />
-        </ScrollView>
-      ) : (
-        <Markdown markdown={content} />
-      )}
+        )}
+      </Box>
     </Box>
   </Box>
 }

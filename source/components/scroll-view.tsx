@@ -42,15 +42,19 @@ export interface ScrollViewProps extends React.PropsWithChildren {
 export default function ScrollView({ height, children }: ScrollViewProps) {
   const [innerHeight, setInnerHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const innerRef = useRef<DOMElement>(null);
   const { stdin, setRawMode } = useStdin();
-  const { stdout } = useStdout();
 
-  const measureInnerElement = useCallback(() => {
+  const handleElementSize = useCallback(() => {
     if (!innerRef.current) return;
     const dimensions = measureElement(innerRef.current);
     setInnerHeight(dimensions.height);
-  }, []);
+    if (shouldAutoScroll) {
+      const maxScroll = Math.max(0, dimensions.height - height);
+      setScrollTop(maxScroll);
+    }
+  }, [shouldAutoScroll]);
 
   const isScrollable = innerHeight > height;
   const maxScroll = Math.max(0, innerHeight - height);
@@ -61,20 +65,23 @@ export default function ScrollView({ height, children }: ScrollViewProps) {
       const delta = direction === SCROLL_DIRECTIONS.SCROLL_UP ? -1 : 1;
       const newScrollTop = prev + delta;
       const maxScroll = Math.max(0, innerHeight - height);
+      const scrollPercentage = maxScroll > 0 ? Math.round((newScrollTop / maxScroll) * 100) : 0;
+      if (scrollPercentage >= 99) setShouldAutoScroll(true);
+      else setShouldAutoScroll(false);
       return Math.max(0, Math.min(newScrollTop, maxScroll));
     });
   }, [innerHeight, height]);
 
   useEffect(() => {
     const handleResize = () => {
-      setTimeout(measureInnerElement, 0);
+      setTimeout(handleElementSize, 0);
     };
     process.stdout.on('resize', handleResize);
 
     return () => {
       process.stdout.off('resize', handleResize);
     };
-  }, [measureInnerElement]);
+  }, [handleElementSize]);
 
   useEffect(() => {
     if (!stdin || !setRawMode || !isScrollable) {
@@ -131,30 +138,32 @@ export default function ScrollView({ height, children }: ScrollViewProps) {
   }, [stdin, setRawMode, isScrollable, handleScroll]);
 
   useEffect(() => {
-    const timer = setTimeout(measureInnerElement, 0);
+    const timer = setTimeout(handleElementSize, 0);
     return () => clearTimeout(timer);
-  }, [height, measureInnerElement]);
+  }, [height, handleElementSize]);
 
   useEffect(() => {
-    const timer = setTimeout(measureInnerElement, 0);
+    const timer = setTimeout(handleElementSize, 0);
     return () => clearTimeout(timer);
-  }, [children, measureInnerElement]);
+  }, [children, handleElementSize]);
+
+  const showTopBorder = scrollPercentage == 0;
+  const showBottomBorder = scrollPercentage == 100;
 
   const SCROLL_UI_COLOR = "cyan"
   const scrollableStyles: BoxProps = {
     borderStyle: "single",
-    borderTop: scrollPercentage == 0,
-    borderBottom: scrollPercentage == 100,
+    borderTop: showTopBorder,
+    borderBottom: showBottomBorder,
     borderColor: SCROLL_UI_COLOR,
+    paddingTop: showTopBorder ? 1 : 0,
+    paddingBottom: showBottomBorder ? 1 : 0,
   };
-
-  const borderOffset = (scrollPercentage == 0 ? 1 : 0) + (scrollPercentage == 100 ? 1 : 0);
-  const effectiveHeight = height + borderOffset;
 
   return (
     <Box flexDirection="column">
       <Box
-        height={effectiveHeight}
+        height={isScrollable ? height : undefined}
         flexDirection="column"
         flexShrink={0}
         overflow="hidden"
