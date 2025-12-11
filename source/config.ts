@@ -20,6 +20,13 @@ const McpServerConfigSchema = t.exact({
   env: t.optional(t.dict(t.str)),
 });
 
+const AutoCompactConfigSchema = t.exact({
+  enabled: t.bool,
+  contextThreshold: t.num,
+});
+
+export type AutoCompactConfig = t.GetType<typeof AutoCompactConfigSchema>
+
 const ConfigSchema = t.exact({
   yourName: t.str,
   models: t.array(t.exact({
@@ -48,6 +55,7 @@ const ConfigSchema = t.exact({
   })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
+  autoCompact: t.optional(AutoCompactConfigSchema),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = [
