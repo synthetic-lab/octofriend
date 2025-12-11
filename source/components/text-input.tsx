@@ -34,12 +34,19 @@ export default function TextInput({
 		cursorOffset: 0,
 		cursorWidth: 0,
 	});
+	const [isInitializing, setIsInitializing] = useState(true);
 
 	const {cursorOffset, cursorWidth} = state;
 	const valueRef = useRef(originalValue);
 	const cursorOffsetRef = useRef(cursorOffset);
 	const cursorWidthRef = useRef(cursorWidth);
 	const renderCursorPosition = originalValue.length + cursorOffset;
+
+	useEffect(() => {
+		// useInput sets rawMode to true and then false on mount;
+		const timer = setTimeout(() => setIsInitializing(false), 0);
+		return () => clearTimeout(timer);
+	}, []);
 
 	useEffect(() => {
 		valueRef.current = originalValue;
@@ -107,6 +114,8 @@ export default function TextInput({
 
 	useInput(
 		(input, key) => {
+			if (isInitializing) return;
+
 			const currentValue = valueRef.current;
 			const previousCursorOffset = cursorOffsetRef.current;
 			const previousCursorWidth = cursorWidthRef.current;
