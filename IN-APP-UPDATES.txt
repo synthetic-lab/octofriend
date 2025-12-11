@@ -1,2 +1,3 @@
+- Octo no longer flickers when rendering long in-progress assistant messages!
+- Added support for global AGENTS.md files at ~/.config/AGENTS.md
 - Optional Vim emulation! Enable it through the menu.
-- When requests fail, you can now copy-as-cURL for easy debugging.

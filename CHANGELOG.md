@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- Octo now supports a global AGENTS.md in `~/.config/AGENTS.md`, similar to
+  other coding tools.
+
+### Changed
+
+- Octo no longer flickers when rendering long assistant outputs, thanks to a
+  new ScrollView component that allows mouse-based scrolling for in-progress
+  assistant responses.
+
 ## [0.0.47] - 2025-12-04
 
 ### Added
