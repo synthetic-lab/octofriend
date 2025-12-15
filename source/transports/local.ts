@@ -65,7 +65,8 @@ export class LocalTransport implements Transport {
         cwd: process.cwd(),
         shell: "bash",
         timeout,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true
       });
 
       let output = '';
@@ -73,11 +74,21 @@ export class LocalTransport implements Transport {
 
       const onAbort = () => {
         aborted = true;
-        // Try graceful termination first
-        child.kill('SIGTERM');
+        // Kill the entire process group to handle child processes
+        try {
+          // First, try to kill the process group with SIGTERM
+          process.kill(-child.pid!, 'SIGTERM');
+        } catch (e) {
+          // Fallback to just killing the main process if process group doesn't exist
+          child.kill('SIGTERM');
+        }
         // Fallback to SIGKILL if it doesn't exit quickly
         setTimeout(() => {
-          try { child.kill('SIGKILL'); } catch {}
+          try {
+            process.kill(-child.pid!, 'SIGKILL');
+          } catch {
+            try { child.kill('SIGKILL'); } catch {}
+          }
         }, 500).unref?.();
       };
 
