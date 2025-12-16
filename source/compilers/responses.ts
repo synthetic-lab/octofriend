@@ -4,7 +4,6 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
-import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -15,14 +14,13 @@ import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 
-
 async function toModelMessage(
+  config: Config,
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
-  systemPromptData: SystemPromptData,
-  config: Config,
-  skipSystemPrompt: boolean,
+  appliedWindow: boolean,
+  skipSystemPrompt?: boolean,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -43,10 +41,10 @@ async function toModelMessage(
   output.reverse();
 
   if(!skipSystemPrompt) {
-    // Add system message
+    const { systemPrompt } = await import("../prompts/system-prompt.ts");
     output.unshift({
       role: "system",
-      content: await systemPrompt(systemPromptData, config, transport, signal),
+      content: await systemPrompt({ appliedWindow }, config, transport, signal),
     });
   }
 
@@ -207,42 +205,29 @@ async function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "file-unreadable") {
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.function.name,
-          output: {
-            type: "text",
-            value: `File ${ir.path} could not be read. Has it been deleted?`,
-          },
-        }
-      ],
-    };
-  }
-
-  // compaction-checkpoint case
+  // context has been summarized message perhaps?
   if(ir.role === "compaction-checkpoint") {
     return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: "__system__",
-          toolName: "system",
-          output: {
-            type: "text",
-            value: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
-          },
-        }
-      ],
+      role: "user",
+      content: ir.summary,
     };
   }
 
-  throw new Error(`Unknown IR type: ${(ir as LlmIR).role}`);
+  const _: "file-unreadable" = ir.role;
+  return {
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: ir.toolCall.toolCallId,
+        toolName: ir.toolCall.function.name,
+        output: {
+          type: "text",
+          value: `File ${(ir as any).path} could not be read. Has it been deleted?`,
+        },
+      }
+    ],
+  };
 }
 
 function generateCurlFrom(params: {
@@ -270,7 +255,7 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedWindow
 }: {
   config: Config,
   modelOverride: string | null,
@@ -280,23 +265,16 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedCompaction: boolean,
-  compactSummary?: string,
+  appliedWindow: boolean,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const systemPromptData: SystemPromptData = {
-    appliedWindow: windowedIR.appliedWindow,
-    appliedCompaction,
-    compactSummary,
-  };
-  
   const messages = await toModelMessage(
+    config,
     transport,
     abortSignal,
     windowedIR.ir,
-    systemPromptData,
-    config,
-    !!skipSystemPrompt,
+    appliedWindow,
+    skipSystemPrompt,
   );
 
   // Convert tools to AI SDK format

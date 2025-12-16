@@ -30,7 +30,7 @@ import {
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "./components/ink/select-input.tsx";
-import { useAppStore, RunArgs, useModel } from "./state.ts";
+import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
@@ -121,7 +121,7 @@ export default function App({ config, configPath, metadata, unchained, transport
                     }
                   </Static>
                   {
-                    modeData.mode === "responding" &&
+                    (modeData.mode === "responding" || modeData.mode === "compacting") &&
                       (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
                       <MessageDisplay item={modeData.inflightResponse} />
                   }
@@ -265,6 +265,13 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       "Auto-fixing JSON",
     ]}/>
   };
+  if(modeData.mode === "compacting") {
+    return (
+      <Box flexDirection="column">
+        <Loading overrideStrings={["Compacting history to save context tokens"]}/>
+      </Box>
+    );
+  };
   if(modeData.mode === "tool-waiting") {
     return <Loading overrideStrings={[
       "Waiting",
@@ -293,7 +300,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     />;
   }
 
-  // TODO: add UI for compacting results
   const _: "menu" | "input" = modeData.mode;
 
   return <Box flexDirection="column">
@@ -564,7 +570,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 });
 
 const MessageDisplay = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
+  item: HistoryItem | InflightResponseType
 }) => {
   return <Box flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
@@ -572,12 +578,28 @@ const MessageDisplay = React.memo(({ item }: {
 });
 
 const MessageDisplayInner = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
+  item: HistoryItem | InflightResponseType
 }) => {
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    }))
+  );
+  const terminalSize = useTerminalSize();
+
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
   if(item.type === "assistant") {
+    if(modeData.mode === "compacting") {
+      const scrollHeight = Math.min(5, terminalSize.height - 10);
+      return <Box marginBottom={1}>
+        <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+        <ScrollView height={scrollHeight}>
+          <Markdown markdown={item.content} />
+        </ScrollView>
+      </Box>
+    }
     return <Box marginBottom={1}>
       <AssistantMessageRenderer item={item} />
     </Box>
@@ -639,7 +661,12 @@ const MessageDisplayInner = React.memo(({ item }: {
   }
 
   if(item.type === "compaction-checkpoint") {
-    return <Text color="gray">Compacting history to minimize token usage...</Text>
+    return (
+      <Box flexDirection="column">
+        <Text color="gray">History compacted! Summary: </Text>
+        <Markdown markdown={item.summary} />
+      </Box>
+    );
   }
 
   const _: "user" = item.type;
@@ -788,7 +815,7 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;
 function AssistantMessageRenderer({ item }: {
-  item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
+  item: InflightResponseType,
 }) {
   const terminalSize = useTerminalSize();
   let thoughts = item.reasoningContent;

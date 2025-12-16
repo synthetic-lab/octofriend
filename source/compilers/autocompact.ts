@@ -1,4 +1,4 @@
-import { Config } from "../config.ts";
+import { AutoCompactConfig, Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
 import { LlmIR, toLlmIR, AgentResult } from "../ir/llm-ir.ts";
 import { compactPrompt, CompactResponse } from "../prompts/compact-prompt.ts";
@@ -7,42 +7,65 @@ import { run } from "./run.ts";
 import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 
+export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "compaction-checkpoint") {
+      return i;
+    }
+  }
+  return 0;
+}
+
+export function shouldAutoCompactHistory(
+  messages: LlmIR[],
+  onError: (errString: string) => void,
+  config: Config,
+  modelOverride: string | null,
+  autoCompactSettings?: AutoCompactConfig,
+): boolean {
+  if (!autoCompactSettings?.enabled) return false;
+
+  const contextThreshold = autoCompactSettings.contextThreshold;
+  if (contextThreshold <= 0 || contextThreshold > 1) {
+    onError("Tried autocompacting, but threshold is invalid number (must be between 0 and 1)")
+    return false;
+  }
+  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
+  const slicedMessages = messages.slice(checkpointIndex)
+  const modelConfig = getModelFromConfig(config, modelOverride);
+  const maxContextWindow = modelConfig.context;
+  const maxAllowedTokens = Math.floor(maxContextWindow * contextThreshold);
+  const currentTokens = countIRTokens(slicedMessages);
+
+  return currentTokens >= maxAllowedTokens;
+}
+
+
 export async function generateCompactionSummary(
   messages: LlmIR[],
   config: Config,
-  transport: Transport
+  transport: Transport,
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
+  onAutofixJson: (done: Promise<void>) => any
 ): Promise<string | null> {
-  // Format messages for summarization
   const processedMessages = formatMessagesForSummary(messages);
 
-  // Apply context window to avoid overwhelming the model
   const modelConfig = getModelFromConfig(config, null);
   const windowedIR = applyContextWindow(processedMessages, modelConfig.context);
-
-  let summaryText = "";
-
+  
   try {
     const result = await run({
       config,
       modelOverride: null,
       messages: windowedIR.ir,
-      onTokens: (tokens) => {
-        summaryText += tokens;
-      },
-      onAutofixJson: (done) => {
-        /* no-op for compaction */
-      },
+      onTokens,
+      onAutofixJson,
       abortSignal: new AbortController().signal,
       transport,
-      skipSystemPrompt: true, // Don't add system prompt to compaction requests
     });
-
     const summary = processCompactedHistory(result);
-    console.log("Summary: ", summary)
     return summary ?? null;
   } catch (e) {
-    // If autocompaction fails, return null
-    console.error("Generate compaction summary failed:", e);
     return null;
   }
 }
@@ -51,7 +74,6 @@ export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {
   const lines: string[] = [];
 
   for (const message of messages) {
-    // Create a copy without the id field and stringify
     const { role, ...rest } = message;
     lines.push(`${message.role}: ${JSON.stringify(rest)}`);
   }
@@ -82,17 +104,5 @@ export function processCompactedHistory(
     return;
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(assistantMessage.content);
-  } catch {
-    return;
-  }
-
-  const validated = CompactResponse.slice(parsed);
-
-  if (!validated.success) {
-    return;
-  }
-  return validated.summary;
+  return assistantMessage.content
 }

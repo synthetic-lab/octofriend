@@ -11,23 +11,53 @@ export const CompactResponse = CompactSuccess.or(CompactFailure);
 
 export function compactPrompt(conversationHistory: string) {
   return (
-`You are helping to compact a conversation history to save context tokens. Your task is to create a concise summary of the conversation history provided below that preserves all critical information while being as brief as possible.
+`You are summarizing a conversation to preserve context for continuing work later.
 
-The summary should:
-- Preserve key decisions, implementations, and outcomes
-- Include important context that might be needed for future messages
-- Maintain technical details that could be referenced later
-- Be written in a clear, factual style
+**Critical**: This summary will be the ONLY context available when the conversation resumes. Assume all previous messages will be lost. Be thorough.
 
-Respond with JSON in the following format:
+**Required sections**:
 
-// Success response:
-${toTypescript({ CompactSuccess })}
+## Current State
 
-// Failure response (if the history cannot be meaningfully summarized):
-${toTypescript({ CompactFailure })}
+- What task is being worked on (exact user request)
+- Current progress and what's been completed
+- What's being worked on right now (incomplete work)
+- What remains to be done (specific next steps, not vague)
 
-Here's the conversation history to summarize:
-${conversationHistory}`
+## Files & Changes
+
+- Files that were modified (with brief description of changes)
+- Files that were read/analyzed (why they're relevant)
+- Key files not yet touched but will need changes
+- File paths and line numbers for important code locations
+
+## Technical Context
+
+- Architecture decisions made and why
+- Patterns being followed (with examples)
+- Libraries/frameworks being used
+- Commands that worked (exact commands with context)
+- Commands that failed (what was tried and why it didn't work)
+- Environment details (language versions, dependencies, etc.)
+
+## Strategy & Approach
+
+- Overall approach being taken
+- Why this approach was chosen over alternatives
+- Key insights or gotchas discovered
+- Assumptions made
+- Any blockers or risks identified
+
+## Next Steps
+
+Be specific. For example, don't write "implement authentication", but instead find a way to talk about what files were changed, etc.
+**Tone**: Write as if briefing a teammate taking over mid-task. Include everything they'd need to continue without asking questions.
+
+**Length**: No limit. Err on the side of too much detail rather than too little. Critical context is worth the tokens.
+
+Here is the conversation history that you are compacting, read the following very carefully:
+
+${conversationHistory}
+`
   );
 }

@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
-import { generateCompactionSummary } from "./compilers/autocompact.ts";
+import { generateCompactionSummary, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
 import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, sequenceId } from "./history.ts";
 import {
@@ -13,7 +13,7 @@ import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { useShallow } from "zustand/shallow";
-import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
+import { toLlmIR, outputToHistory, UserMessage } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
@@ -22,13 +22,15 @@ export type RunArgs = {
   config: Config,
   transport: Transport,
 };
+
+export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">
 export type UiState = {
   modeData: {
     mode: "input",
     vimMode: "NORMAL" | "INSERT",
   } | {
     mode: "responding",
-    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
+    inflightResponse: InflightResponseType,
     abortController: AbortController,
   } | {
     mode: "tool-request",
@@ -50,6 +52,10 @@ export type UiState = {
     abortController: AbortController,
   } | {
     mode: "fix-json",
+  } | {
+    mode: "compacting",
+    inflightResponse: InflightResponseType,
+    abortController: AbortController,
   } | {
     mode: "menu",
   } | {
@@ -226,34 +232,97 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   _runAgent: async ({ config, transport }) => {
-    // Check if we should autocompact
     const historyCopy = [ ...get().history ];
     const messages = toLlmIR(historyCopy);
-    
-    // Simple autocompact check: if we have >20 messages, autocompact
-    if (messages.length > 50000) {
-      console.log("Messages length: ", messages.length)
+    const onAutofixJson = () => { set({ modeData: { mode: "fix-json" } }); };
+
+    const debounceTimeout = 100;
+    const compactionAbortController = new AbortController();
+    const agentAbortController = new AbortController();
+
+    const createDebouncedUpdater = () => {
+      let timeout: NodeJS.Timeout | null = null;
+      return {
+        schedule: (updateFn: () => void) => {
+          if (timeout) return;
+          timeout = setTimeout(() => {
+            updateFn();
+            timeout = null;
+          }, debounceTimeout);
+        },
+        clear: () => {
+          if (timeout) {
+            clearTimeout(timeout);
+            timeout = null;
+          }
+        },
+      };
+    };
+
+    if (shouldAutoCompactHistory(messages, get().notify, config, get().modelOverride, config.autoCompact)) {
       try {
-        const checkpointSummary = await generateCompactionSummary(messages, config, transport);
+        let compactionByteCount = get().byteCount;
+        let compactionContent = "";
+        let lastCompactionContent = "";
+        const compactionUpdater = createDebouncedUpdater();
+
+        const checkpointSummary = await generateCompactionSummary(
+          messages,
+          config,
+          transport,
+          (tokens, type) => {
+            compactionByteCount += tokens.length;
+            if (type === "content") {
+              compactionContent += tokens;
+              if (compactionContent === lastCompactionContent) return;
+              lastCompactionContent = compactionContent;
+            }
+
+            compactionUpdater.schedule(() => {
+              set({
+                modeData: {
+                  mode: "compacting",
+                  inflightResponse: {
+                    type: "assistant",
+                    content: compactionContent,
+                  },
+                  abortController: compactionAbortController,
+                },
+                byteCount: compactionByteCount,
+              });
+            });
+          },
+          onAutofixJson
+        );
+
+        compactionUpdater.clear();
+
         if (checkpointSummary) {
           const checkpointItem: CompactionCheckpointItem = {
             type: "compaction-checkpoint",
             id: sequenceId(),
             summary: checkpointSummary,
           };
+          const continuationItem: UserItem = {
+            type: "user",
+            id: sequenceId(),
+            content: "Continue working on your task.",
+          };
           historyCopy.push(checkpointItem);
+          historyCopy.push(continuationItem);
           set({ history: historyCopy });
         }
       } catch (e) {
-        // If compaction fails, continue without it
-        console.error("Autocompaction failed:", e);
+        get().notify("Autocompaction failed: " + e);
       }
     }
-    
+
     let content = "";
     let reasoningContent: undefined | string = undefined;
+    let byteCount = get().byteCount;
+    let lastContent = "";
+    const agentUpdater = createDebouncedUpdater();
 
-    const abortController = new AbortController();
     set({
       modeData: {
         mode: "responding",
@@ -261,14 +330,9 @@ export const useAppStore = create<UiState>((set, get) => ({
           type: "assistant",
           content,
         },
-        abortController,
+        abortController: agentAbortController,
       }
     });
-
-    const debounceTimeout = 100;
-    let timeout: NodeJS.Timeout | null = null;
-    let lastContent = "";
-    let byteCount = get().byteCount;
 
     const history = [ ...get().history ];
     try {
@@ -276,42 +340,38 @@ export const useAppStore = create<UiState>((set, get) => ({
         config, transport,
         modelOverride: get().modelOverride,
         messages: toLlmIR(history),
-        abortSignal: abortController.signal,
+        abortSignal: agentAbortController.signal,
         onTokens: (tokens, type) => {
           byteCount += tokens.length;
 
           if(type === "content") {
             content += tokens;
-
-            // Skip duplicate updates
-            if (content === lastContent) return;
+            if(content === lastContent) return;
             lastContent = content;
           } else if(type === "reasoning") {
             if(reasoningContent == null) reasoningContent = "";
             reasoningContent += tokens;
           }
-          if (timeout) return;
 
-          timeout = setTimeout(() => {
+          agentUpdater.schedule(() => {
             set({
               modeData: {
                 mode: "responding",
                 inflightResponse: {
                   type: "assistant",
-                  content, reasoningContent,
+                  content,
+                  reasoningContent,
                 },
-                abortController,
+                abortController: agentAbortController,
               },
               byteCount,
             });
-            timeout = null;
-          }, debounceTimeout);
+          });
         },
-        onAutofixJson: () => {
-          set({ modeData: { mode: "fix-json" } });
-        },
+        onAutofixJson,
       });
-      if(timeout) clearTimeout(timeout);
+
+      agentUpdater.clear();
 
       // Successful result has an output with the OutputIR
       // Failed result has the requestError and associated curl
@@ -335,7 +395,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
     } catch(e) {
-      if(abortController.signal.aborted) {
+      if(agentAbortController.signal.aborted) {
         // Handle abort gracefully - return to input mode
         set({
           modeData: {
@@ -383,7 +443,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     try {
-      await validateTool(abortController.signal, transport, lastHistoryItem.tool.function, config);
+      await validateTool(agentAbortController.signal, transport, lastHistoryItem.tool.function, config);
     } catch(e) {
       const fn = lastHistoryItem.tool.function;
       let fixed = false;
@@ -391,20 +451,20 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({
           modeData: {
             mode: "diff-apply",
-            abortController,
+            abortController: agentAbortController,
           },
         });
         const path = fn.arguments.filePath;
         try {
           const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.arguments, abortController.signal);
-          if (abortController.signal.aborted) {
+          const fix = await autofixEdit(config, file, fn.arguments, agentAbortController.signal);
+          if (agentAbortController.signal.aborted) {
             set({ modeData: { mode: "input", vimMode: "NORMAL" } });
             return;
           }
           if(fix) {
             // Validate that the edit applies before marking as fixed
-            await validateTool(abortController.signal, transport, {
+            await validateTool(agentAbortController.signal, transport, {
               name: "edit",
               arguments: fix,
             }, config);
@@ -424,7 +484,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
           history: [
             ...history,
-            await tryTransformToolError(abortController.signal, transport, lastHistoryItem, e),
+            await tryTransformToolError(agentAbortController.signal, transport, lastHistoryItem, e),
           ],
         });
         return await get()._runAgent({ config, transport });

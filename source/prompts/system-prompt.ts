@@ -8,8 +8,6 @@ import { Transport, getEnvVar } from "../transports/transport-common.ts";
 
 export type SystemPromptData = {
   appliedWindow: boolean,
-  appliedCompaction: boolean,
-  compactSummary?: string,
 };
 
 const LLM_INSTR_FILES = [
@@ -139,10 +137,7 @@ ${await llmInstrsPrompt(transport, signal, config)}
 
 ${systemPromptData.appliedWindow ?
 "\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
-
-${systemPromptData.appliedCompaction ?
-"\n# Context compaction note\nDue to context length limits, part of the conversation history has been summarized. Treat the conversation history as if it was part of the current conversation thread.\n\nThis is the conversation history summary:\n" + (systemPromptData.compactSummary || "[No summary provided]") : ""}
-`;}
+`;};
 
 async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const instrs = await getLlmInstrs(transport, signal);

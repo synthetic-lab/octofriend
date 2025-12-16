@@ -1,9 +1,9 @@
 import React, { useCallback } from "react";
 import { create } from "zustand";
-import { useInput, useApp, Text } from "ink";
+import { useInput, useApp, Text, Box } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
-import { useConfig, useSetConfig, Config } from "./config.ts";
+import { useConfig, useSetConfig, Config, DEFAULT_AUTOCOMPACT_THRESHOLD } from "./config.ts";
 import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
@@ -11,6 +11,7 @@ import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
+import TextInput from "./components/text-input.tsx";
 
 type MenuMode = "main-menu"
               | "settings-menu"
@@ -174,52 +175,163 @@ function AutocompactionToggle() {
     notify: state.notify,
   })));
 
+  const [mode, setMode] = React.useState<"menu" | "edit-threshold">("menu");
+  const [thresholdInput, setThresholdInput] = React.useState(
+    config.autoCompact?.contextThreshold?.toString() ?? DEFAULT_AUTOCOMPACT_THRESHOLD.toString()
+  );
+
   useInput((_, key) => {
-    if(key.escape) setMenuMode("main-menu");
+    if (key.escape) {
+      if(mode === "edit-threshold") {
+        setMode("menu");
+      } else {
+        setMenuMode("main-menu");
+      }
+    }
   });
 
-  if(config.autoCompact) {
-    return <ConfirmDialog
-      rejectLabel="Disable autocompaction"
-      confirmLabel="Keep autocompaction on (recommended)"
-      onReject={async () => {
-        const newconf = { ...config };
-        delete newconf.autoCompact;
-        await setConfig(newconf);
-        setMenuMode("main-menu");
-        toggleMenu();
-        notify("Autocompaction disabled");
-      }}
-      onConfirm={() => {
-        setMenuMode("main-menu");
-      }}
-    />
-  }
-  return <ConfirmDialog
-    rejectLabel="Cancel"
-    confirmLabel="Enable autocompaction"
-    onReject={() => {
-      setMenuMode("main-menu");
-    }}
-    onConfirm={async () => {
+  const onSelectEnabled = useCallback(async (item: { label: string; value: "change-threshold" | "disable" | "back" }) => {
+    if (item.value === "change-threshold") {
+      setMode("edit-threshold");
+    } else if (item.value === "disable") {
       await setConfig({
         ...config,
         autoCompact: {
-          enabled: true,
-          contextThreshold: 100,
-        },
+          enabled: false,
+          contextThreshold: config.autoCompact?.contextThreshold || DEFAULT_AUTOCOMPACT_THRESHOLD
+        }
       });
       setMenuMode("main-menu");
       toggleMenu();
-      notify("Autocompaction enabled");
-    }}
-  >
-    <Text>
-      Autocompaction automatically manages your conversation history to keep context manageable for
-      models. When enabled, Octo will automatically compact older conversation turns when the context
-      length exceeds the threshold, helping maintain model performance and preventing context overflow errors.
-    </Text>
-  </ConfirmDialog>
+      notify("Autocompaction disabled");
+    } else {
+      setMenuMode("main-menu");
+    }
+  }, [config, setConfig, setMode, setMenuMode, toggleMenu, notify]);
+
+  const onSelectDisabled = useCallback(async (item: { label: string; value: "enable" | "cancel" }) => {
+    if (item.value === "enable") {
+      await setConfig({
+        ...config,
+        autoCompact: {
+          enabled: false,
+          contextThreshold: config.autoCompact?.contextThreshold || DEFAULT_AUTOCOMPACT_THRESHOLD
+        }
+      });
+      setMode("edit-threshold");
+      notify("Autocompaction enabled")
+    } else {
+      setMenuMode("main-menu");
+    }
+  }, [config, setConfig, setMode, setMenuMode, notify]);
+
+  if (mode === "edit-threshold") {
+    return <AutocompactionThresholdInput
+      initialValue={thresholdInput}
+      onSubmit={async (threshold) => {
+        await setConfig({
+          ...config,
+          autoCompact: {
+            enabled: true,
+            contextThreshold: threshold,
+          },
+        });
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify(`Autocompaction ${config.autoCompact?.enabled ? 'threshold updated' : 'enabled'} (threshold: ${threshold})`);
+      }}
+      onCancel={() => {
+        setMode("menu");
+      }}
+    />
+  }
+
+  if(config.autoCompact?.enabled) {
+    const items = [
+      {
+        label: `Change threshold (current: ${config.autoCompact.contextThreshold})`,
+        value: "change-threshold" as const,
+      },
+      {
+        label: "Disable autocompaction",
+        value: "disable" as const,
+      },
+      {
+        label: "Back",
+        value: "back" as const,
+      },
+    ];
+
+    return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelectEnabled} />
+  }
+
+  const items = [
+    {
+      label: "Enable autocompaction",
+      value: "enable" as const,
+    },
+    {
+      label: "Cancel",
+      value: "cancel" as const,
+    },
+  ];
+
+  return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelectDisabled} />
+}
+
+function AutocompactionThresholdInput({
+  initialValue,
+  onSubmit,
+  onCancel,
+}: {
+  initialValue: string,
+  onSubmit: (threshold: number) => void,
+  onCancel: () => void,
+}) {
+  const [value, setValue] = React.useState(initialValue);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((_, key) => {
+    if(key.escape) onCancel();
+  });
+
+  const handleSubmit = React.useCallback((input: string) => {
+    const truncated = Math.floor(parseFloat(input) * 100) / 100;
+
+    if (isNaN(truncated) || truncated <= 0 || truncated > 1) {
+      setError("Please enter a number between 0 and 1 (e.g., 0.8 for 80%)");
+      return;
+    }
+
+    onSubmit(truncated);
+  }, [onSubmit]);
+
+  return (
+    <Box flexDirection="column">
+      <Text>Enter context threshold (0-1, where 1.0 = 100% of context):</Text>
+      <Text dimColor>When context usage reaches this threshold, history will be compacted.</Text>
+      <Text> </Text>
+      <Box>
+        <Text>Threshold: </Text>
+        <TextInput
+          value={value}
+          onChange={(v) => {
+            setValue(v);
+            setError(null);
+          }}
+          onSubmit={handleSubmit}
+        />
+      </Box>
+      {error && (
+        <>
+          <Text> </Text>
+          <Text color="red">{error}</Text>
+        </>
+      )}
+      <Text> </Text>
+      <Text dimColor>Press Enter to save, Escape to cancel</Text>
+    </Box>
+  );
 }
 
 function SwitchModelMenu() {
@@ -310,8 +422,8 @@ const SETTINGS_ITEMS = [
     value: "disable-fix-json" as const,
   },
   {
-    label: "Disable autocompaction",
-    value: "disable-autocompaction" as const,
+    label: "Configure autocompaction",
+    value: "configure-autocompaction" as const,
   },
 ];
 function filterSettings(config: Config) {
@@ -319,7 +431,6 @@ function filterSettings(config: Config) {
   items = items.filter(item => {
     if(config.diffApply == null && item.value === "disable-diff-apply") return false;
     if(config.fixJson == null && item.value === "disable-fix-json") return false;
-    if(config.autoCompact == null && item.value === "disable-autocompaction") return false;
     return true;
   });
 
@@ -361,10 +472,6 @@ function MainMenu() {
       value: "fix-json-toggle" as const,
     },
     {
-      label: "📚 Enable autocompaction",
-      value: "autocompaction-toggle" as const,
-    },
-    {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
@@ -393,7 +500,6 @@ function MainMenu() {
   items = items.filter(item => {
     if(config.diffApply != null && item.value === "diff-apply-toggle") return false;
     if(config.fixJson != null && item.value === "fix-json-toggle") return false;
-    if(config.autoCompact != null && item.value === "autocompaction-toggle") return false;
     return true;
   });
 
@@ -444,7 +550,7 @@ function SettingsMenu() {
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if(item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
-    else if(item.value === "disable-autocompaction") setMenuMode("autocompaction-toggle");
+    else if(item.value === "configure-autocompaction") setMenuMode("autocompaction-toggle");
     else if(item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
 	}, []);

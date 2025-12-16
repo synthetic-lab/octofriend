@@ -6,13 +6,13 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt, SystemPromptData } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -152,7 +152,7 @@ async function modelMessageFromIr(
   if(ir.role === "compaction-checkpoint") {
     return {
       role: "user",
-      content: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
+      content: `# Conversation History Summary\n${ir.summary}\nTreat the above conversation history summary as part of the current conversation.`,
     };
   }
 
@@ -207,7 +207,7 @@ JSON`;
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedCompaction, compactSummary
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedWindow
 }: {
   config: Config,
   modelOverride: string | null,
@@ -217,17 +217,12 @@ export async function runAnthropicAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedCompaction: boolean,
-  compactSummary?: string,
+  appliedWindow: boolean,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
-  const systemPromptData: SystemPromptData = {
-    appliedWindow: windowedIR.appliedWindow,
-    appliedCompaction,
-    compactSummary,
-  };
-  const sysPrompt = await systemPrompt(systemPromptData, config, transport, abortSignal);
+
+  const systemPromptText = skipSystemPrompt ? undefined : await systemPrompt({ appliedWindow }, config, transport, abortSignal);
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {
@@ -268,7 +263,7 @@ export async function runAnthropicAgent({
   const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context);
 
   try {
-    const system = skipSystemPrompt ? {} : { system: sysPrompt };
+    const system = systemPromptText ? { system: systemPromptText } : {};
     const result = await client.messages.create({
       ...system,
       model: modelConfig.model,
@@ -489,7 +484,7 @@ export async function runAnthropicAgent({
     const curl = generateCurlFrom({
       baseURL: modelConfig.baseUrl,
       model: modelConfig.model,
-      system: sysPrompt,
+      system: systemPromptText || "",
       messages,
       tools,
       maxTokens,
