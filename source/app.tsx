@@ -847,6 +847,7 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
       borderColor="gray"
       borderStyle="round"
       width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
+      marginLeft={1}
     >
       <Text color="gray">{thoughts}</Text>
     </Box>
