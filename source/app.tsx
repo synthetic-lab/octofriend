@@ -830,28 +830,40 @@ function ThoughtBox({ thoughts }: {
 }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
-  const [ widthOverflowed, setWidthOverflowed ] = useState(false);
+  const [ terminalWidth, setTerminalWidth ] = useState(80);
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
   const isScrollable = useContext(IsScrollableContext);
 
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    }))
+  );
+
+  const { stdout } = useStdout();
+  useEffect(() => {
+    const terminalWidth = stdout?.columns || 80;
+    setTerminalWidth(terminalWidth);
+  }, []);
+
   useEffect(() => {
     if(thoughtsRef.current) {
-      const { height, width } = measureElement(thoughtsRef.current);
+      const { height } = measureElement(thoughtsRef.current);
       setThoughtsHeight(height);
-      if(width > MAX_THOUGHTBOX_WIDTH) {
-        setWidthOverflowed(true);
-      }
     }
   }, [ thoughts ]);
 
   const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
+  const contentMaxWidth = terminalWidth - THOUGHTBOX_MARGIN;
+  const maxWidth = Math.min(contentMaxWidth, MAX_THOUGHTBOX_WIDTH);
+  const isStreamingContent = modeData.mode == "responding";
 
   return <Box flexDirection="column">
     <Box
       flexGrow={0}
       flexShrink={1}
       height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
-      width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
+      width={isStreamingContent ? maxWidth : undefined}
       overflowY={enforceMaxHeight ? "hidden" : undefined}
       flexDirection="column"
       borderColor="gray"
