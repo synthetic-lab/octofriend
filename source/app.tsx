@@ -840,13 +840,25 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
   }, [ thoughts ]);
 
   const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
+  if(!enforceMaxHeight) {
+    return <Box
+      ref={thoughtsRef}
+      flexDirection="column"
+      borderColor="gray"
+      borderStyle="round"
+      width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
+    >
+      <Text color="gray">{thoughts}</Text>
+    </Box>
+  }
+
   return <Box flexDirection="column">
     <Box
       flexGrow={0}
       flexShrink={1}
-      height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
+      height={MAX_THOUGHTBOX_HEIGHT}
       width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
-      overflowY={enforceMaxHeight ? "hidden" : undefined }
+      overflowY="hidden"
       flexDirection="column"
       borderColor="gray"
       borderStyle="round"
