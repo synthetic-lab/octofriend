@@ -779,7 +779,6 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 }
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
-const MAX_THOUGHTBOX_WIDTH = 80;
 function AssistantMessageRenderer({ item }: {
   item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
 }) {
@@ -809,43 +808,48 @@ function AssistantMessageRenderer({ item }: {
       setThoughtsHeight(height);
     }
   }, [ thoughts ]);
+  
+  const showThoughts = thoughts && thoughts !== ""
 
 	return <Box>
     <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
     <Box flexDirection="column" flexGrow={1}>
-      {
-        thoughts && thoughts !== "" && <Box flexDirection="column">
-          <Box
-            flexGrow={0}
-            flexShrink={1}
-            height={thoughtsOverflow > 0 ? MAX_THOUGHTBOX_HEIGHT : undefined}
-            width={MAX_THOUGHTBOX_WIDTH}
-            overflowY="hidden"
-            flexDirection="column"
-            borderColor="gray"
-            borderStyle="round"
-          >
-            <Box
-              ref={thoughtsRef}
-              flexShrink={0}
-              width={MAX_THOUGHTBOX_WIDTH - 2}
-              flexDirection="column"
-              marginTop={-1 * Math.max(0, thoughtsOverflow)}
-            >
+      {isStreamingContent ? (
+        <ScrollView height={scrollViewHeight}>
+          {
+            showThoughts && <Box flexDirection="column">
+              <Box
+                flexGrow={0}
+                flexShrink={1}
+                height={thoughtsOverflow > 0 ? MAX_THOUGHTBOX_HEIGHT : undefined}
+                overflowY="hidden"
+                flexDirection="column"
+                borderColor="gray"
+                borderStyle="round"
+              >
+                <Box
+                  ref={thoughtsRef}
+                  flexShrink={0}
+                  flexDirection="column"
+                  marginTop={-1 * Math.max(0, thoughtsOverflow)}
+                >
+                  <Text color="gray">{thoughts}</Text>
+                </Box>
+              </Box>
+            </Box>
+          }
+          <Markdown markdown={content} />
+        </ScrollView>
+      ) : (
+        <Box flexDirection="column">
+          {showThoughts && 
+            <Box paddingBottom={1}>
               <Text color="gray">{thoughts}</Text>
             </Box>
-          </Box>
-        </Box>
-      }
-      <Box flexGrow={1}>
-        {isStreamingContent ? (
-          <ScrollView height={scrollViewHeight}>
-            <Markdown markdown={content} />
-          </ScrollView>
-        ) : (
+          }
           <Markdown markdown={content} />
-        )}
-      </Box>
+        </Box>
+      )}
     </Box>
   </Box>
 }
