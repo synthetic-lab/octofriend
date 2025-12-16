@@ -1,7 +1,7 @@
-import { Box, DOMElement, measureElement, useStdin, Text, BoxProps, useStdout } from 'ink';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Box, DOMElement, measureElement, useStdin, Text, BoxProps } from 'ink';
+import React, { useEffect, useState, useRef, useCallback, createContext } from 'react';
 
-// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates 
+// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
 const MOUSE_PATTERNS = {
   URXVT: /\x1b\[(\d+);(\d+);(\d+)M/, // 3 numbers separated by semicolons
   SGR: /\x1b\[<(\d+);(\d+);(\d+)([Mm])/, // like URXVT but ends with m or M
@@ -28,7 +28,7 @@ const MOUSE_BUTTONS = {
   },
 };
 
-// ASCII Escape codes reference: 
+// ASCII Escape codes reference:
 // https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html
 const MOUSE_TRACKING = {
   ENABLE: '\x1b[?1000h',
@@ -39,7 +39,9 @@ export interface ScrollViewProps extends React.PropsWithChildren {
   height: number;
 }
 
-export default function ScrollView({ height, children }: ScrollViewProps) {
+export const IsScrollableContext = createContext(false);
+
+export function ScrollView({ height, children }: ScrollViewProps) {
   const [innerHeight, setInnerHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -161,30 +163,32 @@ export default function ScrollView({ height, children }: ScrollViewProps) {
   };
 
   return (
-    <Box flexDirection="column">
-      <Box
-        height={isScrollable ? height : undefined}
-        flexDirection="column"
-        flexShrink={0}
-        overflow="hidden"
-        {...(isScrollable && scrollableStyles)}
-      >
+    <IsScrollableContext.Provider value={isScrollable}>
+      <Box flexDirection="column">
         <Box
-          ref={innerRef}
+          height={isScrollable ? height : undefined}
           flexDirection="column"
           flexShrink={0}
-          marginTop={-scrollTop}
+          overflow="hidden"
+          {...(isScrollable && scrollableStyles)}
         >
-          {children}
+          <Box
+            ref={innerRef}
+            flexDirection="column"
+            flexShrink={0}
+            marginTop={-scrollTop}
+          >
+            {children}
+          </Box>
         </Box>
+        {isScrollable && (
+          <Box justifyContent="flex-end">
+            <Text color={SCROLL_UI_COLOR} dimColor>
+              {scrollPercentage}% {scrollTop > 0 ? '↑' : ''}{scrollTop < maxScroll ? '↓' : ''}
+            </Text>
+          </Box>
+        )}
       </Box>
-      {isScrollable && (
-        <Box justifyContent="flex-end">
-          <Text color={SCROLL_UI_COLOR} dimColor>
-            {scrollPercentage}% {scrollTop > 0 ? '↑' : ''}{scrollTop < maxScroll ? '↓' : ''}
-          </Text>
-        </Box>
-      )}
-    </Box>
+    </IsScrollableContext.Provider>
   );
 }

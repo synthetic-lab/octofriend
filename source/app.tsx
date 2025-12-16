@@ -44,7 +44,7 @@ import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
-import ScrollView from "./components/scroll-view.tsx";
+import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 
 type Props = {
 	config: Config;
@@ -779,77 +779,86 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 }
 
 const MAX_THOUGHTBOX_HEIGHT = 8;
+const MAX_THOUGHTBOX_WIDTH = 80;
 function AssistantMessageRenderer({ item }: {
   item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
 }) {
+  const { stdout } = useStdout();
+  const terminalHeight = stdout?.rows;
+  let thoughts = item.reasoningContent;
+  let content = item.content.trim();
+
+  const reservedSpace = 6; // bottom bar + padding
+  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace - 1);
+
+  const showThoughts = thoughts && thoughts !== ""
+
+	return <Box>
+    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
+    <MaybeScrollView height={scrollViewHeight}>
+      { showThoughts && <ThoughtBox thoughts={thoughts} /> }
+      <Markdown markdown={content} />
+    </MaybeScrollView>
+  </Box>
+}
+
+function MaybeScrollView({ children, height }: { height: number, children?: React.ReactNode }) {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
     }))
   );
-  const { stdout } = useStdout();
+  const isStreamingContent = modeData.mode == "responding";
+  return <Box flexDirection="column" flexGrow={1}>
+    {isStreamingContent ? (
+      <ScrollView height={height}>
+        { children }
+      </ScrollView>
+    ) : (
+      <Box flexDirection="column">
+        { children }
+      </Box>
+    )}
+  </Box>
+}
+
+function ThoughtBox({ thoughts }: { thoughts: string }) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
-
-  const terminalHeight = stdout?.rows;
-
-  let thoughts = item.reasoningContent;
-  let content = item.content.trim();
+  const [ widthOverflowed, setWidthOverflowed ] = useState(false);
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
-
-  const reservedSpace = 6; // bottom bar + padding
-  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace - 1);
-
-  const isStreamingContent = modeData.mode == "responding";
+  const isScrollable = useContext(IsScrollableContext);
 
   useEffect(() => {
     if(thoughtsRef.current) {
-      const { height } = measureElement(thoughtsRef.current);
+      const { height, width } = measureElement(thoughtsRef.current);
       setThoughtsHeight(height);
+      if(width > MAX_THOUGHTBOX_WIDTH) {
+        setWidthOverflowed(true);
+      }
     }
   }, [ thoughts ]);
-  
-  const showThoughts = thoughts && thoughts !== ""
 
-	return <Box>
-    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
-    <Box flexDirection="column" flexGrow={1}>
-      {isStreamingContent ? (
-        <ScrollView height={scrollViewHeight}>
-          {
-            showThoughts && <Box flexDirection="column">
-              <Box
-                flexGrow={0}
-                flexShrink={1}
-                height={thoughtsOverflow > 0 ? MAX_THOUGHTBOX_HEIGHT : undefined}
-                overflowY="hidden"
-                flexDirection="column"
-                borderColor="gray"
-                borderStyle="round"
-              >
-                <Box
-                  ref={thoughtsRef}
-                  flexShrink={0}
-                  flexDirection="column"
-                  marginTop={-1 * Math.max(0, thoughtsOverflow)}
-                >
-                  <Text color="gray">{thoughts}</Text>
-                </Box>
-              </Box>
-            </Box>
-          }
-          <Markdown markdown={content} />
-        </ScrollView>
-      ) : (
-        <Box flexDirection="column">
-          {showThoughts && 
-            <Box paddingBottom={1}>
-              <Text color="gray">{thoughts}</Text>
-            </Box>
-          }
-          <Markdown markdown={content} />
-        </Box>
-      )}
+  const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
+  return <Box flexDirection="column">
+    <Box
+      flexGrow={0}
+      flexShrink={1}
+      height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
+      width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
+      overflowY={enforceMaxHeight ? "hidden" : undefined }
+      flexDirection="column"
+      borderColor="gray"
+      borderStyle="round"
+    >
+      <Box
+        ref={thoughtsRef}
+        flexShrink={0}
+        flexDirection="column"
+        marginTop={-1 * Math.max(0, thoughtsOverflow)}
+      >
+        <Text color="gray">{thoughts}</Text>
+      </Box>
     </Box>
   </Box>
 }
