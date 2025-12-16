@@ -778,8 +778,6 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
   </Box>
 }
 
-const MAX_THOUGHTBOX_HEIGHT = 8;
-const MAX_THOUGHTBOX_WIDTH = 80;
 function AssistantMessageRenderer({ item }: {
   item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
 }) {
@@ -788,10 +786,12 @@ function AssistantMessageRenderer({ item }: {
   let thoughts = item.reasoningContent;
   let content = item.content.trim();
 
-  const reservedSpace = 6; // bottom bar + padding
+  let reservedSpace = 6; // bottom bar + padding
   const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace - 1);
 
   const showThoughts = thoughts && thoughts !== ""
+  // Reserve space for the borders of the thoughtbox
+  if(showThoughts) reservedSpace += 2;
 
 	return <Box>
     <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
@@ -822,7 +822,12 @@ function MaybeScrollView({ children, height }: { height: number, children?: Reac
   </Box>
 }
 
-function ThoughtBox({ thoughts }: { thoughts: string }) {
+const MAX_THOUGHTBOX_HEIGHT = 8;
+const MAX_THOUGHTBOX_WIDTH = 80;
+const THOUGHTBOX_MARGIN = 4;
+function ThoughtBox({ thoughts }: {
+  thoughts: string,
+}) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
   const [ widthOverflowed, setWidthOverflowed ] = useState(false);
@@ -840,35 +845,25 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
   }, [ thoughts ]);
 
   const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
-  if(!enforceMaxHeight) {
-    return <Box
-      ref={thoughtsRef}
-      flexDirection="column"
-      borderColor="gray"
-      borderStyle="round"
-      width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
-      marginLeft={1}
-    >
-      <Text color="gray">{thoughts}</Text>
-    </Box>
-  }
 
   return <Box flexDirection="column">
     <Box
       flexGrow={0}
       flexShrink={1}
-      height={MAX_THOUGHTBOX_HEIGHT}
+      height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
       width={widthOverflowed ? MAX_THOUGHTBOX_WIDTH : undefined}
-      overflowY="hidden"
+      overflowY={enforceMaxHeight ? "hidden" : undefined}
       flexDirection="column"
       borderColor="gray"
       borderStyle="round"
+      marginRight={THOUGHTBOX_MARGIN}
     >
       <Box
         ref={thoughtsRef}
+        flexGrow={0}
         flexShrink={0}
         flexDirection="column"
-        marginTop={-1 * Math.max(0, thoughtsOverflow)}
+        marginTop={enforceMaxHeight ? (-1 * Math.max(0, thoughtsOverflow)) : 0}
       >
         <Text color="gray">{thoughts}</Text>
       </Box>
