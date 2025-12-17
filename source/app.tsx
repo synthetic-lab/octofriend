@@ -2,7 +2,7 @@ import * as fsOld from "fs";
 import React, {
   useState, useCallback, useMemo, useEffect, useRef, createContext, useContext
 } from "react";
-import { Text, Box, Static, measureElement, DOMElement, useInput, useApp, useStdout } from "ink";
+import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
@@ -44,7 +44,8 @@ import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
-import ScrollView from "./components/scroll-view.tsx";
+import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
+import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 
 type Props = {
 	config: Config;
@@ -112,19 +113,21 @@ export default function App({ config, configPath, metadata, unchained, transport
         <UnchainedContext.Provider value={unchained}>
           <TransportContext.Provider value={transport}>
             <ExitOnDoubleCtrlC>
-              <Box flexDirection="column" width="100%" height="100%">
-                <Static items={staticItems}>
+              <TerminalSizeTracker>
+                <Box flexDirection="column" width="100%" height="100%">
+                  <Static items={staticItems}>
+                    {
+                      (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                    }
+                  </Static>
                   {
-                    (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                    modeData.mode === "responding" &&
+                      (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                      <MessageDisplay item={modeData.inflightResponse} />
                   }
-                </Static>
-                {
-                  modeData.mode === "responding" &&
-                    (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                    <MessageDisplay item={modeData.inflightResponse} />
-                }
-                <BottomBar inputHistory={inputHistory} metadata={metadata} />
-              </Box>
+                  <BottomBar inputHistory={inputHistory} metadata={metadata} />
+                </Box>
+              </TerminalSizeTracker>
             </ExitOnDoubleCtrlC>
           </TransportContext.Provider>
         </UnchainedContext.Provider>
@@ -778,30 +781,62 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
   </Box>
 }
 
-const MAX_THOUGHTBOX_HEIGHT = 8;
-const MAX_THOUGHTBOX_WIDTH = 80;
+const OCTO_MARGIN = 1;
+const OCTO_PADDING = 2;
 function AssistantMessageRenderer({ item }: {
   item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
 }) {
+  const terminalSize = useTerminalSize();
+  let thoughts = item.reasoningContent;
+  let content = item.content.trim();
+
+  let reservedSpace = 6; // bottom bar + padding
+  const scrollViewHeight = Math.max(1, terminalSize.height - reservedSpace - 1);
+
+  const showThoughts = thoughts && thoughts !== ""
+  // Reserve space for the borders of the thoughtbox
+  if(showThoughts) reservedSpace += 2;
+
+	return <Box>
+    <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+    <MaybeScrollView height={scrollViewHeight}>
+      { showThoughts && <ThoughtBox thoughts={thoughts} /> }
+      <Markdown markdown={content} />
+    </MaybeScrollView>
+  </Box>
+}
+
+function MaybeScrollView({ children, height }: { height: number, children?: React.ReactNode }) {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
     }))
   );
-  const { stdout } = useStdout();
+  const isStreamingContent = modeData.mode == "responding";
+  return <Box flexDirection="column" flexGrow={1}>
+    {isStreamingContent ? (
+      <ScrollView height={height}>
+        { children }
+      </ScrollView>
+    ) : (
+      <Box flexDirection="column">
+        { children }
+      </Box>
+    )}
+  </Box>
+}
+
+const MAX_THOUGHTBOX_HEIGHT = 8;
+const MAX_THOUGHTBOX_WIDTH = 80;
+const THOUGHTBOX_MARGIN = 4;
+function ThoughtBox({ thoughts }: {
+  thoughts: string,
+}) {
   const thoughtsRef = useRef<DOMElement | null>(null);
   const [ thoughtsHeight, setThoughtsHeight ] = useState(0);
-
-  const terminalHeight = stdout?.rows;
-
-  let thoughts = item.reasoningContent;
-  let content = item.content.trim();
+  const terminalSize = useTerminalSize();
   const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
-
-  const reservedSpace = 6; // bottom bar + padding
-  const scrollViewHeight = Math.max(1, terminalHeight - reservedSpace - 1);
-
-  const isStreamingContent = modeData.mode == "responding";
+  const isScrollable = useContext(IsScrollableContext);
 
   useEffect(() => {
     if(thoughtsRef.current) {
@@ -810,41 +845,31 @@ function AssistantMessageRenderer({ item }: {
     }
   }, [ thoughts ]);
 
-	return <Box>
-    <Box marginRight={1} width={2} flexShrink={0} flexGrow={0}><Octo /></Box>
-    <Box flexDirection="column" flexGrow={1}>
-      {
-        thoughts && thoughts !== "" && <Box flexDirection="column">
-          <Box
-            flexGrow={0}
-            flexShrink={1}
-            height={thoughtsOverflow > 0 ? MAX_THOUGHTBOX_HEIGHT : undefined}
-            width={MAX_THOUGHTBOX_WIDTH}
-            overflowY="hidden"
-            flexDirection="column"
-            borderColor="gray"
-            borderStyle="round"
-          >
-            <Box
-              ref={thoughtsRef}
-              flexShrink={0}
-              width={MAX_THOUGHTBOX_WIDTH - 2}
-              flexDirection="column"
-              marginTop={-1 * Math.max(0, thoughtsOverflow)}
-            >
-              <Text color="gray">{thoughts}</Text>
-            </Box>
-          </Box>
-        </Box>
-      }
-      <Box flexGrow={1}>
-        {isStreamingContent ? (
-          <ScrollView height={scrollViewHeight}>
-            <Markdown markdown={content} />
-          </ScrollView>
-        ) : (
-          <Markdown markdown={content} />
-        )}
+  const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
+  const octoSpace = OCTO_MARGIN + OCTO_PADDING + 1;
+  const scrollBorderWidth = 2;
+  const contentMaxWidth = terminalSize.width - THOUGHTBOX_MARGIN - octoSpace - scrollBorderWidth;
+  const maxWidth = Math.min(contentMaxWidth, MAX_THOUGHTBOX_WIDTH);
+
+  return <Box flexDirection="column">
+    <Box
+      flexGrow={0}
+      flexShrink={1}
+      height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
+      width={maxWidth}
+      overflowY={enforceMaxHeight ? "hidden" : undefined}
+      flexDirection="column"
+      borderColor="gray"
+      borderStyle="round"
+    >
+      <Box
+        ref={thoughtsRef}
+        flexGrow={0}
+        flexShrink={0}
+        flexDirection="column"
+        marginTop={enforceMaxHeight ? (-1 * Math.max(0, thoughtsOverflow)) : 0}
+      >
+        <Text color="gray">{thoughts}</Text>
       </Box>
     </Box>
   </Box>
