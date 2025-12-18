@@ -3,8 +3,9 @@ import { t, toJSONSchema, toTypescript } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import { ToolCallRequestSchema, ToolMalformedItem } from "../history.ts";
-import { LlmIR, OutputIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
+import { ToolCallRequestSchema } from "../history.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
+import { LlmIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from "../compilers/autofix.ts";
@@ -13,7 +14,6 @@ import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
 
 export type UserMessage = {
   role: "user";
@@ -112,10 +112,12 @@ async function toLlmMessages(
   }
 
   output.reverse();
-  if (!skipSystemPrompt) {
+  if(!skipSystemPrompt) {
     output.unshift({
       role: "system",
-      content: await systemPrompt({ appliedWindow }, config, transport, signal),
+      content: await systemPrompt({
+        appliedWindow, config, transport, signal,
+      }),
     });
   }
 
@@ -273,7 +275,7 @@ async function handleKnownErrors(params: {
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedWindow
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -283,13 +285,12 @@ export async function runAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedWindow: boolean,
 }): Promise<AgentResult> {
   const model = getModelFromConfig(config, modelOverride);
 
   const messages = await toLlmMessages(
     windowedIR.ir,
-    appliedWindow,
+    windowedIR.appliedWindow,
     config,
     transport,
     abortSignal,

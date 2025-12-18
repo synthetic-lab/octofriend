@@ -6,13 +6,13 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -207,7 +207,7 @@ JSON`;
 }
 
 export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedWindow
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -217,12 +217,14 @@ export async function runAnthropicAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedWindow: boolean,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
-
-  const systemPromptText = skipSystemPrompt ? undefined : await systemPrompt({ appliedWindow }, config, transport, abortSignal);
+  const sysPrompt = await systemPrompt({
+    appliedWindow: windowedIR.appliedWindow,
+    config, transport,
+    signal: abortSignal,
+  });
 
   const tools: Array<{ description: string, input_schema: any, name: string }> = [];
   Object.entries(toolMap).forEach(([name, toolDef]) => {
@@ -263,7 +265,7 @@ export async function runAnthropicAgent({
   const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context);
 
   try {
-    const system = systemPromptText ? { system: systemPromptText } : {};
+    const system = skipSystemPrompt ? {} : { system: sysPrompt };
     const result = await client.messages.create({
       ...system,
       model: modelConfig.model,
@@ -484,7 +486,7 @@ export async function runAnthropicAgent({
     const curl = generateCurlFrom({
       baseURL: modelConfig.baseUrl,
       model: modelConfig.model,
-      system: systemPromptText || "",
+      system: sysPrompt,
       messages,
       tools,
       maxTokens,

@@ -4,6 +4,7 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -15,12 +16,12 @@ import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
-  config: Config,
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
   appliedWindow: boolean,
-  skipSystemPrompt?: boolean,
+  config: Config,
+  skipSystemPrompt: boolean,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -41,10 +42,13 @@ async function toModelMessage(
   output.reverse();
 
   if(!skipSystemPrompt) {
-    const { systemPrompt } = await import("../prompts/system-prompt.ts");
+    // Add system message
     output.unshift({
       role: "system",
-      content: await systemPrompt({ appliedWindow }, config, transport, signal),
+      content: await systemPrompt({
+        appliedWindow,
+        config, transport, signal,
+      }),
     });
   }
 
@@ -205,7 +209,6 @@ async function modelMessageFromIr(
     };
   }
 
-  // context has been summarized message perhaps?
   if(ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -255,7 +258,7 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt, appliedWindow
+  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
 }: {
   config: Config,
   modelOverride: string | null,
@@ -265,16 +268,15 @@ export async function runResponsesAgent({
   abortSignal: AbortSignal,
   transport: Transport,
   skipSystemPrompt?: boolean,
-  appliedWindow: boolean,
 }): Promise<AgentResult> {
   const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(
-    config,
     transport,
     abortSignal,
     windowedIR.ir,
-    appliedWindow,
-    skipSystemPrompt,
+    windowedIR.appliedWindow,
+    config,
+    !!skipSystemPrompt,
   );
 
   // Convert tools to AI SDK format

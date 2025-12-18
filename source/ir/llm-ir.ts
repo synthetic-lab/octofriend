@@ -204,8 +204,8 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
 }
 
 function lowerItem(item: HistoryItem): LoweredHistory | null {
-  if(item.type === "request-failed" || item.type === "notification") return null;
-  return item;
+  if(item.type !== "request-failed" && item.type !== "notification") return item;
+  return null;
 }
 
 // Given a previous LLM message (if one exists) in the conversation, a history item, and the latest

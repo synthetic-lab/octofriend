@@ -41,6 +41,5 @@ export async function run({
     abortSignal,
     transport,
     skipSystemPrompt,
-    appliedWindow: windowedIR.appliedWindow,
   });
 }

@@ -216,6 +216,7 @@ bench.command("tps")
   const tokenTimestamps: Date[] = [];
   const result = await run({
     config,
+    skipSystemPrompt: true,
     modelOverride: model.nickname,
     messages: [
       {

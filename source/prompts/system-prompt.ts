@@ -1,3 +1,4 @@
+import { fileExists } from "../fs-utils.ts";
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "../config.ts";
@@ -6,10 +7,6 @@ import * as toolMap from "../tools/tool-defs/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
 
-export type SystemPromptData = {
-  appliedWindow: boolean,
-};
-
 const LLM_INSTR_FILES = [
   "OCTO.md",
   "CLAUDE.md",
@@ -17,12 +14,12 @@ const LLM_INSTR_FILES = [
 ] as const;
 
 
-export async function systemPrompt(
-  systemPromptData: SystemPromptData,
+export async function systemPrompt({ appliedWindow, config, transport, signal }: {
+  appliedWindow: boolean,
   config: Config,
   transport: Transport,
   signal: AbortSignal
-) {
+}) {
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
@@ -135,9 +132,10 @@ If you want to list other directories, use the list tool.
 
 ${await llmInstrsPrompt(transport, signal, config)}
 
-${systemPromptData.appliedWindow ?
+${appliedWindow ?
 "\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
-`;};
+`.trim();
+}
 
 async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const instrs = await getLlmInstrs(transport, signal);
