@@ -322,12 +322,7 @@ function AutocompactionThresholdInput({
           onSubmit={handleSubmit}
         />
       </Box>
-      {error && (
-        <>
-          <Text> </Text>
-          <Text color="red">{error}</Text>
-        </>
-      )}
+      { error && <Text color="red">{error}</Text> }
       <Text> </Text>
       <Text dimColor>Press Enter to save, Escape to cancel</Text>
     </Box>
