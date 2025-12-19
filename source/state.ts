@@ -13,7 +13,7 @@ import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { useShallow } from "zustand/shallow";
-import { toLlmIR, outputToHistory, UserMessage } from "./ir/llm-ir.ts";
+import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";

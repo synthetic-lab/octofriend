@@ -266,11 +266,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     ]}/>
   };
   if(modeData.mode === "compacting") {
-    return (
-      <Box flexDirection="column">
-        <Loading overrideStrings={["Compacting history to save context tokens"]}/>
-      </Box>
-    );
+    return <Loading overrideStrings={[
+      "Compacting history to save context tokens",
+    ]}/>
   };
   if(modeData.mode === "tool-waiting") {
     return <Loading overrideStrings={[
@@ -592,12 +590,8 @@ const MessageDisplayInner = React.memo(({ item }: {
   }
   if(item.type === "assistant") {
     if(modeData.mode === "compacting") {
-      const scrollHeight = Math.min(5, terminalSize.height - 10);
       return <Box marginBottom={1}>
-        <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
-        <ScrollView height={scrollHeight}>
-          <Markdown markdown={item.content} />
-        </ScrollView>
+        <CompactionRenderer item={item} />
       </Box>
     }
     return <Box marginBottom={1}>
@@ -814,6 +808,25 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 
 const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;
+function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
+  return <Box>
+    <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+    { children }
+  </Box>
+}
+
+function CompactionRenderer({ item }: {
+  item: InflightResponseType,
+}) {
+  const terminalSize = useTerminalSize();
+  const scrollHeight = Math.min(5, terminalSize.height - 10);
+  return <OctoMessageRenderer>
+    <MaybeScrollView height={scrollHeight}>
+      <Markdown markdown={item.content} />
+    </MaybeScrollView>
+  </OctoMessageRenderer>
+}
+
 function AssistantMessageRenderer({ item }: {
   item: InflightResponseType,
 }) {
@@ -827,14 +840,12 @@ function AssistantMessageRenderer({ item }: {
   const showThoughts = thoughts && thoughts !== ""
   // Reserve space for the borders of the thoughtbox
   if(showThoughts) reservedSpace += 2;
-
-	return <Box>
-    <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+  return <OctoMessageRenderer>
     <MaybeScrollView height={scrollViewHeight}>
       { showThoughts && <ThoughtBox thoughts={thoughts} /> }
       <Markdown markdown={content} />
     </MaybeScrollView>
-  </Box>
+  </OctoMessageRenderer>
 }
 
 function MaybeScrollView({ children, height }: { height: number, children?: React.ReactNode }) {
@@ -843,7 +854,7 @@ function MaybeScrollView({ children, height }: { height: number, children?: Reac
       modeData: state.modeData,
     }))
   );
-  const isStreamingContent = modeData.mode == "responding";
+  const isStreamingContent = modeData.mode == "responding" || modeData.mode == "compacting";
   return <Box flexDirection="column" flexGrow={1}>
     {isStreamingContent ? (
       <ScrollView height={height}>
