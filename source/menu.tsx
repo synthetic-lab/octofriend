@@ -178,12 +178,40 @@ function AutocompactionToggle() {
 
   useInput((_, key) => {
     if (key.escape) {
-      setMenuMode("main-menu");
+      setMenuMode("settings-menu");
     }
   });
 
-  const onSelect = useCallback(async (item: { label: string; value: "enable" | "disable" | "back" }) => {
-    if (item.value === "enable") {
+  const isEnabled = config.autoCompact?.enabled !== false;
+
+  if(isEnabled) {
+    return <ConfirmDialog
+      rejectLabel="Disable autocompaction"
+      confirmLabel="Keep autocompaction on (recommended)"
+      onReject={async () => {
+        await setConfig({
+          ...config,
+          autoCompact: {
+            enabled: false
+          }
+        });
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("Autocompaction disabled");
+      }}
+      onConfirm={() => {
+        setMenuMode("main-menu");
+      }}
+    />
+  }
+
+  return <ConfirmDialog
+    rejectLabel="Keep autocompaction off"
+    confirmLabel="Enable autocompaction"
+    onReject={() => {
+      setMenuMode("settings-menu");
+    }}
+    onConfirm={async () => {
       await setConfig({
         ...config,
         autoCompact: {
@@ -193,42 +221,8 @@ function AutocompactionToggle() {
       setMenuMode("main-menu");
       toggleMenu();
       notify("Autocompaction enabled");
-    } else if (item.value === "disable") {
-      await setConfig({
-        ...config,
-        autoCompact: {
-          enabled: false
-        }
-      });
-      setMenuMode("main-menu");
-      toggleMenu();
-      notify("Autocompaction disabled");
-    } else {
-      setMenuMode("main-menu");
-    }
-  }, [config, setConfig, setMenuMode, toggleMenu, notify]);
-
-  const items = config.autoCompact?.enabled ? [
-    {
-      label: "Disable autocompaction",
-      value: "disable" as const,
-    },
-    {
-      label: "Back",
-      value: "back" as const,
-    },
-  ] : [
-    {
-      label: "Enable autocompaction",
-      value: "enable" as const,
-    },
-    {
-      label: "Back",
-      value: "back" as const,
-    },
-  ];
-
-  return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelect} />
+    }}
+  />
 }
 
 function SwitchModelMenu() {
@@ -319,8 +313,12 @@ const SETTINGS_ITEMS = [
     value: "disable-fix-json" as const,
   },
   {
-    label: "Configure autocompaction",
-    value: "configure-autocompaction" as const,
+    label: "Disable autocompaction",
+    value: "disable-autocompaction" as const,
+  },
+  {
+    label: "Enable autocompaction",
+    value: "enable-autocompaction" as const,
   },
 ];
 function filterSettings(config: Config) {
@@ -328,6 +326,10 @@ function filterSettings(config: Config) {
   items = items.filter(item => {
     if(config.diffApply == null && item.value === "disable-diff-apply") return false;
     if(config.fixJson == null && item.value === "disable-fix-json") return false;
+
+    const isAutocompactEnabled = config.autoCompact?.enabled !== false;
+    if(isAutocompactEnabled && item.value === "enable-autocompaction") return false;
+    if(!isAutocompactEnabled && item.value === "disable-autocompaction") return false;
     return true;
   });
 
@@ -447,7 +449,7 @@ function SettingsMenu() {
 	const onSelect = useCallback((item: (typeof items)[number]) => {
     if(item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if(item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
-    else if(item.value === "configure-autocompaction") setMenuMode("autocompaction-toggle");
+    else if(item.value === "disable-autocompaction" || item.value === "enable-autocompaction") setMenuMode("autocompaction-toggle");
     else if(item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
 	}, []);

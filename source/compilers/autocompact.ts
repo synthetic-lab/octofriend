@@ -48,7 +48,7 @@ export function shouldAutoCompactHistory(
   modelOverride: string | null,
   autoCompactSettings?: AutoCompactConfig,
 ): boolean {
-  if(autoCompactSettings != null && !autoCompactSettings.enabled) return false;
+  if(autoCompactSettings?.enabled === false) return false;
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
@@ -56,12 +56,6 @@ export function shouldAutoCompactHistory(
   const maxContextWindow = modelConfig.context;
   const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
   const currentTokens = countIRTokens(slicedMessages);
-
-  // TEMP: Compact every 5 messages instead of checking tokens
-  if (slicedMessages.length >= 5) {
-    return true;
-  }
-
 
   return currentTokens >= maxAllowedTokens;
 }
