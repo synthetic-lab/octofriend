@@ -3,7 +3,9 @@ import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
 import { generateCompactionSummary, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, CompactionFailed, sequenceId } from "./history.ts";
+import {
+  HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, sequenceId
+} from "./history.ts";
 import {
   runTool,
   validateTool,
