@@ -57,6 +57,12 @@ export function shouldAutoCompactHistory(
   const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
   const currentTokens = countIRTokens(slicedMessages);
 
+  // TEMP: Compact every 5 messages instead of checking tokens
+  if (slicedMessages.length >= 5) {
+    return true;
+  }
+
+
   return currentTokens >= maxAllowedTokens;
 }
 
@@ -67,7 +73,8 @@ export async function generateCompactionSummary(
   transport: Transport,
   modelOverride: string | null,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any
+  onAutofixJson: (done: Promise<void>) => any,
+  abortSignal: AbortSignal
 ): Promise<string> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
@@ -79,7 +86,7 @@ export async function generateCompactionSummary(
     messages: processedMessages,
     onTokens,
     onAutofixJson,
-    abortSignal: new AbortController().signal,
+    abortSignal,
     transport,
     skipSystemPrompt: true,
   });

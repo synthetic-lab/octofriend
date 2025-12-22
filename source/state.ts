@@ -109,6 +109,7 @@ export type UiState = {
     transport: Transport;
     historyCopy: HistoryItem[];
     onAutofixJson: () => void;
+    abortController: AbortController;
   }) => Promise<void>,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
@@ -278,16 +279,15 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   // appends a compaction-checkpoint message to history when eligible
-  _maybeHandleAutocompaction: async ({ messages, config, transport, historyCopy, onAutofixJson }) => {
+  _maybeHandleAutocompaction: async ({ messages, config, transport, historyCopy, onAutofixJson, abortController }) => {
     if (!shouldAutoCompactHistory(messages, config, get().modelOverride, config.autoCompact)) {
       return;
     }
 
-    let compactionByteCount = get().byteCount;
+    let compactionByteCount = 0;
     let compactionContent = "";
     let lastCompactionContent = "";
     const compactionUpdater = createDebouncedUpdater();
-    const compactionAbortController = new AbortController();
 
     try {
       const checkpointSummary = await generateCompactionSummary(
@@ -311,16 +311,21 @@ export const useAppStore = create<UiState>((set, get) => ({
                   type: "assistant",
                   content: compactionContent,
                 },
-                abortController: compactionAbortController,
+                abortController,
               },
               byteCount: compactionByteCount,
             });
           });
         },
-        onAutofixJson
+        onAutofixJson,
+        abortController.signal
       );
 
       compactionUpdater.clear();
+
+      if (get()._maybeHandleAbort(abortController.signal)) {
+        return;
+      }
 
       if (checkpointSummary) {
         const checkpointItem: CompactionCheckpointItem = {
@@ -333,8 +338,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     } catch (e) {
       compactionUpdater.clear();
-      if (get()._maybeHandleAbort(compactionAbortController.signal)) {
-        throw new Error("COMPACTION_ABORTED");
+      if (get()._maybeHandleAbort(abortController.signal)) {
+        return;
       }
       throw e;
     }
@@ -345,7 +350,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const messages = toLlmIR(historyCopy);
     const onAutofixJson = () => { set({ modeData: { mode: "fix-json" } }); };
 
-    const agentAbortController = new AbortController();
+    const compactionAbortController = new AbortController();
 
     try {
       await get()._maybeHandleAutocompaction({
@@ -354,11 +359,9 @@ export const useAppStore = create<UiState>((set, get) => ({
         transport,
         historyCopy,
         onAutofixJson,
+        abortController: compactionAbortController,
       });
     } catch (e) {
-      if (e instanceof Error && e.message === "COMPACTION_ABORTED") {
-        return;
-      }
       if (e instanceof CompactionRequestError) {
         set({
           modeData: {
@@ -392,7 +395,15 @@ export const useAppStore = create<UiState>((set, get) => ({
         ],
       });
       return;
+    } finally {
+      set({ byteCount: 0 });
     }
+
+    if (get()._maybeHandleAbort(compactionAbortController.signal)) {
+      return;
+    }
+
+    const agentAbortController = new AbortController();
 
     let content = "";
     let reasoningContent: undefined | string = undefined;

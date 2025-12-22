@@ -240,9 +240,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     await input({ query, config, transport });
 	}, [ query, config, transport ]);
 
-  if(modeData.mode === "responding") {
+  if(modeData.mode === "responding" || modeData.mode === "compacting") {
     return <Box justifyContent="space-between">
-      <Loading />
+      <Loading overrideStrings={
+        modeData.mode === "compacting" ? ["Compacting history to save context tokens"] : undefined
+      }/>
       <Box>
         {
           byteCount === 0 ? null : <Text color={color}>
@@ -263,11 +265,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if(modeData.mode === "fix-json") {
     return <Loading overrideStrings={[
       "Auto-fixing JSON",
-    ]}/>
-  };
-  if(modeData.mode === "compacting") {
-    return <Loading overrideStrings={[
-      "Compacting history to save context tokens",
     ]}/>
   };
   if(modeData.mode === "tool-waiting") {
