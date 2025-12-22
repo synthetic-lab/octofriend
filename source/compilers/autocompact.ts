@@ -1,10 +1,10 @@
 import { AutoCompactConfig, Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
 import { LlmIR, toLlmIR, AgentResult } from "../ir/llm-ir.ts";
-import { compactPrompt, CompactResponse } from "../prompts/compact-prompt.ts";
+import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { getModelFromConfig } from "../config.ts";
 import { run } from "./run.ts";
-import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { CompactionRequestError } from "../errors.ts";
 
@@ -68,7 +68,7 @@ export async function generateCompactionSummary(
   modelOverride: string | null,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any
-): Promise<string | null> {
+): Promise<string> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const processedMessages = formatMessagesForSummary(slicedMessages);
@@ -81,6 +81,7 @@ export async function generateCompactionSummary(
     onAutofixJson,
     abortSignal: new AbortController().signal,
     transport,
+    skipSystemPrompt: true,
   });
 
   if (!result.success) {
@@ -88,7 +89,10 @@ export async function generateCompactionSummary(
   }
 
   const summary = processCompactedHistory(result);
-  return summary ?? null;
+  if (summary == null) {
+    throw new CompactionRequestError("Compaction result was empty, continuing without compacting messages."); 
+  }
+  return summary;
 }
 
 export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {

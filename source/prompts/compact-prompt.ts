@@ -1,6 +1,10 @@
 export function compactPrompt(conversationHistory: string) {
   return (
-`You are creating a compressed summary of a conversation history that will replace the original messages in the context window.
+`
+${conversationHistory}
+
+That was a conversation history above. Now listen to these instructions:
+You are creating a compressed summary of a conversation history that will replace the original messages in the context window.
 
 **Your role**: You are NOT responding to the user. You are NOT continuing the conversation. You are ONLY creating an internal summary document that will be inserted into the context to preserve information about what has already happened.
 
@@ -62,7 +66,9 @@ export function compactPrompt(conversationHistory: string) {
 
 **Length**: No limit. Prioritize completeness over brevity. Missing context cannot be recovered.
 
-Here is the conversation history that you are summarizing, read the following very carefully:
+**Format**: You may NOT output in JSON format. You must output in the markdown format outlined above with the specified required sections.
+
+Here is that same conversation history that you are summarizing, read the following very carefully:
 
 ${conversationHistory}
 `

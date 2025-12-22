@@ -14,10 +14,10 @@ export class RateLimitError extends Error {
 export class CompactionRequestError extends Error {
   requestError: string;
   curl: string | null;
-  constructor(requestError: string, curl: string | null) {
+  constructor(requestError: string, curl?: string | null) {
     super(requestError);
     this.requestError = requestError;
-    this.curl = curl;
+    this.curl = curl || null;
     this.name = this.constructor.name;
   }
 }
