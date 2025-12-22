@@ -303,13 +303,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             id: sequenceId(),
             summary: checkpointSummary,
           };
-          const continuationItem: UserItem = {
-            type: "user",
-            id: sequenceId(),
-            content: "Continue working on your task.",
-          };
           historyCopy.push(checkpointItem);
-          historyCopy.push(continuationItem);
           set({ history: historyCopy });
         }
       } catch (e) {

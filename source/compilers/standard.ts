@@ -14,6 +14,7 @@ import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from "./autocompact.ts";
 
 export type UserMessage = {
   role: "user";
@@ -219,7 +220,7 @@ Please try again.`.trim())}`,
   if(ir.role === "compaction-checkpoint") {
     return {
       role: "user",
-      content: `# Conversation History Summary\n\n${ir.summary}\n\nTreat the above conversation history summary as part of the current conversation.`,
+      content: compactionCompilerExplanation(ir.summary),
     };
   }
 

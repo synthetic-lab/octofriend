@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useInput, useApp, Text, Box } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
-import { useConfig, useSetConfig, Config, DEFAULT_AUTOCOMPACT_THRESHOLD } from "./config.ts";
+import { useConfig, useSetConfig, Config } from "./config.ts";
 import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
@@ -11,7 +11,8 @@ import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
-import TextInput from "./components/text-input.tsx";
+
+const AUTOCOMPACT_THRESHOLD = 0.9;
 
 type MenuMode = "main-menu"
               | "settings-menu"
@@ -175,30 +176,28 @@ function AutocompactionToggle() {
     notify: state.notify,
   })));
 
-  const [mode, setMode] = React.useState<"menu" | "edit-threshold">("menu");
-  const [thresholdInput, setThresholdInput] = React.useState(
-    config.autoCompact?.contextThreshold?.toString() ?? DEFAULT_AUTOCOMPACT_THRESHOLD.toString()
-  );
-
   useInput((_, key) => {
     if (key.escape) {
-      if(mode === "edit-threshold") {
-        setMode("menu");
-      } else {
-        setMenuMode("main-menu");
-      }
+      setMenuMode("main-menu");
     }
   });
 
-  const onSelectEnabled = useCallback(async (item: { label: string; value: "change-threshold" | "disable" | "back" }) => {
-    if (item.value === "change-threshold") {
-      setMode("edit-threshold");
+  const onSelect = useCallback(async (item: { label: string; value: "enable" | "disable" | "back" }) => {
+    if (item.value === "enable") {
+      await setConfig({
+        ...config,
+        autoCompact: {
+          enabled: true
+        }
+      });
+      setMenuMode("main-menu");
+      toggleMenu();
+      notify("Autocompaction enabled");
     } else if (item.value === "disable") {
       await setConfig({
         ...config,
         autoCompact: {
-          enabled: false,
-          contextThreshold: config.autoCompact?.contextThreshold || DEFAULT_AUTOCOMPACT_THRESHOLD
+          enabled: false
         }
       });
       setMenuMode("main-menu");
@@ -207,126 +206,29 @@ function AutocompactionToggle() {
     } else {
       setMenuMode("main-menu");
     }
-  }, [config, setConfig, setMode, setMenuMode, toggleMenu, notify]);
+  }, [config, setConfig, setMenuMode, toggleMenu, notify]);
 
-  const onSelectDisabled = useCallback(async (item: { label: string; value: "enable" | "cancel" }) => {
-    if (item.value === "enable") {
-      await setConfig({
-        ...config,
-        autoCompact: {
-          enabled: false,
-          contextThreshold: config.autoCompact?.contextThreshold || DEFAULT_AUTOCOMPACT_THRESHOLD
-        }
-      });
-      setMode("edit-threshold");
-      notify("Autocompaction enabled")
-    } else {
-      setMenuMode("main-menu");
-    }
-  }, [config, setConfig, setMode, setMenuMode, notify]);
-
-  if (mode === "edit-threshold") {
-    return <AutocompactionThresholdInput
-      initialValue={thresholdInput}
-      onSubmit={async (threshold) => {
-        await setConfig({
-          ...config,
-          autoCompact: {
-            enabled: true,
-            contextThreshold: threshold,
-          },
-        });
-        setMenuMode("main-menu");
-        toggleMenu();
-        notify(`Autocompaction ${config.autoCompact?.enabled ? 'threshold updated' : 'enabled'} (threshold: ${threshold})`);
-      }}
-      onCancel={() => {
-        setMode("menu");
-      }}
-    />
-  }
-
-  if(config.autoCompact?.enabled) {
-    const items = [
-      {
-        label: `Change threshold (current: ${config.autoCompact.contextThreshold})`,
-        value: "change-threshold" as const,
-      },
-      {
-        label: "Disable autocompaction",
-        value: "disable" as const,
-      },
-      {
-        label: "Back",
-        value: "back" as const,
-      },
-    ];
-
-    return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelectEnabled} />
-  }
-
-  const items = [
+  const items = config.autoCompact?.enabled ? [
+    {
+      label: "Disable autocompaction",
+      value: "disable" as const,
+    },
+    {
+      label: "Back",
+      value: "back" as const,
+    },
+  ] : [
     {
       label: "Enable autocompaction",
       value: "enable" as const,
     },
     {
-      label: "Cancel",
-      value: "cancel" as const,
+      label: "Back",
+      value: "back" as const,
     },
   ];
 
-  return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelectDisabled} />
-}
-
-function AutocompactionThresholdInput({
-  initialValue,
-  onSubmit,
-  onCancel,
-}: {
-  initialValue: string,
-  onSubmit: (threshold: number) => void,
-  onCancel: () => void,
-}) {
-  const [value, setValue] = React.useState(initialValue);
-  const [error, setError] = React.useState<string | null>(null);
-
-  useInput((_, key) => {
-    if(key.escape) onCancel();
-  });
-
-  const handleSubmit = React.useCallback((input: string) => {
-    const truncated = Math.floor(parseFloat(input) * 100) / 100;
-
-    if (isNaN(truncated) || truncated <= 0 || truncated > 1) {
-      setError("Please enter a number between 0 and 1 (e.g., 0.8 for 80%)");
-      return;
-    }
-
-    onSubmit(truncated);
-  }, [onSubmit]);
-
-  return (
-    <Box flexDirection="column">
-      <Text>Enter context threshold (0-1, where 1.0 = 100% of context):</Text>
-      <Text dimColor>When context usage reaches this threshold, history will be compacted.</Text>
-      <Text> </Text>
-      <Box>
-        <Text>Threshold: </Text>
-        <TextInput
-          value={value}
-          onChange={(v) => {
-            setValue(v);
-            setError(null);
-          }}
-          onSubmit={handleSubmit}
-        />
-      </Box>
-      { error && <Text color="red">{error}</Text> }
-      <Text> </Text>
-      <Text dimColor>Press Enter to save, Escape to cancel</Text>
-    </Box>
-  );
+  return <MenuPanel title="Autocompaction Settings" items={items} onSelect={onSelect} />
 }
 
 function SwitchModelMenu() {

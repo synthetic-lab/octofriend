@@ -7,6 +7,29 @@ import { run } from "./run.ts";
 import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 
+const AUTOCOMPACT_THRESHOLD = 0.9;
+
+export const compactionCompilerExplanation = (summary: string) => {
+  return `# Conversation History Summary
+
+The following text is a condensed summary of all previous messages in this conversation:
+
+${summary}
+
+---
+
+## IMPORTANT: Context Has Been Compacted
+
+The individual messages from earlier in this conversation are no longer available. They have been compressed into the summary text above to save tokens.
+
+**Your instructions:**
+1. Read the summary text above - it contains all the information from the previous messages
+2. Treat the summary as your complete reference for what happened earlier in this conversation
+3. Continue working on your current task exactly where you left off
+
+Resume your work now.`
+}
+
 export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === "compaction-checkpoint") {
@@ -25,16 +48,11 @@ export function shouldAutoCompactHistory(
 ): boolean {
   if (!autoCompactSettings?.enabled) return false;
 
-  const contextThreshold = autoCompactSettings.contextThreshold;
-  if (contextThreshold <= 0 || contextThreshold > 1) {
-    onError("Tried autocompacting, but threshold is invalid number (must be between 0 and 1)")
-    return false;
-  }
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const modelConfig = getModelFromConfig(config, modelOverride);
   const maxContextWindow = modelConfig.context;
-  const maxAllowedTokens = Math.floor(maxContextWindow * contextThreshold);
+  const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
   const currentTokens = countIRTokens(slicedMessages);
 
   return currentTokens >= maxAllowedTokens;

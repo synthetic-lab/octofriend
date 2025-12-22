@@ -14,6 +14,7 @@ import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from './autocompact.ts';
 
 async function toModelMessage(
   transport: Transport,
@@ -212,7 +213,7 @@ async function modelMessageFromIr(
   if(ir.role === "compaction-checkpoint") {
     return {
       role: "user",
-      content: ir.summary,
+      content: compactionCompilerExplanation(ir.summary),
     };
   }
 

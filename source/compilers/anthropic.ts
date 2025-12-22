@@ -13,6 +13,7 @@ import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from "./autocompact.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -152,7 +153,7 @@ async function modelMessageFromIr(
   if(ir.role === "compaction-checkpoint") {
     return {
       role: "user",
-      content: `# Conversation History Summary\n${ir.summary}\nTreat the above conversation history summary as part of the current conversation.`,
+      content: compactionCompilerExplanation(ir.summary)
     };
   }
 

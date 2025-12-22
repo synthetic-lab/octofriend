@@ -23,7 +23,6 @@ const McpServerConfigSchema = t.exact({
 
 const AutoCompactConfigSchema = t.exact({
   enabled: t.bool,
-  contextThreshold: t.num,
 });
 
 export type AutoCompactConfig = t.GetType<typeof AutoCompactConfigSchema>
