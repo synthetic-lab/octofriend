@@ -39,14 +39,15 @@ export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): numb
   return 0;
 }
 
+// checks the token length starting from a compaction-checkpoint (or the beginning if no checkpoint exists)
+// if it exceeds AUTOCOMPACT_THRESHOLD * the model's max context window, return true
 export function shouldAutoCompactHistory(
   messages: LlmIR[],
-  onError: (errString: string) => void,
   config: Config,
   modelOverride: string | null,
   autoCompactSettings?: AutoCompactConfig,
 ): boolean {
-  if (!autoCompactSettings?.enabled) return false;
+  if(autoCompactSettings != null && !autoCompactSettings.enabled) return false;
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
@@ -57,7 +58,6 @@ export function shouldAutoCompactHistory(
 
   return currentTokens >= maxAllowedTokens;
 }
-
 
 export async function generateCompactionSummary(
   messages: LlmIR[],

@@ -23,6 +23,30 @@ export type RunArgs = {
   transport: Transport,
 };
 
+type DebouncedUpdater = {
+  schedule: (updateFn: () => void) => void;
+  clear: () => void;
+};
+
+function createDebouncedUpdater(debounceTimeout: number = 100): DebouncedUpdater {
+  let timeout: NodeJS.Timeout | null = null;
+  return {
+    schedule: (updateFn: () => void) => {
+      if (timeout) return;
+      timeout = setTimeout(() => {
+        updateFn();
+        timeout = null;
+      }, debounceTimeout);
+    },
+    clear: () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    },
+  };
+}
+
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">
 export type UiState = {
   modeData: {
@@ -74,6 +98,13 @@ export type UiState = {
   setModelOverride: (m: string) => void,
   retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
+  _maybeHandleAutocompaction: (args: {
+    messages: ReturnType<typeof toLlmIR>;
+    config: Config;
+    transport: Transport;
+    historyCopy: HistoryItem[];
+    onAutofixJson: () => void;
+  }) => Promise<void>,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -231,85 +262,77 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
+  // appends a compaction-checkpoint message to history when eligible
+  _maybeHandleAutocompaction: async ({ messages, config, transport, historyCopy, onAutofixJson }) => {
+    if (!shouldAutoCompactHistory(messages, config, get().modelOverride, config.autoCompact)) {
+      return;
+    }
+
+    try {
+      let compactionByteCount = get().byteCount;
+      let compactionContent = "";
+      let lastCompactionContent = "";
+      const compactionUpdater = createDebouncedUpdater();
+      const compactionAbortController = new AbortController();
+
+      const checkpointSummary = await generateCompactionSummary(
+        messages,
+        config,
+        transport,
+        (tokens, type) => {
+          compactionByteCount += tokens.length;
+          if (type === "content") {
+            compactionContent += tokens;
+            if (compactionContent === lastCompactionContent) return;
+            lastCompactionContent = compactionContent;
+          }
+
+          compactionUpdater.schedule(() => {
+            set({
+              modeData: {
+                mode: "compacting",
+                inflightResponse: {
+                  type: "assistant",
+                  content: compactionContent,
+                },
+                abortController: compactionAbortController,
+              },
+              byteCount: compactionByteCount,
+            });
+          });
+        },
+        onAutofixJson
+      );
+
+      compactionUpdater.clear();
+
+      if (checkpointSummary) {
+        const checkpointItem: CompactionCheckpointItem = {
+          type: "compaction-checkpoint",
+          id: sequenceId(),
+          summary: checkpointSummary,
+        };
+        historyCopy.push(checkpointItem);
+        set({ history: historyCopy });
+      }
+    } catch (e) {
+      get().notify("Autocompaction failed: " + e);
+    }
+  },
+
   _runAgent: async ({ config, transport }) => {
     const historyCopy = [ ...get().history ];
     const messages = toLlmIR(historyCopy);
     const onAutofixJson = () => { set({ modeData: { mode: "fix-json" } }); };
 
-    const debounceTimeout = 100;
-    const compactionAbortController = new AbortController();
     const agentAbortController = new AbortController();
-
-    const createDebouncedUpdater = () => {
-      let timeout: NodeJS.Timeout | null = null;
-      return {
-        schedule: (updateFn: () => void) => {
-          if (timeout) return;
-          timeout = setTimeout(() => {
-            updateFn();
-            timeout = null;
-          }, debounceTimeout);
-        },
-        clear: () => {
-          if (timeout) {
-            clearTimeout(timeout);
-            timeout = null;
-          }
-        },
-      };
-    };
-
-    if (shouldAutoCompactHistory(messages, get().notify, config, get().modelOverride, config.autoCompact)) {
-      try {
-        let compactionByteCount = get().byteCount;
-        let compactionContent = "";
-        let lastCompactionContent = "";
-        const compactionUpdater = createDebouncedUpdater();
-
-        const checkpointSummary = await generateCompactionSummary(
-          messages,
-          config,
-          transport,
-          (tokens, type) => {
-            compactionByteCount += tokens.length;
-            if (type === "content") {
-              compactionContent += tokens;
-              if (compactionContent === lastCompactionContent) return;
-              lastCompactionContent = compactionContent;
-            }
-
-            compactionUpdater.schedule(() => {
-              set({
-                modeData: {
-                  mode: "compacting",
-                  inflightResponse: {
-                    type: "assistant",
-                    content: compactionContent,
-                  },
-                  abortController: compactionAbortController,
-                },
-                byteCount: compactionByteCount,
-              });
-            });
-          },
-          onAutofixJson
-        );
-
-        compactionUpdater.clear();
-
-        if (checkpointSummary) {
-          const checkpointItem: CompactionCheckpointItem = {
-            type: "compaction-checkpoint",
-            id: sequenceId(),
-            summary: checkpointSummary,
-          };
-          historyCopy.push(checkpointItem);
-          set({ history: historyCopy });
-        }
-      } catch (e) {
-        get().notify("Autocompaction failed: " + e);
-      }
-    }
+    await get()._maybeHandleAutocompaction({
+      messages,
+      config,
+      transport,
+      historyCopy,
+      onAutofixJson,
+    });
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
