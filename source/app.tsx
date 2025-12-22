@@ -287,7 +287,20 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     return <RateLimitErrorScreen error={modeData.error}/>
   }
   if(modeData.mode === "request-error") {
-    return <RequestErrorScreen error={modeData.error} curlCommand={modeData.curlCommand}/>
+    return <RequestErrorScreen
+      mode="request-error"
+      contextualMessage="It looks like you've hit a request error!"
+      error={modeData.error}
+      curlCommand={modeData.curlCommand}
+    />
+  }
+  if(modeData.mode === "compaction-error") {
+    return <RequestErrorScreen
+      mode="compaction-error"
+      contextualMessage="History compaction failed due to a request error!"
+      error={modeData.error}
+      curlCommand={modeData.curlCommand}
+    />
   }
 
   if(modeData.mode === "tool-request") {
@@ -317,7 +330,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   </Box>
 }
 
-function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand: string | null }) {
+function RequestErrorScreen({ mode, contextualMessage, error, curlCommand }: {
+  mode: "request-error" | "compaction-error",
+  contextualMessage: string,
+  error: string,
+  curlCommand: string | null
+}) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const { retryFrom } = useAppStore(
@@ -371,17 +389,17 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
       }
     }
     else if(item.value === "retry") {
-      retryFrom("request-error", { config, transport });
+      retryFrom(mode, { config, transport });
     }
     else {
       const _: "quit" = item.value;
       exit();
     }
-  }, [curlCommand]);
+  }, [curlCommand, mode]);
 
   return <CenteredBox>
     <Text color="red">
-      It looks like you've hit a request error!
+      {contextualMessage}
     </Text>
     {
       viewError && <Box marginY={1}>
@@ -652,6 +670,10 @@ const MessageDisplayInner = React.memo(({ item }: {
 
   if(item.type === "request-failed") {
     return <Text color="red">Request failed.</Text>
+  }
+
+  if(item.type === "compaction-failed") {
+    return <Text color="red">Compaction failed.</Text>
   }
 
   if(item.type === "compaction-checkpoint") {

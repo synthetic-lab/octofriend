@@ -6,6 +6,7 @@ import { getModelFromConfig } from "../config.ts";
 import { run } from "./run.ts";
 import { applyContextWindow, countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { CompactionRequestError } from "../errors.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
@@ -70,22 +71,23 @@ export async function generateCompactionSummary(
 
   const modelConfig = getModelFromConfig(config, null);
   const windowedIR = applyContextWindow(processedMessages, modelConfig.context);
-  
-  try {
-    const result = await run({
-      config,
-      modelOverride: null,
-      messages: windowedIR.ir,
-      onTokens,
-      onAutofixJson,
-      abortSignal: new AbortController().signal,
-      transport,
-    });
-    const summary = processCompactedHistory(result);
-    return summary ?? null;
-  } catch (e) {
-    return null;
+
+  const result = await run({
+    config,
+    modelOverride: null,
+    messages: windowedIR.ir,
+    onTokens,
+    onAutofixJson,
+    abortSignal: new AbortController().signal,
+    transport,
+  });
+
+  if (!result.success) {
+    throw new CompactionRequestError(result.requestError, result.curl);
   }
+
+  const summary = processCompactedHistory(result);
+  return summary ?? null;
 }
 
 export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {

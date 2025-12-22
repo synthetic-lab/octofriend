@@ -11,6 +11,17 @@ export class RateLimitError extends Error {
   }
 }
 
+export class CompactionRequestError extends Error {
+  requestError: string;
+  curl: string | null;
+  constructor(requestError: string, curl: string | null) {
+    super(requestError);
+    this.requestError = requestError;
+    this.curl = curl;
+    this.name = this.constructor.name;
+  }
+}
+
 export function errorToString(error: unknown): string {
   if(error instanceof Error) return error.message;
   if(typeof error === 'string') return error;

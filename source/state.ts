@@ -15,7 +15,7 @@ import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError } from "./errors.ts";
+import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
@@ -74,6 +74,7 @@ export type UiState = {
   } | {
     mode: "compaction-error",
     error: string,
+    curlCommand: string | null,
   } | {
     mode: "diff-apply",
     abortController: AbortController,
@@ -357,11 +358,29 @@ export const useAppStore = create<UiState>((set, get) => ({
       if (e instanceof Error && e.message === "COMPACTION_ABORTED") {
         return;
       }
+      if (e instanceof CompactionRequestError) {
+        set({
+          modeData: {
+            mode: "compaction-error",
+            error: e.requestError,
+            curlCommand: e.curl,
+          },
+          history: [
+            ...get().history,
+            {
+              type: "compaction-failed",
+              id: sequenceId(),
+            },
+          ],
+        });
+        return;
+      }
       const errorMessage = e instanceof Error ? e.message : String(e);
       set({
         modeData: {
           mode: "compaction-error",
           error: errorMessage,
+          curlCommand: null,
         },
         history: [
           ...get().history,
