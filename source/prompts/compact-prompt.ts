@@ -1,14 +1,3 @@
-import { t, toTypescript } from "structural";
-
-export const CompactSuccess = t.subtype({
-  success: t.value(true),
-  summary: t.str,
-});
-export const CompactFailure = t.subtype({
-  success: t.value(false),
-});
-export const CompactResponse = CompactSuccess.or(CompactFailure);
-
 export function compactPrompt(conversationHistory: string) {
   return (
 `You are creating a compressed summary of a conversation history that will replace the original messages in the context window.
@@ -17,8 +6,8 @@ export function compactPrompt(conversationHistory: string) {
 
 **Critical constraints**:
 - This summary will REPLACE all previous messages when the conversation resumes
-- The user will likely NOT see this summary - it's purely for context preservation
-- You must write in third-person past tense (e.g., "The user requested X", "The tool call implemented Y")
+- The user will NOT see this summary - it's purely for context preservation
+- You must write in third-person past tense (e.g., "The user requested X", "The assistant implemented Y")
 - Do NOT include greetings, signoffs, or conversational language
 - Do NOT say things like "I'll help you with..." or "Let me know if..."
 - Do NOT attempt to continue or complete any in-progress work
@@ -30,8 +19,8 @@ export function compactPrompt(conversationHistory: string) {
 
 - What task the user requested (exact wording if possible)
 - What has been completed so far
-- What was being worked on when the conversation was paused (incomplete work)
-- What remains to be done (specific next steps derived from the conversation)
+- What was in progress when the conversation paused (incomplete/partial work)
+- What was explicitly discussed as remaining work (not your inference, but what was actually mentioned in the conversation)
 
 ## Files & Changes
 
@@ -57,18 +46,19 @@ export function compactPrompt(conversationHistory: string) {
 - Assumptions that were made
 - Any blockers, risks, or open questions that were raised
 
-## Next Steps
+## Unfinished Work
 
-- Concrete, specific actions that need to happen next
-- Reference specific files, functions, or line numbers
-- Include enough detail that work could resume without re-reading the entire history
+- What was explicitly stated as still needing to be done
+- Work that was started but not completed (with specifics: which file, which function, what state it's in)
+- Issues or errors that were encountered but not yet resolved
+- User requests that were acknowledged but not yet addressed
 
 **Format requirements**:
 - Write in past tense, third person (chronicle what happened)
 - Be factual and detailed, not conversational
 - Think of this as technical documentation, not a message
 - Include specific details: file names, function names, error messages, exact commands
-- Capture the state of the work, not your intentions going forward
+- Capture the state of the work as it was left, not predictions about what should happen
 
 **Length**: No limit. Prioritize completeness over brevity. Missing context cannot be recovered.
 
