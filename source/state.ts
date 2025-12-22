@@ -3,7 +3,7 @@ import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
 import { generateCompactionSummary, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, sequenceId } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, CompactionFailed, sequenceId } from "./history.ts";
 import {
   runTool,
   validateTool,
@@ -72,6 +72,9 @@ export type UiState = {
     error: string,
     curlCommand: string | null,
   } | {
+    mode: "compaction-error",
+    error: string,
+  } | {
     mode: "diff-apply",
     abortController: AbortController,
   } | {
@@ -96,8 +99,9 @@ export type UiState = {
   toggleMenu: () => void,
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void,
   setModelOverride: (m: string) => void,
-  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
+  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
+  _maybeHandleAbort: (signal: AbortSignal) => boolean,
   _maybeHandleAutocompaction: (args: {
     messages: ReturnType<typeof toLlmIR>;
     config: Config;
@@ -160,10 +164,24 @@ export const useAppStore = create<UiState>((set, get) => ({
     if(
       modeData.mode === "responding" ||
       modeData.mode === "tool-waiting" ||
-      modeData.mode === "diff-apply"
+      modeData.mode === "diff-apply" ||
+      modeData.mode === "compacting"
     ) {
       modeData.abortController.abort();
     }
+  },
+
+  _maybeHandleAbort: (signal: AbortSignal): boolean => {
+    if (signal.aborted) {
+      set({
+        modeData: {
+          mode: "input",
+          vimMode: "NORMAL",
+        },
+      });
+      return true;
+    }
+    return false;
   },
 
   toggleMenu: () => {
@@ -252,14 +270,10 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history });
     }
 
-    if(abortController.signal.aborted) {
-      set({
-        modeData: { mode: "input", vimMode: "NORMAL" },
-      });
+    if(get()._maybeHandleAbort(abortController.signal)) {
+      return;
     }
-    else {
-      await get()._runAgent({ config, transport });
-    }
+    await get()._runAgent({ config, transport });
   },
 
   // appends a compaction-checkpoint message to history when eligible
@@ -268,13 +282,13 @@ export const useAppStore = create<UiState>((set, get) => ({
       return;
     }
 
-    try {
-      let compactionByteCount = get().byteCount;
-      let compactionContent = "";
-      let lastCompactionContent = "";
-      const compactionUpdater = createDebouncedUpdater();
-      const compactionAbortController = new AbortController();
+    let compactionByteCount = get().byteCount;
+    let compactionContent = "";
+    let lastCompactionContent = "";
+    const compactionUpdater = createDebouncedUpdater();
+    const compactionAbortController = new AbortController();
 
+    try {
       const checkpointSummary = await generateCompactionSummary(
         messages,
         config,
@@ -316,7 +330,11 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({ history: historyCopy });
       }
     } catch (e) {
-      get().notify("Autocompaction failed: " + e);
+      compactionUpdater.clear();
+      if (get()._maybeHandleAbort(compactionAbortController.signal)) {
+        throw new Error("COMPACTION_ABORTED");
+      }
+      throw e;
     }
   },
 
@@ -326,13 +344,35 @@ export const useAppStore = create<UiState>((set, get) => ({
     const onAutofixJson = () => { set({ modeData: { mode: "fix-json" } }); };
 
     const agentAbortController = new AbortController();
-    await get()._maybeHandleAutocompaction({
-      messages,
-      config,
-      transport,
-      historyCopy,
-      onAutofixJson,
-    });
+
+    try {
+      await get()._maybeHandleAutocompaction({
+        messages,
+        config,
+        transport,
+        historyCopy,
+        onAutofixJson,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === "COMPACTION_ABORTED") {
+        return;
+      }
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({
+        modeData: {
+          mode: "compaction-error",
+          error: errorMessage,
+        },
+        history: [
+          ...get().history,
+          {
+            type: "compaction-failed",
+            id: sequenceId(),
+          },
+        ],
+      });
+      return;
+    }
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
@@ -412,14 +452,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
     } catch(e) {
-      if(agentAbortController.signal.aborted) {
-        // Handle abort gracefully - return to input mode
-        set({
-          modeData: {
-            mode: "input",
-            vimMode: "NORMAL",
-          },
-        });
+      if(get()._maybeHandleAbort(agentAbortController.signal)) {
         return;
       }
 
@@ -475,8 +508,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         try {
           const file = await fs.readFile(path, "utf8");
           const fix = await autofixEdit(config, file, fn.arguments, agentAbortController.signal);
-          if (agentAbortController.signal.aborted) {
-            set({ modeData: { mode: "input", vimMode: "NORMAL" } });
+          if (get()._maybeHandleAbort(agentAbortController.signal)) {
             return;
           }
           if(fix) {
