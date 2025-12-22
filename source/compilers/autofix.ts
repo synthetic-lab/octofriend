@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { t } from "structural";
 import { Config, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "../autofix-prompts.ts";
+import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "../prompts/autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
 
 type Edit = t.GetType<typeof toolMap.edit.ArgumentsSchema>;

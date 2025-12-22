@@ -11,6 +11,7 @@ import {
   FileUnreadableItem,
   AssistantItem,
   UserItem,
+  CompactionCheckpointItem,
   AnthropicAssistantData,
   sequenceId,
 } from "../history.ts";
@@ -78,6 +79,11 @@ export type FileUnreadableMessage = {
   toolCall: ToolCallRequest,
 }
 
+export type CompactionCheckpoint = {
+  role: "compaction-checkpoint",
+  summary: string,
+};
+
 export type LlmIR = AssistantMessage
                   | UserMessage
                   | ToolOutputMessage
@@ -88,6 +94,7 @@ export type LlmIR = AssistantMessage
                   | FileOutdatedMessage
                   | FileUnreadableMessage
                   | FileToolMessage
+                  | CompactionCheckpoint
                   ;
 
 export type OutputIR = AssistantMessage
@@ -113,6 +120,7 @@ type LoweredHistory = ToolCallItem
                     | FileUnreadableItem
                     | AssistantItem
                     | UserItem
+                    | CompactionCheckpointItem
                     ;
 
 // Decompile LLM output IR to History items
@@ -196,7 +204,7 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
 }
 
 function lowerItem(item: HistoryItem): LoweredHistory | null {
-  if(item.type !== "request-failed" && item.type !== "notification") return item;
+  if(item.type !== "request-failed" && item.type !== "compaction-failed" && item.type !== "notification") return item;
   return null;
 }
 
@@ -350,6 +358,15 @@ function collapseToIR(
     });
   }
 
+  if(item.type === "compaction-checkpoint") {
+    return [
+      prev,
+      {
+        role: "compaction-checkpoint",
+        summary: item.summary,
+      },
+    ];
+  }
 
   if(item.type === "assistant") {
     return [

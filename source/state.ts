@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import { Config, useConfig, getModelFromConfig } from "./config.ts";
 import { run } from "./compilers/run.ts";
+import { generateCompactionSummary, shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { autofixEdit } from "./compilers/autofix.ts";
-import { HistoryItem, UserItem, AssistantItem, ToolCallItem, sequenceId } from "./history.ts";
+import { HistoryItem, UserItem, AssistantItem, ToolCallItem, CompactionCheckpointItem, CompactionFailed, sequenceId } from "./history.ts";
 import {
   runTool,
   validateTool,
@@ -14,20 +15,46 @@ import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/llm-ir.ts";
 import * as logger from "./logger.ts";
-import { PaymentError, RateLimitError } from "./errors.ts";
+import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 
 export type RunArgs = {
   config: Config,
   transport: Transport,
 };
+
+type DebouncedUpdater = {
+  schedule: (updateFn: () => void) => void;
+  clear: () => void;
+};
+
+function createDebouncedUpdater(debounceTimeout: number = 100): DebouncedUpdater {
+  let timeout: NodeJS.Timeout | null = null;
+  return {
+    schedule: (updateFn: () => void) => {
+      if (timeout) return;
+      timeout = setTimeout(() => {
+        updateFn();
+        timeout = null;
+      }, debounceTimeout);
+    },
+    clear: () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    },
+  };
+}
+
+export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">
 export type UiState = {
   modeData: {
     mode: "input",
     vimMode: "NORMAL" | "INSERT",
   } | {
     mode: "responding",
-    inflightResponse: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
+    inflightResponse: InflightResponseType,
     abortController: AbortController,
   } | {
     mode: "tool-request",
@@ -45,10 +72,18 @@ export type UiState = {
     error: string,
     curlCommand: string | null,
   } | {
+    mode: "compaction-error",
+    error: string,
+    curlCommand: string | null,
+  } | {
     mode: "diff-apply",
     abortController: AbortController,
   } | {
     mode: "fix-json",
+  } | {
+    mode: "compacting",
+    inflightResponse: InflightResponseType,
+    abortController: AbortController,
   } | {
     mode: "menu",
   } | {
@@ -65,8 +100,17 @@ export type UiState = {
   toggleMenu: () => void,
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void,
   setModelOverride: (m: string) => void,
-  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error", args: RunArgs) => Promise<void>,
+  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error", args: RunArgs) => Promise<void>,
   notify: (notif: string) => void,
+  _maybeHandleAbort: (signal: AbortSignal) => boolean,
+  _maybeHandleAutocompaction: (args: {
+    messages: ReturnType<typeof toLlmIR>;
+    config: Config;
+    transport: Transport;
+    historyCopy: HistoryItem[];
+    onAutofixJson: () => void;
+    abortController: AbortController;
+  }) => Promise<void>,
   _runAgent: (args: RunArgs) => Promise<void>,
 };
 
@@ -122,10 +166,24 @@ export const useAppStore = create<UiState>((set, get) => ({
     if(
       modeData.mode === "responding" ||
       modeData.mode === "tool-waiting" ||
-      modeData.mode === "diff-apply"
+      modeData.mode === "diff-apply" ||
+      modeData.mode === "compacting"
     ) {
       modeData.abortController.abort();
     }
+  },
+
+  _maybeHandleAbort: (signal: AbortSignal): boolean => {
+    if (signal.aborted) {
+      set({
+        modeData: {
+          mode: "input",
+          vimMode: "NORMAL",
+        },
+      });
+      return true;
+    }
+    return false;
   },
 
   toggleMenu: () => {
@@ -214,21 +272,145 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history });
     }
 
-    if(abortController.signal.aborted) {
-      set({
-        modeData: { mode: "input", vimMode: "NORMAL" },
-      });
+    if(get()._maybeHandleAbort(abortController.signal)) {
+      return;
     }
-    else {
-      await get()._runAgent({ config, transport });
+    await get()._runAgent({ config, transport });
+  },
+
+  // appends a compaction-checkpoint message to history when eligible
+  _maybeHandleAutocompaction: async ({ messages, config, transport, historyCopy, onAutofixJson, abortController }) => {
+    if (!shouldAutoCompactHistory(messages, config, get().modelOverride, config.autoCompact)) {
+      return;
+    }
+
+    let compactionByteCount = 0;
+    let compactionContent = "";
+    let lastCompactionContent = "";
+    const compactionUpdater = createDebouncedUpdater();
+
+    try {
+      const checkpointSummary = await generateCompactionSummary(
+        messages,
+        config,
+        transport,
+        get().modelOverride,
+        (tokens, type) => {
+          compactionByteCount += tokens.length;
+          if (type === "content") {
+            compactionContent += tokens;
+            if (compactionContent === lastCompactionContent) return;
+            lastCompactionContent = compactionContent;
+          }
+
+          compactionUpdater.schedule(() => {
+            set({
+              modeData: {
+                mode: "compacting",
+                inflightResponse: {
+                  type: "assistant",
+                  content: compactionContent,
+                },
+                abortController,
+              },
+              byteCount: compactionByteCount,
+            });
+          });
+        },
+        onAutofixJson,
+        abortController.signal
+      );
+
+      compactionUpdater.clear();
+
+      if (get()._maybeHandleAbort(abortController.signal)) {
+        return;
+      }
+
+      if (checkpointSummary) {
+        const checkpointItem: CompactionCheckpointItem = {
+          type: "compaction-checkpoint",
+          id: sequenceId(),
+          summary: checkpointSummary,
+        };
+        historyCopy.push(checkpointItem);
+        set({ history: historyCopy });
+      }
+    } catch (e) {
+      compactionUpdater.clear();
+      if (get()._maybeHandleAbort(abortController.signal)) {
+        return;
+      }
+      throw e;
     }
   },
 
   _runAgent: async ({ config, transport }) => {
+    const historyCopy = [ ...get().history ];
+    const messages = toLlmIR(historyCopy);
+    const onAutofixJson = () => { set({ modeData: { mode: "fix-json" } }); };
+
+    const compactionAbortController = new AbortController();
+
+    try {
+      await get()._maybeHandleAutocompaction({
+        messages,
+        config,
+        transport,
+        historyCopy,
+        onAutofixJson,
+        abortController: compactionAbortController,
+      });
+    } catch (e) {
+      if (e instanceof CompactionRequestError) {
+        set({
+          modeData: {
+            mode: "compaction-error",
+            error: e.requestError,
+            curlCommand: e.curl,
+          },
+          history: [
+            ...get().history,
+            {
+              type: "compaction-failed",
+              id: sequenceId(),
+            },
+          ],
+        });
+        return;
+      }
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      set({
+        modeData: {
+          mode: "compaction-error",
+          error: errorMessage,
+          curlCommand: null,
+        },
+        history: [
+          ...get().history,
+          {
+            type: "compaction-failed",
+            id: sequenceId(),
+          },
+        ],
+      });
+      return;
+    } finally {
+      set({ byteCount: 0 });
+    }
+
+    if (get()._maybeHandleAbort(compactionAbortController.signal)) {
+      return;
+    }
+
+    const agentAbortController = new AbortController();
+
     let content = "";
     let reasoningContent: undefined | string = undefined;
+    let byteCount = get().byteCount;
+    let lastContent = "";
+    const agentUpdater = createDebouncedUpdater();
 
-    const abortController = new AbortController();
     set({
       modeData: {
         mode: "responding",
@@ -236,14 +418,9 @@ export const useAppStore = create<UiState>((set, get) => ({
           type: "assistant",
           content,
         },
-        abortController,
+        abortController: agentAbortController,
       }
     });
-
-    const debounceTimeout = 100;
-    let timeout: NodeJS.Timeout | null = null;
-    let lastContent = "";
-    let byteCount = get().byteCount;
 
     const history = [ ...get().history ];
     try {
@@ -251,42 +428,38 @@ export const useAppStore = create<UiState>((set, get) => ({
         config, transport,
         modelOverride: get().modelOverride,
         messages: toLlmIR(history),
-        abortSignal: abortController.signal,
+        abortSignal: agentAbortController.signal,
         onTokens: (tokens, type) => {
           byteCount += tokens.length;
 
           if(type === "content") {
             content += tokens;
-
-            // Skip duplicate updates
-            if (content === lastContent) return;
+            if(content === lastContent) return;
             lastContent = content;
           } else if(type === "reasoning") {
             if(reasoningContent == null) reasoningContent = "";
             reasoningContent += tokens;
           }
-          if (timeout) return;
 
-          timeout = setTimeout(() => {
+          agentUpdater.schedule(() => {
             set({
               modeData: {
                 mode: "responding",
                 inflightResponse: {
                   type: "assistant",
-                  content, reasoningContent,
+                  content,
+                  reasoningContent,
                 },
-                abortController,
+                abortController: agentAbortController,
               },
               byteCount,
             });
-            timeout = null;
-          }, debounceTimeout);
+          });
         },
-        onAutofixJson: () => {
-          set({ modeData: { mode: "fix-json" } });
-        },
+        onAutofixJson,
       });
-      if(timeout) clearTimeout(timeout);
+
+      agentUpdater.clear();
 
       // Successful result has an output with the OutputIR
       // Failed result has the requestError and associated curl
@@ -310,14 +483,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
     } catch(e) {
-      if(abortController.signal.aborted) {
-        // Handle abort gracefully - return to input mode
-        set({
-          modeData: {
-            mode: "input",
-            vimMode: "NORMAL",
-          },
-        });
+      if(get()._maybeHandleAbort(agentAbortController.signal)) {
         return;
       }
 
@@ -358,7 +524,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     try {
-      await validateTool(abortController.signal, transport, lastHistoryItem.tool.function, config);
+      await validateTool(agentAbortController.signal, transport, lastHistoryItem.tool.function, config);
     } catch(e) {
       const fn = lastHistoryItem.tool.function;
       let fixed = false;
@@ -366,20 +532,19 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({
           modeData: {
             mode: "diff-apply",
-            abortController,
+            abortController: agentAbortController,
           },
         });
         const path = fn.arguments.filePath;
         try {
           const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.arguments, abortController.signal);
-          if (abortController.signal.aborted) {
-            set({ modeData: { mode: "input", vimMode: "NORMAL" } });
+          const fix = await autofixEdit(config, file, fn.arguments, agentAbortController.signal);
+          if (get()._maybeHandleAbort(agentAbortController.signal)) {
             return;
           }
           if(fix) {
             // Validate that the edit applies before marking as fixed
-            await validateTool(abortController.signal, transport, {
+            await validateTool(agentAbortController.signal, transport, {
               name: "edit",
               arguments: fix,
             }, config);
@@ -399,7 +564,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
           history: [
             ...history,
-            await tryTransformToolError(abortController.signal, transport, lastHistoryItem, e),
+            await tryTransformToolError(agentAbortController.signal, transport, lastHistoryItem, e),
           ],
         });
         return await get()._runAgent({ config, transport });

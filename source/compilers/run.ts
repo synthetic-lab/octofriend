@@ -2,9 +2,10 @@ import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { Config, getModelFromConfig } from "../config.ts";
-import { LlmIR } from "../ir/llm-ir.ts";
-import { applyContextWindow } from "../ir/ir-windowing.ts";
+import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import { applyContextWindow, WindowedIR } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 
 export async function run({
   config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
@@ -19,16 +20,26 @@ export async function run({
   skipSystemPrompt?: boolean,
 }) {
   const modelConfig = getModelFromConfig(config, modelOverride);
-  const run = (() => {
+  const runInternal = (() => {
     if(modelConfig.type == null || modelConfig.type === "standard") return runAgent;
     if(modelConfig.type === "openai-responses") return runResponsesAgent;
     const _: "anthropic" = modelConfig.type;
     return runAnthropicAgent;
   })();
 
-  const windowedIR = applyContextWindow(messages, modelConfig.context);
+  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
+  const slicedMessages = messages.slice(checkpointIndex);
 
-  return await run({
-    config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  const windowedIR = applyContextWindow(slicedMessages, modelConfig.context);
+
+  return await runInternal({
+    config,
+    modelOverride,
+    windowedIR,
+    onTokens,
+    onAutofixJson,
+    abortSignal,
+    transport,
+    skipSystemPrompt,
   });
 }

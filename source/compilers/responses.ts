@@ -4,7 +4,7 @@ import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { ToolCallRequestSchema } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -14,6 +14,7 @@ import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from './autocompact.ts';
 
 async function toModelMessage(
   transport: Transport,
@@ -206,6 +207,13 @@ async function modelMessageFromIr(
           },
         },
       ],
+    };
+  }
+
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "user",
+      content: compactionCompilerExplanation(ir.summary),
     };
   }
 

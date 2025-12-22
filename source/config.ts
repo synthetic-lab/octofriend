@@ -13,12 +13,19 @@ const __dir = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
+export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8
 
 const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
   env: t.optional(t.dict(t.str)),
 });
+
+const AutoCompactConfigSchema = t.exact({
+  enabled: t.bool,
+});
+
+export type AutoCompactConfig = t.GetType<typeof AutoCompactConfigSchema>
 
 const ConfigSchema = t.exact({
   yourName: t.str,
@@ -48,6 +55,7 @@ const ConfigSchema = t.exact({
   })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
+  autoCompact: t.optional(AutoCompactConfigSchema),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = [

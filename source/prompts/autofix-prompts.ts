@@ -1,5 +1,5 @@
 import { t, toTypescript } from "structural";
-import * as toolMap from "./tools/tool-defs/index.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
 type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
 
 export const DiffApplySuccess = t.subtype({

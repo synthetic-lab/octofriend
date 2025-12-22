@@ -3,9 +3,9 @@ import { t, toJSONSchema, toTypescript } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import { ToolCallRequestSchema, ToolMalformedItem } from "../history.ts";
-import { systemPrompt } from "../system-prompt.ts";
-import { LlmIR, OutputIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
+import { ToolCallRequestSchema } from "../history.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
+import { LlmIR, AssistantMessage as AssistantIR, AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from "../compilers/autofix.ts";
@@ -14,6 +14,7 @@ import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from "./autocompact.ts";
 
 export type UserMessage = {
   role: "user";
@@ -116,7 +117,7 @@ async function toLlmMessages(
     output.unshift({
       role: "system",
       content: await systemPrompt({
-        appliedWindow, config, transport, signal
+        appliedWindow, config, transport, signal,
       }),
     });
   }
@@ -214,6 +215,13 @@ File could not be updated because it was modified after being last read.
 The latest version of the file has been automatically re-read and placed in your context space.
 Please try again.`.trim())}`,
     }
+  }
+
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "user",
+      content: compactionCompilerExplanation(ir.summary),
+    };
   }
 
   const _: "file-unreadable" = ir.role;

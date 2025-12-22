@@ -1,11 +1,11 @@
-import { fileExists } from "./fs-utils.ts";
+import { fileExists } from "../fs-utils.ts";
 import path from "path";
 import { t, toTypescript } from "structural";
-import { Config } from "./config.ts";
-import { getMcpClient } from "./tools/tool-defs/mcp.ts";
-import * as toolMap from "./tools/tool-defs/index.ts";
-import { tagged } from "./xml.ts";
-import { Transport, getEnvVar } from "./transports/transport-common.ts";
+import { Config } from "../config.ts";
+import { getMcpClient } from "../tools/tool-defs/mcp.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
+import { tagged } from "../xml.ts";
+import { Transport, getEnvVar } from "../transports/transport-common.ts";
 
 const LLM_INSTR_FILES = [
   "OCTO.md",

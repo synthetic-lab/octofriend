@@ -30,7 +30,7 @@ import {
 } from "./tools/index.ts";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "./components/ink/select-input.tsx";
-import { useAppStore, RunArgs, useModel } from "./state.ts";
+import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
@@ -121,7 +121,7 @@ export default function App({ config, configPath, metadata, unchained, transport
                     }
                   </Static>
                   {
-                    modeData.mode === "responding" &&
+                    (modeData.mode === "responding" || modeData.mode === "compacting") &&
                       (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
                       <MessageDisplay item={modeData.inflightResponse} />
                   }
@@ -240,9 +240,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     await input({ query, config, transport });
 	}, [ query, config, transport ]);
 
-  if(modeData.mode === "responding") {
+  if(modeData.mode === "responding" || modeData.mode === "compacting") {
     return <Box justifyContent="space-between">
-      <Loading />
+      <Loading overrideStrings={
+        modeData.mode === "compacting" ? ["Compacting history to save context tokens"] : undefined
+      }/>
       <Box>
         {
           byteCount === 0 ? null : <Text color={color}>
@@ -282,7 +284,20 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     return <RateLimitErrorScreen error={modeData.error}/>
   }
   if(modeData.mode === "request-error") {
-    return <RequestErrorScreen error={modeData.error} curlCommand={modeData.curlCommand}/>
+    return <RequestErrorScreen
+      mode="request-error"
+      contextualMessage="It looks like you've hit a request error!"
+      error={modeData.error}
+      curlCommand={modeData.curlCommand}
+    />
+  }
+  if(modeData.mode === "compaction-error") {
+    return <RequestErrorScreen
+      mode="compaction-error"
+      contextualMessage="History compaction failed due to a request error!"
+      error={modeData.error}
+      curlCommand={modeData.curlCommand}
+    />
   }
 
   if(modeData.mode === "tool-request") {
@@ -312,7 +327,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   </Box>
 }
 
-function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand: string | null }) {
+function RequestErrorScreen({ mode, contextualMessage, error, curlCommand }: {
+  mode: "request-error" | "compaction-error",
+  contextualMessage: string,
+  error: string,
+  curlCommand: string | null
+}) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const { retryFrom } = useAppStore(
@@ -366,17 +386,17 @@ function RequestErrorScreen({ error, curlCommand }: { error: string, curlCommand
       }
     }
     else if(item.value === "retry") {
-      retryFrom("request-error", { config, transport });
+      retryFrom(mode, { config, transport });
     }
     else {
       const _: "quit" = item.value;
       exit();
     }
-  }, [curlCommand]);
+  }, [curlCommand, mode]);
 
   return <CenteredBox>
     <Text color="red">
-      It looks like you've hit a request error!
+      {contextualMessage}
     </Text>
     {
       viewError && <Box marginY={1}>
@@ -563,7 +583,7 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
 });
 
 const MessageDisplay = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
+  item: HistoryItem | InflightResponseType
 }) => {
   return <Box flexDirection="column" paddingRight={4}>
     <MessageDisplayInner item={item} />
@@ -571,12 +591,24 @@ const MessageDisplay = React.memo(({ item }: {
 });
 
 const MessageDisplayInner = React.memo(({ item }: {
-  item: HistoryItem | Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens"> // Allow inflight assistant messages
+  item: HistoryItem | InflightResponseType
 }) => {
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    }))
+  );
+  const terminalSize = useTerminalSize();
+
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
   if(item.type === "assistant") {
+    if(modeData.mode === "compacting") {
+      return <Box marginBottom={1}>
+        <CompactionRenderer item={item} />
+      </Box>
+    }
     return <Box marginBottom={1}>
       <AssistantMessageRenderer item={item} />
     </Box>
@@ -637,7 +669,19 @@ const MessageDisplayInner = React.memo(({ item }: {
     return <Text color="red">Request failed.</Text>
   }
 
-  // Type assertion proving we've handled all types other than user
+  if(item.type === "compaction-failed") {
+    return <Text color="red">Compaction failed.</Text>
+  }
+
+  if(item.type === "compaction-checkpoint") {
+    return (
+      <Box flexDirection="column">
+        <Text color="gray">History compacted! Summary: </Text>
+        <Markdown markdown={item.summary} />
+      </Box>
+    );
+  }
+
   const _: "user" = item.type;
 
 	return <Box marginY={1}>
@@ -783,8 +827,27 @@ function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
 
 const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;
+function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
+  return <Box>
+    <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+    { children }
+  </Box>
+}
+
+function CompactionRenderer({ item }: {
+  item: InflightResponseType,
+}) {
+  const terminalSize = useTerminalSize();
+  const scrollHeight = Math.min(5, terminalSize.height - 10);
+  return <OctoMessageRenderer>
+    <MaybeScrollView height={scrollHeight}>
+      <Markdown markdown={item.content} />
+    </MaybeScrollView>
+  </OctoMessageRenderer>
+}
+
 function AssistantMessageRenderer({ item }: {
-  item: Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">,
+  item: InflightResponseType,
 }) {
   const terminalSize = useTerminalSize();
   let thoughts = item.reasoningContent;
@@ -796,14 +859,12 @@ function AssistantMessageRenderer({ item }: {
   const showThoughts = thoughts && thoughts !== ""
   // Reserve space for the borders of the thoughtbox
   if(showThoughts) reservedSpace += 2;
-
-	return <Box>
-    <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}><Octo /></Box>
+  return <OctoMessageRenderer>
     <MaybeScrollView height={scrollViewHeight}>
       { showThoughts && <ThoughtBox thoughts={thoughts} /> }
       <Markdown markdown={content} />
     </MaybeScrollView>
-  </Box>
+  </OctoMessageRenderer>
 }
 
 function MaybeScrollView({ children, height }: { height: number, children?: React.ReactNode }) {
@@ -812,7 +873,7 @@ function MaybeScrollView({ children, height }: { height: number, children?: Reac
       modeData: state.modeData,
     }))
   );
-  const isStreamingContent = modeData.mode == "responding";
+  const isStreamingContent = modeData.mode == "responding" || modeData.mode == "compacting";
   return <Box flexDirection="column" flexGrow={1}>
     {isStreamingContent ? (
       <ScrollView height={height}>

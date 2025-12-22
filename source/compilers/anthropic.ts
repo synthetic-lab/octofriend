@@ -6,13 +6,14 @@ import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
 import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt } from "../system-prompt.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { compactionCompilerExplanation } from "./autocompact.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -146,6 +147,13 @@ async function modelMessageFromIr(
           content: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
         },
       ],
+    };
+  }
+
+  if(ir.role === "compaction-checkpoint") {
+    return {
+      role: "user",
+      content: compactionCompilerExplanation(ir.summary)
     };
   }
 

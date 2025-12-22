@@ -94,9 +94,18 @@ export type RequestFailed = SequenceIdTagged<{
   type: "request-failed",
 }>;
 
+export type CompactionFailed = SequenceIdTagged<{
+  type: "compaction-failed",
+}>;
+
 export type Notification = SequenceIdTagged<{
   type: "notification",
   content: string,
+}>;
+
+export type CompactionCheckpointItem = SequenceIdTagged<{
+  type: "compaction-checkpoint",
+  summary: string,
 }>;
 
 export type HistoryItem = UserItem
@@ -109,7 +118,9 @@ export type HistoryItem = UserItem
                         | FileOutdatedItem
                         | FileUnreadableItem
                         | RequestFailed
+                        | CompactionFailed
                         | Notification
+                        | CompactionCheckpointItem
                         ;
 
 let monotonicGuid = 0n;
