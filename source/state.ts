@@ -294,6 +294,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         messages,
         config,
         transport,
+        get().modelOverride,
         (tokens, type) => {
           compactionByteCount += tokens.length;
           if (type === "content") {

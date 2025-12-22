@@ -60,22 +60,23 @@ export function shouldAutoCompactHistory(
   return currentTokens >= maxAllowedTokens;
 }
 
+// only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary(
   messages: LlmIR[],
   config: Config,
   transport: Transport,
+  modelOverride: string | null,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any
 ): Promise<string | null> {
-  const processedMessages = formatMessagesForSummary(messages);
-
-  const modelConfig = getModelFromConfig(config, null);
-  const windowedIR = applyContextWindow(processedMessages, modelConfig.context);
+  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
+  const slicedMessages = messages.slice(checkpointIndex)
+  const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
     config,
-    modelOverride: null,
-    messages: windowedIR.ir,
+    modelOverride,
+    messages: processedMessages,
     onTokens,
     onAutofixJson,
     abortSignal: new AbortController().signal,
