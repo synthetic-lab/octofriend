@@ -111,9 +111,23 @@ export async function* trajectoryArc({ history, config, transport, modelOverride
   }));
   yield* tokensGenerator.items();
 
-  const result = await resultPromise;
-  if(!result.success) throw new RequestError(result.requestError, result.curl);
+  if(abortSignal.aborted) {
+    return {
+      type: "finish",
+      reason: { type: "abort" },
+    };
+  }
 
+  const result = await resultPromise;
+  if(!result.success) {
+    if(abortSignal.aborted) {
+      return {
+        type: "finish",
+        reason: { type: "abort" },
+      };
+    }
+    throw new RequestError(result.requestError, result.curl);
+  }
 
   const irs: OutputIR[] = [];
   for(const item of result.output) {
