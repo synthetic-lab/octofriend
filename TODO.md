@@ -5,7 +5,8 @@ TODO:
 - [ ] Gemini API support: their "openai-compatible" API isn't complete enough
   to work with Octo
 - [ ] Refactor History/IR for type safety: link back between i.e. tool calls,
-  tool outputs, and original assistant messages
+  tool outputs, and original assistant messages. Make rejections linked to the
+  actual user message rejecting the call
 - [ ] Refactor menu system to use the new Router/Back stuff built for the add
   model flow.
 - [ ] Refactor first-time setup to use the new Router/Back stuff built for the
