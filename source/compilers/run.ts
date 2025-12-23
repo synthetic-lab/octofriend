@@ -2,8 +2,8 @@ import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { Config, getModelFromConfig } from "../config.ts";
-import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
-import { applyContextWindow, WindowedIR } from "../ir/ir-windowing.ts";
+import { LlmIR } from "../ir/llm-ir.ts";
+import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 

@@ -1,4 +1,3 @@
-import { fileExists } from "../fs-utils.ts";
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "../config.ts";

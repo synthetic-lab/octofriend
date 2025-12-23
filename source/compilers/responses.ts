@@ -3,9 +3,8 @@ import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { ToolCallRequestSchema } from "../history.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
-import { LlmIR, OutputIR, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
+import { LlmIR, ToolCallRequestSchema, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
@@ -306,6 +305,13 @@ export async function runResponsesAgent({
     reasoningConfig.reasoningSummary = "auto";
   }
 
+  const curl = generateCurlFrom({
+    baseURL: modelConfig.baseUrl,
+    model: modelConfig.model,
+    messages,
+    tools,
+  });
+
   try {
     const apiKey = await assertKeyForModel(modelConfig, config);
     const openai = createOpenAI({
@@ -417,13 +423,13 @@ export async function runResponsesAgent({
 
     // If aborted, don't try to parse tool calls
     if(abortSignal.aborted) {
-      return { success: true, output: [ assistantHistoryItem ] };
+      return { success: true, output: [ assistantHistoryItem ], curl };
     }
 
     // Get tool calls
     const toolCalls = await result.toolCalls;
     if(toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: [ assistantHistoryItem ] };
+      return { success: true, output: [ assistantHistoryItem ], curl };
     }
 
     const firstToolCall = toolCalls[0];
@@ -442,6 +448,7 @@ export async function runResponsesAgent({
     if(parseResult.status === "error") {
       return {
         success: true,
+        curl,
         output: [
           assistantHistoryItem,
           {
@@ -456,14 +463,8 @@ export async function runResponsesAgent({
     }
 
     assistantHistoryItem.toolCall = parseResult.tool;
-    return { success: true, output: [ assistantHistoryItem ] };
+    return { success: true, output: [ assistantHistoryItem ], curl };
   } catch (e) {
-    const curl = generateCurlFrom({
-      baseURL: modelConfig.baseUrl,
-      model: modelConfig.model,
-      messages,
-      tools,
-    });
 
     return {
       success: false,

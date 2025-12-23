@@ -1,6 +1,7 @@
 import { AutoCompactConfig, Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
-import { LlmIR, toLlmIR, AgentResult } from "../ir/llm-ir.ts";
+import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import { toLlmIR } from "../ir/convert-history-ir.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { getModelFromConfig } from "../config.ts";
 import { run } from "./run.ts";
@@ -91,7 +92,9 @@ export async function generateCompactionSummary(
 
   const summary = processCompactedHistory(result);
   if (summary == null) {
-    throw new CompactionRequestError("Compaction result was empty, continuing without compacting messages."); 
+    throw new CompactionRequestError(
+      "Compaction result was empty, continuing without compacting messages."
+    );
   }
   return summary;
 }

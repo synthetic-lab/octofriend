@@ -1,18 +1,10 @@
 import { t } from "structural";
-import { ToolCallSchema } from "./tools/index.ts";
 import { ToolResult } from "./tools/common.ts";
+import { ToolCallRequestSchema, AnthropicAssistantData, LlmIR } from "./ir/llm-ir.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint
 };
-
-export const ToolCallRequestSchema = t.subtype({
-	type: t.value("function"),
-	function: ToolCallSchema,
-  toolCallId: t.str,
-});
-
-export type ToolCallRequest = t.GetType<typeof ToolCallRequestSchema>;
 
 export type ToolCallItem = SequenceIdTagged<{
 	type: "tool",
@@ -60,17 +52,6 @@ export type FileUnreadableItem = SequenceIdTagged<{
   path: string,
   toolCallId: string,
 }>;
-
-export type AnthropicAssistantData = {
-  thinkingBlocks: Array<{
-    type: "thinking",
-    thinking: string,
-    signature: string,
-  } | {
-    type: "redacted_thinking",
-    data: string,
-  }>,
-};
 
 export type AssistantItem = SequenceIdTagged<{
   type: "assistant";

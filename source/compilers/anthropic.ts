@@ -2,9 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { ToolCallRequestSchema, AnthropicAssistantData } from "../history.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
-import { AssistantMessage, OutputIR, LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import {
+  AssistantMessage, LlmIR, AgentResult, ToolCallRequestSchema, AnthropicAssistantData
+} from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
@@ -265,6 +266,15 @@ export async function runAnthropicAgent({
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
   const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context);
 
+  const curl = generateCurlFrom({
+    baseURL: modelConfig.baseUrl,
+    model: modelConfig.model,
+    system: sysPrompt,
+    messages,
+    tools,
+    maxTokens,
+  });
+
   try {
     const system = skipSystemPrompt ? {} : { system: sysPrompt };
     const result = await client.messages.create({
@@ -444,12 +454,12 @@ export async function runAnthropicAgent({
     if(abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: [ assistantMessage ] };
+      return { success: true, output: [ assistantMessage ], curl };
     }
 
     // No tools? Return
     if(inProgressTool == null) {
-      return { success: true, output: [ assistantMessage ] };
+      return { success: true, output: [ assistantMessage ], curl };
     }
 
     // Get tool calls
@@ -468,6 +478,7 @@ export async function runAnthropicAgent({
     if(parseResult.status === "error") {
       return {
         success: true,
+        curl,
         output: [
           assistantMessage,
           {
@@ -482,17 +493,8 @@ export async function runAnthropicAgent({
     }
 
     assistantMessage.toolCall = parseResult.tool;
-    return { success: true, output: [ assistantMessage ] };
+    return { success: true, output: [ assistantMessage ], curl };
   } catch (e) {
-    const curl = generateCurlFrom({
-      baseURL: modelConfig.baseUrl,
-      model: modelConfig.model,
-      system: sysPrompt,
-      messages,
-      tools,
-      maxTokens,
-    });
-
     return {
       success: false,
       requestError: errorToString(e),
