@@ -109,7 +109,7 @@ export type UiState = {
 export const useAppStore = create<UiState>((set, get) => ({
   modeData: {
     mode: "input" as const,
-    vimMode: "NORMAL" as const,
+    vimMode: "INSERT" as const,
   },
   history: [],
   modelOverride: null,
@@ -148,7 +148,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       ],
       modeData: {
         mode: "input",
-        vimMode: "NORMAL",
+        vimMode: "INSERT",
       },
     });
   },
@@ -163,7 +163,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         modeData: {
           mode: "input",
-          vimMode: "NORMAL",
+          vimMode: "INSERT",
         },
       });
       return true;
