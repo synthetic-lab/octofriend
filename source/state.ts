@@ -22,30 +22,6 @@ export type RunArgs = {
   transport: Transport,
 };
 
-type DebouncedUpdater = {
-  schedule: (updateFn: () => void) => void;
-  clear: () => void;
-};
-
-function createDebouncedUpdater(debounceTimeout: number = 100): DebouncedUpdater {
-  let timeout: NodeJS.Timeout | null = null;
-  return {
-    schedule: (updateFn: () => void) => {
-      if (timeout) return;
-      timeout = setTimeout(() => {
-        updateFn();
-        timeout = null;
-      }, debounceTimeout);
-    },
-    clear: () => {
-      if (timeout) {
-        clearTimeout(timeout);
-        timeout = null;
-      }
-    },
-  };
-}
-
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">
 export type UiState = {
   modeData: {
