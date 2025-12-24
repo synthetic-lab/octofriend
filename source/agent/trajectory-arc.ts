@@ -4,7 +4,6 @@ import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
-import { AsyncGeneratorQueue } from "../generator-queue.ts";
 import { validateTool, ToolError } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 
@@ -85,26 +84,21 @@ export async function trajectoryArc({ messages, config, transport, modelOverride
 
   const messagesCopy = [ ...messages ];
 
-  const compactionGenerator = maybeAutocompact({
+  const parsedCompaction = await maybeAutocompact({
     messages: messagesCopy, config, transport, abortSignal, modelOverride,
+    handler: {
+      startCompaction: () => handler.startCompaction(null),
+      compactionProgress: (stream) => handler.compactionProgress(stream),
+    },
   });
-  let compactionResult = await compactionGenerator.next();
-  while(!compactionResult.done) {
-    if(compactionResult.value.type === "start-compaction") handler.startCompaction(null);
-    else handler.compactionProgress(compactionResult.value);
-    compactionResult = await compactionGenerator.next();
-  }
-  const parsedCompaction = compactionResult.value;
-  if(parsedCompaction) {
-    handler.compactionParsed(parsedCompaction);
-  }
 
-  if (abortSignal.aborted) return abort([]);
+  if(parsedCompaction) handler.compactionParsed(parsedCompaction);
+  if(abortSignal.aborted) return abort([]);
 
   handler.startResponse(null);
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
-  const resultPromise = run({
+  const result = await run({
     config, modelOverride, transport, messages: messagesCopy,
     onTokens: (tokens, type) => {
       if(!buffer[type]) buffer[type] = "";
@@ -120,30 +114,23 @@ export async function trajectoryArc({ messages, config, transport, modelOverride
     abortSignal,
   });
 
-  function bufferToIR(): TrajectoryOutputIR[] {
+  if(abortSignal.aborted) {
     if(buffer.content || buffer.reasoning || buffer.tool) {
-      return [{
+      return abort([{
         role: "assistant",
         content: buffer.content || "",
         reasoningContent: buffer.reasoning,
         tokenUsage: 0,
         outputTokens: 0,
-      }];
+      }]);
     }
-    return [];
+    return abort([]);
   }
-  if(abortSignal.aborted) return abort(bufferToIR());
 
-  const result = await resultPromise;
-  if(!result.success) {
-    if(abortSignal.aborted) return abort(bufferToIR());
-    throw new RequestError(result.requestError, result.curl);
-  }
+  if(!result.success) throw new RequestError(result.requestError, result.curl);
 
   const irs = result.output;
-  if(irs.length === 0) {
-    throw new RequestError("No response from backend", result.curl);
-  }
+  if(irs.length === 0) throw new RequestError("No response from backend", result.curl);
 
   let lastIr = irs[irs.length - 1];
 
@@ -245,29 +232,30 @@ export async function trajectoryArc({ messages, config, transport, modelOverride
   }
 }
 
-async function* maybeAutocompact({
+async function maybeAutocompact({
   messages,
   config,
   modelOverride,
   transport,
   abortSignal,
+  handler,
 }: {
   messages: LlmIR[];
   config: Config;
   modelOverride: string | null,
   transport: Transport;
   abortSignal: AbortSignal;
-}): AsyncGenerator<AutocompactionStream | { type: "start-compaction" }, CompactionType | null> {
-  if (!shouldAutoCompactHistory(messages, config, modelOverride, config.autoCompact)) {
-    return null;
-  }
+  handler: {
+    startCompaction: () => void,
+    compactionProgress: (stream: AutocompactionStream) => void,
+  },
+}): Promise<CompactionType | null> {
+  if(!shouldAutoCompactHistory(messages, config, modelOverride, config.autoCompact)) return null;
 
-  yield { type: "start-compaction" };
-
-  const checkpointChunks = new AsyncGeneratorQueue<AutocompactionStream>();
+  handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
-  const checkpointPromise = checkpointChunks.wrapPromise(generateCompactionSummary(
+  const checkpointSummary = await generateCompactionSummary(
     messages,
     config,
     transport,
@@ -275,7 +263,7 @@ async function* maybeAutocompact({
     (tokens, type) => {
       if(!buffer[type]) buffer[type] = "";
       buffer[type] += tokens;
-      checkpointChunks.push({
+      handler.compactionProgress({
         type: "autocompaction-stream",
         buffer,
         delta: { value: tokens, type, },
@@ -283,10 +271,8 @@ async function* maybeAutocompact({
     },
     () => {},
     abortSignal
-  ));
+  );
 
-  yield* checkpointChunks.items();
-  const checkpointSummary = await checkpointPromise;
   if(checkpointSummary == null) return null;
 
   return {
