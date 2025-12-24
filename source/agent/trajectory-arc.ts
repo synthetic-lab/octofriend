@@ -34,6 +34,7 @@ type AutocompactionStream = {
 
 type Finish = {
   type: "finish",
+  irs: TrajectoryOutputIR[],
   reason: {
     type: "abort",
   } | {
@@ -42,7 +43,6 @@ type Finish = {
     type: "request-tool",
     toolCall: ToolCallRequest,
   },
-  irs: TrajectoryOutputIR[],
 };
 
 export type StateEvents = {
