@@ -3,7 +3,6 @@ import { t } from "structural";
 import { unionAll } from "../types.ts";
 import * as toolMap from "./tool-defs/index.ts";
 import { ToolDef, ToolResult } from "./common.ts";
-import { SequenceIdTagged } from "../history.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 
@@ -22,11 +21,11 @@ export const SKIP_CONFIRMATION: Array<t.GetType<typeof ToolCallSchema>["name"]> 
 export async function runTool(
   abortSignal: AbortSignal,
   transport: Transport,
-  call: SequenceIdTagged<{ tool: t.GetType<typeof ToolCallSchema> }>,
+  call: t.GetType<typeof ToolCallSchema>,
   config: Config,
   modelOverride: string | null,
 ): Promise<ToolResult> {
-  const def = lookup(call.tool);
+  const def = lookup(call);
   return await def.run(abortSignal, transport, call, config, modelOverride);
 }
 

@@ -11,6 +11,7 @@ export interface Transport {
   modTime: (signal: AbortSignal, file: string) => Promise<number>;
   resolvePath: (signal: AbortSignal, path: string) => Promise<string>;
   shell: (signal: AbortSignal, command: string, timeout: number) => Promise<string>;
+  cwd: (signal: AbortSignal) => Promise<string>;
   close: () => Promise<void>;
 }
 

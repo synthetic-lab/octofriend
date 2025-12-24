@@ -1,11 +1,12 @@
-import { LlmIR, OutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
-import { toLlmIR, outputToHistory } from "../ir/convert-history-ir.ts";
-import { HistoryItem } from "../history.ts";
+import fs from "fs/promises";
+import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
 import { AsyncGeneratorQueue } from "../generator-queue.ts";
+import { validateTool, ToolError } from "../tools/index.ts";
+import { autofixEdit } from "../compilers/autofix.ts";
 
 type AllTokenTypes = "reasoning"
                    | "content"
@@ -15,21 +16,22 @@ type AllTokenTypes = "reasoning"
 type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
 };
-
-type IRType = {
-  type: "llm-ir",
-  ir: OutputIR | CompactionCheckpoint,
+type AssistantDelta<AllowedType extends string> = {
+  value: string,
+  type: AllowedType,
 };
 
-type StateChange =
-  { type: "compacting", content: string }
-  | { type: "autofixing-json" }
-  ;
+type CompactionType = {
+  type: "compaction-ir",
+  ir: CompactionCheckpoint,
+};
 
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not send tool
 // types if no tools are given
 type AutocompactionStream = {
-  type: "autocompaction-buffer", buffer: AssistantBuffer<AllTokenTypes>
+  type: "autocompaction-buffer",
+  buffer: AssistantBuffer<AllTokenTypes>,
+  delta: AssistantDelta<AllTokenTypes>,
 };
 
 type Finish = {
@@ -42,15 +44,56 @@ type Finish = {
     type: "request-tool",
     toolCall: ToolCallRequest,
   },
+  irs: TrajectoryOutputIR[],
 };
 
-export type AgentOutput =
-  IRType
-  | { type: "state-change", change: StateChange }
-  | { type: "assistant-chunk-buffer", buffer: AssistantBuffer<AllTokenTypes> }
-  | AutocompactionStream
-  | Finish
-  ;
+export type StateEvents = {
+  startResponse: null,
+  responseProgress: {
+    type: "assistant-chunk-buffer",
+    buffer: AssistantBuffer<AllTokenTypes>,
+    delta: AssistantDelta<AllTokenTypes>,
+  },
+  startCompaction: null,
+  compactionProgress: AutocompactionStream,
+  compactionParsed: CompactionType,
+  autofixingJson: null,
+  autofixingDiff: null,
+  retryTool: {
+    irs: TrajectoryOutputIR[],
+  },
+};
+
+export type AnyState = keyof StateEvents;
+
+export type StateMachineEvent<S extends AnyState, E extends StateEvents[S]> = {
+  type: "event",
+  state: S,
+  event: E,
+};
+
+function createEvent<S extends AnyState, E extends StateEvents[S]>(
+  state: S,
+  event: E
+): StateMachineEvent<S, E> {
+  return {
+    type: "event",
+    state, event,
+  };
+}
+
+export type AgentOutput = {
+  [S in AnyState]: StateMachineEvent<S, StateEvents[S]>
+}[AnyState];
+
+export function trajectoryEventHandler(handler: {
+  [K in AnyState]: (state: StateEvents[K]) => void
+}) {
+  return (e: StateMachineEvent<any, any>) => {
+    // @ts-ignore
+    handler[e.state](e.event);
+  };
+}
 
 /*
  * Given some LLM IR, it runs the next arc of the trajectory until:
@@ -59,115 +102,192 @@ export type AgentOutput =
  * 2. The agent needs to call a tool, or
  * 3. The abort signal is fired.
  */
-export async function* trajectoryArc({ history, config, transport, modelOverride, abortSignal }: {
-  history: HistoryItem[],
+export async function* trajectoryArc({ messages, config, transport, modelOverride, abortSignal }: {
+  messages: LlmIR[],
   config: Config,
   transport: Transport,
   modelOverride: string | null,
   abortSignal: AbortSignal,
 }): AsyncGenerator<AgentOutput, Finish> {
-  if (abortSignal.aborted) {
-    return {
-      type: "finish",
-      reason: { type: "abort" },
-    };
+  if (abortSignal.aborted) return abort([]);
+
+  const messagesCopy = [ ...messages ];
+
+  const compactionGenerator = maybeAutocompact({
+    messages: messagesCopy, config, transport, abortSignal, modelOverride,
+  });
+  let compactionResult = await compactionGenerator.next();
+  while(!compactionResult.done) {
+    if(compactionResult.value.type === "start-compaction") {
+      yield createEvent("startCompaction", null);
+    }
+    else {
+      yield createEvent("compactionProgress", compactionResult.value);
+    }
+
+    compactionResult = await compactionGenerator.next();
+  }
+  const parsedCompaction = compactionResult.value;
+  if(parsedCompaction) {
+    yield createEvent("compactionParsed", parsedCompaction);
   }
 
-  const messages = toLlmIR(history);
+  if (abortSignal.aborted) return abort([]);
 
-  for await(const item of maybeAutocompact({
-    messages, config, transport, abortSignal, modelOverride,
-  })) {
-    yield item;
-    if(item.type === "llm-ir") messages.push(item.ir);
-  }
-
-  if (abortSignal.aborted) {
-    return {
-      type: "finish",
-      reason: { type: "abort" },
-    };
-  }
+  yield createEvent("startResponse", null);
 
   const tokensGenerator = new AsyncGeneratorQueue<AgentOutput>();
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const resultPromise = tokensGenerator.wrapPromise(run({
-    config, modelOverride, transport, messages,
+    config, modelOverride, transport, messages: messagesCopy,
     onTokens: (tokens, type) => {
       if(!buffer[type]) buffer[type] = "";
       buffer[type] += tokens;
-      tokensGenerator.push({
+      tokensGenerator.push(createEvent("responseProgress", {
         type: "assistant-chunk-buffer",
         buffer,
-      });
+        delta: { type, value: tokens },
+      }));
     },
     onAutofixJson: () => {
-      tokensGenerator.push({
-        type: "state-change",
-        change: { type: "autofixing-json" },
-      });
+      tokensGenerator.push(createEvent("autofixingJson", null));
     },
     abortSignal,
   }));
   yield* tokensGenerator.items();
 
-  if(abortSignal.aborted) {
-    return {
-      type: "finish",
-      reason: { type: "abort" },
-    };
-  }
+  // TODO: correctly create an in-progress assistant response and abort with it
+  if(abortSignal.aborted) return abort([]);
 
   const result = await resultPromise;
   if(!result.success) {
-    if(abortSignal.aborted) {
-      return {
-        type: "finish",
-        reason: { type: "abort" },
-      };
-    }
+    // TODO: correctly create an in-progress assistant response and abort with it
+    if(abortSignal.aborted) return abort([]);
     throw new RequestError(result.requestError, result.curl);
   }
 
-  const irs: OutputIR[] = [];
-  for(const item of result.output) {
-    irs.push(item);
-    yield { type: "llm-ir", ir: item };
-  }
+  const irs = result.output;
   if(irs.length === 0) {
     throw new RequestError("No response from backend", result.curl);
   }
+
   let lastIr = irs[irs.length - 1];
 
   // Retry malformed tool calls
   if(lastIr.role === "tool-malformed") {
-    for await(const yielded of trajectoryArc({
+    yield createEvent("retryTool", { irs });
+    const generator = trajectoryArc({
       config, modelOverride, transport, abortSignal,
-      history: history.concat(outputToHistory(irs)),
-    })) {
-      if(yielded.type === "finish") return yielded;
-      yield yielded;
+      messages: messagesCopy.concat(irs),
+    });
+    let result = await generator.next();
+    while(!result.done) {
+      yield result.value;
+      result = await generator.next();
     }
-    throw new RequestError("Internal loop never yielded a finish", result.curl);
+    return result.value;
   }
 
   const { toolCall } = lastIr;
-  if(toolCall) {
+
+  if(toolCall == null) {
+    return {
+      type: "finish",
+      reason: {
+        type: "needs-response",
+      },
+      irs,
+    };
+  }
+
+  try {
+    await validateTool(abortSignal, transport, toolCall.function, config);
     return {
       type: "finish",
       reason: {
         type: "request-tool",
         toolCall,
       },
+      irs,
     };
-  }
+  } catch(e) {
+    if(!(e instanceof ToolError)) throw e;
 
-  return {
-    type: "finish",
-    reason: {
-      type: "needs-response",
-    },
-  };
+    const fn = toolCall.function;
+    if(fn.name === "edit") {
+      yield createEvent("autofixingDiff", null);
+      const path = fn.arguments.filePath;
+      try {
+        const file = await fs.readFile(path, "utf8");
+        const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
+
+        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+        // tool call
+        if(abortSignal.aborted) {
+          return abort([
+            ...irs.slice(0, -1),
+            {
+              role: "tool-error",
+              toolCallId: toolCall.toolCallId,
+              toolName: toolCall.function.name,
+              error: e.message,
+            }
+          ]);
+        }
+
+        if(fix) {
+          // Validate that the edit applies before marking as fixed
+          await validateTool(abortSignal, transport, {
+            name: "edit",
+            arguments: fix,
+          }, config);
+          // If we got this far, it's valid: update the state and return
+          fn.arguments = {
+            ...fn.arguments,
+            ...fix,
+          };
+          return {
+            type: "finish",
+            reason: {
+              type: "request-tool",
+              toolCall,
+            },
+            irs,
+          };
+        }
+      } catch {}
+    }
+
+    yield createEvent("retryTool", {
+      irs: [
+        ...irs.slice(0, -1),
+        {
+          role: "tool-error",
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.function.name,
+          error: e.message,
+        }
+      ],
+    });
+    const generator = trajectoryArc({
+      config, modelOverride, transport, abortSignal,
+      messages: messagesCopy.concat([
+        ...irs.slice(0, -1),
+        {
+          role: "tool-error",
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.function.name,
+          error: e.message,
+        },
+      ]),
+    });
+    let result = await generator.next();
+    while(!result.done) {
+      yield result.value;
+      result = await generator.next();
+    }
+    return result.value;
+  }
 }
 
 async function* maybeAutocompact({
@@ -182,8 +302,12 @@ async function* maybeAutocompact({
   modelOverride: string | null,
   transport: Transport;
   abortSignal: AbortSignal;
-}): AsyncGenerator<AutocompactionStream | IRType> {
-  if (!shouldAutoCompactHistory(messages, config, modelOverride, config.autoCompact)) return;
+}): AsyncGenerator<AutocompactionStream | { type: "start-compaction" }, CompactionType | null> {
+  if (!shouldAutoCompactHistory(messages, config, modelOverride, config.autoCompact)) {
+    return null;
+  }
+
+  yield { type: "start-compaction" };
 
   const checkpointChunks = new AsyncGeneratorQueue<AutocompactionStream>();
 
@@ -199,6 +323,7 @@ async function* maybeAutocompact({
       checkpointChunks.push({
         type: "autocompaction-buffer",
         buffer,
+        delta: { value: tokens, type, },
       });
     },
     () => {},
@@ -207,18 +332,15 @@ async function* maybeAutocompact({
 
   yield* checkpointChunks.items();
   const checkpointSummary = await checkpointPromise;
+  if(checkpointSummary == null) return null;
 
-  if(abortSignal.aborted) return;
-
-  if(checkpointSummary) {
-    yield {
-      type: "llm-ir",
-      ir: {
-        role: "compaction-checkpoint",
-        summary: checkpointSummary,
-      },
-    };
-  }
+  return {
+    type: "compaction-ir",
+    ir: {
+      role: "compaction-checkpoint",
+      summary: checkpointSummary,
+    },
+  };
 }
 
 export class RequestError extends Error {
@@ -226,4 +348,12 @@ export class RequestError extends Error {
     super(message);
     this.name = this.constructor.name;
   }
+}
+
+function abort(irs: TrajectoryOutputIR[]): Finish {
+  return {
+    type: "finish",
+    reason: { type: "abort" },
+    irs,
+  };
 }

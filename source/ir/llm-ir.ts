@@ -103,6 +103,7 @@ export type InputIR = UserMessage
                   ;
 
 export type LlmIR = OutputIR | InputIR;
+export type TrajectoryOutputIR = OutputIR | ToolErrorMessage;
 
 export type AgentResult = {
   success: true,

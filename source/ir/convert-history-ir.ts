@@ -16,9 +16,9 @@ import {
 
 import {
   AssistantMessage,
-  OutputIR,
   LlmIR,
   ToolCallRequest,
+  TrajectoryOutputIR,
 } from "./llm-ir.ts";
 
 // Filter out only relevant history items to the LLM IR
@@ -35,7 +35,7 @@ type LoweredHistory = ToolCallItem
                     ;
 
 // Decompile LLM output IR to History items
-export function outputToHistory(output: OutputIR[]): HistoryItem[] {
+export function outputToHistory(output: TrajectoryOutputIR[]): HistoryItem[] {
   let history: HistoryItem[] = [];
   for(const ir of output) {
     history = history.concat(singleOutputDecompile(ir));
@@ -43,7 +43,7 @@ export function outputToHistory(output: OutputIR[]): HistoryItem[] {
   return history;
 }
 
-function singleOutputDecompile(output: OutputIR): HistoryItem[] {
+function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
   if(output.role === "tool-malformed") {
     return [
       {
@@ -58,6 +58,17 @@ function singleOutputDecompile(output: OutputIR): HistoryItem[] {
             arguments: output.arguments,
           },
         },
+      },
+    ];
+  }
+  if(output.role === "tool-error") {
+    return [
+      {
+        type: "tool-failed",
+        id: sequenceId(),
+        error: output.error,
+        toolCallId: output.toolCallId,
+        toolName: output.toolName,
       },
     ];
   }

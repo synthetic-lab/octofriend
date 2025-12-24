@@ -70,7 +70,7 @@ export async function generateCompactionSummary(
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal
-): Promise<string> {
+): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const processedMessages = formatMessagesForSummary(slicedMessages);
@@ -85,6 +85,8 @@ export async function generateCompactionSummary(
     transport,
     skipSystemPrompt: true,
   });
+
+  if(abortSignal.aborted) return null;
 
   if (!result.success) {
     throw new CompactionRequestError(result.requestError, result.curl);
