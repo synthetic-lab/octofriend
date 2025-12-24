@@ -22,14 +22,13 @@ type AssistantDelta<AllowedType extends string> = {
 };
 
 type CompactionType = {
-  type: "compaction-ir",
-  ir: CompactionCheckpoint,
+  checkpoint: CompactionCheckpoint,
 };
 
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not send tool
 // types if no tools are given
 type AutocompactionStream = {
-  type: "autocompaction-buffer",
+  type: "autocompaction-stream",
   buffer: AssistantBuffer<AllTokenTypes>,
   delta: AssistantDelta<AllTokenTypes>,
 };
@@ -50,7 +49,6 @@ type Finish = {
 export type StateEvents = {
   startResponse: null,
   responseProgress: {
-    type: "assistant-chunk-buffer",
     buffer: AssistantBuffer<AllTokenTypes>,
     delta: AssistantDelta<AllTokenTypes>,
   },
@@ -67,7 +65,6 @@ export type StateEvents = {
 export type AnyState = keyof StateEvents;
 
 export type StateMachineEvent<S extends AnyState, E extends StateEvents[S]> = {
-  type: "event",
   state: S,
   event: E,
 };
@@ -77,7 +74,6 @@ function createEvent<S extends AnyState, E extends StateEvents[S]>(
   event: E
 ): StateMachineEvent<S, E> {
   return {
-    type: "event",
     state, event,
   };
 }
@@ -144,7 +140,6 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
       if(!buffer[type]) buffer[type] = "";
       buffer[type] += tokens;
       tokensGenerator.push(createEvent("responseProgress", {
-        type: "assistant-chunk-buffer",
         buffer,
         delta: { type, value: tokens },
       }));
@@ -331,7 +326,7 @@ async function* maybeAutocompact({
       if(!buffer[type]) buffer[type] = "";
       buffer[type] += tokens;
       checkpointChunks.push({
-        type: "autocompaction-buffer",
+        type: "autocompaction-stream",
         buffer,
         delta: { value: tokens, type, },
       });
@@ -345,8 +340,7 @@ async function* maybeAutocompact({
   if(checkpointSummary == null) return null;
 
   return {
-    type: "compaction-ir",
-    ir: {
+    checkpoint: {
       role: "compaction-checkpoint",
       summary: checkpointSummary,
     },

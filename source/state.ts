@@ -332,7 +332,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         const checkpointItem: CompactionCheckpointItem = {
           type: "compaction-checkpoint",
           id: sequenceId(),
-          summary: event.ir.summary,
+          summary: event.checkpoint.summary,
         };
         historyCopy.push(checkpointItem);
         set({ history: [ ...historyCopy ] });
