@@ -156,13 +156,23 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
   }));
   yield* tokensGenerator.items();
 
-  // TODO: correctly create an in-progress assistant response and abort with it
-  if(abortSignal.aborted) return abort([]);
+  function bufferToIR(): TrajectoryOutputIR[] {
+    if(buffer.content || buffer.reasoning || buffer.tool) {
+      return [{
+        role: "assistant",
+        content: buffer.content || "",
+        reasoningContent: buffer.reasoning,
+        tokenUsage: 0,
+        outputTokens: 0,
+      }];
+    }
+    return [];
+  }
+  if(abortSignal.aborted) return abort(bufferToIR());
 
   const result = await resultPromise;
   if(!result.success) {
-    // TODO: correctly create an in-progress assistant response and abort with it
-    if(abortSignal.aborted) return abort([]);
+    if(abortSignal.aborted) return abort(bufferToIR());
     throw new RequestError(result.requestError, result.curl);
   }
 
