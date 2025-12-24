@@ -70,7 +70,9 @@ export type AnyState = keyof StateEvents;
  * 2. The agent needs to call a tool, or
  * 3. The abort signal is fired.
  */
-export async function trajectoryArc({ messages, config, transport, modelOverride, abortSignal, handler }: {
+export async function trajectoryArc({
+  messages, config, transport, modelOverride, abortSignal, handler
+}: {
   messages: LlmIR[],
   config: Config,
   transport: Transport,
