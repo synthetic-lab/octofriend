@@ -64,33 +64,6 @@ export type StateEvents = {
 
 export type AnyState = keyof StateEvents;
 
-export type StateMachineEvent<S extends AnyState, E extends StateEvents[S]> = {
-  state: S,
-  event: E,
-};
-
-function createEvent<S extends AnyState, E extends StateEvents[S]>(
-  state: S,
-  event: E
-): StateMachineEvent<S, E> {
-  return {
-    state, event,
-  };
-}
-
-export type AgentOutput = {
-  [S in AnyState]: StateMachineEvent<S, StateEvents[S]>
-}[AnyState];
-
-export function trajectoryEventHandler(handler: {
-  [K in AnyState]: (state: StateEvents[K]) => void
-}) {
-  return (e: StateMachineEvent<any, any>) => {
-    // @ts-ignore
-    handler[e.state](e.event);
-  };
-}
-
 /*
  * Given some LLM IR, it runs the next arc of the trajectory until:
  *
@@ -98,13 +71,16 @@ export function trajectoryEventHandler(handler: {
  * 2. The agent needs to call a tool, or
  * 3. The abort signal is fired.
  */
-export async function* trajectoryArc({ messages, config, transport, modelOverride, abortSignal }: {
+export async function trajectoryArc({ messages, config, transport, modelOverride, abortSignal, handler }: {
   messages: LlmIR[],
   config: Config,
   transport: Transport,
   modelOverride: string | null,
   abortSignal: AbortSignal,
-}): AsyncGenerator<AgentOutput, Finish> {
+  handler: {
+    [K in AnyState]: (state: StateEvents[K]) => void
+  }
+}): Promise<Finish> {
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [ ...messages ];
@@ -114,42 +90,35 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
   });
   let compactionResult = await compactionGenerator.next();
   while(!compactionResult.done) {
-    if(compactionResult.value.type === "start-compaction") {
-      yield createEvent("startCompaction", null);
-    }
-    else {
-      yield createEvent("compactionProgress", compactionResult.value);
-    }
-
+    if(compactionResult.value.type === "start-compaction") handler.startCompaction(null);
+    else handler.compactionProgress(compactionResult.value);
     compactionResult = await compactionGenerator.next();
   }
   const parsedCompaction = compactionResult.value;
   if(parsedCompaction) {
-    yield createEvent("compactionParsed", parsedCompaction);
+    handler.compactionParsed(parsedCompaction);
   }
 
   if (abortSignal.aborted) return abort([]);
 
-  yield createEvent("startResponse", null);
+  handler.startResponse(null);
 
-  const tokensGenerator = new AsyncGeneratorQueue<AgentOutput>();
   let buffer: AssistantBuffer<AllTokenTypes> = {};
-  const resultPromise = tokensGenerator.wrapPromise(run({
+  const resultPromise = run({
     config, modelOverride, transport, messages: messagesCopy,
     onTokens: (tokens, type) => {
       if(!buffer[type]) buffer[type] = "";
       buffer[type] += tokens;
-      tokensGenerator.push(createEvent("responseProgress", {
+      handler.responseProgress({
         buffer,
         delta: { type, value: tokens },
-      }));
+      });
     },
     onAutofixJson: () => {
-      tokensGenerator.push(createEvent("autofixingJson", null));
+      handler.autofixingJson(null);
     },
     abortSignal,
-  }));
-  yield* tokensGenerator.items();
+  });
 
   function bufferToIR(): TrajectoryOutputIR[] {
     if(buffer.content || buffer.reasoning || buffer.tool) {
@@ -180,17 +149,12 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
 
   // Retry malformed tool calls
   if(lastIr.role === "tool-malformed") {
-    yield createEvent("retryTool", { irs });
-    const generator = trajectoryArc({
+    handler.retryTool({ irs });
+    return await trajectoryArc({
       config, modelOverride, transport, abortSignal,
       messages: messagesCopy.concat(irs),
+      handler,
     });
-    let result = await generator.next();
-    while(!result.done) {
-      yield result.value;
-      result = await generator.next();
-    }
-    return result.value;
   }
 
   const { toolCall } = lastIr;
@@ -220,7 +184,7 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
 
     const fn = toolCall.function;
     if(fn.name === "edit") {
-      yield createEvent("autofixingDiff", null);
+      handler.autofixingDiff(null);
       const path = fn.arguments.filePath;
       try {
         const file = await fs.readFile(path, "utf8");
@@ -263,35 +227,21 @@ export async function* trajectoryArc({ messages, config, transport, modelOverrid
       } catch {}
     }
 
-    yield createEvent("retryTool", {
-      irs: [
-        ...irs.slice(0, -1),
-        {
-          role: "tool-error",
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.function.name,
-          error: e.message,
-        }
-      ],
-    });
-    const generator = trajectoryArc({
+    const retryIrs = [
+      ...irs.slice(0, -1),
+      {
+        role: "tool-error" as const,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.function.name,
+        error: e.message,
+      }
+    ];
+    handler.retryTool({ irs: retryIrs });
+    return await trajectoryArc({
       config, modelOverride, transport, abortSignal,
-      messages: messagesCopy.concat([
-        ...irs.slice(0, -1),
-        {
-          role: "tool-error",
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.function.name,
-          error: e.message,
-        },
-      ]),
+      messages: messagesCopy.concat(retryIrs),
+      handler,
     });
-    let result = await generator.next();
-    while(!result.done) {
-      yield result.value;
-      result = await generator.next();
-    }
-    return result.value;
   }
 }
 

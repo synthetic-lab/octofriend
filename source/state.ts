@@ -14,7 +14,7 @@ import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { trajectoryArc, trajectoryEventHandler } from "./agent/trajectory-arc.ts";
+import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 
 export type RunArgs = {
@@ -267,113 +267,107 @@ export const useAppStore = create<UiState>((set, get) => ({
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
-    const trajectoryHandler = trajectoryEventHandler({
-      startResponse: () => {
-        set({
-          modeData: {
-            mode: "responding",
-            inflightResponse: {
-              type: "assistant",
-              content: "",
-            },
-            abortController,
-          },
-          byteCount: responseByteCount,
-        });
-      },
-
-      responseProgress: event => {
-        responseByteCount += event.delta.value.length;
-        set({
-          modeData: {
-            mode: "responding",
-            inflightResponse: {
-              type: "assistant",
-              reasoningContent: event.buffer.reasoning,
-              content: event.buffer.content || "",
-            },
-            abortController,
-          },
-          byteCount: responseByteCount,
-        });
-      },
-
-      startCompaction: () => {
-        set({
-          modeData: {
-            mode: "compacting",
-            inflightResponse: {
-              type: "assistant",
-              content: "",
-            },
-            abortController,
-          },
-          byteCount: compactionByteCount,
-        });
-      },
-
-      compactionProgress: event => {
-        compactionByteCount += event.delta.value.length;
-        set({
-          modeData: {
-            mode: "compacting",
-            inflightResponse: {
-              type: "assistant",
-              reasoningContent: event.buffer.reasoning,
-              content: event.buffer.content || "",
-            },
-            abortController,
-          },
-          byteCount: compactionByteCount,
-        });
-      },
-
-      compactionParsed: event => {
-        const checkpointItem: CompactionCheckpointItem = {
-          type: "compaction-checkpoint",
-          id: sequenceId(),
-          summary: event.checkpoint.summary,
-        };
-        historyCopy.push(checkpointItem);
-        set({ history: [ ...historyCopy ] });
-      },
-
-      autofixingJson: () => {
-        set({
-          modeData: {
-            mode: "fix-json",
-            abortController,
-          },
-        });
-      },
-
-      autofixingDiff: () => {
-        set({
-          modeData: {
-            mode: "diff-apply",
-            abortController,
-          }
-        });
-      },
-
-      retryTool: event => {
-        historyCopy.push(...outputToHistory(event.irs));
-        set({ history: [ ...historyCopy ] });
-      },
-    });
     try {
-      const generator = trajectoryArc({
+      const finish = await trajectoryArc({
         messages: toLlmIR(historyCopy),
         config, transport,
         modelOverride: get().modelOverride,
         abortSignal: abortController.signal,
+        handler: {
+          startResponse: () => {
+            set({
+              modeData: {
+                mode: "responding",
+                inflightResponse: {
+                  type: "assistant",
+                  content: "",
+                },
+                abortController,
+              },
+              byteCount: responseByteCount,
+            });
+          },
+
+          responseProgress: event => {
+            responseByteCount += event.delta.value.length;
+            set({
+              modeData: {
+                mode: "responding",
+                inflightResponse: {
+                  type: "assistant",
+                  reasoningContent: event.buffer.reasoning,
+                  content: event.buffer.content || "",
+                },
+                abortController,
+              },
+              byteCount: responseByteCount,
+            });
+          },
+
+          startCompaction: () => {
+            set({
+              modeData: {
+                mode: "compacting",
+                inflightResponse: {
+                  type: "assistant",
+                  content: "",
+                },
+                abortController,
+              },
+              byteCount: compactionByteCount,
+            });
+          },
+
+          compactionProgress: event => {
+            compactionByteCount += event.delta.value.length;
+            set({
+              modeData: {
+                mode: "compacting",
+                inflightResponse: {
+                  type: "assistant",
+                  reasoningContent: event.buffer.reasoning,
+                  content: event.buffer.content || "",
+                },
+                abortController,
+              },
+              byteCount: compactionByteCount,
+            });
+          },
+
+          compactionParsed: event => {
+            const checkpointItem: CompactionCheckpointItem = {
+              type: "compaction-checkpoint",
+              id: sequenceId(),
+              summary: event.checkpoint.summary,
+            };
+            historyCopy.push(checkpointItem);
+            set({ history: [ ...historyCopy ] });
+          },
+
+          autofixingJson: () => {
+            set({
+              modeData: {
+                mode: "fix-json",
+                abortController,
+              },
+            });
+          },
+
+          autofixingDiff: () => {
+            set({
+              modeData: {
+                mode: "diff-apply",
+                abortController,
+              }
+            });
+          },
+
+          retryTool: event => {
+            historyCopy.push(...outputToHistory(event.irs));
+            set({ history: [ ...historyCopy ] });
+          },
+        },
       });
-      let result = await generator.next();
-      while(!result.done) {
-        trajectoryHandler(result.value);
-        result = await generator.next();
-      }
-      const finish = result.value;
       historyCopy.push(...outputToHistory(finish.irs));
       set({ history: [ ...historyCopy ] });
       const finishReason = finish.reason;
