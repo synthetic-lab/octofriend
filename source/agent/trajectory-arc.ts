@@ -32,23 +32,6 @@ type AutocompactionStream = {
   delta: AssistantDelta<AllTokenTypes>,
 };
 
-type Finish = {
-  type: "finish",
-  irs: TrajectoryOutputIR[],
-  reason: {
-    type: "abort",
-  } | {
-    type: "needs-response",
-  } | {
-    type: "request-tool",
-    toolCall: ToolCallRequest,
-  } | {
-    type: "request-error",
-    requestError: string,
-    curl: string,
-  },
-};
-
 export type StateEvents = {
   startResponse: null,
   responseProgress: {
@@ -67,12 +50,26 @@ export type StateEvents = {
 
 export type AnyState = keyof StateEvents;
 
+type Finish = {
+  type: "finish",
+  irs: TrajectoryOutputIR[],
+  reason: {
+    type: "abort",
+  } | {
+    type: "needs-response",
+  } | {
+    type: "request-tool",
+    toolCall: ToolCallRequest,
+  } | {
+    type: "request-error",
+    requestError: string,
+    curl: string,
+  },
+};
+
 /*
- * Given some LLM IR, it runs the next arc of the trajectory until:
- *
- * 1. The agent needs a user response, or
- * 2. The agent needs to call a tool, or
- * 3. The abort signal is fired.
+ * Given some LLM IR, it runs the next arc of the trajectory until one of the finish reasons defined
+ * above is hit.
  */
 export async function trajectoryArc({
   messages, config, transport, modelOverride, abortSignal, handler
@@ -120,20 +117,20 @@ export async function trajectoryArc({
     abortSignal,
   });
 
-  if(!result.success) {
-    function maybeBufferedMessage(): TrajectoryOutputIR[] {
-      if(buffer.content || buffer.reasoning || buffer.tool) {
-        return [{
-          role: "assistant",
-          content: buffer.content || "",
-          reasoningContent: buffer.reasoning,
-          tokenUsage: 0,
-          outputTokens: 0,
-        }];
-      }
-      return [];
+  function maybeBufferedMessage(): TrajectoryOutputIR[] {
+    if(buffer.content || buffer.reasoning || buffer.tool) {
+      return [{
+        role: "assistant",
+        content: buffer.content || "",
+        reasoningContent: buffer.reasoning,
+        tokenUsage: 0,
+        outputTokens: 0,
+      }];
     }
+    return [];
+  }
 
+  if(!result.success) {
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
@@ -149,7 +146,7 @@ export async function trajectoryArc({
   if(irs.length === 0) {
     return {
       type: "finish",
-      irs: [],
+      irs: maybeBufferedMessage(),
       reason: {
         type: "request-error",
         requestError: "No response from backend",
