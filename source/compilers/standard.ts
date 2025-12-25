@@ -1,9 +1,8 @@
 import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
-import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
+import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
 import {
   LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
 } from "../ir/llm-ir.ts";
@@ -89,11 +88,9 @@ JSON`;
 
 async function toLlmMessages(
   messages: LlmIR[],
-  appliedWindow: boolean,
-  config: Config,
   transport: Transport,
   signal: AbortSignal,
-  skipSystemPrompt?: boolean,
+  systemPrompt?: () => Promise<string>,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
   const irs = [ ...messages ];
@@ -114,12 +111,11 @@ async function toLlmMessages(
   }
 
   output.reverse();
-  if(!skipSystemPrompt) {
+  if(systemPrompt) {
+    const prompt = await systemPrompt();
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow, config, transport, signal,
-      }),
+      content: prompt,
     });
   }
 
@@ -274,26 +270,22 @@ async function handleKnownErrors(
 }
 
 export async function runAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
 }: {
+  systemPrompt?: () => Promise<string>,
+  model: ModelConfig,
   config: Config,
-  modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
-  skipSystemPrompt?: boolean,
 }): Promise<AgentResult> {
-  const model = getModelFromConfig(config, modelOverride);
-
   const messages = await toLlmMessages(
     windowedIR.ir,
-    windowedIR.appliedWindow,
-    config,
     transport,
     abortSignal,
-    skipSystemPrompt,
+    systemPrompt,
   );
 
   const tools = Object.entries(toolMap).map(([ name, tool ]) => {

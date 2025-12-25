@@ -10,7 +10,12 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import { readConfig, readMetadata, readKeyForModel, AUTOFIX_KEYS } from "./config.ts";
+import {
+  readConfig,
+  readMetadata,
+  readKeyForModel,
+  AUTOFIX_KEYS,
+} from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
@@ -215,9 +220,7 @@ bench.command("tps")
   let firstToken: Date | null = null;
   const tokenTimestamps: Date[] = [];
   const result = await run({
-    config,
-    skipSystemPrompt: true,
-    modelOverride: model.nickname,
+    model, config,
     messages: [
       {
         role: "user",

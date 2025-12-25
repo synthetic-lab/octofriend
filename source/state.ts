@@ -11,7 +11,6 @@ import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
-import * as logger from "./logger.ts";
 import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
@@ -243,11 +242,12 @@ export const useAppStore = create<UiState>((set, get) => ({
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
+    const model = getModelFromConfig(config, get().modelOverride);
     try {
       const finish = await trajectoryArc({
+        model,
         messages: toLlmIR(historyCopy),
         config, transport,
-        modelOverride: get().modelOverride,
         abortSignal: abortController.signal,
         handler: {
           startResponse: () => {

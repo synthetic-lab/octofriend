@@ -1,9 +1,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
-import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
+import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
 import { LlmIR, ToolCallRequestSchema, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
 import { autofixJson } from './autofix.ts';
@@ -19,9 +18,7 @@ async function toModelMessage(
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
-  appliedWindow: boolean,
-  config: Config,
-  skipSystemPrompt: boolean,
+  systemPrompt?: () => Promise<string>,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -41,14 +38,12 @@ async function toModelMessage(
 
   output.reverse();
 
-  if(!skipSystemPrompt) {
+  if(systemPrompt) {
+    const prompt = await systemPrompt();
     // Add system message
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow,
-        config, transport, signal,
-      }),
+      content: prompt,
     });
   }
 
@@ -258,10 +253,11 @@ JSON`;
 }
 
 export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
 }: {
+  model: ModelConfig,
+  systemPrompt?: () => Promise<string>,
   config: Config,
-  modelOverride: string | null,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
@@ -269,14 +265,11 @@ export async function runResponsesAgent({
   transport: Transport,
   skipSystemPrompt?: boolean,
 }): Promise<AgentResult> {
-  const modelConfig = getModelFromConfig(config, modelOverride);
   const messages = await toModelMessage(
     transport,
     abortSignal,
     windowedIR.ir,
-    windowedIR.appliedWindow,
-    config,
-    !!skipSystemPrompt,
+    systemPrompt,
   );
 
   // Convert tools to AI SDK format
@@ -300,27 +293,27 @@ export async function runResponsesAgent({
     reasoningEffort?: "low" | "medium" | "high",
     reasoningSummary?: "auto",
   } = {};
-  if(modelConfig.reasoning) {
-    reasoningConfig.reasoningEffort = modelConfig.reasoning;
+  if(model.reasoning) {
+    reasoningConfig.reasoningEffort = model.reasoning;
     reasoningConfig.reasoningSummary = "auto";
   }
 
   const curl = generateCurlFrom({
-    baseURL: modelConfig.baseUrl,
-    model: modelConfig.model,
+    baseURL: model.baseUrl,
+    model: model.model,
     messages,
     tools,
   });
 
   try {
-    const apiKey = await assertKeyForModel(modelConfig, config);
+    const apiKey = await assertKeyForModel(model, config);
     const openai = createOpenAI({
-      baseURL: modelConfig.baseUrl,
+      baseURL: model.baseUrl,
       apiKey,
     });
 
     const result = streamText({
-      model: openai.responses(modelConfig.model),
+      model: openai.responses(model.model),
       messages, tools,
       abortSignal,
       providerOptions: {
@@ -395,9 +388,9 @@ export async function runResponsesAgent({
 
     // Track usage
     if(usage.input !== 0 || usage.output !== 0) {
-      trackTokens(modelConfig.model, "input", usage.input);
-      trackTokens(modelConfig.model, "output", usage.output);
-      trackTokens(modelConfig.model, "output", usage.reasoning);
+      trackTokens(model.model, "input", usage.input);
+      trackTokens(model.model, "output", usage.output);
+      trackTokens(model.model, "output", usage.reasoning);
     }
 
     // Calculate token usage delta

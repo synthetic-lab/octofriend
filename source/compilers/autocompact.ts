@@ -3,7 +3,7 @@ import { sequenceId } from "../history.ts";
 import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import { toLlmIR } from "../ir/convert-history-ir.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
-import { getModelFromConfig } from "../config.ts";
+import { getModelFromConfig, ModelConfig } from "../config.ts";
 import { run } from "./run.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -44,17 +44,15 @@ export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): numb
 // checks the token length starting from a compaction-checkpoint (or the beginning if no checkpoint exists)
 // if it exceeds AUTOCOMPACT_THRESHOLD * the model's max context window, return true
 export function shouldAutoCompactHistory(
+  model: ModelConfig,
   messages: LlmIR[],
-  config: Config,
-  modelOverride: string | null,
   autoCompactSettings?: AutoCompactConfig,
 ): boolean {
   if(autoCompactSettings?.enabled === false) return false;
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
-  const modelConfig = getModelFromConfig(config, modelOverride);
-  const maxContextWindow = modelConfig.context;
+  const maxContextWindow = model.context;
   const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
   const currentTokens = countIRTokens(slicedMessages);
 
@@ -63,10 +61,10 @@ export function shouldAutoCompactHistory(
 
 // only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary(
+  model: ModelConfig,
   messages: LlmIR[],
   config: Config,
   transport: Transport,
-  modelOverride: string | null,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal
@@ -76,14 +74,13 @@ export async function generateCompactionSummary(
   const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
+    model,
     config,
-    modelOverride,
     messages: processedMessages,
     onTokens,
     onAutofixJson,
     abortSignal,
     transport,
-    skipSystemPrompt: true,
   });
 
   if(abortSignal.aborted) return null;
