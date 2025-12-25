@@ -1,5 +1,6 @@
 import { Box, DOMElement, measureElement, useStdin, Text, BoxProps } from 'ink';
 import React, { useEffect, useState, useRef, useCallback, createContext } from 'react';
+import { useColor } from '../theme.ts';
 
 // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
 const MOUSE_PATTERNS = {
@@ -149,17 +150,14 @@ export function ScrollView({ height, children }: ScrollViewProps) {
     return () => clearTimeout(timer);
   }, [children, handleElementSize]);
 
-  const showTopBorder = scrollPercentage == 0;
-  const showBottomBorder = scrollPercentage == 100;
-
-  const SCROLL_UI_COLOR = "cyan"
+  const SCROLL_UI_COLOR = useColor();
   const scrollableStyles: BoxProps = {
     borderStyle: "single",
-    borderTop: showTopBorder,
-    borderBottom: showBottomBorder,
+    borderTop: false,
+    borderBottom: false,
+    borderRight: false,
+    paddingLeft: 1,
     borderColor: SCROLL_UI_COLOR,
-    paddingTop: showTopBorder ? 1 : 0,
-    paddingBottom: showBottomBorder ? 1 : 0,
   };
 
   return (
@@ -182,7 +180,7 @@ export function ScrollView({ height, children }: ScrollViewProps) {
           </Box>
         </Box>
         {isScrollable && (
-          <Box justifyContent="flex-end">
+          <Box justifyContent="flex-start">
             <Text color={SCROLL_UI_COLOR} dimColor>
               {scrollPercentage}% {scrollTop > 0 ? '↑' : ''}{scrollTop < maxScroll ? '↓' : ''}
             </Text>
