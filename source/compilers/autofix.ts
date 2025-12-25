@@ -46,7 +46,7 @@ async function autofix(
   modelConf: { baseUrl: string, apiEnvVar?: string, model: string } | null | undefined,
   config: Config,
   message: string,
-  abortSignal?: AbortSignal,
+  abortSignal: AbortSignal,
 ): Promise<string | null> {
   if(modelConf == null) return null;
 

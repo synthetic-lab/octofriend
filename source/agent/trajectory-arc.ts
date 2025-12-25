@@ -42,6 +42,10 @@ type Finish = {
   } | {
     type: "request-tool",
     toolCall: ToolCallRequest,
+  } | {
+    type: "request-error",
+    requestError: string,
+    curl: string,
   },
 };
 
@@ -116,23 +120,43 @@ export async function trajectoryArc({
     abortSignal,
   });
 
-  if(abortSignal.aborted) {
-    if(buffer.content || buffer.reasoning || buffer.tool) {
-      return abort([{
-        role: "assistant",
-        content: buffer.content || "",
-        reasoningContent: buffer.reasoning,
-        tokenUsage: 0,
-        outputTokens: 0,
-      }]);
+  if(!result.success) {
+    function maybeBufferedMessage(): TrajectoryOutputIR[] {
+      if(buffer.content || buffer.reasoning || buffer.tool) {
+        return [{
+          role: "assistant",
+          content: buffer.content || "",
+          reasoningContent: buffer.reasoning,
+          tokenUsage: 0,
+          outputTokens: 0,
+        }];
+      }
+      return [];
     }
-    return abort([]);
+
+    return {
+      type: "finish",
+      irs: maybeBufferedMessage(),
+      reason: {
+        type: "request-error",
+        requestError: result.requestError,
+        curl: result.curl,
+      },
+    };
   }
 
-  if(!result.success) throw new RequestError(result.requestError, result.curl);
-
   const irs = result.output;
-  if(irs.length === 0) throw new RequestError("No response from backend", result.curl);
+  if(irs.length === 0) {
+    return {
+      type: "finish",
+      irs: [],
+      reason: {
+        type: "request-error",
+        requestError: "No response from backend",
+        curl: result.curl,
+      },
+    };
+  }
 
   let lastIr = irs[irs.length - 1];
 

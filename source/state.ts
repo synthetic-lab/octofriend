@@ -352,6 +352,17 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
+      if(finishReason.type === "request-error") {
+        set({
+          modeData: {
+            mode: "request-error",
+            error: finishReason.requestError,
+            curlCommand: finishReason.curl,
+          },
+        });
+        return;
+      }
+
       set({
         modeData: {
           mode: "tool-request",
@@ -393,7 +404,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
-      logger.error("verbose", e);
+      throw e;
     } finally {
       set({ byteCount: 0 });
     }
