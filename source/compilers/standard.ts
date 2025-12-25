@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
+import { Compiler } from "./compiler-interface.ts";
 import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
@@ -269,18 +270,9 @@ async function handleKnownErrors(
   }
 }
 
-export async function runAgent({
+export const runAgent: Compiler = async ({
   model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
-}: {
-  systemPrompt?: () => Promise<string>,
-  model: ModelConfig,
-  config: Config,
-  windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
-  abortSignal: AbortSignal,
-  transport: Transport,
-}): Promise<AgentResult> {
+}) => {
   const messages = await toLlmMessages(
     windowedIR.ir,
     transport,
@@ -502,7 +494,7 @@ export async function runAgent({
     assistantIr.toolCall = parseResult.tool;
     return { success: true, output: [ assistantIr ], curl };
   });
-}
+};
 
 type ParseToolResult = {
   status: "success";

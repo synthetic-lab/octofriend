@@ -1,6 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
+import { Compiler } from './compiler-interface.ts';
 import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { LlmIR, ToolCallRequestSchema, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
@@ -252,19 +253,9 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function runResponsesAgent({
+export const runResponsesAgent: Compiler = async ({
   model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
-}: {
-  model: ModelConfig,
-  systemPrompt?: () => Promise<string>,
-  config: Config,
-  windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
-  abortSignal: AbortSignal,
-  transport: Transport,
-  skipSystemPrompt?: boolean,
-}): Promise<AgentResult> {
+}) => {
   const messages = await toModelMessage(
     transport,
     abortSignal,

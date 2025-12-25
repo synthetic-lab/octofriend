@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
+import { Compiler } from "./compiler-interface.ts";
 import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
@@ -207,18 +208,9 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function runAnthropicAgent({
+export const runAnthropicAgent: Compiler = async ({
   model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
-}: {
-  model: ModelConfig,
-  systemPrompt?: () => Promise<string>,
-  config: Config,
-  windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
-  abortSignal: AbortSignal,
-  transport: Transport,
-}): Promise<AgentResult> {
+}) => {
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
   const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
 
