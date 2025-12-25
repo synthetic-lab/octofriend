@@ -392,15 +392,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
 
       if(e instanceof PaymentError) {
-        set({
-          modeData: { mode: "payment-error", error: e.message },
-        });
+        set({ modeData: { mode: "payment-error", error: e.message } });
         return;
       }
       else if(e instanceof RateLimitError) {
-        set({
-          modeData: { mode: "rate-limit-error", error: e.message },
-        });
+        set({ modeData: { mode: "rate-limit-error", error: e.message } });
         return;
       }
 
