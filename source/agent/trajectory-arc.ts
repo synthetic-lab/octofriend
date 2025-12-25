@@ -130,6 +130,8 @@ export async function trajectoryArc({
     return [];
   }
 
+  if(abortSignal.aborted) return abort(maybeBufferedMessage());
+
   if(!result.success) {
     return {
       type: "finish",
