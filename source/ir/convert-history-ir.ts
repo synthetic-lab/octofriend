@@ -325,7 +325,9 @@ function assertPrevAssistant<T extends HistoryItem["type"]>(
 ): [ LlmIR | null, LlmIR | null ] {
   if(prev == null) return [ null, null ];
   if(prev.role === "assistant") return callback(prev);
-  throw new Error(`Impossible tool ordering: no prev assistant response for ${type}`);
+  throw new Error(
+    `Impossible tool ordering: no prev assistant response for ${type}. Prev role: ${prev.role}`
+  );
 }
 
 function assertPrevAssistantToolCall<T extends HistoryItem["type"]>(
@@ -337,6 +339,8 @@ function assertPrevAssistantToolCall<T extends HistoryItem["type"]>(
   return assertPrevAssistant(type, item, prev, prev => {
     const { toolCall } = prev;
     if(toolCall) return callback({ ...prev, toolCall });
-    throw new Error(`Impossible tool ordering: no prev assistant tool call for ${type}`);
+    throw new Error(
+      `Impossible tool ordering: no prev assistant tool call for ${type}. Prev role: ${prev.role}`
+    );
   });
 }
