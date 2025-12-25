@@ -17,7 +17,7 @@ export default {
     return null;
   },
   async run(abortSignal, transport, call) {
-    const { filePath } = call.tool.arguments;
+    const { filePath } = call.arguments;
     return attempt(`No such file ${filePath}`, async () => {
       // Actually perform the read to ensure it's readable, and that the timestamps get updated
       const content = await fileTracker.read(transport, abortSignal, filePath)

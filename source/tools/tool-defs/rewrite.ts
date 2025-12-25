@@ -22,8 +22,8 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema, validate,
   async run(signal, transport, call) {
-    const { filePath } = call.tool.arguments;
-    const edit = call.tool.arguments;
+    const { filePath } = call.arguments;
+    const edit = call.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
     const replaced = runEdit({ edit });
     await fileTracker.write(transport, signal, filePath, replaced);

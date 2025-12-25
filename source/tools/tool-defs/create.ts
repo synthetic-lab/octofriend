@@ -26,8 +26,8 @@ async function validate(signal: AbortSignal, transport: Transport, toolCall: t.G
 export default {
   Schema, ArgumentsSchema, validate,
   async run(signal, transport, call) {
-    await validate(signal, transport, call.tool);
-    const { filePath, content } = call.tool.arguments;
+    await validate(signal, transport, call);
+    const { filePath, content } = call.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
       return {

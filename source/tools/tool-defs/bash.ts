@@ -28,7 +28,7 @@ export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(abortSignal, transport, call) {
-    const { cmd, timeout } = call.tool.arguments;
+    const { cmd, timeout } = call.arguments;
     try {
       return { content: await transport.shell(abortSignal, cmd, timeout) };
     } catch(e) {

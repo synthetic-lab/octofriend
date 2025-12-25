@@ -25,7 +25,7 @@ export default {
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(signal, _, call, config, modelOverride) {
-    const { url, includeMarkup } = call.tool.arguments;
+    const { url, includeMarkup } = call.arguments;
     try {
 
       const response = await fetch(url, { signal });

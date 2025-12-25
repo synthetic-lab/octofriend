@@ -4,6 +4,10 @@ import { spawn } from "child_process";
 import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
 
 export class LocalTransport implements Transport {
+  async cwd() {
+    return process.cwd();
+  }
+
   async close() {}
 
   async writeFile(_: AbortSignal, file: string, contents: string) {

@@ -1,6 +1,7 @@
 import { AutoCompactConfig, Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
-import { LlmIR, toLlmIR, AgentResult } from "../ir/llm-ir.ts";
+import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import { toLlmIR } from "../ir/convert-history-ir.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { getModelFromConfig } from "../config.ts";
 import { run } from "./run.ts";
@@ -69,7 +70,7 @@ export async function generateCompactionSummary(
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal
-): Promise<string> {
+): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const processedMessages = formatMessagesForSummary(slicedMessages);
@@ -85,13 +86,17 @@ export async function generateCompactionSummary(
     skipSystemPrompt: true,
   });
 
+  if(abortSignal.aborted) return null;
+
   if (!result.success) {
     throw new CompactionRequestError(result.requestError, result.curl);
   }
 
   const summary = processCompactedHistory(result);
   if (summary == null) {
-    throw new CompactionRequestError("Compaction result was empty, continuing without compacting messages."); 
+    throw new CompactionRequestError(
+      "Compaction result was empty, continuing without compacting messages."
+    );
   }
   return summary;
 }

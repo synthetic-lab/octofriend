@@ -26,8 +26,8 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema, validate, DiffEdit,
   async run(signal, transport, call) {
-    const { filePath } = call.tool.arguments;
-    const diff = call.tool.arguments;
+    const { filePath } = call.arguments;
+    const diff = call.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);

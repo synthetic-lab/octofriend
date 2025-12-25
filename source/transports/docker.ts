@@ -241,4 +241,9 @@ output: ${output}`));
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
     return await this.dockerExec(signal, [command], timeout);
   }
+
+  async cwd(signal: AbortSignal) {
+    const output = await this.dockerExec(signal, ["pwd"], 5000);
+    return output.trim();
+  }
 }

@@ -47,7 +47,7 @@ export type ToolDef<T> = {
   run: (
     abortSignal: AbortSignal,
     transport: Transport,
-    t: SequenceIdTagged<{ tool: T }>,
+    t: T,
     cfg: Config,
     modelOverride: string | null,
   ) => Promise<ToolResult>,

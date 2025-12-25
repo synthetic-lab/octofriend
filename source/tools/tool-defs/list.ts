@@ -15,8 +15,8 @@ const Schema = t.subtype({
 export default {
   Schema, ArgumentsSchema, validate,
   async run(abortSignal, transport, call) {
-    const dirpath = call.tool.arguments?.dirPath || process.cwd();
-    await validate(abortSignal, transport, call.tool);
+    const dirpath = call.arguments?.dirPath || (await transport.cwd(abortSignal));
+    await validate(abortSignal, transport, call);
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(abortSignal, dirpath);
       return { content: entries.map(entry => JSON.stringify(entry)).join("\n") };

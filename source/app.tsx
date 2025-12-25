@@ -9,7 +9,7 @@ import { t } from "structural";
 import {
   Config, Metadata, ConfigContext, ConfigPathContext, SetConfigContext, useConfig
 } from "./config.ts";
-import { HistoryItem, AssistantItem, ToolCallItem } from "./history.ts";
+import { HistoryItem, ToolCallItem } from "./history.ts";
 import Loading  from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -46,6 +46,7 @@ import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
+import { ToolCallRequest } from "./ir/llm-ir.ts";
 
 type Props = {
 	config: Config;
@@ -471,7 +472,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
 }
 
 function ToolRequestRenderer({ toolReq, config, transport }: {
-  toolReq: ToolCallItem
+  toolReq: ToolCallRequest
 } & RunArgs) {
   const themeColor = useColor();
   const { runTool, rejectTool } = useAppStore(
@@ -483,7 +484,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
   const unchained = useUnchained();
 
   const prompt = (() => {
-    const fn = toolReq.tool.function;
+    const fn = toolReq.function;
     switch (fn.name) {
       case "create":
         return <Box>
@@ -521,11 +522,11 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
   ];
 
 	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "no") rejectTool(toolReq.tool.toolCallId);
+    if(item.value === "no") rejectTool(toolReq.toolCallId);
     else await runTool({ toolReq, config, transport });
 	}, [ toolReq, config, transport ]);
 
-  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.tool.function.name);
+  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
   useEffect(() => {
     if(noConfirm) {
       runTool({ toolReq, config, transport });
