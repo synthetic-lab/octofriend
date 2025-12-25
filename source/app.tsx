@@ -675,12 +675,7 @@ const MessageDisplayInner = React.memo(({ item }: {
   }
 
   if(item.type === "compaction-checkpoint") {
-    return (
-      <Box flexDirection="column">
-        <Text color="gray">History compacted! Summary: </Text>
-        <Markdown markdown={item.summary} />
-      </Box>
-    );
+    return <CompactionSummaryRenderer summary={item.summary} />
   }
 
   const _: "user" = item.type;
@@ -696,6 +691,19 @@ const MessageDisplayInner = React.memo(({ item }: {
     </Text>
   </Box>
 });
+
+function CompactionSummaryRenderer({ summary }: { summary: string }) {
+  const color = useColor();
+  const innerSummary = summary.replace(/^<summary>/, "")
+                              .replace(/<\/summary>$/, "");
+  return (
+    <Box flexDirection="column" marginY={1}>
+      <Text color="gray">History compacted! Summary: </Text>
+      <Text color="gray">{innerSummary}</Text>
+      <Text color={color}>Summary complete!</Text>
+    </Box>
+  );
+}
 
 function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
   switch(item.tool.function.name) {
@@ -839,10 +847,10 @@ function CompactionRenderer({ item }: {
   item: InflightResponseType,
 }) {
   const terminalSize = useTerminalSize();
-  const scrollHeight = Math.min(5, terminalSize.height - 10);
+  const scrollHeight = Math.max(1, Math.min(10, terminalSize.height - 10));
   return <OctoMessageRenderer>
     <MaybeScrollView height={scrollHeight}>
-      <Markdown markdown={item.content} />
+      <Text color="gray">{item.content}</Text>
     </MaybeScrollView>
   </OctoMessageRenderer>
 }
