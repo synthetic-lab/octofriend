@@ -306,13 +306,6 @@ async function maybeAutocompact({
   };
 }
 
-export class RequestError extends Error {
-  constructor(message: string, public curl: string | null) {
-    super(message);
-    this.name = this.constructor.name;
-  }
-}
-
 function abort(irs: TrajectoryOutputIR[]): Finish {
   return {
     type: "finish",
