@@ -31,8 +31,9 @@ type CompactionType = {
   checkpoint: CompactionCheckpoint,
 };
 
-// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not send tool
-// types if no tools are given
+// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
+// tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
+// requires typesystem shenanigans.)
 type AutocompactionStream = {
   type: "autocompaction-stream",
   buffer: AssistantBuffer<AllTokenTypes>,
