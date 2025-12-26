@@ -1,4 +1,4 @@
-import { Config, useConfig, getModelFromConfig } from "./config.ts";
+import { Config, useConfig, getModelFromConfig, assertKeyForModel } from "./config.ts";
 import {
   HistoryItem, UserItem, AssistantItem, CompactionCheckpointItem, sequenceId
 } from "./history.ts";
@@ -243,9 +243,11 @@ export const useAppStore = create<UiState>((set, get) => ({
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
+    const apiKey = await assertKeyForModel(model, config);
+
     try {
       const finish = await trajectoryArc({
-        model,
+        apiKey, model,
         messages: toLlmIR(historyCopy),
         config, transport,
         abortSignal: abortController.signal,

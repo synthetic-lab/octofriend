@@ -14,6 +14,7 @@ import {
   readConfig,
   readMetadata,
   readKeyForModel,
+  assertKeyForModel,
   AUTOFIX_KEYS,
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
@@ -211,6 +212,9 @@ bench.command("tps")
     console.error("- " + config.models.map(m => m.nickname).join("\n- "));
     process.exit(1);
   }
+
+  const apiKey = await assertKeyForModel(model, config);
+
   console.log("Benchmarking", model.nickname);
   const abortController = new AbortController();
   const timer = setInterval(() => {
@@ -220,7 +224,7 @@ bench.command("tps")
   let firstToken: Date | null = null;
   const tokenTimestamps: Date[] = [];
   const result = await run({
-    model, config,
+    apiKey, model, config,
     messages: [
       {
         role: "user",

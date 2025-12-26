@@ -76,8 +76,9 @@ type Finish = {
  * above is hit.
  */
 export async function trajectoryArc({
-  model, messages, config, transport, abortSignal, handler
+  apiKey, model, messages, config, transport, abortSignal, handler
 }: {
+  apiKey: string,
   model: ModelConfig,
   messages: LlmIR[],
   config: Config,
@@ -92,7 +93,7 @@ export async function trajectoryArc({
   const messagesCopy = [ ...messages ];
 
   const parsedCompaction = await maybeAutocompact({
-    model, config, transport, abortSignal,
+    apiKey, model, config, transport, abortSignal,
     messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
@@ -107,7 +108,7 @@ export async function trajectoryArc({
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const result = await run({
-    model, transport, config,
+    apiKey, model, transport, config,
     messages: messagesCopy,
     onTokens: (tokens, type) => {
       if(!buffer[type]) buffer[type] = "";
@@ -175,7 +176,7 @@ export async function trajectoryArc({
   if(lastIr.role === "tool-malformed") {
     handler.retryTool({ irs });
     return await trajectoryArc({
-      model, config, transport, abortSignal,
+      apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(irs),
       handler,
     });
@@ -262,7 +263,7 @@ export async function trajectoryArc({
     ];
     handler.retryTool({ irs: retryIrs });
     return await trajectoryArc({
-      model, config, transport, abortSignal,
+      apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(retryIrs),
       handler,
     });
@@ -270,6 +271,7 @@ export async function trajectoryArc({
 }
 
 async function maybeAutocompact({
+  apiKey,
   model,
   messages,
   config,
@@ -277,6 +279,7 @@ async function maybeAutocompact({
   abortSignal,
   handler,
 }: {
+  apiKey: string,
   model: ModelConfig,
   messages: LlmIR[];
   config: Config;
@@ -293,6 +296,7 @@ async function maybeAutocompact({
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
   const checkpointSummary = await generateCompactionSummary(
+    apiKey,
     model,
     messages,
     config,

@@ -61,6 +61,7 @@ export function shouldAutoCompactHistory(
 
 // only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary(
+  apiKey: string,
   model: ModelConfig,
   messages: LlmIR[],
   config: Config,
@@ -74,8 +75,7 @@ export async function generateCompactionSummary(
   const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
-    model,
-    config,
+    apiKey, model, config,
     messages: processedMessages,
     onTokens,
     onAutofixJson,

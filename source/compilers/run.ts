@@ -1,7 +1,7 @@
 import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
-import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
+import { Config, ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -10,8 +10,9 @@ import { autofixJson } from "../compilers/autofix.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
-  config, model, messages, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
+  config, model, apiKey, messages, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
 }: {
+  apiKey: string,
   model: ModelConfig,
   config: Config,
   messages: LlmIR[],
@@ -35,8 +36,6 @@ export async function run({
   const wrappedPrompt = systemPrompt == null ? systemPrompt : async () => {
     return systemPrompt(windowedIR.appliedWindow);
   };
-
-  const apiKey = await assertKeyForModel(model, config);
 
   const toolsDefinitions = toolMap;
   const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
