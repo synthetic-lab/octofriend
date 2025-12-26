@@ -1,5 +1,4 @@
 import { t } from "structural";
-import { SequenceIdTagged } from "../history.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 

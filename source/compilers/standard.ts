@@ -1,21 +1,20 @@
 import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { Config, ModelConfig, assertKeyForModel } from "../config.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import {
   LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
 } from "../ir/llm-ir.ts";
-import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/ir-windowing.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
-import { autofixJson } from "../compilers/autofix.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
+import { ToolDef } from "../tools/common.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 
 export type UserMessage = {
   role: "user";
@@ -271,7 +270,7 @@ async function handleKnownErrors(
 }
 
 export const runAgent: Compiler = async ({
-  model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
+  model, apiKey, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toLlmMessages(
     windowedIR.ir,
@@ -280,7 +279,8 @@ export const runAgent: Compiler = async ({
     systemPrompt,
   );
 
-  const tools = Object.entries(toolMap).map(([ name, tool ]) => {
+  const toolDefs = tools || {};
+  const toolsMap = Object.entries(toolDefs).map(([ name, tool ]) => {
     const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
     // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
     // @ts-ignore
@@ -303,10 +303,9 @@ export const runAgent: Compiler = async ({
     baseURL: model.baseUrl,
     model: model.model,
     messages,
-    tools
+    tools: toolsMap
   });
   return await handleKnownErrors(curl, async () => {
-    const apiKey = await assertKeyForModel(model, config);
     const client = new OpenAI({
       baseURL: model.baseUrl,
       apiKey,
@@ -321,7 +320,7 @@ export const runAgent: Compiler = async ({
       ...reasoning,
       model: model.model,
       messages,
-      tools,
+      tools: toolsMap,
       stream: true,
       stream_options: {
         include_usage: true,
@@ -472,7 +471,7 @@ export const runAgent: Compiler = async ({
       };
     }
 
-    const parseResult = await parseTool(validatedTool, config, onAutofixJson, abortSignal);
+    const parseResult = await parseTool(validatedTool, toolDefs, onAutofixJson, autofixJson, abortSignal);
 
     if(parseResult.status === "error") {
       return {
@@ -504,52 +503,36 @@ type ParseToolResult = {
   message: string
 };
 
-const TOOL_NAMES = new Set(Object.keys(toolMap));
-function hasMcp(config: Config) {
-  if(config.mcpServers == null) return false;
-  if(Object.keys(config.mcpServers).length === 0) return false;
-  return true;
-}
-
-function isValidToolName(name: string, config: Config): name is ((keyof typeof toolMap) & string) {
-  if(!hasMcp(config) && name === "mcp") return false;
-  return TOOL_NAMES.has(name);
-}
-
-function validToolNames(config: Config) {
-  return Object.keys(toolMap).filter(t => {
-    if(hasMcp(config)) return true;
-    return t !== "mcp";
-  });
-}
-
 async function parseTool(
   toolCall: ResponseToolCall,
-  config: Config,
+  toolDefs: Record<string, ToolDef<any>>,
   onAutofixJson: (done: Promise<void>) => any,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.function.name;
-  if(!isValidToolName(name, config)) {
+  const toolDef = toolDefs[name];
+
+  if(!toolDef) {
     return {
       status: "error",
       message: `
 Unknown tool ${name}. The only valid tool names are:
 
-- ${validToolNames(config).join("\n- ")}
+- ${Object.keys(toolDefs).join("\n- ")}
 
 Please try calling a valid tool.
       `.trim(),
     };
   }
 
-  const toolSchema = toolMap[name].Schema;
+  const toolSchema = toolDef.Schema;
   let [ err, args ] = tryexpr(() => {
     return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
   });
 
   if(err) {
-    const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
+    const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
     onAutofixJson(fixPromise.then(() => {}));
     const fixResponse = await fixPromise;
     if(!fixResponse.success) {
@@ -568,7 +551,7 @@ Please try calling a valid tool.
     });
 
     if(err) {
-      const fixPromise = autofixJson(config, toolCall.function.arguments, abortSignal);
+      const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
       onAutofixJson(fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {

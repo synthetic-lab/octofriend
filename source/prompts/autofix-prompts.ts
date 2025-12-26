@@ -35,7 +35,8 @@ export const JsonFixSuccess = t.subtype({
 export const JsonFixFailure = t.subtype({
   success: t.value(false),
 });
-export const JsonFixResponse = JsonFixSuccess.or(JsonFixFailure);
+export const JsonFixResponseSchema = JsonFixSuccess.or(JsonFixFailure);
+export type JsonFixResponse = t.GetType<typeof JsonFixResponseSchema>;
 
 export function fixJsonPrompt(str: string) {
   return (

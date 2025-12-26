@@ -2,7 +2,9 @@ import OpenAI from "openai";
 import { t } from "structural";
 import { Config, assertKeyForModel } from "../config.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
-import { fixEditPrompt, fixJsonPrompt, JsonFixResponse, DiffApplyResponse } from "../prompts/autofix-prompts.ts";
+import {
+  fixEditPrompt, fixJsonPrompt, JsonFixResponseSchema, DiffApplyResponse
+} from "../prompts/autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
 
 type Edit = t.GetType<typeof toolMap.edit.ArgumentsSchema>;
@@ -34,7 +36,7 @@ export async function autofixJson(config: Config, brokenJson: string, abortSigna
   if(result == null) return { success: false as const };
   try {
     const json = JSON.parse(result);
-    const response = JsonFixResponse.slice(json);
+    const response = JsonFixResponseSchema.slice(json);
     if(response.success) return response;
     return { success: false as const };
   } catch {

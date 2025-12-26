@@ -1,19 +1,21 @@
-import { Config, ModelConfig } from "../config.ts";
-import {
-  AgentResult
-} from "../ir/llm-ir.ts";
+import { ModelConfig } from "../config.ts";
+import { AgentResult } from "../ir/llm-ir.ts";
 import { WindowedIR } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ToolDef } from "../tools/common.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 
 export type Compiler = ({
-  model, config, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
+  model, apiKey, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt, autofixJson, tools
 }: {
   systemPrompt?: () => Promise<string>,
   model: ModelConfig,
-  config: Config,
+  apiKey: string,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
   onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  tools?: Record<string, ToolDef<any>>,
 }) => Promise<AgentResult>;
