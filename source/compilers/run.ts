@@ -6,7 +6,7 @@ import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { autofixJson as autofixJsonImpl } from "../compilers/autofix.ts";
+import { autofixJson } from "../compilers/autofix.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
@@ -51,11 +51,14 @@ export async function run({
     apiKey,
     windowedIR,
     onTokens,
-    onAutofixJson,
     abortSignal,
     transport,
     systemPrompt: wrappedPrompt,
-    autofixJson: (badJson: string, signal: AbortSignal) => autofixJsonImpl(config, badJson, signal),
+    autofixJson: (badJson: string, signal: AbortSignal) => {
+      const fixPromise = autofixJson(config, badJson, signal);
+      onAutofixJson(fixPromise.then(() => {}));
+      return fixPromise;
+    },
     tools,
   });
 }

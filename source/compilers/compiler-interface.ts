@@ -6,14 +6,13 @@ import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 
 export type Compiler = ({
-  model, apiKey, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
 }: {
   systemPrompt?: () => Promise<string>,
   model: ModelConfig,
   apiKey: string,
   windowedIR: WindowedIR,
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
   abortSignal: AbortSignal,
   transport: Transport,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,

@@ -252,7 +252,7 @@ JSON`;
 }
 
 export const runResponsesAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toModelMessage(
     transport,
@@ -423,7 +423,6 @@ export const runResponsesAgent: Compiler = async ({
     const parseResult = await parseTool(
       chatToolCall,
       toolDefs,
-      onAutofixJson,
       autofixJson,
       abortSignal,
     );
@@ -467,7 +466,6 @@ type ParseToolResult = {
 async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
   toolDefs: Record<string, any>,
-  onAutofixJson: (done: Promise<void>) => any,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
@@ -498,7 +496,6 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {

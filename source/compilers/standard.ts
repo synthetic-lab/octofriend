@@ -270,7 +270,7 @@ async function handleKnownErrors(
 }
 
 export const runAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, onAutofixJson, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toLlmMessages(
     windowedIR.ir,
@@ -471,7 +471,7 @@ export const runAgent: Compiler = async ({
       };
     }
 
-    const parseResult = await parseTool(validatedTool, toolDefs, onAutofixJson, autofixJson, abortSignal);
+    const parseResult = await parseTool(validatedTool, toolDefs, autofixJson, abortSignal);
 
     if(parseResult.status === "error") {
       return {
@@ -506,7 +506,6 @@ type ParseToolResult = {
 async function parseTool(
   toolCall: ResponseToolCall,
   toolDefs: Record<string, ToolDef<any>>,
-  onAutofixJson: (done: Promise<void>) => any,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
@@ -533,7 +532,6 @@ Please try calling a valid tool.
 
   if(err) {
     const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-    onAutofixJson(fixPromise.then(() => {}));
     const fixResponse = await fixPromise;
     if(!fixResponse.success) {
       return {
@@ -552,7 +550,6 @@ Please try calling a valid tool.
 
     if(err) {
       const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
