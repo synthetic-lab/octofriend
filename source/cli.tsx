@@ -30,7 +30,7 @@ import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
-import { autofixJson as originalAutofixJson } from "./compilers/autofix.ts";
+import { makeAutofixJson } from "./compilers/autofix.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -215,9 +215,7 @@ bench.command("tps")
   }
 
   const apiKey = await assertKeyForModel(model, config);
-  const autofixJson = async (badJson: string, signal: AbortSignal) => {
-    return originalAutofixJson(config, badJson, signal);
-  };
+  const autofixJson = makeAutofixJson(config);
 
   console.log("Benchmarking", model.nickname);
   const abortController = new AbortController();

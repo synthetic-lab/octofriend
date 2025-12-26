@@ -10,7 +10,7 @@ import {
 import { validateTool, ToolError } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
-import { autofixJson as originalAutofixJson } from "../compilers/autofix.ts";
+import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 
@@ -94,9 +94,8 @@ export async function trajectoryArc({
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [ ...messages ];
-  const autofixJson = async (badJson: string, signal: AbortSignal) => {
-    return originalAutofixJson(config, badJson, signal);
-  };
+  const autofixJson = makeAutofixJson(config);
+
   const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
   const tools = hasMcp ? { ...toolMap } : (() => {
     const toolsCopy: Partial<typeof toolMap> = { ...toolMap };
