@@ -12,7 +12,7 @@ import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { autofixJson as originalAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import * as toolMap from "../tools/index.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
 
 type AllTokenTypes = "reasoning"
                    | "content"
