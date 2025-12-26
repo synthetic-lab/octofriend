@@ -231,7 +231,7 @@ function generateCurlFrom(params: {
   baseURL: string;
   model: string;
   messages: Array<ModelMessage>;
-  tools: Record<string, any>;
+  tools?: Record<string, any>;
 }): string {
   const { baseURL, model, messages } = params;
 
@@ -278,6 +278,9 @@ export const runResponsesAgent: Compiler = async ({
       inputSchema: jsonSchema(argJsonSchema),
     });
   });
+  const toolParams = Object.entries(toolDefs).length === 0 ? {} : {
+    tools: toolsSdk,
+  };
 
   let reasoningConfig: {
     reasoningEffort?: "low" | "medium" | "high",
@@ -292,7 +295,7 @@ export const runResponsesAgent: Compiler = async ({
     baseURL: model.baseUrl,
     model: model.model,
     messages,
-    tools: toolsSdk,
+    ...toolParams,
   });
 
   try {
@@ -303,7 +306,8 @@ export const runResponsesAgent: Compiler = async ({
 
     const result = streamText({
       model: openai.responses(model.model),
-      messages, tools: toolsSdk,
+      messages,
+      ...toolParams,
       abortSignal,
       providerOptions: {
         openai: {

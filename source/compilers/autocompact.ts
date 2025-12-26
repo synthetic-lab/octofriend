@@ -3,7 +3,8 @@ import { sequenceId } from "../history.ts";
 import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import { toLlmIR } from "../ir/convert-history-ir.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
-import { getModelFromConfig, ModelConfig } from "../config.ts";
+import { ModelConfig } from "../config.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -60,27 +61,27 @@ export function shouldAutoCompactHistory(
 }
 
 // only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
-export async function generateCompactionSummary(
+export async function generateCompactionSummary({
+  apiKey, model, messages, transport, autofixJson, handlers, abortSignal,
+}: {
   apiKey: string,
   model: ModelConfig,
   messages: LlmIR[],
-  config: Config,
   transport: Transport,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  handlers: {
+    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
+    onAutofixJson: (done: Promise<void>) => any,
+  },
   abortSignal: AbortSignal
-): Promise<string | null> {
+}): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
-    apiKey, model, config,
+    apiKey, model, handlers, autofixJson, abortSignal, transport,
     messages: processedMessages,
-    onTokens,
-    onAutofixJson,
-    abortSignal,
-    transport,
   });
 
   if(abortSignal.aborted) return null;

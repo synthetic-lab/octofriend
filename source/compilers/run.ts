@@ -1,26 +1,29 @@
 import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
-import { Config, ModelConfig } from "../config.ts";
+import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { autofixJson } from "../compilers/autofix.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
-  config, model, apiKey, messages, onTokens, onAutofixJson, abortSignal, transport, systemPrompt
+  model, apiKey, messages, handlers, autofixJson, abortSignal, transport, systemPrompt, tools
 }: {
   apiKey: string,
   model: ModelConfig,
-  config: Config,
   messages: LlmIR[],
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  handlers: {
+    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
+    onAutofixJson: (done: Promise<void>) => any,
+  },
   abortSignal: AbortSignal,
   transport: Transport,
   systemPrompt?: (appliedWindow: boolean) => Promise<string>,
+  tools?: Partial<typeof toolMap>,
 }) {
   const runInternal = (() => {
     if(model.type == null || model.type === "standard") return runAgent;
@@ -37,25 +40,13 @@ export async function run({
     return systemPrompt(windowedIR.appliedWindow);
   };
 
-  const toolsDefinitions = toolMap;
-  const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
-  const tools = hasMcp ? toolsDefinitions : (() => {
-    const toolsCopy: Partial<typeof toolsDefinitions> = { ...toolsDefinitions };
-    delete toolsCopy.mcp;
-    return toolsCopy;
-  })();
-
   return await runInternal({
-    model,
-    apiKey,
-    windowedIR,
-    onTokens,
-    abortSignal,
-    transport,
+    model, apiKey, windowedIR, abortSignal, transport,
+    onTokens: handlers.onTokens,
     systemPrompt: wrappedPrompt,
     autofixJson: (badJson: string, signal: AbortSignal) => {
-      const fixPromise = autofixJson(config, badJson, signal);
-      onAutofixJson(fixPromise.then(() => {}));
+      const fixPromise = autofixJson(badJson, signal);
+      handlers.onAutofixJson(fixPromise.then(() => {}));
       return fixPromise;
     },
     tools,

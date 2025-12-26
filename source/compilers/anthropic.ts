@@ -176,7 +176,7 @@ function generateCurlFrom(params: {
   model: string;
   system: string;
   messages: Array<Anthropic.MessageParam>;
-  tools: Array<{ description: string, input_schema: any, name: string }>;
+  tools?: Array<{ description: string, input_schema: any, name: string }>;
   maxTokens: number;
 }): string {
   const { baseURL, model, system, messages, tools, maxTokens } = params;
@@ -229,6 +229,10 @@ export const runAnthropicAgent: Compiler = async ({
       input_schema: argJsonSchema,
     });
   });
+  const toolParams = toolDefinitions.length === 0 ? {} : {
+    tools: toolDefinitions,
+  };
+
   const client = new Anthropic({
     baseURL: model.baseUrl,
     apiKey,
@@ -254,7 +258,7 @@ export const runAnthropicAgent: Compiler = async ({
     model: model.model,
     system: sysPrompt,
     messages,
-    tools: toolDefinitions,
+    ...toolParams,
     maxTokens,
   });
 
@@ -264,7 +268,7 @@ export const runAnthropicAgent: Compiler = async ({
       ...system,
       model: model.model,
       messages,
-      tools: toolDefinitions,
+      ...toolParams,
       tool_choice: {
         type: "auto",
         disable_parallel_tool_use: true,

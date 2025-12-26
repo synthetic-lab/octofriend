@@ -63,7 +63,7 @@ function generateCurlFrom(params: {
   baseURL: string;
   model: string;
   messages: LlmMessage[];
-  tools: any[];
+  tools?: any[];
 }): string {
   const { baseURL, model, messages, tools } = params;
 
@@ -299,11 +299,15 @@ export const runAgent: Compiler = async ({
       },
     };
   });
+  const toolsParam = Object.entries(toolDefs).length === 0 ? {} : {
+    tools: toolsMap,
+  };
+
   const curl = generateCurlFrom({
     baseURL: model.baseUrl,
     model: model.model,
     messages,
-    tools: toolsMap
+    ...toolsParam,
   });
   return await handleKnownErrors(curl, async () => {
     const client = new OpenAI({
@@ -320,7 +324,7 @@ export const runAgent: Compiler = async ({
       ...reasoning,
       model: model.model,
       messages,
-      tools: toolsMap,
+      ...toolsParam,
       stream: true,
       stream_options: {
         include_usage: true,

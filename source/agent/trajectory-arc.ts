@@ -10,6 +10,9 @@ import {
 import { validateTool, ToolError } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
+import { autofixJson as originalAutofixJson } from "../compilers/autofix.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as toolMap from "../tools/index.ts";
 
 type AllTokenTypes = "reasoning"
                    | "content"
@@ -91,9 +94,18 @@ export async function trajectoryArc({
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [ ...messages ];
+  const autofixJson = async (badJson: string, signal: AbortSignal) => {
+    return originalAutofixJson(config, badJson, signal);
+  };
+  const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
+  const tools = hasMcp ? { ...toolMap } : (() => {
+    const toolsCopy: Partial<typeof toolMap> = { ...toolMap };
+    delete toolsCopy.mcp;
+    return toolsCopy;
+  })();
 
   const parsedCompaction = await maybeAutocompact({
-    apiKey, model, config, transport, abortSignal,
+    apiKey, model, config, transport, abortSignal, autofixJson,
     messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
@@ -108,20 +120,21 @@ export async function trajectoryArc({
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const result = await run({
-    apiKey, model, transport, config,
+    apiKey, model, transport, autofixJson, abortSignal, tools,
     messages: messagesCopy,
-    onTokens: (tokens, type) => {
-      if(!buffer[type]) buffer[type] = "";
-      buffer[type] += tokens;
-      handler.responseProgress({
-        buffer,
-        delta: { type, value: tokens },
-      });
+    handlers: {
+      onTokens: (tokens, type) => {
+        if(!buffer[type]) buffer[type] = "";
+        buffer[type] += tokens;
+        handler.responseProgress({
+          buffer,
+          delta: { type, value: tokens },
+        });
+      },
+      onAutofixJson: () => {
+        handler.autofixingJson(null);
+      },
     },
-    onAutofixJson: () => {
-      handler.autofixingJson(null);
-    },
-    abortSignal,
     systemPrompt: async (appliedWindow) => {
       return systemPrompt({
         config, transport, appliedWindow,
@@ -278,6 +291,7 @@ async function maybeAutocompact({
   transport,
   abortSignal,
   handler,
+  autofixJson,
 }: {
   apiKey: string,
   model: ModelConfig,
@@ -285,6 +299,7 @@ async function maybeAutocompact({
   config: Config;
   transport: Transport;
   abortSignal: AbortSignal;
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   handler: {
     startCompaction: () => void,
     compactionProgress: (stream: AutocompactionStream) => void,
@@ -295,24 +310,21 @@ async function maybeAutocompact({
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
-  const checkpointSummary = await generateCompactionSummary(
-    apiKey,
-    model,
-    messages,
-    config,
-    transport,
-    (tokens, type) => {
-      if(!buffer[type]) buffer[type] = "";
-      buffer[type] += tokens;
-      handler.compactionProgress({
-        type: "autocompaction-stream",
-        buffer,
-        delta: { value: tokens, type, },
-      });
+  const checkpointSummary = await generateCompactionSummary({
+    apiKey, model, messages, transport, abortSignal, autofixJson,
+    handlers: {
+     onTokens: (tokens, type) => {
+        if(!buffer[type]) buffer[type] = "";
+        buffer[type] += tokens;
+        handler.compactionProgress({
+          type: "autocompaction-stream",
+          buffer,
+          delta: { value: tokens, type, },
+        });
+      },
+      onAutofixJson: () => {},
     },
-    () => {},
-    abortSignal
-  );
+  });
 
   if(checkpointSummary == null) return null;
 

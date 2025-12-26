@@ -30,6 +30,7 @@ import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
+import { autofixJson as originalAutofixJson } from "./compilers/autofix.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -214,6 +215,9 @@ bench.command("tps")
   }
 
   const apiKey = await assertKeyForModel(model, config);
+  const autofixJson = async (badJson: string, signal: AbortSignal) => {
+    return originalAutofixJson(config, badJson, signal);
+  };
 
   console.log("Benchmarking", model.nickname);
   const abortController = new AbortController();
@@ -224,19 +228,21 @@ bench.command("tps")
   let firstToken: Date | null = null;
   const tokenTimestamps: Date[] = [];
   const result = await run({
-    apiKey, model, config,
+    apiKey, model, autofixJson,
     messages: [
       {
         role: "user",
         content: opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.",
       }
     ],
-    onTokens: () => {
-      const now = new Date();
-      tokenTimestamps.push(now);
-      if(firstToken == null) firstToken = now;
+    handlers: {
+      onTokens: () => {
+        const now = new Date();
+        tokenTimestamps.push(now);
+        if(firstToken == null) firstToken = now;
+      },
+      onAutofixJson: () => {},
     },
-    onAutofixJson: () => {},
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });
