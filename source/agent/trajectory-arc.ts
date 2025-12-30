@@ -8,6 +8,7 @@ import {
   shouldAutoCompactHistory,
 } from "../compilers/autocompact.ts";
 import { validateTool, ToolError } from "../tools/index.ts";
+import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
@@ -218,6 +219,20 @@ export async function trajectoryArc({
       irs,
     };
   } catch(e) {
+    if(e instanceof FileOutdatedError) {
+      const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(abortSignal, transport, toolCall, e);
+      const retryIrs = [
+        ...irs.slice(0, -1),
+        errorIrs,
+      ];
+      handler.retryTool({ irs: retryIrs });
+      return await trajectoryArc({
+        apiKey, model, config, transport, abortSignal,
+        messages: messagesCopy.concat(retryIrs),
+        handler,
+      });
+    }
+
     if(!(e instanceof ToolError)) throw e;
 
     const fn = toolCall.function;
@@ -342,4 +357,27 @@ function abort(irs: TrajectoryOutputIR[]): Finish {
     reason: { type: "abort" },
     irs,
   };
+}
+
+async function tryTransformFileOutdatedError(
+  abortSignal: AbortSignal,
+  transport: Transport,
+  toolCall: ToolCallRequest,
+  e: FileOutdatedError,
+): Promise<TrajectoryOutputIR> {
+  const absolutePath = await transport.resolvePath(abortSignal, e.filePath);
+
+  try {
+    await fileTracker.read(transport, abortSignal, absolutePath);
+    return {
+      role: "file-outdated",
+      toolCall,
+    };
+  } catch {
+    return {
+      role: "file-unreadable",
+      path: e.filePath,
+      toolCall,
+    };
+  }
 }

@@ -72,6 +72,25 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
       },
     ];
   }
+  if(output.role === "file-outdated") {
+    return [
+      {
+        type: "file-outdated",
+        id: sequenceId(),
+        toolCallId: output.toolCall.toolCallId,
+      },
+    ];
+  }
+  if(output.role === "file-unreadable") {
+    return [
+      {
+        type: "file-unreadable",
+        path: output.path,
+        id: sequenceId(),
+        toolCallId: output.toolCall.toolCallId,
+      },
+    ];
+  }
 
   const history: HistoryItem[] = [];
   const reasoningContent: { reasoningContent?: string } = {};
