@@ -27,19 +27,22 @@ const AutoCompactConfigSchema = t.exact({
 
 export type AutoCompactConfig = t.GetType<typeof AutoCompactConfigSchema>
 
+const ModelConfigSchema = t.exact({
+  type: t.optional(
+    t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic")),
+  ),
+  nickname: t.str,
+  baseUrl: t.str,
+  apiEnvVar: t.optional(t.str),
+  model: t.str,
+  context: t.num,
+  reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
+});
+export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
+
 const ConfigSchema = t.exact({
   yourName: t.str,
-  models: t.array(t.exact({
-    type: t.optional(
-      t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic")),
-    ),
-    nickname: t.str,
-    baseUrl: t.str,
-    apiEnvVar: t.optional(t.str),
-    model: t.str,
-    context: t.num,
-    reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
-  })),
+  models: t.array(ModelConfigSchema),
   diffApply: t.optional(t.exact({
     baseUrl: t.str,
     apiEnvVar: t.optional(t.str),

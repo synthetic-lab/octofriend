@@ -1,11 +1,18 @@
 import fs from "fs/promises";
 import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
-import { Config } from "../config.ts";
+import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
-import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
+import {
+  generateCompactionSummary,
+  shouldAutoCompactHistory,
+} from "../compilers/autocompact.ts";
 import { validateTool, ToolError } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
+import { systemPrompt } from "../prompts/system-prompt.ts";
+import { makeAutofixJson } from "../compilers/autofix.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
 
 type AllTokenTypes = "reasoning"
                    | "content"
@@ -24,8 +31,9 @@ type CompactionType = {
   checkpoint: CompactionCheckpoint,
 };
 
-// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not send tool
-// types if no tools are given
+// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
+// tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
+// requires typesystem shenanigans.)
 type AutocompactionStream = {
   type: "autocompaction-stream",
   buffer: AssistantBuffer<AllTokenTypes>,
@@ -72,12 +80,13 @@ type Finish = {
  * above is hit.
  */
 export async function trajectoryArc({
-  messages, config, transport, modelOverride, abortSignal, handler
+  apiKey, model, messages, config, transport, abortSignal, handler
 }: {
+  apiKey: string,
+  model: ModelConfig,
   messages: LlmIR[],
   config: Config,
   transport: Transport,
-  modelOverride: string | null,
   abortSignal: AbortSignal,
   handler: {
     [K in AnyState]: (state: StateEvents[K]) => void
@@ -86,9 +95,18 @@ export async function trajectoryArc({
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [ ...messages ];
+  const autofixJson = makeAutofixJson(config);
+
+  const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
+  const tools = hasMcp ? { ...toolMap } : (() => {
+    const toolsCopy: Partial<typeof toolMap> = { ...toolMap };
+    delete toolsCopy.mcp;
+    return toolsCopy;
+  })();
 
   const parsedCompaction = await maybeAutocompact({
-    messages: messagesCopy, config, transport, abortSignal, modelOverride,
+    apiKey, model, config, transport, abortSignal, autofixJson,
+    messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
       compactionProgress: (stream) => handler.compactionProgress(stream),
@@ -102,19 +120,27 @@ export async function trajectoryArc({
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const result = await run({
-    config, modelOverride, transport, messages: messagesCopy,
-    onTokens: (tokens, type) => {
-      if(!buffer[type]) buffer[type] = "";
-      buffer[type] += tokens;
-      handler.responseProgress({
-        buffer,
-        delta: { type, value: tokens },
+    apiKey, model, transport, autofixJson, abortSignal, tools,
+    messages: messagesCopy,
+    handlers: {
+      onTokens: (tokens, type) => {
+        if(!buffer[type]) buffer[type] = "";
+        buffer[type] += tokens;
+        handler.responseProgress({
+          buffer,
+          delta: { type, value: tokens },
+        });
+      },
+      onAutofixJson: () => {
+        handler.autofixingJson(null);
+      },
+    },
+    systemPrompt: async (appliedWindow) => {
+      return systemPrompt({
+        config, transport, appliedWindow,
+        signal: abortSignal,
       });
     },
-    onAutofixJson: () => {
-      handler.autofixingJson(null);
-    },
-    abortSignal,
   });
 
   function maybeBufferedMessage(): TrajectoryOutputIR[] {
@@ -163,7 +189,7 @@ export async function trajectoryArc({
   if(lastIr.role === "tool-malformed") {
     handler.retryTool({ irs });
     return await trajectoryArc({
-      config, modelOverride, transport, abortSignal,
+      apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(irs),
       handler,
     });
@@ -250,7 +276,7 @@ export async function trajectoryArc({
     ];
     handler.retryTool({ irs: retryIrs });
     return await trajectoryArc({
-      config, modelOverride, transport, abortSignal,
+      apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(retryIrs),
       handler,
     });
@@ -258,45 +284,47 @@ export async function trajectoryArc({
 }
 
 async function maybeAutocompact({
+  apiKey,
+  model,
   messages,
   config,
-  modelOverride,
   transport,
   abortSignal,
   handler,
+  autofixJson,
 }: {
+  apiKey: string,
+  model: ModelConfig,
   messages: LlmIR[];
   config: Config;
-  modelOverride: string | null,
   transport: Transport;
   abortSignal: AbortSignal;
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   handler: {
     startCompaction: () => void,
     compactionProgress: (stream: AutocompactionStream) => void,
   },
 }): Promise<CompactionType | null> {
-  if(!shouldAutoCompactHistory(messages, config, modelOverride, config.autoCompact)) return null;
+  if(!shouldAutoCompactHistory(model, messages, config.autoCompact)) return null;
 
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
-  const checkpointSummary = await generateCompactionSummary(
-    messages,
-    config,
-    transport,
-    modelOverride,
-    (tokens, type) => {
-      if(!buffer[type]) buffer[type] = "";
-      buffer[type] += tokens;
-      handler.compactionProgress({
-        type: "autocompaction-stream",
-        buffer,
-        delta: { value: tokens, type, },
-      });
+  const checkpointSummary = await generateCompactionSummary({
+    apiKey, model, messages, transport, abortSignal, autofixJson,
+    handlers: {
+     onTokens: (tokens, type) => {
+        if(!buffer[type]) buffer[type] = "";
+        buffer[type] += tokens;
+        handler.compactionProgress({
+          type: "autocompaction-stream",
+          buffer,
+          delta: { value: tokens, type, },
+        });
+      },
+      onAutofixJson: () => {},
     },
-    () => {},
-    abortSignal
-  );
+  });
 
   if(checkpointSummary == null) return null;
 

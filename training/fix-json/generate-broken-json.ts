@@ -15,8 +15,6 @@ import {
 import { generateJSON } from "./json-generator.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-type FixResponse = t.GetType<typeof JsonFixResponse>;
-
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
 const EVAL_PATH = path.join(__dirname, "unfat/output/data/eval.jsonl");
 const MAX_NUM_BREAKS = 3;
@@ -166,7 +164,7 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
     if(percentChance(NOT_JSON_PERCENT)) {
       yield {
         input: file,
-        groundTruth: JSON.stringify({ success: false } satisfies FixResponse),
+        groundTruth: JSON.stringify({ success: false } satisfies JsonFixResponse),
       };
       continue;
     }
@@ -238,7 +236,7 @@ function randomlyBreak(str: string): Sample {
   if(percentChance(JSON5_PERCENT)) {
     return {
       input: json5.stringify(JSON.parse(str)),
-      groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(str) } satisfies FixResponse),
+      groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(str) } satisfies JsonFixResponse),
     }
   }
   let original = str;
@@ -253,7 +251,7 @@ function randomlyBreak(str: string): Sample {
 
   return {
     input: breakStr(original),
-    groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(original) } satisfies FixResponse),
+    groundTruth: JSON.stringify({ success: true, fixed: JSON.parse(original) } satisfies JsonFixResponse),
   };
 }
 

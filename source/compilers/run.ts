@@ -1,45 +1,54 @@
 import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
-import { Config, getModelFromConfig } from "../config.ts";
+import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
-  config, modelOverride, messages, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
+  model, apiKey, messages, handlers, autofixJson, abortSignal, transport, systemPrompt, tools
 }: {
-  config: Config,
-  modelOverride: string | null,
+  apiKey: string,
+  model: ModelConfig,
   messages: LlmIR[],
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  handlers: {
+    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
+    onAutofixJson: (done: Promise<void>) => any,
+  },
   abortSignal: AbortSignal,
   transport: Transport,
-  skipSystemPrompt?: boolean,
+  systemPrompt?: (appliedWindow: boolean) => Promise<string>,
+  tools?: Partial<typeof toolMap>,
 }) {
-  const modelConfig = getModelFromConfig(config, modelOverride);
   const runInternal = (() => {
-    if(modelConfig.type == null || modelConfig.type === "standard") return runAgent;
-    if(modelConfig.type === "openai-responses") return runResponsesAgent;
-    const _: "anthropic" = modelConfig.type;
+    if(model.type == null || model.type === "standard") return runAgent;
+    if(model.type === "openai-responses") return runResponsesAgent;
+    const _: "anthropic" = model.type;
     return runAnthropicAgent;
   })();
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
 
-  const windowedIR = applyContextWindow(slicedMessages, modelConfig.context);
+  const windowedIR = applyContextWindow(slicedMessages, model.context);
+  const wrappedPrompt = systemPrompt == null ? systemPrompt : async () => {
+    return systemPrompt(windowedIR.appliedWindow);
+  };
 
   return await runInternal({
-    config,
-    modelOverride,
-    windowedIR,
-    onTokens,
-    onAutofixJson,
-    abortSignal,
-    transport,
-    skipSystemPrompt,
+    model, apiKey, windowedIR, abortSignal, transport,
+    onTokens: handlers.onTokens,
+    systemPrompt: wrappedPrompt,
+    autofixJson: (badJson: string, signal: AbortSignal) => {
+      const fixPromise = autofixJson(badJson, signal);
+      handlers.onAutofixJson(fixPromise.then(() => {}));
+      return fixPromise;
+    },
+    tools,
   });
 }

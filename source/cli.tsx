@@ -10,7 +10,13 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import { readConfig, readMetadata, readKeyForModel, AUTOFIX_KEYS } from "./config.ts";
+import {
+  readConfig,
+  readMetadata,
+  readKeyForModel,
+  assertKeyForModel,
+  AUTOFIX_KEYS,
+} from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
@@ -24,6 +30,7 @@ import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
+import { makeAutofixJson } from "./compilers/autofix.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -206,6 +213,10 @@ bench.command("tps")
     console.error("- " + config.models.map(m => m.nickname).join("\n- "));
     process.exit(1);
   }
+
+  const apiKey = await assertKeyForModel(model, config);
+  const autofixJson = makeAutofixJson(config);
+
   console.log("Benchmarking", model.nickname);
   const abortController = new AbortController();
   const timer = setInterval(() => {
@@ -215,21 +226,21 @@ bench.command("tps")
   let firstToken: Date | null = null;
   const tokenTimestamps: Date[] = [];
   const result = await run({
-    config,
-    skipSystemPrompt: true,
-    modelOverride: model.nickname,
+    apiKey, model, autofixJson,
     messages: [
       {
         role: "user",
         content: opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.",
       }
     ],
-    onTokens: () => {
-      const now = new Date();
-      tokenTimestamps.push(now);
-      if(firstToken == null) firstToken = now;
+    handlers: {
+      onTokens: () => {
+        const now = new Date();
+        tokenTimestamps.push(now);
+        if(firstToken == null) firstToken = now;
+      },
+      onAutofixJson: () => {},
     },
-    onAutofixJson: () => {},
     abortSignal: abortController.signal,
     transport: new LocalTransport(),
   });

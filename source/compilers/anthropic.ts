@@ -1,20 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
-import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
-import { WindowedIR, countIRTokens } from "../ir/ir-windowing.ts";
+import { Compiler } from "./compiler-interface.ts";
+import { countIRTokens } from "../ir/ir-windowing.ts";
 import {
-  AssistantMessage, LlmIR, AgentResult, ToolCallRequestSchema, AnthropicAssistantData
+  AssistantMessage, LlmIR, ToolCallRequestSchema, AnthropicAssistantData
 } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
-import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -178,7 +176,7 @@ function generateCurlFrom(params: {
   model: string;
   system: string;
   messages: Array<Anthropic.MessageParam>;
-  tools: Array<{ description: string, input_schema: any, name: string }>;
+  tools?: Array<{ description: string, input_schema: any, name: string }>;
   maxTokens: number;
 }): string {
   const { baseURL, model, system, messages, tools, maxTokens } = params;
@@ -208,28 +206,15 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function runAnthropicAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
-}: {
-  config: Config,
-  modelOverride: string | null,
-  windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
-  abortSignal: AbortSignal,
-  transport: Transport,
-  skipSystemPrompt?: boolean,
-}): Promise<AgentResult> {
-  const modelConfig = getModelFromConfig(config, modelOverride);
+export const runAnthropicAgent: Compiler = async ({
+  model,apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+}) => {
   const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
-  const sysPrompt = await systemPrompt({
-    appliedWindow: windowedIR.appliedWindow,
-    config, transport,
-    signal: abortSignal,
-  });
+  const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
 
-  const tools: Array<{ description: string, input_schema: any, name: string }> = [];
-  Object.entries(toolMap).forEach(([name, toolDef]) => {
+  const toolDefs = tools || {};
+  const toolDefinitions: Array<{ description: string, input_schema: any, name: string }> = [];
+  Object.entries(toolDefs).forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
     // @ts-ignore
@@ -238,50 +223,52 @@ export async function runAnthropicAgent({
     // @ts-ignore
     delete argJsonSchema.title;
 
-    tools.push({
+    toolDefinitions.push({
       name,
       description: `The ${name} tool`,
       input_schema: argJsonSchema,
     });
   });
+  const toolParams = toolDefinitions.length === 0 ? {} : {
+    tools: toolDefinitions,
+  };
 
-  const apiKey = await assertKeyForModel(modelConfig, config);
   const client = new Anthropic({
-    baseURL: modelConfig.baseUrl,
+    baseURL: model.baseUrl,
     apiKey,
   });
 
   const thinking: { thinking?: { type: "enabled", budget_tokens: number } } = {};
-  if(modelConfig.reasoning) {
+  if(model.reasoning) {
     thinking.thinking = {
       type: "enabled",
       budget_tokens: (() => {
-        if(modelConfig.reasoning === "high") return 8192;
-        if(modelConfig.reasoning === "medium") return 4096;
+        if(model.reasoning === "high") return 8192;
+        if(model.reasoning === "medium") return 4096;
         return 2048;
       })(),
     };
   }
 
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
-  const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), modelConfig.context);
+  const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), model.context);
 
   const curl = generateCurlFrom({
-    baseURL: modelConfig.baseUrl,
-    model: modelConfig.model,
+    baseURL: model.baseUrl,
+    model: model.model,
     system: sysPrompt,
     messages,
-    tools,
+    ...toolParams,
     maxTokens,
   });
 
   try {
-    const system = skipSystemPrompt ? {} : { system: sysPrompt };
+    const system = sysPrompt == null ? {} : { system: sysPrompt };
     const result = await client.messages.create({
       ...system,
-      model: modelConfig.model,
+      model: model.model,
       messages,
-      tools,
+      ...toolParams,
       tool_choice: {
         type: "auto",
         disable_parallel_tool_use: true,
@@ -415,8 +402,8 @@ export async function runAnthropicAgent({
 
     // Track usage
     if(usage.input !== 0 || usage.output !== 0) {
-      trackTokens(modelConfig.model, "input", usage.input);
-      trackTokens(modelConfig.model, "output", usage.output);
+      trackTokens(model.model, "input", usage.input);
+      trackTokens(model.model, "output", usage.output);
     }
 
     // Calculate token usage delta
@@ -468,10 +455,10 @@ export async function runAnthropicAgent({
       toolName: inProgressTool.name,
       args: inProgressTool.partialJson,
     }
-    const parseResult = await parseResponsesTool(
+    const parseResult = await parseTool(
       chatToolCall,
-      config,
-      onAutofixJson,
+      toolDefs,
+      autofixJson,
       abortSignal,
     );
 
@@ -511,27 +498,29 @@ type ParseToolResult = {
   message: string
 };
 
-async function parseResponsesTool(
+async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
-  config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  toolDefs: Record<string, any>,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
-  if(!isValidToolName(name, config)) {
+  const toolDef = toolDefs[name];
+
+  if(!toolDef) {
     return {
       status: "error",
       message: `
 Unknown tool ${name}. The only valid tool names are:
 
-- ${validToolNames(config).join("\n- ")}
+- ${Object.keys(toolDefs).join("\n- ")}
 
 Please try calling a valid tool.
       `.trim(),
     };
   }
 
-  const toolSchema = toolMap[name].Schema;
+  const toolSchema = toolDef.Schema;
   let args = toolCall.args;
 
   // If args is a string, try to parse as JSON
@@ -541,8 +530,7 @@ Please try calling a valid tool.
     });
 
     if(err) {
-      const fixPromise = autofixJson(config, args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      const fixPromise = autofixJson(args, abortSignal);
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
@@ -581,23 +569,4 @@ Failed to parse tool call: ${error}. Make sure your arguments are valid and matc
       `.trim(),
     };
   }
-}
-
-const TOOL_NAMES = new Set(Object.keys(toolMap));
-function hasMcp(config: Config) {
-  if(config.mcpServers == null) return false;
-  if(Object.keys(config.mcpServers).length === 0) return false;
-  return true;
-}
-
-function isValidToolName(name: string, config: Config): name is ((keyof typeof toolMap) & string) {
-  if(!hasMcp(config) && name === "mcp") return false;
-  return TOOL_NAMES.has(name);
-}
-
-function validToolNames(config: Config) {
-  return Object.keys(toolMap).filter(t => {
-    if(hasMcp(config)) return true;
-    return t !== "mcp";
-  });
 }

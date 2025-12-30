@@ -1,27 +1,23 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
-import { Config, getModelFromConfig, assertKeyForModel } from "../config.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
-import { systemPrompt } from "../prompts/system-prompt.ts";
-import { LlmIR, ToolCallRequestSchema, AssistantMessage, AgentResult } from "../ir/llm-ir.ts";
+import { Compiler } from './compiler-interface.ts';
+import { LlmIR, ToolCallRequestSchema, AssistantMessage } from "../ir/llm-ir.ts";
 import { fileTracker } from "../tools/file-tracker.ts";
-import { autofixJson } from './autofix.ts';
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { countIRTokens, WindowedIR } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from './autocompact.ts';
+import { JsonFixResponse } from '../prompts/autofix-prompts.ts';
 
 async function toModelMessage(
   transport: Transport,
   signal: AbortSignal,
   messages: LlmIR[],
-  appliedWindow: boolean,
-  config: Config,
-  skipSystemPrompt: boolean,
+  systemPrompt?: () => Promise<string>,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -41,14 +37,12 @@ async function toModelMessage(
 
   output.reverse();
 
-  if(!skipSystemPrompt) {
+  if(systemPrompt) {
+    const prompt = await systemPrompt();
     // Add system message
     output.unshift({
       role: "system",
-      content: await systemPrompt({
-        appliedWindow,
-        config, transport, signal,
-      }),
+      content: prompt,
     });
   }
 
@@ -237,7 +231,7 @@ function generateCurlFrom(params: {
   baseURL: string;
   model: string;
   messages: Array<ModelMessage>;
-  tools: Record<string, any>;
+  tools?: Record<string, any>;
 }): string {
   const { baseURL, model, messages } = params;
 
@@ -257,31 +251,20 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function runResponsesAgent({
-  config, modelOverride, windowedIR, onTokens, onAutofixJson, abortSignal, transport, skipSystemPrompt
-}: {
-  config: Config,
-  modelOverride: string | null,
-  windowedIR: WindowedIR,
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-  onAutofixJson: (done: Promise<void>) => any,
-  abortSignal: AbortSignal,
-  transport: Transport,
-  skipSystemPrompt?: boolean,
-}): Promise<AgentResult> {
-  const modelConfig = getModelFromConfig(config, modelOverride);
+export const runResponsesAgent: Compiler = async ({
+  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+}) => {
   const messages = await toModelMessage(
     transport,
     abortSignal,
     windowedIR.ir,
-    windowedIR.appliedWindow,
-    config,
-    !!skipSystemPrompt,
+    systemPrompt,
   );
 
   // Convert tools to AI SDK format
-  const tools: Record<string, any> = {};
-  Object.entries(toolMap).forEach(([name, toolDef]) => {
+  const toolDefs = tools || {};
+  const toolsSdk: Record<string, any> = {};
+  Object.entries(toolDefs).forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
     // @ts-ignore
@@ -290,38 +273,41 @@ export async function runResponsesAgent({
     // @ts-ignore
     delete argJsonSchema.title;
 
-    tools[name] = tool({
+    toolsSdk[name] = tool({
       description: `The ${name} tool`,
       inputSchema: jsonSchema(argJsonSchema),
     });
   });
+  const toolParams = Object.entries(toolDefs).length === 0 ? {} : {
+    tools: toolsSdk,
+  };
 
   let reasoningConfig: {
     reasoningEffort?: "low" | "medium" | "high",
     reasoningSummary?: "auto",
   } = {};
-  if(modelConfig.reasoning) {
-    reasoningConfig.reasoningEffort = modelConfig.reasoning;
+  if(model.reasoning) {
+    reasoningConfig.reasoningEffort = model.reasoning;
     reasoningConfig.reasoningSummary = "auto";
   }
 
   const curl = generateCurlFrom({
-    baseURL: modelConfig.baseUrl,
-    model: modelConfig.model,
+    baseURL: model.baseUrl,
+    model: model.model,
     messages,
-    tools,
+    ...toolParams,
   });
 
   try {
-    const apiKey = await assertKeyForModel(modelConfig, config);
     const openai = createOpenAI({
-      baseURL: modelConfig.baseUrl,
+      baseURL: model.baseUrl,
       apiKey,
     });
 
     const result = streamText({
-      model: openai.responses(modelConfig.model),
-      messages, tools,
+      model: openai.responses(model.model),
+      messages,
+      ...toolParams,
       abortSignal,
       providerOptions: {
         openai: {
@@ -395,9 +381,9 @@ export async function runResponsesAgent({
 
     // Track usage
     if(usage.input !== 0 || usage.output !== 0) {
-      trackTokens(modelConfig.model, "input", usage.input);
-      trackTokens(modelConfig.model, "output", usage.output);
-      trackTokens(modelConfig.model, "output", usage.reasoning);
+      trackTokens(model.model, "input", usage.input);
+      trackTokens(model.model, "output", usage.output);
+      trackTokens(model.model, "output", usage.reasoning);
     }
 
     // Calculate token usage delta
@@ -438,10 +424,10 @@ export async function runResponsesAgent({
       toolName: firstToolCall.toolName,
       args: firstToolCall.input,
     }
-    const parseResult = await parseResponsesTool(
+    const parseResult = await parseTool(
       chatToolCall,
-      config,
-      onAutofixJson,
+      toolDefs,
+      autofixJson,
       abortSignal,
     );
 
@@ -465,7 +451,6 @@ export async function runResponsesAgent({
     assistantHistoryItem.toolCall = parseResult.tool;
     return { success: true, output: [ assistantHistoryItem ], curl };
   } catch (e) {
-
     return {
       success: false,
       requestError: errorToString(e),
@@ -482,27 +467,29 @@ type ParseToolResult = {
   message: string
 };
 
-async function parseResponsesTool(
+async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
-  config: Config,
-  onAutofixJson: (done: Promise<void>) => any,
+  toolDefs: Record<string, any>,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
-  if(!isValidToolName(name, config)) {
+  const toolDef = toolDefs[name];
+
+  if(!toolDef) {
     return {
       status: "error",
       message: `
 Unknown tool ${name}. The only valid tool names are:
 
-- ${validToolNames(config).join("\n- ")}
+- ${Object.keys(toolDefs).join("\n- ")}
 
 Please try calling a valid tool.
       `.trim(),
     };
   }
 
-  const toolSchema = toolMap[name].Schema;
+  const toolSchema = toolDef.Schema;
   let args = toolCall.args;
 
   // If args is a string, try to parse as JSON
@@ -512,8 +499,7 @@ Please try calling a valid tool.
     });
 
     if(err) {
-      const fixPromise = autofixJson(config, args, abortSignal);
-      onAutofixJson(fixPromise.then(() => {}));
+      const fixPromise = autofixJson(args, abortSignal);
       const fixResponse = await fixPromise;
       if(!fixResponse.success) {
         return {
@@ -552,23 +538,4 @@ Failed to parse tool call: ${error}. Make sure your arguments are valid and matc
       `.trim(),
     };
   }
-}
-
-const TOOL_NAMES = new Set(Object.keys(toolMap));
-function hasMcp(config: Config) {
-  if(config.mcpServers == null) return false;
-  if(Object.keys(config.mcpServers).length === 0) return false;
-  return true;
-}
-
-function isValidToolName(name: string, config: Config): name is ((keyof typeof toolMap) & string) {
-  if(!hasMcp(config) && name === "mcp") return false;
-  return TOOL_NAMES.has(name);
-}
-
-function validToolNames(config: Config) {
-  return Object.keys(toolMap).filter(t => {
-    if(hasMcp(config)) return true;
-    return t !== "mcp";
-  });
 }
