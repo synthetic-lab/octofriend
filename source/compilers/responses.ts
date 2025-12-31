@@ -216,7 +216,7 @@ async function modelMessageFromIr(
           toolName: ir.toolCall.function.name,
           output: {
             type: "text",
-            value: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
+            value: "File could not be updated because it was modified after being last read. Please read the file before modifying it.",
           },
         },
       ],

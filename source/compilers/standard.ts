@@ -212,8 +212,7 @@ async function llmFromIr(
       tool_call_id: ir.toolCall.toolCallId,
       content: `\n${tagged(TOOL_ERROR_TAG, {}, `
 File could not be updated because it was modified after being last read.
-The latest version of the file has been automatically re-read and placed in your context space.
-Please try again.`.trim())}`,
+Please read the file again before modifying it.`.trim())}`,
     }
   }
 

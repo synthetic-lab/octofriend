@@ -149,7 +149,7 @@ async function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
-          content: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
+          content: "File could not be updated because it was modified after being last read. Please read the file before modifying it.",
         },
       ],
     };
