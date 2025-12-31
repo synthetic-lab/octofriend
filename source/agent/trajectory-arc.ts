@@ -368,7 +368,7 @@ async function tryTransformFileOutdatedError(
   const absolutePath = await transport.resolvePath(abortSignal, e.filePath);
 
   try {
-    await fileTracker.read(transport, abortSignal, absolutePath);
+    await fileTracker.readUntracked(transport, abortSignal, absolutePath);
     return {
       role: "file-outdated",
       toolCall,
