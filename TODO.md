@@ -22,9 +22,6 @@ TODO:
   wandb-style authorize URLs if they exist!
 - [ ] Generate desktop notifs with configurable debounce when waiting for user
   input via https://github.com/Aetherinox/node-toasted-notifier
-- [ ] Consider not keeping the current files up-to-date and instead only
-  updating them on read tool call. Could be confusing to see a bunch of stuff
-  change in the history without telling the LLM what's going on
 - [ ] Add special rendering for certain classes of errors, e.g. auth failures
   or payment-related failures
   - [x] Synthetic payment errors
