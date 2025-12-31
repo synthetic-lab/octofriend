@@ -20,8 +20,14 @@ export const PROVIDERS = {
     baseUrl: "https://api.openai.com/v1",
     models: [
       {
-        model: "gpt-5.1-2025-11-13",
-        nickname: "GPT-5.1",
+        model: "gpt-5.2-pro-2025-12-11",
+        nickname: "GPT-5.2 Pro",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "gpt-5.2-2025-12-11",
+        nickname: "GPT-5.2",
         context: 200 * 1024,
         reasoning: "medium",
       },
@@ -41,8 +47,8 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:zai-org/GLM-4.6",
-        nickname: "GLM-4.6",
+        model: "hf:zai-org/GLM-4.7",
+        nickname: "GLM-4.7",
         context: 128 * 1024,
       },
       {
@@ -51,8 +57,8 @@ export const PROVIDERS = {
         context: 128 * 1024,
       },
       {
-        model: "hf:MiniMaxAI/MiniMax-M2",
-        nickname: "MiniMax M2",
+        model: "hf:MiniMaxAI/MiniMax-M2.1",
+        nickname: "MiniMax M2.1",
         context: 96 * 1024,
       },
       {
@@ -61,7 +67,7 @@ export const PROVIDERS = {
         context: 64 * 1024,
       },
     ],
-    testModel: "hf:zai-org/GLM-4.6",
+    testModel: "hf:MiniMaxAI/MiniMax-M2.1",
   } satisfies ProviderConfig,
 
 
@@ -104,7 +110,12 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 };
 
+
 export type ProviderKey = keyof typeof PROVIDERS;
+
+export function recommendedModel(provider: ProviderKey): ProviderConfig["models"][number] {
+  return PROVIDERS[provider].models[0];
+}
 
 export const SYNTHETIC_PROVIDER = PROVIDERS.synthetic;
 

@@ -15,6 +15,7 @@ import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
+import { recommendedModel } from "./providers.ts";
 
 type SetupStep = {
   step: "welcome",
@@ -346,7 +347,6 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
 }
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
-
   useInput((_, key) => {
     if(key.return) onContinue();
   });
@@ -361,9 +361,10 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
     <Box marginTop={1}>
       <Text>
         Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
-        model to use with Octo is GLM-4.6, an open-source coding model you can use via Synthetic, a
-        privacy-focused inference company (that we run!). You can also add closed-source models from
-        OpenAI and Anthropic, like GPT-5.1 and Claude 4.5.
+        model to use with Octo is {recommendedModel("synthetic").nickname}, an open-source coding
+        model you can use via Synthetic, a privacy-focused inference company (that we run!). You can
+        also add closed-source models from OpenAI and Anthropic, like
+        {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
       </Text>
     </Box>
 

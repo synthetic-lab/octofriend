@@ -29,7 +29,7 @@ call and code edit failures from the main coding models you're working with:
 the autofix models work with any coding LLM. Octo wants to help you because
 Octo is your friend.
 
-Octo works great with GLM-4.6, GPT-5.2, Claude 4.5, and Kimi K2 Thinking
+Octo works great with GLM-4.7, GPT-5.2, Claude 4.5, and Kimi K2 Thinking
 (although you can use it with pretty much anything!). Correctly handling
 multi-turn responses, especially with thinking models like GPT-5 and Claude
 (whose content may even be encrypted), can be tricky. Octo carefully manages
