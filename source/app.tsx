@@ -859,7 +859,7 @@ function AssistantMessageRenderer({ item }: {
   item: InflightResponseType,
 }) {
   const terminalSize = useTerminalSize();
-  let thoughts = item.reasoningContent;
+  let thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
   let content = item.content.trim();
 
   let reservedSpace = 6; // bottom bar + padding
@@ -870,7 +870,7 @@ function AssistantMessageRenderer({ item }: {
   if(showThoughts) reservedSpace += 2;
   return <OctoMessageRenderer>
     <MaybeScrollView height={scrollViewHeight}>
-      { showThoughts && <ThoughtBox thoughts={thoughts.trim()} /> }
+      { showThoughts && <ThoughtBox thoughts={thoughts} /> }
       <Markdown markdown={content} />
     </MaybeScrollView>
   </OctoMessageRenderer>
