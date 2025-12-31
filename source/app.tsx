@@ -599,7 +599,6 @@ const MessageDisplayInner = React.memo(({ item }: {
       modeData: state.modeData,
     }))
   );
-  const terminalSize = useTerminalSize();
 
   if(item.type === "notification") {
     return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
