@@ -210,9 +210,7 @@ async function llmFromIr(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: `\n${tagged(TOOL_ERROR_TAG, {}, `
-File could not be updated because it was modified after being last read.
-Please read the file again before modifying it.`.trim())}`,
+      content: `\n${tagged(TOOL_ERROR_TAG, {}, ir.error)}`,
     }
   }
 
@@ -231,7 +229,7 @@ Please read the file again before modifying it.`.trim())}`,
     content: tagged(
       TOOL_ERROR_TAG,
       {},
-      `File ${ir.path} could not be read. Has it been deleted?`,
+      ir.error,
     ),
   };
 }

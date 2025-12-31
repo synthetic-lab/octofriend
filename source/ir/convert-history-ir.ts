@@ -78,6 +78,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         type: "file-outdated",
         id: sequenceId(),
         toolCallId: output.toolCall.toolCallId,
+        error: output.error,
       },
     ];
   }
@@ -88,6 +89,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         path: output.path,
         id: sequenceId(),
         toolCallId: output.toolCall.toolCallId,
+        error: output.error,
       },
     ];
   }
@@ -289,6 +291,7 @@ function collapseToIR(
         {
           role: "file-outdated",
           toolCall: prev.toolCall,
+          error: item.error,
         }
       ];
     });
@@ -302,6 +305,7 @@ function collapseToIR(
           role: "file-unreadable",
           toolCall: prev.toolCall,
           path: item.path,
+          error: item.error,
         },
       ];
     });

@@ -82,12 +82,14 @@ export type ToolMalformedMessage = {
 export type FileOutdatedMessage = {
   role: "file-outdated",
   toolCall: ToolCallRequest,
+  error: string,
 };
 
 export type FileUnreadableMessage = {
   role: "file-unreadable",
   path: string,
   toolCall: ToolCallRequest,
+  error: string,
 }
 
 export type CompactionCheckpoint = {

@@ -433,6 +433,7 @@ async function tryTransformToolError(
         type: "file-outdated",
         id: sequenceId(),
         toolCallId: toolReq.toolCallId,
+        error: "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
     } catch {
       return {
@@ -440,6 +441,7 @@ async function tryTransformToolError(
         path: e.filePath,
         id: sequenceId(),
         toolCallId: toolReq.toolCallId,
+        error: `File ${e.filePath} could not be read. Has it been deleted?`,
       };
     }
   }

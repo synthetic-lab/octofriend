@@ -216,7 +216,7 @@ async function modelMessageFromIr(
           toolName: ir.toolCall.function.name,
           output: {
             type: "text",
-            value: "File could not be updated because it was modified after being last read. Please read the file before modifying it.",
+            value: ir.error,
           },
         },
       ],
@@ -240,7 +240,7 @@ async function modelMessageFromIr(
         toolName: ir.toolCall.function.name,
         output: {
           type: "text",
-          value: `File ${(ir as any).path} could not be read. Has it been deleted?`,
+          value: ir.error,
         },
       }
     ],

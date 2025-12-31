@@ -149,7 +149,7 @@ async function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
-          content: "File could not be updated because it was modified after being last read. Please read the file before modifying it.",
+          content: ir.error,
         },
       ],
     };
@@ -171,7 +171,7 @@ async function modelMessageFromIr(
         type: "tool_result",
         tool_use_id: ir.toolCall.toolCallId,
         is_error: true,
-        content: `File ${ir.path} could not be read. Has it been deleted?`,
+        content: ir.error,
       }
     ],
   };

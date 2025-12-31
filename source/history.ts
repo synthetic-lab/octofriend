@@ -45,12 +45,14 @@ export type ToolRejectItem = SequenceIdTagged<{
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
   toolCallId: string,
+  error: string,
 }>;
 
 export type FileUnreadableItem = SequenceIdTagged<{
   type: "file-unreadable",
   path: string,
   toolCallId: string,
+  error: string,
 }>;
 
 export type AssistantItem = SequenceIdTagged<{

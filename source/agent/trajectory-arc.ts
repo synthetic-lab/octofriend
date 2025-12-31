@@ -372,12 +372,14 @@ async function tryTransformFileOutdatedError(
     return {
       role: "file-outdated",
       toolCall,
+      error: "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
     };
   } catch {
     return {
       role: "file-unreadable",
       path: e.filePath,
       toolCall,
+      error: `File ${e.filePath} could not be read. Has it been deleted?`,
     };
   }
 }
