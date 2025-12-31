@@ -224,7 +224,7 @@ export async function trajectoryArc({
         abortSignal, transport, toolCall, e
       );
       const retryIrs = [
-        ...irs.slice(0, -1),
+        ...irs,
         errorIrs,
       ];
       handler.retryTool({ irs: retryIrs });
@@ -283,7 +283,7 @@ export async function trajectoryArc({
     }
 
     const retryIrs = [
-      ...irs.slice(0, -1),
+      ...irs,
       {
         role: "tool-error" as const,
         toolCallId: toolCall.toolCallId,
