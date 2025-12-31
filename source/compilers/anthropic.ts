@@ -11,6 +11,7 @@ import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -74,20 +75,13 @@ function modelMessageFromIr(
   }
 
   if(ir.role === "file-read") {
-    let content: string;
-    if(seenPath) {
-      content = "File was successfully read.";
-    } else {
-      content = ir.content;
-    }
-
     return {
       role: "user",
       content: [
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content,
+          content: irPrompts.fileRead(ir.content, seenPath),
         }
       ],
     };
@@ -96,7 +90,7 @@ function modelMessageFromIr(
   if(ir.role === "tool-output" || ir.role === "file-mutate") {
     let content: string;
     if(ir.role === "file-mutate") {
-      content = `${ir.path} was updated successfully.`;
+      content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
     }
@@ -121,7 +115,7 @@ function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
-          content: "Tool call rejected by user. Your tool call did not run.",
+          content: irPrompts.toolReject(),
         }
       ],
     };

@@ -10,6 +10,7 @@ import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from './autocompact.ts';
 import { JsonFixResponse } from '../prompts/autofix-prompts.ts';
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 async function toModelMessage(
   messages: LlmIR[],
@@ -115,23 +116,6 @@ function modelMessageFromIr(
   }
 
   if(ir.role === "file-read") {
-    if(seenPath) {
-      return {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result" as const,
-            toolName: ir.toolCall.function.name,
-            toolCallId: ir.toolCall.toolCallId,
-            output: {
-              type: "text" as const,
-              value: "File was read successfully.",
-            },
-          }
-        ],
-      };
-    }
-
     return {
       role: "tool",
       content: [
@@ -141,7 +125,7 @@ function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: ir.content,
+            value: irPrompts.fileRead(ir.content, seenPath),
           },
         }
       ],
@@ -151,7 +135,7 @@ function modelMessageFromIr(
   if(ir.role === "tool-output" || ir.role === "file-mutate") {
     let content: string;
     if(ir.role === "file-mutate") {
-      content = `${ir.path} was updated successfully.`;
+      content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
     }
@@ -182,7 +166,7 @@ function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: "Tool call rejected by user. Your tool call did not run.",
+            value: irPrompts.toolReject(),
           },
         }
       ],

@@ -13,6 +13,7 @@ import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 export type UserMessage = {
   role: "user";
@@ -160,17 +161,10 @@ function llmFromIr(
   }
 
   if(ir.role === "file-read") {
-    if(seenPath) {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: "File was read successfully.",
-      };
-    }
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: ir.content,
+      content: irPrompts.fileRead(ir.content, seenPath),
     };
   }
 
@@ -178,7 +172,7 @@ function llmFromIr(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: `${ir.path} was updated successfully.`,
+      content: irPrompts.fileMutation(ir.path),
     };
   }
 
@@ -186,19 +180,17 @@ function llmFromIr(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: tagged(
-        TOOL_ERROR_TAG,
-        {},
-        "Tool call was rejected by user. Your tool call did not run. No changes were applied."
-      ),
+      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolReject()),
     };
   }
+
   if(ir.role === "tool-malformed") {
     return {
       role: "user",
       content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
+
   if(ir.role === "tool-error") {
     return {
       role: "tool",
@@ -206,6 +198,7 @@ function llmFromIr(
       content: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
+
   if(ir.role === "file-outdated") {
     return {
       role: "tool",
