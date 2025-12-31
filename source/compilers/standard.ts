@@ -6,12 +6,10 @@ import {
   LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
 } from "../ir/llm-ir.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -88,8 +86,6 @@ JSON`;
 
 async function toLlmMessages(
   messages: LlmIR[],
-  transport: Transport,
-  signal: AbortSignal,
   systemPrompt?: () => Promise<string>,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
@@ -99,13 +95,13 @@ async function toLlmMessages(
   const seenPaths = new Set<string>();
   let prev: LlmIR | null = null;
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await llmFromIr(transport, signal, ir, prev, seen));
+      output.push(await llmFromIr(ir, prev, seen));
     }
     else {
-      output.push(await llmFromIr(transport, signal, ir, prev, false));
+      output.push(await llmFromIr(ir, prev, false));
     }
     prev = ir;
   }
@@ -123,7 +119,7 @@ async function toLlmMessages(
 }
 
 async function llmFromIr(
-  transport: Transport, signal: AbortSignal, ir: LlmIR, prev: LlmIR | null, seenPath: boolean
+  ir: LlmIR, prev: LlmIR | null, seenPath: boolean
 ): Promise<LlmMessage> {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
@@ -154,6 +150,7 @@ async function llmFromIr(
   if(ir.role === "user") {
     return ir;
   }
+
   if(ir.role === "tool-output") {
     return {
       role: "tool",
@@ -161,38 +158,44 @@ async function llmFromIr(
       content: ir.content,
     };
   }
-  if(ir.role === "file-tool-output") {
+
+  if(ir.role === "file-read") {
     if(seenPath) {
       return {
         role: "tool",
         tool_call_id: ir.toolCall.toolCallId,
-        content: "Tool ran successfully.",
+        content: "File was read successfully.",
       };
     }
-    try {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: await fileTracker.read(transport, signal, ir.path),
-      };
-    } catch {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: "Tool ran successfully.",
-      };
-    }
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: ir.content,
+    };
   }
+
+  if(ir.role === "file-mutate") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: `${ir.path} was updated successfully.`,
+    };
+  }
+
   if(ir.role === "tool-reject") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
+      content: tagged(
+        TOOL_ERROR_TAG,
+        {},
+        "Tool call was rejected by user. Your tool call did not run. No changes were applied."
+      ),
     };
   }
   if(ir.role === "tool-malformed") {
     return {
-      role: "system",
+      role: "user",
       content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
@@ -270,12 +273,10 @@ async function handleKnownErrors(
 }
 
 export const runAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toLlmMessages(
     windowedIR.ir,
-    transport,
-    abortSignal,
     systemPrompt,
   );
 

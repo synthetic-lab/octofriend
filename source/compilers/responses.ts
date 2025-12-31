@@ -3,19 +3,15 @@ import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Compiler } from './compiler-interface.ts';
 import { LlmIR, ToolCallRequestSchema, AssistantMessage } from "../ir/llm-ir.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from './autocompact.ts';
 import { JsonFixResponse } from '../prompts/autofix-prompts.ts';
 
 async function toModelMessage(
-  transport: Transport,
-  signal: AbortSignal,
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
 ): Promise<Array<ModelMessage>> {
@@ -26,12 +22,12 @@ async function toModelMessage(
   const seenPaths = new Set<string>();
 
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(transport, signal, ir, seen));
+      output.push(await modelMessageFromIr(ir, seen));
     } else {
-      output.push(await modelMessageFromIr(transport, signal, ir, false));
+      output.push(await modelMessageFromIr(ir, false));
     }
   }
 
@@ -50,8 +46,6 @@ async function toModelMessage(
 }
 
 async function modelMessageFromIr(
-  transport: Transport,
-  signal: AbortSignal,
   ir: LlmIR,
   seenPath: boolean,
 ): Promise<ModelMessage> {
@@ -120,18 +114,44 @@ async function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-tool-output") {
-    let content: string;
-    if(ir.role === "file-tool-output") {
-      if(seenPath) {
-        content = "Tool ran successfully.";
-      } else {
-        try {
-          content = await fileTracker.read(transport, signal, ir.path);
-        } catch {
-          content = "Tool ran successfully.";
+  if(ir.role === "file-read") {
+    if(seenPath) {
+      return {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result" as const,
+            toolName: ir.toolCall.function.name,
+            toolCallId: ir.toolCall.toolCallId,
+            output: {
+              type: "text" as const,
+              value: "File was read successfully.",
+            },
+          }
+        ],
+      };
+    }
+
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result" as const,
+          toolName: ir.toolCall.function.name,
+          toolCallId: ir.toolCall.toolCallId,
+          output: {
+            type: "text" as const,
+            value: ir.content,
+          },
         }
-      }
+      ],
+    };
+  }
+
+  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+    let content: string;
+    if(ir.role === "file-mutate") {
+      content = `${ir.path} was updated successfully.`;
     } else {
       content = ir.content;
     }
@@ -252,11 +272,9 @@ JSON`;
 }
 
 export const runResponsesAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toModelMessage(
-    transport,
-    abortSignal,
     windowedIR.ir,
     systemPrompt,
   );

@@ -45,8 +45,15 @@ export type ToolOutputMessage = {
   toolCall: ToolCallRequest,
 };
 
-export type FileToolMessage = {
-  role: "file-tool-output",
+export type FileReadMessage = {
+  role: "file-read",
+  content: string,
+  toolCall: ToolCallRequest,
+  path: string,
+};
+
+export type FileMutateMethod = {
+  role: "file-mutate",
   content: string,
   toolCall: ToolCallRequest,
   path: string,
@@ -94,7 +101,8 @@ export type OutputIR = AssistantMessage
 
 export type InputIR = UserMessage
                   | ToolOutputMessage
-                  | FileToolMessage
+                  | FileReadMessage
+                  | FileMutateMethod
                   | ToolRejectMessage
                   | ToolErrorMessage
                   | FileOutdatedMessage

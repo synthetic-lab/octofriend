@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { ToolResult } from "./tools/common.ts";
-import { ToolCallRequestSchema, AnthropicAssistantData, LlmIR } from "./ir/llm-ir.ts";
+import { ToolCallRequestSchema, AnthropicAssistantData } from "./ir/llm-ir.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint

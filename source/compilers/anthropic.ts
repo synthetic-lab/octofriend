@@ -6,11 +6,9 @@ import {
   AssistantMessage, LlmIR, ToolCallRequestSchema, AnthropicAssistantData
 } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 
@@ -21,8 +19,6 @@ const ThinkingBlockSchema = t.subtype({
 });
 
 async function toModelMessage(
-  transport: Transport,
-  signal: AbortSignal,
   messages: LlmIR[],
 ): Promise<Array<Anthropic.MessageParam>> {
   const output: Anthropic.MessageParam[] = [];
@@ -32,12 +28,12 @@ async function toModelMessage(
   const seenPaths = new Set<string>();
 
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(transport, signal, ir, seen));
+      output.push(await modelMessageFromIr(ir, seen));
     } else {
-      output.push(await modelMessageFromIr(transport, signal, ir, false));
+      output.push(await modelMessageFromIr(ir, false));
     }
   }
 
@@ -47,8 +43,6 @@ async function toModelMessage(
 }
 
 async function modelMessageFromIr(
-  transport: Transport,
-  signal: AbortSignal,
   ir: LlmIR,
   seenPath: boolean,
 ): Promise<Anthropic.MessageParam> {
@@ -79,18 +73,30 @@ async function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-tool-output") {
+  if(ir.role === "file-read") {
     let content: string;
-    if(ir.role === "file-tool-output") {
-      if(seenPath) {
-        content = "Tool ran successfully.";
-      } else {
-        try {
-          content = await fileTracker.read(transport, signal, ir.path);
-        } catch {
-          content = "Tool ran successfully.";
+    if(seenPath) {
+      content = "File was successfully read.";
+    } else {
+      content = ir.content;
+    }
+
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          content,
         }
-      }
+      ],
+    };
+  }
+
+  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+    let content: string;
+    if(ir.role === "file-mutate") {
+      content = `${ir.path} was updated successfully.`;
     } else {
       content = ir.content;
     }
@@ -207,9 +213,9 @@ JSON`;
 }
 
 export const runAnthropicAgent: Compiler = async ({
-  model,apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model,apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
-  const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
+  const messages = await toModelMessage(windowedIR.ir);
   const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
 
   const toolDefs = tools || {};

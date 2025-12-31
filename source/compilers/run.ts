@@ -4,13 +4,12 @@ import { runAgent } from "./standard.ts";
 import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { applyContextWindow } from "../ir/ir-windowing.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
-  model, apiKey, messages, handlers, autofixJson, abortSignal, transport, systemPrompt, tools
+  model, apiKey, messages, handlers, autofixJson, abortSignal, systemPrompt, tools
 }: {
   apiKey: string,
   model: ModelConfig,
@@ -21,7 +20,6 @@ export async function run({
     onAutofixJson: (done: Promise<void>) => any,
   },
   abortSignal: AbortSignal,
-  transport: Transport,
   systemPrompt?: (appliedWindow: boolean) => Promise<string>,
   tools?: Partial<typeof toolMap>,
 }) {
@@ -41,7 +39,7 @@ export async function run({
   };
 
   return await runInternal({
-    model, apiKey, windowedIR, abortSignal, transport,
+    model, apiKey, windowedIR, abortSignal,
     onTokens: handlers.onTokens,
     systemPrompt: wrappedPrompt,
     autofixJson: (badJson: string, signal: AbortSignal) => {

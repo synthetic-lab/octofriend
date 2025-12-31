@@ -62,12 +62,11 @@ export function shouldAutoCompactHistory(
 
 // only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary({
-  apiKey, model, messages, transport, autofixJson, handlers, abortSignal,
+  apiKey, model, messages, autofixJson, handlers, abortSignal,
 }: {
   apiKey: string,
   model: ModelConfig,
   messages: LlmIR[],
-  transport: Transport,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
@@ -80,7 +79,7 @@ export async function generateCompactionSummary({
   const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
-    apiKey, model, handlers, autofixJson, abortSignal, transport,
+    apiKey, model, handlers, autofixJson, abortSignal,
     messages: processedMessages,
   });
 

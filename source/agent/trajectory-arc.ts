@@ -106,7 +106,7 @@ export async function trajectoryArc({
   })();
 
   const parsedCompaction = await maybeAutocompact({
-    apiKey, model, config, transport, abortSignal, autofixJson,
+    apiKey, model, config, abortSignal, autofixJson,
     messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
@@ -121,7 +121,7 @@ export async function trajectoryArc({
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const result = await run({
-    apiKey, model, transport, autofixJson, abortSignal, tools,
+    apiKey, model, autofixJson, abortSignal, tools,
     messages: messagesCopy,
     handlers: {
       onTokens: (tokens, type) => {
@@ -220,7 +220,9 @@ export async function trajectoryArc({
     };
   } catch(e) {
     if(e instanceof FileOutdatedError) {
-      const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(abortSignal, transport, toolCall, e);
+      const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
+        abortSignal, transport, toolCall, e
+      );
       const retryIrs = [
         ...irs.slice(0, -1),
         errorIrs,
@@ -303,7 +305,6 @@ async function maybeAutocompact({
   model,
   messages,
   config,
-  transport,
   abortSignal,
   handler,
   autofixJson,
@@ -312,7 +313,6 @@ async function maybeAutocompact({
   model: ModelConfig,
   messages: LlmIR[];
   config: Config;
-  transport: Transport;
   abortSignal: AbortSignal;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   handler: {
@@ -326,7 +326,7 @@ async function maybeAutocompact({
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
   const checkpointSummary = await generateCompactionSummary({
-    apiKey, model, messages, transport, abortSignal, autofixJson,
+    apiKey, model, messages, abortSignal, autofixJson,
     handlers: {
      onTokens: (tokens, type) => {
         if(!buffer[type]) buffer[type] = "";

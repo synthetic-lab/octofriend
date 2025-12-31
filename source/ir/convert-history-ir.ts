@@ -248,11 +248,19 @@ function collapseToIR(
         case "prepend":
         case "rewrite":
         case "edit":
-        case "create":
+        case "create": return [
+          prev,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: prev.toolCall,
+            path: path.resolve(prev.toolCall.function.arguments.filePath),
+          }
+        ];
         case "read": return [
           prev,
           {
-            role: "file-tool-output",
+            role: "file-read",
             content: item.result.content,
             toolCall: prev.toolCall,
             path: path.resolve(prev.toolCall.function.arguments.filePath),
