@@ -97,6 +97,7 @@ export async function trajectoryArc({
 
   const messagesCopy = [ ...messages ];
   const autofixJson = makeAutofixJson(config);
+  let irs: TrajectoryOutputIR[] = [];
 
   const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
   const tools = hasMcp ? { ...toolMap } : (() => {
@@ -117,6 +118,7 @@ export async function trajectoryArc({
   if(parsedCompaction) {
     handler.compactionParsed(parsedCompaction);
     messagesCopy.push(parsedCompaction.checkpoint);
+    irs.push(parsedCompaction.checkpoint);
   }
   if(abortSignal.aborted) return abort([]);
 
@@ -149,13 +151,16 @@ export async function trajectoryArc({
 
   function maybeBufferedMessage(): TrajectoryOutputIR[] {
     if(buffer.content || buffer.reasoning || buffer.tool) {
-      return [{
-        role: "assistant",
-        content: buffer.content || "",
-        reasoningContent: buffer.reasoning,
-        tokenUsage: 0,
-        outputTokens: 0,
-      }];
+      return [
+        ...irs,
+        {
+          role: "assistant",
+          content: buffer.content || "",
+          reasoningContent: buffer.reasoning,
+          tokenUsage: 0,
+          outputTokens: 0,
+        }
+      ];
     }
     return [];
   }
@@ -174,8 +179,7 @@ export async function trajectoryArc({
     };
   }
 
-  const irs = result.output;
-  if(irs.length === 0) {
+  if(result.output.length === 0) {
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
@@ -187,16 +191,23 @@ export async function trajectoryArc({
     };
   }
 
-  let lastIr = irs[irs.length - 1];
+  irs = [ ...irs, ...result.output ];
+  let lastIr = result.output[result.output.length - 1];
 
   // Retry malformed tool calls
   if(lastIr.role === "tool-malformed") {
     handler.retryTool({ irs });
-    return await trajectoryArc({
+    const retried = await trajectoryArc({
       apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(irs),
       handler,
     });
+
+    return {
+      type: "finish",
+      irs: [ ...irs, ...retried.irs ],
+      reason: retried.reason,
+    };
   }
 
   const { toolCall } = lastIr;
@@ -231,11 +242,16 @@ export async function trajectoryArc({
         errorIrs,
       ];
       handler.retryTool({ irs: retryIrs });
-      return await trajectoryArc({
+      const retried = await trajectoryArc({
         apiKey, model, config, transport, abortSignal,
         messages: messagesCopy.concat(retryIrs),
         handler,
       });
+      return {
+        type: "finish",
+        irs: [ ...irs, ...retried.irs ],
+        reason: retried.reason,
+      };
     }
 
     if(!(e instanceof ToolError)) throw e;
@@ -295,11 +311,16 @@ export async function trajectoryArc({
       }
     ];
     handler.retryTool({ irs: retryIrs });
-    return await trajectoryArc({
+    const retried = await trajectoryArc({
       apiKey, model, config, transport, abortSignal,
       messages: messagesCopy.concat(retryIrs),
       handler,
     });
+    return {
+      type: "finish",
+      irs: [ ...irs, ...retried.irs ],
+      reason: retried.reason,
+    };
   }
 }
 

@@ -93,6 +93,15 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
       },
     ];
   }
+  if(output.role === "compaction-checkpoint") {
+    return [
+      {
+        type: "compaction-checkpoint",
+        id: sequenceId(),
+        summary: output.summary,
+      },
+    ];
+  }
 
   const history: HistoryItem[] = [];
   const reasoningContent: { reasoningContent?: string } = {};

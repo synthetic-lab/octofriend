@@ -318,8 +318,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               id: sequenceId(),
               summary: event.checkpoint.summary,
             };
-            historyCopy.push(checkpointItem);
-            set({ history: [ ...historyCopy ] });
+            set({ history: [ ...historyCopy, checkpointItem ] });
           },
 
           autofixingJson: () => {
@@ -341,8 +340,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           retryTool: event => {
-            historyCopy.push(...outputToHistory(event.irs));
-            set({ history: [ ...historyCopy ] });
+            set({ history: [ ...historyCopy, ...outputToHistory(event.irs) ] });
           },
         },
       });

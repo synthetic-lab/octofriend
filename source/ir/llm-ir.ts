@@ -113,10 +113,12 @@ export type InputIR = UserMessage
                   ;
 
 export type LlmIR = OutputIR | InputIR;
+
 export type TrajectoryOutputIR = OutputIR
                                | ToolErrorMessage
                                | FileOutdatedMessage
                                | FileUnreadableMessage
+                               | CompactionCheckpoint
                                ;
 
 export type AgentResult = {
