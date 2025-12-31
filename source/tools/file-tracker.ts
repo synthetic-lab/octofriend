@@ -19,6 +19,12 @@ export class FileExistsError extends Error {
 export class FileTracker {
   private readTimestamps = new Map<string, number>();
 
+  async readUntracked(transport: Transport, signal: AbortSignal, filePath: string): Promise<string> {
+    const absolutePath = await transport.resolvePath(signal, filePath);
+    const content = await transport.readFile(signal, absolutePath);
+    return content;
+  }
+
   async read(transport: Transport, signal: AbortSignal, filePath: string): Promise<string> {
     const absolutePath = await transport.resolvePath(signal, filePath);
     const content = await transport.readFile(signal, absolutePath);

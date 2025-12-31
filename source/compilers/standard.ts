@@ -6,15 +6,14 @@ import {
   LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
 } from "../ir/llm-ir.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 export type UserMessage = {
   role: "user";
@@ -88,8 +87,6 @@ JSON`;
 
 async function toLlmMessages(
   messages: LlmIR[],
-  transport: Transport,
-  signal: AbortSignal,
   systemPrompt?: () => Promise<string>,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
@@ -99,13 +96,13 @@ async function toLlmMessages(
   const seenPaths = new Set<string>();
   let prev: LlmIR | null = null;
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await llmFromIr(transport, signal, ir, prev, seen));
+      output.push(llmFromIr(ir, prev, seen));
     }
     else {
-      output.push(await llmFromIr(transport, signal, ir, prev, false));
+      output.push(llmFromIr(ir, prev, false));
     }
     prev = ir;
   }
@@ -122,9 +119,9 @@ async function toLlmMessages(
   return output;
 }
 
-async function llmFromIr(
-  transport: Transport, signal: AbortSignal, ir: LlmIR, prev: LlmIR | null, seenPath: boolean
-): Promise<LlmMessage> {
+function llmFromIr(
+  ir: LlmIR, prev: LlmIR | null, seenPath: boolean
+): LlmMessage {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -154,6 +151,7 @@ async function llmFromIr(
   if(ir.role === "user") {
     return ir;
   }
+
   if(ir.role === "tool-output") {
     return {
       role: "tool",
@@ -161,41 +159,38 @@ async function llmFromIr(
       content: ir.content,
     };
   }
-  if(ir.role === "file-tool-output") {
-    if(seenPath) {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: "Tool ran successfully.",
-      };
-    }
-    try {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: await fileTracker.read(transport, signal, ir.path),
-      };
-    } catch {
-      return {
-        role: "tool",
-        tool_call_id: ir.toolCall.toolCallId,
-        content: "Tool ran successfully.",
-      };
-    }
+
+  if(ir.role === "file-read") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: irPrompts.fileRead(ir.content, seenPath),
+    };
   }
+
+  if(ir.role === "file-mutate") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: irPrompts.fileMutation(ir.path),
+    };
+  }
+
   if(ir.role === "tool-reject") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: tagged(TOOL_ERROR_TAG, {}, "Tool call rejected by user. Your tool call did not run."),
+      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolReject()),
     };
   }
+
   if(ir.role === "tool-malformed") {
     return {
-      role: "system",
+      role: "user",
       content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
+
   if(ir.role === "tool-error") {
     return {
       role: "tool",
@@ -203,14 +198,12 @@ async function llmFromIr(
       content: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
+
   if(ir.role === "file-outdated") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: `\n${tagged(TOOL_ERROR_TAG, {}, `
-File could not be updated because it was modified after being last read.
-The latest version of the file has been automatically re-read and placed in your context space.
-Please try again.`.trim())}`,
+      content: `\n${tagged(TOOL_ERROR_TAG, {}, ir.error)}`,
     }
   }
 
@@ -229,7 +222,7 @@ Please try again.`.trim())}`,
     content: tagged(
       TOOL_ERROR_TAG,
       {},
-      `File ${ir.path} could not be read. Has it been deleted?`,
+      ir.error,
     ),
   };
 }
@@ -270,12 +263,10 @@ async function handleKnownErrors(
 }
 
 export const runAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toLlmMessages(
     windowedIR.ir,
-    transport,
-    abortSignal,
     systemPrompt,
   );
 

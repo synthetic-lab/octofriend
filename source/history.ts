@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { ToolResult } from "./tools/common.ts";
-import { ToolCallRequestSchema, AnthropicAssistantData, LlmIR } from "./ir/llm-ir.ts";
+import { ToolCallRequestSchema, AnthropicAssistantData } from "./ir/llm-ir.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint
@@ -45,12 +45,14 @@ export type ToolRejectItem = SequenceIdTagged<{
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated",
   toolCallId: string,
+  error: string,
 }>;
 
 export type FileUnreadableItem = SequenceIdTagged<{
   type: "file-unreadable",
   path: string,
   toolCallId: string,
+  error: string,
 }>;
 
 export type AssistantItem = SequenceIdTagged<{

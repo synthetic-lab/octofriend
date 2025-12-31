@@ -78,6 +78,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         type: "file-outdated",
         id: sequenceId(),
         toolCallId: output.toolCall.toolCallId,
+        error: output.error,
       },
     ];
   }
@@ -88,6 +89,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         path: output.path,
         id: sequenceId(),
         toolCallId: output.toolCall.toolCallId,
+        error: output.error,
       },
     ];
   }
@@ -248,11 +250,19 @@ function collapseToIR(
         case "prepend":
         case "rewrite":
         case "edit":
-        case "create":
+        case "create": return [
+          prev,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: prev.toolCall,
+            path: path.resolve(prev.toolCall.function.arguments.filePath),
+          }
+        ];
         case "read": return [
           prev,
           {
-            role: "file-tool-output",
+            role: "file-read",
             content: item.result.content,
             toolCall: prev.toolCall,
             path: path.resolve(prev.toolCall.function.arguments.filePath),
@@ -281,6 +291,7 @@ function collapseToIR(
         {
           role: "file-outdated",
           toolCall: prev.toolCall,
+          error: item.error,
         }
       ];
     });
@@ -294,6 +305,7 @@ function collapseToIR(
           role: "file-unreadable",
           toolCall: prev.toolCall,
           path: item.path,
+          error: item.error,
         },
       ];
     });

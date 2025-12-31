@@ -3,19 +3,16 @@ import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Compiler } from './compiler-interface.ts';
 import { LlmIR, ToolCallRequestSchema, AssistantMessage } from "../ir/llm-ir.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { countIRTokens } from "../ir/ir-windowing.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from './autocompact.ts';
 import { JsonFixResponse } from '../prompts/autofix-prompts.ts';
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 async function toModelMessage(
-  transport: Transport,
-  signal: AbortSignal,
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
 ): Promise<Array<ModelMessage>> {
@@ -26,12 +23,12 @@ async function toModelMessage(
   const seenPaths = new Set<string>();
 
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(transport, signal, ir, seen));
+      output.push(modelMessageFromIr(ir, seen));
     } else {
-      output.push(await modelMessageFromIr(transport, signal, ir, false));
+      output.push(modelMessageFromIr(ir, false));
     }
   }
 
@@ -49,12 +46,10 @@ async function toModelMessage(
   return output;
 }
 
-async function modelMessageFromIr(
-  transport: Transport,
-  signal: AbortSignal,
+function modelMessageFromIr(
   ir: LlmIR,
   seenPath: boolean,
-): Promise<ModelMessage> {
+): ModelMessage {
   if(ir.role === "assistant") {
     if(ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -120,18 +115,27 @@ async function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-tool-output") {
-    let content: string;
-    if(ir.role === "file-tool-output") {
-      if(seenPath) {
-        content = "Tool ran successfully.";
-      } else {
-        try {
-          content = await fileTracker.read(transport, signal, ir.path);
-        } catch {
-          content = "Tool ran successfully.";
+  if(ir.role === "file-read") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result" as const,
+          toolName: ir.toolCall.function.name,
+          toolCallId: ir.toolCall.toolCallId,
+          output: {
+            type: "text" as const,
+            value: irPrompts.fileRead(ir.content, seenPath),
+          },
         }
-      }
+      ],
+    };
+  }
+
+  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+    let content: string;
+    if(ir.role === "file-mutate") {
+      content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
     }
@@ -162,7 +166,7 @@ async function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: "Tool call rejected by user. Your tool call did not run.",
+            value: irPrompts.toolReject(),
           },
         }
       ],
@@ -196,7 +200,7 @@ async function modelMessageFromIr(
           toolName: ir.toolCall.function.name,
           output: {
             type: "text",
-            value: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
+            value: ir.error,
           },
         },
       ],
@@ -220,7 +224,7 @@ async function modelMessageFromIr(
         toolName: ir.toolCall.function.name,
         output: {
           type: "text",
-          value: `File ${(ir as any).path} could not be read. Has it been deleted?`,
+          value: ir.error,
         },
       }
     ],
@@ -252,11 +256,9 @@ JSON`;
 }
 
 export const runResponsesAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
   const messages = await toModelMessage(
-    transport,
-    abortSignal,
     windowedIR.ir,
     systemPrompt,
   );

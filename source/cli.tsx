@@ -242,7 +242,6 @@ bench.command("tps")
       onAutofixJson: () => {},
     },
     abortSignal: abortController.signal,
-    transport: new LocalTransport(),
   });
   if (!result.success) {
     console.error(result.requestError);

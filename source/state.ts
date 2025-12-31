@@ -428,11 +428,12 @@ async function tryTransformToolError(
     const absolutePath = path.resolve(e.filePath);
     // Actually perform the read to ensure it's readable
     try {
-      await fileTracker.read(transport, signal, absolutePath);
+      await fileTracker.readUntracked(transport, signal, absolutePath);
       return {
         type: "file-outdated",
         id: sequenceId(),
         toolCallId: toolReq.toolCallId,
+        error: "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
     } catch {
       return {
@@ -440,6 +441,7 @@ async function tryTransformToolError(
         path: e.filePath,
         id: sequenceId(),
         toolCallId: toolReq.toolCallId,
+        error: `File ${e.filePath} could not be read. Has it been deleted?`,
       };
     }
   }

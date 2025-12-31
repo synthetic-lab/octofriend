@@ -6,13 +6,12 @@ import {
   AssistantMessage, LlmIR, ToolCallRequestSchema, AnthropicAssistantData
 } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
-import { fileTracker } from "../tools/file-tracker.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString } from "../errors.ts";
-import { Transport } from "../transports/transport-common.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
+import * as irPrompts from "../prompts/ir-prompts.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -20,11 +19,9 @@ const ThinkingBlockSchema = t.subtype({
   signature: t.str,
 });
 
-async function toModelMessage(
-  transport: Transport,
-  signal: AbortSignal,
+function toModelMessage(
   messages: LlmIR[],
-): Promise<Array<Anthropic.MessageParam>> {
+): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
   const irs = [ ...messages ];
@@ -32,12 +29,12 @@ async function toModelMessage(
   const seenPaths = new Set<string>();
 
   for(const ir of irs) {
-    if(ir.role === "file-tool-output") {
+    if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(transport, signal, ir, seen));
+      output.push(modelMessageFromIr(ir, seen));
     } else {
-      output.push(await modelMessageFromIr(transport, signal, ir, false));
+      output.push(modelMessageFromIr(ir, false));
     }
   }
 
@@ -46,12 +43,10 @@ async function toModelMessage(
   return output;
 }
 
-async function modelMessageFromIr(
-  transport: Transport,
-  signal: AbortSignal,
+function modelMessageFromIr(
   ir: LlmIR,
   seenPath: boolean,
-): Promise<Anthropic.MessageParam> {
+): Anthropic.MessageParam {
   if(ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
@@ -79,18 +74,23 @@ async function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-tool-output") {
-    let content: string;
-    if(ir.role === "file-tool-output") {
-      if(seenPath) {
-        content = "Tool ran successfully.";
-      } else {
-        try {
-          content = await fileTracker.read(transport, signal, ir.path);
-        } catch {
-          content = "Tool ran successfully.";
+  if(ir.role === "file-read") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          content: irPrompts.fileRead(ir.content, seenPath),
         }
-      }
+      ],
+    };
+  }
+
+  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+    let content: string;
+    if(ir.role === "file-mutate") {
+      content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
     }
@@ -115,7 +115,7 @@ async function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
-          content: "Tool call rejected by user. Your tool call did not run.",
+          content: irPrompts.toolReject(),
         }
       ],
     };
@@ -143,7 +143,7 @@ async function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
-          content: "File could not be updated because it was modified after being last read. The latest version of the file has been automatically re-read and placed in your context space. Please try again.",
+          content: ir.error,
         },
       ],
     };
@@ -165,7 +165,7 @@ async function modelMessageFromIr(
         type: "tool_result",
         tool_use_id: ir.toolCall.toolCallId,
         is_error: true,
-        content: `File ${ir.path} could not be read. Has it been deleted?`,
+        content: ir.error,
       }
     ],
   };
@@ -207,9 +207,9 @@ JSON`;
 }
 
 export const runAnthropicAgent: Compiler = async ({
-  model,apiKey, windowedIR, onTokens, abortSignal, transport, systemPrompt, autofixJson, tools
+  model,apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
-  const messages = await toModelMessage(transport, abortSignal, windowedIR.ir);
+  const messages = toModelMessage(windowedIR.ir);
   const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
 
   const toolDefs = tools || {};
