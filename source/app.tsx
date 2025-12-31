@@ -870,7 +870,7 @@ function AssistantMessageRenderer({ item }: {
   if(showThoughts) reservedSpace += 2;
   return <OctoMessageRenderer>
     <MaybeScrollView height={scrollViewHeight}>
-      { showThoughts && <ThoughtBox thoughts={thoughts} /> }
+      { showThoughts && <ThoughtBox thoughts={thoughts.trim()} /> }
       <Markdown markdown={content} />
     </MaybeScrollView>
   </OctoMessageRenderer>
