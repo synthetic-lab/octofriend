@@ -114,7 +114,10 @@ export async function trajectoryArc({
     },
   });
 
-  if(parsedCompaction) handler.compactionParsed(parsedCompaction);
+  if(parsedCompaction) {
+    handler.compactionParsed(parsedCompaction);
+    messagesCopy.push(parsedCompaction.checkpoint);
+  }
   if(abortSignal.aborted) return abort([]);
 
   handler.startResponse(null);
