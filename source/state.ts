@@ -428,7 +428,7 @@ async function tryTransformToolError(
     const absolutePath = path.resolve(e.filePath);
     // Actually perform the read to ensure it's readable
     try {
-      await fileTracker.read(transport, signal, absolutePath);
+      await fileTracker.readUntracked(transport, signal, absolutePath);
       return {
         type: "file-outdated",
         id: sequenceId(),
