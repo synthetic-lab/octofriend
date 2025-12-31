@@ -25,9 +25,9 @@ async function toModelMessage(
     if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await modelMessageFromIr(ir, seen));
+      output.push(modelMessageFromIr(ir, seen));
     } else {
-      output.push(await modelMessageFromIr(ir, false));
+      output.push(modelMessageFromIr(ir, false));
     }
   }
 
@@ -45,10 +45,10 @@ async function toModelMessage(
   return output;
 }
 
-async function modelMessageFromIr(
+function modelMessageFromIr(
   ir: LlmIR,
   seenPath: boolean,
-): Promise<ModelMessage> {
+): ModelMessage {
   if(ir.role === "assistant") {
     if(ir.reasoningContent || ir.openai) {
       let openai = {};

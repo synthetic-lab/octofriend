@@ -98,10 +98,10 @@ async function toLlmMessages(
     if(ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(await llmFromIr(ir, prev, seen));
+      output.push(llmFromIr(ir, prev, seen));
     }
     else {
-      output.push(await llmFromIr(ir, prev, false));
+      output.push(llmFromIr(ir, prev, false));
     }
     prev = ir;
   }
@@ -118,9 +118,9 @@ async function toLlmMessages(
   return output;
 }
 
-async function llmFromIr(
+function llmFromIr(
   ir: LlmIR, prev: LlmIR | null, seenPath: boolean
-): Promise<LlmMessage> {
+): LlmMessage {
   if(ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
