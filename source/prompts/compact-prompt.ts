@@ -13,7 +13,7 @@ Before writing your summary, use <analysis> tags to organize your thinking:
 <analysis>
 [Chronologically review each part of the conversation and identify:
 - The user's explicit requests and goals
-- Actions that were taken and their outcomes  
+- Actions that were taken and their outcomes
 - Technical decisions and their rationale
 - Important code changes, file modifications, and command outputs
 - Problems encountered and their resolutions
@@ -45,7 +45,7 @@ For each file:
 
 ## Outstanding Issues
 - Errors not yet resolved (include error messages)
-- User requests acknowledged but not completed  
+- User requests acknowledged but not completed
 - Known blockers or risks
 
 ## Context for Resuming
