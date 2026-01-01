@@ -107,12 +107,11 @@ export function parseSkillContent(content: string, filePath: string): Skill | nu
   };
 }
 
-async function walkDirectory(
+async function* walkDirectory(
   transport: Transport,
   signal: AbortSignal,
   dirPath: string,
-  callback: (filePath: string) => Promise<void>
-): Promise<void> {
+): AsyncGenerator<string> {
   let entries: Array<{ entry: string; isDirectory: boolean }>;
   try {
     entries = await transport.readdir(signal, dirPath);
@@ -126,9 +125,9 @@ async function walkDirectory(
     const fullPath = path.join(dirPath, entry.entry);
 
     if (entry.isDirectory) {
-      await walkDirectory(transport, signal, fullPath, callback);
+      yield* walkDirectory(transport, signal, fullPath);
     } else if (entry.entry === SKILL_FILE_NAME) {
-      await callback(fullPath);
+      yield fullPath;
     }
   }
 }
@@ -148,9 +147,9 @@ export async function discoverSkills(
     const exists = await transport.pathExists(signal, basePath);
     if (!exists) continue;
 
-    await walkDirectory(transport, signal, basePath, async (filePath) => {
-      if (signal.aborted) return;
-      if (seen.has(filePath)) return;
+    for await (const filePath of walkDirectory(transport, signal, basePath)) {
+      if (signal.aborted) break;
+      if (seen.has(filePath)) continue;
       seen.add(filePath);
 
       try {
@@ -159,18 +158,18 @@ export async function discoverSkills(
 
         if (!skill) {
           console.warn(`Failed to parse skill file: ${filePath}`);
-          return;
+          continue;
         }
 
         const errors = validateSkill(skill);
         if (errors.length > 0) {
           console.warn(`Skill validation failed for ${filePath}: ${errors.join(", ")}`);
-          return;
+          continue;
         }
 
         if (seenNames.has(skill.name)) {
           console.warn(`Duplicate skill name "${skill.name}" at ${filePath}, skipping`);
-          return;
+          continue;
         }
         seenNames.add(skill.name);
 
@@ -178,7 +177,7 @@ export async function discoverSkills(
       } catch (e) {
         console.warn(`Error reading skill file ${filePath}: ${e}`);
       }
-    });
+    }
   }
 
   return skills;
