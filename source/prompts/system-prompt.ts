@@ -14,8 +14,7 @@ const LLM_INSTR_FILES = [
 ] as const;
 
 
-export async function systemPrompt({ appliedWindow, config, transport, signal }: {
-  appliedWindow: boolean,
+export async function systemPrompt({ config, transport, signal }: {
   config: Config,
   transport: Transport,
   signal: AbortSignal
@@ -133,9 +132,6 @@ ${currDirStr}
 If you want to list other directories, use the list tool.
 
 ${await llmInstrsPrompt(transport, signal, config)}
-
-${appliedWindow ?
-"\n# Context windowing note\nSome messages were elided due to context windowing." : ""}
 `.trim();
 }
 

@@ -3,7 +3,6 @@ import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
-import { applyContextWindow } from "../ir/ir-windowing.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
@@ -20,7 +19,7 @@ export async function run({
     onAutofixJson: (done: Promise<void>) => any,
   },
   abortSignal: AbortSignal,
-  systemPrompt?: (appliedWindow: boolean) => Promise<string>,
+  systemPrompt?: () => Promise<string>,
   tools?: Partial<typeof toolMap>,
 }) {
   const runInternal = (() => {
@@ -33,15 +32,10 @@ export async function run({
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
 
-  const windowedIR = applyContextWindow(slicedMessages, model.context);
-  const wrappedPrompt = systemPrompt == null ? systemPrompt : async () => {
-    return systemPrompt(windowedIR.appliedWindow);
-  };
-
   return await runInternal({
-    model, apiKey, windowedIR, abortSignal,
+    model, apiKey, abortSignal, systemPrompt,
+    irs: slicedMessages,
     onTokens: handlers.onTokens,
-    systemPrompt: wrappedPrompt,
     autofixJson: (badJson: string, signal: AbortSignal) => {
       const fixPromise = autofixJson(badJson, signal);
       handlers.onAutofixJson(fixPromise.then(() => {}));

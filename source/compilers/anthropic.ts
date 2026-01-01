@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import {
   AssistantMessage, LlmIR, ToolCallRequestSchema, AnthropicAssistantData
 } from "../ir/llm-ir.ts";
@@ -207,9 +207,9 @@ JSON`;
 }
 
 export const runAnthropicAgent: Compiler = async ({
-  model,apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
+  model,apiKey, irs, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
-  const messages = toModelMessage(windowedIR.ir);
+  const messages = toModelMessage(irs);
   const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
 
   const toolDefs = tools || {};
@@ -410,7 +410,7 @@ export const runAnthropicAgent: Compiler = async ({
     let tokenDelta = 0;
     if(usage.input !== 0 || usage.output !== 0) {
       if(!abortSignal.aborted) {
-        const previousTokens = countIRTokens(windowedIR.ir);
+        const previousTokens = countIRTokens(irs);
         tokenDelta = (usage.input + usage.output) - previousTokens;
       }
     }

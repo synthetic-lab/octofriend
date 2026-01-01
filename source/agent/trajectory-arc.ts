@@ -141,9 +141,9 @@ export async function trajectoryArc({
         handler.autofixingJson(null);
       },
     },
-    systemPrompt: async (appliedWindow) => {
+    systemPrompt: async () => {
       return systemPrompt({
-        config, transport, appliedWindow,
+        config, transport,
         signal: abortSignal,
       });
     },

@@ -5,7 +5,7 @@ import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import { CompactionRequestError } from "../errors.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
