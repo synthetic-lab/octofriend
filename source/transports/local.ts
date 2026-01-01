@@ -28,7 +28,11 @@ export class LocalTransport implements Transport {
   }
 
   async resolvePath(_: AbortSignal, file: string) {
-    return path.resolve(file);
+    try {
+      return await fs.realpath(file);
+    } catch {
+      return path.resolve(file);
+    }
   }
 
   async mkdir(_: AbortSignal, dirpath: string) {
@@ -36,13 +40,23 @@ export class LocalTransport implements Transport {
   }
 
   async readdir(_: AbortSignal, dirpath: string) {
-    const entries = await fs.readdir(dirpath, {
-      withFileTypes: true,
-    });
-    return entries.map(entry => ({
-      entry: entry.name,
-      isDirectory: entry.isDirectory(),
-    }));
+    const entries = await fs.readdir(dirpath, { withFileTypes: true });
+    return Promise.all(
+      entries.map(async (entry) => {
+        // For symlinks, resolve to determine if target is a directory
+        if (entry.isSymbolicLink()) {
+          const fullPath = path.join(dirpath, entry.name);
+          try {
+            const stat = await fs.stat(fullPath); // follows symlinks
+            return { entry: entry.name, isDirectory: stat.isDirectory() };
+          } catch {
+            // Broken symlink or permission error - treat as file
+            return { entry: entry.name, isDirectory: false };
+          }
+        }
+        return { entry: entry.name, isDirectory: entry.isDirectory() };
+      })
+    );
   }
 
   async pathExists(signal: AbortSignal, file: string) {

@@ -59,6 +59,9 @@ const ConfigSchema = t.exact({
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
   autoCompact: t.optional(AutoCompactConfigSchema),
+  skills: t.optional(t.exact({
+    paths: t.optional(t.array(t.str)),
+  })),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = [
