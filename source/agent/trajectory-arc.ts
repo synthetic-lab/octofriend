@@ -107,7 +107,7 @@ export async function trajectoryArc({
   })();
 
   const parsedCompaction = await maybeAutocompact({
-    apiKey, model, config, abortSignal, autofixJson,
+    apiKey, model, abortSignal, autofixJson,
     messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
@@ -328,7 +328,6 @@ async function maybeAutocompact({
   apiKey,
   model,
   messages,
-  config,
   abortSignal,
   handler,
   autofixJson,
@@ -336,7 +335,6 @@ async function maybeAutocompact({
   apiKey: string,
   model: ModelConfig,
   messages: LlmIR[];
-  config: Config;
   abortSignal: AbortSignal;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   handler: {
@@ -344,7 +342,7 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void,
   },
 }): Promise<CompactionType | null> {
-  if(!shouldAutoCompactHistory(model, messages, config.autoCompact)) return null;
+  if(!shouldAutoCompactHistory(model, messages)) return null;
 
   handler.startCompaction();
 
