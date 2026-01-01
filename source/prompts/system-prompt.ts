@@ -212,8 +212,8 @@ ${mcpSections.join('\n\n')}
 async function skillsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const skillsPaths: string[] = [];
 
-  if (config.skillsPaths && config.skillsPaths.length > 0) {
-    skillsPaths.push(...config.skillsPaths);
+  if (config.skills?.paths && config.skills.paths.length > 0) {
+    skillsPaths.push(...config.skills.paths);
   } else {
     const defaultPath = await getDefaultSkillsPath(transport, signal);
     skillsPaths.push(defaultPath);
