@@ -1,6 +1,7 @@
 import path from "path";
 import { parse as parseYaml } from "yaml";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
+import * as logger from "../logger.ts";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MAX_NAME_LENGTH = 64;
@@ -157,25 +158,25 @@ export async function discoverSkills(
         const skill = parseSkillContent(content, filePath);
 
         if (!skill) {
-          console.warn(`Failed to parse skill file: ${filePath}`);
+          logger.error("info", `Failed to parse skill file: ${filePath}`);
           continue;
         }
 
         const errors = validateSkill(skill);
         if (errors.length > 0) {
-          console.warn(`Skill validation failed for ${filePath}: ${errors.join(", ")}`);
+          logger.error("info", `Skill validation failed for ${filePath}: ${errors.join(", ")}`);
           continue;
         }
 
         if (seenNames.has(skill.name)) {
-          console.warn(`Duplicate skill name "${skill.name}" at ${filePath}, skipping`);
+          logger.error("info", `Duplicate skill name "${skill.name}" at ${filePath}, skipping`);
           continue;
         }
         seenNames.add(skill.name);
 
         skills.push(skill);
       } catch (e) {
-        console.warn(`Error reading skill file ${filePath}: ${e}`);
+        logger.error("info", `Error reading skill file ${filePath}: ${e}`);
       }
     }
   }
