@@ -58,6 +58,7 @@
 		"string-width": "^7.2.0",
 		"structural": "^0.0.29",
 		"to-rotated": "^1.0.0",
+		"yaml": "^2.0.0",
 		"zustand": "^5.0.3"
 	},
 	"devDependencies": {
