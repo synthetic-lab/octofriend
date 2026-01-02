@@ -1,3 +1,6 @@
-- Octo no longer flickers when rendering long in-progress assistant messages!
-- Added support for global AGENTS.md files at ~/.config/AGENTS.md
-- Optional Vim emulation! Enable it through the menu.
+- Octo now uses autocompaction instead of rolling history windows for better
+  prompt caching and long-context tasks
+- Initial support for Agent Skills! https://agentskills.io/
+- Improved prompts for GLM-4.7
+- Improved Vim emulation mode
+- Prettier scroll UI

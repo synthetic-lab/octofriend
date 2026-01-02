@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.49] - 2026-01-02
+
+### Added
+
+- Octo now uses autocompaction instead of rolling history windows for
+  long-context tasks. This helps improve prompt cache hit rates, and helps keep
+  Octo on task more reliably.
+
+- Initial support for [Agent Skills](https://agentskills.io/). Agent skills
+  are read by default from `~/.config/agents/skills`, but the path can be
+  configured in `~/.config/octofriend/octofriend.json5`.
+
+### Changed
+
+- Improved Vim mode UX: Octo starts in Insert mode by default.
+
+- Prettier, on-theme scroll UI
+
+- File editing prompt improvements that help GLM-4.7 more accurately edit
+  during long-context tasks.
+
 ## [0.0.48] - 2025-12-17
 
 ### Added
