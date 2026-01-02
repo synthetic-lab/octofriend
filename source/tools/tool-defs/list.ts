@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, attempt, ToolDef } from "../common.ts";
+import { ToolError, attempt, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -12,7 +12,14 @@ const Schema = t.subtype({
   "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd"
 );
 
-export default {
+async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
+  const dirpath = toolCall?.arguments?.dirPath || ".";
+  const isDir = await transport.isDirectory(signal, dirpath);
+  if(!isDir) throw new ToolError(`${dirpath} is not a directory`);
+  return null;
+}
+
+export default defineTool(async () => ({
   Schema, ArgumentsSchema, validate,
   async run(abortSignal, transport, call) {
     const dirpath = call.arguments?.dirPath || (await transport.cwd(abortSignal));
@@ -22,11 +29,4 @@ export default {
       return { content: entries.map(entry => JSON.stringify(entry)).join("\n") };
     });
   },
-} satisfies ToolDef<t.GetType<typeof Schema>>;
-
-async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
-  const dirpath = toolCall?.arguments?.dirPath || ".";
-  const isDir = await transport.isDirectory(signal, dirpath);
-  if(!isDir) throw new ToolError(`${dirpath} is not a directory`);
-  return null;
-}
+}));

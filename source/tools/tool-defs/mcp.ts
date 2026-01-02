@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 
@@ -118,7 +118,7 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default {
+export default defineTool(async () => ({
   Schema,
   ArgumentsSchema,
   validate: async () => null,
@@ -219,4 +219,4 @@ export default {
       throw new ToolError(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
     }
   },
-} satisfies ToolDef<t.GetType<typeof Schema>>;
+}));

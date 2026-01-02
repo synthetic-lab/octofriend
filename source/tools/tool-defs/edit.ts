@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, ToolDef } from "../common.ts";
+import { ToolError, attemptUntrackedRead, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
@@ -23,7 +23,7 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default {
+export default defineTool(async () => ({
   Schema, ArgumentsSchema, validate, DiffEdit,
   async run(signal, transport, call) {
     const { filePath } = call.arguments;
@@ -40,9 +40,7 @@ export default {
       content: "",
     };
   },
-} satisfies ToolDef<t.GetType<typeof Schema>> & {
-  DiffEdit: typeof DiffEdit,
-};
+}));
 
 async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
   await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
