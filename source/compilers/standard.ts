@@ -294,7 +294,7 @@ export const runAgent: Compiler = async ({
   const curl = generateCurlFrom({
     baseURL: model.baseUrl,
     model: model.model,
-    messages: messages,
+    messages,
     ...toolsParam,
   });
   return await handleKnownErrors(curl, async () => {
