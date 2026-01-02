@@ -1,4 +1,3 @@
-import { AutoCompactConfig, Config } from "../config.ts";
 import { sequenceId } from "../history.ts";
 import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
 import { toLlmIR } from "../ir/convert-history-ir.ts";
@@ -6,8 +5,7 @@ import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
-import { Transport } from "../transports/transport-common.ts";
+import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import { CompactionRequestError } from "../errors.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
@@ -47,10 +45,7 @@ export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): numb
 export function shouldAutoCompactHistory(
   model: ModelConfig,
   messages: LlmIR[],
-  autoCompactSettings?: AutoCompactConfig,
 ): boolean {
-  if(autoCompactSettings?.enabled === false) return false;
-
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex)
   const maxContextWindow = model.context;

@@ -5,7 +5,7 @@ import { StreamingXMLParser, tagged } from "../xml.ts";
 import {
   LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
 } from "../ir/llm-ir.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
@@ -263,12 +263,9 @@ async function handleKnownErrors(
 }
 
 export const runAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
+  model, apiKey, irs, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
-  const messages = await toLlmMessages(
-    windowedIR.ir,
-    systemPrompt,
-  );
+  const messages = await toLlmMessages(irs, systemPrompt);
 
   const toolDefs = tools || {};
   const toolsMap = Object.entries(toolDefs).map(([ name, tool ]) => {
@@ -314,7 +311,7 @@ export const runAgent: Compiler = async ({
     const res = await client.chat.completions.create({
       ...reasoning,
       model: model.model,
-      messages,
+      messages: messages,
       ...toolsParam,
       stream: true,
       stream_options: {
@@ -427,7 +424,7 @@ export const runAgent: Compiler = async ({
       trackTokens(model.model, "input", usage.input);
       trackTokens(model.model, "output", usage.output);
       if(!abortSignal.aborted) {
-        const previousTokens = countIRTokens(windowedIR.ir);
+        const previousTokens = countIRTokens(irs);
         tokenDelta = (usage.input + usage.output) - previousTokens;
       }
     }

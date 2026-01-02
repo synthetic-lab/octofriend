@@ -5,7 +5,7 @@ import { Compiler } from './compiler-interface.ts';
 import { LlmIR, ToolCallRequestSchema, AssistantMessage } from "../ir/llm-ir.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { countIRTokens } from "../ir/ir-windowing.ts";
+import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from './autocompact.ts';
@@ -256,12 +256,9 @@ JSON`;
 }
 
 export const runResponsesAgent: Compiler = async ({
-  model, apiKey, windowedIR, onTokens, abortSignal, systemPrompt, autofixJson, tools
+  model, apiKey, irs, onTokens, abortSignal, systemPrompt, autofixJson, tools
 }) => {
-  const messages = await toModelMessage(
-    windowedIR.ir,
-    systemPrompt,
-  );
+  const messages = await toModelMessage(irs, systemPrompt);
 
   // Convert tools to AI SDK format
   const toolDefs = tools || {};
@@ -392,7 +389,7 @@ export const runResponsesAgent: Compiler = async ({
     let tokenDelta = 0;
     if(usage.input !== 0 || usage.output !== 0) {
       if(!abortSignal.aborted) {
-        const previousTokens = countIRTokens(windowedIR.ir);
+        const previousTokens = countIRTokens(irs);
         tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
       }
     }

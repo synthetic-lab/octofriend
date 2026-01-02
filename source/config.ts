@@ -21,12 +21,6 @@ const McpServerConfigSchema = t.exact({
   env: t.optional(t.dict(t.str)),
 });
 
-const AutoCompactConfigSchema = t.exact({
-  enabled: t.bool,
-});
-
-export type AutoCompactConfig = t.GetType<typeof AutoCompactConfigSchema>
-
 const ModelConfigSchema = t.exact({
   type: t.optional(
     t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic")),
@@ -58,7 +52,6 @@ const ConfigSchema = t.exact({
   })),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
-  autoCompact: t.optional(AutoCompactConfigSchema),
   skills: t.optional(t.exact({
     paths: t.optional(t.array(t.str)),
   })),
