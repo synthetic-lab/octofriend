@@ -15,6 +15,7 @@ import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.t
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { throttledBuffer } from "./throttled-buffer.ts";
 
 export type RunArgs = {
   config: Config,
@@ -245,6 +246,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
 
+    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(100, set);
+
     try {
       const finish = await trajectoryArc({
         apiKey, model,
@@ -253,6 +256,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         abortSignal: abortController.signal,
         handler: {
           startResponse: () => {
+            throttle.flush();
             set({
               modeData: {
                 mode: "responding",
@@ -268,7 +272,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           responseProgress: event => {
             responseByteCount += event.delta.value.length;
-            set({
+            throttle.emit({
               modeData: {
                 mode: "responding",
                 inflightResponse: {
@@ -283,6 +287,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           startCompaction: () => {
+            throttle.flush();
             set({
               modeData: {
                 mode: "compacting",
@@ -298,7 +303,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           compactionProgress: event => {
             compactionByteCount += event.delta.value.length;
-            set({
+            throttle.emit({
               modeData: {
                 mode: "compacting",
                 inflightResponse: {
@@ -313,6 +318,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           compactionParsed: event => {
+            throttle.flush();
             const checkpointItem: CompactionCheckpointItem = {
               type: "compaction-checkpoint",
               id: sequenceId(),
@@ -322,6 +328,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           autofixingJson: () => {
+            throttle.flush();
             set({
               modeData: {
                 mode: "fix-json",
@@ -331,6 +338,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           autofixingDiff: () => {
+            throttle.flush();
             set({
               modeData: {
                 mode: "diff-apply",
@@ -340,10 +348,12 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           retryTool: event => {
+            throttle.flush();
             set({ history: [ ...historyCopy, ...outputToHistory(event.irs) ] });
           },
         },
       });
+      throttle.flush();
       historyCopy.push(...outputToHistory(finish.irs));
       set({ history: [ ...historyCopy ] });
       const finishReason = finish.reason;

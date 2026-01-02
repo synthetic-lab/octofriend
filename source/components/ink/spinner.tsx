@@ -36,4 +36,4 @@ function Spinner({type = 'dots'}: Props) {
 	return <Text>{spinner.frames[frame]}</Text>;
 }
 
-export default Spinner;
+export default React.memo(Spinner);
