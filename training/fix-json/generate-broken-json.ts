@@ -2,7 +2,6 @@ import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
 import json5 from "json5";
-import create from "../../source/tools/tool-defs/create.ts";
 import { fileURLToPath } from "url";
 import { fixJsonPrompt, JsonFixResponse } from "../../source/prompts/autofix-prompts.ts";
 import { genDiffs } from "../generate-edits.ts";
@@ -13,6 +12,7 @@ import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";
 import { generateJSON } from "./json-generator.ts";
+import { ArgumentsSchema as CreateArgumentsSchema } from "../../source/tools/tool-defs/create.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");
@@ -169,7 +169,7 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
       continue;
     }
 
-    const createEdit: t.GetType<typeof create.ArgumentsSchema> = {
+    const createEdit: t.GetType<typeof CreateArgumentsSchema> = {
       filePath: sourceFile,
       content: file,
     };

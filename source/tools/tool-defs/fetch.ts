@@ -21,7 +21,7 @@ const Schema = t.subtype({
  arguments: ArgumentsSchema,
 }).comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
 
-export default defineTool(async () => ({
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(signal, _, call, config, modelOverride) {

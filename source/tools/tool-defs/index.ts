@@ -8,4 +8,4 @@ export { default as fetch } from "./fetch.ts";
 export { default as append } from "./append.ts";
 export { default as prepend } from "./prepend.ts";
 export { default as rewrite } from "./rewrite.ts";
-export { default as skills } from "./skills.ts";
+export { default as skill } from "./skill.ts";

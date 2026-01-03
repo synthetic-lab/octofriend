@@ -277,6 +277,7 @@ function collapseToIR(
             path: path.resolve(prev.toolCall.function.arguments.filePath),
           }
         ];
+        case "skill":
         case "fetch":
         case "list":
         case "shell":

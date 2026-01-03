@@ -26,8 +26,11 @@ import {
   create as createTool,
   mcp,
   fetch as fetchTool,
+  skill,
   SKIP_CONFIRMATION,
 } from "./tools/index.ts";
+import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
+import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import SelectInput from "./components/ink/select-input.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
@@ -501,6 +504,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
           <Text color={themeColor}>{fn.arguments.filePath}</Text>
           <Text>?</Text>
         </Box>
+      case "skill":
       case "read":
       case "shell":
       case "fetch":
@@ -716,10 +720,17 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
     case "append": return <AppendToolRenderer item={item.tool.function} />
     case "prepend": return <PrependToolRenderer item={item.tool.function} />
     case "rewrite": return <RewriteToolRenderer item={item.tool.function} />
+    case "skill": return <SkillToolRenderer item={item.tool.function} />
   }
 }
 
-function AppendToolRenderer({ item }: { item: t.GetType<typeof append.Schema> }) {
+function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
+  return <Box>
+    <Text color="gray">Octo read the {item.arguments.skillName} skill</Text>
+  </Box>
+}
+
+function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
   const file = fsOld.readFileSync(filePath, "utf8");
   const lines = countLines(file);
@@ -729,7 +740,7 @@ function AppendToolRenderer({ item }: { item: t.GetType<typeof append.Schema> })
   </Box>
 }
 
-function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> }) {
+function FetchToolRenderer({ item }: { item: ToolSchemaFrom<typeof fetchTool> }) {
   const themeColor = useColor();
   return <Box>
 		<Text color="gray">{item.name}: </Text>
@@ -737,7 +748,7 @@ function FetchToolRenderer({ item }: { item: t.GetType<typeof fetchTool.Schema> 
 	</Box>
 }
 
-function ShellToolRenderer({ item }: { item: t.GetType<typeof shell.Schema> }) {
+function ShellToolRenderer({ item }: { item: ToolSchemaFrom<typeof shell> }) {
   const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
@@ -748,7 +759,7 @@ function ShellToolRenderer({ item }: { item: t.GetType<typeof shell.Schema> }) {
 	</Box>
 }
 
-function ReadToolRenderer({ item }: { item: t.GetType<typeof read.Schema> }) {
+function ReadToolRenderer({ item }: { item: ToolSchemaFrom<typeof read> }) {
   const themeColor = useColor();
   return <Box>
 		<Text color="gray">{item.name}: </Text>
@@ -756,7 +767,7 @@ function ReadToolRenderer({ item }: { item: t.GetType<typeof read.Schema> }) {
 	</Box>
 }
 
-function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
+function ListToolRenderer({ item }: { item: ToolSchemaFrom<typeof list> }) {
   const themeColor = useColor();
   return <Box>
 		<Text color="gray">{item.name}: </Text>
@@ -764,7 +775,7 @@ function ListToolRenderer({ item }: { item: t.GetType<typeof list.Schema> }) {
 	</Box>
 }
 
-function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
+function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>
@@ -778,7 +789,7 @@ function EditToolRenderer({ item }: { item: t.GetType<typeof edit.Schema> }) {
   </Box>
 }
 
-function PrependToolRenderer({ item }: { item: t.GetType<typeof prepend.Schema> }) {
+function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> }) {
   const { text, filePath } = item.arguments;
   return <Box flexDirection="column" gap={1}>
     <Text>Octo wants to add the following to the beginning of the file:</Text>
@@ -786,7 +797,7 @@ function PrependToolRenderer({ item }: { item: t.GetType<typeof prepend.Schema> 
   </Box>
 }
 
-function RewriteToolRenderer({ item }: { item: t.GetType<typeof rewrite.Schema> }) {
+function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath } = item.arguments;
   return <Box flexDirection="column" gap={1}>
     <Text>Octo wants to rewrite the file:</Text>
@@ -799,7 +810,7 @@ function RewriteToolRenderer({ item }: { item: t.GetType<typeof rewrite.Schema> 
 }
 
 function DiffEditRenderer({ item, filePath }: {
-  item: t.GetType<typeof edit.ArgumentsSchema>,
+  item: t.GetType<typeof EditArgumentSchema>,
   filePath: string,
 }) {
   return <Box flexDirection="column">
@@ -808,7 +819,7 @@ function DiffEditRenderer({ item, filePath }: {
   </Box>
 }
 
-function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema> }) {
+function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> }) {
   const themeColor = useColor();
   return <Box flexDirection="column" gap={1}>
     <Box>
@@ -822,7 +833,7 @@ function CreateToolRenderer({ item }: { item: t.GetType<typeof createTool.Schema
   </Box>
 }
 
-function McpToolRenderer({ item }: { item: t.GetType<typeof mcp.Schema> }) {
+function McpToolRenderer({ item }: { item: ToolSchemaFrom<typeof mcp> }) {
   const themeColor = useColor();
   return <Box flexDirection="column">
     <Box>

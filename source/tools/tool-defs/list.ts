@@ -19,7 +19,7 @@ async function validate(signal: AbortSignal, transport: Transport, toolCall: t.G
   return null;
 }
 
-export default defineTool(async () => ({
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema, validate,
   async run(abortSignal, transport, call) {
     const dirpath = call.arguments?.dirPath || (await transport.cwd(abortSignal));

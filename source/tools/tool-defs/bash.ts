@@ -24,7 +24,7 @@ const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export default defineTool(async () => ({
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(abortSignal, transport, call) {

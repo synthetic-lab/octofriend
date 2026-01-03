@@ -13,7 +13,7 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool(async () => ({
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema, validate,
   async run(signal, transport, call) {
     const { filePath } = call.arguments;

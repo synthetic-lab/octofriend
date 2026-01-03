@@ -16,6 +16,7 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
+import { loadTools } from "./tools/index.ts";
 
 export type RunArgs = {
   config: Config,
@@ -206,9 +207,10 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     });
 
+    const tools = await loadTools(transport, abortController.signal, config);
     try {
       const result = await runTool(
-        abortController.signal, transport, toolReq.function, config, modelOverride
+        abortController.signal, transport, tools, toolReq.function, config, modelOverride
       );
 
       const toolHistoryItem: HistoryItem = {

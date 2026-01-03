@@ -3,7 +3,7 @@ import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import {
-  AssistantMessage, LlmIR, ToolCallRequestSchema, AnthropicAssistantData
+  AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData
 } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
@@ -492,7 +492,7 @@ export const runAnthropicAgent: Compiler = async ({
 
 type ParseToolResult = {
   status: "success";
-  tool: t.GetType<typeof ToolCallRequestSchema>,
+  tool: ToolCallRequest,
 } | {
   status: "error";
   message: string

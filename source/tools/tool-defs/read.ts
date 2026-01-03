@@ -10,7 +10,7 @@ const Schema = t.subtype({
  arguments: ArgumentsSchema,
 }).comment("Reads file contents as UTF-8. Prefer this to Unix tools like `cat`");
 
-export default defineTool(async () => ({
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema,
   async validate(abortSignal, transport, toolCall) {
     await attemptUntrackedStat(transport, abortSignal, toolCall.arguments.filePath);
