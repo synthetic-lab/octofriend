@@ -1,19 +1,10 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
 import { defineTool, ToolDef } from "../common.ts";
-import { discoverSkills, getDefaultSkillsPath } from "../../skills/skills.ts";
+import { discoverSkills } from "../../skills/skills.ts";
 
 export default defineTool(async function(signal, transport, config) {
-  const skillsPaths: string[] = [];
-
-  if (config.skills?.paths && config.skills.paths.length > 0) {
-    skillsPaths.push(...config.skills.paths);
-  } else {
-    const defaultPath = await getDefaultSkillsPath(transport, signal);
-    skillsPaths.push(defaultPath);
-  }
-
-  const skills = await discoverSkills(transport, signal, skillsPaths);
+  const skills = await discoverSkills(transport, signal, config);
   if(skills.length === 0) return null;
 
   const skillDescriptions = JSON.stringify(

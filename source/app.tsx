@@ -59,6 +59,7 @@ type Props = {
   unchained: boolean,
   transport: Transport,
   inputHistory: InputHistory,
+  bootSkills: string[],
 };
 
 type StaticItem = {
@@ -75,6 +76,9 @@ type StaticItem = {
 } | {
   type: "history-item",
   item: HistoryItem,
+} | {
+  type: "boot-notification",
+  content: string,
 };
 
 function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
@@ -86,7 +90,9 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
-export default function App({ config, configPath, metadata, unchained, transport, updates, inputHistory }: Props) {
+export default function App({
+  config, configPath, metadata, unchained, transport, updates, inputHistory, bootSkills
+}: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
@@ -101,10 +107,17 @@ export default function App({ config, configPath, metadata, unchained, transport
     if(currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
 
+  const skillNotifs: string[] = [];
+  if(bootSkills.length > 0) {
+    skillNotifs.push(" ");
+    skillNotifs.push("Configured skills:");
+    skillNotifs.push(...bootSkills.map(s => `- ${s}`));
+  }
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
       { type: "version", metadata, config: currConfig },
+      ...(skillNotifs.map(s => ({ type: "boot-notification" as const, content: s }))),
       ...(updates ? [{ type: "updates" as const, updates }] : []),
       { type: "slogan" },
       ...toStaticItems(history),
@@ -582,6 +595,10 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
       <Text color="gray">Thanks for updating!</Text>
       <Text color="gray">See the full changelog by running: `octo changelog`</Text>
     </Box>
+  }
+
+  if(item.type === "boot-notification") {
+    return <Box marginLeft={1}><Text color="gray">{item.content}</Text></Box>
   }
 
   return <MessageDisplay item={item.item} />
