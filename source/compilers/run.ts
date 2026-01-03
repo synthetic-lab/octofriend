@@ -6,6 +6,7 @@ import { LlmIR } from "../ir/llm-ir.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as toolMap from "../tools/tool-defs/index.ts";
+import { LoadedTools } from "../tools/index.ts";
 
 export async function run({
   model, apiKey, messages, handlers, autofixJson, abortSignal, systemPrompt, tools
@@ -20,7 +21,7 @@ export async function run({
   },
   abortSignal: AbortSignal,
   systemPrompt?: () => Promise<string>,
-  tools?: Partial<typeof toolMap>,
+  tools?: Partial<LoadedTools>,
 }) {
   const runInternal = (() => {
     if(model.type == null || model.type === "standard") return runAgent;

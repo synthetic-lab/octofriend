@@ -2,6 +2,7 @@ import path from "path";
 import { parse as parseYaml } from "yaml";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
 import * as logger from "../logger.ts";
+import { Config } from "../config.ts";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const MAX_NAME_LENGTH = 64;
@@ -136,8 +137,16 @@ async function* walkDirectory(
 export async function discoverSkills(
   transport: Transport,
   signal: AbortSignal,
-  skillsPaths: string[]
+  config: Config,
 ): Promise<Skill[]> {
+  const skillsPaths = [];
+  if (config.skills?.paths && config.skills.paths.length > 0) {
+    skillsPaths.push(...config.skills.paths);
+  } else {
+    const defaultPath = await getDefaultSkillsPath(transport, signal);
+    skillsPaths.push(defaultPath);
+  }
+
   const skills: Skill[] = [];
   const seen = new Set<string>();
   const seenNames = new Set<string>();

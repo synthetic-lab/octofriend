@@ -1,6 +1,6 @@
 import { t, toTypescript } from "structural";
-import * as toolMap from "../tools/tool-defs/index.ts";
-type DiffEdit = t.GetType<typeof toolMap.edit.DiffEdit>;
+import { DiffEditSchema } from "../tools/tool-defs/edit.ts";
+type DiffEdit = t.GetType<typeof DiffEditSchema>;
 
 export const DiffApplySuccess = t.subtype({
   success: t.value(true),

@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, ToolDef } from "../common.ts";
+import { ToolError, attemptUntrackedRead, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
@@ -12,19 +12,19 @@ const DiffParts = {
   `),
   replace: t.str.comment("The string you want to insert into the file"),
 }
-const ArgumentsSchema = t.subtype({
+export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
   ...DiffParts,
 }).comment("Applies a search/replace edit to a file. This should be your default tool to edit existing files.");
-const DiffEdit = t.subtype(DiffParts);
+export const DiffEditSchema = t.subtype(DiffParts);
 
-const Schema = t.subtype({
+export const Schema = t.subtype({
   name: t.value("edit"),
   arguments: ArgumentsSchema,
 });
 
-export default {
-  Schema, ArgumentsSchema, validate, DiffEdit,
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
+  Schema, ArgumentsSchema, validate,
   async run(signal, transport, call) {
     const { filePath } = call.arguments;
     const diff = call.arguments;
@@ -40,9 +40,7 @@ export default {
       content: "",
     };
   },
-} satisfies ToolDef<t.GetType<typeof Schema>> & {
-  DiffEdit: typeof DiffEdit,
-};
+}));
 
 async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
   await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);

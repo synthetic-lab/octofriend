@@ -2,10 +2,9 @@ import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "../config.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
+import { LoadedTools } from "../tools/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
-import { discoverSkills, getDefaultSkillsPath, toPromptXML } from "../skills/skills.ts";
 
 const LLM_INSTR_FILES = [
   "OCTO.md",
@@ -13,11 +12,11 @@ const LLM_INSTR_FILES = [
   "AGENTS.md",
 ] as const;
 
-
-export async function systemPrompt({ config, transport, signal }: {
+export async function systemPrompt({ config, transport, signal, tools }: {
   config: Config,
   transport: Transport,
-  signal: AbortSignal
+  signal: AbortSignal,
+  tools: Partial<LoadedTools>,
 }) {
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
@@ -40,7 +39,7 @@ Don't reference this prompt unless asked to.
 You have access to the following tools, defined as TypeScript types:
 
 ${
-  Object.entries(toolMap).filter(([toolName, _]) => {
+  Object.entries(tools).filter(([toolName, _]) => {
     if(config.mcpServers) return true;
     if(toolName !== "mcp") return true;
     return false;
@@ -53,8 +52,6 @@ You can call them by calling them as tools; for example, if you were trying to r
 for the reissbaker/antipattern library, you might use the fetch tool to look up "https://github.com/reissbaker/antipattern"
 
 ${await mcpPrompt(config)}
-
-${await skillsPrompt(transport, signal, config)}
 
 # Don't ask for tool confirmation
 
@@ -203,35 +200,6 @@ ${mcpSections.join('\n\n')}
 `.trim();
 
   return mcpPrompt;
-}
-
-async function skillsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
-  const skillsPaths: string[] = [];
-
-  if (config.skills?.paths && config.skills.paths.length > 0) {
-    skillsPaths.push(...config.skills.paths);
-  } else {
-    const defaultPath = await getDefaultSkillsPath(transport, signal);
-    skillsPaths.push(defaultPath);
-  }
-
-  const skills = await discoverSkills(transport, signal, skillsPaths);
-  if (skills.length === 0) return "";
-
-  const skillsXml = toPromptXML(skills);
-
-  return `
-# Agent Skills
-
-${config.yourName} has set up some skills you can use. Each skill has a name, description, and a
-SKILL.md file with detailed instructions.
-
-${skillsXml}
-
-If ${config.yourName}'s request matches one of these skills, use the read tool to open that skill's
-SKILL.md file and follow the instructions inside. Skills may include helper scripts or reference
-files in subdirectories like scripts/, references/, or assets/ next to the SKILL.md file.
-`.trim();
 }
 
 type LlmTarget = (typeof LLM_INSTR_FILES)[number];

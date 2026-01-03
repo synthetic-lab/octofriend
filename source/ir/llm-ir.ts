@@ -1,13 +1,10 @@
-import { t } from "structural";
-import { ToolCallSchema } from "../tools/index.ts";
+import { ToolCall } from "../tools/index.ts";
 
-export const ToolCallRequestSchema = t.subtype({
-	type: t.value("function"),
-	function: ToolCallSchema,
-  toolCallId: t.str,
-});
-
-export type ToolCallRequest = t.GetType<typeof ToolCallRequestSchema>;
+export type ToolCallRequest = {
+	type: "function",
+	function: ToolCall,
+  toolCallId: string,
+}
 
 export type AnthropicAssistantData = {
   thinkingBlocks: Array<{

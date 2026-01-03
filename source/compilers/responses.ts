@@ -2,7 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
 import { t, toJSONSchema } from "structural";
 import { Compiler } from './compiler-interface.ts';
-import { LlmIR, ToolCallRequestSchema, AssistantMessage } from "../ir/llm-ir.ts";
+import { LlmIR, ToolCallRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
@@ -460,7 +460,7 @@ export const runResponsesAgent: Compiler = async ({
 
 type ParseToolResult = {
   status: "success";
-  tool: t.GetType<typeof ToolCallRequestSchema>,
+  tool: ToolCallRequest,
 } | {
   status: "error";
   message: string

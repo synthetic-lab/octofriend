@@ -1,13 +1,13 @@
 import OpenAI from "openai";
 import { t } from "structural";
 import { Config, assertKeyForModel } from "../config.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
+import { ArgumentsSchema as EditSchema } from "../tools/tool-defs/edit.ts";
 import {
   fixEditPrompt, fixJsonPrompt, JsonFixResponseSchema, DiffApplyResponse
 } from "../prompts/autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
 
-type Edit = t.GetType<typeof toolMap.edit.ArgumentsSchema>;
+type Edit = t.GetType<typeof EditSchema>;
 export async function autofixEdit(
   config: Config,
   file: string,

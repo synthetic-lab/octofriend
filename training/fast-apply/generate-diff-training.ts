@@ -1,7 +1,7 @@
 import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
-import edits from "../../source/tools/tool-defs/edit.ts";
+import { DiffEditSchema } from "../../source/tools/tool-defs/edit.ts";
 import { fileURLToPath } from "url";
 import { fixEditPrompt, DiffApplySuccess, DiffApplyFailure } from "../../source/prompts/autofix-prompts.ts";
 import { parseLines } from "../parse.ts";
@@ -220,7 +220,7 @@ function findChar(str: string, searchChar: string) {
   return indices;
 }
 
-function breakSearchStringRandomly(edit: t.GetType<typeof edits.DiffEdit>, file: string) {
+function breakSearchStringRandomly(edit: t.GetType<typeof DiffEditSchema>, file: string) {
   const breaker = pickRandom(breakFns);
   let result = breaker(edit.search);
   if(!file.includes(result)) return result;
