@@ -21,7 +21,7 @@ export async function loadTools(
     const toolDef = await toolMap[key](signal, transport, config);
     if(toolDef) {
       // @ts-ignore
-      loaded[key] = await toolMap[key](signal, transport, config);
+      loaded[key] = toolDef;
     }
   }));
 
