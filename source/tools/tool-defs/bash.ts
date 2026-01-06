@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -24,7 +24,7 @@ const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export default {
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(abortSignal, transport, call) {
@@ -37,4 +37,4 @@ export default {
       throw e;
     }
   },
-} satisfies ToolDef<t.GetType<typeof Schema>>;
+}));

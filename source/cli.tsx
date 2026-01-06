@@ -31,6 +31,8 @@ import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
 import { makeAutofixJson } from "./compilers/autofix.ts";
+import { discoverSkills } from "./skills/skills.ts";
+import { timeout } from "./signals.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -136,8 +138,11 @@ async function runMain(opts: {
       console.log("MCP server initialization complete.");
     }
 
+    const skills = await discoverSkills(opts.transport, timeout(5000), config);
+
 	  const { waitUntilExit } = render(
       <App
+        bootSkills={skills.map(s => s.name)}
         config={config}
         configPath={configPath}
         metadata={metadata}

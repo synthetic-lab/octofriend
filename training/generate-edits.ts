@@ -1,12 +1,12 @@
 import { t } from "structural";
 import parseGitDiff from "parse-git-diff";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
-import edits from "../source/tools/tool-defs/edit.ts";
+import { DiffEditSchema } from "../source/tools/tool-defs/edit.ts";
 import { parseLines } from "./parse.ts";
 import { asynctryexpr } from "../source/tryexpr.ts";
 
 export type Diff = {
-  edit: t.GetType<typeof edits.DiffEdit>,
+  edit: t.GetType<typeof DiffEditSchema>,
   file: string,
 };
 
@@ -31,7 +31,7 @@ export async function* genDiffs(gitDir: string): AsyncGenerator<Diff> {
         const searchLines = getFromRange(beforeLines, chunk.fromFileRange);
         const replaceLines = getFromRange(afterLines, chunk.toFileRange);
 
-        const edit: t.GetType<typeof edits.DiffEdit> = {
+        const edit: t.GetType<typeof DiffEditSchema> = {
           search: searchLines.join("\n"),
           replace: replaceLines.join("\n"),
         };

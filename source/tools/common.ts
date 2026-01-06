@@ -51,3 +51,17 @@ export type ToolDef<T> = {
     modelOverride: string | null,
   ) => Promise<ToolResult>,
 };
+
+export type ToolFactory<T> = (
+  signal: AbortSignal,
+  transport: Transport,
+  config: Config
+) => Promise<ToolDef<T> | null>;
+
+export function defineTool<T>(
+  factory: ToolFactory<T>
+): ToolFactory<T> {
+  return factory;
+}
+
+export type ToolSchemaFrom<T extends ToolFactory<any>> = T extends ToolFactory<infer T> ? T : never;

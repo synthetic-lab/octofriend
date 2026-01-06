@@ -3,7 +3,7 @@ import { t, toJSONSchema, toTypescript } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import {
-  LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequestSchema
+  LlmIR, AssistantMessage as AssistantIR, AgentResult, ToolCallRequest
 } from "../ir/llm-ir.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import { tryexpr } from "../tryexpr.ts";
@@ -489,7 +489,7 @@ export const runAgent: Compiler = async ({
 
 type ParseToolResult = {
   status: "success";
-  tool: t.GetType<typeof ToolCallRequestSchema>,
+  tool: ToolCallRequest,
 } | {
   status: "error";
   message: string

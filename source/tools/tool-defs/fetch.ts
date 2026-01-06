@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, ToolDef, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
@@ -21,7 +21,7 @@ const Schema = t.subtype({
  arguments: ArgumentsSchema,
 }).comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
 
-export default {
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema,
   validate: async () => null,
   async run(signal, _, call, config, modelOverride) {
@@ -54,4 +54,4 @@ export default {
       throw e;
     }
   },
-} satisfies ToolDef<t.GetType<typeof Schema>>;
+}));

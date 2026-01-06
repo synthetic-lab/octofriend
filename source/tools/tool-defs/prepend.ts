@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, ToolDef } from "../common.ts";
+import { attemptUntrackedRead, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -13,7 +13,7 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default {
+export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema, ArgumentsSchema, validate,
   async run(signal, transport, call) {
     const { filePath } = call.arguments;
@@ -29,7 +29,7 @@ export default {
       content: "",
     };
   },
-} satisfies ToolDef<t.GetType<typeof Schema>>;
+}));
 
 async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
   await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);

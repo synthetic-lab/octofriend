@@ -13,7 +13,7 @@ import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
+import { loadTools } from "../tools/index.ts";
 
 type AllTokenTypes = "reasoning"
                    | "content"
@@ -98,13 +98,7 @@ export async function trajectoryArc({
   const messagesCopy = [ ...messages ];
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
-
-  const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
-  const tools = hasMcp ? { ...toolMap } : (() => {
-    const toolsCopy: Partial<typeof toolMap> = { ...toolMap };
-    delete toolsCopy.mcp;
-    return toolsCopy;
-  })();
+  const tools = await loadTools(transport, abortSignal, config);
 
   const parsedCompaction = await maybeAutocompact({
     apiKey, model, abortSignal, autofixJson,
@@ -143,7 +137,7 @@ export async function trajectoryArc({
     },
     systemPrompt: async () => {
       return systemPrompt({
-        config, transport,
+        config, transport, tools,
         signal: abortSignal,
       });
     },
@@ -223,7 +217,7 @@ export async function trajectoryArc({
   }
 
   try {
-    await validateTool(abortSignal, transport, toolCall.function, config);
+    await validateTool(abortSignal, transport, tools, toolCall.function, config);
     return {
       type: "finish",
       reason: {
@@ -280,7 +274,7 @@ export async function trajectoryArc({
 
         if(fix) {
           // Validate that the edit applies before marking as fixed
-          await validateTool(abortSignal, transport, {
+          await validateTool(abortSignal, transport, tools, {
             name: "edit",
             arguments: fix,
           }, config);

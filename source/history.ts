@@ -1,6 +1,5 @@
-import { t } from "structural";
 import { ToolResult } from "./tools/common.ts";
-import { ToolCallRequestSchema, AnthropicAssistantData } from "./ir/llm-ir.ts";
+import { ToolCallRequest, AnthropicAssistantData } from "./ir/llm-ir.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint
@@ -8,7 +7,7 @@ export type SequenceIdTagged<T> = T & {
 
 export type ToolCallItem = SequenceIdTagged<{
 	type: "tool",
-	tool: t.GetType<typeof ToolCallRequestSchema>,
+	tool: ToolCallRequest,
 }>;
 
 export type ToolOutputItem = SequenceIdTagged<{
