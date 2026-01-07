@@ -35,7 +35,7 @@
 		"@ai-sdk/openai": "^2.0.4",
 		"@anthropic-ai/sdk": "^0.58.0",
 		"@commander-js/extra-typings": "^13.1.0",
-		"@modelcontextprotocol/sdk": "^1.0.1",
+		"@modelcontextprotocol/sdk": "^1.25.2",
 		"ai": "^5.0.5",
 		"antipattern": "^0.0.7",
 		"better-sqlite3": "^12.2.0",
