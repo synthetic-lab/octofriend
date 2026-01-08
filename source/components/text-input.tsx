@@ -81,8 +81,6 @@ export default function TextInput({
 		});
 	}, [originalValue, focus, showCursor]);
 
-	const cursorActualWidth = highlightPastedText ? cursorWidth : 0;
-
 	const value = mask ? mask.repeat(originalValue.length) : originalValue;
 	let renderedValue = value;
 	let renderedPlaceholder = placeholder ? chalk.grey(placeholder) : undefined;
@@ -96,19 +94,28 @@ export default function TextInput({
 
 		renderedValue = value.length > 0 ? '' : chalk.inverse(' ');
 
+		const lines = value.split('\n');
 		let i = 0;
 
-		for (const char of value) {
-			renderedValue +=
-				i >= renderCursorPosition - cursorActualWidth && i <= renderCursorPosition
-					? chalk.inverse(char)
-					: char;
+		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+			const line = lines[lineIndex];
 
-			i++;
-		}
+			for (const char of line) {
+				renderedValue += i === renderCursorPosition ? chalk.inverse(char) : char;
+				i++;
+			}
 
-		if (value.length > 0 && renderCursorPosition === value.length) {
-			renderedValue += chalk.inverse(' ');
+			if (
+        i === renderCursorPosition
+        && !(lineIndex === 0 && line.length === 0 && renderCursorPosition === 0)
+      ) {
+				renderedValue += chalk.inverse(' ');
+			}
+
+			if (lineIndex < lines.length - 1) {
+				renderedValue += '\n';
+				i++;
+			}
 		}
 	}
 
