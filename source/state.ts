@@ -248,7 +248,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
 
-    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(100, set);
+    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
 
     try {
       const finish = await trajectoryArc({
