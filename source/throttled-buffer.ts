@@ -2,8 +2,7 @@ export class ThrottledBuffer<T> {
   _buffer: T[] = [];
   _scheduled: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(readonly throttle: number, readonly _callback: (t: T) => any) {
-  }
+  constructor(readonly throttle: number, readonly _callback: (t: T) => any) {}
 
   emit(t: T) {
     this._buffer.push(t);
@@ -20,6 +19,10 @@ export class ThrottledBuffer<T> {
       this._callback(el);
     }
     this._buffer = [];
+    if(this._scheduled) {
+      clearTimeout(this._scheduled);
+      this._scheduled = null;
+    }
   }
 }
 
