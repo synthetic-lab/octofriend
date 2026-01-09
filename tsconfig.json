@@ -1,5 +1,5 @@
 {
-	"include": [ "source", "training" ],
+	"include": [ "source", "training", "*.ts" ],
   "exclude": [ "training/repos", "node_modules" ],
 	"compilerOptions": {
     "skipLibCheck": true,

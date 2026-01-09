@@ -1,0 +1,20 @@
+{
+  "presets": [
+    ["@babel/preset-typescript", {
+      "isTSX": true,
+      "allExtensions": true
+    }],
+    ["@babel/preset-react", {
+      "runtime": "automatic"
+    }]
+  ],
+  "plugins": [
+    "babel-plugin-react-compiler",
+    ["babel-plugin-replace-import-extension", {
+      "extMapping": {
+        ".ts": ".js",
+        ".tsx": ".js"
+      }
+    }]
+  ]
+}
