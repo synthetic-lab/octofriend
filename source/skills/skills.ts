@@ -140,11 +140,11 @@ export async function discoverSkills(
   config: Config,
 ): Promise<Skill[]> {
   const skillsPaths = [];
+  const defaultPaths = await getDefaultSkillsPaths(transport, signal);
+  skillsPaths.push(...defaultPaths);
+
   if (config.skills?.paths && config.skills.paths.length > 0) {
     skillsPaths.push(...config.skills.paths);
-  } else {
-    const defaultPath = await getDefaultSkillsPath(transport, signal);
-    skillsPaths.push(defaultPath);
   }
 
   const skills: Skill[] = [];
@@ -219,10 +219,14 @@ export function toPromptXML(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-export async function getDefaultSkillsPath(
+async function getDefaultSkillsPaths(
   transport: Transport,
   signal: AbortSignal
-): Promise<string> {
+): Promise<string[]> {
+  const paths: string[] = [];
   const home = await getEnvVar(signal, transport, "HOME", 5000);
-  return path.join(home, ".config/agents/skills");
+  paths.push(path.join(home, ".config/agents/skills"));
+  const pwd = await transport.cwd(signal);
+  paths.push(path.join(pwd, ".agents", "skills"));
+  return paths;
 }

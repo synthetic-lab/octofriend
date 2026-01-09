@@ -102,6 +102,67 @@ everywhere, you can add an `OCTO.md` to your project, as well as a global
 If you don't want to clutter your home directory, you can also add a global
 rules file in `~/.config/octofriend/OCTO.md`.
 
+## Skills
+
+Octo supports the [Agent Skills](https://agentskills.io/) spec for giving
+reusable context-dependent instructions. If you want to give special
+instructions for Octo to do code reviews, for example, you might write a code
+review skill file, and Octo will intelligently load the skill when it needs to
+do code reviews. You can find the full skill spec on the [Agent Skills
+website](https://agentskills.io), but they're essentially just tagged Markdown
+with optional scripts. Here's a very simple code review skill you might use:
+
+```markdown
+---
+name: "pr-review"
+description: "Review Github pull requests"
+---
+To load a Github pull request, run the fetch tool twice:
+
+
+## First fetch
+First, load the URL for the PR to understand the author's intent.
+
+Your fetch tool does not execute JavaScript. Note that parts of the Github UI
+may fail without JS; for example, loading comments might say:
+
+    UH OH!
+    There was an error while loading"
+
+This is okay and expected. Don't worry about that.
+
+## Second fetch: load the diff
+To load the diff for the PR, fetch the PR URL with a `.diff`
+attached to the end. For example, to review
+`https://github.com/synthetic-lab/octofriend/pull/66`, you should fetch:
+
+`https://github.com/synthetic-lab/octofriend/pull/66.diff`
+
+The diff is the most important part. The author may be incorrect, or have the
+right idea but the wrong implementation. Focus on whether there are any bugs or
+unexpected behavior.
+```
+
+We automatically detect skills in the following places:
+
+* `~/.config/agents/skills`, for global skill definitions
+* `.agents/skills`, for skills relative to the current directory Octo is
+  working in. For example, if your company has special guidelines for agents,
+  you can distribute them with your company's repo in an `.agents/skills`
+  directory.
+
+If there are more directories you want Octo to discover skills from, you can
+add them to your `~/.config/octofriend/octofriend.json5` config file like so:
+
+
+```javascript
+skills: {
+  paths: [
+    // a list of directory paths containing skills
+  ],
+},
+```
+
 ## Connecting Octo to MCP servers
 
 Octo can do a lot out of the box — pretty much anything is possible with enough
