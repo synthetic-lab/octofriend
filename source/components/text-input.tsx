@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Text, useInput } from 'ink';
 import chalk from 'chalk';
 import { useVimKeyHandler } from './vim-mode.tsx';
+import { useEmacsKeyHandler } from './emacs-mode.tsx';
 
 type Props = {
 	readonly placeholder?: string;
@@ -62,6 +63,9 @@ export default function TextInput({
 		vimMode,
 		setVimMode || (() => {})
 	);
+
+	// Create Emacs handler
+	const emacsHandler = useEmacsKeyHandler();
 
 	// Correct cursor position if dependencies change or text is shortened.
 	useEffect(() => {
@@ -170,87 +174,30 @@ export default function TextInput({
 				return;
 			}
 
+			// Try Emacs handler
+			const emacsResult = emacsHandler.handle(input, key, cursorPosition, currentValue.length, currentValue, showCursor);
+			if (emacsResult.consumed) {
+				if (emacsResult.newValue !== undefined) {
+					onChange(emacsResult.newValue);
+				}
+				if (emacsResult.newCursorPosition !== undefined) {
+					const valueLength = emacsResult.newValue !== undefined ? emacsResult.newValue.length : currentValue.length;
+					const newCursorOffset = emacsResult.newCursorPosition - valueLength;
+					cursorOffsetRef.current = newCursorOffset;
+					cursorWidthRef.current = 0;
+					setState({
+						cursorOffset: newCursorOffset,
+						cursorWidth: 0,
+					});
+				}
+				return;
+			}
+
 			let nextCursorPosition = cursorPosition;
 			let nextValue = currentValue;
 			let nextCursorWidth = 0;
 
-			if (key.ctrl && input === 'a') {
-				nextCursorPosition = 0;
-			} else if (key.ctrl && input === 'e') {
-				nextCursorPosition = currentValue.length;
-			} else if (key.ctrl && input === 'b') {
-				if (showCursor && cursorPosition > 0) {
-					nextCursorPosition = cursorPosition - 1;
-				}
-			} else if (key.ctrl && input === 'f') {
-				if (showCursor && cursorPosition < currentValue.length) {
-					nextCursorPosition = cursorPosition + 1;
-				}
-			} else if (key.meta && input === 'b') {
-				if (showCursor && cursorPosition > 0) {
-					let wordStart = cursorPosition;
-					while (wordStart > 0 && /\s/.test(currentValue[wordStart - 1])) {
-						wordStart--;
-					}
-					while (wordStart > 0 && !/\s/.test(currentValue[wordStart - 1])) {
-						wordStart--;
-					}
-					nextCursorPosition = wordStart;
-				}
-			} else if (key.meta && input === 'f') {
-				if (showCursor && cursorPosition < currentValue.length) {
-					let wordEnd = cursorPosition;
-					while (wordEnd < currentValue.length && /\s/.test(currentValue[wordEnd])) {
-						wordEnd++;
-					}
-					while (wordEnd < currentValue.length && !/\s/.test(currentValue[wordEnd])) {
-						wordEnd++;
-					}
-					nextCursorPosition = wordEnd;
-				}
-			} else if (key.ctrl && input === 'w') {
-				if (cursorPosition > 0) {
-					let wordStart = cursorPosition;
-					while (wordStart > 0 && /\s/.test(currentValue[wordStart - 1])) {
-						wordStart--;
-					}
-					while (wordStart > 0 && !/\s/.test(currentValue[wordStart - 1])) {
-						wordStart--;
-					}
-					nextValue = currentValue.slice(0, wordStart) + currentValue.slice(cursorPosition);
-					nextCursorPosition = wordStart;
-				}
-			} else if (key.ctrl && input === 'h') {
-				if (cursorPosition > 0) {
-					nextValue =
-						currentValue.slice(0, cursorPosition - 1) +
-						currentValue.slice(cursorPosition, currentValue.length);
-
-					nextCursorPosition = cursorPosition - 1;
-				}
-			} else if (key.ctrl && input === 'd') {
-				if (cursorPosition < currentValue.length) {
-					nextValue =
-						currentValue.slice(0, cursorPosition) +
-						currentValue.slice(cursorPosition + 1, currentValue.length);
-				}
-			} else if (key.meta && input === 'd') {
-				if (cursorPosition < currentValue.length) {
-					let wordEnd = cursorPosition;
-					while (wordEnd < currentValue.length && /\s/.test(currentValue[wordEnd])) {
-						wordEnd++;
-					}
-					while (wordEnd < currentValue.length && !/\s/.test(currentValue[wordEnd])) {
-						wordEnd++;
-					}
-					nextValue = currentValue.slice(0, cursorPosition) + currentValue.slice(wordEnd);
-				}
-			} else if (key.ctrl && input === 'k') {
-				nextValue = currentValue.slice(0, cursorPosition);
-			} else if (key.ctrl && input === 'u') {
-				nextValue = currentValue.slice(cursorPosition);
-				nextCursorPosition = 0;
-			} else if (key.leftArrow) {
+			if (key.leftArrow) {
 				if (showCursor) {
 					nextCursorPosition--;
 				}
