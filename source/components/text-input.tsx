@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Text, useInput } from 'ink';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { Text, useInput, Box, DOMElement, measureElement } from 'ink';
 import chalk from 'chalk';
 import { useVimKeyHandler } from './vim-mode.tsx';
 import { useEmacsKeyHandler } from './emacs-mode.tsx';
+import { wrapTextWithMapping } from '../text-wrap.ts';
 
 type Props = {
 	readonly placeholder?: string;
@@ -36,6 +37,8 @@ export default function TextInput({
 		cursorWidth: 0,
 	});
 	const [isInitializing, setIsInitializing] = useState(true);
+	const [measuredWidth, setMeasuredWidth] = useState(0);
+	const containerRef = useRef<DOMElement>(null);
 
 	const {cursorOffset, cursorWidth} = state;
 	const valueRef = useRef(originalValue);
@@ -48,6 +51,28 @@ export default function TextInput({
 		const timer = setTimeout(() => setIsInitializing(false), 0);
 		return () => clearTimeout(timer);
 	}, []);
+
+  function handleElementSize() {
+		if(containerRef.current) {
+			const dimensions = measureElement(containerRef.current);
+			setMeasuredWidth(dimensions.width);
+    }
+  }
+	// Measure container width on layout
+	useLayoutEffect(() => {
+    handleElementSize();
+	});
+
+  useEffect(() => {
+    const handleResize = () => {
+      setTimeout(handleElementSize, 0);
+    };
+    process.stdout.on('resize', handleResize);
+
+    return () => {
+      process.stdout.off('resize', handleResize);
+    };
+  }, []);
 
 	useEffect(() => {
 		valueRef.current = originalValue;
@@ -86,7 +111,12 @@ export default function TextInput({
 	}, [originalValue, focus, showCursor]);
 
 	const value = mask ? mask.repeat(originalValue.length) : originalValue;
-	let renderedValue = value;
+
+	// Wrap text to measured width
+	const { wrapped, originalToWrapped } = wrapTextWithMapping(value, measuredWidth);
+	const wrappedCursorPosition = originalToWrapped[renderCursorPosition] ?? renderCursorPosition;
+
+	let renderedValue = wrapped;
 	let renderedPlaceholder = placeholder ? chalk.grey(placeholder) : undefined;
 
 	// Fake mouse cursor, because it's too inconvenient to deal with actual cursor and ansi escapes
@@ -96,22 +126,22 @@ export default function TextInput({
 				? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
 				: chalk.inverse(' ');
 
-		renderedValue = value.length > 0 ? '' : chalk.inverse(' ');
+		renderedValue = wrapped.length > 0 ? '' : chalk.inverse(' ');
 
-		const lines = value.split('\n');
+		const lines = wrapped.split('\n');
 		let i = 0;
 
 		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
 			const line = lines[lineIndex];
 
 			for (const char of line) {
-				renderedValue += i === renderCursorPosition ? chalk.inverse(char) : char;
+				renderedValue += i === wrappedCursorPosition ? chalk.inverse(char) : char;
 				i++;
 			}
 
 			if (
-        i === renderCursorPosition
-        && !(lineIndex === 0 && line.length === 0 && renderCursorPosition === 0)
+        i === wrappedCursorPosition
+        && !(lineIndex === 0 && line.length === 0 && wrappedCursorPosition === 0)
       ) {
 				renderedValue += chalk.inverse(' ');
 			}
@@ -252,13 +282,24 @@ export default function TextInput({
 		{isActive: focus},
 	);
 
+  const toRender = (placeholder
+    ? value.length > 0
+      ? renderedValue
+      : renderedPlaceholder
+    : renderedValue) || "";
+
+  const lines = toRender.split("\n");
 	return (
-		<Text>
-			{placeholder
-				? value.length > 0
-					? renderedValue
-					: renderedPlaceholder
-				: renderedValue}
-		</Text>
+		<Box ref={containerRef} flexGrow={1} flexDirection='column'>
+      {
+        lines.map((line, index) => {
+			    return <Box height={1}>
+            <Text key={`line-${index}`}>
+              {line}
+            </Text>
+          </Box>
+        })
+      }
+		</Box>
 	);
 }
