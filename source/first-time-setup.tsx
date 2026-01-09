@@ -3,6 +3,7 @@ import { Box, Text, useInput, useApp } from "ink";
 import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
+import { execSync } from "child_process";
 import TextInput from "./components/text-input.tsx";
 import { Config } from "./config.ts";
 import { useColor } from "./theme.ts";
@@ -16,6 +17,16 @@ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { recommendedModel } from "./providers.ts";
+import { Platform, getPlatform } from "./platform.ts";
+
+function isBashAvailable(): boolean {
+  try {
+    execSync('bash --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 type SetupStep = {
   step: "welcome",
@@ -346,10 +357,58 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
   </CenteredBox>
 }
 
+function WindowsSetupInstructions({ bashAvailable }: { bashAvailable: boolean | null }) {
+  const app = useApp();
+
+  useLayoutEffect(() => {
+    if(bashAvailable === false) {
+      app.exit();
+    }
+  }, [bashAvailable, app]);
+
+  if(bashAvailable == null) {
+    return <Box marginTop={1} flexDirection="column"><Text>Detecting Windows shell environment...</Text></Box>
+  }
+  return <Box marginTop={1} flexDirection="column">
+    <Text bold>Windows Setup:</Text>
+    <Box marginTop={1} marginLeft={1} flexDirection="column">
+      <Text>Octo requires a bash shell to run. Install one of the following:</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text>1. <Text bold>Git Bash</Text></Text>
+        <Text>   Download: https://git-scm.com/downloads</Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column">
+        <Text>2. <Text bold>WSL</Text> (Windows Subsystem for Linux)</Text>
+        <Text>   Setup: https://learn.microsoft.com/en-us/windows/wsl/install</Text>
+      </Box>
+    </Box>
+    <Box marginTop={1}>
+      <Text color="gray">
+        Note: After installation, run Octo from Git Bash or WSL, not Command Prompt or PowerShell.
+      </Text>
+    </Box>
+  </Box>
+}
+
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+  const platform = getPlatform();
+  const [bashAvailable, setBashAvailable] = useState<boolean | null>(null);
+
+  useLayoutEffect(() => {
+    if(platform === Platform.windows) {
+      setBashAvailable(isBashAvailable());
+    }
+  }, [platform]);
+
   useInput((_, key) => {
     if(key.return) onContinue();
   });
+
+  if(platform === Platform.windows) {
+    if(bashAvailable !== true) {
+      return <WindowsSetupInstructions bashAvailable={bashAvailable} />
+    }
+  }
 
   return <CenteredBox>
     <MenuHeader title="Welcome to Octo!" />
