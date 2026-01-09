@@ -13,12 +13,12 @@
 		"node": ">=16"
 	},
 	"scripts": {
-		"build": "tsc",
-		"dev": "tsc --watch",
-		"exec": "tsc && node ./dist/source/cli.js",
+		"build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
+		"dev": "npm run build -- --watch",
+		"exec": "npm run build && node ./dist/source/cli.js",
 		"test": "vitest",
 		"test:run": "vitest run",
-		"prepublishOnly": "tsc"
+		"prepublishOnly": "npm run build"
 	},
 	"files": [
 		"dist",
@@ -49,12 +49,12 @@
 		"figures": "^6.1.0",
 		"highlight.js": "^11.11.1",
 		"html-to-text": "^9.0.5",
-		"ink": "^6.3.0",
+		"ink": "^6.6.0",
 		"json-schema": "^0.4.0",
 		"json5": "^2.2.3",
 		"marked": "^16.2.0",
 		"openai": "^5.9.0",
-		"react": "^19.0.0",
+		"react": "^19.2.3",
 		"string-width": "^7.2.0",
 		"structural": "^0.0.29",
 		"to-rotated": "^1.0.0",
@@ -62,17 +62,25 @@
 		"zustand": "^5.0.3"
 	},
 	"devDependencies": {
+		"@babel/cli": "^7.28.3",
+		"@babel/core": "^7.28.5",
+		"@babel/preset-react": "^7.28.5",
+		"@babel/preset-typescript": "^7.28.5",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/figlet": "^1.7.0",
 		"@types/html-to-text": "^9.0.4",
 		"@types/json-schema": "^7.0.15",
 		"@types/node": "^22.13.13",
-		"@types/react": "^19.0.0",
+		"@types/react": "^19.2.3",
+		"@vitejs/plugin-react": "^5.1.2",
+		"babel-plugin-react-compiler": "^1.0.0",
+		"babel-plugin-replace-import-extension": "^1.1.5",
 		"drizzle-kit": "^0.31.4",
 		"ink-testing-library": "^3.0.0",
 		"parse-git-diff": "^0.0.19",
 		"tsx": "^4.20.3",
 		"typescript": "^5.8.3",
+		"vite": "^7.3.1",
 		"vitest": "^3.2.4"
 	},
 	"overrides": {

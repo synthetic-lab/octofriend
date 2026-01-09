@@ -172,7 +172,7 @@ function DiffSet({
   const gutterWidth = 3 + lineNrWidth;
   return <Box flexDirection="row">
     <LineSegments
-      value={oldRemoved ? oldValue?.trim() : oldValue}
+      value={oldValue}
       language={language}
       gutterWidth={gutterWidth}
       lineNrWidth={lineNrWidth}
@@ -187,7 +187,7 @@ function DiffSet({
       }
     </LineSegments>
     <LineSegments
-      value={newAdded ? newValue?.trim() : newValue}
+      value={newValue}
       language={language}
       gutterWidth={gutterWidth}
       lineNrWidth={lineNrWidth}
@@ -275,6 +275,16 @@ function LineSegments({
   </Box>
 }
 
+// Calculate visual width of whitespace (spaces = 1, tabs = 2)
+function whitespaceWidth(ws: string): number {
+  let width = 0;
+  for (const char of ws) {
+    if (char === "\t") width += 2;
+    else width += 1;
+  }
+  return width;
+}
+
 function MaybeHighlighted({ line, language, originalText, currentLine, startLine }: {
   line: string | undefined,
   language: string,
@@ -298,9 +308,6 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
     const originalLines = originalText.split("\n");
 
     if(relativeLineNum >= originalLines.length) {
-      console.error(originalLines);
-      console.error("Current overall line", currentLine);
-      console.error("Relative line", relativeLineNum);
       throw new Error(`Impossible relative line count: ${relativeLineNum} vs original ${originalLines.length}`);
     }
 
@@ -310,17 +317,17 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
 
 
   if(language == "txt") {
-    if(matchedLine) return <Text>{matchedLine[0]}{matchedLine[1]}{matchedLine[2]}</Text>
+    if(matchedLine) {
+      return <Box paddingLeft={whitespaceWidth(matchedLine[0])}>
+        <Text>{matchedLine[1]}{matchedLine[2]}</Text>
+      </Box>
+    }
     return <Text>{ " " }</Text>
   }
 
   if(matchedLine) {
-    return <Box flexDirection="row">
-      <Text>{ matchedLine[0] }</Text>
-      <Box flexDirection="column">
-        <HighlightedCode code={matchedLine[1]} language={language} />
-      </Box>
-      <Text>{ matchedLine[2] }</Text>
+    return <Box flexDirection="column" paddingLeft={whitespaceWidth(matchedLine[0])}>
+      <HighlightedCode code={matchedLine[1]} language={language} />
     </Box>
   }
 
