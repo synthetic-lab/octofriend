@@ -12,7 +12,7 @@ import {
 import { HistoryItem, ToolCallItem } from "./history.ts";
 import Loading  from "./components/loading.tsx";
 import { Header } from "./header.tsx";
-import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
+import { UnchainedContext, useColor, useUnchained, color } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import {
@@ -50,6 +50,7 @@ import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 
 type Props = {
 	config: Config;
@@ -90,10 +91,15 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
+type TempNotificationSetter = (message: string) => void;
+const TempNotificationContext = createContext<TempNotificationSetter>(() => {});
+
 export default function App({
   config, configPath, metadata, unchained, transport, updates, inputHistory, bootSkills
 }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
+  const [ isUnchained, setIsUnchained ] = useState(unchained);
+  const [ tempNotification, setTempNotification ] = useState<string | null>(null);
   const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -113,6 +119,18 @@ export default function App({
     skillNotifs.push("Configured skills:");
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
+  useShiftTab(() => {
+    setIsUnchained(prev => {
+      const newValue = !prev;
+      if(newValue) {
+        setTempNotification("Octo runs tools automatically.");
+      } else {
+        setTempNotification("Octo asks permission before running tools.");
+      }
+      return newValue;
+    });
+  });
+
   const staticItems: StaticItem[] = useMemo(() => {
     return [
       { type: "header" },
@@ -127,37 +145,43 @@ export default function App({
 	return <SetConfigContext.Provider value={setCurrConfig}>
     <ConfigPathContext.Provider value={configPath}>
       <ConfigContext.Provider value={currConfig}>
-        <UnchainedContext.Provider value={unchained}>
-          <TransportContext.Provider value={transport}>
-            <ExitOnDoubleCtrlC>
-              <TerminalSizeTracker>
-                <Box flexDirection="column" width="100%" height="100%">
-                  <Static items={staticItems}>
+        <UnchainedContext.Provider value={isUnchained}>
+          <TempNotificationContext.Provider value={setTempNotification}>
+            <TransportContext.Provider value={transport}>
+              <ExitOnDoubleCtrlC>
+                <TerminalSizeTracker>
+                  <Box flexDirection="column" width="100%" height="100%">
+                    <Static items={staticItems}>
+                      {
+                        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                      }
+                    </Static>
                     {
-                      (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
+                      (modeData.mode === "responding" || modeData.mode === "compacting") &&
+                        (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                        <MessageDisplay item={modeData.inflightResponse} />
                     }
-                  </Static>
-                  {
-                    (modeData.mode === "responding" || modeData.mode === "compacting") &&
-                      (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                      <MessageDisplay item={modeData.inflightResponse} />
-                  }
-                  <BottomBar inputHistory={inputHistory} metadata={metadata} />
-                </Box>
-              </TerminalSizeTracker>
-            </ExitOnDoubleCtrlC>
-          </TransportContext.Provider>
+                    <BottomBar inputHistory={inputHistory} metadata={metadata} tempNotification={tempNotification} />
+                  </Box>
+                </TerminalSizeTracker>
+              </ExitOnDoubleCtrlC>
+            </TransportContext.Provider>
+          </TempNotificationContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
     </ConfigPathContext.Provider>
   </SetConfigContext.Provider>
 }
 
-function BottomBar({ inputHistory, metadata }: {
+function BottomBar({ inputHistory, metadata, tempNotification }: {
   inputHistory: InputHistory
   metadata: Metadata,
+  tempNotification: string | null,
 }) {
+  const TEMP_NOTIFICATION_DURATION = 5000;
+
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
+  const [ displayedTempNotification, setDisplayedTempNotification ] = useState<string | null>(null);
   const themeColor = useColor();
   const ctrlCPressed = useCtrlCPressed();
   const { modeData } = useAppStore(
@@ -179,10 +203,23 @@ function BottomBar({ inputHistory, metadata }: {
     });
   }, [ metadata ]);
 
+  useEffect(() => {
+    if(tempNotification) {
+      setDisplayedTempNotification(tempNotification);
+      const timer = setTimeout(() => {
+        setDisplayedTempNotification(null);
+      }, TEMP_NOTIFICATION_DURATION);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [tempNotification]);
+
   if(modeData.mode === "menu") return <Menu />
 
+  const unchained = useUnchained();
+
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent inputHistory={inputHistory} />
+    <BottomBarContent inputHistory={inputHistory} tempNotification={displayedTempNotification} />
     <Box
       width="100%"
       justifyContent="space-between"
@@ -190,9 +227,16 @@ function BottomBar({ inputHistory, metadata }: {
       flexShrink={0}
       flexGrow={1}
     >
-      <Text color={themeColor}>
-        { ctrlCPressed && "Press Ctrl+C again to exit." }
-      </Text>
+      <Box>
+        <Text color={themeColor}>
+          { ctrlCPressed && "Press Ctrl+C again to exit." }
+        </Text>
+        { !ctrlCPressed && (
+          <Text color={unchained ? themeColor : "gray"}>
+            { unchained ? "⚡ UNCHAINED MODE" : "Collaboration mode" } <Text dimColor>(Shift+Tab to toggle)</Text>
+          </Text>
+        )}
+      </Box>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
   </Box>
@@ -214,7 +258,10 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+function BottomBarContent({ inputHistory, tempNotification }: {
+  inputHistory: InputHistory,
+  tempNotification: string | null,
+}) {
   const config = useConfig();
   const transport = useContext(TransportContext);
 	const [ query, setQuery ] = useState("");
@@ -329,7 +376,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
   return <Box flexDirection="column">
     <Box marginLeft={1} justifyContent="flex-end">
-      <Text color="gray">(Press ESC to enter the menu)</Text>
+      {tempNotification ? (
+        <Text color={color}>{tempNotification}</Text>
+      ) : (
+        <Text color="gray">(Press ESC to enter the menu)</Text>
+      )}
     </Box>
     <InputWithHistory
       inputHistory={inputHistory}
@@ -567,8 +618,9 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
   const themeColor = useColor();
   const model = useModel();
+  const unchained = useUnchained();
 
-  if(item.type === "header") return <Header />;
+  if(item.type === "header") return <Header unchained={unchained} />;
   if(item.type === "version") {
     return <Box marginTop={1} marginLeft={1} flexDirection="column">
       <Text color="gray">
