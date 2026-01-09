@@ -172,7 +172,9 @@ export default function TextInput({
 						onChange(vimResult.newValue);
 					}
 					if (vimResult.newCursorPosition !== undefined) {
-						const valueLength = vimResult.newValue !== undefined ? vimResult.newValue.length : currentValue.length;
+						const valueLength = vimResult.newValue !== undefined ?
+              vimResult.newValue.length : currentValue.length;
+
 						const newCursorOffset = vimResult.newCursorPosition - valueLength;
 						cursorOffsetRef.current = newCursorOffset;
 						cursorWidthRef.current = 0;
@@ -205,13 +207,16 @@ export default function TextInput({
 			}
 
 			// Try Emacs handler
-			const emacsResult = emacsHandler.handle(input, key, cursorPosition, currentValue.length, currentValue, showCursor);
+			const emacsResult = emacsHandler.handle(
+        input, key, cursorPosition, currentValue.length, currentValue, showCursor
+      );
 			if (emacsResult.consumed) {
 				if (emacsResult.newValue !== undefined) {
 					onChange(emacsResult.newValue);
 				}
 				if (emacsResult.newCursorPosition !== undefined) {
-					const valueLength = emacsResult.newValue !== undefined ? emacsResult.newValue.length : currentValue.length;
+					const valueLength = emacsResult.newValue !== undefined ?
+            emacsResult.newValue.length : currentValue.length;
 					const newCursorOffset = emacsResult.newCursorPosition - valueLength;
 					cursorOffsetRef.current = newCursorOffset;
 					cursorWidthRef.current = 0;
