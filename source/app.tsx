@@ -118,13 +118,13 @@ export default function App({
   }
   useShiftTab(() => {
     setIsUnchained(prev => {
-      const newValue = !prev;
-      if(newValue) {
+      const unchained = !prev;
+      if(unchained) {
         setTempNotification("Octo runs tools automatically.");
       } else {
         setTempNotification("Octo asks permission before running tools.");
       }
-      return newValue;
+      return unchained;
     });
   });
 
