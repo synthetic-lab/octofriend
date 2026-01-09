@@ -96,7 +96,7 @@ export default function App({
 }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const [ isUnchained, setIsUnchained ] = useState(unchained);
-  const [ tempNotification, setTempNotification ] = useState<string | null>(null);
+  const [ tempNotification, setTempNotification ] = useState<React.ReactNode | null>(null);
   const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -120,9 +120,9 @@ export default function App({
     setIsUnchained(prev => {
       const unchained = !prev;
       if(unchained) {
-        setTempNotification("⚡ UNCHAINED MODE: Octo runs edits and shell commands automatically");
+        setTempNotification(<><Text bold>⚡ UNCHAINED MODE:</Text> Octo runs edits and shell commands automatically</>);
       } else {
-        setTempNotification("Collaboration mode: Octo asks permission before running edits or shell commands");
+        setTempNotification(<><Text bold>Collaboration mode:</Text> Octo asks permission before running edits or shell commands</>);
       }
       return unchained;
     });
@@ -171,12 +171,12 @@ export default function App({
 function BottomBar({ inputHistory, metadata, tempNotification }: {
   inputHistory: InputHistory
   metadata: Metadata,
-  tempNotification: string | null,
+  tempNotification: React.ReactNode | null,
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
 
   const [ versionCheck, setVersionCheck ] = useState("Checking for updates...");
-  const [ displayedTempNotification, setDisplayedTempNotification ] = useState<string | null>(null);
+  const [ displayedTempNotification, setDisplayedTempNotification ] = useState<React.ReactNode | null>(null);
   const themeColor = useColor();
   const ctrlCPressed = useCtrlCPressed();
   const { modeData } = useAppStore(
@@ -255,7 +255,7 @@ async function getLatestVersion() {
 
 function BottomBarContent({ inputHistory, tempNotification }: {
   inputHistory: InputHistory,
-  tempNotification: string | null,
+  tempNotification: React.ReactNode | null,
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
