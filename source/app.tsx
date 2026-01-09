@@ -91,9 +91,6 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
-type TempNotificationSetter = (message: string) => void;
-const TempNotificationContext = createContext<TempNotificationSetter>(() => {});
-
 export default function App({
   config, configPath, metadata, unchained, transport, updates, inputHistory, bootSkills
 }: Props) {
@@ -146,27 +143,25 @@ export default function App({
     <ConfigPathContext.Provider value={configPath}>
       <ConfigContext.Provider value={currConfig}>
         <UnchainedContext.Provider value={isUnchained}>
-          <TempNotificationContext.Provider value={setTempNotification}>
-            <TransportContext.Provider value={transport}>
-              <ExitOnDoubleCtrlC>
-                <TerminalSizeTracker>
-                  <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems}>
-                      {
-                        (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
-                      }
-                    </Static>
+          <TransportContext.Provider value={transport}>
+            <ExitOnDoubleCtrlC>
+              <TerminalSizeTracker>
+                <Box flexDirection="column" width="100%" height="100%">
+                  <Static items={staticItems}>
                     {
-                      (modeData.mode === "responding" || modeData.mode === "compacting") &&
-                        (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
-                        <MessageDisplay item={modeData.inflightResponse} />
+                      (item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />
                     }
-                    <BottomBar inputHistory={inputHistory} metadata={metadata} tempNotification={tempNotification} />
-                  </Box>
-                </TerminalSizeTracker>
-              </ExitOnDoubleCtrlC>
-            </TransportContext.Provider>
-          </TempNotificationContext.Provider>
+                  </Static>
+                  {
+                    (modeData.mode === "responding" || modeData.mode === "compacting") &&
+                      (modeData.inflightResponse.reasoningContent || modeData.inflightResponse.content) &&
+                      <MessageDisplay item={modeData.inflightResponse} />
+                  }
+                  <BottomBar inputHistory={inputHistory} metadata={metadata} tempNotification={tempNotification} />
+                </Box>
+              </TerminalSizeTracker>
+            </ExitOnDoubleCtrlC>
+          </TransportContext.Provider>
         </UnchainedContext.Provider>
       </ConfigContext.Provider>
     </ConfigPathContext.Provider>
