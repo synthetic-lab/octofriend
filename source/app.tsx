@@ -120,9 +120,9 @@ export default function App({
     setIsUnchained(prev => {
       const unchained = !prev;
       if(unchained) {
-        setTempNotification("Octo runs tools automatically.");
+        setTempNotification("⚡ UNCHAINED MODE: Octo runs edits and shell commands automatically");
       } else {
-        setTempNotification("Octo asks permission before running tools.");
+        setTempNotification("Collaboration mode: Octo asks permission before running edits or shell commands");
       }
       return unchained;
     });
