@@ -27,6 +27,7 @@
 		"noUncheckedSideEffectImports": true,
 		"forceConsistentCasingInFileNames": true,
     "rewriteRelativeImportExtensions": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "noEmit": true
 	}
 }
