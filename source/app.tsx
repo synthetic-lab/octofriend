@@ -91,12 +91,14 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
 
 const TransportContext = createContext<Transport>(new LocalTransport());
 
+const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
+const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands"
 export default function App({
   config, configPath, metadata, unchained, transport, updates, inputHistory, bootSkills
 }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const [ isUnchained, setIsUnchained ] = useState(unchained);
-  const [ tempNotification, setTempNotification ] = useState<React.ReactNode | null>(null);
+  const [ tempNotification, setTempNotification ] = useState<string | null>(CHAINED_NOTIF);
   const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -120,9 +122,9 @@ export default function App({
     setIsUnchained(prev => {
       const unchained = !prev;
       if(unchained) {
-        setTempNotification(<>Octo runs edits and shell commands automatically</>);
+        setTempNotification(UNCHAINED_NOTIF);
       } else {
-        setTempNotification(<>Octo asks permission before running edits or shell commands</>);
+        setTempNotification(CHAINED_NOTIF);
       }
       return unchained;
     });
@@ -171,7 +173,7 @@ export default function App({
 function BottomBar({ inputHistory, metadata, tempNotification }: {
   inputHistory: InputHistory
   metadata: Metadata,
-  tempNotification: React.ReactNode | null,
+  tempNotification: string | null,
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
 
@@ -222,23 +224,25 @@ function BottomBar({ inputHistory, metadata, tempNotification }: {
       flexShrink={0}
       flexGrow={1}
     >
-      <Box>
+      <Box height={1}>
         <Text color={themeColor}>
           { ctrlCPressed && "Press Ctrl+C again to exit." }
         </Text>
         { !ctrlCPressed && (
-          <Text color={unchained ? themeColor : "gray"}>
-            { unchained ? "⚡ UNCHAINED MODE" : "Collaboration mode" } <Text dimColor>(Shift+Tab to toggle)</Text>
+          <Text color={"gray"}>
+            { unchained ? "⚡ Unchained mode" : "Collaboration mode" } <Text dimColor>(Shift+Tab to toggle)</Text>
           </Text>
         )}
       </Box>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
-    {displayedTempNotification && (
-      <Box width="100%" flexShrink={0}>
-        <Text color={themeColor} wrap="wrap">{displayedTempNotification}</Text>
-      </Box>
-    )}
+    <Box height={1}>
+      {displayedTempNotification && (
+        <Box width="100%" flexShrink={0}>
+          <Text color={themeColor} wrap="wrap">{displayedTempNotification}</Text>
+        </Box>
+      )}
+    </Box>
   </Box>
 }
 
