@@ -98,7 +98,9 @@ export default function App({
 }: Props) {
   const [ currConfig, setCurrConfig ] = useState(config);
   const [ isUnchained, setIsUnchained ] = useState(unchained);
-  const [ tempNotification, setTempNotification ] = useState<string | null>(CHAINED_NOTIF);
+  const [ tempNotification, setTempNotification ] = useState<string | null>(
+    isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF
+  );
   const { history, modeData, setVimMode } = useAppStore(
     useShallow(state => ({
       history: state.history,
