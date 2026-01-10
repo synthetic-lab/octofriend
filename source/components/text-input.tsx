@@ -32,36 +32,36 @@ export default function TextInput({
 	vimMode = 'NORMAL',
 	setVimMode,
 }: Props) {
-	const [state, setState] = useState({
-		cursorOffset: 0,
-		cursorWidth: 0,
-	});
-	const [isInitializing, setIsInitializing] = useState(true);
-	const [measuredWidth, setMeasuredWidth] = useState(0);
-	const containerRef = useRef<DOMElement>(null);
+  const [state, setState] = useState({
+    cursorOffset: 0,
+    cursorWidth: 0,
+  });
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const containerRef = useRef<DOMElement>(null);
 
-	const {cursorOffset, cursorWidth} = state;
-	const valueRef = useRef(originalValue);
-	const cursorOffsetRef = useRef(cursorOffset);
-	const cursorWidthRef = useRef(cursorWidth);
-	const renderCursorPosition = originalValue.length + cursorOffset;
+  const {cursorOffset, cursorWidth} = state;
+  const valueRef = useRef(originalValue);
+  const cursorOffsetRef = useRef(cursorOffset);
+  const cursorWidthRef = useRef(cursorWidth);
+  const renderCursorPosition = originalValue.length + cursorOffset;
 
-	useEffect(() => {
-		// useInput sets rawMode to true and then false on mount;
-		const timer = setTimeout(() => setIsInitializing(false), 0);
-		return () => clearTimeout(timer);
-	}, []);
+  useEffect(() => {
+    // useInput sets rawMode to true and then false on mount;
+    const timer = setTimeout(() => setIsInitializing(false), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   function handleElementSize() {
-		if(containerRef.current) {
-			const dimensions = measureElement(containerRef.current);
-			setMeasuredWidth(dimensions.width);
+    if(containerRef.current) {
+      const dimensions = measureElement(containerRef.current);
+      setMeasuredWidth(dimensions.width);
     }
   }
-	// Measure container width on layout
-	useLayoutEffect(() => {
+  // Measure container width on layout
+  useLayoutEffect(() => {
     handleElementSize();
-	});
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -74,218 +74,218 @@ export default function TextInput({
     };
   }, []);
 
-	useEffect(() => {
-		valueRef.current = originalValue;
-	}, [originalValue]);
+  useEffect(() => {
+    valueRef.current = originalValue;
+  }, [originalValue]);
 
-	useEffect(() => {
-		cursorOffsetRef.current = cursorOffset;
-		cursorWidthRef.current = cursorWidth;
-	}, [cursorOffset, cursorWidth]);
+  useEffect(() => {
+    cursorOffsetRef.current = cursorOffset;
+    cursorWidthRef.current = cursorWidth;
+  }, [cursorOffset, cursorWidth]);
 
-	// Create Vim handler
-	const vimHandler = useVimKeyHandler(
-		vimMode,
-		setVimMode || (() => {})
-	);
+  // Create Vim handler
+  const vimHandler = useVimKeyHandler(
+    vimMode,
+    setVimMode || (() => {})
+  );
 
-	// Create Emacs handler
-	const emacsHandler = useEmacsKeyHandler();
+  // Create Emacs handler
+  const emacsHandler = useEmacsKeyHandler();
 
-	// Correct cursor position if dependencies change or text is shortened.
-	useEffect(() => {
-		setState(previousState => {
-			if (!focus || !showCursor) {
-				return previousState;
-			}
+  // Correct cursor position if dependencies change or text is shortened.
+  useEffect(() => {
+    setState(previousState => {
+      if (!focus || !showCursor) {
+        return previousState;
+      }
 
-			if (previousState.cursorOffset === 0) {
-				return {
-					cursorOffset: 0,
-					cursorWidth: 0,
-				};
-			}
+      if (previousState.cursorOffset === 0) {
+        return {
+          cursorOffset: 0,
+          cursorWidth: 0,
+        };
+      }
 
-			return previousState;
-		});
-	}, [originalValue, focus, showCursor]);
+      return previousState;
+    });
+  }, [originalValue, focus, showCursor]);
 
-	const value = mask ? mask.repeat(originalValue.length) : originalValue;
+  const value = mask ? mask.repeat(originalValue.length) : originalValue;
 
-	// Wrap text to measured width
-	const { wrapped, originalToWrapped } = wrapTextWithMapping(value, measuredWidth);
-	const wrappedCursorPosition = originalToWrapped[renderCursorPosition] ?? renderCursorPosition;
+  // Wrap text to measured width
+  const { wrapped, originalToWrapped } = wrapTextWithMapping(value, measuredWidth);
+  const wrappedCursorPosition = originalToWrapped[renderCursorPosition] ?? renderCursorPosition;
 
-	let renderedValue = wrapped;
-	let renderedPlaceholder = placeholder ? chalk.grey(placeholder) : undefined;
+  let renderedValue = wrapped;
+  let renderedPlaceholder = placeholder ? chalk.grey(placeholder) : undefined;
 
-	// Fake mouse cursor, because it's too inconvenient to deal with actual cursor and ansi escapes
-	if (showCursor && focus) {
-		renderedPlaceholder =
-			placeholder.length > 0
-				? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
-				: chalk.inverse(' ');
+  // Fake mouse cursor, because it's too inconvenient to deal with actual cursor and ansi escapes
+  if (showCursor && focus) {
+    renderedPlaceholder =
+      placeholder.length > 0
+        ? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
+        : chalk.inverse(' ');
 
-		renderedValue = wrapped.length > 0 ? '' : chalk.inverse(' ');
+    renderedValue = wrapped.length > 0 ? '' : chalk.inverse(' ');
 
-		const lines = wrapped.split('\n');
-		let i = 0;
+    const lines = wrapped.split('\n');
+    let i = 0;
 
-		for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-			const line = lines[lineIndex];
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
 
-			for (const char of line) {
-				renderedValue += i === wrappedCursorPosition ? chalk.inverse(char) : char;
-				i++;
-			}
+      for (const char of line) {
+        renderedValue += i === wrappedCursorPosition ? chalk.inverse(char) : char;
+        i++;
+      }
 
-			if (
+      if (
         i === wrappedCursorPosition
         && !(lineIndex === 0 && line.length === 0 && wrappedCursorPosition === 0)
       ) {
-				renderedValue += chalk.inverse(' ');
-			}
+        renderedValue += chalk.inverse(' ');
+      }
 
-			if (lineIndex < lines.length - 1) {
-				renderedValue += '\n';
-				i++;
-			}
-		}
-	}
+      if (lineIndex < lines.length - 1) {
+        renderedValue += '\n';
+        i++;
+      }
+    }
+  }
 
-	useInput(
-		(input, key) => {
-			if (isInitializing) return;
+  useInput(
+    (input, key) => {
+      if (isInitializing) return;
 
-			const currentValue = valueRef.current;
-			const previousCursorOffset = cursorOffsetRef.current;
-			const previousCursorWidth = cursorWidthRef.current;
-			let cursorPosition = currentValue.length + previousCursorOffset;
+      const currentValue = valueRef.current;
+      const previousCursorOffset = cursorOffsetRef.current;
+      const previousCursorWidth = cursorWidthRef.current;
+      let cursorPosition = currentValue.length + previousCursorOffset;
 
-			// Try Vim handler first if Vim mode is enabled
-			if (vimEnabled) {
-				const vimResult = vimHandler.handle(input, key, cursorPosition, currentValue.length, currentValue);
-				if (vimResult.consumed) {
-					// Vim consumed the key - check if we need to update value or cursor position
-					if (vimResult.newValue !== undefined) {
-						// Vim modified the text value (e.g., 'x' deleted a character)
-						onChange(vimResult.newValue);
-					}
-					if (vimResult.newCursorPosition !== undefined) {
-						const valueLength = vimResult.newValue !== undefined ?
+      // Try Vim handler first if Vim mode is enabled
+      if (vimEnabled) {
+        const vimResult = vimHandler.handle(input, key, cursorPosition, currentValue.length, currentValue);
+        if (vimResult.consumed) {
+          // Vim consumed the key - check if we need to update value or cursor position
+          if (vimResult.newValue !== undefined) {
+            // Vim modified the text value (e.g., 'x' deleted a character)
+            onChange(vimResult.newValue);
+          }
+          if (vimResult.newCursorPosition !== undefined) {
+            const valueLength = vimResult.newValue !== undefined ?
               vimResult.newValue.length : currentValue.length;
 
-						const newCursorOffset = vimResult.newCursorPosition - valueLength;
-						cursorOffsetRef.current = newCursorOffset;
-						cursorWidthRef.current = 0;
-						setState({
-							cursorOffset: newCursorOffset,
-							cursorWidth: 0,
-						});
-					}
-					return;  // Vim consumed the key
-				}
-				// Vim didn't consume it, continue with normal processing
-			}
+            const newCursorOffset = vimResult.newCursorPosition - valueLength;
+            cursorOffsetRef.current = newCursorOffset;
+            cursorWidthRef.current = 0;
+            setState({
+              cursorOffset: newCursorOffset,
+              cursorWidth: 0,
+            });
+          }
+          return;  // Vim consumed the key
+        }
+        // Vim didn't consume it, continue with normal processing
+      }
 
-			if (
-				key.upArrow ||
-				key.downArrow ||
-				(key.ctrl && input === 'c') ||
-				key.tab ||
-				(key.shift && key.tab)
-			) {
-				return;
-			}
+      if (
+        key.upArrow ||
+        key.downArrow ||
+        (key.ctrl && input === 'c') ||
+        key.tab ||
+        (key.shift && key.tab)
+      ) {
+        return;
+      }
 
-			if (key.return) {
-				if (onSubmit) {
-					onSubmit(valueRef.current);
-				}
+      if (key.return) {
+        if (onSubmit) {
+          onSubmit(valueRef.current);
+        }
 
-				return;
-			}
+        return;
+      }
 
-			// Try Emacs handler
-			const emacsResult = emacsHandler.handle(
+      // Try Emacs handler
+      const emacsResult = emacsHandler.handle(
         input, key, cursorPosition, currentValue.length, currentValue, showCursor
       );
-			if (emacsResult.consumed) {
-				if (emacsResult.newValue !== undefined) {
-					onChange(emacsResult.newValue);
-				}
-				if (emacsResult.newCursorPosition !== undefined) {
-					const valueLength = emacsResult.newValue !== undefined ?
+      if (emacsResult.consumed) {
+        if (emacsResult.newValue !== undefined) {
+          onChange(emacsResult.newValue);
+        }
+        if (emacsResult.newCursorPosition !== undefined) {
+          const valueLength = emacsResult.newValue !== undefined ?
             emacsResult.newValue.length : currentValue.length;
-					const newCursorOffset = emacsResult.newCursorPosition - valueLength;
-					cursorOffsetRef.current = newCursorOffset;
-					cursorWidthRef.current = 0;
-					setState({
-						cursorOffset: newCursorOffset,
-						cursorWidth: 0,
-					});
-				}
-				return;
-			}
+          const newCursorOffset = emacsResult.newCursorPosition - valueLength;
+          cursorOffsetRef.current = newCursorOffset;
+          cursorWidthRef.current = 0;
+          setState({
+            cursorOffset: newCursorOffset,
+            cursorWidth: 0,
+          });
+        }
+        return;
+      }
 
-			let nextCursorPosition = cursorPosition;
-			let nextValue = currentValue;
-			let nextCursorWidth = 0;
+      let nextCursorPosition = cursorPosition;
+      let nextValue = currentValue;
+      let nextCursorWidth = 0;
 
-			if (key.leftArrow) {
-				if (showCursor) {
-					nextCursorPosition--;
-				}
-			} else if (key.rightArrow) {
-				if (showCursor) {
-					nextCursorPosition++;
-				}
-			} else if (key.backspace || key.delete) {
-				if (cursorPosition > 0) {
-					nextValue =
-						currentValue.slice(0, cursorPosition - 1) +
-						currentValue.slice(cursorPosition, currentValue.length);
+      if (key.leftArrow) {
+        if (showCursor) {
+          nextCursorPosition--;
+        }
+      } else if (key.rightArrow) {
+        if (showCursor) {
+          nextCursorPosition++;
+        }
+      } else if (key.backspace || key.delete) {
+        if (cursorPosition > 0) {
+          nextValue =
+            currentValue.slice(0, cursorPosition - 1) +
+            currentValue.slice(cursorPosition, currentValue.length);
 
-					nextCursorPosition--;
-				}
-			} else {
-				nextValue =
-					currentValue.slice(0, cursorPosition) +
-					input +
-					currentValue.slice(cursorPosition, currentValue.length);
+          nextCursorPosition--;
+        }
+      } else {
+        nextValue =
+          currentValue.slice(0, cursorPosition) +
+          input +
+          currentValue.slice(cursorPosition, currentValue.length);
 
-				nextCursorPosition += input.length;
+        nextCursorPosition += input.length;
 
-				if (input.length > 1) {
-					nextCursorWidth = input.length;
-				}
-			}
+        if (input.length > 1) {
+          nextCursorWidth = input.length;
+        }
+      }
 
-			if (cursorPosition < 0 || nextCursorPosition < 0) {
-				nextCursorPosition = 0;
-			}
+      if (cursorPosition < 0 || nextCursorPosition < 0) {
+        nextCursorPosition = 0;
+      }
 
-			if (nextCursorPosition > nextValue.length) {
-				nextCursorPosition = nextValue.length;
-			}
+      if (nextCursorPosition > nextValue.length) {
+        nextCursorPosition = nextValue.length;
+      }
 
-			const nextCursorOffset = nextCursorPosition - nextValue.length;
-			if (nextCursorOffset !== previousCursorOffset || nextCursorWidth !== previousCursorWidth) {
-				cursorOffsetRef.current = nextCursorOffset;
-				cursorWidthRef.current = nextCursorWidth;
-				setState({
-					cursorOffset: nextCursorOffset,
-					cursorWidth: nextCursorWidth,
-				});
-			}
+      const nextCursorOffset = nextCursorPosition - nextValue.length;
+      if (nextCursorOffset !== previousCursorOffset || nextCursorWidth !== previousCursorWidth) {
+        cursorOffsetRef.current = nextCursorOffset;
+        cursorWidthRef.current = nextCursorWidth;
+        setState({
+          cursorOffset: nextCursorOffset,
+          cursorWidth: nextCursorWidth,
+        });
+      }
 
-			if (nextValue !== currentValue) {
-				valueRef.current = nextValue;
-				onChange(nextValue);
-			}
-		},
-		{isActive: focus},
-	);
+      if (nextValue !== currentValue) {
+        valueRef.current = nextValue;
+        onChange(nextValue);
+      }
+      },
+      {isActive: focus},
+  );
 
   const toRender = (placeholder
     ? value.length > 0
@@ -294,17 +294,17 @@ export default function TextInput({
     : renderedValue) || "";
 
   const lines = toRender.split("\n");
-	return (
-		<Box ref={containerRef} flexGrow={1} flexDirection='column'>
+  return (
+    <Box ref={containerRef} flexGrow={1} flexDirection='column'>
       {
         lines.map((line, index) => {
-			    return <Box height={1}>
+          return <Box height={1}>
             <Text key={`line-${index}`}>
               {line}
             </Text>
           </Box>
         })
       }
-		</Box>
-	);
+    </Box>
+  );
 }
