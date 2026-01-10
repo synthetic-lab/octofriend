@@ -120,9 +120,9 @@ export default function App({
     setIsUnchained(prev => {
       const unchained = !prev;
       if(unchained) {
-        setTempNotification(<><Text bold>⚡ UNCHAINED MODE:</Text> Octo runs edits and shell commands automatically</>);
+        setTempNotification(<>Octo runs edits and shell commands automatically</>);
       } else {
-        setTempNotification(<><Text bold>Collaboration mode:</Text> Octo asks permission before running edits or shell commands</>);
+        setTempNotification(<>Octo asks permission before running edits or shell commands</>);
       }
       return unchained;
     });
@@ -214,7 +214,7 @@ function BottomBar({ inputHistory, metadata, tempNotification }: {
   const unchained = useUnchained();
 
   return <Box flexDirection="column" width="100%">
-    <BottomBarContent inputHistory={inputHistory} tempNotification={displayedTempNotification} />
+    <BottomBarContent inputHistory={inputHistory} />
     <Box
       width="100%"
       justifyContent="space-between"
@@ -234,6 +234,11 @@ function BottomBar({ inputHistory, metadata, tempNotification }: {
       </Box>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
+    {displayedTempNotification && (
+      <Box width="100%" flexShrink={0}>
+        <Text color={themeColor} wrap="wrap">{displayedTempNotification}</Text>
+      </Box>
+    )}
   </Box>
 }
 
@@ -253,9 +258,8 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ inputHistory, tempNotification }: {
+function BottomBarContent({ inputHistory }: {
   inputHistory: InputHistory,
-  tempNotification: React.ReactNode | null,
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
@@ -371,11 +375,7 @@ function BottomBarContent({ inputHistory, tempNotification }: {
 
   return <Box flexDirection="column">
     <Box marginLeft={1} justifyContent="flex-end">
-      {tempNotification ? (
-        <Text color={color}>{tempNotification}</Text>
-      ) : (
-        <Text color="gray">(Press ESC to enter the menu)</Text>
-      )}
+      <Text color="gray">(Press ESC to enter the menu)</Text>
     </Box>
     <InputWithHistory
       inputHistory={inputHistory}
