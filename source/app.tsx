@@ -238,7 +238,7 @@ function BottomBar({ inputHistory, metadata, tempNotification }: {
       </Box>
       <Text color={themeColor}>{versionCheck}</Text>
     </Box>
-    <Box height={1}>
+    <Box minHeight={1}>
       {displayedTempNotification && (
         <Box width="100%" flexShrink={0}>
           <Text color={themeColor} wrap="wrap">{displayedTempNotification}</Text>
