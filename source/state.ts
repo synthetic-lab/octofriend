@@ -17,6 +17,14 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
+import { PermissionsData, WhitelistType } from "./tools/permissions/index.ts";
+import { type ToolPermissionInfo } from "./tools/permissions/tool-pattern-extractor.ts";
+
+import {
+  createWhitelist,
+  isWhitelisted,
+  addToWhitelist,
+} from "./tools/permissions/whitelist.ts";
 import { loadTools } from "./tools/index.ts";
 
 export type RunArgs = {
@@ -26,80 +34,65 @@ export type RunArgs = {
 
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
-  modeData:
-    | {
-        mode: "input";
-        vimMode: "NORMAL" | "INSERT";
-      }
-    | {
-        mode: "responding";
-        inflightResponse: InflightResponseType;
-        abortController: AbortController;
-      }
-    | {
-        mode: "tool-request";
-        toolReq: ToolCallRequest;
-      }
-    | {
-        mode: "error-recovery";
-      }
-    | {
-        mode: "payment-error";
-        error: string;
-      }
-    | {
-        mode: "rate-limit-error";
-        error: string;
-      }
-    | {
-        mode: "request-error";
-        error: string;
-        curlCommand: string | null;
-      }
-    | {
-        mode: "compaction-error";
-        error: string;
-        curlCommand: string | null;
-      }
-    | {
-        mode: "diff-apply";
-        abortController: AbortController;
-      }
-    | {
-        mode: "fix-json";
-        abortController: AbortController;
-      }
-    | {
-        mode: "compacting";
-        inflightResponse: InflightResponseType;
-        abortController: AbortController;
-      }
-    | {
-        mode: "menu";
-      }
-    | {
-        mode: "tool-waiting";
-        abortController: AbortController;
-      };
-  modelOverride: string | null;
-  byteCount: number;
-  history: Array<HistoryItem>;
-  input: (args: RunArgs & { query: string }) => Promise<void>;
-  runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCallId: string) => void;
-  abortResponse: () => void;
-  toggleMenu: () => void;
-  openMenu: () => void;
-  closeMenu: () => void;
-  setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
-  setModelOverride: (m: string) => void;
-  retryFrom: (
-    mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
-    args: RunArgs,
-  ) => Promise<void>;
-  notify: (notif: string) => void;
-  _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  _runAgent: (args: RunArgs) => Promise<void>;
+  modeData: {
+    mode: "input",
+    vimMode: "NORMAL" | "INSERT",
+  } | {
+    mode: "responding",
+    inflightResponse: InflightResponseType,
+    abortController: AbortController,
+  } | {
+    mode: "tool-request",
+    toolReq: ToolCallRequest,
+  } | {
+    mode: "error-recovery",
+  } | {
+    mode: "payment-error",
+    error: string,
+  } | {
+    mode: "rate-limit-error",
+    error: string,
+  } | {
+    mode: "request-error",
+    error: string,
+    curlCommand: string | null,
+  } | {
+    mode: "compaction-error",
+    error: string,
+    curlCommand: string | null,
+  } | {
+    mode: "diff-apply",
+    abortController: AbortController,
+  } | {
+    mode: "fix-json",
+    abortController: AbortController,
+  } | {
+    mode: "compacting",
+    inflightResponse: InflightResponseType,
+    abortController: AbortController,
+  } | {
+    mode: "menu",
+  } | {
+    mode: "tool-waiting",
+    abortController: AbortController,
+  },
+  modelOverride: string | null,
+  byteCount: number,
+  history: Array<HistoryItem>,
+  whitelist: PermissionsData,
+  input: (args: RunArgs & { query: string }) => Promise<void>,
+  runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>,
+  rejectTool: (toolCallId: string) => void,
+  abortResponse: () => void,
+  toggleMenu: () => void,
+  setVimMode: (vimMode: "INSERT" | "NORMAL") => void,
+  setModelOverride: (m: string) => void,
+  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error", args: RunArgs) => Promise<void>,
+  notify: (notif: string) => void,
+  addToWhitelist: (tool: { type: WhitelistType; pattern: string }) => void,
+  isWhitelisted: (tool: { type: WhitelistType; value: string }) => boolean,
+  _maybeHandleAbort: (signal: AbortSignal) => boolean,
+  _runAgent: (args: RunArgs) => Promise<void>,
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -110,6 +103,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
   byteCount: 0,
+  whitelist: createWhitelist(),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -221,6 +215,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       ],
     });
+  },
+
+  addToWhitelist: (tool: Pick<ToolPermissionInfo, 'type' | 'pattern'>) => {
+    const currentWhitelist = get().whitelist;
+    const newWhitelist = addToWhitelist(currentWhitelist, tool);
+    set({ whitelist: newWhitelist });
+  },
+
+  isWhitelisted: (tool: { type: WhitelistType; value: string }) => {
+    return isWhitelisted(get().whitelist, tool);
   },
 
   runTool: async ({ config, toolReq, transport }) => {

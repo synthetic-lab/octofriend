@@ -38,7 +38,7 @@ import {
   mcp,
   fetch as fetchTool,
   skill,
-  SKIP_CONFIRMATION,
+  SKIP_CONFIRMATION_TOOLS as SKIP_CONFIRMATION,
 } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
@@ -65,6 +65,7 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
+import { extractToolPermissionInfo, type ToolPermissionInfo } from "./tools/permissions/index.ts";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
@@ -581,19 +582,49 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
-function ToolRequestRenderer({
-  toolReq,
-  config,
-  transport,
-}: {
-  toolReq: ToolCallRequest;
+const ToolRequestItemComponent = React.memo(({ isSelected = false, label, commandPrefix, formattedSuffix }: {
+  isSelected?: boolean,
+  label: string,
+  commandPrefix?: string,
+  formattedSuffix?: { text: string; bold?: boolean }[]
+}) => {
+  const themeColor = useColor();
+
+  if (formattedSuffix) {
+    return <Text color={isSelected ? themeColor : undefined}>
+      {label}
+      {formattedSuffix.map((part, index) => (
+        <Text key={index} bold={part.bold}>
+          {part.text}
+        </Text>
+      ))}
+    </Text>;
+  }
+
+  if (commandPrefix) {
+    const parts = label.split(commandPrefix);
+
+    return <Text color={isSelected ? themeColor : undefined}>
+      {parts[0]}
+      <Text bold>{commandPrefix}</Text>
+      {parts[1]}
+    </Text>;
+  }
+
+  return <Text color={isSelected ? themeColor : undefined}>{label}</Text>;
+});
+
+function ToolRequestRenderer({ toolReq, config, transport }: {
+  toolReq: ToolCallRequest
 } & RunArgs) {
   const themeColor = useColor();
-  const { runTool, rejectTool } = useAppStore(
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
-    })),
+      isWhitelisted: state.isWhitelisted,
+      addToWhitelist: state.addToWhitelist,
+    }))
   );
   const unchained = useUnchained();
 
@@ -629,45 +660,63 @@ function ToolRequestRenderer({
     }
   })();
 
-  const items = [
+  const tool = extractToolPermissionInfo(toolReq);
+  const isToolWhitelisted = isWhitelisted(tool);
+
+  type SelectItem = {
+    label: string;
+    value: string;
+    formattedSuffix?: { text: string; bold?: boolean }[];
+    tool?: ToolPermissionInfo;
+  };
+
+  const items: SelectItem[] = [
     {
       label: "Yes",
       value: "yes",
     },
+    ...(tool && !SKIP_CONFIRMATION.includes(toolReq.function.name) && !isToolWhitelisted ? [{
+      label: "Yes, and always allow ",
+      formattedSuffix: tool.labelParts,
+      value: "yes-whitelist",
+      tool,
+    }] : []),
     {
       label: "No, and tell Octo what to do differently",
       value: "no",
     },
   ];
 
-  const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
-      if (item.value === "no") rejectTool(toolReq.toolCallId);
-      else await runTool({ toolReq, config, transport });
-    },
-    [toolReq, config, transport],
-  );
+	const onSelect = useCallback(async (item: (typeof items)[number]) => {
+    if(item.value === "no") {
+      rejectTool(toolReq.toolCallId);
+    } else if(item.value === "yes-whitelist") {
+      const whitelistItem = item as { tool: ToolPermissionInfo };
+      addToWhitelist(whitelistItem.tool);
+      await runTool({ toolReq, config, transport });
+    } else {
+      await runTool({ toolReq, config, transport });
+    }
+	}, [ toolReq, config, transport, addToWhitelist, runTool, rejectTool ]);
 
-  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
+  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name) || isToolWhitelisted;
   useEffect(() => {
     if (noConfirm) {
       runTool({ toolReq, config, transport });
     }
-  }, [toolReq, noConfirm, config, transport]);
+  }, [ toolReq, noConfirm, config, transport, runTool ]);
 
   if (noConfirm) return <Loading />;
 
-  return (
-    <Box flexDirection="column" gap={1}>
-      {prompt}
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </Box>
-  );
+  return <Box flexDirection="column" gap={1}>
+    { prompt }
+    <SelectInput
+      items={items}
+      onSelect={onSelect}
+      indicatorComponent={IndicatorComponent}
+      itemComponent={ToolRequestItemComponent}
+    />
+  </Box>
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
