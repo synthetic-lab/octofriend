@@ -17,6 +17,14 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
+import { PermissionsData, WhitelistType } from "./tools/permissions/index.ts";
+import { type ToolPermissionInfo } from "./tools/permissions/tool-pattern-extractor.ts";
+
+import {
+  createWhitelist,
+  isWhitelisted,
+  addToWhitelist,
+} from "./tools/permissions/whitelist.ts";
 import { loadTools } from "./tools/index.ts";
 
 export type RunArgs = {
@@ -87,6 +95,7 @@ export type UiState = {
   history: Array<HistoryItem>;
   clearNonce: number;
   lastUserPromptId: bigint | null;
+  whitelist: MergedWhitelist;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -103,6 +112,8 @@ export type UiState = {
   ) => Promise<void>;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
+  addToWhitelist: (tool: { type: WhitelistType; pattern: string }) => void,
+  isWhitelisted: (tool: { type: WhitelistType; value: string }) => boolean,
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
   clearHistory: () => void;
@@ -119,6 +130,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptId: null,
+  whitelist: createWhitelist(),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -270,6 +282,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       ],
     });
+  },
+
+  addToWhitelist: (tool: Pick<ToolPermissionInfo, 'type' | 'pattern'>) => {
+    const currentWhitelist = get().whitelist;
+    const newWhitelist = addToWhitelist(currentWhitelist, tool);
+    set({ whitelist: newWhitelist });
+  },
+
+  isWhitelisted: (tool: { type: WhitelistType; value: string }) => {
+    return isWhitelisted(get().whitelist, tool);
   },
 
   clearHistory: () => {
