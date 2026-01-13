@@ -6,7 +6,7 @@ import { useConfig } from "../config.ts";
 
 export function useCtrlC(callback: () => void) {
   useInput((input, key) => {
-    if (key.ctrl && input === 'c') {
+    if (key.ctrl && input === "c") {
       callback();
     }
   });
@@ -26,7 +26,7 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
-    }))
+    })),
   );
 
   const isInsertMode = vimEnabled && modeData.mode === "input" && modeData.vimMode === "INSERT";
@@ -35,7 +35,7 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
     if (ctrlCPressed) {
       exit();
     } else {
-      if(!isInsertMode) {
+      if (!isInsertMode) {
         setCtrlCPressed(true);
         setTimeout(() => setCtrlCPressed(false), 2000);
       }
@@ -43,8 +43,6 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   });
 
   return (
-    <CtrlCPressedContext.Provider value={ctrlCPressed}>
-      {children}
-    </CtrlCPressedContext.Provider>
+    <CtrlCPressedContext.Provider value={ctrlCPressed}>{children}</CtrlCPressedContext.Provider>
   );
 }

@@ -5,13 +5,13 @@ import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 
 interface Props {
-  inputHistory: InputHistory,
+  inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
   onSubmit: () => any;
   vimEnabled?: boolean;
-  vimMode?: 'NORMAL' | 'INSERT';
-  setVimMode?: (mode: 'NORMAL' | 'INSERT') => void;
+  vimMode?: "NORMAL" | "INSERT";
+  setVimMode?: (mode: "NORMAL" | "INSERT") => void;
 }
 
 export const InputWithHistory = React.memo((props: Props) => {

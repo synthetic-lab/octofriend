@@ -27,7 +27,9 @@ Use this skill when working with PDFs.
       expect(skill!.license).toBe("MIT");
       expect(skill!.compatibility).toBe("Requires python 3.8+");
       expect(skill!.metadata).toEqual({ author: "test-org", version: "1.0" });
-      expect(skill!.instructions).toBe("# PDF Processing\n\nUse this skill when working with PDFs.");
+      expect(skill!.instructions).toBe(
+        "# PDF Processing\n\nUse this skill when working with PDFs.",
+      );
       expect(skill!.path).toBe("/skills/pdf-processing");
       expect(skill!.skillFilePath).toBe("/skills/pdf-processing/SKILL.md");
     });
@@ -76,7 +78,8 @@ Content here.
     });
 
     it("handles CRLF line endings", () => {
-      const content = "---\r\nname: crlf-skill\r\ndescription: Works with Windows line endings.\r\n---\r\n\r\nInstructions.";
+      const content =
+        "---\r\nname: crlf-skill\r\ndescription: Works with Windows line endings.\r\n---\r\n\r\nInstructions.";
       const skill = parseSkillContent(content, "/test/SKILL.md");
 
       expect(skill).not.toBeNull();
@@ -241,7 +244,7 @@ Content here.
       const skills: Skill[] = [
         {
           name: "test-skill",
-          description: "Uses <tags> & \"quotes\"",
+          description: 'Uses <tags> & "quotes"',
           instructions: "",
           path: "/skills/test-skill",
           skillFilePath: "/skills/test-skill/SKILL.md",

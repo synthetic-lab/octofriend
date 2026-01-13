@@ -8,23 +8,31 @@ export const ArgumentsSchema = t.subtype({
   content: t.str.comment("Content to write to the file"),
 });
 
-const Schema = t.subtype({
-  name: t.value("create"),
-  arguments: ArgumentsSchema,
-}).comment("Creates a new file with the specified content");
+const Schema = t
+  .subtype({
+    name: t.value("create"),
+    arguments: ArgumentsSchema,
+  })
+  .comment("Creates a new file with the specified content");
 
-async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
+async function validate(
+  signal: AbortSignal,
+  transport: Transport,
+  toolCall: t.GetType<typeof Schema>,
+) {
   try {
     await fileTracker.assertCanCreate(transport, signal, toolCall.arguments.filePath);
-  } catch(e) {
-    if(e instanceof FileExistsError) throw new ToolError(e.message);
+  } catch (e) {
+    if (e instanceof FileExistsError) throw new ToolError(e.message);
     throw e;
   }
   return null;
 }
 
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema, ArgumentsSchema, validate,
+  Schema,
+  ArgumentsSchema,
+  validate,
   async run(signal, transport, call) {
     await validate(signal, transport, call);
     const { filePath, content } = call.arguments;

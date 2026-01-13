@@ -11,7 +11,7 @@ const clampToVimBounds = (pos: number, textLength: number): number => {
 
 const vimCommandResult = (pos: number, textLength: number) => ({
   consumed: true,
-  newCursorPosition: clampToVimBounds(pos, textLength)
+  newCursorPosition: clampToVimBounds(pos, textLength),
 });
 
 const vimEarlyExit = (condition: boolean) => {
@@ -19,8 +19,11 @@ const vimEarlyExit = (condition: boolean) => {
   return null;
 };
 
-const getLineInfo = (text: string, position: number): { lineIndex: number, columnIndex: number } => {
-  const lines = text.split('\n');
+const getLineInfo = (
+  text: string,
+  position: number,
+): { lineIndex: number; columnIndex: number } => {
+  const lines = text.split("\n");
   let currentPos = 0;
 
   for (let i = 0; i < lines.length; i++) {
@@ -28,7 +31,7 @@ const getLineInfo = (text: string, position: number): { lineIndex: number, colum
     if (position >= currentPos && position <= currentPos + lineLength) {
       return {
         lineIndex: i,
-        columnIndex: position - currentPos
+        columnIndex: position - currentPos,
       };
     }
     currentPos += lineLength + 1; // +1 for the newline
@@ -37,12 +40,12 @@ const getLineInfo = (text: string, position: number): { lineIndex: number, colum
   // If position is at the very end (after last newline), return last line
   return {
     lineIndex: lines.length - 1,
-    columnIndex: lines[lines.length - 1]?.length || 0
+    columnIndex: lines[lines.length - 1]?.length || 0,
   };
 };
 
 const getLineStart = (text: string, lineIndex: number): number => {
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   let position = 0;
 
   for (let i = 0; i < lineIndex && i < lines.length; i++) {
@@ -52,10 +55,10 @@ const getLineStart = (text: string, lineIndex: number): number => {
   return position;
 };
 
-const getLineRange = (text: string, cursorPosition: number): { start: number, end: number } => {
+const getLineRange = (text: string, cursorPosition: number): { start: number; end: number } => {
   const currentLineInfo = getLineInfo(text, cursorPosition);
   const start = getLineStart(text, currentLineInfo.lineIndex);
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   const line = lines[currentLineInfo.lineIndex];
   let end = start + line.length;
   if (currentLineInfo.lineIndex < lines.length - 1) {
@@ -64,12 +67,16 @@ const getLineRange = (text: string, cursorPosition: number): { start: number, en
   return { start, end };
 };
 
-type Motion = (text: string, cursorPosition: number) => { start: number, end: number };
+type Motion = (text: string, cursorPosition: number) => { start: number; end: number };
 
-type Operator = (text: string, range: { start: number, end: number }, motionChar?: string) => {
-  newText: string,
-  newCursorPosition?: number,
-  enterInsertMode?: boolean,
+type Operator = (
+  text: string,
+  range: { start: number; end: number },
+  motionChar?: string,
+) => {
+  newText: string;
+  newCursorPosition?: number;
+  enterInsertMode?: boolean;
 };
 
 type PendingCommand = {
@@ -83,7 +90,7 @@ type TextState = {
 };
 
 const motions: Record<string, Motion> = {
-  'w': (text, cursorPosition) => {
+  w: (text, cursorPosition) => {
     const textLength = text.length;
     if (cursorPosition >= textLength) {
       return { start: cursorPosition, end: cursorPosition };
@@ -110,7 +117,7 @@ const motions: Record<string, Motion> = {
 
     return { start: cursorPosition, end: endPosition };
   },
-  'b': (text, cursorPosition) => {
+  b: (text, cursorPosition) => {
     if (cursorPosition === 0) {
       return { start: 0, end: 0 };
     }
@@ -125,15 +132,12 @@ const motions: Record<string, Motion> = {
 
     return { start: start, end: cursorPosition };
   },
-  'e': (text, cursorPosition) => {
+  e: (text, cursorPosition) => {
     const textLength = text.length;
     const currentChar = text[cursorPosition];
-    const nextChar = cursorPosition + 1 < textLength ? text[cursorPosition + 1] : '';
-    const atWordEnd = !isWhitespace(currentChar)
-                    && (cursorPosition === textLength - 1
-                    || isWhitespace(nextChar))
-                    ;
-
+    const nextChar = cursorPosition + 1 < textLength ? text[cursorPosition + 1] : "";
+    const atWordEnd =
+      !isWhitespace(currentChar) && (cursorPosition === textLength - 1 || isWhitespace(nextChar));
     let endPos: number;
 
     if (atWordEnd) {
@@ -157,14 +161,14 @@ const motions: Record<string, Motion> = {
     const vimEndPos = Math.max(0, endPos - 1);
     return { start: cursorPosition, end: vimEndPos + 1 };
   },
-  '0': (_, cursorPosition) => {
+  "0": (_, cursorPosition) => {
     return { start: cursorPosition, end: 0 };
   },
-  '$': (text, cursorPosition) => {
+  $: (text, cursorPosition) => {
     const lastCharPos = Math.max(0, text.length - 1);
     return { start: cursorPosition, end: lastCharPos + 1 };
   },
-  '^': (text, cursorPosition) => {
+  "^": (text, cursorPosition) => {
     let newCursorPosition = 0;
     const textLength = text.length;
 
@@ -177,7 +181,7 @@ const motions: Record<string, Motion> = {
 };
 
 const operators: Record<string, Operator> = {
-  'd': (text, { start, end }) => {
+  d: (text, { start, end }) => {
     const actualEnd = Math.min(end, text.length);
     const actualStart = Math.min(start, actualEnd);
     const newText = text.slice(0, actualStart) + text.slice(actualEnd);
@@ -189,16 +193,16 @@ const operators: Record<string, Operator> = {
     }
     return { newText, newCursorPosition };
   },
-  'c': (text, { start, end }, motionChar) => {
+  c: (text, { start, end }, motionChar) => {
     let actualEnd = Math.min(end, text.length);
     const actualStart = Math.min(start, actualEnd);
 
     // For change operator with word motions (cw), trim trailing whitespace (like ce behavior in vim)
-    if (motionChar === 'w' || motionChar === 'e') {
+    if (motionChar === "w" || motionChar === "e") {
       let trimmedEnd = actualEnd;
-      for(; trimmedEnd > actualStart; trimmedEnd--) {
+      for (; trimmedEnd > actualStart; trimmedEnd--) {
         const char = text[trimmedEnd - 1];
-        if (char === '\n' || char === '\r') {
+        if (char === "\n" || char === "\r") {
           continue;
         }
         if (!isWhitespace(char)) break;
@@ -217,25 +221,27 @@ const operators: Record<string, Operator> = {
 
 export function VimModeIndicator({
   vimEnabled,
-  vimMode
+  vimMode,
 }: {
   vimEnabled: boolean;
-  vimMode: 'NORMAL' | 'INSERT';
+  vimMode: "NORMAL" | "INSERT";
 }) {
-  if (!vimEnabled || vimMode === 'NORMAL') return null;
+  if (!vimEnabled || vimMode === "NORMAL") return null;
 
   const themeColor = useColor();
 
   return (
     <Box>
-      <Text color={themeColor} bold>-- INSERT --</Text>
+      <Text color={themeColor} bold>
+        -- INSERT --
+      </Text>
     </Box>
   );
 }
 
 export function useVimKeyHandler(
-  vimMode: 'NORMAL' | 'INSERT',
-  setVimMode: (mode: 'NORMAL' | 'INSERT') => void
+  vimMode: "NORMAL" | "INSERT",
+  setVimMode: (mode: "NORMAL" | "INSERT") => void,
 ) {
   const pendingCommandRef = React.useRef<PendingCommand | null>(null);
   const undoStackRef = React.useRef<TextState[]>([]);
@@ -249,7 +255,7 @@ export function useVimKeyHandler(
 
   const enterInsertMode = (text: string, cursorPosition: number) => {
     insertStartStateRef.current = { text, cursorPosition };
-    setVimMode('INSERT');
+    setVimMode("INSERT");
   };
 
   return {
@@ -258,10 +264,10 @@ export function useVimKeyHandler(
       key: Key,
       cursorPosition: number,
       valueLength: number,
-      currentValue: string
-    ): { consumed: boolean, newCursorPosition?: number, newValue?: string } {
-      if (vimMode === 'INSERT') {
-        if (key.escape || (key.ctrl && input === 'c')) {
+      currentValue: string,
+    ): { consumed: boolean; newCursorPosition?: number; newValue?: string } {
+      if (vimMode === "INSERT") {
+        if (key.escape || (key.ctrl && input === "c")) {
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
             newCursorPosition = cursorPosition - 1;
@@ -270,7 +276,7 @@ export function useVimKeyHandler(
             saveState(insertStartStateRef.current.text, insertStartStateRef.current.cursorPosition);
             insertStartStateRef.current = null;
           }
-          setVimMode('NORMAL');
+          setVimMode("NORMAL");
           return { consumed: true, newCursorPosition };
         }
 
@@ -278,17 +284,18 @@ export function useVimKeyHandler(
           insertStartStateRef.current = { text: currentValue, cursorPosition };
         }
 
-        if(key.return) {
+        if (key.return) {
           return {
             consumed: true,
-            newValue: currentValue.slice(0, cursorPosition) + "\n" + currentValue.slice(cursorPosition),
+            newValue:
+              currentValue.slice(0, cursorPosition) + "\n" + currentValue.slice(cursorPosition),
           };
         }
 
         return { consumed: false };
       }
 
-      if(key.return) return { consumed: false };
+      if (key.return) return { consumed: false };
 
       // Check if we have a pending operator waiting for a motion
       if (pendingCommandRef.current) {
@@ -306,7 +313,7 @@ export function useVimKeyHandler(
             finalCursorPosition = clampToVimBounds(finalCursorPosition, result.newText.length);
           }
 
-          const response: { consumed: boolean, newCursorPosition?: number, newValue?: string } = {
+          const response: { consumed: boolean; newCursorPosition?: number; newValue?: string } = {
             consumed: true,
             newValue: result.newText,
           };
@@ -337,7 +344,7 @@ export function useVimKeyHandler(
             finalCursorPosition = clampToVimBounds(finalCursorPosition, result.newText.length);
           }
 
-          const response: { consumed: boolean, newCursorPosition?: number, newValue?: string } = {
+          const response: { consumed: boolean; newCursorPosition?: number; newValue?: string } = {
             consumed: true,
             newValue: result.newText,
           };
@@ -361,7 +368,7 @@ export function useVimKeyHandler(
       }
 
       // Handle redo (Ctrl-r)
-      if (key.ctrl && input === 'r') {
+      if (key.ctrl && input === "r") {
         if (redoStackRef.current.length === 0) return { consumed: true };
         const state = redoStackRef.current.pop()!;
         undoStackRef.current.push({ text: currentValue, cursorPosition });
@@ -377,36 +384,39 @@ export function useVimKeyHandler(
         return { consumed: true };
       }
 
-      const commands: Record<string, () => { consumed: boolean, newCursorPosition?: number, newValue?: string }> = {
-        'u': () => {
+      const commands: Record<
+        string,
+        () => { consumed: boolean; newCursorPosition?: number; newValue?: string }
+      > = {
+        u: () => {
           if (undoStackRef.current.length === 0) return { consumed: true };
           const state = undoStackRef.current.pop()!;
           redoStackRef.current.push({ text: currentValue, cursorPosition });
           return { consumed: true, newValue: state.text, newCursorPosition: state.cursorPosition };
         },
-        'i': () => {
+        i: () => {
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true };
         },
-        'a': () => {
+        a: () => {
           const newCursorPosition = Math.min(valueLength, cursorPosition + 1);
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true, newCursorPosition };
         },
-        'h': () => {
+        h: () => {
           if (cursorPosition > 0) {
             return vimCommandResult(cursorPosition - 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
         },
-        'l': () => {
+        l: () => {
           if (cursorPosition < valueLength - 1) {
             return vimCommandResult(cursorPosition + 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
         },
-        'k': () => {
-          const lines = currentValue.split('\n');
+        k: () => {
+          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
 
           if (currentLineInfo.lineIndex > 0) {
@@ -419,8 +429,8 @@ export function useVimKeyHandler(
 
           return vimCommandResult(cursorPosition, valueLength);
         },
-        'j': () => {
-          const lines = currentValue.split('\n');
+        j: () => {
+          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
 
           if (currentLineInfo.lineIndex < lines.length - 1) {
@@ -433,14 +443,14 @@ export function useVimKeyHandler(
 
           return vimCommandResult(cursorPosition, valueLength);
         },
-        'o': () => {
+        o: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
           const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex + 1);
           saveState(currentValue, cursorPosition);
 
           const newValue = [
             currentValue.slice(0, insertPosition),
-            currentValue.slice(insertPosition)
+            currentValue.slice(insertPosition),
           ].join("\n");
           enterInsertMode(currentValue, cursorPosition);
 
@@ -450,14 +460,14 @@ export function useVimKeyHandler(
             newValue,
           };
         },
-        'O': () => {
+        O: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
           const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex);
           saveState(currentValue, cursorPosition);
 
           const newValue = [
             currentValue.slice(0, insertPosition),
-            currentValue.slice(insertPosition)
+            currentValue.slice(insertPosition),
           ].join("\n");
           enterInsertMode(currentValue, cursorPosition);
 
@@ -467,7 +477,7 @@ export function useVimKeyHandler(
             newValue,
           };
         },
-        'x': () => {
+        x: () => {
           if (valueLength > 0) {
             saveState(currentValue, cursorPosition);
             const beforeCursor = currentValue.slice(0, cursorPosition);
@@ -485,7 +495,7 @@ export function useVimKeyHandler(
           }
           return { consumed: true };
         },
-        'w': () => {
+        w: () => {
           const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
           if (earlyExit) return earlyExit;
 
@@ -494,7 +504,10 @@ export function useVimKeyHandler(
 
           if (isWhitespace(currentChar)) {
             newCursorPosition = cursorPosition;
-            while (newCursorPosition < valueLength && isWhitespace(currentValue[newCursorPosition])) {
+            while (
+              newCursorPosition < valueLength &&
+              isWhitespace(currentValue[newCursorPosition])
+            ) {
               newCursorPosition++;
             }
           } else {
@@ -504,14 +517,17 @@ export function useVimKeyHandler(
             }
 
             newCursorPosition = wordEnd;
-            while (newCursorPosition < valueLength && isWhitespace(currentValue[newCursorPosition])) {
+            while (
+              newCursorPosition < valueLength &&
+              isWhitespace(currentValue[newCursorPosition])
+            ) {
               newCursorPosition++;
             }
           }
 
           return vimCommandResult(newCursorPosition, valueLength);
         },
-        'b': () => {
+        b: () => {
           const earlyExit = vimEarlyExit(cursorPosition === 0);
           if (earlyExit) return earlyExit;
 
@@ -525,15 +541,15 @@ export function useVimKeyHandler(
 
           return vimCommandResult(wordStart, valueLength);
         },
-        'e': () => {
+        e: () => {
           const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
           if (earlyExit) return earlyExit;
 
           const currentChar = currentValue[cursorPosition];
-          const nextChar = cursorPosition + 1 < valueLength ? currentValue[cursorPosition + 1] : '';
-          const atWordEnd = !isWhitespace(currentChar)
-                          && (cursorPosition === valueLength - 1
-                          || isWhitespace(nextChar));
+          const nextChar = cursorPosition + 1 < valueLength ? currentValue[cursorPosition + 1] : "";
+          const atWordEnd =
+            !isWhitespace(currentChar) &&
+            (cursorPosition === valueLength - 1 || isWhitespace(nextChar));
 
           let wordEnd: number;
 
@@ -558,14 +574,14 @@ export function useVimKeyHandler(
           const vimPos = Math.max(0, wordEnd - 1);
           return vimCommandResult(vimPos, valueLength);
         },
-        '0': () => {
+        "0": () => {
           return { consumed: true, newCursorPosition: 0 };
         },
-        '$': () => {
+        $: () => {
           const lastCharPos = Math.max(0, valueLength - 1);
           return { consumed: true, newCursorPosition: lastCharPos };
         },
-        '^': () => {
+        "^": () => {
           let newCursorPosition = 0;
 
           while (newCursorPosition < valueLength && isWhitespace(currentValue[newCursorPosition])) {
@@ -574,14 +590,14 @@ export function useVimKeyHandler(
 
           return { consumed: true, newCursorPosition };
         },
-        'I': () => {
+        I: () => {
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true, newCursorPosition: 0 };
         },
-        'A': () => {
+        A: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
           const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-          const lines = currentValue.split('\n');
+          const lines = currentValue.split("\n");
           const currentLine = lines[currentLineInfo.lineIndex];
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true, newCursorPosition: lineStart + currentLine.length };
@@ -590,19 +606,19 @@ export function useVimKeyHandler(
 
       // Arrow keys redirect to vim commands
       if (key.leftArrow) {
-        return commands['h']();
+        return commands["h"]();
       }
 
       if (key.rightArrow) {
-        return commands['l']();
+        return commands["l"]();
       }
 
       if (key.upArrow) {
-        return commands['k']();
+        return commands["k"]();
       }
 
       if (key.downArrow) {
-        return commands['j']();
+        return commands["j"]();
       }
 
       // Check character commands
@@ -612,6 +628,6 @@ export function useVimKeyHandler(
 
       // NORMAL mode: ignore unhandled keys
       return { consumed: true };
-    }
+    },
   };
 }

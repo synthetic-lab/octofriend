@@ -1,9 +1,9 @@
-import stringWidth from 'string-width';
+import stringWidth from "string-width";
 
 export type WrapResult = {
   wrapped: string;
-  originalToWrapped: number[];  // Maps original position -> wrapped position
-  wrappedToOriginal: number[];  // Maps wrapped position -> original position (-1 for inserted newlines)
+  originalToWrapped: number[]; // Maps original position -> wrapped position
+  wrappedToOriginal: number[]; // Maps wrapped position -> original position (-1 for inserted newlines)
 };
 
 /**
@@ -19,12 +19,12 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
 
   const originalToWrapped: number[] = [];
   const wrappedToOriginal: number[] = [];
-  let wrapped = '';
+  let wrapped = "";
   let wrappedPos = 0;
   let originalPos = 0;
 
   // Split by existing newlines to preserve them
-  const paragraphs = text.split('\n');
+  const paragraphs = text.split("\n");
 
   for (let pIndex = 0; pIndex < paragraphs.length; pIndex++) {
     const paragraph = paragraphs[pIndex];
@@ -44,8 +44,8 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
         // Check if word fits on current line (leave 1 cell for cursor)
         if (!lineStart && lineWidth + wordWidth >= width) {
           // Word doesn't fit - wrap to new line (soft newline)
-          wrapped += '\n';
-          wrappedToOriginal[wrappedPos] = -1;  // Inserted newline
+          wrapped += "\n";
+          wrappedToOriginal[wrappedPos] = -1; // Inserted newline
           wrappedPos++;
           lineWidth = 0;
           lineStart = true;
@@ -58,8 +58,8 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
             const charWidth = stringWidth(char);
 
             if (!lineStart && lineWidth + charWidth >= width) {
-              wrapped += '\n';
-              wrappedToOriginal[wrappedPos] = -1;  // Inserted newline
+              wrapped += "\n";
+              wrappedToOriginal[wrappedPos] = -1; // Inserted newline
               wrappedPos++;
               lineWidth = 0;
             }
@@ -90,8 +90,8 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
     // Add newline between paragraphs (except after last)
     if (pIndex < paragraphs.length - 1) {
       originalToWrapped[originalPos] = wrappedPos;
-      wrappedToOriginal[wrappedPos] = originalPos;  // Real newline maps to original
-      wrapped += '\n';
+      wrappedToOriginal[wrappedPos] = originalPos; // Real newline maps to original
+      wrapped += "\n";
       wrappedPos++;
       originalPos++;
     }
@@ -110,7 +110,7 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
  */
 function splitIntoWords(text: string): string[] {
   const words: string[] = [];
-  let current = '';
+  let current = "";
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -119,7 +119,7 @@ function splitIntoWords(text: string): string[] {
     // End word after whitespace if next char is non-whitespace
     if (/\s/.test(char) && i + 1 < text.length && !/\s/.test(text[i + 1])) {
       words.push(current);
-      current = '';
+      current = "";
     }
   }
 

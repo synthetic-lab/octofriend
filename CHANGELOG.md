@@ -106,7 +106,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Add time-to-first-token and inter-token-latency calculation to `octo bench
-  tps`.
+tps`.
 
 ## [0.0.41] - 2025-09-24
 
@@ -229,13 +229,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Octo can also launch Docker images for you and auto-connect to them with:
   `octo docker run -- <docker run args>`; for example: `octo docker run
-  -d -i -t --rm node:24-alpine /bin/sh`. Once you quit Octo, it'll automatically
+-d -i -t --rm node:24-alpine /bin/sh`. Once you quit Octo, it'll automatically
   shut down the container it spawned. All args to `docker run` are supported.
 
 ### Changed
 
 - Octo no longer shows a list of updates on first install: the update list only
-  appears when you actually *update* Octo.
+  appears when you actually _update_ Octo.
 
 - Fix a crash
 

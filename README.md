@@ -49,13 +49,14 @@ dangerously, you can always run `octofriend --unchained`, and skip all tool and
 edit confirmations.
 
 ## Demo
+
 [![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
 
 ## Sandboxing Octo
 
 Octo has built-in Docker support, and can attach to any Docker container
 without needing special configuration or editing the image or container. To
-make Octo run inside an *existing* container you have running — for example, if
+make Octo run inside an _existing_ container you have running — for example, if
 you already have a Docker Compose setup — run `octo docker connect
 your-container-name`.
 
@@ -89,7 +90,7 @@ Octo will look for instruction files named like so:
 - `CLAUDE.md`
 - `AGENTS.md`
 
-Octo uses the *first* one of those it finds: so if you want to have different
+Octo uses the _first_ one of those it finds: so if you want to have different
 instructions for Octo than for Claude, just have an `OCTO.md` and a
 `CLAUDE.md`, and Octo will ignore your `CLAUDE.md`.
 
@@ -117,10 +118,11 @@ with optional scripts. Here's a very simple code review skill you might use:
 name: "pr-review"
 description: "Review Github pull requests"
 ---
+
 To load a Github pull request, run the fetch tool twice:
 
-
 ## First fetch
+
 First, load the URL for the PR to understand the author's intent.
 
 Your fetch tool does not execute JavaScript. Note that parts of the Github UI
@@ -132,6 +134,7 @@ may fail without JS; for example, loading comments might say:
 This is okay and expected. Don't worry about that.
 
 ## Second fetch: load the diff
+
 To load the diff for the PR, fetch the PR URL with a `.diff`
 attached to the end. For example, to review
 `https://github.com/synthetic-lab/octofriend/pull/66`, you should fetch:
@@ -145,15 +148,14 @@ unexpected behavior.
 
 We automatically detect skills in the following places:
 
-* `~/.config/agents/skills`, for global skill definitions
-* `.agents/skills`, for skills relative to the current directory Octo is
+- `~/.config/agents/skills`, for global skill definitions
+- `.agents/skills`, for skills relative to the current directory Octo is
   working in. For example, if your company has special guidelines for agents,
   you can distribute them with your company's repo in an `.agents/skills`
   directory.
 
 If there are more directories you want Octo to discover skills from, you can
 add them to your `~/.config/octofriend/octofriend.json5` config file like so:
-
 
 ```javascript
 skills: {

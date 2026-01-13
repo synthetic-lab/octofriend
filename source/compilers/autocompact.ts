@@ -28,8 +28,8 @@ The individual messages from earlier in this conversation are no longer availabl
 2. Treat the summary as your complete reference for what happened earlier in this conversation
 3. Continue working on your current task exactly where you left off
 
-Resume your work now.`
-}
+Resume your work now.`;
+};
 
 export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -42,12 +42,9 @@ export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): numb
 
 // checks the token length starting from a compaction-checkpoint (or the beginning if no checkpoint exists)
 // if it exceeds AUTOCOMPACT_THRESHOLD * the model's max context window, return true
-export function shouldAutoCompactHistory(
-  model: ModelConfig,
-  messages: LlmIR[],
-): boolean {
+export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]): boolean {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = messages.slice(checkpointIndex)
+  const slicedMessages = messages.slice(checkpointIndex);
   const maxContextWindow = model.context;
   const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
   const currentTokens = countIRTokens(slicedMessages);
@@ -57,28 +54,37 @@ export function shouldAutoCompactHistory(
 
 // only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary({
-  apiKey, model, messages, autofixJson, handlers, abortSignal,
+  apiKey,
+  model,
+  messages,
+  autofixJson,
+  handlers,
+  abortSignal,
 }: {
-  apiKey: string,
-  model: ModelConfig,
-  messages: LlmIR[],
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  apiKey: string;
+  model: ModelConfig;
+  messages: LlmIR[];
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
-    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any,
-    onAutofixJson: (done: Promise<void>) => any,
-  },
-  abortSignal: AbortSignal
+    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
+    onAutofixJson: (done: Promise<void>) => any;
+  };
+  abortSignal: AbortSignal;
 }): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = messages.slice(checkpointIndex)
+  const slicedMessages = messages.slice(checkpointIndex);
   const processedMessages = formatMessagesForSummary(slicedMessages);
 
   const result = await run({
-    apiKey, model, handlers, autofixJson, abortSignal,
+    apiKey,
+    model,
+    handlers,
+    autofixJson,
+    abortSignal,
     messages: processedMessages,
   });
 
-  if(abortSignal.aborted) return null;
+  if (abortSignal.aborted) return null;
 
   if (!result.success) {
     throw new CompactionRequestError(result.requestError, result.curl);
@@ -87,7 +93,7 @@ export async function generateCompactionSummary({
   const summary = processCompactedHistory(result);
   if (summary == null) {
     throw new CompactionRequestError(
-      "Compaction result was empty, continuing without compacting messages."
+      "Compaction result was empty, continuing without compacting messages.",
     );
   }
   return summary;
@@ -114,18 +120,16 @@ export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {
 }
 
 export function processCompactedHistory(
-  compactSummaryAgentResult: AgentResult
+  compactSummaryAgentResult: AgentResult,
 ): string | undefined {
   if (!compactSummaryAgentResult.success) {
     return;
   }
 
-  const assistantMessage = compactSummaryAgentResult.output.find(
-    (msg) => msg.role === "assistant"
-  );
+  const assistantMessage = compactSummaryAgentResult.output.find(msg => msg.role === "assistant");
   if (!assistantMessage || assistantMessage.role !== "assistant") {
     return;
   }
 
-  return assistantMessage.content
+  return assistantMessage.content;
 }

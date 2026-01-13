@@ -1,15 +1,15 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { streamText, tool, ModelMessage, jsonSchema } from 'ai';
+import { createOpenAI } from "@ai-sdk/openai";
+import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
-import { Compiler } from './compiler-interface.ts';
+import { Compiler } from "./compiler-interface.ts";
 import { LlmIR, ToolCallRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
-import { compactionCompilerExplanation } from './autocompact.ts';
-import { JsonFixResponse } from '../prompts/autofix-prompts.ts';
+import { compactionCompilerExplanation } from "./autocompact.ts";
+import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 
 async function toModelMessage(
@@ -18,12 +18,12 @@ async function toModelMessage(
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
-  const irs = [ ...messages ];
+  const irs = [...messages];
   irs.reverse();
   const seenPaths = new Set<string>();
 
-  for(const ir of irs) {
-    if(ir.role === "file-read") {
+  for (const ir of irs) {
+    if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
       output.push(modelMessageFromIr(ir, seen));
@@ -34,7 +34,7 @@ async function toModelMessage(
 
   output.reverse();
 
-  if(systemPrompt) {
+  if (systemPrompt) {
     const prompt = await systemPrompt();
     // Add system message
     output.unshift({
@@ -46,20 +46,17 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
-): ModelMessage {
-  if(ir.role === "assistant") {
-    if(ir.reasoningContent || ir.openai) {
+function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
+  if (ir.role === "assistant") {
+    if (ir.reasoningContent || ir.openai) {
       let openai = {};
-      if(ir.openai) {
+      if (ir.openai) {
         openai = {
           itemId: ir.openai.reasoningId || "",
           reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
         };
       }
-      const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
+      const toolCalls = ir.toolCall ? [ir.toolCall] : [];
       return {
         role: "assistant",
         content: [
@@ -84,10 +81,10 @@ function modelMessageFromIr(
           openai: {
             ...openai,
           },
-        }
+        },
       };
     }
-    const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
+    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
     return {
       role: "assistant",
       content: [
@@ -102,20 +99,19 @@ function modelMessageFromIr(
         }),
       ],
       providerOptions: {
-        openai: {
-        },
-      }
+        openai: {},
+      },
     };
   }
 
-  if(ir.role === "user") {
+  if (ir.role === "user") {
     return {
       role: "user",
       content: ir.content,
     };
   }
 
-  if(ir.role === "file-read") {
+  if (ir.role === "file-read") {
     return {
       role: "tool",
       content: [
@@ -127,14 +123,14 @@ function modelMessageFromIr(
             type: "text" as const,
             value: irPrompts.fileRead(ir.content, seenPath),
           },
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+  if (ir.role === "tool-output" || ir.role === "file-mutate") {
     let content: string;
-    if(ir.role === "file-mutate") {
+    if (ir.role === "file-mutate") {
       content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
@@ -151,12 +147,12 @@ function modelMessageFromIr(
             type: "text" as const,
             value: content,
           },
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-reject") {
+  if (ir.role === "tool-reject") {
     return {
       role: "tool",
       content: [
@@ -168,12 +164,12 @@ function modelMessageFromIr(
             type: "text" as const,
             value: irPrompts.toolReject(),
           },
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-error" || ir.role === "tool-malformed") {
+  if (ir.role === "tool-error" || ir.role === "tool-malformed") {
     return {
       role: "tool",
       content: [
@@ -185,12 +181,12 @@ function modelMessageFromIr(
             type: "text" as const,
             value: `Error: ${ir.error}`,
           },
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "file-outdated") {
+  if (ir.role === "file-outdated") {
     return {
       role: "tool",
       content: [
@@ -207,7 +203,7 @@ function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "compaction-checkpoint") {
+  if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
       content: compactionCompilerExplanation(ir.summary),
@@ -226,7 +222,7 @@ function modelMessageFromIr(
           type: "text",
           value: ir.error,
         },
-      }
+      },
     ],
   };
 }
@@ -244,7 +240,7 @@ function generateCurlFrom(params: {
     input: messages,
     stream: true,
     store: false,
-    include: [ "reasoning.encrypted_content" ],
+    include: ["reasoning.encrypted_content"],
   };
 
   return `curl -X POST '${baseURL}/responses' \\
@@ -256,7 +252,14 @@ JSON`;
 }
 
 export const runResponsesAgent: Compiler = async ({
-  model, apiKey, irs, onTokens, abortSignal, systemPrompt, autofixJson, tools
+  model,
+  apiKey,
+  irs,
+  onTokens,
+  abortSignal,
+  systemPrompt,
+  autofixJson,
+  tools,
 }) => {
   const messages = await toModelMessage(irs, systemPrompt);
 
@@ -277,15 +280,18 @@ export const runResponsesAgent: Compiler = async ({
       inputSchema: jsonSchema(argJsonSchema),
     });
   });
-  const toolParams = Object.entries(toolDefs).length === 0 ? {} : {
-    tools: toolsSdk,
-  };
+  const toolParams =
+    Object.entries(toolDefs).length === 0
+      ? {}
+      : {
+          tools: toolsSdk,
+        };
 
   let reasoningConfig: {
-    reasoningEffort?: "low" | "medium" | "high",
-    reasoningSummary?: "auto",
+    reasoningEffort?: "low" | "medium" | "high";
+    reasoningSummary?: "auto";
   } = {};
-  if(model.reasoning) {
+  if (model.reasoning) {
     reasoningConfig.reasoningEffort = model.reasoning;
     reasoningConfig.reasoningSummary = "auto";
   }
@@ -312,7 +318,7 @@ export const runResponsesAgent: Compiler = async ({
         openai: {
           ...reasoningConfig,
           store: false,
-          include: [ "reasoning.encrypted_content" ],
+          include: ["reasoning.encrypted_content"],
         },
       },
     });
@@ -332,18 +338,18 @@ export const runResponsesAgent: Compiler = async ({
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
-        case 'text-delta':
+        case "text-delta":
           if (chunk.text) {
             content += chunk.text;
             onTokens(chunk.text, "content");
           }
           break;
 
-        case 'reasoning-start':
+        case "reasoning-start":
           break;
 
-        case 'reasoning-delta':
-          if(chunk.text) {
+        case "reasoning-delta":
+          if (chunk.text) {
             if (reasoningContent == null) reasoningContent = "";
             reasoningContent += chunk.text;
             onTokens(chunk.text, "reasoning");
@@ -353,22 +359,22 @@ export const runResponsesAgent: Compiler = async ({
         case "reasoning-end":
           const openai = chunk.providerMetadata ? chunk.providerMetadata["openai"] : {};
           const encrypted = openai["reasoningEncryptedContent"];
-          if(encrypted && typeof encrypted === "string") {
+          if (encrypted && typeof encrypted === "string") {
             encryptedReasoningContent = encrypted;
           }
           const itemId = openai["itemId"];
-          if(itemId && typeof itemId === "string") {
+          if (itemId && typeof itemId === "string") {
             reasoningId = itemId;
           }
           break;
 
-        case 'tool-call':
+        case "tool-call":
           // Tool call will be handled after streaming is complete; just let callers know the chunk
           // came through
           onTokens(`${chunk.input}`, "tool");
           break;
 
-        case 'finish':
+        case "finish":
           if (chunk.totalUsage) {
             usage.input = chunk.totalUsage.inputTokens || 0;
             usage.output = chunk.totalUsage.outputTokens || 0;
@@ -379,7 +385,7 @@ export const runResponsesAgent: Compiler = async ({
     }
 
     // Track usage
-    if(usage.input !== 0 || usage.output !== 0) {
+    if (usage.input !== 0 || usage.output !== 0) {
       trackTokens(model.model, "input", usage.input);
       trackTokens(model.model, "output", usage.output);
       trackTokens(model.model, "output", usage.reasoning);
@@ -387,34 +393,35 @@ export const runResponsesAgent: Compiler = async ({
 
     // Calculate token usage delta
     let tokenDelta = 0;
-    if(usage.input !== 0 || usage.output !== 0) {
-      if(!abortSignal.aborted) {
+    if (usage.input !== 0 || usage.output !== 0) {
+      if (!abortSignal.aborted) {
         const previousTokens = countIRTokens(irs);
-        tokenDelta = (usage.input + usage.output + usage.reasoning) - previousTokens;
+        tokenDelta = usage.input + usage.output + usage.reasoning - previousTokens;
       }
     }
 
     let openaiSpecific = {};
-    if(reasoningId || encryptedReasoningContent) {
+    if (reasoningId || encryptedReasoningContent) {
       openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
     }
     const assistantHistoryItem: AssistantMessage = {
       role: "assistant",
-      content, reasoningContent,
+      content,
+      reasoningContent,
       ...openaiSpecific,
       tokenUsage: tokenDelta,
       outputTokens: usage.output,
     };
 
     // If aborted, don't try to parse tool calls
-    if(abortSignal.aborted) {
-      return { success: true, output: [ assistantHistoryItem ], curl };
+    if (abortSignal.aborted) {
+      return { success: true, output: [assistantHistoryItem], curl };
     }
 
     // Get tool calls
     const toolCalls = await result.toolCalls;
-    if(toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: [ assistantHistoryItem ], curl };
+    if (toolCalls == null || toolCalls.length === 0) {
+      return { success: true, output: [assistantHistoryItem], curl };
     }
 
     const firstToolCall = toolCalls[0];
@@ -422,15 +429,10 @@ export const runResponsesAgent: Compiler = async ({
       toolCallId: firstToolCall.toolCallId,
       toolName: firstToolCall.toolName,
       args: firstToolCall.input,
-    }
-    const parseResult = await parseTool(
-      chatToolCall,
-      toolDefs,
-      autofixJson,
-      abortSignal,
-    );
+    };
+    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
 
-    if(parseResult.status === "error") {
+    if (parseResult.status === "error") {
       return {
         success: true,
         curl,
@@ -443,12 +445,12 @@ export const runResponsesAgent: Compiler = async ({
             arguments: JSON.stringify(firstToolCall.input),
             toolCallId: firstToolCall.toolCallId,
           },
-        ]
+        ],
       };
     }
 
     assistantHistoryItem.toolCall = parseResult.tool;
-    return { success: true, output: [ assistantHistoryItem ], curl };
+    return { success: true, output: [assistantHistoryItem], curl };
   } catch (e) {
     return {
       success: false,
@@ -456,15 +458,17 @@ export const runResponsesAgent: Compiler = async ({
       curl,
     };
   }
-}
-
-type ParseToolResult = {
-  status: "success";
-  tool: ToolCallRequest,
-} | {
-  status: "error";
-  message: string
 };
+
+type ParseToolResult =
+  | {
+      status: "success";
+      tool: ToolCallRequest;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
 
 async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
@@ -475,7 +479,7 @@ async function parseTool(
   const name = toolCall.toolName;
   const toolDef = toolDefs[name];
 
-  if(!toolDef) {
+  if (!toolDef) {
     return {
       status: "error",
       message: `
@@ -492,15 +496,15 @@ Please try calling a valid tool.
   let args = toolCall.args;
 
   // If args is a string, try to parse as JSON
-  if(typeof args === 'string') {
-    let [ err, parsedArgs ] = tryexpr(() => {
+  if (typeof args === "string") {
+    let [err, parsedArgs] = tryexpr(() => {
       return JSON.parse(args);
     });
 
-    if(err) {
+    if (err) {
       const fixPromise = autofixJson(args, abortSignal);
       const fixResponse = await fixPromise;
-      if(!fixResponse.success) {
+      if (!fixResponse.success) {
         return {
           status: "error",
           message: "Syntax error: invalid JSON in tool call arguments",

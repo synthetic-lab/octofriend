@@ -4,10 +4,10 @@
  * Possible states during XML parsing
  */
 enum ParserState {
-  TEXT = 'text',         // Processing regular text
-  TAG_START = 'tagStart', // After "<", deciding if opening or closing tag
-  CLOSING_TAG = 'closingTag', // Inside "</tag>"
-  OPENING_TAG = 'openingTag', // Inside "<tag>"
+  TEXT = "text", // Processing regular text
+  TAG_START = "tagStart", // After "<", deciding if opening or closing tag
+  CLOSING_TAG = "closingTag", // Inside "</tag>"
+  OPENING_TAG = "openingTag", // Inside "<tag>"
 }
 
 export type Attribute = {
@@ -16,18 +16,18 @@ export type Attribute = {
 };
 
 export type OpenTagEvent = {
-  type: 'openTag';
+  type: "openTag";
   name: string;
   attributes: Record<string, string>;
 };
 
 export type CloseTagEvent = {
-  type: 'closeTag';
+  type: "closeTag";
   name: string;
 };
 
 export type TextEvent = {
-  type: 'text';
+  type: "text";
   content: string;
 };
 
@@ -46,8 +46,8 @@ export type XMLEventHandlers = {
 export class StreamingXMLParser {
   private state: ParserState = ParserState.TEXT;
 
-  private buffer = ''; // Buffer for accumulating tag parts
-  private currentTag = '';
+  private buffer = ""; // Buffer for accumulating tag parts
+  private currentTag = "";
 
   private attributes: Record<string, string> = {};
   private handlers: Partial<XMLEventHandlers>;
@@ -55,9 +55,12 @@ export class StreamingXMLParser {
 
   private closed = false;
 
-  constructor({ handlers, whitelist }: {
-    handlers: Partial<XMLEventHandlers>,
-    whitelist?: string[],
+  constructor({
+    handlers,
+    whitelist,
+  }: {
+    handlers: Partial<XMLEventHandlers>;
+    whitelist?: string[];
   }) {
     this.handlers = handlers;
     this.whitelist = whitelist || null;
@@ -67,7 +70,7 @@ export class StreamingXMLParser {
    * Process a chunk of XML text
    */
   write(chunk: string): void {
-    if(this.closed) throw new Error("Writing to closed XML parser");
+    if (this.closed) throw new Error("Writing to closed XML parser");
 
     if (!chunk) return;
     for (let i = 0; i < chunk.length; i++) {
@@ -92,11 +95,11 @@ export class StreamingXMLParser {
   }
 
   private processTextState(char: string): void {
-    if (char === '<') {
+    if (char === "<") {
       // We might be starting a tag
-      if(this.buffer) {
+      if (this.buffer) {
         this.emitText(this.buffer);
-        this.buffer = '';
+        this.buffer = "";
       }
       this.buffer = char;
       this.state = ParserState.TAG_START;
@@ -109,17 +112,17 @@ export class StreamingXMLParser {
   private processTagStartState(char: string): void {
     this.buffer += char;
 
-    if (char === '/') {
+    if (char === "/") {
       // This is a closing tag
       this.state = ParserState.CLOSING_TAG;
-      this.currentTag = '';
+      this.currentTag = "";
       return;
     }
 
     if (this.isValidTagNameChar(char, true)) {
       this.currentTag = char;
 
-      if(this.failWhitelistProgress("", char)) {
+      if (this.failWhitelistProgress("", char)) {
         this.emitTextAndReset(this.buffer);
         this.currentTag = "";
         return;
@@ -136,9 +139,12 @@ export class StreamingXMLParser {
   }
 
   private failWhitelistProgress(tag: string, char: string) {
-    return this.whitelist && !this.whitelist.some(t => {
-      return t.startsWith((tag + char));
-    });
+    return (
+      this.whitelist &&
+      !this.whitelist.some(t => {
+        return t.startsWith(tag + char);
+      })
+    );
   }
 
   private failWhitelist(tag: string) {
@@ -148,8 +154,8 @@ export class StreamingXMLParser {
   private processOpeningTagState(char: string): void {
     this.buffer += char;
 
-    if(this.isValidTagNameChar(char, false)) {
-      if(this.failWhitelistProgress(this.currentTag, char)) {
+    if (this.isValidTagNameChar(char, false)) {
+      if (this.failWhitelistProgress(this.currentTag, char)) {
         return this.emitTextAndReset(this.buffer);
       }
       this.currentTag += char;
@@ -157,13 +163,13 @@ export class StreamingXMLParser {
     }
 
     // Got this far? We're no longer in progress collecting tag names. Check the entire tag
-    if(this.failWhitelist(this.currentTag)) {
+    if (this.failWhitelist(this.currentTag)) {
       return this.emitTextAndReset(this.buffer);
     }
 
-    if(char === ">") {
+    if (char === ">") {
       this.emitOpenTag(this.currentTag, this.attributes);
-      this.buffer = '';
+      this.buffer = "";
       this.state = ParserState.TEXT;
       return;
     }
@@ -180,8 +186,8 @@ export class StreamingXMLParser {
   private processClosingTagState(char: string): void {
     this.buffer += char;
 
-    if(this.isValidTagNameChar(char, true) || this.isValidTagNameChar(char, false)) {
-      if(this.failWhitelistProgress(this.currentTag, char)) {
+    if (this.isValidTagNameChar(char, true) || this.isValidTagNameChar(char, false)) {
+      if (this.failWhitelistProgress(this.currentTag, char)) {
         return this.emitTextAndReset(this.buffer);
       }
 
@@ -190,20 +196,20 @@ export class StreamingXMLParser {
       return;
     }
 
-    if(this.failWhitelist(this.currentTag)) {
+    if (this.failWhitelist(this.currentTag)) {
       return this.emitTextAndReset(this.buffer);
     }
 
     // End of closing tag
-    if(char === ">") {
+    if (char === ">") {
       this.emitCloseTag(this.currentTag);
 
-      this.buffer = '';
+      this.buffer = "";
       this.state = ParserState.TEXT;
       return;
     }
 
-    if(this.isWhitespace(char)) {
+    if (this.isWhitespace(char)) {
       // Whitespace after tag name is allowed
       return;
     }
@@ -218,7 +224,7 @@ export class StreamingXMLParser {
     // If we have anything in the buffer, emit it as text
     if (this.buffer) {
       this.emitText(this.buffer);
-      this.buffer = '';
+      this.buffer = "";
     }
 
     this.closed = true;
@@ -227,25 +233,25 @@ export class StreamingXMLParser {
   private emitText(text: string): void {
     if (text && this.handlers.onText) {
       this.handlers.onText({
-        type: 'text',
-        content: text
+        type: "text",
+        content: text,
       });
     }
   }
 
   private emitOpenTag(name: string, attributes: Record<string, string>): void {
     if (this.handlers.onOpenTag) {
-      const selfClosing = this.buffer.trimEnd().endsWith('/>');
+      const selfClosing = this.buffer.trimEnd().endsWith("/>");
       this.handlers.onOpenTag({
-        type: 'openTag',
+        type: "openTag",
         name,
-        attributes
+        attributes,
       });
 
       if (selfClosing && this.handlers.onCloseTag) {
         this.handlers.onCloseTag({
-          type: 'closeTag',
-          name
+          type: "closeTag",
+          name,
         });
       }
     }
@@ -254,8 +260,8 @@ export class StreamingXMLParser {
   private emitCloseTag(name: string): void {
     if (this.handlers.onCloseTag) {
       this.handlers.onCloseTag({
-        type: 'closeTag',
-        name
+        type: "closeTag",
+        name,
       });
     }
   }
@@ -280,7 +286,7 @@ export class StreamingXMLParser {
    */
   private emitTextAndReset(content: string): void {
     this.emitText(content);
-    this.buffer = '';
+    this.buffer = "";
     this.state = ParserState.TEXT;
   }
 }

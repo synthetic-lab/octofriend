@@ -6,32 +6,40 @@ import { HighlightedCode } from "../markdown/highlight-code.tsx";
 import { readFileSync } from "fs";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 
-export function DiffRenderer({ oldText, newText, filepath }: {
-  oldText: string,
-  newText: string,
-  filepath: string,
+export function DiffRenderer({
+  oldText,
+  newText,
+  filepath,
+}: {
+  oldText: string;
+  newText: string;
+  filepath: string;
 }) {
   try {
     const language = fileExtLanguage(filepath);
     const file = readFileSync(filepath, "utf8");
 
     const diff = diffLines(oldText, newText);
-    const diffWithChanged: Array<(typeof diff)[number] | {
-      added: false,
-      removed: false,
-      changed: true,
-      oldValue: string,
-      newValue: string,
-    }> = [];
+    const diffWithChanged: Array<
+      | (typeof diff)[number]
+      | {
+          added: false;
+          removed: false;
+          changed: true;
+          oldValue: string;
+          newValue: string;
+        }
+    > = [];
 
-    for(let i = 0; i < diff.length; i++) {
+    for (let i = 0; i < diff.length; i++) {
       const curr = diff[i];
-      const prev = diffWithChanged.length === 0 ? null : diffWithChanged[diffWithChanged.length - 1];
-      if(prev == null) {
+      const prev =
+        diffWithChanged.length === 0 ? null : diffWithChanged[diffWithChanged.length - 1];
+      if (prev == null) {
         diffWithChanged.push(curr);
         continue;
       }
-      if(prev.removed && curr.added) {
+      if (prev.removed && curr.added) {
         diffWithChanged.pop();
         diffWithChanged.push({
           added: false,
@@ -63,10 +71,10 @@ export function DiffRenderer({ oldText, newText, filepath }: {
               <Text color="gray">New</Text>
             </Box>
           </Box>
-          {
-            diffWithChanged.map((part, index) => {
-              if(part.added) {
-                return <DiffSet
+          {diffWithChanged.map((part, index) => {
+            if (part.added) {
+              return (
+                <DiffSet
                   key={index}
                   newValue={part.value}
                   newAdded
@@ -77,10 +85,12 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                   newLineCounter={newLineCounter}
                   lineNrWidth={lineNrWidth}
                 />
-              }
+              );
+            }
 
-              if(part.removed) {
-                return <DiffSet
+            if (part.removed) {
+              return (
+                <DiffSet
                   key={index}
                   oldValue={part.value}
                   oldRemoved
@@ -91,10 +101,12 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                   newLineCounter={newLineCounter}
                   lineNrWidth={lineNrWidth}
                 />
-              }
+              );
+            }
 
-              if("changed" in part) {
-                return <DiffSet
+            if ("changed" in part) {
+              return (
+                <DiffSet
                   key={index}
                   oldValue={part.oldValue}
                   newValue={part.newValue}
@@ -107,9 +119,11 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                   newLineCounter={newLineCounter}
                   lineNrWidth={lineNrWidth}
                 />
-              }
+              );
+            }
 
-              return <DiffSet
+            return (
+              <DiffSet
                 key={index}
                 oldValue={part.value}
                 newValue={part.value}
@@ -120,8 +134,8 @@ export function DiffRenderer({ oldText, newText, filepath }: {
                 newLineCounter={newLineCounter}
                 lineNrWidth={lineNrWidth}
               />
-            })
-          }
+            );
+          })}
         </Box>
       </Box>
     );
@@ -132,19 +146,19 @@ export function DiffRenderer({ oldText, newText, filepath }: {
 
 function getStartLine(file: string, search: string) {
   const index = file.indexOf(search);
-  if(index < 0) throw new Error("Impossible diff rendering; search string isn't present in file");
+  if (index < 0) throw new Error("Impossible diff rendering; search string isn't present in file");
   let line = 1;
-  for(let i = 0; i < index; i++) {
+  for (let i = 0; i < index; i++) {
     const char = file[i];
-    if(char === "\n") line++;
+    if (char === "\n") line++;
   }
   return line;
 }
 
 type LineCounter = {
-  getLine: () => number,
-  incrementLine: () => number,
-  getStartLine: () => number,
+  getLine: () => number;
+  incrementLine: () => number;
+  getStartLine: () => number;
 };
 function buildLineCounter(startLine: number): LineCounter {
   let curr = startLine;
@@ -156,123 +170,133 @@ function buildLineCounter(startLine: number): LineCounter {
 }
 
 function DiffSet({
-  oldValue, newValue, newAdded, oldRemoved, language, oldLineCounter, newLineCounter, lineNrWidth, oldText, newText
+  oldValue,
+  newValue,
+  newAdded,
+  oldRemoved,
+  language,
+  oldLineCounter,
+  newLineCounter,
+  lineNrWidth,
+  oldText,
+  newText,
 }: {
-  oldValue?: string,
-  newValue?: string,
-  oldRemoved?: boolean,
-  newAdded?: boolean,
-  oldLineCounter: LineCounter,
-  newLineCounter: LineCounter,
-  lineNrWidth: number,
-  language: string,
-  oldText: string,
-  newText: string,
+  oldValue?: string;
+  newValue?: string;
+  oldRemoved?: boolean;
+  newAdded?: boolean;
+  oldLineCounter: LineCounter;
+  newLineCounter: LineCounter;
+  lineNrWidth: number;
+  language: string;
+  oldText: string;
+  newText: string;
 }) {
   const gutterWidth = 3 + lineNrWidth;
-  return <Box flexDirection="row">
-    <LineSegments
-      value={oldValue}
-      language={language}
-      gutterWidth={gutterWidth}
-      lineNrWidth={lineNrWidth}
-      gutterColor={oldRemoved ? DIFF_REMOVED : CODE_GUTTER_COLOR}
-      lineCounter={oldLineCounter}
-      originalText={oldText}
-    >
-      {
-        oldRemoved ?
-          <Text color="black"> - </Text> :
-          <Text>{ "  " }</Text>
-      }
-    </LineSegments>
-    <LineSegments
-      value={newValue}
-      language={language}
-      gutterWidth={gutterWidth}
-      lineNrWidth={lineNrWidth}
-      gutterColor={newAdded ? DIFF_ADDED : CODE_GUTTER_COLOR}
-      lineCounter={newLineCounter}
-      originalText={newText}
-    >
-      {
-        newAdded ?
-          <Text color="black"> + </Text> :
-          <Text>{ "  " }</Text>
-      }
-    </LineSegments>
-  </Box>
+  return (
+    <Box flexDirection="row">
+      <LineSegments
+        value={oldValue}
+        language={language}
+        gutterWidth={gutterWidth}
+        lineNrWidth={lineNrWidth}
+        gutterColor={oldRemoved ? DIFF_REMOVED : CODE_GUTTER_COLOR}
+        lineCounter={oldLineCounter}
+        originalText={oldText}
+      >
+        {oldRemoved ? <Text color="black"> - </Text> : <Text>{"  "}</Text>}
+      </LineSegments>
+      <LineSegments
+        value={newValue}
+        language={language}
+        gutterWidth={gutterWidth}
+        lineNrWidth={lineNrWidth}
+        gutterColor={newAdded ? DIFF_ADDED : CODE_GUTTER_COLOR}
+        lineCounter={newLineCounter}
+        originalText={newText}
+      >
+        {newAdded ? <Text color="black"> + </Text> : <Text>{"  "}</Text>}
+      </LineSegments>
+    </Box>
+  );
 }
 
 function LineSegments({
-  value, language, gutterColor, gutterWidth, lineNrWidth, lineCounter, children, originalText
+  value,
+  language,
+  gutterColor,
+  gutterWidth,
+  lineNrWidth,
+  lineCounter,
+  children,
+  originalText,
 }: {
-  value: string | undefined,
-  language: string,
-  gutterColor: string,
-  gutterWidth: number,
-  lineNrWidth: number,
-  lineCounter: LineCounter,
-  children: React.ReactNode,
-  originalText: string,
+  value: string | undefined;
+  language: string;
+  gutterColor: string;
+  gutterWidth: number;
+  lineNrWidth: number;
+  lineCounter: LineCounter;
+  children: React.ReactNode;
+  originalText: string;
 }) {
   // Frustratingly, the diffLines function adds newlines at the end of diffs; remove them
   const valueLines = value == null ? [] : value.split("\n");
-  if(valueLines.length > 0 && valueLines[valueLines.length - 1] === "") {
+  if (valueLines.length > 0 && valueLines[valueLines.length - 1] === "") {
     valueLines.pop();
   }
-  if(valueLines.length === 0) {
-    return <Box width="50%" paddingX={1} flexGrow={1}>
-      <Box
-        width={gutterWidth}
-        flexShrink={0}
-        flexGrow={1}
-        backgroundColor={gutterColor}
-        marginRight={1}
-      >
-        <Box width={lineNrWidth} flexShrink={0}>
-          <Text>
-            {  " " }
-          </Text>
+  if (valueLines.length === 0) {
+    return (
+      <Box width="50%" paddingX={1} flexGrow={1}>
+        <Box
+          width={gutterWidth}
+          flexShrink={0}
+          flexGrow={1}
+          backgroundColor={gutterColor}
+          marginRight={1}
+        >
+          <Box width={lineNrWidth} flexShrink={0}>
+            <Text> </Text>
+          </Box>
+          {children}
         </Box>
-        { children }
+        <Box flexGrow={1} width="100%" flexDirection="column">
+          <Text> </Text>
+        </Box>
       </Box>
-      <Box flexGrow={1} width="100%" flexDirection="column">
-        <Text>{ " " }</Text>
-      </Box>
-    </Box>
+    );
   }
 
-  return <Box width="50%" paddingX={1} flexDirection="column" flexGrow={1}>
-    {
-      valueLines.map((line, index) => {
+  return (
+    <Box width="50%" paddingX={1} flexDirection="column" flexGrow={1}>
+      {valueLines.map((line, index) => {
         const lineNumber = lineCounter.incrementLine();
-        return <Box key={`${index}-${line}`} flexGrow={1}>
-          <Box
-            width={gutterWidth}
-            flexShrink={0}
-            flexGrow={1}
-            backgroundColor={gutterColor}
-            marginRight={1}
-          >
-            <Text>
-              { lineNumber }
-            </Text>
-            { children }
+        return (
+          <Box key={`${index}-${line}`} flexGrow={1}>
+            <Box
+              width={gutterWidth}
+              flexShrink={0}
+              flexGrow={1}
+              backgroundColor={gutterColor}
+              marginRight={1}
+            >
+              <Text>{lineNumber}</Text>
+              {children}
+            </Box>
+            <Box flexGrow={1} width="100%" flexDirection="column">
+              <MaybeHighlighted
+                line={line}
+                language={language}
+                originalText={originalText}
+                currentLine={lineNumber}
+                startLine={lineCounter.getStartLine()}
+              />
+            </Box>
           </Box>
-          <Box flexGrow={1} width="100%" flexDirection="column">
-            <MaybeHighlighted
-              line={line}
-              language={language}
-              originalText={originalText}
-              currentLine={lineNumber}
-              startLine={lineCounter.getStartLine()}
-            />
-          </Box>
-        </Box>
-      })
-    }
-  </Box>
+        );
+      })}
+    </Box>
+  );
 }
 
 // Calculate visual width of whitespace (spaces = 1, tabs = 2)
@@ -285,12 +309,18 @@ function whitespaceWidth(ws: string): number {
   return width;
 }
 
-function MaybeHighlighted({ line, language, originalText, currentLine, startLine }: {
-  line: string | undefined,
-  language: string,
-  originalText: string,
-  currentLine: number,
-  startLine: number,
+function MaybeHighlighted({
+  line,
+  language,
+  originalText,
+  currentLine,
+  startLine,
+}: {
+  line: string | undefined;
+  language: string;
+  originalText: string;
+  currentLine: number;
+  startLine: number;
 }) {
   // Annoyingly, the diffs only include the start of the line from the first character; not the
   // start of the actual line including whitespace. This means we need to find the actual, original
@@ -299,7 +329,7 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
   // life is pain) and therefore we definitely need the whitespace parsed out, rather than just
   // passing the string as-is to the highlighter.
   const matchedLine = (() => {
-    if(line == null) return line;
+    if (line == null) return line;
 
     // Calculate relative line number within the original text
     const relativeLineNum = currentLine - startLine;
@@ -307,29 +337,37 @@ function MaybeHighlighted({ line, language, originalText, currentLine, startLine
     // Get the original line using the relative line number to find the correct whitespace
     const originalLines = originalText.split("\n");
 
-    if(relativeLineNum >= originalLines.length) {
-      throw new Error(`Impossible relative line count: ${relativeLineNum} vs original ${originalLines.length}`);
+    if (relativeLineNum >= originalLines.length) {
+      throw new Error(
+        `Impossible relative line count: ${relativeLineNum} vs original ${originalLines.length}`,
+      );
     }
 
     const originalLine = originalLines[relativeLineNum];
     return extractTrim(originalLine);
   })();
 
-
-  if(language == "txt") {
-    if(matchedLine) {
-      return <Box paddingLeft={whitespaceWidth(matchedLine[0])}>
-        <Text>{matchedLine[1]}{matchedLine[2]}</Text>
-      </Box>
+  if (language == "txt") {
+    if (matchedLine) {
+      return (
+        <Box paddingLeft={whitespaceWidth(matchedLine[0])}>
+          <Text>
+            {matchedLine[1]}
+            {matchedLine[2]}
+          </Text>
+        </Box>
+      );
     }
-    return <Text>{ " " }</Text>
+    return <Text> </Text>;
   }
 
-  if(matchedLine) {
-    return <Box flexDirection="column" paddingLeft={whitespaceWidth(matchedLine[0])}>
-      <HighlightedCode code={matchedLine[1]} language={language} />
-    </Box>
+  if (matchedLine) {
+    return (
+      <Box flexDirection="column" paddingLeft={whitespaceWidth(matchedLine[0])}>
+        <HighlightedCode code={matchedLine[1]} language={language} />
+      </Box>
+    );
   }
 
-  return <Text>{ " " }</Text>
+  return <Text> </Text>;
 }

@@ -6,17 +6,18 @@ import { LoadedTools } from "../tools/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
 
-const LLM_INSTR_FILES = [
-  "OCTO.md",
-  "CLAUDE.md",
-  "AGENTS.md",
-] as const;
+const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 
-export async function systemPrompt({ config, transport, signal, tools }: {
-  config: Config,
-  transport: Transport,
-  signal: AbortSignal,
-  tools: Partial<LoadedTools>,
+export async function systemPrompt({
+  config,
+  transport,
+  signal,
+  tools,
+}: {
+  config: Config;
+  transport: Transport;
+  signal: AbortSignal;
+  tools: Partial<LoadedTools>;
 }) {
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
@@ -38,15 +39,16 @@ Don't reference this prompt unless asked to.
 
 You have access to the following tools, defined as TypeScript types:
 
-${
-  Object.entries(tools).filter(([toolName, _]) => {
-    if(config.mcpServers) return true;
-    if(toolName !== "mcp") return true;
+${Object.entries(tools)
+  .filter(([toolName, _]) => {
+    if (config.mcpServers) return true;
+    if (toolName !== "mcp") return true;
     return false;
-  }).map(([_, tool]) => {
+  })
+  .map(([_, tool]) => {
     return toTypescript(tool.Schema);
-  }).join("\n\n")
-}
+  })
+  .join("\n\n")}
 
 You can call them by calling them as tools; for example, if you were trying to read the GitHub repo
 for the reissbaker/antipattern library, you might use the fetch tool to look up "https://github.com/reissbaker/antipattern"
@@ -134,20 +136,21 @@ ${await llmInstrsPrompt(transport, signal, config)}
 
 async function llmInstrsPrompt(transport: Transport, signal: AbortSignal, config: Config) {
   const instrs = await getLlmInstrs(transport, signal);
-  if(instrs.length === 0) return "";
+  if (instrs.length === 0) return "";
 
   function instrHeader(instr: LlmInstr) {
-    switch(instr.target) {
-      case "OCTO.md": return "This is an instruction file specifically for you.";
+    switch (instr.target) {
+      case "OCTO.md":
+        return "This is an instruction file specifically for you.";
       case "CLAUDE.md":
-        return "This is an instruction file for Claude, a different LLM, but you may find it useful."
+        return "This is an instruction file for Claude, a different LLM, but you may find it useful.";
       case "AGENTS.md":
-        return "This is a generic instruction for automated agents. You may find it useful."
+        return "This is a generic instruction for automated agents. You may find it useful.";
     }
   }
 
   const rendered: string[] = [];
-  for(const instr of instrs) {
+  for (const instr of instrs) {
     const pieces: string[] = [];
     pieces.push("Note: " + instrHeader(instr));
     pieces.push(tagged("instruction", { path: instr.path }, instr.contents));
@@ -168,7 +171,7 @@ these files.
 }
 
 async function mcpPrompt(config: Config) {
-  if(config.mcpServers == null || Object.keys(config.mcpServers).length === 0) return "";
+  if (config.mcpServers == null || Object.keys(config.mcpServers).length === 0) return "";
 
   const mcpSections = [];
 
@@ -176,16 +179,18 @@ async function mcpPrompt(config: Config) {
     const client = await getMcpClient(serverName, config);
     const listed = await client.listTools();
 
-    const tools = listed.tools.map((t: {name: string, description?: string}) => ({
+    const tools = listed.tools.map((t: { name: string; description?: string }) => ({
       name: t.name,
-      description: t.description
+      description: t.description,
     }));
 
-    const toolStrings = tools.map((t: {name: string, description?: string}) => {
-      return `- ${t.name}${t.description ? `: ${t.description}` : ''}`;
-    }).join('\n');
+    const toolStrings = tools
+      .map((t: { name: string; description?: string }) => {
+        return `- ${t.name}${t.description ? `: ${t.description}` : ""}`;
+      })
+      .join("\n");
 
-    mcpSections.push(`Server: ${serverName}\n${toolStrings || 'No tools available'}`);
+    mcpSections.push(`Server: ${serverName}\n${toolStrings || "No tools available"}`);
   }
 
   const mcpPrompt = `
@@ -195,7 +200,7 @@ async function mcpPrompt(config: Config) {
 You also have access to the following MCP servers and their sub-tools. Use the mcp tool to call
 them, specifying the server and tool name:
 
-${mcpSections.join('\n\n')}
+${mcpSections.join("\n\n")}
 
 `.trim();
 
@@ -204,18 +209,19 @@ ${mcpSections.join('\n\n')}
 
 type LlmTarget = (typeof LLM_INSTR_FILES)[number];
 type LlmInstr = {
-  contents: string,
-  path: string,
-  target: LlmTarget,
+  contents: string;
+  path: string;
+  target: LlmTarget;
 };
 async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
   const targetPaths = await getLlmInstrPaths(transport, signal);
   const instrs: LlmInstr[] = [];
 
-  for(const targetPath of targetPaths) {
+  for (const targetPath of targetPaths) {
     const contents = await transport.readFile(signal, targetPath.path);
     instrs.push({
-      ...targetPath, contents
+      ...targetPath,
+      contents,
     });
   }
 
@@ -223,15 +229,15 @@ async function getLlmInstrs(transport: Transport, signal: AbortSignal) {
 }
 
 async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
-  const home = (await transport.shell(signal, "echo \"$HOME\"", 5000)).trim();
+  const home = (await transport.shell(signal, 'echo "$HOME"', 5000)).trim();
   let curr = (await transport.shell(signal, "pwd", 5000)).trim();
-  const paths: Array<{ path: string, target: LlmTarget }> = [];
+  const paths: Array<{ path: string; target: LlmTarget }> = [];
 
-  while(curr !== home && curr && curr !== "/") {
+  while (curr !== home && curr && curr !== "/") {
     const aidPath = await getLlmInstrPathFromDir(transport, signal, curr);
-    if(aidPath) paths.push(aidPath);
+    if (aidPath) paths.push(aidPath);
     const next = path.dirname(curr);
-    if(next === curr) break;
+    if (next === curr) break;
     curr = next;
   }
 
@@ -242,9 +248,9 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
   const globalPath = await getLlmInstrPathFromDir(
     transport,
     signal,
-    path.join(home, ".config/octofriend")
+    path.join(home, ".config/octofriend"),
   );
-  if(globalPath) paths.push(globalPath);
+  if (globalPath) paths.push(globalPath);
 
   return paths.reverse();
 }
@@ -252,20 +258,20 @@ async function getLlmInstrPaths(transport: Transport, signal: AbortSignal) {
 async function getUserConfigs(
   transport: Transport,
   signal: AbortSignal,
-): Promise<Array<{ path: string, target: LlmTarget }>> {
-  const configs: Array<{ path: string, target: LlmTarget }> = [];
+): Promise<Array<{ path: string; target: LlmTarget }>> {
+  const configs: Array<{ path: string; target: LlmTarget }> = [];
   let configHome = await getEnvVar(signal, transport, "XDG_CONFIG_HOME", 5000);
-  if(!configHome) {
+  if (!configHome) {
     const home = await getEnvVar(signal, transport, "HOME", 5000);
-    if(home) {
+    if (home) {
       configHome = await getEnvVar(signal, transport, path.join(home, ".config"), 5000);
     }
   }
 
-  if(configHome) {
+  if (configHome) {
     const userAgentsPath = path.join(configHome, "AGENTS.md");
     const exists = await transport.pathExists(signal, userAgentsPath);
-    if(exists) configs.push({ path: userAgentsPath, target: "AGENTS.md" });
+    if (exists) configs.push({ path: userAgentsPath, target: "AGENTS.md" });
   }
 
   return configs;
@@ -274,25 +280,27 @@ async function getUserConfigs(
 async function getLlmInstrPathFromDir(
   transport: Transport,
   signal: AbortSignal,
-  dir: string
+  dir: string,
 ): Promise<{
-  path: string,
-  target: LlmTarget
+  path: string;
+  target: LlmTarget;
 } | null> {
-  const files = await Promise.all(LLM_INSTR_FILES.map(async (f) => {
-    const filename = path.join(dir, f);
-    if(!(await transport.pathExists(signal, filename))) return null;
-    try {
-      return {
-        path: filename,
-        target: f,
-      };
-    } catch {
-      return null;
-    }
-  }));
+  const files = await Promise.all(
+    LLM_INSTR_FILES.map(async f => {
+      const filename = path.join(dir, f);
+      if (!(await transport.pathExists(signal, filename))) return null;
+      try {
+        return {
+          path: filename,
+          target: f,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
 
   const existing = files.filter(f => f !== null);
-  if(existing.length > 0) return existing[0];
+  if (existing.length > 0) return existing[0];
   return null;
 }

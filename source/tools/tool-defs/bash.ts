@@ -3,13 +3,15 @@ import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts"
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
-  timeout: t.num.comment("A timeout for the command, in milliseconds. Be generous. You MUST specify this."),
+  timeout: t.num.comment(
+    "A timeout for the command, in milliseconds. Be generous. You MUST specify this.",
+  ),
   cmd: t.str.comment("The command to run"),
 });
 
 const Schema = t.subtype({
-	name: t.value("shell"),
-	arguments: ArgumentsSchema,
+  name: t.value("shell"),
+  arguments: ArgumentsSchema,
 }).comment(`
   Runs a shell command in the cwd. This tool uses /bin/sh. Do NOT use bash-isms; they won't work.
   Only use POSIX-compliant shell.
@@ -25,15 +27,16 @@ const Schema = t.subtype({
 `);
 
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema, ArgumentsSchema,
+  Schema,
+  ArgumentsSchema,
   validate: async () => null,
   async run(abortSignal, transport, call) {
     const { cmd, timeout } = call.arguments;
     try {
       return { content: await transport.shell(abortSignal, cmd, timeout) };
-    } catch(e) {
-      if(e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
-      if(e instanceof CommandFailedError) throw new ToolError(e.message);
+    } catch (e) {
+      if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+      if (e instanceof CommandFailedError) throw new ToolError(e.message);
       throw e;
     }
   },

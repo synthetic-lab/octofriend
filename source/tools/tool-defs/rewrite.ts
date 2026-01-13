@@ -19,7 +19,8 @@ const Schema = t.subtype({
 });
 
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema, ArgumentsSchema,
+  Schema,
+  ArgumentsSchema,
   async validate(signal, transport, toolCall) {
     await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
     await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
@@ -37,8 +38,6 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
   },
 }));
 
-function runEdit({ edit }: {
-  edit: t.GetType<typeof ArgumentsSchema>,
-}): string {
+function runEdit({ edit }: { edit: t.GetType<typeof ArgumentsSchema> }): string {
   return edit.text;
 }

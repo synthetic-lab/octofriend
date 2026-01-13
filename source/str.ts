@@ -9,7 +9,7 @@ export function numWidth(num: number) {
 export function fileExtLanguage(filePath: string) {
   const dotParts = filePath.split(".");
   let language = "txt";
-  if(dotParts.length > 1) language = dotParts[dotParts.length - 1];
+  if (dotParts.length > 1) language = dotParts[dotParts.length - 1];
   return language;
 }
 
@@ -20,8 +20,8 @@ export function extractTrim(line: string) {
   const leadingWhitespace = line.match(/(^\s+)/);
   const trailingWhitespace = line.match(/(\s+$)/);
 
-  if(leadingWhitespace) spaceBefore = leadingWhitespace[1];
-  if(trailingWhitespace) spaceAfter = trailingWhitespace[1];
+  if (leadingWhitespace) spaceBefore = leadingWhitespace[1];
+  if (trailingWhitespace) spaceAfter = trailingWhitespace[1];
 
-  return [ spaceBefore, line.trim(), spaceAfter ];
+  return [spaceBefore, line.trim(), spaceAfter];
 }

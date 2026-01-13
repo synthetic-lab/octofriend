@@ -1,36 +1,36 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Text, useInput, Box, DOMElement, measureElement } from 'ink';
-import chalk from 'chalk';
-import { useVimKeyHandler } from './vim-mode.tsx';
-import { useEmacsKeyHandler } from './emacs-mode.tsx';
-import { wrapTextWithMapping } from '../text-wrap.ts';
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { Text, useInput, Box, DOMElement, measureElement } from "ink";
+import chalk from "chalk";
+import { useVimKeyHandler } from "./vim-mode.tsx";
+import { useEmacsKeyHandler } from "./emacs-mode.tsx";
+import { wrapTextWithMapping } from "../text-wrap.ts";
 
 type Props = {
-	readonly placeholder?: string;
-	readonly focus?: boolean;
-	readonly mask?: string;
-	readonly showCursor?: boolean;
-	readonly highlightPastedText?: boolean;
-	readonly value: string;
-	readonly onChange: (value: string) => void;
-	readonly onSubmit?: (value: string) => void;
-	readonly vimEnabled?: boolean;
-	readonly vimMode?: 'NORMAL' | 'INSERT';
-	readonly setVimMode?: (mode: 'NORMAL' | 'INSERT') => void;
+  readonly placeholder?: string;
+  readonly focus?: boolean;
+  readonly mask?: string;
+  readonly showCursor?: boolean;
+  readonly highlightPastedText?: boolean;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly onSubmit?: (value: string) => void;
+  readonly vimEnabled?: boolean;
+  readonly vimMode?: "NORMAL" | "INSERT";
+  readonly setVimMode?: (mode: "NORMAL" | "INSERT") => void;
 };
 
 export default function TextInput({
-	value: originalValue,
-	placeholder = '',
-	focus = true,
-	mask,
-	highlightPastedText = false,
-	showCursor = true,
-	onChange,
-	onSubmit,
-	vimEnabled = false,
-	vimMode = 'NORMAL',
-	setVimMode,
+  value: originalValue,
+  placeholder = "",
+  focus = true,
+  mask,
+  highlightPastedText = false,
+  showCursor = true,
+  onChange,
+  onSubmit,
+  vimEnabled = false,
+  vimMode = "NORMAL",
+  setVimMode,
 }: Props) {
   const [state, setState] = useState({
     cursorOffset: 0,
@@ -40,7 +40,7 @@ export default function TextInput({
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const containerRef = useRef<DOMElement>(null);
 
-  const {cursorOffset, cursorWidth} = state;
+  const { cursorOffset, cursorWidth } = state;
   const valueRef = useRef(originalValue);
   const cursorOffsetRef = useRef(cursorOffset);
   const cursorWidthRef = useRef(cursorWidth);
@@ -53,7 +53,7 @@ export default function TextInput({
   }, []);
 
   function handleElementSize() {
-    if(containerRef.current) {
+    if (containerRef.current) {
       const dimensions = measureElement(containerRef.current);
       setMeasuredWidth(dimensions.width);
     }
@@ -67,10 +67,10 @@ export default function TextInput({
     const handleResize = () => {
       setTimeout(handleElementSize, 0);
     };
-    process.stdout.on('resize', handleResize);
+    process.stdout.on("resize", handleResize);
 
     return () => {
-      process.stdout.off('resize', handleResize);
+      process.stdout.off("resize", handleResize);
     };
   }, []);
 
@@ -84,10 +84,7 @@ export default function TextInput({
   }, [cursorOffset, cursorWidth]);
 
   // Create Vim handler
-  const vimHandler = useVimKeyHandler(
-    vimMode,
-    setVimMode || (() => {})
-  );
+  const vimHandler = useVimKeyHandler(vimMode, setVimMode || (() => {}));
 
   // Create Emacs handler
   const emacsHandler = useEmacsKeyHandler();
@@ -124,11 +121,11 @@ export default function TextInput({
     renderedPlaceholder =
       placeholder.length > 0
         ? chalk.inverse(placeholder[0]) + chalk.grey(placeholder.slice(1))
-        : chalk.inverse(' ');
+        : chalk.inverse(" ");
 
-    renderedValue = wrapped.length > 0 ? '' : chalk.inverse(' ');
+    renderedValue = wrapped.length > 0 ? "" : chalk.inverse(" ");
 
-    const lines = wrapped.split('\n');
+    const lines = wrapped.split("\n");
     let i = 0;
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -140,14 +137,14 @@ export default function TextInput({
       }
 
       if (
-        i === wrappedCursorPosition
-        && !(lineIndex === 0 && line.length === 0 && wrappedCursorPosition === 0)
+        i === wrappedCursorPosition &&
+        !(lineIndex === 0 && line.length === 0 && wrappedCursorPosition === 0)
       ) {
-        renderedValue += chalk.inverse(' ');
+        renderedValue += chalk.inverse(" ");
       }
 
       if (lineIndex < lines.length - 1) {
-        renderedValue += '\n';
+        renderedValue += "\n";
         i++;
       }
     }
@@ -164,7 +161,13 @@ export default function TextInput({
 
       // Try Vim handler first if Vim mode is enabled
       if (vimEnabled) {
-        const vimResult = vimHandler.handle(input, key, cursorPosition, currentValue.length, currentValue);
+        const vimResult = vimHandler.handle(
+          input,
+          key,
+          cursorPosition,
+          currentValue.length,
+          currentValue,
+        );
         if (vimResult.consumed) {
           // Vim consumed the key - check if we need to update value or cursor position
           if (vimResult.newValue !== undefined) {
@@ -172,8 +175,8 @@ export default function TextInput({
             onChange(vimResult.newValue);
           }
           if (vimResult.newCursorPosition !== undefined) {
-            const valueLength = vimResult.newValue !== undefined ?
-              vimResult.newValue.length : currentValue.length;
+            const valueLength =
+              vimResult.newValue !== undefined ? vimResult.newValue.length : currentValue.length;
 
             const newCursorOffset = vimResult.newCursorPosition - valueLength;
             cursorOffsetRef.current = newCursorOffset;
@@ -183,7 +186,7 @@ export default function TextInput({
               cursorWidth: 0,
             });
           }
-          return;  // Vim consumed the key
+          return; // Vim consumed the key
         }
         // Vim didn't consume it, continue with normal processing
       }
@@ -191,7 +194,7 @@ export default function TextInput({
       if (
         key.upArrow ||
         key.downArrow ||
-        (key.ctrl && input === 'c') ||
+        (key.ctrl && input === "c") ||
         key.tab ||
         (key.shift && key.tab)
       ) {
@@ -208,15 +211,20 @@ export default function TextInput({
 
       // Try Emacs handler
       const emacsResult = emacsHandler.handle(
-        input, key, cursorPosition, currentValue.length, currentValue, showCursor
+        input,
+        key,
+        cursorPosition,
+        currentValue.length,
+        currentValue,
+        showCursor,
       );
       if (emacsResult.consumed) {
         if (emacsResult.newValue !== undefined) {
           onChange(emacsResult.newValue);
         }
         if (emacsResult.newCursorPosition !== undefined) {
-          const valueLength = emacsResult.newValue !== undefined ?
-            emacsResult.newValue.length : currentValue.length;
+          const valueLength =
+            emacsResult.newValue !== undefined ? emacsResult.newValue.length : currentValue.length;
           const newCursorOffset = emacsResult.newCursorPosition - valueLength;
           cursorOffsetRef.current = newCursorOffset;
           cursorWidthRef.current = 0;
@@ -283,28 +291,23 @@ export default function TextInput({
         valueRef.current = nextValue;
         onChange(nextValue);
       }
-      },
-      {isActive: focus},
+    },
+    { isActive: focus },
   );
 
-  const toRender = (placeholder
-    ? value.length > 0
-      ? renderedValue
-      : renderedPlaceholder
-    : renderedValue) || "";
+  const toRender =
+    (placeholder ? (value.length > 0 ? renderedValue : renderedPlaceholder) : renderedValue) || "";
 
   const lines = toRender.split("\n");
   return (
-    <Box ref={containerRef} flexGrow={1} flexDirection='column'>
-      {
-        lines.map((line, index) => {
-          return <Box height={1}>
-            <Text key={`line-${index}`}>
-              {line}
-            </Text>
+    <Box ref={containerRef} flexGrow={1} flexDirection="column">
+      {lines.map((line, index) => {
+        return (
+          <Box height={1}>
+            <Text key={`line-${index}`}>{line}</Text>
           </Box>
-        })
-      }
+        );
+      })}
     </Box>
   );
 }

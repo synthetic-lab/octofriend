@@ -1,6 +1,6 @@
-import { Box, DOMElement, measureElement, useStdin, Text, BoxProps } from 'ink';
-import React, { useEffect, useState, useRef, useCallback, createContext } from 'react';
-import { useColor } from '../theme.ts';
+import { Box, DOMElement, measureElement, useStdin, Text, BoxProps } from "ink";
+import React, { useEffect, useState, useRef, useCallback, createContext } from "react";
+import { useColor } from "../theme.ts";
 
 // https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
 const MOUSE_PATTERNS = {
@@ -11,10 +11,10 @@ const MOUSE_PATTERNS = {
 
 const SCROLL_DIRECTIONS = {
   SCROLL_UP: "SCROLL_UP",
-  SCROLL_DOWN: "SCROLL_DOWN"
+  SCROLL_DOWN: "SCROLL_DOWN",
 } as const;
 
-type ScrollDirection = typeof SCROLL_DIRECTIONS[keyof typeof SCROLL_DIRECTIONS];
+type ScrollDirection = (typeof SCROLL_DIRECTIONS)[keyof typeof SCROLL_DIRECTIONS];
 
 const MOUSE_BUTTONS = {
   // https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html#mouse%20reporting escape code reference
@@ -32,8 +32,8 @@ const MOUSE_BUTTONS = {
 // ASCII Escape codes reference:
 // https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html
 const MOUSE_TRACKING = {
-  ENABLE: '\x1b[?1000h',
-  DISABLE: '\x1b[?1000l',
+  ENABLE: "\x1b[?1000h",
+  DISABLE: "\x1b[?1000l",
 } as const;
 
 export interface ScrollViewProps extends React.PropsWithChildren {
@@ -63,26 +63,29 @@ export function ScrollView({ height, children }: ScrollViewProps) {
   const maxScroll = Math.max(0, innerHeight - height);
   const scrollPercentage = maxScroll > 0 ? Math.round((scrollTop / maxScroll) * 100) : 0;
 
-  const handleScroll = useCallback((direction: ScrollDirection) => {
-    setScrollTop(prev => {
-      const delta = direction === SCROLL_DIRECTIONS.SCROLL_UP ? -1 : 1;
-      const newScrollTop = prev + delta;
-      const maxScroll = Math.max(0, innerHeight - height);
-      const scrollPercentage = maxScroll > 0 ? Math.round((newScrollTop / maxScroll) * 100) : 0;
-      if (scrollPercentage >= 99) setShouldAutoScroll(true);
-      else setShouldAutoScroll(false);
-      return Math.max(0, Math.min(newScrollTop, maxScroll));
-    });
-  }, [innerHeight, height]);
+  const handleScroll = useCallback(
+    (direction: ScrollDirection) => {
+      setScrollTop(prev => {
+        const delta = direction === SCROLL_DIRECTIONS.SCROLL_UP ? -1 : 1;
+        const newScrollTop = prev + delta;
+        const maxScroll = Math.max(0, innerHeight - height);
+        const scrollPercentage = maxScroll > 0 ? Math.round((newScrollTop / maxScroll) * 100) : 0;
+        if (scrollPercentage >= 99) setShouldAutoScroll(true);
+        else setShouldAutoScroll(false);
+        return Math.max(0, Math.min(newScrollTop, maxScroll));
+      });
+    },
+    [innerHeight, height],
+  );
 
   useEffect(() => {
     const handleResize = () => {
       setTimeout(handleElementSize, 0);
     };
-    process.stdout.on('resize', handleResize);
+    process.stdout.on("resize", handleResize);
 
     return () => {
-      process.stdout.off('resize', handleResize);
+      process.stdout.off("resize", handleResize);
     };
   }, [handleElementSize]);
 
@@ -131,11 +134,11 @@ export function ScrollView({ height, children }: ScrollViewProps) {
       }
     };
 
-    stdin.on('data', handleData);
+    stdin.on("data", handleData);
 
     return () => {
       process.stdout.write(MOUSE_TRACKING.DISABLE);
-      stdin.off('data', handleData);
+      stdin.off("data", handleData);
       setRawMode(false);
     };
   }, [stdin, setRawMode, isScrollable, handleScroll]);
@@ -170,19 +173,15 @@ export function ScrollView({ height, children }: ScrollViewProps) {
           overflow="hidden"
           {...(isScrollable && scrollableStyles)}
         >
-          <Box
-            ref={innerRef}
-            flexDirection="column"
-            flexShrink={0}
-            marginTop={-scrollTop}
-          >
+          <Box ref={innerRef} flexDirection="column" flexShrink={0} marginTop={-scrollTop}>
             {children}
           </Box>
         </Box>
         {isScrollable && (
           <Box justifyContent="flex-start">
             <Text color={SCROLL_UI_COLOR} dimColor>
-              {scrollPercentage}% {scrollTop > 0 ? '↑' : ''}{scrollTop < maxScroll ? '↓' : ''}
+              {scrollPercentage}% {scrollTop > 0 ? "↑" : ""}
+              {scrollTop < maxScroll ? "↓" : ""}
             </Text>
           </Box>
         )}

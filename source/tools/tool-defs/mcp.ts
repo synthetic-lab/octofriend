@@ -8,31 +8,39 @@ import { getModelFromConfig } from "../../config.ts";
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
 type ResourceContents = {
-  uri: string,
-  mimeType?: string,
+  uri: string;
+  mimeType?: string;
 };
 type MCPResult = {
-  content: Array<{
-    type: "text",
-    text: string,
-  } | {
-    type: "image",
-    mimeType: string,
-    data: string,
-  } | {
-    type: "audio",
-    mimeType: string,
-    data: string,
-  } | (ResourceContents & {
-    type: "resource_link",
-  }) | {
-    type: "resource",
-    resource: (ResourceContents & {
-      text: string,
-    }) | ( ResourceContents & {
-      blob: string,
-    }),
-  }>
+  content: Array<
+    | {
+        type: "text";
+        text: string;
+      }
+    | {
+        type: "image";
+        mimeType: string;
+        data: string;
+      }
+    | {
+        type: "audio";
+        mimeType: string;
+        data: string;
+      }
+    | (ResourceContents & {
+        type: "resource_link";
+      })
+    | {
+        type: "resource";
+        resource:
+          | (ResourceContents & {
+              text: string;
+            })
+          | (ResourceContents & {
+              blob: string;
+            });
+      }
+  >;
 };
 
 const ArgumentsSchema = t.subtype({
@@ -70,12 +78,14 @@ export async function getMcpClient(serverName: string, config: Config): Promise<
 export async function connectMcpServer(
   serverName: string,
   config: Config,
-  log: boolean = false
+  log: boolean = false,
 ): Promise<Client> {
   const serverConfig = config.mcpServers?.[serverName];
 
   if (!serverConfig) {
-    throw new ToolError(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
+    throw new ToolError(
+      `MCP server "${serverName}" not found in config. Please add it to mcpServers.`,
+    );
   }
 
   const client = new Client({
@@ -120,7 +130,7 @@ export async function shutdownMcpClients(): Promise<void> {
 
 export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
   const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
-  if(!hasMcp) return null;
+  if (!hasMcp) return null;
 
   return {
     Schema,
@@ -134,17 +144,20 @@ export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
         if (abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
         return await new Promise<T>((resolve, reject) => {
           const onAbort = () => {
-            abortSignal.removeEventListener('abort', onAbort);
+            abortSignal.removeEventListener("abort", onAbort);
             reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
           };
-          abortSignal.addEventListener('abort', onAbort);
-          p.then((v) => {
-            abortSignal.removeEventListener('abort', onAbort);
-            resolve(v);
-          }, (e) => {
-            abortSignal.removeEventListener('abort', onAbort);
-            reject(e);
-          });
+          abortSignal.addEventListener("abort", onAbort);
+          p.then(
+            v => {
+              abortSignal.removeEventListener("abort", onAbort);
+              resolve(v);
+            },
+            e => {
+              abortSignal.removeEventListener("abort", onAbort);
+              reject(e);
+            },
+          );
         });
       };
 
@@ -156,17 +169,19 @@ export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
         const tool = tools.tools.find(t => t.name === toolName);
 
         if (!tool) {
-          const availableTools = tools.tools.map(t => t.name).join(', ');
+          const availableTools = tools.tools.map(t => t.name).join(", ");
           throw new ToolError(
-            `Tool "${toolName}" not found in MCP server "${serverName}". Available tools: ${availableTools}`
+            `Tool "${toolName}" not found in MCP server "${serverName}". Available tools: ${availableTools}`,
           );
         }
 
         // Call the tool (cannot truly cancel, but we can ignore result post-abort)
-        const result = await withAbort(client.callTool({
-          name: toolName,
-          arguments: toolArgs,
-        }) as Promise<MCPResult>);
+        const result = await withAbort(
+          client.callTool({
+            name: toolName,
+            arguments: toolArgs,
+          }) as Promise<MCPResult>,
+        );
 
         // Worst case, the response sizes will be one token per byte. Cap responses to the context
         // length
@@ -174,42 +189,42 @@ export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
         const MAX_SIZE = model.context;
 
         for (const content of result.content) {
-          if (content.type === 'text' && content.text.length > MAX_SIZE) {
+          if (content.type === "text" && content.text.length > MAX_SIZE) {
             throw new ToolError(
-              `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`
+              `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`,
             );
           }
-          if (content.type === 'resource') {
-            if ('text' in content.resource && content.resource.text.length > MAX_SIZE) {
+          if (content.type === "resource") {
+            if ("text" in content.resource && content.resource.text.length > MAX_SIZE) {
               throw new ToolError(
-                `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`
+                `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`,
               );
             }
           }
         }
 
         // Format the result
-        let output = '';
+        let output = "";
         for (const content of result.content) {
-          if (content.type === 'text') {
-            output += content.text + '\n';
-          } else if (content.type === 'image') {
+          if (content.type === "text") {
+            output += content.text + "\n";
+          } else if (content.type === "image") {
             output += `[Image: ${content.mimeType}, ${content.data.length} bytes]\n`;
-          } else if (content.type === 'audio') {
+          } else if (content.type === "audio") {
             output += `[Audio: ${content.mimeType}, ${content.data.length} bytes]\n`;
-          } else if (content.type === 'resource_link') {
+          } else if (content.type === "resource_link") {
             output += `[Resource Link: ${content.uri}`;
             if (content.mimeType) {
               output += ` (${content.mimeType})`;
             }
             output += `]\n`;
-          } else if (content.type === 'resource') {
+          } else if (content.type === "resource") {
             const resource = content.resource;
-            if ('text' in resource) {
+            if ("text" in resource) {
               output += `[Resource: ${resource.uri}]\n${resource.text}\n`;
             } else {
               // blob variant
-              output += `[Resource: ${resource.uri} (${resource.mimeType || 'application/octet-stream'})]\n`;
+              output += `[Resource: ${resource.uri} (${resource.mimeType || "application/octet-stream"})]\n`;
               output += `[Binary data: ${resource.blob.length} bytes]\n`;
             }
           }

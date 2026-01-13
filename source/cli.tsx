@@ -37,91 +37,88 @@ import { timeout } from "./signals.ts";
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
-const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5")
+const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
 
 const cli = new Command()
-.description("If run with no subcommands, runs Octo interactively.")
-.option("--config <path>")
-.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-.option(
-  "--connect <target>",
-  "Connect to a Docker container. For example, octo --connect docker:some-container-name"
-).action(async (opts) => {
-  const transport = new LocalTransport();
-  try {
-    // Set terminal title for tmux
-    process.title = "\\_o_O.//"
-    // Set terminal title for xterm-compatible term emulators
-    process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
+  .description("If run with no subcommands, runs Octo interactively.")
+  .option("--config <path>")
+  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+  .option(
+    "--connect <target>",
+    "Connect to a Docker container. For example, octo --connect docker:some-container-name",
+  )
+  .action(async opts => {
+    const transport = new LocalTransport();
+    try {
+      // Set terminal title for tmux
+      process.title = "\\_o_O.//";
+      // Set terminal title for xterm-compatible term emulators
+      process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
 
-    await runMain({
-      config: opts.config,
-      unchained: opts.unchained,
-      transport,
-    });
-  } finally {
-    await transport.close();
-  }
-});
-
-const docker = cli.command("docker").description("Sandbox Octo inside Docker");
-docker.command("connect")
-.description("Sandbox Octo inside an already-running container")
-.option("--config <path>")
-.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-.argument(
-  "<target>",
-  "The Docker container"
-).action(async (target, opts) => {
-  const transport = new DockerTransport({ type: "container", container: target });
-
-  try {
-    await runMain({
-      config: opts.config,
-      unchained: opts.unchained,
-      transport,
-    });
-  } finally {
-    await transport.close();
-  }
-});
-
-docker.command("run")
-.description("Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down")
-.option("--config <path>")
-.option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-.argument(
-  "[args...]",
-  "The args to pass to `docker run`"
-).action(async (args, opts) => {
-  const transport = new DockerTransport({
-    type: "image",
-    image: await manageContainer(args),
+      await runMain({
+        config: opts.config,
+        unchained: opts.unchained,
+        transport,
+      });
+    } finally {
+      await transport.close();
+    }
   });
 
-  try {
-    await runMain({
-      config: opts.config,
-      unchained: opts.unchained,
-      transport,
-    });
-  } finally {
-    await transport.close();
-  }
-});
+const docker = cli.command("docker").description("Sandbox Octo inside Docker");
+docker
+  .command("connect")
+  .description("Sandbox Octo inside an already-running container")
+  .option("--config <path>")
+  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+  .argument("<target>", "The Docker container")
+  .action(async (target, opts) => {
+    const transport = new DockerTransport({ type: "container", container: target });
 
-async function runMain(opts: {
-  config?: string,
-  unchained?: boolean,
-  transport: Transport,
-}) {
+    try {
+      await runMain({
+        config: opts.config,
+        unchained: opts.unchained,
+        transport,
+      });
+    } finally {
+      await transport.close();
+    }
+  });
+
+docker
+  .command("run")
+  .description(
+    "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
+  )
+  .option("--config <path>")
+  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+  .argument("[args...]", "The args to pass to `docker run`")
+  .action(async (args, opts) => {
+    const transport = new DockerTransport({
+      type: "image",
+      image: await manageContainer(args),
+    });
+
+    try {
+      await runMain({
+        config: opts.config,
+        unchained: opts.unchained,
+        transport,
+      });
+    } finally {
+      await transport.close();
+    }
+  });
+
+async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
   try {
-	  const metadata = await readMetadata();
-	  let { config, configPath } = await loadConfig(opts.config);
+    const metadata = await readMetadata();
+    let { config, configPath } = await loadConfig(opts.config);
 
     // Connect to all MCP servers on boot
-    if(config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-      for(const server of Object.keys(config.mcpServers)) {
+    if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+      for (const server of Object.keys(config.mcpServers)) {
         try {
           console.log("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
@@ -131,7 +128,9 @@ async function runMain(opts: {
           await getMcpClient(server, config);
           console.log("Connected to", server, "MCP server");
         } catch (error) {
-          console.warn(`Warning: Failed to connect to "${server}" MCP server: ${error instanceof Error ? error.message : String(error)}`);
+          console.warn(
+            `Warning: Failed to connect to "${server}" MCP server: ${error instanceof Error ? error.message : String(error)}`,
+          );
           console.warn("Octo will continue without this MCP server.");
         }
       }
@@ -140,7 +139,7 @@ async function runMain(opts: {
 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
 
-	  const { waitUntilExit } = render(
+    const { waitUntilExit } = render(
       <App
         bootSkills={skills.map(s => s.name)}
         config={config}
@@ -153,17 +152,16 @@ async function runMain(opts: {
       />,
       {
         exitOnCtrlC: false,
-      }
+      },
     );
 
     await waitUntilExit();
 
     console.log("\nApprox. tokens used:");
-    if(Object.keys(tokenCounts()).length === 0) {
+    if (Object.keys(tokenCounts()).length === 0) {
       console.log("0");
-    }
-    else {
-      for(const [ model, count ] of Object.entries(tokenCounts())) {
+    } else {
+      for (const [model, count] of Object.entries(tokenCounts())) {
         const input = count.input.toLocaleString();
         const output = count.output.toLocaleString();
         console.log(`${model}: ${input} input, ${output} output`);
@@ -174,114 +172,129 @@ async function runMain(opts: {
   }
 }
 
-cli.command("version")
-.description("Prints the current version")
-.action(async () => {
-	const metadata = await readMetadata();
-  console.log(metadata.version);
-});
+cli
+  .command("version")
+  .description("Prints the current version")
+  .action(async () => {
+    const metadata = await readMetadata();
+    console.log(metadata.version);
+  });
 
-cli.command("init")
-.description("Create a fresh config file for Octo")
-.action(() => {
-  render(
-    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
-  );
-});
+cli
+  .command("init")
+  .description("Create a fresh config file for Octo")
+  .action(() => {
+    render(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
+  });
 
-cli.command("changelog")
-.description("List the changelog")
-.action(async () => {
-  const changelog = await fs.readFile(path.join(__dirname, "../../CHANGELOG.md"), "utf8");
-  console.log(changelog);
-});
+cli
+  .command("changelog")
+  .description("List the changelog")
+  .action(async () => {
+    const changelog = await fs.readFile(path.join(__dirname, "../../CHANGELOG.md"), "utf8");
+    console.log(changelog);
+  });
 
-cli.command("list")
-.description("List all models you've configured with Octo")
-.action(async () => {
-  const { config } = await loadConfigWithoutReauth();
-  console.log(config.models.map(m => m.nickname).join("\n"));
-});
+cli
+  .command("list")
+  .description("List all models you've configured with Octo")
+  .action(async () => {
+    const { config } = await loadConfigWithoutReauth();
+    console.log(config.models.map(m => m.nickname).join("\n"));
+  });
 
 const bench = cli.command("bench");
-bench.command("tps")
-.description("Benchmark tokens/sec from your API provider")
-.option("--model <model-nickname>", "The nickname you gave for the model you want to use. If unspecified, uses your default model")
-.option("--prompt <prompt>", "Custom prompt to benchmark with. If omitted, uses the default prompt.")
-.action(async (opts) => {
-  const { config } = await loadConfigWithoutReauth();
-  const model = opts.model ? config.models.find(m => m.nickname === opts.model) : config.models[0];
+bench
+  .command("tps")
+  .description("Benchmark tokens/sec from your API provider")
+  .option(
+    "--model <model-nickname>",
+    "The nickname you gave for the model you want to use. If unspecified, uses your default model",
+  )
+  .option(
+    "--prompt <prompt>",
+    "Custom prompt to benchmark with. If omitted, uses the default prompt.",
+  )
+  .action(async opts => {
+    const { config } = await loadConfigWithoutReauth();
+    const model = opts.model
+      ? config.models.find(m => m.nickname === opts.model)
+      : config.models[0];
 
-  if(model == null) {
-    console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
-    console.error("The available models are:");
-    console.error("- " + config.models.map(m => m.nickname).join("\n- "));
-    process.exit(1);
-  }
+    if (model == null) {
+      console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      console.error("The available models are:");
+      console.error("- " + config.models.map(m => m.nickname).join("\n- "));
+      process.exit(1);
+    }
 
-  const apiKey = await assertKeyForModel(model, config);
-  const autofixJson = makeAutofixJson(config);
+    const apiKey = await assertKeyForModel(model, config);
+    const autofixJson = makeAutofixJson(config);
 
-  console.log("Benchmarking", model.nickname);
-  const abortController = new AbortController();
-  const timer = setInterval(() => {
-    console.log("Still working...");
-  }, 5000);
-  const start = new Date();
-  let firstToken: Date | null = null;
-  const tokenTimestamps: Date[] = [];
-  const result = await run({
-    apiKey, model, autofixJson,
-    messages: [
-      {
-        role: "user",
-        content: opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.",
-      }
-    ],
-    handlers: {
-      onTokens: () => {
-        const now = new Date();
-        tokenTimestamps.push(now);
-        if(firstToken == null) firstToken = now;
+    console.log("Benchmarking", model.nickname);
+    const abortController = new AbortController();
+    const timer = setInterval(() => {
+      console.log("Still working...");
+    }, 5000);
+    const start = new Date();
+    let firstToken: Date | null = null;
+    const tokenTimestamps: Date[] = [];
+    const result = await run({
+      apiKey,
+      model,
+      autofixJson,
+      messages: [
+        {
+          role: "user",
+          content:
+            opts.prompt ??
+            "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+        },
+      ],
+      handlers: {
+        onTokens: () => {
+          const now = new Date();
+          tokenTimestamps.push(now);
+          if (firstToken == null) firstToken = now;
+        },
+        onAutofixJson: () => {},
       },
-      onAutofixJson: () => {},
-    },
-    abortSignal: abortController.signal,
-  });
-  if (!result.success) {
-    console.error(result.requestError);
-    console.error(`cURL: ${result.curl}`)
-    process.exit(1);
-  }
+      abortSignal: abortController.signal,
+    });
+    if (!result.success) {
+      console.error(result.requestError);
+      console.error(`cURL: ${result.curl}`);
+      process.exit(1);
+    }
 
-  clearInterval(timer);
-  const end = new Date();
+    clearInterval(timer);
+    const end = new Date();
 
-  const first: null | Date = firstToken as null | Date;
-  if(first == null) {
-    console.log("No tokens sent");
-    return;
-  }
+    const first: null | Date = firstToken as null | Date;
+    if (first == null) {
+      console.log("No tokens sent");
+      return;
+    }
 
-  const ttft = first.getTime() - start.getTime();
-  const tokenElapsed = end.getTime() - first.getTime();
+    const ttft = first.getTime() - start.getTime();
+    const tokenElapsed = end.getTime() - first.getTime();
 
-  const firstResult = result.output[0];
-  if(firstResult.role !== "assistant") throw new Error("No assistant response");
-  const tokens = firstResult.outputTokens;
-  const seconds = tokenElapsed/1000;
-  // Calculate inter-token latencies
-  const interTokenLatencies: number[] = [];
-  for(let i = 1; i < tokenTimestamps.length; i++) {
-    const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i-1].getTime();
-    interTokenLatencies.push(latency);
-  }
+    const firstResult = result.output[0];
+    if (firstResult.role !== "assistant") throw new Error("No assistant response");
+    const tokens = firstResult.outputTokens;
+    const seconds = tokenElapsed / 1000;
+    // Calculate inter-token latencies
+    const interTokenLatencies: number[] = [];
+    for (let i = 1; i < tokenTimestamps.length; i++) {
+      const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i - 1].getTime();
+      interTokenLatencies.push(latency);
+    }
 
-  const minLatency = Math.min(...interTokenLatencies);
-  const maxLatency = Math.max(...interTokenLatencies);
-  const avgLatency = interTokenLatencies.reduce((a, b) => a + b, 0) / interTokenLatencies.length;
+    const minLatency = Math.min(...interTokenLatencies);
+    const maxLatency = Math.max(...interTokenLatencies);
+    const avgLatency = interTokenLatencies.reduce((a, b) => a + b, 0) / interTokenLatencies.length;
 
-  console.log(`\n
+    console.log(`\n
 Tokens: ${tokens}
 Time: ${seconds}s
 Time to first token: ${ttft / 1000}s
@@ -289,104 +302,111 @@ Inter-token latencies:
   Min: ${minLatency}ms
   Max: ${maxLatency}ms
   Avg: ${avgLatency.toFixed(2)}ms
-Tok/sec output: ${tokens/seconds}
+Tok/sec output: ${tokens / seconds}
 `);
-});
+  });
 
+cli
+  .command("prompt")
+  .description("Sends a prompt to a model")
+  .option("--system <prompt>", "An optional system prompt")
+  .option(
+    "--model <model-nickname>",
+    "The nickname you gave for the model you want to use. If unspecified, uses your default model",
+  )
+  .argument("<prompt>", "The prompt you want to send to this model")
+  .action(async (prompt, opts) => {
+    const { config } = await loadConfig();
+    const model = opts.model
+      ? config.models.find(m => m.nickname === opts.model)
+      : config.models[0];
 
-cli.command("prompt")
-.description("Sends a prompt to a model")
-.option("--system <prompt>", "An optional system prompt")
-.option("--model <model-nickname>", "The nickname you gave for the model you want to use. If unspecified, uses your default model")
-.argument("<prompt>", "The prompt you want to send to this model")
-.action(async (prompt, opts) => {
-  const { config } = await loadConfig();
-  const model = opts.model ? config.models.find(m => m.nickname === opts.model) : config.models[0];
-
-  if(model == null) {
-    console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
-    console.error("The available models are:");
-    console.error("- " + config.models.map(m => m.nickname).join("\n- "));
-    process.exit(1);
-  }
-
-  const apiKey = await readKeyForModel(model, config);
-  if(apiKey == null) {
-    console.error(`${model.nickname} doesn't have an API key set up.`);
-    if(model.apiEnvVar) {
-      console.error(`It was set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in the current shell. Hint: do you need to re-source your .bash_profile or .zshrc?`);
+    if (model == null) {
+      console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
+      console.error("The available models are:");
+      console.error("- " + config.models.map(m => m.nickname).join("\n- "));
+      process.exit(1);
     }
-    process.exit(1);
-  }
 
-  const client = new OpenAI({
-    apiKey,
-    baseURL: model.baseUrl,
-  });
+    const apiKey = await readKeyForModel(model, config);
+    if (apiKey == null) {
+      console.error(`${model.nickname} doesn't have an API key set up.`);
+      if (model.apiEnvVar) {
+        console.error(
+          `It was set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in the current shell. Hint: do you need to re-source your .bash_profile or .zshrc?`,
+        );
+      }
+      process.exit(1);
+    }
 
-  const messages: LlmMessage[] = [];
-  if(opts.system) {
-    messages.push({
-      role: "system",
-      content: opts.system,
+    const client = new OpenAI({
+      apiKey,
+      baseURL: model.baseUrl,
     });
-  }
-  messages.push({
-    role: "user",
-    content: prompt,
-  });
 
-  const response = await client.chat.completions.create({
-    model: model.model,
-    messages,
-    stream: true,
-  });
+    const messages: LlmMessage[] = [];
+    if (opts.system) {
+      messages.push({
+        role: "system",
+        content: opts.system,
+      });
+    }
+    messages.push({
+      role: "user",
+      content: prompt,
+    });
 
-  for await(const chunk of response) {
-    const content = chunk.choices[0].delta?.content;
-    if(content) process.stdout.write(content);
-  }
-  process.stdout.write("\n");
-});
+    const response = await client.chat.completions.create({
+      model: model.model,
+      messages,
+      stream: true,
+    });
+
+    for await (const chunk of response) {
+      const content = chunk.choices[0].delta?.content;
+      if (content) process.stdout.write(content);
+    }
+    process.stdout.write("\n");
+  });
 
 async function loadConfig(path?: string) {
-	let { config, configPath } = await loadConfigWithoutReauth(path);
+  let { config, configPath } = await loadConfigWithoutReauth(path);
   let defaultModel = config.models[0];
-  if(!await readKeyForModel(defaultModel, config)) {
+  if (!(await readKeyForModel(defaultModel, config))) {
     const { waitUntilExit } = render(
       <PreflightModelAuth
         error="It looks like we need to set up auth for your default model"
         model={defaultModel}
         config={config}
         configPath={configPath}
-      />
+      />,
     );
     await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path);
     config = reloaded.config;
     configPath = reloaded.configPath;
     defaultModel = config.models[0];
-    if(!await readKeyForModel(defaultModel, config)) process.exit(1);
+    if (!(await readKeyForModel(defaultModel, config))) process.exit(1);
   }
 
-  for(const key of AUTOFIX_KEYS) {
+  for (const key of AUTOFIX_KEYS) {
     let autofixModel = config[key];
-    if(autofixModel) {
-      if(!await readKeyForModel(autofixModel, config)) {
+    if (autofixModel) {
+      if (!(await readKeyForModel(autofixModel, config))) {
         const { waitUntilExit } = render(
           <PreflightAutofixAuth
             autofixKey={key}
             model={autofixModel}
             config={config}
             configPath={configPath}
-          />
+          />,
         );
         await waitUntilExit();
         const reloaded = await loadConfigWithoutReauth(path);
         config = reloaded.config;
         configPath = reloaded.configPath;
         autofixModel = config[key];
-        if(autofixModel && !await readKeyForModel(autofixModel, config)) process.exit(1);
+        if (autofixModel && !(await readKeyForModel(autofixModel, config))) process.exit(1);
       }
     }
   }
@@ -395,20 +415,18 @@ async function loadConfig(path?: string) {
 }
 
 async function loadConfigWithoutReauth(configPath?: string) {
-  if(configPath) return { configPath, config: await readConfig(configPath) };
+  if (configPath) return { configPath, config: await readConfig(configPath) };
 
-  if(await fileExists(CONFIG_JSON5_FILE)) {
+  if (await fileExists(CONFIG_JSON5_FILE)) {
     return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
   }
 
   // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
   await markUpdatesSeen();
-	const { waitUntilExit } = render(
-    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />
-  );
+  const { waitUntilExit } = render(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
   await waitUntilExit();
 
-  if(await fileExists(CONFIG_JSON5_FILE)) {
+  if (await fileExists(CONFIG_JSON5_FILE)) {
     return { configPath: CONFIG_JSON5_FILE, config: await readConfig(CONFIG_JSON5_FILE) };
   }
 

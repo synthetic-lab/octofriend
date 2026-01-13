@@ -5,23 +5,22 @@ export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
 
   const { stdout } = await new Promise<{
-    stdout: string,
+    stdout: string;
   }>((resolve, reject) => {
     const stdout: string[] = [];
     let error = false;
-    const child = spawn("docker", [ "run", ...args ], {
-      stdio: ['ignore', 'pipe', 'inherit']
+    const child = spawn("docker", ["run", ...args], {
+      stdio: ["ignore", "pipe", "inherit"],
     });
     child.on("error", e => {
       error = true;
       reject(e);
     });
     child.stdout.on("data", data => stdout.push(data));
-    child.on("close", (code) => {
-      if(code != null && code !== 0) {
-        if(!error) reject("Command exited with non-zero exit code: " + code);
-      }
-      else if(!error) {
+    child.on("close", code => {
+      if (code != null && code !== 0) {
+        if (!error) reject("Command exited with non-zero exit code: " + code);
+      } else if (!error) {
         resolve({
           stdout: stdout.join(""),
         });
@@ -33,7 +32,7 @@ export async function manageContainer(args: string[]) {
   return {
     container: name,
     close: async () => {
-      spawn("docker", [ "kill", name ]);
+      spawn("docker", ["kill", name]);
     },
   };
 }
@@ -42,63 +41,71 @@ function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
 }
 
-type DockerTarget = {
-  type: "container",
-  container: string,
-} | {
-  type: "image",
-  image: Awaited<ReturnType<typeof manageContainer>>,
-};
+type DockerTarget =
+  | {
+      type: "container";
+      container: string;
+    }
+  | {
+      type: "image";
+      image: Awaited<ReturnType<typeof manageContainer>>;
+    };
 export class DockerTransport implements Transport {
   private readonly _container: string;
 
   constructor(private readonly _target: DockerTarget) {
-    if(this._target.type === "image") this._container = this._target.image.container;
+    if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
   }
 
   async close() {
-    if(this._target.type === "image") await this._target.image.close();
+    if (this._target.type === "image") await this._target.image.close();
   }
 
-  private async dockerExec(signal: AbortSignal, command: string[], timeout: number): Promise<string> {
+  private async dockerExec(
+    signal: AbortSignal,
+    command: string[],
+    timeout: number,
+  ): Promise<string> {
     const dockerCmd = ["docker", "exec", this._container, "/bin/sh", "-c", command.join(" ")];
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
         timeout,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ["ignore", "pipe", "pipe"],
       });
 
-      let output = '';
+      let output = "";
       let aborted = false;
 
       const onAbort = () => {
         aborted = true;
         // Try graceful termination first
-        child.kill('SIGTERM');
+        child.kill("SIGTERM");
         // Fallback to SIGKILL if it doesn't exit quickly
         setTimeout(() => {
-          try { child.kill('SIGKILL'); } catch {}
+          try {
+            child.kill("SIGKILL");
+          } catch {}
         }, 500).unref?.();
       };
 
       if (signal.aborted) onAbort();
-      signal.addEventListener('abort', onAbort);
+      signal.addEventListener("abort", onAbort);
 
       const cleanup = () => {
-        signal.removeEventListener('abort', onAbort);
+        signal.removeEventListener("abort", onAbort);
       };
 
-      child.stdout.on('data', (data) => {
+      child.stdout.on("data", data => {
         output += data.toString();
       });
 
-      child.stderr.on('data', (data) => {
+      child.stderr.on("data", data => {
         output += data.toString();
       });
 
-      child.on('close', (code) => {
+      child.on("close", code => {
         cleanup();
         if (aborted) {
           reject(new AbortError());
@@ -107,20 +114,25 @@ export class DockerTransport implements Transport {
         if (code === 0) {
           resolve(output);
         } else {
-          if(code == null) {
-            reject(new CommandFailedError(
-`Command timed out.
-output: ${output}`));
-          }
-          else {
-            reject(new CommandFailedError(
-`Command exited with code: ${code}
-output: ${output}`));
+          if (code == null) {
+            reject(
+              new CommandFailedError(
+                `Command timed out.
+output: ${output}`,
+              ),
+            );
+          } else {
+            reject(
+              new CommandFailedError(
+                `Command exited with code: ${code}
+output: ${output}`,
+              ),
+            );
           }
         }
       });
 
-      child.on('error', (err) => {
+      child.on("error", err => {
         cleanup();
         if (aborted) {
           reject(new AbortError());
@@ -136,15 +148,16 @@ output: ${output}`));
     const tempFile = `/tmp/octo_write_${randomSuffix()}`;
 
     // First, write the contents to the temp file using a base64 to avoid shellescape issues
-    const base64Contents = Buffer.from(contents).toString('base64');
-    await this.dockerExec(signal, [
-      "/bin/sh", "-c",
-      `echo '${base64Contents}' | base64 -d > '${tempFile}'`
-    ], 5000);
+    const base64Contents = Buffer.from(contents).toString("base64");
+    await this.dockerExec(
+      signal,
+      ["/bin/sh", "-c", `echo '${base64Contents}' | base64 -d > '${tempFile}'`],
+      5000,
+    );
 
     try {
       // Ensure directory exists
-      const dirPath = file.substring(0, file.lastIndexOf('/'));
+      const dirPath = file.substring(0, file.lastIndexOf("/"));
       if (dirPath) {
         await this.mkdir(signal, dirPath);
       }
@@ -188,13 +201,18 @@ output: ${output}`));
     await this.dockerExec(signal, ["mkdir", "-p", dirpath], 5000);
   }
 
-  async readdir(signal: AbortSignal, dirpath: string): Promise<Array<{
-    entry: string,
-    isDirectory: boolean,
-  }>> {
+  async readdir(
+    signal: AbortSignal,
+    dirpath: string,
+  ): Promise<
+    Array<{
+      entry: string;
+      isDirectory: boolean;
+    }>
+  > {
     try {
       const output = await this.dockerExec(signal, ["ls", "-la", dirpath], 5000);
-      const lines = output.trim().split('\n').slice(1); // Skip "total" line
+      const lines = output.trim().split("\n").slice(1); // Skip "total" line
 
       const entries = [];
       for (const line of lines) {
@@ -205,12 +223,12 @@ output: ${output}`));
         const name = parts[8];
 
         // Skip "." and ".." entries
-        if (name === '.' || name === '..') continue;
+        if (name === "." || name === "..") continue;
 
-        const isDirectory = permissions.startsWith('d');
+        const isDirectory = permissions.startsWith("d");
         entries.push({
           entry: name,
-          isDirectory
+          isDirectory,
         });
       }
 
