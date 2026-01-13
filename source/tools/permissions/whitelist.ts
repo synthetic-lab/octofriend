@@ -5,8 +5,8 @@ import { PermissionsData, WhitelistType } from "./index.ts";
 export function createWhitelist(): PermissionsData {
   return {
     command: new Set<string>(),
-    filePattern: new Set<string>(),
-    mcpTool: new Set<string>(),
+    fileOperations: new Set<string>(),
+    mcp: new Set<string>(),
     fetch: new Set<string>(),
     skill: new Set<string>(),
   };
@@ -24,11 +24,11 @@ export const matchers = {
     return value.startsWith(pattern);
   },
 
-  filePattern: (value: string, pattern: string) => {
+  fileOperations: (value: string, pattern: string) => {
     return minimatch(value, pattern) || minimatch(value.split(PATTERNS.FILE_PATH_SEPARATOR).pop() || "", pattern);
   },
 
-  mcpTool: (value: string, pattern: string) => {
+  mcp: (value: string, pattern: string) => {
     if (pattern.endsWith(PATTERNS.MCP_TOOL_WILDCARD_SUFFIX)) {
       const server = pattern.slice(0, -2);
       return value.startsWith(server + PATTERNS.MCP_TOOL_SEPARATOR);
@@ -60,17 +60,17 @@ export function isWhitelisted(
       }
       return false;
     }
-    case 'filePattern': {
-      for (const pattern of whitelist.filePattern) {
-        if (matchers.filePattern(trimmed, pattern)) {
+    case 'fileOperations': {
+      for (const pattern of whitelist.fileOperations) {
+        if (matchers.fileOperations(trimmed, pattern)) {
           return true;
         }
       }
       return false;
     }
-    case 'mcpTool': {
-      for (const pattern of whitelist.mcpTool) {
-        if (matchers.mcpTool(trimmed, pattern)) {
+    case 'mcp': {
+      for (const pattern of whitelist.mcp) {
+        if (matchers.mcp(trimmed, pattern)) {
           return true;
         }
       }
@@ -103,8 +103,8 @@ export function addToWhitelist(
   if (!trimmed) return whitelist;
   const newWhitelist = {
     command: new Set(whitelist.command),
-    filePattern: new Set(whitelist.filePattern),
-    mcpTool: new Set(whitelist.mcpTool),
+    fileOperations: new Set(whitelist.fileOperations),
+    mcp: new Set(whitelist.mcp),
     fetch: new Set(whitelist.fetch),
     skill: new Set(whitelist.skill),
   };

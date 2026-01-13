@@ -12,7 +12,7 @@ import {
   parseJson, JSONASTNode, NullNode, NumberNode, StringNode, ArrayNode, ObjectNode, BooleanNode
 } from "./json-parser.ts";
 import { generateJSON } from "./json-generator.ts";
-import { ArgumentsSchema as CreateArgumentsSchema } from "../../source/tools/tool-defs/create.ts";
+import { ArgumentsSchema as CreateArgumentsSchema } from "../../source/tools/tool-defs/fileOperations/create.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRAIN_PATH = path.join(__dirname, "unfat/output/data/train.jsonl");

@@ -23,7 +23,7 @@ interface ToolConfig {
 }
 
 const CATEGORY_CONFIGS: Record<WhitelistType, Omit<ToolConfig, 'type'>> = {
-  filePattern: {
+  fileOperations: {
     extractValue: (args: Record<string, unknown>) =>
       (args['filePath'] || args['dirPath'] || '') as string,
     extractPattern: () => "*",
@@ -40,7 +40,7 @@ const CATEGORY_CONFIGS: Record<WhitelistType, Omit<ToolConfig, 'type'>> = {
       { text: pattern, bold: true },
     ],
   },
-  mcpTool: {
+  mcp: {
     extractValue: (args: Record<string, unknown>) => args['tool'] as string,
     extractPattern: extractMcpToolPattern,
     formatLabelParts: (pattern: string) => [
