@@ -1,6 +1,6 @@
 import { t } from "structural";
-import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool } from "../common.ts";
+import { fileTracker } from "../../file-tracker.ts";
+import { attemptUntrackedRead, defineTool } from "../../common.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),

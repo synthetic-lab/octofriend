@@ -1,7 +1,7 @@
 import { t } from "structural";
 import path from "path";
 import fs from "fs/promises";
-import { DiffEditSchema } from "../../source/tools/tool-defs/edit.ts";
+import { DiffEditSchema } from "../../source/tools/tool-defs/fileOperations/edit.ts";
 import { fileURLToPath } from "url";
 import { fixEditPrompt, DiffApplySuccess, DiffApplyFailure } from "../../source/prompts/autofix-prompts.ts";
 import { parseLines } from "../parse.ts";

@@ -1,11 +1,19 @@
+import * as fileOperations from "./fileOperations/index.ts";
+import * as command from "./command/index.ts";
+import * as mcp from "./mcp/index.ts";
+import * as fetch from "./fetch/index.ts";
+import * as skill from "./skill/index.ts";
 import * as toolMap from "./index.ts";
 
+const keysOf = <T extends Record<string, unknown>>(obj: T) =>
+  Object.keys(obj) as Array<keyof T>;
+
 export const TOOL_CATEGORIES = {
-  filePattern: ['edit', 'create', 'append', 'prepend', 'rewrite', 'read', 'list'] as const,
-  command: ['shell'] as const,
-  mcpTool: ['mcp'] as const,
-  fetch: ['fetch'] as const,
-  skill: ['skill'] as const,
+  fileOperations: keysOf(fileOperations),
+  command: keysOf(command),
+  mcp: keysOf(mcp),
+  fetch: keysOf(fetch),
+  skill: keysOf(skill),
 } as const;
 
 type AllCategorizedTools = typeof TOOL_CATEGORIES[keyof typeof TOOL_CATEGORIES][number];

@@ -1,6 +1,6 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../../common.ts";
+import { AbortError, CommandFailedError } from "../../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
   timeout: t.num.comment(

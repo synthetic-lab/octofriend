@@ -1,7 +1,7 @@
 import { t } from "structural";
 import parseGitDiff from "parse-git-diff";
 import { getAllCommits, getCommitDiff, getFileContentsBeforeAfter } from "./git.ts";
-import { DiffEditSchema } from "../source/tools/tool-defs/edit.ts";
+import { DiffEditSchema } from "../source/tools/tool-defs/fileOperations/edit.ts";
 import { parseLines } from "./parse.ts";
 import { asynctryexpr } from "../source/tryexpr.ts";
 

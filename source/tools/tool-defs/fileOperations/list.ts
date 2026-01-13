@@ -1,6 +1,6 @@
 import { t } from "structural";
-import { ToolError, attempt, defineTool } from "../common.ts";
-import { Transport } from "../../transports/transport-common.ts";
+import { ToolError, attempt, defineTool } from "../../common.ts";
+import { Transport } from "../../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
