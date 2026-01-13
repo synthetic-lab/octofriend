@@ -19,48 +19,54 @@ export async function attempt<T>(errMessage: string, callback: () => Promise<T>)
   }
 }
 
-export async function attemptUntrackedStat(transport: Transport, signal: AbortSignal, path: string) {
+export async function attemptUntrackedStat(
+  transport: Transport,
+  signal: AbortSignal,
+  path: string,
+) {
   return attempt(`Could not stat(${path}): does the file exist?`, async () => {
     const exists = await transport.pathExists(signal, path);
-    if(!exists) throw new Error("Path doesn't exist");
+    if (!exists) throw new Error("Path doesn't exist");
   });
 }
 
-export async function attemptUntrackedRead(transport: Transport, signal: AbortSignal, path: string) {
+export async function attemptUntrackedRead(
+  transport: Transport,
+  signal: AbortSignal,
+  path: string,
+) {
   return await attempt(`${path} couldn't be read`, async () => {
     return transport.readFile(signal, path);
   });
 }
 
 export type ToolResult = {
-  content: string,
+  content: string;
 
   // The line count to show in the UI, if it's not just the number of lines in the content
-  lines?: number,
+  lines?: number;
 };
 
 export type ToolDef<T> = {
-  ArgumentsSchema: t.Type<any>,
-  Schema: t.Type<T>,
-  validate: (abortSignal: AbortSignal, transport: Transport, t: T, cfg: Config) => Promise<null>,
+  ArgumentsSchema: t.Type<any>;
+  Schema: t.Type<T>;
+  validate: (abortSignal: AbortSignal, transport: Transport, t: T, cfg: Config) => Promise<null>;
   run: (
     abortSignal: AbortSignal,
     transport: Transport,
     t: T,
     cfg: Config,
     modelOverride: string | null,
-  ) => Promise<ToolResult>,
+  ) => Promise<ToolResult>;
 };
 
 export type ToolFactory<T> = (
   signal: AbortSignal,
   transport: Transport,
-  config: Config
+  config: Config,
 ) => Promise<ToolDef<T> | null>;
 
-export function defineTool<T>(
-  factory: ToolFactory<T>
-): ToolFactory<T> {
+export function defineTool<T>(factory: ToolFactory<T>): ToolFactory<T> {
   return factory;
 }
 

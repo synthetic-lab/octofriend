@@ -42,7 +42,7 @@ export class LocalTransport implements Transport {
   async readdir(_: AbortSignal, dirpath: string) {
     const entries = await fs.readdir(dirpath, { withFileTypes: true });
     return Promise.all(
-      entries.map(async (entry) => {
+      entries.map(async entry => {
         // For symlinks, resolve to determine if target is a directory
         if (entry.isSymbolicLink()) {
           const fullPath = path.join(dirpath, entry.name);
@@ -55,7 +55,7 @@ export class LocalTransport implements Transport {
           }
         }
         return { entry: entry.name, isDirectory: entry.isDirectory() };
-      })
+      }),
     );
   }
 
@@ -83,11 +83,11 @@ export class LocalTransport implements Transport {
         cwd: process.cwd(),
         shell: "bash",
         timeout,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: true
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: true,
       });
 
-      let output = '';
+      let output = "";
       let aborted = false;
 
       const onAbort = () => {
@@ -95,37 +95,39 @@ export class LocalTransport implements Transport {
         // Kill the entire process group to handle child processes
         try {
           // First, try to kill the process group with SIGTERM
-          process.kill(-child.pid!, 'SIGTERM');
+          process.kill(-child.pid!, "SIGTERM");
         } catch (e) {
           // Fallback to just killing the main process if process group doesn't exist
-          child.kill('SIGTERM');
+          child.kill("SIGTERM");
         }
         // Fallback to SIGKILL if it doesn't exit quickly
         setTimeout(() => {
           try {
-            process.kill(-child.pid!, 'SIGKILL');
+            process.kill(-child.pid!, "SIGKILL");
           } catch {
-            try { child.kill('SIGKILL'); } catch {}
+            try {
+              child.kill("SIGKILL");
+            } catch {}
           }
         }, 500).unref?.();
       };
 
       if (signal.aborted) onAbort();
-      signal.addEventListener('abort', onAbort);
+      signal.addEventListener("abort", onAbort);
 
       const cleanup = () => {
-        signal.removeEventListener('abort', onAbort);
+        signal.removeEventListener("abort", onAbort);
       };
 
-      child.stdout.on('data', (data) => {
+      child.stdout.on("data", data => {
         output += data.toString();
       });
 
-      child.stderr.on('data', (data) => {
+      child.stderr.on("data", data => {
         output += data.toString();
       });
 
-      child.on('close', (code) => {
+      child.on("close", code => {
         cleanup();
         if (aborted) {
           reject(new AbortError());
@@ -134,20 +136,25 @@ export class LocalTransport implements Transport {
         if (code === 0) {
           resolve(output);
         } else {
-          if(code == null) {
-            reject(new CommandFailedError(
-`Command timed out.
-output: ${output}`));
-          }
-          else {
-            reject(new CommandFailedError(
-`Command exited with code: ${code}
-output: ${output}`));
+          if (code == null) {
+            reject(
+              new CommandFailedError(
+                `Command timed out.
+output: ${output}`,
+              ),
+            );
+          } else {
+            reject(
+              new CommandFailedError(
+                `Command exited with code: ${code}
+output: ${output}`,
+              ),
+            );
           }
         }
       });
 
-      child.on('error', (err) => {
+      child.on("error", err => {
         cleanup();
         if (aborted) {
           reject(new AbortError());

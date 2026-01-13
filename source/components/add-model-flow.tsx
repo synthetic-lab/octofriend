@@ -12,64 +12,64 @@ import { PROVIDERS } from "../providers.ts";
 import * as logger from "../logger.ts";
 
 type Model = Config["models"][number];
-type ValidationResult = { valid: true } | { valid: false, error: string };
+type ValidationResult = { valid: true } | { valid: false; error: string };
 
 type AddModelStep<T> = {
   title: string;
   prompt: string;
   parse: (val: string) => T;
   validate: (val: string) => ValidationResult;
-  onSubmit: (t: T) => any,
+  onSubmit: (t: T) => any;
   children: React.ReactNode;
 };
 
 type ModelStepRoute<T> = T & {
-  renderExamples: boolean,
-  done: (data: Model) =>  any,
-  cancel: () => any,
-  config: Config | null,
+  renderExamples: boolean;
+  done: (data: Model) => any;
+  cancel: () => any;
+  config: Config | null;
 };
 
 type FullFlowRouteData = {
-  baseUrl: ModelStepRoute<{}>,
+  baseUrl: ModelStepRoute<{}>;
   authAsk: ModelStepRoute<{
-    baseUrl: string,
-  }>,
+    baseUrl: string;
+  }>;
   envVar: ModelStepRoute<{
-    baseUrl: string,
-  }>,
+    baseUrl: string;
+  }>;
   apiKey: ModelStepRoute<{
-    baseUrl: string,
-  }>,
+    baseUrl: string;
+  }>;
   postAuth: ModelStepRoute<{
-    baseUrl: string,
-    envVar?: string,
-  }>,
+    baseUrl: string;
+    envVar?: string;
+  }>;
   model: ModelStepRoute<{
-    baseUrl: string,
-    envVar?: string,
-  }>,
+    baseUrl: string;
+    envVar?: string;
+  }>;
   testConnection: ModelStepRoute<{
-    baseUrl: string,
-    envVar?: string,
-    model: string,
-  }>,
+    baseUrl: string;
+    envVar?: string;
+    model: string;
+  }>;
   nickname: ModelStepRoute<{
-    baseUrl: string,
-    envVar?: string,
-    model: string,
-  }>,
+    baseUrl: string;
+    envVar?: string;
+    model: string;
+  }>;
   context: ModelStepRoute<{
-    baseUrl: string,
-    envVar?: string,
-    model: string,
-    nickname: string,
-  }>,
+    baseUrl: string;
+    envVar?: string;
+    model: string;
+    nickname: string;
+  }>;
 };
 
 const errorContext = createContext<{
-  setErrorMessage: (m: string) => any,
-  errorMessage: string,
+  setErrorMessage: (m: string) => any;
+  errorMessage: string;
 }>({
   errorMessage: "",
   setErrorMessage: () => {},
@@ -77,38 +77,39 @@ const errorContext = createContext<{
 
 const fullFlow = router<FullFlowRouteData>();
 
-const baseUrl = fullFlow.withRoutes(
-  "authAsk", "baseUrl"
-).build("baseUrl", to => props => {
-  return <Back go={props.cancel}>
-    <Step<string>
-      title="What's the base URL for the API you're connecting to?"
-      prompt="Base URL:"
-      parse={val => val}
-      validate={() => ({ valid: true })}
-      onSubmit={baseUrl => {
-        to.authAsk({ ...props, baseUrl })
-      }}
-    >
-      <Box flexDirection="column">
-        {
-          props.renderExamples && <Box marginBottom={1}>
-            <Text>
-              (For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)
-            </Text>
-          </Box>
-        }
-        <Text>
-          You can usually find this information in your inference provider's documentation.
-        </Text>
-      </Box>
-    </Step>
-  </Back>
+const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl").build("baseUrl", to => props => {
+  return (
+    <Back go={props.cancel}>
+      <Step<string>
+        title="What's the base URL for the API you're connecting to?"
+        prompt="Base URL:"
+        parse={val => val}
+        validate={() => ({ valid: true })}
+        onSubmit={baseUrl => {
+          to.authAsk({ ...props, baseUrl });
+        }}
+      >
+        <Box flexDirection="column">
+          {props.renderExamples && (
+            <Box marginBottom={1}>
+              <Text>(For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)</Text>
+            </Box>
+          )}
+          <Text>
+            You can usually find this information in your inference provider's documentation.
+          </Text>
+        </Box>
+      </Step>
+    </Back>
+  );
 });
 
-function AuthAsk(props: FullFlowRouteData["authAsk"] & Pick<Transitions<void>, "back"> & {
-  onSelect: (route: "apiKey" | "envVar") => void
-}) {
+function AuthAsk(
+  props: FullFlowRouteData["authAsk"] &
+    Pick<Transitions<void>, "back"> & {
+      onSelect: (route: "apiKey" | "envVar") => void;
+    },
+) {
   const items = [
     {
       label: "Enter an API key",
@@ -124,7 +125,7 @@ function AuthAsk(props: FullFlowRouteData["authAsk"] & Pick<Transitions<void>, "
     },
   ];
   const onSelect = useCallback((item: (typeof items)[number]) => {
-    if(item.value === "back") props.back();
+    if (item.value === "back") props.back();
     else props.onSelect(item.value);
   }, []);
 
@@ -132,133 +133,132 @@ function AuthAsk(props: FullFlowRouteData["authAsk"] & Pick<Transitions<void>, "
     return provider.baseUrl === props.baseUrl;
   });
 
-  return <Back go={props.back}>
-    <MenuPanel
-      title="How do you want to authenticate?"
-      items={items}
-      onSelect={onSelect}
-    >
-      {
-        provider && <Text>
-          It looks like you don't have the default {provider.envVar} environment variable defined
-          in your current shell. How do you want to authenticate with {provider.name}?
-        </Text>
-      }
-    </MenuPanel>
-  </Back>
+  return (
+    <Back go={props.back}>
+      <MenuPanel title="How do you want to authenticate?" items={items} onSelect={onSelect}>
+        {provider && (
+          <Text>
+            It looks like you don't have the default {provider.envVar} environment variable defined
+            in your current shell. How do you want to authenticate with {provider.name}?
+          </Text>
+        )}
+      </MenuPanel>
+    </Back>
+  );
 }
 
-const envVar = fullFlow.withRoutes(
-  "authAsk", "envVar", "postAuth",
-).build("envVar", to => props => {
-  return <Back go={() => to.authAsk(props)}>
-    <Step<string>
-      title="What environment variable should Octo read to get the API key?"
-      prompt="Environment variable name:"
-      parse={val => val}
-      validate={val => {
-        if(process.env[val]) return { valid: true };
+const envVar = fullFlow.withRoutes("authAsk", "envVar", "postAuth").build("envVar", to => props => {
+  return (
+    <Back go={() => to.authAsk(props)}>
+      <Step<string>
+        title="What environment variable should Octo read to get the API key?"
+        prompt="Environment variable name:"
+        parse={val => val}
+        validate={val => {
+          if (process.env[val]) return { valid: true };
 
-        return {
-          valid: false,
-          error: `
+          return {
+            valid: false,
+            error: `
 Env var ${val} isn't defined in your current shell. Do you need to re-source your .bashrc or .zshrc?
           `.trim(),
-        };
-      }}
-      onSubmit={envVar => to.postAuth({ ...props, envVar })}
-    >
-      <Box flexDirection="column">
-        {
-          props.renderExamples && <Box marginBottom={1}>
-            <Text>
-              (For example, MOONSHOT_API_KEY)
-            </Text>
-          </Box>
-        }
-        <Text>
-          You can typically find your API key on your account or settings page on your
-          inference provider's website.
-        </Text>
-        {
-          props.renderExamples && <>
-            <Text>
-              After getting an API key, make sure to export it in your shell; for example:
-            </Text>
-            <Text bold>
-              export MOONSHOT_API_KEY="your-api-key-here"
-            </Text>
-            <Text>
-              (If you're running a local LLM, you can use any non-empty env var.)
-            </Text>
-          </>
-        }
-      </Box>
-    </Step>
-  </Back>
+          };
+        }}
+        onSubmit={envVar => to.postAuth({ ...props, envVar })}
+      >
+        <Box flexDirection="column">
+          {props.renderExamples && (
+            <Box marginBottom={1}>
+              <Text>(For example, MOONSHOT_API_KEY)</Text>
+            </Box>
+          )}
+          <Text>
+            You can typically find your API key on your account or settings page on your inference
+            provider's website.
+          </Text>
+          {props.renderExamples && (
+            <>
+              <Text>
+                After getting an API key, make sure to export it in your shell; for example:
+              </Text>
+              <Text bold>export MOONSHOT_API_KEY="your-api-key-here"</Text>
+              <Text>(If you're running a local LLM, you can use any non-empty env var.)</Text>
+            </>
+          )}
+        </Box>
+      </Step>
+    </Back>
+  );
 });
 
 type Transitions<T> = {
-  back: () => void,
-  onSubmit: (data: T) => void,
+  back: () => void;
+  onSubmit: (data: T) => void;
 };
 
-const apiKey = fullFlow.withRoutes(
-  "apiKey", "authAsk", "postAuth",
-).build("apiKey", to => props => {
-  return <SetApiKey
-    baseUrl={props.baseUrl}
-    onComplete={() => to.postAuth(props)}
-    onCancel={() => to.authAsk(props)}
-  />
+const apiKey = fullFlow.withRoutes("apiKey", "authAsk", "postAuth").build("apiKey", to => props => {
+  return (
+    <SetApiKey
+      baseUrl={props.baseUrl}
+      onComplete={() => to.postAuth(props)}
+      onCancel={() => to.authAsk(props)}
+    />
+  );
 });
 
-function PostAuth(props: FullFlowRouteData["postAuth"] & {
-  handleAuth: () => void,
-}) {
+function PostAuth(
+  props: FullFlowRouteData["postAuth"] & {
+    handleAuth: () => void;
+  },
+) {
   useEffect(() => {
     props.handleAuth();
   }, []);
-  return <></>
+  return <></>;
 }
 
 function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
-  return <Back go={props.back}>
-    <Step<string>
-      title="What's the model string for the API you're using?"
-      prompt="Model string:"
-      parse={val => val}
-      validate={val => {
-        if(props.baseUrl === "https://synthetic.new") {
-          if(!val.startsWith("hf:")) {
-            return {
-              valid: false,
-              error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
-            };
+  return (
+    <Back go={props.back}>
+      <Step<string>
+        title="What's the model string for the API you're using?"
+        prompt="Model string:"
+        parse={val => val}
+        validate={val => {
+          if (props.baseUrl === "https://synthetic.new") {
+            if (!val.startsWith("hf:")) {
+              return {
+                valid: false,
+                error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
+              };
+            }
           }
-        }
-        return {valid: true }
-      }}
-      onSubmit={props.onSubmit}
-    >
-      {
-        props.renderExamples && <Box marginBottom={1}>
-          <Text>
-            (For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)
-          </Text>
-        </Box>
-      }
-      <Text>
-        This varies by inference provider: you can typically find this information in your
-        inference provider's documentation.
-      </Text>
-    </Step>
-  </Back>
+          return { valid: true };
+        }}
+        onSubmit={props.onSubmit}
+      >
+        {props.renderExamples && (
+          <Box marginBottom={1}>
+            <Text>
+              (For example, to use Kimi K2 with the Moonshot API, you would use
+              kimi-k2-0711-preview)
+            </Text>
+          </Box>
+        )}
+        <Text>
+          This varies by inference provider: you can typically find this information in your
+          inference provider's documentation.
+        </Text>
+      </Step>
+    </Back>
+  );
 }
 
-function TestConnection(props: FullFlowRouteData["testConnection"] & {
-  errorNav: () => any,
-} & Transitions<void>) {
+function TestConnection(
+  props: FullFlowRouteData["testConnection"] & {
+    errorNav: () => any;
+  } & Transitions<void>,
+) {
   const { setErrorMessage } = useContext(errorContext);
   useEffect(() => {
     testConnection({
@@ -267,299 +267,352 @@ function TestConnection(props: FullFlowRouteData["testConnection"] & {
       baseUrl: props.baseUrl,
       config: props.config,
     }).then(valid => {
-      if(valid) {
+      if (valid) {
         props.onSubmit();
         return;
       }
       setErrorMessage("Connection failed.");
       props.errorNav();
     });
-  }, [ props ]);
+  }, [props]);
 
-  return <Back go={props.back}>
-    <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
-      <Box flexDirection="column" width={80}>
-        <Text color="yellow" bold>Testing connection...</Text>
+  return (
+    <Back go={props.back}>
+      <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
+        <Box flexDirection="column" width={80}>
+          <Text color="yellow" bold>
+            Testing connection...
+          </Text>
+        </Box>
       </Box>
-    </Box>
-  </Back>
+    </Back>
+  );
 }
 
-const nickname = fullFlow.withRoutes(
-  "nickname", "model", "context",
-).build("nickname", router => props => {
-  return <Back go={() => router.model(props)}>
-    <Step<string>
-      title="Let's give this model a nickname so we can easily reference it later."
-      prompt="Nickname:"
-      parse={val => val}
-      validate={() => ({ valid: true })}
-      onSubmit={nickname => router.context({ ...props, nickname })}
-    >
-     <Box flexDirection="column">
-        {
-          props.renderExamples && <Text>
-            For example, if this was set up to talk to Kimi K2, you might want to call it that.
-          </Text>
-        }
-      </Box>
-    </Step>
-  </Back>
-});
+const nickname = fullFlow
+  .withRoutes("nickname", "model", "context")
+  .build("nickname", router => props => {
+    return (
+      <Back go={() => router.model(props)}>
+        <Step<string>
+          title="Let's give this model a nickname so we can easily reference it later."
+          prompt="Nickname:"
+          parse={val => val}
+          validate={() => ({ valid: true })}
+          onSubmit={nickname => router.context({ ...props, nickname })}
+        >
+          <Box flexDirection="column">
+            {props.renderExamples && (
+              <Text>
+                For example, if this was set up to talk to Kimi K2, you might want to call it that.
+              </Text>
+            )}
+          </Box>
+        </Step>
+      </Back>
+    );
+  });
 
 function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>, "back">) {
   const color = useColor();
   const { baseUrl, envVar, model, nickname, done } = props;
-  return <Back go={props.back}>
-    <Step<number>
-      title="What's the maximum number of tokens Octo should use per request?"
-      prompt="Maximum tokens:"
-      parse={val => {
-        return parseInt(val.replace("k", ""), 10) * 1024;
-      }}
-      validate={(value) => {
-        if(value.replace("k", "").match(/^\d+$/)) return { valid: true };
-        return {
-          valid: false,
-          error: "Couldn't parse your input as a number: please try again",
-        };
-      }}
-      onSubmit={context => done({
-        baseUrl, model, nickname, context,
-        apiEnvVar: envVar,
-      })}
-    >
-      <Box flexDirection="column">
-        <Text>
-          You can usually find this information in the documentation for the model on your inference
-          company's website.
-        </Text>
-        <Box marginY={1}>
+  return (
+    <Back go={props.back}>
+      <Step<number>
+        title="What's the maximum number of tokens Octo should use per request?"
+        prompt="Maximum tokens:"
+        parse={val => {
+          return parseInt(val.replace("k", ""), 10) * 1024;
+        }}
+        validate={value => {
+          if (value.replace("k", "").match(/^\d+$/)) return { valid: true };
+          return {
+            valid: false,
+            error: "Couldn't parse your input as a number: please try again",
+          };
+        }}
+        onSubmit={context =>
+          done({
+            baseUrl,
+            model,
+            nickname,
+            context,
+            apiEnvVar: envVar,
+          })
+        }
+      >
+        <Box flexDirection="column">
           <Text>
-            (This is an estimate: leave some buffer room. Best performance is often at half the
-            number of tokens supported by the API.)
+            You can usually find this information in the documentation for the model on your
+            inference company's website.
+          </Text>
+          <Box marginY={1}>
+            <Text>
+              (This is an estimate: leave some buffer room. Best performance is often at half the
+              number of tokens supported by the API.)
+            </Text>
+          </Box>
+          <Text>
+            Format the number in k: for example, <Text color={color}>32k</Text> or,{" "}
+            <Text color={color}>64k</Text>.
           </Text>
         </Box>
-        <Text>
-          Format the number in k: for example,
-          { " " }
-          <Text color={color}>32k</Text>
-          { " " }
-          or,
-          { " " }
-          <Text color={color}>64k</Text>.
-        </Text>
-      </Box>
-    </Step>
-  </Back>
+      </Step>
+    </Back>
+  );
 }
 
 const fullFlowRoutes = fullFlow.route({
-  baseUrl, envVar, apiKey, nickname,
+  baseUrl,
+  envVar,
+  apiKey,
+  nickname,
 
   authAsk: to => props => {
-    return <AuthAsk {...props}
-      onSelect={route => to[route](props)}
-      back={() => to.baseUrl(props)}
-    />
+    return (
+      <AuthAsk {...props} onSelect={route => to[route](props)} back={() => to.baseUrl(props)} />
+    );
   },
 
   postAuth: to => props => {
-    return <PostAuth {...props} handleAuth={() => to.model(props)} />
+    return <PostAuth {...props} handleAuth={() => to.model(props)} />;
   },
 
   model: to => props => {
-    return <Model {...props}
-      back={() => to.authAsk(props)}
-      onSubmit={model => to.testConnection({ ...props, model })}
-    />
+    return (
+      <Model
+        {...props}
+        back={() => to.authAsk(props)}
+        onSubmit={model => to.testConnection({ ...props, model })}
+      />
+    );
   },
 
   testConnection: to => props => {
-    return <TestConnection {...props}
-      back={() => to.model(props)}
-      errorNav={() => to.baseUrl(props)}
-      onSubmit={() => to.nickname(props)}
-    />
+    return (
+      <TestConnection
+        {...props}
+        back={() => to.model(props)}
+        errorNav={() => to.baseUrl(props)}
+        onSubmit={() => to.nickname(props)}
+      />
+    );
   },
 
   context: to => props => {
-    return <Context {...props} back={() => to.nickname(props)} />
+    return <Context {...props} back={() => to.nickname(props)} />;
   },
 });
 
-export function FullAddModelFlow({ onComplete, onCancel, config }: {
-  onComplete: (args: Model) => any,
-  onCancel: () => any,
-  config: Config | null,
+export function FullAddModelFlow({
+  onComplete,
+  onCancel,
+  config,
+}: {
+  onComplete: (args: Model) => any;
+  onCancel: () => any;
+  config: Config | null;
 }) {
-  const [ errorMessage, setErrorMessage ] = useState("");
-  return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-    <fullFlowRoutes.Root route="baseUrl" props={{
-      renderExamples: true,
-      done: onComplete,
-      cancel: onCancel,
-      config: config,
-    }} />
-  </errorContext.Provider>
+  const [errorMessage, setErrorMessage] = useState("");
+  return (
+    <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
+      <fullFlowRoutes.Root
+        route="baseUrl"
+        props={{
+          renderExamples: true,
+          done: onComplete,
+          cancel: onCancel,
+          config: config,
+        }}
+      />
+    </errorContext.Provider>
+  );
 }
 
 type CustomModelFlowRouteData = Pick<
   FullFlowRouteData,
-  "model"
-  | "testConnection"
-  | "nickname"
-  | "context"
+  "model" | "testConnection" | "nickname" | "context"
 >;
 const customModelFlow = router<CustomModelFlowRouteData>();
 const customModelFlowRoutes = customModelFlow.route({
   model: to => props => {
-    return <Model {...props}
-      back={() => props.cancel()}
-      onSubmit={model => to.testConnection({ ...props, model })}
-    />
+    return (
+      <Model
+        {...props}
+        back={() => props.cancel()}
+        onSubmit={model => to.testConnection({ ...props, model })}
+      />
+    );
   },
 
   testConnection: to => props => {
-    return <TestConnection {...props}
-      back={() => to.model(props)}
-      errorNav={() => to.model(props)}
-      onSubmit={() => to.nickname(props)}
-    />
+    return (
+      <TestConnection
+        {...props}
+        back={() => to.model(props)}
+        errorNav={() => to.model(props)}
+        onSubmit={() => to.nickname(props)}
+      />
+    );
   },
 
   nickname,
 
   context: to => props => {
-    return <Context {...props} back={() => to.nickname(props)} />
+    return <Context {...props} back={() => to.nickname(props)} />;
   },
 });
 
-export function CustomModelFlow({ onComplete, onCancel, baseUrl, envVar, config }: {
-  onComplete: (args: Model) => any,
-  onCancel: () => any,
-  baseUrl: string,
-  envVar: string | undefined,
-  config: Config | null,
+export function CustomModelFlow({
+  onComplete,
+  onCancel,
+  baseUrl,
+  envVar,
+  config,
+}: {
+  onComplete: (args: Model) => any;
+  onCancel: () => any;
+  baseUrl: string;
+  envVar: string | undefined;
+  config: Config | null;
 }) {
-  const [ errorMessage, setErrorMessage ] = useState("");
-  return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-    <customModelFlowRoutes.Root route="model" props={{
-      renderExamples: false,
-      done: onComplete,
-      cancel: onCancel,
-      baseUrl, envVar, config,
-    }} />
-  </errorContext.Provider>
+  const [errorMessage, setErrorMessage] = useState("");
+  return (
+    <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
+      <customModelFlowRoutes.Root
+        route="model"
+        props={{
+          renderExamples: false,
+          done: onComplete,
+          cancel: onCancel,
+          baseUrl,
+          envVar,
+          config,
+        }}
+      />
+    </errorContext.Provider>
+  );
 }
 
 const customAuthDoneCtx = createContext<(apiKeyEnvVar?: string) => any>(() => {});
-type CustomAuthFlowData = Pick<
-  FullFlowRouteData,
-  "authAsk"
-  | "envVar"
-  | "apiKey"
-  | "postAuth"
->;
+type CustomAuthFlowData = Pick<FullFlowRouteData, "authAsk" | "envVar" | "apiKey" | "postAuth">;
 const customAuthFlow = router<CustomAuthFlowData>();
 const customAuthRoutes = customAuthFlow.route({
   authAsk: to => props => {
-    return <AuthAsk {...props}
-      onSelect={route => to[route](props)}
-      back={() => props.cancel()}
-    />
+    return <AuthAsk {...props} onSelect={route => to[route](props)} back={() => props.cancel()} />;
   },
-  envVar, apiKey,
+  envVar,
+  apiKey,
   postAuth: _ => props => {
     const done = useContext(customAuthDoneCtx);
-    return <PostAuth { ...props } handleAuth={() => done(props.envVar)} />
+    return <PostAuth {...props} handleAuth={() => done(props.envVar)} />;
   },
 });
 
-export function CustomAuthFlow({ onComplete, onCancel, baseUrl, config }: {
-  onComplete: (apiEnvVar?: string) => any,
-  onCancel: () => any,
-  baseUrl: string,
-  config: Config | null,
+export function CustomAuthFlow({
+  onComplete,
+  onCancel,
+  baseUrl,
+  config,
+}: {
+  onComplete: (apiEnvVar?: string) => any;
+  onCancel: () => any;
+  baseUrl: string;
+  config: Config | null;
 }) {
-  const [ errorMessage, setErrorMessage ] = useState("");
-  return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-    <customAuthDoneCtx.Provider value={onComplete}>
-      <customAuthRoutes.Root route="authAsk" props={{
-        renderExamples: false,
-        done: () => {},
-        cancel: onCancel,
-        baseUrl, config,
-      }} />
-    </customAuthDoneCtx.Provider>
-  </errorContext.Provider>
+  const [errorMessage, setErrorMessage] = useState("");
+  return (
+    <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
+      <customAuthDoneCtx.Provider value={onComplete}>
+        <customAuthRoutes.Root
+          route="authAsk"
+          props={{
+            renderExamples: false,
+            done: () => {},
+            cancel: onCancel,
+            baseUrl,
+            config,
+          }}
+        />
+      </customAuthDoneCtx.Provider>
+    </errorContext.Provider>
+  );
 }
 
 type CustomAutofixFlowRouteData = Pick<
   FullFlowRouteData,
-  "baseUrl"
-  | "authAsk"
-  | "envVar"
-  | "apiKey"
-  | "postAuth"
-  | "model"
-  | "testConnection"
-  | "context"
->
+  "baseUrl" | "authAsk" | "envVar" | "apiKey" | "postAuth" | "model" | "testConnection" | "context"
+>;
 const customAutofixFlow = router<CustomAutofixFlowRouteData>();
 const customAutofixRoutes = customAutofixFlow.route({
-  baseUrl, envVar, apiKey,
+  baseUrl,
+  envVar,
+  apiKey,
 
   authAsk: to => props => {
-    return <AuthAsk {...props}
-      onSelect={route => to[route](props)}
-      back={() => to.baseUrl(props)}
-    />
+    return (
+      <AuthAsk {...props} onSelect={route => to[route](props)} back={() => to.baseUrl(props)} />
+    );
   },
 
   postAuth: to => props => {
-    return <PostAuth {...props} handleAuth={() => to.model(props)} />
+    return <PostAuth {...props} handleAuth={() => to.model(props)} />;
   },
 
   model: to => props => {
-    return <Model {...props}
-      back={() => props.cancel()}
-      onSubmit={model => to.testConnection({ ...props, model })}
-    />
+    return (
+      <Model
+        {...props}
+        back={() => props.cancel()}
+        onSubmit={model => to.testConnection({ ...props, model })}
+      />
+    );
   },
 
   testConnection: to => props => {
-    return <TestConnection {...props}
-      back={() => to.model(props)}
-      errorNav={() => to.model(props)}
-      onSubmit={() => to.context({ ...props, nickname: "custom-autofix" })}
-    />
+    return (
+      <TestConnection
+        {...props}
+        back={() => to.model(props)}
+        errorNav={() => to.model(props)}
+        onSubmit={() => to.context({ ...props, nickname: "custom-autofix" })}
+      />
+    );
   },
 
   context: to => props => {
-    return <Context {...props} back={() => to.model(props)} />
+    return <Context {...props} back={() => to.model(props)} />;
   },
 });
 
-export function CustomAutofixFlow({ onComplete, onCancel, config }: {
-  onComplete: (args: Model) => any,
-  onCancel: () => any,
-  config: Config | null,
+export function CustomAutofixFlow({
+  onComplete,
+  onCancel,
+  config,
+}: {
+  onComplete: (args: Model) => any;
+  onCancel: () => any;
+  config: Config | null;
 }) {
-  const [ errorMessage, setErrorMessage ] = useState("");
-  return <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-    <customAutofixRoutes.Root route="baseUrl" props={{
-      renderExamples: false,
-      done: onComplete,
-      cancel: onCancel,
-      config,
-    }} />
-  </errorContext.Provider>
+  const [errorMessage, setErrorMessage] = useState("");
+  return (
+    <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
+      <customAutofixRoutes.Root
+        route="baseUrl"
+        props={{
+          renderExamples: false,
+          done: onComplete,
+          cancel: onCancel,
+          config,
+        }}
+      />
+    </errorContext.Provider>
+  );
 }
 
 function Step<T>(props: AddModelStep<T>) {
   const { errorMessage, setErrorMessage } = useContext(errorContext);
-  const [ varValue, setVarValue ] = useState("");
+  const [varValue, setVarValue] = useState("");
   const themeColor = useColor();
 
   const onValueChange = useCallback((value: string) => {
@@ -569,7 +622,7 @@ function Step<T>(props: AddModelStep<T>) {
 
   const onSubmit = useCallback(() => {
     const trimmed = varValue.trim();
-    if(trimmed === "") {
+    if (trimmed === "") {
       setErrorMessage("Entry can't be empty");
       return;
     }
@@ -583,35 +636,39 @@ function Step<T>(props: AddModelStep<T>) {
 
     let parsed = props.parse(trimmed);
     props.onSubmit(parsed);
-  }, [ props, varValue ]);
+  }, [props, varValue]);
 
-  return <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
-    <Box flexDirection="column" width={80} gap={1}>
-      <Text color={themeColor}>{ props.title }</Text>
-      { props.children }
-    </Box>
-
-    <Box marginY={1} width={80}>
-      <Box marginRight={1}>
-        <Text>{props.prompt}</Text>
+  return (
+    <Box flexDirection="column" justifyContent="center" alignItems="center" marginTop={1}>
+      <Box flexDirection="column" width={80} gap={1}>
+        <Text color={themeColor}>{props.title}</Text>
+        {props.children}
       </Box>
 
-      <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
-    </Box>
+      <Box marginY={1} width={80}>
+        <Box marginRight={1}>
+          <Text>{props.prompt}</Text>
+        </Box>
 
-    {
-      errorMessage && <Box width={80}>
-        <Text color="red" bold>{ errorMessage }</Text>
+        <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
       </Box>
-    }
-  </Box>
+
+      {errorMessage && (
+        <Box width={80}>
+          <Text color="red" bold>
+            {errorMessage}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
 }
 
 type MinConnectArgs = {
-  model: string,
-  apiEnvVar?: string,
-  baseUrl: string,
-  config: Config | null,
+  model: string;
+  apiEnvVar?: string;
+  baseUrl: string;
+  config: Config | null;
 };
 async function testConnection({ model, apiEnvVar, baseUrl, config }: MinConnectArgs) {
   try {
@@ -623,19 +680,21 @@ async function testConnection({ model, apiEnvVar, baseUrl, config }: MinConnectA
 
     const response = await client.chat.completions.create({
       model,
-      messages: [{
-        role: "user",
-        content: "Respond with the word 'hi' and only the word 'hi'",
-      }],
+      messages: [
+        {
+          role: "user",
+          content: "Respond with the word 'hi' and only the word 'hi'",
+        },
+      ],
     });
 
-    if(response.usage) {
+    if (response.usage) {
       trackTokens(model, "input", response.usage.prompt_tokens);
       trackTokens(model, "output", response.usage.completion_tokens);
     }
 
     return true;
-  } catch(e) {
+  } catch (e) {
     logger.error("verbose", e);
     return false;
   }

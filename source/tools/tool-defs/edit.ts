@@ -11,11 +11,15 @@ const DiffParts = {
     don't accidentally replace a different matching substring in the same file.
   `),
   replace: t.str.comment("The string you want to insert into the file"),
-}
-export const ArgumentsSchema = t.subtype({
-  filePath: t.str.comment("The path to the file"),
-  ...DiffParts,
-}).comment("Applies a search/replace edit to a file. This should be your default tool to edit existing files.");
+};
+export const ArgumentsSchema = t
+  .subtype({
+    filePath: t.str.comment("The path to the file"),
+    ...DiffParts,
+  })
+  .comment(
+    "Applies a search/replace edit to a file. This should be your default tool to edit existing files.",
+  );
 export const DiffEditSchema = t.subtype(DiffParts);
 
 export const Schema = t.subtype({
@@ -24,7 +28,9 @@ export const Schema = t.subtype({
 });
 
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema, ArgumentsSchema, validate,
+  Schema,
+  ArgumentsSchema,
+  validate,
   async run(signal, transport, call) {
     const { filePath } = call.arguments;
     const diff = call.arguments;
@@ -33,7 +39,8 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
     const file = await attemptUntrackedRead(transport, signal, filePath);
     const replaced = runEdit({
       path: filePath,
-      file, diff,
+      file,
+      diff,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
     return {
@@ -42,32 +49,46 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
   },
 }));
 
-async function validate(signal: AbortSignal, transport: Transport, toolCall: t.GetType<typeof Schema>) {
+async function validate(
+  signal: AbortSignal,
+  transport: Transport,
+  toolCall: t.GetType<typeof Schema>,
+) {
   await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
   const file = await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
   return validateDiff({ file, diff: toolCall.arguments, path: toolCall.arguments.filePath });
 }
 
-function runEdit({ path, file, diff }: {
-  path: string,
-  file: string,
-  diff: t.GetType<typeof ArgumentsSchema>,
+function runEdit({
+  path,
+  file,
+  diff,
+}: {
+  path: string;
+  file: string;
+  diff: t.GetType<typeof ArgumentsSchema>;
 }): string {
   validateDiff({ path, file, diff });
   return file.replace(diff.search, diff.replace);
 }
 
-function validateDiff({ path, file, diff }: {
-  path: string,
-  file: string,
-  diff: t.GetType<typeof ArgumentsSchema>,
+function validateDiff({
+  path,
+  file,
+  diff,
+}: {
+  path: string;
+  file: string;
+  diff: t.GetType<typeof ArgumentsSchema>;
 }) {
-  if(!file.includes(diff.search)) {
-    throw new ToolError(`
+  if (!file.includes(diff.search)) {
+    throw new ToolError(
+      `
 Could not find search string in file ${path}: ${diff.search}
 This is likely an error in your formatting. The search string must EXACTLY match, including
 whitespace and punctuation.
-`.trim());
+`.trim(),
+    );
   }
   return null;
 }

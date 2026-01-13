@@ -49,9 +49,7 @@
       "indexes": {
         "update_idx": {
           "name": "update_idx",
-          "columns": [
-            "update"
-          ],
+          "columns": ["update"],
           "isUnique": true
         }
       },

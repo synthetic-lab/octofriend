@@ -164,7 +164,7 @@ describe("renderToString", () => {
       const markdown = [
         "| Header 1 | Header 2 |",
         "|----------|----------|",
-        "| Cell 1   | Cell 2   |"
+        "| Cell 1   | Cell 2   |",
       ].join("\n");
 
       const result = renderToString(markdown);
@@ -180,7 +180,7 @@ describe("renderToString", () => {
       const markdown = [
         "| Feature | Status |",
         "|---------|--------|",
-        "| Test    | ✅     |"
+        "| Test    | ✅     |",
       ].join("\n");
 
       const result = renderToString(markdown);
@@ -215,7 +215,7 @@ describe("renderToString", () => {
         "",
         "| Table | Header |",
         "|-------|--------|",
-        "| Cell  | Data   |"
+        "| Cell  | Data   |",
       ].join("\n");
 
       const result = renderToString(markdown);
@@ -243,7 +243,7 @@ describe("renderToString", () => {
         "",
         "2. Second item:",
         "   - Nested list",
-        "   - Another item"
+        "   - Another item",
       ].join("\n");
 
       const result = renderToString(markdown);
@@ -283,15 +283,17 @@ function renderToString(markdown: string): string {
 }
 
 function stripAnsi(str: string): string {
-  return str.replace(/\u001b\[[0-9;]*m/g, '');
+  return str.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
 function hasFormatting(str: string): boolean {
   // Check for ANSI codes (colors), or typical markdown transformations
-  return /\u001b\[[0-9;]*m/.test(str) ||
-         str.includes('│') ||  // blockquote markers
-         str.includes('┌') ||  // code block borders
-         str.includes('█') ||  // heading markers
-         str.includes('•') ||  // list bullets
-         str !== str.trim();   // additional spacing/formatting
+  return (
+    /\u001b\[[0-9;]*m/.test(str) ||
+    str.includes("│") || // blockquote markers
+    str.includes("┌") || // code block borders
+    str.includes("█") || // heading markers
+    str.includes("•") || // list bullets
+    str !== str.trim()
+  ); // additional spacing/formatting
 }

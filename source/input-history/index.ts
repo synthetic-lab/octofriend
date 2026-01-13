@@ -35,18 +35,16 @@ export class InputHistory {
   }
 
   private async truncateOldEntries(): Promise<void> {
-    db().transaction((db) => {
+    db().transaction(db => {
       const historyToKeep = db
         .select({ id: inputHistoryTable.id })
         .from(inputHistoryTable)
         .orderBy(desc(inputHistoryTable.id))
         .limit(MAX_HISTORY_ITEMS);
 
-      db.delete(inputHistoryTable)
-        .where(notInArray(inputHistoryTable.id, historyToKeep))
-        .run();
+      db.delete(inputHistoryTable).where(notInArray(inputHistoryTable.id, historyToKeep)).run();
     });
   }
 }
 
-export const _exportedForTest = { MAX_HISTORY_ITEMS, MAX_HISTORY_TRUNCATION_BATCH }
+export const _exportedForTest = { MAX_HISTORY_ITEMS, MAX_HISTORY_TRUNCATION_BATCH };

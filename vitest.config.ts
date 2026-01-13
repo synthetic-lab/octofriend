@@ -1,19 +1,19 @@
-import { defineConfig } from 'vitest/config';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [
     react({
       babel: {
-        plugins: ['babel-plugin-react-compiler'],
+        plugins: ["babel-plugin-react-compiler"],
       },
     }),
   ],
   test: {
     globals: true,
-    environment: 'node',
+    environment: "node",
     testTimeout: 30000,
-    setupFiles: [ "./source/test/setup.ts" ],
-    exclude: [ "**/node_modules/**", "training/repos/**", "dist/**" ],
+    setupFiles: ["./source/test/setup.ts"],
+    exclude: ["**/node_modules/**", "training/repos/**", "dist/**"],
   },
 });

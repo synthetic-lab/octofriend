@@ -10,16 +10,19 @@ export async function readUpdates() {
   const mostRecentSeen = await db().query.shownUpdateNotifs.findFirst({
     orderBy: (table, { desc }) => desc(table.id),
   });
-  if(mostRecentSeen == null) return updates;
-  if(mostRecentSeen.update !== updates) return updates;
+  if (mostRecentSeen == null) return updates;
+  if (mostRecentSeen.update !== updates) return updates;
   return null;
 }
 
 export async function markUpdatesSeen() {
   const update = await currentUpdates();
-  await db().insert(schema.shownUpdateNotifs).values({
-    update,
-  }).onConflictDoNothing();
+  await db()
+    .insert(schema.shownUpdateNotifs)
+    .values({
+      update,
+    })
+    .onConflictDoNothing();
 }
 
 async function currentUpdates() {

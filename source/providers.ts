@@ -1,5 +1,5 @@
 export type ProviderConfig = {
-  type?: "standard" | "openai-responses" | "anthropic",
+  type?: "standard" | "openai-responses" | "anthropic";
   name: string;
   envVar: string;
   baseUrl: string;
@@ -70,7 +70,6 @@ export const PROVIDERS = {
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
   } satisfies ProviderConfig,
 
-
   anthropic: {
     type: "anthropic",
     name: "Anthropic",
@@ -103,13 +102,10 @@ export const PROVIDERS = {
     name: "xAI",
     envVar: "XAI_API_KEY",
     baseUrl: "https://api.x.ai/v1",
-    models: [
-      { model: "grok-4-latest", nickname: "Grok 4", context: 64 * 1024 },
-    ],
+    models: [{ model: "grok-4-latest", nickname: "Grok 4", context: 64 * 1024 }],
     testModel: "grok-4-latest",
   } satisfies ProviderConfig,
 };
-
 
 export type ProviderKey = keyof typeof PROVIDERS;
 
@@ -120,14 +116,16 @@ export function recommendedModel(provider: ProviderKey): ProviderConfig["models"
 export const SYNTHETIC_PROVIDER = PROVIDERS.synthetic;
 
 export function keyFromName(name: string): keyof typeof PROVIDERS {
-  for(const [key, value] of Object.entries(PROVIDERS)) {
-    if(value.name === name) return key as keyof typeof PROVIDERS;
+  for (const [key, value] of Object.entries(PROVIDERS)) {
+    if (value.name === name) return key as keyof typeof PROVIDERS;
   }
   throw new Error(`No provider named ${name} found`);
 }
 
-export function providerForBaseUrl(baseUrl: string): (typeof PROVIDERS)[keyof (typeof PROVIDERS)] | null {
+export function providerForBaseUrl(
+  baseUrl: string,
+): (typeof PROVIDERS)[keyof typeof PROVIDERS] | null {
   const provider = Object.values(PROVIDERS).find(p => p.baseUrl === baseUrl);
-  if(provider == null) return null;
+  if (provider == null) return null;
   return provider;
 }

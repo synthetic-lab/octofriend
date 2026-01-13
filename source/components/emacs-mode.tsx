@@ -16,20 +16,20 @@ export function useEmacsKeyHandler() {
       cursorPosition: number,
       valueLength: number,
       currentValue: string,
-      showCursor: boolean
+      showCursor: boolean,
     ): EmacsResult {
       // Ctrl+A: Beginning of line
-      if (key.ctrl && input === 'a') {
+      if (key.ctrl && input === "a") {
         return { consumed: true, newCursorPosition: 0 };
       }
 
       // Ctrl+E: End of line
-      if (key.ctrl && input === 'e') {
+      if (key.ctrl && input === "e") {
         return { consumed: true, newCursorPosition: valueLength };
       }
 
       // Ctrl+B: Back one character
-      if (key.ctrl && input === 'b') {
+      if (key.ctrl && input === "b") {
         if (showCursor && cursorPosition > 0) {
           return { consumed: true, newCursorPosition: cursorPosition - 1 };
         }
@@ -37,7 +37,7 @@ export function useEmacsKeyHandler() {
       }
 
       // Ctrl+F: Forward one character
-      if (key.ctrl && input === 'f') {
+      if (key.ctrl && input === "f") {
         if (showCursor && cursorPosition < valueLength) {
           return { consumed: true, newCursorPosition: cursorPosition + 1 };
         }
@@ -45,7 +45,7 @@ export function useEmacsKeyHandler() {
       }
 
       // Meta+B: Back one word
-      if (key.meta && input === 'b') {
+      if (key.meta && input === "b") {
         if (showCursor && cursorPosition > 0) {
           let wordStart = cursorPosition;
           // Skip whitespace
@@ -62,7 +62,7 @@ export function useEmacsKeyHandler() {
       }
 
       // Meta+F: Forward one word
-      if (key.meta && input === 'f') {
+      if (key.meta && input === "f") {
         if (showCursor && cursorPosition < valueLength) {
           let wordEnd = cursorPosition;
           // Skip whitespace
@@ -79,7 +79,7 @@ export function useEmacsKeyHandler() {
       }
 
       // Ctrl+W: Delete word backward
-      if (key.ctrl && input === 'w') {
+      if (key.ctrl && input === "w") {
         if (cursorPosition > 0) {
           let wordStart = cursorPosition;
           // Skip whitespace
@@ -97,29 +97,27 @@ export function useEmacsKeyHandler() {
       }
 
       // Ctrl+H: Delete character backward (same as backspace)
-      if (key.ctrl && input === 'h') {
+      if (key.ctrl && input === "h") {
         if (cursorPosition > 0) {
           const newValue =
-            currentValue.slice(0, cursorPosition - 1) +
-            currentValue.slice(cursorPosition);
+            currentValue.slice(0, cursorPosition - 1) + currentValue.slice(cursorPosition);
           return { consumed: true, newCursorPosition: cursorPosition - 1, newValue };
         }
         return { consumed: true };
       }
 
       // Ctrl+D: Delete character forward
-      if (key.ctrl && input === 'd') {
+      if (key.ctrl && input === "d") {
         if (cursorPosition < valueLength) {
           const newValue =
-            currentValue.slice(0, cursorPosition) +
-            currentValue.slice(cursorPosition + 1);
+            currentValue.slice(0, cursorPosition) + currentValue.slice(cursorPosition + 1);
           return { consumed: true, newValue };
         }
         return { consumed: true };
       }
 
       // Meta+D: Delete word forward
-      if (key.meta && input === 'd') {
+      if (key.meta && input === "d") {
         if (cursorPosition < valueLength) {
           let wordEnd = cursorPosition;
           // Skip whitespace
@@ -137,19 +135,19 @@ export function useEmacsKeyHandler() {
       }
 
       // Ctrl+K: Kill to end of line
-      if (key.ctrl && input === 'k') {
+      if (key.ctrl && input === "k") {
         const newValue = currentValue.slice(0, cursorPosition);
         return { consumed: true, newValue };
       }
 
       // Ctrl+U: Kill to beginning of line
-      if (key.ctrl && input === 'u') {
+      if (key.ctrl && input === "u") {
         const newValue = currentValue.slice(cursorPosition);
         return { consumed: true, newCursorPosition: 0, newValue };
       }
 
       // Not an emacs binding
       return { consumed: false };
-    }
+    },
   };
 }

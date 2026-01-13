@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+.next
+.git
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+training

@@ -3,10 +3,7 @@ import hljs from "highlight.js";
 import React from "react";
 import { readFileSync } from "fs";
 
-export function HighlightedCode({ code, language }: {
-  code: string,
-  language?: string,
-}) {
+export function HighlightedCode({ code, language }: { code: string; language?: string }) {
   try {
     let result;
     if (language && hljs.getLanguage(language)) {
@@ -19,19 +16,19 @@ export function HighlightedCode({ code, language }: {
     return <CodeSegments segments={segments} />;
   } catch (error) {
     // If highlighting fails, return plain text lines
-    return <>
-      {
-        code.split('\n').map((line, index) => (
+    return (
+      <>
+        {code.split("\n").map((line, index) => (
           <Text key={`code-failed-${index}`}>{line}</Text>
-        ))
-      }
-    </>;
+        ))}
+      </>
+    );
   }
 }
 
 type CodeSegment = {
-  text: string,
-  className?: string,
+  text: string;
+  className?: string;
 };
 
 function parseHighlightedHTML(html: string): CodeSegment[] {
@@ -47,7 +44,7 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
       const remainingText = html.substring(currentIndex);
       if (remainingText) {
         segments.push({
-          text: decodeHtmlEntities(remainingText)
+          text: decodeHtmlEntities(remainingText),
         });
       }
       break;
@@ -57,21 +54,21 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
     if (nextOpenTag > currentIndex) {
       const textBefore = html.substring(currentIndex, nextOpenTag);
       segments.push({
-        text: decodeHtmlEntities(textBefore)
-      })
+        text: decodeHtmlEntities(textBefore),
+      });
     }
 
     // Find the end of the opening tag
     const classStart = nextOpenTag + 13; // '<span class="'.length
     const classEnd = html.indexOf('"', classStart);
-    const tagEnd = html.indexOf('>', classEnd);
+    const tagEnd = html.indexOf(">", classEnd);
 
     if (classEnd === -1 || tagEnd === -1) break;
 
     const className = html.substring(classStart, classEnd);
 
     // Find the closing tag
-    const closingTag = '</span>';
+    const closingTag = "</span>";
     const contentStart = tagEnd + 1;
     let closingTagStart = html.indexOf(closingTag, contentStart);
 
@@ -79,7 +76,7 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
     let openCount = 1;
     let searchFrom = contentStart;
     while (openCount > 0 && closingTagStart !== -1) {
-      const nextOpen = html.indexOf('<span', searchFrom);
+      const nextOpen = html.indexOf("<span", searchFrom);
       if (nextOpen !== -1 && nextOpen < closingTagStart) {
         openCount++;
         searchFrom = nextOpen + 5;
@@ -97,13 +94,13 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
     const content = html.substring(contentStart, closingTagStart);
 
     // Recursively parse content for nested spans
-    if (content.includes('<span')) {
+    if (content.includes("<span")) {
       const nestedSegments = parseHighlightedHTML(content);
       segments.push(...nestedSegments);
     } else {
       segments.push({
         text: decodeHtmlEntities(content),
-        className: className
+        className: className,
       });
     }
 
@@ -118,7 +115,7 @@ function CodeSegments({ segments }: { segments: CodeSegment[] }) {
   let currentLine: CodeSegment[] = [];
 
   segments.forEach(segment => {
-    const linesInSegment = segment.text.split('\n');
+    const linesInSegment = segment.text.split("\n");
 
     linesInSegment.forEach((lineText, lineIndex) => {
       if (lineIndex > 0) {
@@ -130,7 +127,7 @@ function CodeSegments({ segments }: { segments: CodeSegment[] }) {
       if (lineText || lineIndex === linesInSegment.length - 1) {
         currentLine.push({
           text: lineText,
-          className: segment.className
+          className: segment.className,
         });
       }
     });
@@ -141,24 +138,28 @@ function CodeSegments({ segments }: { segments: CodeSegment[] }) {
     lines.push(currentLine);
   }
 
-  return <>
-    {lines.map((lineSegments, index) => (
-      <CodeLine segments={lineSegments} key={`code-${index}`} />
-    ))}
-  </>;
+  return (
+    <>
+      {lines.map((lineSegments, index) => (
+        <CodeLine segments={lineSegments} key={`code-${index}`} />
+      ))}
+    </>
+  );
 }
 
 function CodeLine({ segments }: { segments: CodeSegment[] }) {
-  return <Text>
-    {segments.map((segment, index) => {
-      const color = segment.className ? getColorForClass(segment.className) : undefined;
-      return (
-        <Text key={index} color={color}>
-          {segment.text}
-        </Text>
-      );
-    })}
-  </Text>;
+  return (
+    <Text>
+      {segments.map((segment, index) => {
+        const color = segment.className ? getColorForClass(segment.className) : undefined;
+        return (
+          <Text key={index} color={color}>
+            {segment.text}
+          </Text>
+        );
+      })}
+    </Text>
+  );
 }
 
 function decodeHtmlEntities(text: string): string {
@@ -167,30 +168,30 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#x27;/g, "'")
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function getColorForClass(className: string): string | undefined {
   const colorMap: Record<string, string> = {
-    'hljs-keyword': 'blue',
-    'hljs-string': 'green',
-    'hljs-comment': 'gray',
-    'hljs-number': 'yellow',
-    'hljs-title': 'cyan',
-    'hljs-title function_': 'cyan',
-    'hljs-variable': 'magenta',
-    'hljs-type': 'blue',
-    'hljs-attr': 'yellow',
-    'hljs-built_in': 'red',
-    'hljs-literal': 'cyan',
-    'hljs-name': 'cyan',
-    'hljs-selector-tag': 'blue',
-    'hljs-selector-class': 'yellow',
-    'hljs-selector-id': 'magenta',
-    'hljs-property': 'cyan',
-    'hljs-value': 'green',
+    "hljs-keyword": "blue",
+    "hljs-string": "green",
+    "hljs-comment": "gray",
+    "hljs-number": "yellow",
+    "hljs-title": "cyan",
+    "hljs-title function_": "cyan",
+    "hljs-variable": "magenta",
+    "hljs-type": "blue",
+    "hljs-attr": "yellow",
+    "hljs-built_in": "red",
+    "hljs-literal": "cyan",
+    "hljs-name": "cyan",
+    "hljs-selector-tag": "blue",
+    "hljs-selector-class": "yellow",
+    "hljs-selector-id": "magenta",
+    "hljs-property": "cyan",
+    "hljs-value": "green",
   };
 
   return colorMap[className];

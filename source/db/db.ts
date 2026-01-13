@@ -9,14 +9,14 @@ let sqliteDb: Database.Database;
 let client: ReturnType<typeof drizzle<typeof schema>>;
 
 export function db() {
-  if(sqliteDb == null) {
-    if(process.env['NODE_ENV'] === 'test') {
-      sqliteDb = new Database(':memory:');
+  if (sqliteDb == null) {
+    if (process.env["NODE_ENV"] === "test") {
+      sqliteDb = new Database(":memory:");
     } else {
       sqliteDb = new Database(DB_PATH);
     }
   }
-  if(client == null) {
+  if (client == null) {
     client = drizzle({
       client: sqliteDb,
       casing: "snake_case",

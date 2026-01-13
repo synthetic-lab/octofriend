@@ -1,6 +1,5 @@
 export function compactPrompt(conversationHistory: string) {
-  return (
-`Here is the conversation history to summarize: ${conversationHistory}
+  return `Here is the conversation history to summarize: ${conversationHistory}
 
 You are creating an internal context summary that will replace previous messages in the conversation history.
 
@@ -57,6 +56,5 @@ For each file:
 - Be specific: include file paths, function names, exact error messages, command syntax
 - Capture enough detail that work could resume without re-reading the full history
 - This is technical documentation, not a conversation
-`
-  );
+`;
 }

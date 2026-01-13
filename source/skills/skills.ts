@@ -40,7 +40,9 @@ export function validateSkill(skill: Skill): string[] {
       errors.push(`name exceeds ${MAX_NAME_LENGTH} characters`);
     }
     if (!NAME_PATTERN.test(skill.name)) {
-      errors.push("name must be alphanumeric with hyphens, no leading/trailing/consecutive hyphens");
+      errors.push(
+        "name must be alphanumeric with hyphens, no leading/trailing/consecutive hyphens",
+      );
     }
     if (skill.path) {
       const dirName = path.basename(skill.path);
@@ -219,10 +221,7 @@ export function toPromptXML(skills: Skill[]): string {
   return lines.join("\n");
 }
 
-async function getDefaultSkillsPaths(
-  transport: Transport,
-  signal: AbortSignal
-): Promise<string[]> {
+async function getDefaultSkillsPaths(transport: Transport, signal: AbortSignal): Promise<string[]> {
   const paths: string[] = [];
   const home = await getEnvVar(signal, transport, "HOME", 5000);
   paths.push(path.join(home, ".config/agents/skills"));

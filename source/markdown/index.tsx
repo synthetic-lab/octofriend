@@ -2,14 +2,26 @@ import React from "react";
 import { Box, Text } from "ink";
 import { marked, MarkedToken, Token, Tokens } from "marked";
 import stringWidth from "string-width";
-import { isImageToken, isLinkToken, isTextToken, isStrongToken, isEmToken, isDelToken, isCodespanToken } from "./types.ts";
+import {
+  isImageToken,
+  isLinkToken,
+  isTextToken,
+  isStrongToken,
+  isEmToken,
+  isDelToken,
+  isCodespanToken,
+} from "./types.ts";
 import { HighlightedCode } from "./highlight-code.tsx";
 
 export function Markdown({ markdown }: { markdown: string }) {
   const tokens = marked.lexer(markdown);
-  return <Box flexDirection="column">
-    { tokens.map((token, index) => <TokenRenderer key={index} token={token} />) }
-  </Box>;
+  return (
+    <Box flexDirection="column">
+      {tokens.map((token, index) => (
+        <TokenRenderer key={index} token={token} />
+      ))}
+    </Box>
+  );
 }
 
 function TokenRenderer({ token }: { token: Token }): React.ReactElement {
@@ -61,24 +73,25 @@ function TokenRenderer({ token }: { token: Token }): React.ReactElement {
   }
 }
 
-
 function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
-  return <Box paddingLeft={2}>
-    <Text color="gray">│ </Text>
-    <Text italic>
-      {renderTokensAsPlaintext(token.tokens)}
-    </Text>
-  </Box>
+  return (
+    <Box paddingLeft={2}>
+      <Text color="gray">│ </Text>
+      <Text italic>{renderTokensAsPlaintext(token.tokens)}</Text>
+    </Box>
+  );
 }
 
 function BrRenderer() {
-  return <Text>{'\n'}</Text>;
+  return <Text>{"\n"}</Text>;
 }
 
 function CodeRenderer({ token }: { token: Tokens.Code }) {
   if (token.lang || token.codeBlockStyle !== "indented") {
-    const langTag = token.lang ? `┌─ ${token.lang} ` + '─'.repeat(Math.max(0, 40 - token.lang.length)) : '┌' + '─'.repeat(42);
-    const footer = '└' + '─'.repeat(42);
+    const langTag = token.lang
+      ? `┌─ ${token.lang} ` + "─".repeat(Math.max(0, 40 - token.lang.length))
+      : "┌" + "─".repeat(42);
+    const footer = "└" + "─".repeat(42);
 
     return (
       <Box flexDirection="column" marginBottom={1}>
@@ -91,9 +104,11 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
     );
   }
 
-  return <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
-    <HighlightedCode code={token.text} language={token.lang} />
-  </Box>;
+  return (
+    <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
+      <HighlightedCode code={token.text} language={token.lang} />
+    </Box>
+  );
 }
 
 function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
@@ -106,7 +121,11 @@ function DefRenderer({ token }: { token: Tokens.Def }) {
 }
 
 function DelRenderer({ token }: { token: Tokens.Del }) {
-  return <Text strikethrough dimColor>{renderTokensAsPlaintext(token.tokens)}</Text>;
+  return (
+    <Text strikethrough dimColor>
+      {renderTokensAsPlaintext(token.tokens)}
+    </Text>
+  );
 }
 
 function EmRenderer({ token }: { token: Tokens.Em }) {
@@ -120,14 +139,7 @@ function EscapeRenderer({ token }: { token: Tokens.Escape }) {
 function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   const indent = Math.max(0, token.depth - 1) * 2; // Convert to padding units
 
-  const colors = [
-    "magenta",
-    "blue",
-    "cyan",
-    "green",
-    "yellow",
-    "red"
-  ] as const;
+  const colors = ["magenta", "blue", "cyan", "green", "yellow", "red"] as const;
 
   const color = colors[Math.min(token.depth - 1, colors.length - 1)];
   const marker = token.depth === 1 ? "█" : token.depth === 2 ? "▆" : "▉";
@@ -161,7 +173,11 @@ function ImageRenderer({ token }: { token: Tokens.Image }) {
 function LinkRenderer({ token }: { token: Tokens.Link }) {
   // For now, combine link text and URL in a single text element
   const linkText = renderTokensAsPlaintext(token.tokens);
-  return <Text color="blue">{linkText} ({token.href})</Text>;
+  return (
+    <Text color="blue">
+      {linkText} ({token.href})
+    </Text>
+  );
 }
 
 function ListRenderer({ token }: { token: Tokens.List }) {
@@ -172,8 +188,7 @@ function ListRenderer({ token }: { token: Tokens.List }) {
           <Text color="cyan">
             {token.ordered
               ? `${(typeof token.start === "number" ? token.start : 1) + index}. `
-              : "• "
-            }
+              : "• "}
           </Text>
           <ListItemRenderer token={item} />
         </Box>
@@ -188,12 +203,19 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
     return (
       <Box flexDirection="column" flexGrow={1}>
         <Box flexDirection="row">
-          <Text color={token.checked ? "green" : "gray"}>
-            {token.checked ? "[✓]" : "[ ]"}{" "}
-          </Text>
+          <Text color={token.checked ? "green" : "gray"}>{token.checked ? "[✓]" : "[ ]"} </Text>
           <Box flexDirection="column" flexGrow={1}>
             {token.tokens.map((childToken, index) => (
-              <Box key={index} paddingLeft={childToken.type === 'list' || childToken.type === 'code' || childToken.type === 'blockquote' ? 1 : 0}>
+              <Box
+                key={index}
+                paddingLeft={
+                  childToken.type === "list" ||
+                  childToken.type === "code" ||
+                  childToken.type === "blockquote"
+                    ? 1
+                    : 0
+                }
+              >
                 <TokenRenderer token={childToken} />
               </Box>
             ))}
@@ -208,7 +230,16 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
     <Box flexDirection="column" flexGrow={1}>
       <Box flexDirection="column">
         {token.tokens.map((childToken, index) => (
-          <Box key={index} paddingLeft={childToken.type === 'list' || childToken.type === 'code' || childToken.type === 'blockquote' ? 1 : 0}>
+          <Box
+            key={index}
+            paddingLeft={
+              childToken.type === "list" ||
+              childToken.type === "code" ||
+              childToken.type === "blockquote"
+                ? 1
+                : 0
+            }
+          >
             <TokenRenderer token={childToken} />
           </Box>
         ))}
@@ -218,7 +249,11 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
 }
 
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
-  return <Box marginBottom={1}><Text>{renderTokensAsPlaintext(token.tokens)}</Text></Box>;
+  return (
+    <Box marginBottom={1}>
+      <Text>{renderTokensAsPlaintext(token.tokens)}</Text>
+    </Box>
+  );
 }
 
 function StrongRenderer({ token }: { token: Tokens.Strong }) {
@@ -237,7 +272,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
           return stringWidth(cellText);
         }
         return 0;
-      })
+      }),
     );
     return Math.max(maxWidth, 3); // Minimum width of 3
   });
@@ -255,7 +290,11 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
   );
 }
 
-function TableRowRenderer({ cells, columnWidths, isHeader }: {
+function TableRowRenderer({
+  cells,
+  columnWidths,
+  isHeader,
+}: {
   cells: Tokens.TableCell[];
   columnWidths: number[];
   isHeader: boolean;
@@ -291,36 +330,38 @@ function SpaceRenderer() {
 }
 
 function renderTokensAsPlaintext(tokens: Token[]): string {
-  return tokens.map(token => {
-    if (isTextToken(token)) {
-      return token.text;
-    }
-    if (isLinkToken(token)) {
-      return `${renderTokensAsPlaintext(token.tokens)} (${token.href})`;
-    }
-    if (isImageToken(token)) {
-      return `[Image: ${token.text}]`;
-    }
-    if (isStrongToken(token)) {
-      return renderTokensAsPlaintext(token.tokens);
-    }
-    if (isEmToken(token)) {
-      return renderTokensAsPlaintext(token.tokens);
-    }
-    if (isDelToken(token)) {
-      return renderTokensAsPlaintext(token.tokens);
-    }
-    if (isCodespanToken(token)) {
-      return ` ${token.text} `;
-    }
-    if ('tokens' in token && Array.isArray(token.tokens)) {
-      return renderTokensAsPlaintext(token.tokens);
-    }
-    if ('text' in token) {
-      return token.text;
-    }
-    return '';
-  }).join('');
+  return tokens
+    .map(token => {
+      if (isTextToken(token)) {
+        return token.text;
+      }
+      if (isLinkToken(token)) {
+        return `${renderTokensAsPlaintext(token.tokens)} (${token.href})`;
+      }
+      if (isImageToken(token)) {
+        return `[Image: ${token.text}]`;
+      }
+      if (isStrongToken(token)) {
+        return renderTokensAsPlaintext(token.tokens);
+      }
+      if (isEmToken(token)) {
+        return renderTokensAsPlaintext(token.tokens);
+      }
+      if (isDelToken(token)) {
+        return renderTokensAsPlaintext(token.tokens);
+      }
+      if (isCodespanToken(token)) {
+        return ` ${token.text} `;
+      }
+      if ("tokens" in token && Array.isArray(token.tokens)) {
+        return renderTokensAsPlaintext(token.tokens);
+      }
+      if ("text" in token) {
+        return token.text;
+      }
+      return "";
+    })
+    .join("");
 }
 
 const MARKED_TOKEN_TYPES = [

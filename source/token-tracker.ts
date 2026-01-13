@@ -1,4 +1,4 @@
-let totalTokens: Record<string, { input: number, output: number }> = {};
+let totalTokens: Record<string, { input: number; output: number }> = {};
 
 export function tokenCounts() {
   return totalTokens;

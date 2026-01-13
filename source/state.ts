@@ -1,11 +1,12 @@
 import { Config, useConfig, getModelFromConfig, assertKeyForModel } from "./config.ts";
 import {
-  HistoryItem, UserItem, AssistantItem, CompactionCheckpointItem, sequenceId
+  HistoryItem,
+  UserItem,
+  AssistantItem,
+  CompactionCheckpointItem,
+  sequenceId,
 } from "./history.ts";
-import {
-  runTool,
-  ToolError,
-} from "./tools/index.ts";
+import { runTool, ToolError } from "./tools/index.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
@@ -19,68 +20,84 @@ import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
 
 export type RunArgs = {
-  config: Config,
-  transport: Transport,
+  config: Config;
+  transport: Transport;
 };
 
-export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">
+export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
-  modeData: {
-    mode: "input",
-    vimMode: "NORMAL" | "INSERT",
-  } | {
-    mode: "responding",
-    inflightResponse: InflightResponseType,
-    abortController: AbortController,
-  } | {
-    mode: "tool-request",
-    toolReq: ToolCallRequest,
-  } | {
-    mode: "error-recovery",
-  } | {
-    mode: "payment-error",
-    error: string,
-  } | {
-    mode: "rate-limit-error",
-    error: string,
-  } | {
-    mode: "request-error",
-    error: string,
-    curlCommand: string | null,
-  } | {
-    mode: "compaction-error",
-    error: string,
-    curlCommand: string | null,
-  } | {
-    mode: "diff-apply",
-    abortController: AbortController,
-  } | {
-    mode: "fix-json",
-    abortController: AbortController,
-  } | {
-    mode: "compacting",
-    inflightResponse: InflightResponseType,
-    abortController: AbortController,
-  } | {
-    mode: "menu",
-  } | {
-    mode: "tool-waiting",
-    abortController: AbortController,
-  },
-  modelOverride: string | null,
-  byteCount: number,
-  history: Array<HistoryItem>,
-  input: (args: RunArgs & { query: string }) => Promise<void>,
-  runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>,
-  rejectTool: (toolCallId: string) => void,
-  abortResponse: () => void,
-  toggleMenu: () => void,
-  setVimMode: (vimMode: "INSERT" | "NORMAL") => void,
-  setModelOverride: (m: string) => void,
-  retryFrom: (mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error", args: RunArgs) => Promise<void>,
-  notify: (notif: string) => void,
-  _maybeHandleAbort: (signal: AbortSignal) => boolean,
-  _runAgent: (args: RunArgs) => Promise<void>,
+  modeData:
+    | {
+        mode: "input";
+        vimMode: "NORMAL" | "INSERT";
+      }
+    | {
+        mode: "responding";
+        inflightResponse: InflightResponseType;
+        abortController: AbortController;
+      }
+    | {
+        mode: "tool-request";
+        toolReq: ToolCallRequest;
+      }
+    | {
+        mode: "error-recovery";
+      }
+    | {
+        mode: "payment-error";
+        error: string;
+      }
+    | {
+        mode: "rate-limit-error";
+        error: string;
+      }
+    | {
+        mode: "request-error";
+        error: string;
+        curlCommand: string | null;
+      }
+    | {
+        mode: "compaction-error";
+        error: string;
+        curlCommand: string | null;
+      }
+    | {
+        mode: "diff-apply";
+        abortController: AbortController;
+      }
+    | {
+        mode: "fix-json";
+        abortController: AbortController;
+      }
+    | {
+        mode: "compacting";
+        inflightResponse: InflightResponseType;
+        abortController: AbortController;
+      }
+    | {
+        mode: "menu";
+      }
+    | {
+        mode: "tool-waiting";
+        abortController: AbortController;
+      };
+  modelOverride: string | null;
+  byteCount: number;
+  history: Array<HistoryItem>;
+  input: (args: RunArgs & { query: string }) => Promise<void>;
+  runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
+  rejectTool: (toolCallId: string) => void;
+  abortResponse: () => void;
+  toggleMenu: () => void;
+  setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
+  setModelOverride: (m: string) => void;
+  retryFrom: (
+    mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
+    args: RunArgs,
+  ) => Promise<void>;
+  notify: (notif: string) => void;
+  _maybeHandleAbort: (signal: AbortSignal) => boolean;
+  _runAgent: (args: RunArgs) => Promise<void>;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -94,26 +111,23 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
-			type: "user",
+      type: "user",
       id: sequenceId(),
-			content: query,
-		};
+      content: query,
+    };
 
-		let history = [
-			...get().history,
-			userMessage,
-		];
+    let history = [...get().history, userMessage];
     set({ history });
     await get()._runAgent({ config, transport });
   },
 
   retryFrom: async (mode, args) => {
-    if(get().modeData.mode === mode) {
+    if (get().modeData.mode === mode) {
       await get()._runAgent(args);
     }
   },
 
-  rejectTool: (toolCallId) => {
+  rejectTool: toolCallId => {
     set({
       history: [
         ...get().history,
@@ -132,7 +146,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   abortResponse: () => {
     const { modeData } = get();
-    if("abortController" in modeData) modeData.abortController.abort();
+    if ("abortController" in modeData) modeData.abortController.abort();
   },
 
   _maybeHandleAbort: (signal: AbortSignal): boolean => {
@@ -150,11 +164,11 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   toggleMenu: () => {
     const { modeData } = get();
-    if(modeData.mode === "input") {
+    if (modeData.mode === "input") {
       set({
         modeData: { mode: "menu" },
       });
-    } else if(modeData.mode === "menu") {
+    } else if (modeData.mode === "menu") {
       set({
         modeData: { mode: "input", vimMode: "NORMAL" },
       });
@@ -163,7 +177,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   setVimMode: (vimMode: "INSERT" | "NORMAL") => {
     const { modeData } = get();
-    if(modeData.mode === "input") {
+    if (modeData.mode === "input") {
       set({
         modeData: { mode: "input", vimMode },
       });
@@ -210,7 +224,12 @@ export const useAppStore = create<UiState>((set, get) => ({
     const tools = await loadTools(transport, abortController.signal, config);
     try {
       const result = await runTool(
-        abortController.signal, transport, tools, toolReq.function, config, modelOverride
+        abortController.signal,
+        transport,
+        tools,
+        toolReq.function,
+        config,
+        modelOverride,
       );
 
       const toolHistoryItem: HistoryItem = {
@@ -220,13 +239,10 @@ export const useAppStore = create<UiState>((set, get) => ({
         toolCallId: toolReq.toolCallId,
       };
 
-      const history: HistoryItem[] = [
-        ...get().history,
-        toolHistoryItem,
-      ];
+      const history: HistoryItem[] = [...get().history, toolHistoryItem];
 
       set({ history });
-    } catch(e) {
+    } catch (e) {
       const history = [
         ...get().history,
         await tryTransformToolError(abortController.signal, transport, toolReq, e),
@@ -234,14 +250,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history });
     }
 
-    if(get()._maybeHandleAbort(abortController.signal)) {
+    if (get()._maybeHandleAbort(abortController.signal)) {
       return;
     }
     await get()._runAgent({ config, transport });
   },
 
   _runAgent: async ({ config, transport }) => {
-    const historyCopy = [ ...get().history ];
+    const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -252,9 +268,11 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     try {
       const finish = await trajectoryArc({
-        apiKey, model,
+        apiKey,
+        model,
         messages: toLlmIR(historyCopy),
-        config, transport,
+        config,
+        transport,
         abortSignal: abortController.signal,
         handler: {
           startResponse: () => {
@@ -326,7 +344,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               id: sequenceId(),
               summary: event.checkpoint.summary,
             };
-            set({ history: [ ...historyCopy, checkpointItem ] });
+            set({ history: [...historyCopy, checkpointItem] });
           },
 
           autofixingJson: () => {
@@ -345,26 +363,26 @@ export const useAppStore = create<UiState>((set, get) => ({
               modeData: {
                 mode: "diff-apply",
                 abortController,
-              }
+              },
             });
           },
 
           retryTool: event => {
             throttle.flush();
-            set({ history: [ ...historyCopy, ...outputToHistory(event.irs) ] });
+            set({ history: [...historyCopy, ...outputToHistory(event.irs)] });
           },
         },
       });
       throttle.flush();
       historyCopy.push(...outputToHistory(finish.irs));
-      set({ history: [ ...historyCopy ] });
+      set({ history: [...historyCopy] });
       const finishReason = finish.reason;
-      if(finishReason.type === "abort" || finishReason.type === "needs-response") {
+      if (finishReason.type === "abort" || finishReason.type === "needs-response") {
         set({ modeData: { mode: "input", vimMode: "INSERT" } });
         return;
       }
 
-      if(finishReason.type === "request-error") {
+      if (finishReason.type === "request-error") {
         set({
           modeData: {
             mode: "request-error",
@@ -381,7 +399,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           toolReq: finishReason.toolCall,
         },
       });
-    } catch(e) {
+    } catch (e) {
       if (e instanceof CompactionRequestError) {
         set({
           modeData: {
@@ -399,15 +417,14 @@ export const useAppStore = create<UiState>((set, get) => ({
         });
         return;
       }
-      if(get()._maybeHandleAbort(abortController.signal)) {
+      if (get()._maybeHandleAbort(abortController.signal)) {
         return;
       }
 
-      if(e instanceof PaymentError) {
+      if (e instanceof PaymentError) {
         set({ modeData: { mode: "payment-error", error: e.message } });
         return;
-      }
-      else if(e instanceof RateLimitError) {
+      } else if (e instanceof RateLimitError) {
         set({ modeData: { mode: "rate-limit-error", error: e.message } });
         return;
       }
@@ -425,7 +442,7 @@ async function tryTransformToolError(
   toolReq: ToolCallRequest,
   e: unknown,
 ): Promise<HistoryItem> {
-  if(e instanceof ToolError) {
+  if (e instanceof ToolError) {
     return {
       type: "tool-failed",
       id: sequenceId(),
@@ -434,7 +451,7 @@ async function tryTransformToolError(
       toolName: toolReq.function.name,
     };
   }
-  if(e instanceof FileOutdatedError) {
+  if (e instanceof FileOutdatedError) {
     const absolutePath = path.resolve(e.filePath);
     // Actually perform the read to ensure it's readable
     try {
@@ -443,7 +460,8 @@ async function tryTransformToolError(
         type: "file-outdated",
         id: sequenceId(),
         toolCallId: toolReq.toolCallId,
-        error: "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
+        error:
+          "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
     } catch {
       return {
@@ -462,7 +480,7 @@ export function useModel() {
   const { modelOverride } = useAppStore(
     useShallow(state => ({
       modelOverride: state.modelOverride,
-    }))
+    })),
   );
   const config = useConfig();
 

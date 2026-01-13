@@ -3,10 +3,7 @@ import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
-import {
-  generateCompactionSummary,
-  shouldAutoCompactHistory,
-} from "../compilers/autocompact.ts";
+import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
 import { validateTool, ToolError } from "../tools/index.ts";
 import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
@@ -15,65 +12,66 @@ import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
 
-type AllTokenTypes = "reasoning"
-                   | "content"
-                   | "tool"
-                   ;
+type AllTokenTypes = "reasoning" | "content" | "tool";
 
 type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
 };
 type AssistantDelta<AllowedType extends string> = {
-  value: string,
-  type: AllowedType,
+  value: string;
+  type: AllowedType;
 };
 
 type CompactionType = {
-  checkpoint: CompactionCheckpoint,
+  checkpoint: CompactionCheckpoint;
 };
 
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
 // tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
 // requires typesystem shenanigans.)
 type AutocompactionStream = {
-  type: "autocompaction-stream",
-  buffer: AssistantBuffer<AllTokenTypes>,
-  delta: AssistantDelta<AllTokenTypes>,
+  type: "autocompaction-stream";
+  buffer: AssistantBuffer<AllTokenTypes>;
+  delta: AssistantDelta<AllTokenTypes>;
 };
 
 export type StateEvents = {
-  startResponse: null,
+  startResponse: null;
   responseProgress: {
-    buffer: AssistantBuffer<AllTokenTypes>,
-    delta: AssistantDelta<AllTokenTypes>,
-  },
-  startCompaction: null,
-  compactionProgress: AutocompactionStream,
-  compactionParsed: CompactionType,
-  autofixingJson: null,
-  autofixingDiff: null,
+    buffer: AssistantBuffer<AllTokenTypes>;
+    delta: AssistantDelta<AllTokenTypes>;
+  };
+  startCompaction: null;
+  compactionProgress: AutocompactionStream;
+  compactionParsed: CompactionType;
+  autofixingJson: null;
+  autofixingDiff: null;
   retryTool: {
-    irs: TrajectoryOutputIR[],
-  },
+    irs: TrajectoryOutputIR[];
+  };
 };
 
 export type AnyState = keyof StateEvents;
 
 type Finish = {
-  type: "finish",
-  irs: TrajectoryOutputIR[],
-  reason: {
-    type: "abort",
-  } | {
-    type: "needs-response",
-  } | {
-    type: "request-tool",
-    toolCall: ToolCallRequest,
-  } | {
-    type: "request-error",
-    requestError: string,
-    curl: string,
-  },
+  type: "finish";
+  irs: TrajectoryOutputIR[];
+  reason:
+    | {
+        type: "abort";
+      }
+    | {
+        type: "needs-response";
+      }
+    | {
+        type: "request-tool";
+        toolCall: ToolCallRequest;
+      }
+    | {
+        type: "request-error";
+        requestError: string;
+        curl: string;
+      };
 };
 
 /*
@@ -81,50 +79,63 @@ type Finish = {
  * above is hit.
  */
 export async function trajectoryArc({
-  apiKey, model, messages, config, transport, abortSignal, handler
+  apiKey,
+  model,
+  messages,
+  config,
+  transport,
+  abortSignal,
+  handler,
 }: {
-  apiKey: string,
-  model: ModelConfig,
-  messages: LlmIR[],
-  config: Config,
-  transport: Transport,
-  abortSignal: AbortSignal,
+  apiKey: string;
+  model: ModelConfig;
+  messages: LlmIR[];
+  config: Config;
+  transport: Transport;
+  abortSignal: AbortSignal;
   handler: {
-    [K in AnyState]: (state: StateEvents[K]) => void
-  }
+    [K in AnyState]: (state: StateEvents[K]) => void;
+  };
 }): Promise<Finish> {
   if (abortSignal.aborted) return abort([]);
 
-  const messagesCopy = [ ...messages ];
+  const messagesCopy = [...messages];
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
   const tools = await loadTools(transport, abortSignal, config);
 
   const parsedCompaction = await maybeAutocompact({
-    apiKey, model, abortSignal, autofixJson,
+    apiKey,
+    model,
+    abortSignal,
+    autofixJson,
     messages: messagesCopy,
     handler: {
       startCompaction: () => handler.startCompaction(null),
-      compactionProgress: (stream) => handler.compactionProgress(stream),
+      compactionProgress: stream => handler.compactionProgress(stream),
     },
   });
 
-  if(parsedCompaction) {
+  if (parsedCompaction) {
     handler.compactionParsed(parsedCompaction);
     messagesCopy.push(parsedCompaction.checkpoint);
     irs.push(parsedCompaction.checkpoint);
   }
-  if(abortSignal.aborted) return abort([]);
+  if (abortSignal.aborted) return abort([]);
 
   handler.startResponse(null);
 
   let buffer: AssistantBuffer<AllTokenTypes> = {};
   const result = await run({
-    apiKey, model, autofixJson, abortSignal, tools,
+    apiKey,
+    model,
+    autofixJson,
+    abortSignal,
+    tools,
     messages: messagesCopy,
     handlers: {
       onTokens: (tokens, type) => {
-        if(!buffer[type]) buffer[type] = "";
+        if (!buffer[type]) buffer[type] = "";
         buffer[type] += tokens;
         handler.responseProgress({
           buffer,
@@ -137,14 +148,16 @@ export async function trajectoryArc({
     },
     systemPrompt: async () => {
       return systemPrompt({
-        config, transport, tools,
+        config,
+        transport,
+        tools,
         signal: abortSignal,
       });
     },
   });
 
   function maybeBufferedMessage(): TrajectoryOutputIR[] {
-    if(buffer.content || buffer.reasoning || buffer.tool) {
+    if (buffer.content || buffer.reasoning || buffer.tool) {
       return [
         ...irs,
         {
@@ -153,15 +166,15 @@ export async function trajectoryArc({
           reasoningContent: buffer.reasoning,
           tokenUsage: 0,
           outputTokens: 0,
-        }
+        },
       ];
     }
     return [];
   }
 
-  if(abortSignal.aborted) return abort(maybeBufferedMessage());
+  if (abortSignal.aborted) return abort(maybeBufferedMessage());
 
-  if(!result.success) {
+  if (!result.success) {
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
@@ -173,7 +186,7 @@ export async function trajectoryArc({
     };
   }
 
-  if(result.output.length === 0) {
+  if (result.output.length === 0) {
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
@@ -185,28 +198,32 @@ export async function trajectoryArc({
     };
   }
 
-  irs = [ ...irs, ...result.output ];
+  irs = [...irs, ...result.output];
   let lastIr = result.output[result.output.length - 1];
 
   // Retry malformed tool calls
-  if(lastIr.role === "tool-malformed") {
+  if (lastIr.role === "tool-malformed") {
     handler.retryTool({ irs });
     const retried = await trajectoryArc({
-      apiKey, model, config, transport, abortSignal,
+      apiKey,
+      model,
+      config,
+      transport,
+      abortSignal,
       messages: messagesCopy.concat(irs),
       handler,
     });
 
     return {
       type: "finish",
-      irs: [ ...irs, ...retried.irs ],
+      irs: [...irs, ...retried.irs],
       reason: retried.reason,
     };
   }
 
   const { toolCall } = lastIr;
 
-  if(toolCall == null) {
+  if (toolCall == null) {
     return {
       type: "finish",
       reason: {
@@ -226,32 +243,36 @@ export async function trajectoryArc({
       },
       irs,
     };
-  } catch(e) {
-    if(e instanceof FileOutdatedError) {
+  } catch (e) {
+    if (e instanceof FileOutdatedError) {
       const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
-        abortSignal, transport, toolCall, e
+        abortSignal,
+        transport,
+        toolCall,
+        e,
       );
-      const retryIrs = [
-        ...irs,
-        errorIrs,
-      ];
+      const retryIrs = [...irs, errorIrs];
       handler.retryTool({ irs: retryIrs });
       const retried = await trajectoryArc({
-        apiKey, model, config, transport, abortSignal,
+        apiKey,
+        model,
+        config,
+        transport,
+        abortSignal,
         messages: messagesCopy.concat(retryIrs),
         handler,
       });
       return {
         type: "finish",
-        irs: [ ...irs, ...retried.irs ],
+        irs: [...irs, ...retried.irs],
         reason: retried.reason,
       };
     }
 
-    if(!(e instanceof ToolError)) throw e;
+    if (!(e instanceof ToolError)) throw e;
 
     const fn = toolCall.function;
-    if(fn.name === "edit") {
+    if (fn.name === "edit") {
       handler.autofixingDiff(null);
       const path = fn.arguments.filePath;
       try {
@@ -260,7 +281,7 @@ export async function trajectoryArc({
 
         // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
         // tool call
-        if(abortSignal.aborted) {
+        if (abortSignal.aborted) {
           return abort([
             ...irs.slice(0, -1),
             {
@@ -268,16 +289,22 @@ export async function trajectoryArc({
               toolCallId: toolCall.toolCallId,
               toolName: toolCall.function.name,
               error: e.message,
-            }
+            },
           ]);
         }
 
-        if(fix) {
+        if (fix) {
           // Validate that the edit applies before marking as fixed
-          await validateTool(abortSignal, transport, tools, {
-            name: "edit",
-            arguments: fix,
-          }, config);
+          await validateTool(
+            abortSignal,
+            transport,
+            tools,
+            {
+              name: "edit",
+              arguments: fix,
+            },
+            config,
+          );
           // If we got this far, it's valid: update the state and return
           fn.arguments = {
             ...fn.arguments,
@@ -302,17 +329,21 @@ export async function trajectoryArc({
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.function.name,
         error: e.message,
-      }
+      },
     ];
     handler.retryTool({ irs: retryIrs });
     const retried = await trajectoryArc({
-      apiKey, model, config, transport, abortSignal,
+      apiKey,
+      model,
+      config,
+      transport,
+      abortSignal,
       messages: messagesCopy.concat(retryIrs),
       handler,
     });
     return {
       type: "finish",
-      irs: [ ...irs, ...retried.irs ],
+      irs: [...irs, ...retried.irs],
       reason: retried.reason,
     };
   }
@@ -326,38 +357,42 @@ async function maybeAutocompact({
   handler,
   autofixJson,
 }: {
-  apiKey: string,
-  model: ModelConfig,
+  apiKey: string;
+  model: ModelConfig;
   messages: LlmIR[];
   abortSignal: AbortSignal;
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handler: {
-    startCompaction: () => void,
-    compactionProgress: (stream: AutocompactionStream) => void,
-  },
+    startCompaction: () => void;
+    compactionProgress: (stream: AutocompactionStream) => void;
+  };
 }): Promise<CompactionType | null> {
-  if(!shouldAutoCompactHistory(model, messages)) return null;
+  if (!shouldAutoCompactHistory(model, messages)) return null;
 
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
   const checkpointSummary = await generateCompactionSummary({
-    apiKey, model, messages, abortSignal, autofixJson,
+    apiKey,
+    model,
+    messages,
+    abortSignal,
+    autofixJson,
     handlers: {
-     onTokens: (tokens, type) => {
-        if(!buffer[type]) buffer[type] = "";
+      onTokens: (tokens, type) => {
+        if (!buffer[type]) buffer[type] = "";
         buffer[type] += tokens;
         handler.compactionProgress({
           type: "autocompaction-stream",
           buffer,
-          delta: { value: tokens, type, },
+          delta: { value: tokens, type },
         });
       },
       onAutofixJson: () => {},
     },
   });
 
-  if(checkpointSummary == null) return null;
+  if (checkpointSummary == null) return null;
 
   return {
     checkpoint: {
@@ -388,7 +423,8 @@ async function tryTransformFileOutdatedError(
     return {
       role: "file-outdated",
       toolCall,
-      error: "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
+      error:
+        "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
     };
   } catch {
     return {

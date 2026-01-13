@@ -3,25 +3,27 @@ import { unionAll } from "../../types.ts";
 import { defineTool, ToolDef } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 
-export default defineTool(async function(signal, transport, config) {
+export default defineTool(async function (signal, transport, config) {
   const skills = await discoverSkills(transport, signal, config);
-  if(skills.length === 0) return null;
+  if (skills.length === 0) return null;
 
   const skillDescriptions = JSON.stringify(
-    skills.map(s => ({ name: s.name, description: s.description }))
+    skills.map(s => ({ name: s.name, description: s.description })),
   );
 
   const skillNameSchemas = skills.map(s => t.value(s.name));
   const ArgumentsSchema = t.subtype({
-    skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas)
+    skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
   });
 
-  const Schema = t.subtype({
-    name: t.value("skill"),
-    arguments: ArgumentsSchema,
-  }).comment(
-    `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`
-  );
+  const Schema = t
+    .subtype({
+      name: t.value("skill"),
+      arguments: ArgumentsSchema,
+    })
+    .comment(
+      `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`,
+    );
 
   return {
     Schema,

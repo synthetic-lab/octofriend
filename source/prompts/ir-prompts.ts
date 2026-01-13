@@ -9,6 +9,6 @@ export function fileMutation(filePath: string) {
 }
 
 export function fileRead(content: string, seenPath: boolean) {
-  if(seenPath) return "File was successfully read.";
+  if (seenPath) return "File was successfully read.";
   return content;
 }

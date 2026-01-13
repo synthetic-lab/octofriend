@@ -7,7 +7,7 @@ export const DIFF_ADDED = "#405e35";
 export const CODE_GUTTER_COLOR = "gray";
 
 export function color(unchained: boolean) {
-  if(unchained) return UNCHAINED_COLOR;
+  if (unchained) return UNCHAINED_COLOR;
   return THEME_COLOR;
 }
 

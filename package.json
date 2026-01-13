@@ -1,97 +1,108 @@
 {
-	"name": "octofriend",
-	"version": "0.0.50",
-	"license": "MIT",
-	"repository": "github:synthetic-lab/octofriend",
-	"bin": {
-		"octofriend": "dist/source/cli.js",
-		"octo": "dist/source/cli.js"
-	},
-	"type": "module",
-	"preferGlobal": true,
-	"engines": {
-		"node": ">=16"
-	},
-	"scripts": {
-		"build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
-		"dev": "npm run build -- --watch",
-		"exec": "npm run build && node ./dist/source/cli.js",
-		"test": "vitest",
-		"test:run": "vitest run",
-		"prepublishOnly": "npm run build"
-	},
-	"files": [
-		"dist",
-		"source",
-		"drizzle",
-		"drizzle.config.ts",
-		"CHANGELOG.md",
-		"IN-APP-UPDATES.txt",
-		"package.json",
-		"package-lock.json",
-		"tsconfig.json"
-	],
-	"dependencies": {
-		"@ai-sdk/openai": "^2.0.4",
-		"@anthropic-ai/sdk": "^0.58.0",
-		"@commander-js/extra-typings": "^13.1.0",
-		"@modelcontextprotocol/sdk": "^1.25.2",
-		"ai": "^5.0.5",
-		"antipattern": "^0.0.7",
-		"better-sqlite3": "^12.2.0",
-		"chalk": "^5.4.1",
-		"cli-spinners": "^2.7.0",
-		"clipboardy": "^5.0.0",
-		"commander": "^13.1.0",
-		"diff": "^8.0.2",
-		"drizzle-orm": "^0.44.4",
-		"figlet": "^1.8.0",
-		"figures": "^6.1.0",
-		"highlight.js": "^11.11.1",
-		"html-to-text": "^9.0.5",
-		"ink": "^6.6.0",
-		"json-schema": "^0.4.0",
-		"json5": "^2.2.3",
-		"marked": "^16.2.0",
-		"openai": "^5.9.0",
-		"react": "^19.2.3",
-		"string-width": "^7.2.0",
-		"structural": "^0.0.29",
-		"to-rotated": "^1.0.0",
-		"yaml": "^2.0.0",
-		"zustand": "^5.0.3"
-	},
-	"devDependencies": {
-		"@babel/cli": "^7.28.3",
-		"@babel/core": "^7.28.5",
-		"@babel/preset-react": "^7.28.5",
-		"@babel/preset-typescript": "^7.28.5",
-		"@types/better-sqlite3": "^7.6.13",
-		"@types/figlet": "^1.7.0",
-		"@types/html-to-text": "^9.0.4",
-		"@types/json-schema": "^7.0.15",
-		"@types/node": "^22.13.13",
-		"@types/react": "^19.2.3",
-		"@vitejs/plugin-react": "^5.1.2",
-		"babel-plugin-react-compiler": "^1.0.0",
-		"babel-plugin-replace-import-extension": "^1.1.5",
-		"drizzle-kit": "^0.31.4",
-		"ink-testing-library": "^3.0.0",
-		"parse-git-diff": "^0.0.19",
-		"tsx": "^4.20.3",
-		"typescript": "^5.8.3",
-		"vite": "^7.3.1",
-		"vitest": "^3.2.4"
-	},
-	"overrides": {
-		"@esbuild-kit/core-utils": {
-			"esbuild": "0.25.0"
-		},
-		"@esbuild-kit/esm-loader": {
-			"esbuild": "0.25.0"
-		},
-		"drizzle-kit": {
-			"esbuild": "0.25.0"
-		}
-	}
+  "name": "octofriend",
+  "version": "0.0.50",
+  "license": "MIT",
+  "repository": "github:synthetic-lab/octofriend",
+  "bin": {
+    "octofriend": "dist/source/cli.js",
+    "octo": "dist/source/cli.js"
+  },
+  "type": "module",
+  "preferGlobal": true,
+  "engines": {
+    "node": ">=16"
+  },
+  "scripts": {
+    "build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
+    "dev": "npm run build -- --watch",
+    "exec": "npm run build && node ./dist/source/cli.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "prepublishOnly": "npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "files": [
+    "dist",
+    "source",
+    "drizzle",
+    "drizzle.config.ts",
+    "CHANGELOG.md",
+    "IN-APP-UPDATES.txt",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json"
+  ],
+  "dependencies": {
+    "@ai-sdk/openai": "^2.0.4",
+    "@anthropic-ai/sdk": "^0.58.0",
+    "@commander-js/extra-typings": "^13.1.0",
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "ai": "^5.0.5",
+    "antipattern": "^0.0.7",
+    "better-sqlite3": "^12.2.0",
+    "chalk": "^5.4.1",
+    "cli-spinners": "^2.7.0",
+    "clipboardy": "^5.0.0",
+    "commander": "^13.1.0",
+    "diff": "^8.0.2",
+    "drizzle-orm": "^0.44.4",
+    "figlet": "^1.8.0",
+    "figures": "^6.1.0",
+    "highlight.js": "^11.11.1",
+    "html-to-text": "^9.0.5",
+    "ink": "^6.6.0",
+    "json-schema": "^0.4.0",
+    "json5": "^2.2.3",
+    "marked": "^16.2.0",
+    "openai": "^5.9.0",
+    "react": "^19.2.3",
+    "string-width": "^7.2.0",
+    "structural": "^0.0.29",
+    "to-rotated": "^1.0.0",
+    "yaml": "^2.0.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-react": "^7.28.5",
+    "@babel/preset-typescript": "^7.28.5",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/figlet": "^1.7.0",
+    "@types/html-to-text": "^9.0.4",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^22.13.13",
+    "@types/react": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "babel-plugin-replace-import-extension": "^1.1.5",
+    "drizzle-kit": "^0.31.4",
+    "husky": "^9.1.7",
+    "ink-testing-library": "^3.0.0",
+    "lint-staged": "^16.2.7",
+    "parse-git-diff": "^0.0.19",
+    "prettier": "3.7.4",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.1",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "@esbuild-kit/core-utils": {
+      "esbuild": "0.25.0"
+    },
+    "@esbuild-kit/esm-loader": {
+      "esbuild": "0.25.0"
+    },
+    "drizzle-kit": {
+      "esbuild": "0.25.0"
+    }
+  }
 }

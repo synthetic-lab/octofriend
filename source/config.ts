@@ -13,7 +13,7 @@ const __dir = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
-export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8
+export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
 const McpServerConfigSchema = t.exact({
   command: t.str,
@@ -22,9 +22,7 @@ const McpServerConfigSchema = t.exact({
 });
 
 const ModelConfigSchema = t.exact({
-  type: t.optional(
-    t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic")),
-  ),
+  type: t.optional(t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic"))),
   nickname: t.str,
   baseUrl: t.str,
   apiEnvVar: t.optional(t.str),
@@ -37,30 +35,35 @@ export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 const ConfigSchema = t.exact({
   yourName: t.str,
   models: t.array(ModelConfigSchema),
-  diffApply: t.optional(t.exact({
-    baseUrl: t.str,
-    apiEnvVar: t.optional(t.str),
-    model: t.str,
-  })),
-  fixJson: t.optional(t.exact({
-    baseUrl: t.str,
-    apiEnvVar: t.optional(t.str),
-    model: t.str,
-  })),
-  vimEmulation: t.optional(t.subtype({
-    enabled: t.bool,
-  })),
+  diffApply: t.optional(
+    t.exact({
+      baseUrl: t.str,
+      apiEnvVar: t.optional(t.str),
+      model: t.str,
+    }),
+  ),
+  fixJson: t.optional(
+    t.exact({
+      baseUrl: t.str,
+      apiEnvVar: t.optional(t.str),
+      model: t.str,
+    }),
+  ),
+  vimEmulation: t.optional(
+    t.subtype({
+      enabled: t.bool,
+    }),
+  ),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
-  skills: t.optional(t.exact({
-    paths: t.optional(t.array(t.str)),
-  })),
+  skills: t.optional(
+    t.exact({
+      paths: t.optional(t.array(t.str)),
+    }),
+  ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
-export const AUTOFIX_KEYS = [
-  "diffApply",
-  "fixJson",
-] as const;
+export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
 
 export const ConfigContext = React.createContext<Config>({
   yourName: "unknown",
@@ -84,14 +87,14 @@ export function useSetConfig() {
 
 export function mergeEnvVar(config: Config, model: Config["models"][number], apiEnvVar: string) {
   const provider = providerForBaseUrl(model.baseUrl);
-  let merged = { ...config, models: [ ...config.models ] };
+  let merged = { ...config, models: [...config.models] };
   const index = merged.models.indexOf(model);
-  if(index < 0) throw new Error("Couldn't find model in models list");
+  if (index < 0) throw new Error("Couldn't find model in models list");
 
-  if(provider) {
+  if (provider) {
     const key = keyFromName(provider.name);
     const defaultEnvVar = getDefaultEnvVar(provider, config);
-    if(defaultEnvVar === apiEnvVar) return merged;
+    if (defaultEnvVar === apiEnvVar) return merged;
     const overrides = merged.defaultApiKeyOverrides || {};
     overrides[key] = apiEnvVar;
     merged.defaultApiKeyOverrides = overrides;
@@ -107,19 +110,22 @@ export function mergeEnvVar(config: Config, model: Config["models"][number], api
   return merged;
 }
 
-export function mergeAutofixEnvVar<
-  K extends (typeof AUTOFIX_KEYS)[number]
->(config: Config, key: K, model: Exclude<Config[K], undefined>, apiEnvVar: string) {
+export function mergeAutofixEnvVar<K extends (typeof AUTOFIX_KEYS)[number]>(
+  config: Config,
+  key: K,
+  model: Exclude<Config[K], undefined>,
+  apiEnvVar: string,
+) {
   const provider = providerForBaseUrl(model.baseUrl);
   let merged = { ...config };
-  if(provider) {
+  if (provider) {
     const providerKey = keyFromName(provider.name);
     const defaultEnvVar = getDefaultEnvVar(provider, config);
-    if(defaultEnvVar === apiEnvVar) return merged;
+    if (defaultEnvVar === apiEnvVar) return merged;
     const overrides = merged.defaultApiKeyOverrides || {};
     overrides[providerKey] = apiEnvVar;
     merged.defaultApiKeyOverrides = overrides;
-    if(merged[key]) delete merged[key].apiEnvVar;
+    if (merged[key]) delete merged[key].apiEnvVar;
     return merged;
   }
 
@@ -134,8 +140,8 @@ export function mergeAutofixEnvVar<
 function getDefaultEnvVar(provider: ProviderConfig, config: Config) {
   const key = keyFromName(provider.name);
   const defaultEnvVar = (() => {
-    if(config.defaultApiKeyOverrides == null) return provider.envVar;
-    if(config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+    if (config.defaultApiKeyOverrides == null) return provider.envVar;
+    if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
     return config.defaultApiKeyOverrides[key];
   })();
   return defaultEnvVar;
@@ -148,26 +154,26 @@ export async function writeConfig(c: Config, configPath: string) {
 }
 
 function sanitizeConfig(c: Config): Config {
-  const sanitized = { ...c, models: [ ...c.models ] };
-  for(let index  = 0; index < sanitized.models.length; index++) {
+  const sanitized = { ...c, models: [...c.models] };
+  for (let index = 0; index < sanitized.models.length; index++) {
     const model = sanitized.models[index];
     const provider = providerForBaseUrl(model.baseUrl);
-    if(provider) {
+    if (provider) {
       const envVar = getDefaultEnvVar(provider, c);
-      if(envVar === model.apiEnvVar) {
+      if (envVar === model.apiEnvVar) {
         sanitized.models[index] = { ...model };
         delete sanitized.models[index].apiEnvVar;
       }
     }
   }
 
-  for(const key of AUTOFIX_KEYS) {
+  for (const key of AUTOFIX_KEYS) {
     const model = sanitized[key];
-    if(model) {
+    if (model) {
       const provider = providerForBaseUrl(model.baseUrl);
-      if(provider) {
+      if (provider) {
         const envVar = getDefaultEnvVar(provider, sanitized);
-        if(envVar === model.apiEnvVar) {
+        if (envVar === model.apiEnvVar) {
           sanitized[key] = {
             ...model,
           };
@@ -181,29 +187,29 @@ function sanitizeConfig(c: Config): Config {
 }
 
 export async function assertKeyForModel(
-  model: { baseUrl: string, apiEnvVar?: string },
+  model: { baseUrl: string; apiEnvVar?: string },
   config: Config | null,
 ): Promise<string> {
   const key = await readKeyForModel(model, config);
-  if(key == null) throw new Error(`No API key defined for ${model.baseUrl}`);
+  if (key == null) throw new Error(`No API key defined for ${model.baseUrl}`);
   return key;
 }
 
 export async function readKeyForModel(
-  model: { baseUrl: string, apiEnvVar?: string },
+  model: { baseUrl: string; apiEnvVar?: string },
   config: Config | null,
 ) {
-  if(model.apiEnvVar && process.env[model.apiEnvVar]) return process.env[model.apiEnvVar];
+  if (model.apiEnvVar && process.env[model.apiEnvVar]) return process.env[model.apiEnvVar];
   const provider = providerForBaseUrl(model.baseUrl);
-  if(provider) {
+  if (provider) {
     const envVar = (() => {
       const key = keyFromName(provider.name);
-      if(config == null) return provider.envVar;
-      if(config.defaultApiKeyOverrides == null) return provider.envVar;
-      if(config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+      if (config == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
       return config.defaultApiKeyOverrides[key];
     })();
-    if(process.env[envVar]) return process.env[envVar];
+    if (process.env[envVar]) return process.env[envVar];
   }
   const keys = await readKeys();
   return keys[model.baseUrl] || null;
@@ -213,24 +219,28 @@ export async function writeKeyForModel(model: { baseUrl: string }, apiKey: strin
   const keys = await readKeys();
   keys[model.baseUrl] = apiKey;
   await fs.mkdir(CONFIG_DIR, { recursive: true });
-  await fs.writeFile(KEY_FILE, json5.stringify({
-    [model.baseUrl]: apiKey,
-  }), {
-    mode: 0o600,
-  });
+  await fs.writeFile(
+    KEY_FILE,
+    json5.stringify({
+      [model.baseUrl]: apiKey,
+    }),
+    {
+      mode: 0o600,
+    },
+  );
 }
 
 async function readKeys() {
   const exists = await fileExists(KEY_FILE);
-  if(!exists) return {};
+  if (!exists) return {};
   const keyFile = await fs.readFile(KEY_FILE, "utf8");
   return KeyConfigSchema.slice(json5.parse(keyFile));
 }
 
 export function getModelFromConfig(config: Config, modelOverride: string | null) {
-  if(modelOverride == null) return config.models[0];
+  if (modelOverride == null) return config.models[0];
   const matching = config.models.find(m => m.nickname === modelOverride);
-  if(matching) return matching;
+  if (matching) return matching;
   return config.models[0];
 }
 
@@ -240,7 +250,7 @@ export async function readConfig(path: string): Promise<Config> {
 }
 
 export type Metadata = {
-  version: string,
+  version: string;
 };
 
 export async function readMetadata(): Promise<Metadata> {

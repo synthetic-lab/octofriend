@@ -934,11 +934,11 @@ The output is optimized for terminal display with *great contrast* and **readabi
 `;
 
 console.log("🎨 Markdown Rendering Demo");
-console.log("=" .repeat(50));
+console.log("=".repeat(50));
 console.log();
 
 const markdownComponent = renderMarkdown(demoMarkdown);
 render(markdownComponent);
 
-console.log("=" .repeat(50));
+console.log("=".repeat(50));
 console.log("✨ Demo complete! All markdown features rendered above.");

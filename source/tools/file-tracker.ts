@@ -1,5 +1,5 @@
-import * as path from 'path';
-import { Transport } from '../transports/transport-common.ts';
+import * as path from "path";
+import { Transport } from "../transports/transport-common.ts";
 
 export class FileOutdatedError extends Error {
   readonly filePath: string;
@@ -19,7 +19,11 @@ export class FileExistsError extends Error {
 export class FileTracker {
   private readTimestamps = new Map<string, number>();
 
-  async readUntracked(transport: Transport, signal: AbortSignal, filePath: string): Promise<string> {
+  async readUntracked(
+    transport: Transport,
+    signal: AbortSignal,
+    filePath: string,
+  ): Promise<string> {
     const absolutePath = await transport.resolvePath(signal, filePath);
     const content = await transport.readFile(signal, absolutePath);
     return content;
@@ -34,7 +38,10 @@ export class FileTracker {
   }
 
   async write(
-    transport: Transport, signal: AbortSignal, filePath: string, content: string
+    transport: Transport,
+    signal: AbortSignal,
+    filePath: string,
+    content: string,
   ): Promise<string> {
     const absolutePath = await transport.resolvePath(signal, filePath);
     const dir = path.dirname(absolutePath);
@@ -68,7 +75,7 @@ export class FileTracker {
 
   async assertCanCreate(transport: Transport, signal: AbortSignal, filePath: string) {
     const canCreate = await this.canCreate(transport, signal, filePath);
-    if(!canCreate) throw new FileExistsError("File already exists");
+    if (!canCreate) throw new FileExistsError("File already exists");
   }
 
   async assertCanEdit(transport: Transport, signal: AbortSignal, filePath: string) {

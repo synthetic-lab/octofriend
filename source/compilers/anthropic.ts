@@ -2,9 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
-import {
-  AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData
-} from "../ir/llm-ir.ts";
+import { AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -19,17 +17,15 @@ const ThinkingBlockSchema = t.subtype({
   signature: t.str,
 });
 
-function toModelMessage(
-  messages: LlmIR[],
-): Array<Anthropic.MessageParam> {
+function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
-  const irs = [ ...messages ];
+  const irs = [...messages];
   irs.reverse();
   const seenPaths = new Set<string>();
 
-  for(const ir of irs) {
-    if(ir.role === "file-read") {
+  for (const ir of irs) {
+    if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
       output.push(modelMessageFromIr(ir, seen));
@@ -43,13 +39,10 @@ function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
-): Anthropic.MessageParam {
-  if(ir.role === "assistant") {
+function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessageParam {
+  if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
-    const toolCalls = ir.toolCall ? [ ir.toolCall ] : [];
+    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
     return {
       role: "assistant",
       content: [
@@ -67,14 +60,14 @@ function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "user") {
+  if (ir.role === "user") {
     return {
       role: "user",
       content: ir.content,
     };
   }
 
-  if(ir.role === "file-read") {
+  if (ir.role === "file-read") {
     return {
       role: "user",
       content: [
@@ -82,14 +75,14 @@ function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           content: irPrompts.fileRead(ir.content, seenPath),
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-output" || ir.role === "file-mutate") {
+  if (ir.role === "tool-output" || ir.role === "file-mutate") {
     let content: string;
-    if(ir.role === "file-mutate") {
+    if (ir.role === "file-mutate") {
       content = irPrompts.fileMutation(ir.path);
     } else {
       content = ir.content;
@@ -102,12 +95,12 @@ function modelMessageFromIr(
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
           content,
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-reject") {
+  if (ir.role === "tool-reject") {
     return {
       role: "user",
       content: [
@@ -116,12 +109,12 @@ function modelMessageFromIr(
           tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
           content: irPrompts.toolReject(),
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "tool-error" || ir.role === "tool-malformed") {
+  if (ir.role === "tool-error" || ir.role === "tool-malformed") {
     return {
       role: "user",
       content: [
@@ -130,12 +123,12 @@ function modelMessageFromIr(
           tool_use_id: ir.toolCallId,
           is_error: true,
           content: `Error: ${ir.error}`,
-        }
+        },
       ],
     };
   }
 
-  if(ir.role === "file-outdated") {
+  if (ir.role === "file-outdated") {
     return {
       role: "user",
       content: [
@@ -149,10 +142,10 @@ function modelMessageFromIr(
     };
   }
 
-  if(ir.role === "compaction-checkpoint") {
+  if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(ir.summary)
+      content: compactionCompilerExplanation(ir.summary),
     };
   }
 
@@ -166,7 +159,7 @@ function modelMessageFromIr(
         tool_use_id: ir.toolCall.toolCallId,
         is_error: true,
         content: ir.error,
-      }
+      },
     ],
   };
 }
@@ -176,7 +169,7 @@ function generateCurlFrom(params: {
   model: string;
   system: string;
   messages: Array<Anthropic.MessageParam>;
-  tools?: Array<{ description: string, input_schema: any, name: string }>;
+  tools?: Array<{ description: string; input_schema: any; name: string }>;
   maxTokens: number;
 }): string {
   const { baseURL, model, system, messages, tools, maxTokens } = params;
@@ -195,7 +188,7 @@ function generateCurlFrom(params: {
 
   // Curl requests need an API Version
   // Currently hardcoded in Anthropic SDK
-  const ANTHROPIC_API_VERSION  = "2023-06-01"
+  const ANTHROPIC_API_VERSION = "2023-06-01";
 
   return `curl -X POST "${baseURL}/v1/messages" \\
   -H "Content-Type: application/json" \\
@@ -207,13 +200,20 @@ JSON`;
 }
 
 export const runAnthropicAgent: Compiler = async ({
-  model,apiKey, irs, onTokens, abortSignal, systemPrompt, autofixJson, tools
+  model,
+  apiKey,
+  irs,
+  onTokens,
+  abortSignal,
+  systemPrompt,
+  autofixJson,
+  tools,
 }) => {
   const messages = toModelMessage(irs);
-  const sysPrompt = systemPrompt ? (await systemPrompt()) : "";
+  const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
   const toolDefs = tools || {};
-  const toolDefinitions: Array<{ description: string, input_schema: any, name: string }> = [];
+  const toolDefinitions: Array<{ description: string; input_schema: any; name: string }> = [];
   Object.entries(toolDefs).forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
@@ -229,22 +229,25 @@ export const runAnthropicAgent: Compiler = async ({
       input_schema: argJsonSchema,
     });
   });
-  const toolParams = toolDefinitions.length === 0 ? {} : {
-    tools: toolDefinitions,
-  };
+  const toolParams =
+    toolDefinitions.length === 0
+      ? {}
+      : {
+          tools: toolDefinitions,
+        };
 
   const client = new Anthropic({
     baseURL: model.baseUrl,
     apiKey,
   });
 
-  const thinking: { thinking?: { type: "enabled", budget_tokens: number } } = {};
-  if(model.reasoning) {
+  const thinking: { thinking?: { type: "enabled"; budget_tokens: number } } = {};
+  if (model.reasoning) {
     thinking.thinking = {
       type: "enabled",
       budget_tokens: (() => {
-        if(model.reasoning === "high") return 8192;
-        if(model.reasoning === "medium") return 4096;
+        if (model.reasoning === "high") return 8192;
+        if (model.reasoning === "medium") return 4096;
         return 2048;
       })(),
     };
@@ -284,21 +287,26 @@ export const runAnthropicAgent: Compiler = async ({
       input: 0,
       output: 0,
     };
-    const thinkingBlocks: Array<{
-      type: "thinking",
-      thinking?: string,
-      signature?: string,
-      index: number,
-    } | {
-      type: "redacted_thinking",
-      data: string,
-    }> = [];
-    let inProgressTool: {
-      id: string,
-      index: number,
-      name: string,
-      partialJson: string,
-    } | undefined = undefined;
+    const thinkingBlocks: Array<
+      | {
+          type: "thinking";
+          thinking?: string;
+          signature?: string;
+          index: number;
+        }
+      | {
+          type: "redacted_thinking";
+          data: string;
+        }
+    > = [];
+    let inProgressTool:
+      | {
+          id: string;
+          index: number;
+          name: string;
+          partialJson: string;
+        }
+      | undefined = undefined;
 
     // Handle streaming chunks
     for await (const chunk of result) {
@@ -306,28 +314,26 @@ export const runAnthropicAgent: Compiler = async ({
 
       switch (chunk.type) {
         case "content_block_delta":
-          switch(chunk.delta.type) {
+          switch (chunk.delta.type) {
             case "text_delta":
               content += chunk.delta.text;
               onTokens(chunk.delta.text, "content");
               break;
             case "thinking_delta":
-              if(reasoningContent == null) reasoningContent = "";
+              if (reasoningContent == null) reasoningContent = "";
               reasoningContent += chunk.delta.thinking;
               onTokens(chunk.delta.thinking, "reasoning");
-              if(thinkingBlocks.length === 0) {
+              if (thinkingBlocks.length === 0) {
                 thinkingBlocks.push({
                   type: "thinking",
                   thinking: chunk.delta.thinking,
                   index: chunk.index,
                 });
-              }
-              else {
+              } else {
                 const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if(lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
                   lastBlock.thinking += chunk.delta.thinking;
-                }
-                else {
+                } else {
                   thinkingBlocks.push({
                     type: "thinking",
                     thinking: chunk.delta.thinking,
@@ -337,19 +343,17 @@ export const runAnthropicAgent: Compiler = async ({
               }
               break;
             case "signature_delta":
-              if(thinkingBlocks.length === 0) {
+              if (thinkingBlocks.length === 0) {
                 thinkingBlocks.push({
                   type: "thinking",
                   signature: chunk.delta.signature,
                   index: chunk.index,
                 });
-              }
-              else {
+              } else {
                 const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if(lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
                   lastBlock.signature = chunk.delta.signature;
-                }
-                else {
+                } else {
                   thinkingBlocks.push({
                     type: "thinking",
                     signature: chunk.delta.signature,
@@ -359,7 +363,7 @@ export const runAnthropicAgent: Compiler = async ({
               }
               break;
             case "input_json_delta":
-              if(inProgressTool != null && inProgressTool.index === chunk.index) {
+              if (inProgressTool != null && inProgressTool.index === chunk.index) {
                 onTokens(chunk.delta.partial_json, "tool");
                 inProgressTool.partialJson += chunk.delta.partial_json;
               }
@@ -367,10 +371,10 @@ export const runAnthropicAgent: Compiler = async ({
           }
           break;
         case "content_block_start":
-          switch(chunk.content_block.type) {
+          switch (chunk.content_block.type) {
             case "tool_use":
               onTokens(chunk.content_block.name, "tool");
-              if(inProgressTool == null) {
+              if (inProgressTool == null) {
                 inProgressTool = {
                   id: chunk.content_block.id,
                   index: chunk.index,
@@ -390,7 +394,7 @@ export const runAnthropicAgent: Compiler = async ({
 
         case "message_delta":
           usage.output = chunk.usage.output_tokens;
-          if(chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
+          if (chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
             usage.input = chunk.usage.input_tokens;
           }
           break;
@@ -401,25 +405,25 @@ export const runAnthropicAgent: Compiler = async ({
     }
 
     // Track usage
-    if(usage.input !== 0 || usage.output !== 0) {
+    if (usage.input !== 0 || usage.output !== 0) {
       trackTokens(model.model, "input", usage.input);
       trackTokens(model.model, "output", usage.output);
     }
 
     // Calculate token usage delta
     let tokenDelta = 0;
-    if(usage.input !== 0 || usage.output !== 0) {
-      if(!abortSignal.aborted) {
+    if (usage.input !== 0 || usage.output !== 0) {
+      if (!abortSignal.aborted) {
         const previousTokens = countIRTokens(irs);
-        tokenDelta = (usage.input + usage.output) - previousTokens;
+        tokenDelta = usage.input + usage.output - previousTokens;
       }
     }
 
     let anthropic: { anthropic?: AnthropicAssistantData } = {};
-    if(thinkingBlocks.length > 0) {
+    if (thinkingBlocks.length > 0) {
       anthropic.anthropic = {
         thinkingBlocks: thinkingBlocks.map(b => {
-          if(b.type === "redacted_thinking") return b;
+          if (b.type === "redacted_thinking") return b;
           return ThinkingBlockSchema.slice({
             type: "thinking",
             signature: b.signature || "",
@@ -431,22 +435,23 @@ export const runAnthropicAgent: Compiler = async ({
 
     const assistantMessage: AssistantMessage = {
       role: "assistant",
-      content, reasoningContent,
+      content,
+      reasoningContent,
       ...anthropic,
       tokenUsage: tokenDelta,
       outputTokens: usage.output,
     };
 
     // If aborted, don't try to parse tool calls
-    if(abortSignal.aborted) {
+    if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: [ assistantMessage ], curl };
+      return { success: true, output: [assistantMessage], curl };
     }
 
     // No tools? Return
-    if(inProgressTool == null) {
-      return { success: true, output: [ assistantMessage ], curl };
+    if (inProgressTool == null) {
+      return { success: true, output: [assistantMessage], curl };
     }
 
     // Get tool calls
@@ -454,15 +459,10 @@ export const runAnthropicAgent: Compiler = async ({
       toolCallId: inProgressTool.id,
       toolName: inProgressTool.name,
       args: inProgressTool.partialJson,
-    }
-    const parseResult = await parseTool(
-      chatToolCall,
-      toolDefs,
-      autofixJson,
-      abortSignal,
-    );
+    };
+    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
 
-    if(parseResult.status === "error") {
+    if (parseResult.status === "error") {
       return {
         success: true,
         curl,
@@ -475,12 +475,12 @@ export const runAnthropicAgent: Compiler = async ({
             arguments: inProgressTool.partialJson,
             toolCallId: inProgressTool.id,
           },
-        ]
+        ],
       };
     }
 
     assistantMessage.toolCall = parseResult.tool;
-    return { success: true, output: [ assistantMessage ], curl };
+    return { success: true, output: [assistantMessage], curl };
   } catch (e) {
     return {
       success: false,
@@ -488,15 +488,17 @@ export const runAnthropicAgent: Compiler = async ({
       curl,
     };
   }
-}
-
-type ParseToolResult = {
-  status: "success";
-  tool: ToolCallRequest,
-} | {
-  status: "error";
-  message: string
 };
+
+type ParseToolResult =
+  | {
+      status: "success";
+      tool: ToolCallRequest;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
 
 async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
@@ -507,7 +509,7 @@ async function parseTool(
   const name = toolCall.toolName;
   const toolDef = toolDefs[name];
 
-  if(!toolDef) {
+  if (!toolDef) {
     return {
       status: "error",
       message: `
@@ -524,15 +526,15 @@ Please try calling a valid tool.
   let args = toolCall.args;
 
   // If args is a string, try to parse as JSON
-  if(typeof args === 'string') {
-    let [ err, parsedArgs ] = tryexpr(() => {
+  if (typeof args === "string") {
+    let [err, parsedArgs] = tryexpr(() => {
       return JSON.parse(args);
     });
 
-    if(err) {
+    if (err) {
       const fixPromise = autofixJson(args, abortSignal);
       const fixResponse = await fixPromise;
-      if(!fixResponse.success) {
+      if (!fixResponse.success) {
         return {
           status: "error",
           message: "Syntax error: invalid JSON in tool call arguments",
