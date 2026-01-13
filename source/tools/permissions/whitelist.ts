@@ -1,15 +1,14 @@
 import { minimatch } from "minimatch";
 
 import { PermissionsData, WhitelistType } from "./index.ts";
+import { TOOL_CATEGORIES } from "../tool-defs/categories.ts";
 
 export function createWhitelist(): PermissionsData {
-  return {
-    command: new Set<string>(),
-    fileOperations: new Set<string>(),
-    mcp: new Set<string>(),
-    fetch: new Set<string>(),
-    skill: new Set<string>(),
-  };
+  const whitelist = {} as PermissionsData;
+  for (const category of Object.keys(TOOL_CATEGORIES) as WhitelistType[]) {
+    whitelist[category] = new Set<string>();
+  }
+  return whitelist;
 }
 
 export const PATTERNS = {
@@ -19,15 +18,13 @@ export const PATTERNS = {
   FILE_PATH_SEPARATOR: "/",
 } as const;
 
-export const matchers = {
+export const whitelistValidators = {
   command: (value: string, pattern: string) => {
     return value.startsWith(pattern);
   },
-
   fileOperations: (value: string, pattern: string) => {
     return minimatch(value, pattern) || minimatch(value.split(PATTERNS.FILE_PATH_SEPARATOR).pop() || "", pattern);
   },
-
   mcp: (value: string, pattern: string) => {
     if (pattern.endsWith(PATTERNS.MCP_TOOL_WILDCARD_SUFFIX)) {
       const server = pattern.slice(0, -2);
@@ -35,11 +32,9 @@ export const matchers = {
     }
     return value === pattern;
   },
-
   fetch: (value: string, pattern: string) => {
     return pattern === PATTERNS.WILDCARD || value === pattern;
   },
-
   skill: (value: string, pattern: string) => {
     return pattern === PATTERNS.WILDCARD || value === pattern;
   },
@@ -54,7 +49,7 @@ export function isWhitelisted(
   switch (tool.type) {
     case 'command': {
       for (const pattern of whitelist.command) {
-        if (matchers.command(trimmed, pattern)) {
+        if (whitelistValidators.command(trimmed, pattern)) {
           return true;
         }
       }
@@ -62,7 +57,7 @@ export function isWhitelisted(
     }
     case 'fileOperations': {
       for (const pattern of whitelist.fileOperations) {
-        if (matchers.fileOperations(trimmed, pattern)) {
+        if (whitelistValidators.fileOperations(trimmed, pattern)) {
           return true;
         }
       }
@@ -70,7 +65,7 @@ export function isWhitelisted(
     }
     case 'mcp': {
       for (const pattern of whitelist.mcp) {
-        if (matchers.mcp(trimmed, pattern)) {
+        if (whitelistValidators.mcp(trimmed, pattern)) {
           return true;
         }
       }
@@ -78,7 +73,7 @@ export function isWhitelisted(
     }
     case 'fetch': {
       for (const pattern of whitelist.fetch) {
-        if (matchers.fetch(trimmed, pattern)) {
+        if (whitelistValidators.fetch(trimmed, pattern)) {
           return true;
         }
       }
@@ -86,7 +81,7 @@ export function isWhitelisted(
     }
     case 'skill': {
       for (const pattern of whitelist.skill) {
-        if (matchers.skill(trimmed, pattern)) {
+        if (whitelistValidators.skill(trimmed, pattern)) {
           return true;
         }
       }
@@ -114,14 +109,19 @@ export function addToWhitelist(
 
 export function extractCommandPrefix(fullCommand: string): string {
   const trimmed = fullCommand.trim();
-  const spaceIndex = trimmed.indexOf(' ');
-  if (spaceIndex > 0) {
-    return trimmed.slice(0, spaceIndex);
+  const firstSpaceIndex = trimmed.indexOf(' ');
+  if (firstSpaceIndex === -1) {
+    return trimmed;
+  }
+
+  const secondSpaceIndex = trimmed.indexOf(' ', firstSpaceIndex + 1);
+  if (secondSpaceIndex > 0) {
+    return trimmed.slice(0, secondSpaceIndex);
   }
   return trimmed;
 }
 
-export function extractMcpToolPattern(toolName: string): string {
+export function extractMcpPattern(toolName: string): string {
   const trimmed = toolName.trim();
   const colonIndex = trimmed.indexOf(PATTERNS.MCP_TOOL_SEPARATOR);
   if (colonIndex > 0) {
