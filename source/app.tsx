@@ -600,36 +600,21 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
-const ToolRequestItemComponent = React.memo(({ isSelected = false, label, commandPrefix, formattedSuffix }: {
+const ToolRequestItem = React.memo(({ isSelected = false, label, formattedSuffix }: {
   isSelected?: boolean,
   label: string,
-  commandPrefix?: string,
   formattedSuffix?: { text: string; bold?: boolean }[]
 }) => {
   const themeColor = useColor();
 
-  if (formattedSuffix) {
-    return <Text color={isSelected ? themeColor : undefined}>
-      {label}
-      {formattedSuffix.map((part, index) => (
-        <Text key={index} bold={part.bold}>
-          {part.text}
-        </Text>
-      ))}
-    </Text>;
-  }
-
-  if (commandPrefix) {
-    const parts = label.split(commandPrefix);
-
-    return <Text color={isSelected ? themeColor : undefined}>
-      {parts[0]}
-      <Text bold>{commandPrefix}</Text>
-      {parts[1]}
-    </Text>;
-  }
-
-  return <Text color={isSelected ? themeColor : undefined}>{label}</Text>;
+  return <Text color={isSelected ? themeColor : undefined}>
+    {label}
+    {formattedSuffix && formattedSuffix.map((part, index) => (
+      <Text key={index} bold={part.bold}>
+        {part.text}
+      </Text>
+    ))}
+  </Text>;
 });
 
 function ToolRequestRenderer({ toolReq, config, transport }: {
@@ -694,7 +679,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       label: "Yes",
       value: "yes",
     },
-    ...(tool && !SKIP_CONFIRMATION.includes(toolReq.function.name) && !isToolWhitelisted ? [{
+    ...(tool && !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) && !isToolWhitelisted ? [{
       label: "Yes, and always allow ",
       formattedSuffix: tool.labelParts,
       value: "yes-whitelist",
@@ -718,7 +703,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
     }
 	}, [ toolReq, config, transport, addToWhitelist, runTool, rejectTool ]);
 
-  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name) || isToolWhitelisted;
+  const noConfirm = unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) || isToolWhitelisted;
   useEffect(() => {
     if (noConfirm) {
       runTool({ toolReq, config, transport });
@@ -733,7 +718,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       items={items}
       onSelect={onSelect}
       indicatorComponent={IndicatorComponent}
-      itemComponent={ToolRequestItemComponent}
+      itemComponent={ToolRequestItem}
     />
   </Box>
 }
