@@ -5,6 +5,13 @@ import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 export { ToolError } from "./common.ts";
 
+export const SKIP_CONFIRMATION_TOOLS: string[] = [
+  "read",
+  "list",
+  "fetch",
+  "skill",
+];
+
 export type LoadedTools = {
   [K in keyof typeof toolMap]: Exclude<Awaited<ReturnType<(typeof toolMap)[K]>>, null>;
 };
