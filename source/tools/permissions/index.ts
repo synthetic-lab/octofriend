@@ -2,8 +2,8 @@ import { SKIP_CONFIRMATION_TOOLS } from "../index.ts";
 
 export type PermissionsData = {
   command: Set<string>,
-  filePattern: Set<string>,
-  mcpTool: Set<string>,
+  fileOperations: Set<string>,
+  mcp: Set<string>,
   fetch: Set<string>,
   skill: Set<string>,
 };

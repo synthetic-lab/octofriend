@@ -1,11 +1,5 @@
-export { default as read } from "./read.ts";
-export { default as list } from "./list.ts";
-export { default as shell } from "./bash.ts";
-export { default as edit } from "./edit.ts";
-export { default as create } from "./create.ts";
-export { default as mcp } from "./mcp.ts";
-export { default as fetch } from "./fetch.ts";
-export { default as append } from "./append.ts";
-export { default as prepend } from "./prepend.ts";
-export { default as rewrite } from "./rewrite.ts";
-export { default as skill } from "./skill.ts";
+export * from "./fileOperations/index.ts";
+export * from "./command/index.ts";
+export * from "./mcp/index.ts";
+export * from "./fetch/index.ts";
+export * from "./skill/index.ts";

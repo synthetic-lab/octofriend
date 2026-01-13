@@ -18,7 +18,7 @@ import {
   AUTOFIX_KEYS,
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
-import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
+import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./compilers/standard.ts";
 import { LlmIR } from "./ir/llm-ir.ts";

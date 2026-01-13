@@ -1,7 +1,7 @@
 import { t } from "structural";
-import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool } from "../common.ts";
-import { Transport } from "../../transports/transport-common.ts";
+import { fileTracker, FileExistsError } from "../../file-tracker.ts";
+import { ToolError, attempt, defineTool } from "../../common.ts";
+import { Transport } from "../../../transports/transport-common.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),

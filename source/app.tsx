@@ -40,7 +40,7 @@ import {
   skill,
   SKIP_CONFIRMATION_TOOLS as SKIP_CONFIRMATION,
 } from "./tools/index.ts";
-import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
+import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/fileOperations/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
