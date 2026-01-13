@@ -2,7 +2,7 @@ import { ToolCallRequest } from "../../ir/llm-ir.ts";
 import { WhitelistType } from "./index.ts";
 import {
   extractCommandPrefix,
-  extractMcpToolPattern,
+  extractMcpPattern,
 } from "./whitelist.ts";
 import { cwd } from "process";
 import { TOOL_CATEGORIES } from "../tool-defs/categories.ts";
@@ -42,7 +42,7 @@ const CATEGORY_CONFIGS: Record<WhitelistType, Omit<ToolConfig, 'type'>> = {
   },
   mcp: {
     extractValue: (args: Record<string, unknown>) => args['tool'] as string,
-    extractPattern: extractMcpToolPattern,
+    extractPattern: extractMcpPattern,
     formatLabelParts: (pattern: string) => [
       { text: 'MCP tools matching ' },
       { text: pattern, bold: true },
