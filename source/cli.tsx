@@ -140,12 +140,14 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     }
 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
+    const cwd = await opts.transport.cwd(timeout(5000));
 
     const { waitUntilExit } = render(
       <App
         bootSkills={skills.map(s => s.name)}
         config={config}
         configPath={configPath}
+        cwd={cwd}
         metadata={metadata}
         unchained={!!opts.unchained}
         transport={opts.transport}

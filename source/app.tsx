@@ -37,7 +37,7 @@ import mcp from "./tools/tool-defs/mcp.ts";
 import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
-import { SKIP_CONFIRMATION } from "./tools/index.ts";
+import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
@@ -47,7 +47,7 @@ import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
+import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -67,10 +67,12 @@ import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 import { readFileSync } from "fs";
+import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 
 type Props = {
   config: Config;
   configPath: string;
+  cwd: string;
   metadata: Metadata;
   updates: string | null;
   unchained: boolean;
@@ -118,6 +120,7 @@ const CHAINED_NOTIF = "Octo asks permission before running edits or shell comman
 export default function App({
   config,
   configPath,
+  cwd,
   metadata,
   unchained,
   transport,
@@ -179,25 +182,29 @@ export default function App({
         <ConfigContext.Provider value={currConfig}>
           <UnchainedContext.Provider value={isUnchained}>
             <TransportContext.Provider value={transport}>
-              <ExitOnDoubleCtrlC>
-                <TerminalSizeTracker>
-                  <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems} key={clearNonce}>
-                      {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
-                    </Static>
-                    {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                      (modeData.inflightResponse.reasoningContent ||
-                        modeData.inflightResponse.content) && (
-                        <MessageDisplay item={modeData.inflightResponse} />
-                      )}
-                    <BottomBar
-                      inputHistory={inputHistory}
-                      metadata={metadata}
-                      tempNotification={tempNotification}
-                    />
-                  </Box>
-                </TerminalSizeTracker>
-              </ExitOnDoubleCtrlC>
+              <CwdContext.Provider value={cwd}>
+                <ExitOnDoubleCtrlC>
+                  <TerminalSizeTracker>
+                    <Box flexDirection="column" width="100%" height="100%">
+                      <Static items={staticItems} key={clearNonce}>
+                        {(item, index) => (
+                          <StaticItemRenderer item={item} key={`static-${index}`} />
+                        )}
+                      </Static>
+                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                        (modeData.inflightResponse.reasoningContent ||
+                          modeData.inflightResponse.content) && (
+                          <MessageDisplay item={modeData.inflightResponse} />
+                        )}
+                      <BottomBar
+                        inputHistory={inputHistory}
+                        metadata={metadata}
+                        tempNotification={tempNotification}
+                      />
+                    </Box>
+                  </TerminalSizeTracker>
+                </ExitOnDoubleCtrlC>
+              </CwdContext.Provider>
             </TransportContext.Provider>
           </UnchainedContext.Provider>
         </ConfigContext.Provider>
@@ -599,6 +606,27 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
+const ToolRequestItem = React.memo(
+  ({
+    isSelected = false,
+    label,
+    whitelistAllowDescription,
+  }: {
+    isSelected?: boolean;
+    label: string;
+    whitelistAllowDescription?: React.ReactNode;
+  }) => {
+    const themeColor = useColor();
+
+    return (
+      <Text color={isSelected ? themeColor : undefined}>
+        {label}
+        {whitelistAllowDescription}
+      </Text>
+    );
+  },
+);
+
 function ToolRequestRenderer({
   toolReq,
   config,
@@ -606,15 +634,42 @@ function ToolRequestRenderer({
 }: {
   toolReq: ToolCallRequest;
 } & RunArgs) {
+  const cwd = useCwd();
   const themeColor = useColor();
-  const { runTool, rejectTool } = useAppStore(
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
+      isWhitelisted: state.isWhitelisted,
+      addToWhitelist: state.addToWhitelist,
     })),
   );
   const unchained = useUnchained();
 
+  const whitelistKey = (() => {
+    const fn = toolReq.function;
+    switch (fn.name) {
+      case "read":
+      case "list":
+        return "read:*";
+      case "create":
+      case "rewrite":
+      case "append":
+      case "prepend":
+      case "edit":
+        return "edits:*";
+      case "skill":
+        return `${fn.name}:*`;
+      case "shell":
+        return `${fn.name}:*`;
+      case "fetch":
+        return `${fn.name}:*`;
+      case "mcp":
+        return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
+      case "web-search":
+        return `${fn.name}:*`;
+    }
+  })();
   const prompt = (() => {
     const fn = toolReq.function;
     switch (fn.name) {
@@ -648,11 +703,38 @@ function ToolRequestRenderer({
     }
   })();
 
-  const items = [
+  const toolName = toolReq.function.name;
+
+  const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const whitelisted = await isWhitelisted(whitelistKey);
+      setIsToolWhitelisted(whitelisted);
+    })();
+  }, [whitelistKey, isWhitelisted]);
+
+  type SelectItem = {
+    label: string;
+    value: string;
+    whitelistAllowDescription?: React.ReactNode;
+  };
+  const items: SelectItem[] = [
     {
       label: "Yes",
       value: "yes",
     },
+    ...(!SKIP_CONFIRMATION_TOOLS.includes(toolName) &&
+    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolName) &&
+    !isToolWhitelisted
+      ? [
+          {
+            label: "Yes, and always allow",
+            value: "yes-whitelist",
+            whitelistAllowDescription: <WhitelistAllowDescription toolCallRequest={toolReq} />,
+          },
+        ]
+      : []),
     {
       label: "No, and tell Octo what to do differently",
       value: "no",
@@ -661,20 +743,30 @@ function ToolRequestRenderer({
 
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
-      if (item.value === "no") rejectTool(toolReq.toolCallId);
-      else await runTool({ toolReq, config, transport });
+      if (item.value === "no") {
+        rejectTool(toolReq.toolCallId);
+      } else if (item.value === "yes-whitelist") {
+        await addToWhitelist(whitelistKey);
+        await runTool({ toolReq, config, transport });
+      } else {
+        await runTool({ toolReq, config, transport });
+      }
     },
-    [toolReq, config, transport],
+    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey],
   );
 
-  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
+  const noConfirmationNeeded =
+    unchained ||
+    SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) ||
+    isToolWhitelisted === true;
+
   useEffect(() => {
-    if (noConfirm) {
+    if (noConfirmationNeeded) {
       runTool({ toolReq, config, transport });
     }
-  }, [toolReq, noConfirm, config, transport]);
+  }, [toolReq, noConfirmationNeeded, config, transport]);
 
-  if (noConfirm) return <Loading />;
+  if (noConfirmationNeeded) return <Loading />;
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -683,7 +775,7 @@ function ToolRequestRenderer({
         items={items}
         onSelect={onSelect}
         indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
+        itemComponent={ToolRequestItem}
       />
     </Box>
   );
@@ -1057,6 +1149,66 @@ function McpToolRenderer({ item }: { item: ToolSchemaFrom<typeof mcp> }) {
       <Text color="gray">Arguments: {JSON.stringify(item.arguments.arguments)}</Text>
     </Box>
   );
+}
+
+function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
+  const fn = toolCallRequest.function;
+  const cwd = useCwd();
+  switch (fn.name) {
+    case "shell": {
+      return (
+        <Text>
+          <Text> commands starting with </Text>
+          <Text bold>{fn.arguments.cmd}</Text>
+        </Text>
+      );
+    }
+    case "fetch": {
+      return (
+        <Text>
+          <Text> fetches from the web.</Text>
+        </Text>
+      );
+    }
+    case "web-search": {
+      return <Text>Web Searches</Text>;
+    }
+    case "list":
+    case "read": {
+      return (
+        <Text>
+          <Text> file reads in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "edit":
+    case "create":
+    case "append":
+    case "prepend":
+    case "rewrite": {
+      return (
+        <Text>
+          <Text> file changes in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "mcp": {
+      return (
+        <Text>
+          <Text>
+            {" "}
+            MCP tools with Server: <Text bold>{fn.arguments.server}</Text> using Tool:{" "}
+            <Text bold>{fn.arguments.tool}</Text>
+          </Text>
+        </Text>
+      );
+    }
+    case "skill": {
+      return <Text>{fn.arguments.skillName} skill executions</Text>;
+    }
+  }
 }
 
 const OCTO_MARGIN = 1;
