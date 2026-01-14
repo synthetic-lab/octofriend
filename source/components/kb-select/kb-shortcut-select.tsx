@@ -15,6 +15,8 @@ type KbSelectProps<V> = {
 export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
   let items = useMemo(() => {
     return Object.entries(shortcutItems).map(([k, v]) => {
+      if (k === "j" || k === "k")
+        throw new Error("Can't use j or k as shortcuts: reserved for nav");
       return {
         item: v,
         shortcut: k,

@@ -278,7 +278,7 @@ const SETTINGS_ITEMS = {
     label: "Disable fast diff application",
     value: "disable-diff-apply",
   },
-  j: {
+  t: {
     label: "Disable auto-fixing JSON tool calls",
     value: "disable-fix-json",
   },
@@ -301,7 +301,7 @@ function filterSettings(config: Config) {
   if (config.fixJson) {
     items = {
       ...items,
-      j: SETTINGS_ITEMS.j,
+      t: SETTINGS_ITEMS.t,
     };
   }
 
