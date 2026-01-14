@@ -21,6 +21,7 @@ import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import OpenAI from "openai";
 import { LlmMessage } from "./compilers/standard.ts";
+import { LlmIR } from "./ir/llm-ir.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -339,33 +340,51 @@ cli
       process.exit(1);
     }
 
-    const client = new OpenAI({
-      apiKey,
-      baseURL: model.baseUrl,
-    });
-
-    const messages: LlmMessage[] = [];
-    if (opts.system) {
-      messages.push({
-        role: "system",
-        content: opts.system,
-      });
-    }
+    const messages: LlmIR[] = [];
     messages.push({
       role: "user",
       content: prompt,
     });
 
-    const response = await client.chat.completions.create({
-      model: model.model,
-      messages,
-      stream: true,
-    });
-
-    for await (const chunk of response) {
-      const content = chunk.choices[0].delta?.content;
-      if (content) process.stdout.write(content);
+    let systemPrompt: undefined | (() => Promise<string>) = undefined;
+    if (opts.system) {
+      const sys = opts.system;
+      systemPrompt = async () => sys;
     }
+
+    const autofixJson = makeAutofixJson(config);
+    const abortController = new AbortController();
+
+    let seenReasoning = false;
+    let seenContent = false;
+    const result = await run({
+      apiKey,
+      model,
+      systemPrompt,
+      messages,
+      autofixJson,
+      handlers: {
+        onTokens: (chunk, type) => {
+          if (type === "reasoning") seenReasoning = true;
+
+          if (seenReasoning && type === "content" && !seenContent) {
+            seenContent = true;
+            process.stderr.write("\n\n");
+          }
+
+          if (type === "reasoning") process.stderr.write(chunk);
+          else process.stdout.write(chunk);
+        },
+        onAutofixJson: () => {},
+      },
+      abortSignal: abortController.signal,
+    });
+    if (!result.success) {
+      console.error(result.requestError);
+      console.error(`cURL: ${result.curl}`);
+      process.exit(1);
+    }
+
     process.stdout.write("\n");
   });
 
