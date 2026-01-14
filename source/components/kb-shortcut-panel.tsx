@@ -32,28 +32,19 @@ export const MenuHeader = React.memo(({ title }: { title: string }) => {
 function UnderlineItem({
   isSelected = false,
   label,
-  underline,
+  shortcut,
 }: {
   isSelected: boolean;
   label: string;
-  underline: string;
+  shortcut: string;
 }) {
   const themeColor = useColor();
   const color = isSelected ? themeColor : undefined;
-  const index = label.toLowerCase().indexOf(underline.toLowerCase());
-  if (index === -1) {
-    throw new Error(`No matching letter found for shortcut "${underline}" in label "${label}"`);
-  }
-  const before = label.slice(0, index);
-  const after = label.slice(index + 1);
-  const underlinedChar = label[index];
   return (
     <>
-      <Text color={color}>{before}</Text>
-      <Text color={color} underline>
-        {underlinedChar}
-      </Text>
-      <Text color={color}>{after}</Text>
+      <Text color={color}>{label}</Text>
+      <Text> </Text>
+      <Text color="gray">({shortcut})</Text>
     </>
   );
 }
@@ -149,7 +140,7 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
                 <UnderlineItem
                   isSelected={isSelected}
                   label={item.item.label}
-                  underline={item.shortcut}
+                  shortcut={item.shortcut}
                 />
               </Box>
             );
