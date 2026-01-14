@@ -11,7 +11,8 @@ import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
-import { KbShortcutPanel, Item } from "./components/kb-shortcut-panel.tsx";
+import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+import { Item } from "./components/kb-select/kb-shortcut-select.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -259,39 +260,52 @@ function SwitchModelMenu() {
   return <MenuPanel title="Which model should Octo use now?" items={items} onSelect={onSelect} />;
 }
 
-const SETTINGS_ITEMS = [
-  {
+type SettingsValues =
+  | "set-default-model"
+  | "remove-model"
+  | "disable-diff-apply"
+  | "disable-fix-json";
+const SETTINGS_ITEMS = {
+  c: {
     label: "Change the default model",
-    value: "set-default-model" as const,
+    value: "set-default-model",
   },
-  {
+  r: {
     label: "Remove a model",
-    value: "remove-model" as const,
+    value: "remove-model",
   },
-  {
+  d: {
     label: "Disable fast diff application",
-    value: "disable-diff-apply" as const,
+    value: "disable-diff-apply",
   },
-  {
+  j: {
     label: "Disable auto-fixing JSON tool calls",
-    value: "disable-fix-json" as const,
+    value: "disable-fix-json",
   },
-];
+} satisfies Record<string, Item<SettingsValues>>;
 function filterSettings(config: Config) {
-  let items = SETTINGS_ITEMS.concat([]);
-  items = items.filter(item => {
-    if (config.diffApply == null && item.value === "disable-diff-apply") return false;
-    if (config.fixJson == null && item.value === "disable-fix-json") return false;
-    return true;
-  });
+  let items: Record<string, Item<SettingsValues>> = {};
+  if (config.models.length > 1) {
+    items = {
+      ...items,
+      c: SETTINGS_ITEMS.c,
+      r: SETTINGS_ITEMS.r,
+    };
+  }
+  if (config.diffApply) {
+    items = {
+      ...items,
+      d: SETTINGS_ITEMS.d,
+    };
+  }
+  if (config.fixJson) {
+    items = {
+      ...items,
+      j: SETTINGS_ITEMS.j,
+    };
+  }
 
-  if (config.models.length > 1) return items;
-
-  return items.filter(item => {
-    if (item.value === "remove-model") return false;
-    if (item.value === "set-default-model") return false;
-    return true;
-  });
+  return items;
 }
 
 function MainMenu() {
@@ -373,7 +387,7 @@ function MainMenu() {
   }
 
   const settings = filterSettings(config);
-  if (settings.length !== 0) {
+  if (Object.values(settings).length !== 0) {
     items = {
       ...items,
       t: {
@@ -430,22 +444,22 @@ function SettingsMenu() {
   });
 
   const settingsItems = filterSettings(config);
-  let items = [
+  let items: Record<string, Item<SettingsValues | "back">> = {
     ...settingsItems,
-    {
+    b: {
       label: "Back",
       value: "back" as const,
     },
-  ];
+  };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: (typeof items)[string]) => {
     if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
     else if (item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
   }, []);
 
-  return <MenuPanel title="Settings Menu" items={items} onSelect={onSelect} />;
+  return <KbShortcutPanel title="Settings Menu" shortcutItems={items} onSelect={onSelect} />;
 }
 
 function QuitConfirm() {

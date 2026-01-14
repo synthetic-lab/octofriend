@@ -1,7 +1,6 @@
 import React, { useCallback } from "react";
 import { Box } from "ink";
-import SelectInput from "./ink/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./select.tsx";
+import { KbShortcutSelect, Item } from "./kb-select/kb-shortcut-select.tsx";
 
 export function ConfirmDialog({
   confirmLabel,
@@ -14,29 +13,25 @@ export function ConfirmDialog({
   onConfirm: () => any;
   onReject: () => any;
 }) {
-  const items = [
-    {
+  const items: Record<string, Item<"confirm" | "reject">> = {
+    y: {
       label: confirmLabel,
       value: "confirm" as const,
     },
-    {
+    n: {
       label: rejectLabel,
       value: "reject" as const,
     },
-  ];
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  };
+
+  const onSelect = useCallback((item: (typeof items)[string]) => {
     if (item.value === "confirm") return onConfirm();
     return onReject();
   }, []);
 
   return (
     <Box justifyContent="center">
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
+      <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
     </Box>
   );
 }

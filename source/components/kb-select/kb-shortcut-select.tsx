@@ -1,55 +1,18 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { isDeepStrictEqual } from "node:util";
 import { Box, Text, useInput } from "ink";
-import { IndicatorComponent } from "./select.tsx";
-import { Octo } from "./octo.tsx";
-import { useColor } from "../theme.ts";
+import { IndicatorComponent } from "../select.tsx";
+import { useColor } from "../../theme.ts";
 
 export type Item<V> = {
   label: string;
   value: V;
 };
-type KbPanelProps<V> = {
+type KbSelectProps<V> = {
   shortcutItems: Record<string, Item<V>>;
   readonly onSelect: (item: Item<V>) => any;
-  title: string;
-  children?: React.ReactNode;
 };
-
-export const MenuHeader = React.memo(({ title }: { title: string }) => {
-  return (
-    <Box justifyContent="center" marginBottom={1}>
-      <Box justifyContent="center" width={80}>
-        <Octo />
-        <Box marginLeft={1}>
-          <Text>{title}</Text>
-        </Box>
-      </Box>
-    </Box>
-  );
-});
-
-function UnderlineItem({
-  isSelected = false,
-  label,
-  shortcut,
-}: {
-  isSelected: boolean;
-  label: string;
-  shortcut: string;
-}) {
-  const themeColor = useColor();
-  const color = isSelected ? themeColor : undefined;
-  return (
-    <>
-      <Text color={color}>{label}</Text>
-      <Text> </Text>
-      <Text color="gray">({shortcut})</Text>
-    </>
-  );
-}
-
-export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
+export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
   let items = useMemo(() => {
     return Object.entries(shortcutItems).map(([k, v]) => {
       return {
@@ -120,33 +83,41 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
 
   return (
     <Box flexDirection="column">
-      <MenuHeader title={title} />
-      {children && (
-        <Box justifyContent="center" alignItems="center" marginBottom={1}>
-          <Box flexDirection="column" width={80}>
-            {children}
-          </Box>
-        </Box>
-      )}
-      <Box justifyContent="center">
-        <Box flexDirection="column">
-          {items.map((item, index) => {
-            const isSelected = index === selectedIndex;
+      {items.map((item, index) => {
+        const isSelected = index === selectedIndex;
 
-            return (
-              // @ts-expect-error - `key` can't be optional but `item.value` is generic T
-              <Box key={item.key ?? item.value}>
-                <IndicatorComponent isSelected={isSelected} />
-                <UnderlineItem
-                  isSelected={isSelected}
-                  label={item.item.label}
-                  shortcut={item.shortcut}
-                />
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
+        return (
+          // @ts-expect-error - `key` can't be optional but `item.value` is generic T
+          <Box key={item.key ?? item.value}>
+            <IndicatorComponent isSelected={isSelected} />
+            <UnderlineItem
+              isSelected={isSelected}
+              label={item.item.label}
+              shortcut={item.shortcut}
+            />
+          </Box>
+        );
+      })}
     </Box>
+  );
+}
+
+function UnderlineItem({
+  isSelected = false,
+  label,
+  shortcut,
+}: {
+  isSelected: boolean;
+  label: string;
+  shortcut: string;
+}) {
+  const themeColor = useColor();
+  const color = isSelected ? themeColor : undefined;
+  return (
+    <>
+      <Text color={color}>{label}</Text>
+      <Text> </Text>
+      <Text color="gray">({shortcut})</Text>
+    </>
   );
 }
