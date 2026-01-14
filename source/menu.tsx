@@ -376,7 +376,7 @@ function MainMenu() {
   if (settings.length !== 0) {
     items = {
       ...items,
-      s: {
+      t: {
         label: "* Settings",
         value: "settings-menu" as const,
       },
