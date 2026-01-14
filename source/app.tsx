@@ -305,16 +305,18 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const transport = useContext(TransportContext);
   const [query, setQuery] = useState("");
   const vimEnabled = !!config.vimEmulation?.enabled;
-  const { modeData, input, abortResponse, toggleMenu, byteCount, setVimMode } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-      input: state.input,
-      abortResponse: state.abortResponse,
-      toggleMenu: state.toggleMenu,
-      byteCount: state.byteCount,
-      setVimMode: state.setVimMode,
-    })),
-  );
+  const { modeData, input, abortResponse, openMenu, closeMenu, byteCount, setVimMode } =
+    useAppStore(
+      useShallow(state => ({
+        modeData: state.modeData,
+        input: state.input,
+        abortResponse: state.abortResponse,
+        closeMenu: state.closeMenu,
+        openMenu: state.openMenu,
+        byteCount: state.byteCount,
+        setVimMode: state.setVimMode,
+      })),
+    );
 
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
@@ -324,17 +326,20 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setQuery("");
   });
 
-  useInput((_, key) => {
+  useInput((input, key) => {
     if (key.escape) {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
-      if (vimEnabled && vimMode === "INSERT") {
+      if (vimEnabled && vimMode === "INSERT" && modeData.mode === "input") {
         setVimMode("NORMAL");
         return;
       }
 
-      // All other cases: abort response (if active) and open menu
-      abortResponse(); // Safe to call even if no response is active
-      toggleMenu();
+      abortResponse();
+      if (modeData.mode === "menu") closeMenu();
+    }
+
+    if (key.ctrl && input === "p") {
+      openMenu();
     }
   });
   const color = useColor();
@@ -412,7 +417,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   return (
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Press ESC to enter the menu)</Text>
+        <Text color="gray">(Ctrl-p to enter the menu)</Text>
       </Box>
       <InputWithHistory
         inputHistory={inputHistory}

@@ -11,6 +11,7 @@ import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
+import { KbShortcutPanel, Item } from "./components/kb-shortcut-panel.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -314,54 +315,88 @@ function MainMenu() {
     if (key.escape) toggleMenu();
   });
 
-  let items = [
-    {
-      label: "💫 Enable fast diff application",
-      value: "diff-apply-toggle" as const,
-    },
-    {
-      label: "🪄 Enable auto-fixing JSON tool calls",
-      value: "fix-json-toggle" as const,
-    },
-    {
-      label: "⤭ Switch model",
+  type Value =
+    | "model-select"
+    | "add-model"
+    | "vim-toggle"
+    | "return"
+    | "quit"
+    | "fix-json-toggle"
+    | "diff-apply-toggle"
+    | "settings-menu";
+  let items: Record<string, Item<Value>> = {
+    m: {
+      label: "⤭ Model switch",
       value: "model-select" as const,
     },
-    {
+    a: {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
-    {
-      label: "* Settings",
-      value: "settings-menu" as const,
-    },
-    {
-      label: config.vimEmulation?.enabled ? "- Switch to Emacs mode" : "- Enable Vim mode",
-      value: "vim-toggle" as const,
-    },
-    {
-      label: "⟵ Return to Octo",
+  };
+
+  if (config.vimEmulation?.enabled) {
+    items = {
+      ...items,
+      e: {
+        label: "- Switch to Emacs mode",
+        value: "vim-toggle" as const,
+      },
+    };
+  } else {
+    items = {
+      ...items,
+      v: {
+        label: "- Switch to Vim mode",
+        value: "vim-toggle" as const,
+      },
+    };
+  }
+
+  if (config.fixJson == null) {
+    items = {
+      ...items,
+      j: {
+        label: "🪄 Enable auto-fixing JSON tool calls",
+        value: "fix-json-toggle" as const,
+      },
+    };
+  }
+  if (config.diffApply == null) {
+    items = {
+      ...items,
+      d: {
+        label: "💫 Enable fast diff application",
+        value: "diff-apply-toggle" as const,
+      },
+    };
+  }
+
+  const settings = filterSettings(config);
+  if (settings.length !== 0) {
+    items = {
+      ...items,
+      s: {
+        label: "* Settings",
+        value: "settings-menu" as const,
+      },
+    };
+  }
+
+  items = {
+    ...items,
+    b: {
+      label: "⟵ Back to Octo",
       value: "return" as const,
     },
-    {
+    q: {
       label: "× Quit",
       value: "quit" as const,
     },
-  ];
-
-  items = items.filter(item => {
-    if (config.diffApply != null && item.value === "diff-apply-toggle") return false;
-    if (config.fixJson != null && item.value === "fix-json-toggle") return false;
-    return true;
-  });
-
-  const settingsItems = filterSettings(config);
-  if (settingsItems.length === 0) {
-    items = items.filter(item => item.value !== "settings-menu");
-  }
+  };
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: (typeof items)[string]) => {
       if (item.value === "return") toggleMenu();
       else if (item.value === "quit") setMenuMode("quit-confirm");
       else if (item.value === "vim-toggle") {
@@ -378,7 +413,7 @@ function MainMenu() {
     [config, setConfig, notify],
   );
 
-  return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />;
+  return <KbShortcutPanel title="Main Menu" shortcutItems={items} onSelect={onSelect} />;
 }
 
 function SettingsMenu() {
@@ -425,23 +460,29 @@ function QuitConfirm() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items = [
-    {
+  const items: Record<string, Item<"no" | "yes">> = {
+    n: {
       label: "Never mind, take me back",
       value: "no" as const,
     },
-    {
+    y: {
       label: "Yes, quit",
       value: "yes" as const,
     },
-  ];
+  };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: (typeof items)[string]) => {
     if (item.value === "no") setMenuMode("main-menu");
     else app.exit();
   }, []);
 
-  return <MenuPanel title="Are you sure you want to quit?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Are you sure you want to quit?"
+      shortcutItems={items}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function SetDefaultModelMenu() {
