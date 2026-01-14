@@ -328,14 +328,14 @@ function ImportModelsFrom({
     value: "custom" as const,
   });
   items.push({
-    label: "Cancel",
-    value: "cancel" as const,
+    label: "Back",
+    value: "back" as const,
   });
 
   const onSelect = useCallback(
     (item: (typeof items)[number]) => {
       if (item.value === "custom") return onCustomModel();
-      if (item.value === "cancel") return onCancel();
+      if (item.value === "back") return onCancel();
       if (item.value === "import") {
         const models = provider.models.filter(m => {
           return selectedModels.includes(m.nickname);
@@ -356,14 +356,22 @@ function ImportModelsFrom({
   if (remainingModels.length === 0) {
     return (
       <CenteredBox>
-        <MenuHeader
+        <KbShortcutPanel
           title={`You already imported all our recommended models from ${provider.name}!`}
-        />
-        <ConfirmDialog
-          confirmLabel={`Add a custom model string from ${provider.name}`}
-          rejectLabel="Go back"
-          onConfirm={onCustomModel}
-          onReject={onCancel}
+          shortcutItems={{
+            c: {
+              label: `Add a custom model string from ${provider.name}`,
+              value: "custom" as const,
+            },
+            b: {
+              label: "Back",
+              value: "back" as const,
+            },
+          }}
+          onSelect={item => {
+            if (item.value === "custom") return onCustomModel();
+            return onCancel();
+          }}
         />
       </CenteredBox>
     );
