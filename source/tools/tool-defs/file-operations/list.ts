@@ -34,7 +34,9 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
     await validate(abortSignal, transport, call);
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(abortSignal, dirpath);
-      return { content: entries.map(entry => JSON.stringify(entry)).join("\n") };
+      return {
+        content: entries.map(entry => JSON.stringify(entry)).join("\n"),
+      };
     });
   },
 }));

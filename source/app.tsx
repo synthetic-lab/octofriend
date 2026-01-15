@@ -38,9 +38,10 @@ import {
   mcp,
   fetch as fetchTool,
   skill,
-  SKIP_CONFIRMATION_TOOLS
+  SKIP_CONFIRMATION_TOOLS,
+  ALWAYS_REQUEST_PERMISSION_TOOLS,
 } from "./tools/index.ts";
-import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/fileOperations/edit.ts";
+import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/file-operations/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
@@ -65,7 +66,7 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
-import { extractToolPermissionInfo, type ToolPermissionInfo } from "./tools/permissions/index.ts";
+import { useToolPermissionInfo, type ToolPermissionInfo } from "./tools/permissions/index.ts";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
@@ -582,25 +583,38 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
-const ToolRequestItem = React.memo(({ isSelected = false, label, formattedSuffix }: {
-  isSelected?: boolean,
-  label: string,
-  formattedSuffix?: { text: string; bold?: boolean }[]
-}) => {
-  const themeColor = useColor();
+const ToolRequestItem = React.memo(
+  ({
+    isSelected = false,
+    label,
+    formattedSuffix,
+  }: {
+    isSelected?: boolean;
+    label: string;
+    formattedSuffix?: { text: string; bold?: boolean }[];
+  }) => {
+    const themeColor = useColor();
 
-  return <Text color={isSelected ? themeColor : undefined}>
-    {label}
-    {formattedSuffix && formattedSuffix.map((part, index) => (
-      <Text key={index} bold={part.bold}>
-        {part.text}
+    return (
+      <Text color={isSelected ? themeColor : undefined}>
+        {label}
+        {formattedSuffix &&
+          formattedSuffix.map((part, index) => (
+            <Text key={index} bold={part.bold}>
+              {part.text}
+            </Text>
+          ))}
       </Text>
-    ))}
-  </Text>;
-});
+    );
+  },
+);
 
-function ToolRequestRenderer({ toolReq, config, transport }: {
-  toolReq: ToolCallRequest
+function ToolRequestRenderer({
+  toolReq,
+  config,
+  transport,
+}: {
+  toolReq: ToolCallRequest;
 } & RunArgs) {
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
@@ -609,7 +623,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       rejectTool: state.rejectTool,
       isWhitelisted: state.isWhitelisted,
       addToWhitelist: state.addToWhitelist,
-    }))
+    })),
   );
   const unchained = useUnchained();
 
@@ -645,8 +659,14 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
     }
   })();
 
-  const tool = extractToolPermissionInfo(toolReq);
-  const isToolWhitelisted = isWhitelisted(tool);
+  const tool = useToolPermissionInfo(toolReq, transport);
+  const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (tool) {
+      isWhitelisted(tool).then(setIsToolWhitelisted);
+    }
+  }, [tool, isWhitelisted]);
 
   type SelectItem = {
     label: string;
@@ -660,48 +680,64 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       label: "Yes",
       value: "yes",
     },
-    ...(tool && !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) && !isToolWhitelisted ? [{
-      label: "Yes, and always allow ",
-      formattedSuffix: tool.labelParts,
-      value: "yes-whitelist",
-      tool,
-    }] : []),
+    ...(tool &&
+    !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) &&
+    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolReq.function.name) &&
+    !isToolWhitelisted
+      ? [
+          {
+            label: "Yes, and always allow ",
+            formattedSuffix: tool.labelParts,
+            value: "yes-whitelist",
+            tool,
+          },
+        ]
+      : []),
     {
       label: "No, and tell Octo what to do differently",
       value: "no",
     },
   ];
 
-	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "no") {
-      rejectTool(toolReq.toolCallId);
-    } else if(item.value === "yes-whitelist") {
-      const whitelistItem = item as { tool: ToolPermissionInfo };
-      addToWhitelist(whitelistItem.tool);
-      await runTool({ toolReq, config, transport });
-    } else {
-      await runTool({ toolReq, config, transport });
-    }
-	}, [ toolReq, config, transport, addToWhitelist, runTool, rejectTool ]);
+  const onSelect = useCallback(
+    async (item: (typeof items)[number]) => {
+      if (item.value === "no") {
+        rejectTool(toolReq.toolCallId);
+      } else if (item.value === "yes-whitelist") {
+        const whitelistItem = item as { tool: ToolPermissionInfo };
+        await addToWhitelist(whitelistItem.tool);
+        await runTool({ toolReq, config, transport });
+      } else {
+        await runTool({ toolReq, config, transport });
+      }
+    },
+    [toolReq, config, transport, addToWhitelist, runTool, rejectTool],
+  );
 
-  const noConfirm = unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) || isToolWhitelisted;
+  const noConfirm =
+    unchained ||
+    SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) ||
+    isToolWhitelisted === true;
   useEffect(() => {
     if (noConfirm) {
       runTool({ toolReq, config, transport });
     }
-  }, [ toolReq, noConfirm, config, transport, runTool ]);
+  }, [toolReq, noConfirm, config, transport, runTool]);
 
+  if (tool === null || isToolWhitelisted === null) return <Loading />;
   if (noConfirm) return <Loading />;
 
-  return <Box flexDirection="column" gap={1}>
-    { prompt }
-    <SelectInput
-      items={items}
-      onSelect={onSelect}
-      indicatorComponent={IndicatorComponent}
-      itemComponent={ToolRequestItem}
-    />
-  </Box>
+  return (
+    <Box flexDirection="column" gap={1}>
+      {prompt}
+      <SelectInput
+        items={items}
+        onSelect={onSelect}
+        indicatorComponent={IndicatorComponent}
+        itemComponent={ToolRequestItem}
+      />
+    </Box>
+  );
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {

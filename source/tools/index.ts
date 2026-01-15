@@ -7,12 +7,9 @@ import { Transport } from "../transports/transport-common.ts";
 export { ToolError } from "./common.ts";
 export * from "./tool-defs/index.ts";
 
-export const SKIP_CONFIRMATION_TOOLS: string[] = [
-  "read",
-  "list",
-  "fetch",
-  "skill",
-];
+export const SKIP_CONFIRMATION_TOOLS: string[] = ["read", "list", "fetch", "skill"];
+
+export const ALWAYS_REQUEST_PERMISSION_TOOLS: string[] = ["shell"];
 
 export type LoadedTools = {
   [K in keyof typeof toolMap]: Exclude<Awaited<ReturnType<(typeof toolMap)[K]>>, null>;
