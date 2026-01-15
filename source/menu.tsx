@@ -4,13 +4,14 @@ import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
-import { MenuPanel } from "./components/menu-panel.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
+import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -217,21 +218,31 @@ function SwitchModelMenu() {
     );
   }
 
-  const items = [
-    ...config.models.map(model => {
-      return {
-        label: model.nickname,
-        value: `model-${model.nickname}`,
-      };
-    }),
+  const numericItems = config.models.map(model => {
+    return {
+      label: model.nickname,
+      value: `model-${model.nickname}` as const,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      label: "Back to main menu",
-      value: "back",
+      type: "auto-list" as const,
+      order: numericItems,
+    },
+    {
+      type: "key" as const,
+      mapping: {
+        b: {
+          label: "Back to main menu",
+          value: "back",
+        },
+      },
     },
   ];
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
         setMenuMode("main-menu");
         return;
@@ -255,42 +266,61 @@ function SwitchModelMenu() {
     [config],
   );
 
-  return <MenuPanel title="Which model should Octo use now?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Which model should Octo use now?"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
 }
 
-const SETTINGS_ITEMS = [
-  {
+type SettingsValues =
+  | "set-default-model"
+  | "remove-model"
+  | "disable-diff-apply"
+  | "disable-fix-json";
+const SETTINGS_ITEMS = {
+  c: {
     label: "Change the default model",
-    value: "set-default-model" as const,
+    value: "set-default-model",
   },
-  {
+  r: {
     label: "Remove a model",
-    value: "remove-model" as const,
+    value: "remove-model",
   },
-  {
+  d: {
     label: "Disable fast diff application",
-    value: "disable-diff-apply" as const,
+    value: "disable-diff-apply",
   },
-  {
+  t: {
     label: "Disable auto-fixing JSON tool calls",
-    value: "disable-fix-json" as const,
+    value: "disable-fix-json",
   },
-];
+} satisfies Keymap<SettingsValues>;
 function filterSettings(config: Config) {
-  let items = SETTINGS_ITEMS.concat([]);
-  items = items.filter(item => {
-    if (config.diffApply == null && item.value === "disable-diff-apply") return false;
-    if (config.fixJson == null && item.value === "disable-fix-json") return false;
-    return true;
-  });
+  let items: Keymap<SettingsValues> = {};
+  if (config.models.length > 1) {
+    items = {
+      ...items,
+      c: SETTINGS_ITEMS.c,
+      r: SETTINGS_ITEMS.r,
+    };
+  }
+  if (config.diffApply) {
+    items = {
+      ...items,
+      d: SETTINGS_ITEMS.d,
+    };
+  }
+  if (config.fixJson) {
+    items = {
+      ...items,
+      t: SETTINGS_ITEMS.t,
+    };
+  }
 
-  if (config.models.length > 1) return items;
-
-  return items.filter(item => {
-    if (item.value === "remove-model") return false;
-    if (item.value === "set-default-model") return false;
-    return true;
-  });
+  return items;
 }
 
 function MainMenu() {
@@ -314,54 +344,88 @@ function MainMenu() {
     if (key.escape) toggleMenu();
   });
 
-  let items = [
-    {
-      label: "💫 Enable fast diff application",
-      value: "diff-apply-toggle" as const,
-    },
-    {
-      label: "🪄 Enable auto-fixing JSON tool calls",
-      value: "fix-json-toggle" as const,
-    },
-    {
+  type Value =
+    | "model-select"
+    | "add-model"
+    | "vim-toggle"
+    | "return"
+    | "quit"
+    | "fix-json-toggle"
+    | "diff-apply-toggle"
+    | "settings-menu";
+  let items: Keymap<Value> = {
+    m: {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
-    {
+    n: {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
-    {
-      label: "* Settings",
-      value: "settings-menu" as const,
-    },
-    {
-      label: config.vimEmulation?.enabled ? "- Switch to Emacs mode" : "- Enable Vim mode",
-      value: "vim-toggle" as const,
-    },
-    {
-      label: "⟵ Return to Octo",
+  };
+
+  if (config.vimEmulation?.enabled) {
+    items = {
+      ...items,
+      e: {
+        label: "- Switch to Emacs mode",
+        value: "vim-toggle" as const,
+      },
+    };
+  } else {
+    items = {
+      ...items,
+      v: {
+        label: "- Switch to Vim mode",
+        value: "vim-toggle" as const,
+      },
+    };
+  }
+
+  if (config.fixJson == null) {
+    items = {
+      ...items,
+      f: {
+        label: "🪄 Enable auto-fixing JSON tool calls",
+        value: "fix-json-toggle" as const,
+      },
+    };
+  }
+  if (config.diffApply == null) {
+    items = {
+      ...items,
+      d: {
+        label: "💫 Enable fast diff application",
+        value: "diff-apply-toggle" as const,
+      },
+    };
+  }
+
+  const settings = filterSettings(config);
+  if (Object.values(settings).length !== 0) {
+    items = {
+      ...items,
+      t: {
+        label: "* Settings",
+        value: "settings-menu" as const,
+      },
+    };
+  }
+
+  items = {
+    ...items,
+    b: {
+      label: "⟵ Back to Octo",
       value: "return" as const,
     },
-    {
+    q: {
       label: "× Quit",
       value: "quit" as const,
     },
-  ];
-
-  items = items.filter(item => {
-    if (config.diffApply != null && item.value === "diff-apply-toggle") return false;
-    if (config.fixJson != null && item.value === "fix-json-toggle") return false;
-    return true;
-  });
-
-  const settingsItems = filterSettings(config);
-  if (settingsItems.length === 0) {
-    items = items.filter(item => item.value !== "settings-menu");
-  }
+  };
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<Value>) => {
       if (item.value === "return") toggleMenu();
       else if (item.value === "quit") setMenuMode("quit-confirm");
       else if (item.value === "vim-toggle") {
@@ -378,7 +442,13 @@ function MainMenu() {
     [config, setConfig, notify],
   );
 
-  return <MenuPanel title="Main Menu" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Main Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function SettingsMenu() {
@@ -395,22 +465,28 @@ function SettingsMenu() {
   });
 
   const settingsItems = filterSettings(config);
-  let items = [
+  let items: Keymap<SettingsValues | "back"> = {
     ...settingsItems,
-    {
+    b: {
       label: "Back",
       value: "back" as const,
     },
-  ];
+  };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
     if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
     else if (item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
   }, []);
 
-  return <MenuPanel title="Settings Menu" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Settings Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function QuitConfirm() {
@@ -425,23 +501,29 @@ function QuitConfirm() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items = [
-    {
+  const items: Keymap<"no" | "yes"> = {
+    n: {
       label: "Never mind, take me back",
       value: "no" as const,
     },
-    {
+    y: {
       label: "Yes, quit",
       value: "yes" as const,
     },
-  ];
+  };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: Item<"no" | "yes">) => {
     if (item.value === "no") setMenuMode("main-menu");
     else app.exit();
   }, []);
 
-  return <MenuPanel title="Are you sure you want to quit?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Are you sure you want to quit?"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function SetDefaultModelMenu() {
@@ -464,21 +546,31 @@ function SetDefaultModelMenu() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items = [
-    ...config.models.map(model => {
-      return {
-        label: model.nickname,
-        value: `model-${model.nickname}`,
-      };
-    }),
+  const numericItems = config.models.map(model => {
+    return {
+      label: model.nickname,
+      value: `model-${model.nickname}` as const,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      label: "Back to main menu",
-      value: "back",
+      type: "auto-list" as const,
+      order: numericItems,
+    },
+    {
+      type: "key" as const,
+      mapping: {
+        b: {
+          label: "Back to main menu",
+          value: "back",
+        },
+      },
     },
   ];
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
         setMenuMode("main-menu");
         return;
@@ -497,7 +589,13 @@ function SetDefaultModelMenu() {
     [config],
   );
 
-  return <MenuPanel title="Which model should be the default?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Which model should be the default?"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function RemoveModelMenu() {
@@ -520,21 +618,31 @@ function RemoveModelMenu() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items = [
-    ...config.models.map(model => {
-      return {
-        label: model.nickname,
-        value: `model-${model.nickname}`,
-      };
-    }),
+  const numericItems = config.models.map(model => {
+    return {
+      label: model.nickname,
+      value: `model-${model.nickname}` as const,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      label: "Back to main menu",
-      value: "back",
+      type: "auto-list" as const,
+      order: numericItems,
+    },
+    {
+      type: "key" as const,
+      mapping: {
+        b: {
+          label: "Back to main menu",
+          value: "back",
+        },
+      },
     },
   ];
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
         setMenuMode("main-menu");
         return;
@@ -553,7 +661,13 @@ function RemoveModelMenu() {
     [config],
   );
 
-  return <MenuPanel title="Which model do you want to remove?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Which model do you want to remove?"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function AddModelMenuFlow() {

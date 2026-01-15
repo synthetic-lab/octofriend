@@ -2,12 +2,13 @@ import React, { useState, useCallback, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
-import { MenuPanel, MenuHeader } from "./menu-panel.tsx";
+import { MenuHeader } from "./menu-panel.tsx";
 import { Config } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
-import { ConfirmDialog } from "./confirm-dialog.tsx";
+import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
+import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -105,6 +106,7 @@ export function ModelSetup({
         <FastProviderList
           onChooseCustom={onChooseCustom}
           onChooseProvider={onChooseProvider}
+          onBack={onCancel}
           titleOverride={titleOverride}
         />
       );
@@ -224,10 +226,12 @@ export function ModelSetup({
 function FastProviderList({
   onChooseCustom,
   onChooseProvider,
+  onBack,
   titleOverride,
 }: {
   onChooseProvider: (provider: keyof typeof PROVIDERS) => any;
   onChooseCustom: () => any;
+  onBack: () => any;
   titleOverride?: string;
 }) {
   const providerItems = Object.entries(PROVIDERS).map(([key, provider]) => {
@@ -235,25 +239,41 @@ function FastProviderList({
     return {
       label: provider.name,
       value: k,
+      shortcut: provider.shortcut,
     };
   });
-  const items = [
-    ...providerItems,
-    {
+
+  const providerShortcuts: Keymap<keyof typeof PROVIDERS> = {};
+  for (const item of providerItems) {
+    providerShortcuts[item.shortcut] = {
+      label: item.label,
+      value: item.value,
+    };
+  }
+
+  type ProviderValue = keyof typeof PROVIDERS | "custom" | "back";
+  const items: Keymap<ProviderValue> = {
+    ...providerShortcuts,
+    c: {
       label: "Add a custom model...",
       value: "custom" as const,
     },
-  ];
+    b: {
+      label: "Back",
+      value: "back" as const,
+    },
+  };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: Item<ProviderValue>) => {
     if (item.value === "custom") return onChooseCustom();
+    if (item.value === "back") return onBack();
     onChooseProvider(item.value);
   }, []);
 
   return (
-    <MenuPanel
+    <KbShortcutPanel
       title={titleOverride || "Choose a model provider:"}
-      items={items}
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
   );
@@ -312,14 +332,14 @@ function ImportModelsFrom({
     value: "custom" as const,
   });
   items.push({
-    label: "Cancel",
-    value: "cancel" as const,
+    label: "Back",
+    value: "back" as const,
   });
 
   const onSelect = useCallback(
     (item: (typeof items)[number]) => {
       if (item.value === "custom") return onCustomModel();
-      if (item.value === "cancel") return onCancel();
+      if (item.value === "back") return onCancel();
       if (item.value === "import") {
         const models = provider.models.filter(m => {
           return selectedModels.includes(m.nickname);
@@ -340,14 +360,27 @@ function ImportModelsFrom({
   if (remainingModels.length === 0) {
     return (
       <CenteredBox>
-        <MenuHeader
+        <KbShortcutPanel
           title={`You already imported all our recommended models from ${provider.name}!`}
-        />
-        <ConfirmDialog
-          confirmLabel={`Add a custom model string from ${provider.name}`}
-          rejectLabel="Go back"
-          onConfirm={onCustomModel}
-          onReject={onCancel}
+          shortcutItems={[
+            {
+              type: "key" as const,
+              mapping: {
+                c: {
+                  label: `Add a custom model string from ${provider.name}`,
+                  value: "custom" as const,
+                },
+                b: {
+                  label: "Back",
+                  value: "back" as const,
+                },
+              },
+            },
+          ]}
+          onSelect={item => {
+            if (item.value === "custom") return onCustomModel();
+            return onCancel();
+          }}
         />
       </CenteredBox>
     );

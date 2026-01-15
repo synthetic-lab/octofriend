@@ -1,4 +1,7 @@
+import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
+
 export type ProviderConfig = {
+  shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic";
   name: string;
   envVar: string;
@@ -13,35 +16,8 @@ export type ProviderConfig = {
 };
 
 export const PROVIDERS = {
-  openai: {
-    type: "openai-responses",
-    name: "OpenAI",
-    envVar: "OPENAI_API_KEY",
-    baseUrl: "https://api.openai.com/v1",
-    models: [
-      {
-        model: "gpt-5.2-pro-2025-12-11",
-        nickname: "GPT-5.2 Pro",
-        context: 200 * 1024,
-        reasoning: "medium",
-      },
-      {
-        model: "gpt-5.2-2025-12-11",
-        nickname: "GPT-5.2",
-        context: 200 * 1024,
-        reasoning: "medium",
-      },
-      {
-        model: "gpt-5-mini-2025-08-07",
-        nickname: "GPT-5 Mini",
-        context: 200 * 1024,
-        reasoning: "medium",
-      },
-    ],
-    testModel: "gpt-5-mini-2025-08-07",
-  } satisfies ProviderConfig,
-
   synthetic: {
+    shortcut: "s" as const,
     name: "Synthetic",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/v1",
@@ -70,7 +46,37 @@ export const PROVIDERS = {
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
   } satisfies ProviderConfig,
 
+  openai: {
+    shortcut: "o" as const,
+    type: "openai-responses",
+    name: "OpenAI",
+    envVar: "OPENAI_API_KEY",
+    baseUrl: "https://api.openai.com/v1",
+    models: [
+      {
+        model: "gpt-5.2-pro-2025-12-11",
+        nickname: "GPT-5.2 Pro",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "gpt-5.2-2025-12-11",
+        nickname: "GPT-5.2",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
+      {
+        model: "gpt-5-mini-2025-08-07",
+        nickname: "GPT-5 Mini",
+        context: 200 * 1024,
+        reasoning: "medium",
+      },
+    ],
+    testModel: "gpt-5-mini-2025-08-07",
+  } satisfies ProviderConfig,
+
   anthropic: {
+    shortcut: "a" as const,
     type: "anthropic",
     name: "Anthropic",
     envVar: "ANTHROPIC_API_KEY",
@@ -99,6 +105,7 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 
   grok: {
+    shortcut: "x" as const,
     name: "xAI",
     envVar: "XAI_API_KEY",
     baseUrl: "https://api.x.ai/v1",

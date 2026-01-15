@@ -89,6 +89,8 @@ export type UiState = {
   rejectTool: (toolCallId: string) => void;
   abortResponse: () => void;
   toggleMenu: () => void;
+  openMenu: () => void;
+  closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   setModelOverride: (m: string) => void;
   retryFrom: (
@@ -173,6 +175,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: { mode: "input", vimMode: "NORMAL" },
       });
     }
+  },
+  closeMenu: () => {
+    set({
+      modeData: { mode: "input", vimMode: "INSERT" },
+    });
+  },
+  openMenu: () => {
+    set({
+      modeData: { mode: "menu" },
+    });
   },
 
   setVimMode: (vimMode: "INSERT" | "NORMAL") => {

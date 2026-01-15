@@ -7,12 +7,12 @@ import { execSync } from "child_process";
 import TextInput from "./components/text-input.tsx";
 import { Config } from "./config.ts";
 import { useColor } from "./theme.ts";
+import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { MenuHeader } from "./components/menu-panel.tsx";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { THEME_COLOR } from "./theme.ts";
-import SelectInput from "./components/ink/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
@@ -214,23 +214,28 @@ function AutofixSetup({
   const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
   const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
 
-  const items = [
+  const shortcutItems = [
     {
-      label: "💫 Enable autofix models via Synthetic (recommended)",
-      value: "synthetic",
+      type: "key" as const,
+      mapping: {
+        e: {
+          label: "💫 Enable autofix models via Synthetic (recommended)",
+          value: "synthetic",
+        },
+        c: {
+          label: "Use custom models...",
+          value: "custom",
+        },
+        s: {
+          label: "Skip for now (can be enabled later)",
+          value: "skip",
+        },
+      } as const,
     },
-    {
-      label: "Use custom models...",
-      value: "custom",
-    },
-    {
-      label: "Skip for now (can be enabled later)",
-      value: "skip",
-    },
-  ];
+  ] satisfies ShortcutArray<"synthetic" | "custom" | "skip">;
 
   const onSelect = useCallback(
-    (item: (typeof items)[number]) => {
+    (item: Item<"synthetic" | "custom" | "skip">) => {
       if (item.value === "synthetic") {
         const defaultEnvVar = SYNTHETIC_PROVIDER.envVar;
         if (process.env[defaultEnvVar]) {
@@ -335,9 +340,11 @@ function AutofixSetup({
   }
 
   return (
-    <CenteredBox>
-      <MenuHeader title="Optional: Enable autofix models" />
-
+    <KbShortcutPanel
+      title="Optional: Enable autofix models"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    >
       <Box marginBottom={1} flexDirection="column" gap={1}>
         <Text>
           Before we set up your main coding model, we can optionally enable two small helper models
@@ -350,14 +357,7 @@ function AutofixSetup({
           less-well-trained on error recovery than they are at their happy paths.
         </Text>
       </Box>
-
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </CenteredBox>
+    </KbShortcutPanel>
   );
 }
 

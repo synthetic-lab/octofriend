@@ -43,11 +43,13 @@ import {
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
-import SelectInput from "./components/ink/select-input.tsx";
+import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
+import SelectInput from "./components/ink/select-input.tsx";
+import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -305,16 +307,18 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const transport = useContext(TransportContext);
   const [query, setQuery] = useState("");
   const vimEnabled = !!config.vimEmulation?.enabled;
-  const { modeData, input, abortResponse, toggleMenu, byteCount, setVimMode } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-      input: state.input,
-      abortResponse: state.abortResponse,
-      toggleMenu: state.toggleMenu,
-      byteCount: state.byteCount,
-      setVimMode: state.setVimMode,
-    })),
-  );
+  const { modeData, input, abortResponse, openMenu, closeMenu, byteCount, setVimMode } =
+    useAppStore(
+      useShallow(state => ({
+        modeData: state.modeData,
+        input: state.input,
+        abortResponse: state.abortResponse,
+        closeMenu: state.closeMenu,
+        openMenu: state.openMenu,
+        byteCount: state.byteCount,
+        setVimMode: state.setVimMode,
+      })),
+    );
 
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
@@ -324,17 +328,20 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setQuery("");
   });
 
-  useInput((_, key) => {
+  useInput((input, key) => {
     if (key.escape) {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
-      if (vimEnabled && vimMode === "INSERT") {
+      if (vimEnabled && vimMode === "INSERT" && modeData.mode === "input") {
         setVimMode("NORMAL");
         return;
       }
 
-      // All other cases: abort response (if active) and open menu
-      abortResponse(); // Safe to call even if no response is active
-      toggleMenu();
+      abortResponse();
+      if (modeData.mode === "menu") closeMenu();
+    }
+
+    if (key.ctrl && input === "p") {
+      openMenu();
     }
   });
   const color = useColor();
@@ -412,7 +419,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   return (
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Press ESC to enter the menu)</Text>
+        <Text color="gray">(Ctrl+p to enter the menu)</Text>
       </Box>
       <InputWithHistory
         inputHistory={inputHistory}
@@ -452,34 +459,41 @@ function RequestErrorScreen({
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
 
-  const items = [
-    {
+  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "quit">> = {};
+
+  if (!viewError) {
+    mapping["v"] = {
       label: "View error",
-      value: "view" as const,
-    },
-    ...(curlCommand
-      ? [
-          {
-            label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
-            value: "copy-curl" as const,
-          },
-        ]
-      : []),
+      value: "view",
+    };
+  }
+
+  if (curlCommand) {
+    mapping["c"] = {
+      label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
+      value: "copy-curl",
+    };
+  }
+
+  mapping["r"] = {
+    label: "Retry",
+    value: "retry",
+  };
+
+  mapping["q"] = {
+    label: "Quit Octo",
+    value: "quit",
+  };
+
+  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "quit"> = [
     {
-      label: "Retry",
-      value: "retry" as const,
+      type: "key" as const,
+      mapping,
     },
-    {
-      label: "Quit Octo",
-      value: "quit" as const,
-    },
-  ].filter(item => {
-    if (viewError && item.value === "view") return false;
-    return true;
-  });
+  ];
 
   const onSelect = useCallback(
-    (item: (typeof items)[number]) => {
+    (item: Item<"view" | "copy-curl" | "retry" | "quit">) => {
       if (item.value === "view") {
         setViewError(true);
       } else if (item.value === "copy-curl") {
@@ -496,11 +510,11 @@ function RequestErrorScreen({
         exit();
       }
     },
-    [curlCommand, mode],
+    [curlCommand, mode, config, transport],
   );
 
   return (
-    <CenteredBox>
+    <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
       <Text color="red">{contextualMessage}</Text>
       {viewError && (
         <Box marginY={1}>
@@ -517,13 +531,7 @@ function RequestErrorScreen({
           <Text color="red">{clipboardError}</Text>
         </Box>
       )}
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </CenteredBox>
+    </KbShortcutPanel>
   );
 }
 
