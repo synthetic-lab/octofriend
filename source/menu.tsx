@@ -227,7 +227,7 @@ function SwitchModelMenu() {
 
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      type: "number" as const,
+      type: "auto-list" as const,
       order: numericItems,
     },
     {
@@ -555,7 +555,7 @@ function SetDefaultModelMenu() {
 
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      type: "number" as const,
+      type: "auto-list" as const,
       order: numericItems,
     },
     {
@@ -627,7 +627,7 @@ function RemoveModelMenu() {
 
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      type: "number" as const,
+      type: "auto-list" as const,
       order: numericItems,
     },
     {

@@ -34,21 +34,38 @@ export type Item<V> = {
   label: string;
   value: V;
 };
+
+/*
+ * Keyboard shortcuts can come in two varieties:
+ *
+ * 1. A-Z predefined key mappings. For any UI elements controlled by us, we should assign a static
+ * a-z hotkey to trigger the UI element.
+ *
+ * 2. Automatic numeric, paginated hotkeys for lists. If there's a list in the UI whose elements we
+ * don't fully control, which can grow or shrink, we can't pre-assign a-z hotkeys to the list
+ * elements since we don't know what they are or how many of them there are. Instead, we paginate
+ * them as necessary and assign 0-9 hotkeys per page.
+ *
+ * Since the paginated lists can potentially consume all hotkeys from 0-9, this means we can only
+ * display one paginated list per screen (otherwise, there would be conflicting hotkeys). The tuple
+ * types below help enforce at compile time that we only pass a single paginated list per select
+ * input, while allowing unbounded predefined A-Z key mappings before or after the paginated list.
+ */
 type MapShortcutType<V> = {
   type: "key";
   mapping: Keymap<V>;
 };
-type NumberShortcutType<V> = {
-  type: "number";
+type AutolistShortcutType<V> = {
+  type: "auto-list";
   order: Array<Item<V>>;
 };
 
 export type ShortcutArray<V> =
   | [MapShortcutType<V>]
-  | [NumberShortcutType<V>]
-  | [MapShortcutType<V>, NumberShortcutType<V>]
-  | [NumberShortcutType<V>, MapShortcutType<V>]
-  | [MapShortcutType<V>, NumberShortcutType<V>, MapShortcutType<V>];
+  | [AutolistShortcutType<V>]
+  | [MapShortcutType<V>, AutolistShortcutType<V>]
+  | [AutolistShortcutType<V>, MapShortcutType<V>]
+  | [MapShortcutType<V>, AutolistShortcutType<V>, MapShortcutType<V>];
 
 type KbSelectProps<V> = {
   shortcutItems: ShortcutArray<V>;
