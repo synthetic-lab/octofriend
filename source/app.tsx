@@ -26,20 +26,22 @@ import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
-import shell from "./tools/tool-defs/bash.ts";
-import read from "./tools/tool-defs/read.ts";
-import list from "./tools/tool-defs/list.ts";
-import edit from "./tools/tool-defs/edit.ts";
-import append from "./tools/tool-defs/append.ts";
-import prepend from "./tools/tool-defs/prepend.ts";
-import rewrite from "./tools/tool-defs/rewrite.ts";
-import createTool from "./tools/tool-defs/create.ts";
-import mcp from "./tools/tool-defs/mcp.ts";
-import fetchTool from "./tools/tool-defs/fetch.ts";
-import skill from "./tools/tool-defs/skill.ts";
-import webSearch from "./tools/tool-defs/web-search.ts";
-import { SKIP_CONFIRMATION } from "./tools/index.ts";
-import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
+import {
+  edit,
+  create as createTool,
+  append,
+  prepend,
+  rewrite,
+  read,
+  list,
+  shell,
+  mcp,
+  fetch as fetchTool,
+  skill,
+  "web-search" as webSearch,
+} from "./tools/tool-defs/index.ts";
+import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
+import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/file-operations/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
@@ -48,7 +50,7 @@ import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
+import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -64,10 +66,17 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
-import { extractToolPermissionInfo, type ToolPermissionInfo } from "./tools/permissions/index.ts";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import { getToolCategory } from "./tools/tool-defs/categories.ts";
+import { categoryConfigs } from "./tools/permissions/merged-whitelist.ts";
+import {
+  getPermissionContext,
+  getToolOperationArgs,
+  getPermissionWhitelistKey,
+  ToolPermissionInfo,
+} from "./tools/permissions/tool-permission-info.ts";
 
 type Props = {
   config: Config;
@@ -600,25 +609,38 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
-const ToolRequestItem = React.memo(({ isSelected = false, label, formattedSuffix }: {
-  isSelected?: boolean,
-  label: string,
-  formattedSuffix?: { text: string; bold?: boolean }[]
-}) => {
-  const themeColor = useColor();
+const ToolRequestItem = React.memo(
+  ({
+    isSelected = false,
+    label,
+    formattedSuffix,
+  }: {
+    isSelected?: boolean;
+    label: string;
+    formattedSuffix?: { text: string; bold?: boolean }[];
+  }) => {
+    const themeColor = useColor();
 
-  return <Text color={isSelected ? themeColor : undefined}>
-    {label}
-    {formattedSuffix && formattedSuffix.map((part, index) => (
-      <Text key={index} bold={part.bold}>
-        {part.text}
+    return (
+      <Text color={isSelected ? themeColor : undefined}>
+        {label}
+        {formattedSuffix &&
+          formattedSuffix.map((part, index) => (
+            <Text key={index} bold={part.bold}>
+              {part.text}
+            </Text>
+          ))}
       </Text>
-    ))}
-  </Text>;
-});
+    );
+  },
+);
 
-function ToolRequestRenderer({ toolReq, config, transport }: {
-  toolReq: ToolCallRequest
+function ToolRequestRenderer({
+  toolReq,
+  config,
+  transport,
+}: {
+  toolReq: ToolCallRequest;
 } & RunArgs) {
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
@@ -627,7 +649,7 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       rejectTool: state.rejectTool,
       isWhitelisted: state.isWhitelisted,
       addToWhitelist: state.addToWhitelist,
-    }))
+    })),
   );
   const unchained = useUnchained();
 
@@ -664,8 +686,44 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
     }
   })();
 
-  const tool = extractToolPermissionInfo(toolReq);
-  const isToolWhitelisted = isWhitelisted(tool);
+  const toolName = toolReq.function.name;
+  const toolCategory = getToolCategory(toolReq.function.name);
+
+  const [toolPermissionInfo, setToolPermissionInfo] = useState<ToolPermissionInfo | null>(null);
+  const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!toolCategory) {
+      setToolPermissionInfo(null);
+      setIsToolWhitelisted(null);
+      return;
+    }
+
+    const toolOperationArgs = getToolOperationArgs(toolCategory, toolReq, transport);
+
+    (async () => {
+      const whitelistKey = await getPermissionWhitelistKey(
+        toolCategory,
+        toolName,
+        toolOperationArgs,
+      );
+      const permissionContext = await getPermissionContext(toolCategory, toolOperationArgs);
+      const labelParts = categoryConfigs[toolCategory].yesAndAlwaysAllowLabelSuffix(whitelistKey, {
+        permissionContext,
+        toolName,
+      });
+
+      setToolPermissionInfo({
+        category: toolCategory,
+        whitelistKey,
+        label: labelParts.map(p => p.text).join(""),
+        labelParts,
+      });
+
+      const whitelisted = await isWhitelisted(toolCategory, whitelistKey);
+      setIsToolWhitelisted(whitelisted);
+    })();
+  }, [toolCategory, toolName, toolReq, transport, isWhitelisted]);
 
   type SelectItem = {
     label: string;
@@ -679,48 +737,63 @@ function ToolRequestRenderer({ toolReq, config, transport }: {
       label: "Yes",
       value: "yes",
     },
-    ...(tool && !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) && !isToolWhitelisted ? [{
-      label: "Yes, and always allow ",
-      formattedSuffix: tool.labelParts,
-      value: "yes-whitelist",
-      tool,
-    }] : []),
+    ...(toolPermissionInfo &&
+    !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) &&
+    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolReq.function.name) &&
+    !isToolWhitelisted
+      ? [
+          {
+            label: "Yes, and always allow ",
+            formattedSuffix: toolPermissionInfo.labelParts,
+            value: "yes-whitelist",
+            tool: toolPermissionInfo,
+          },
+        ]
+      : []),
     {
       label: "No, and tell Octo what to do differently",
       value: "no",
     },
   ];
 
-	const onSelect = useCallback(async (item: (typeof items)[number]) => {
-    if(item.value === "no") {
-      rejectTool(toolReq.toolCallId);
-    } else if(item.value === "yes-whitelist") {
-      const whitelistItem = item as { tool: ToolPermissionInfo };
-      addToWhitelist(whitelistItem.tool);
-      await runTool({ toolReq, config, transport });
-    } else {
-      await runTool({ toolReq, config, transport });
-    }
-	}, [ toolReq, config, transport, addToWhitelist, runTool, rejectTool ]);
+  const onSelect = useCallback(
+    async (item: (typeof items)[number]) => {
+      if (item.value === "no") {
+        rejectTool(toolReq.toolCallId);
+      } else if (toolPermissionInfo && item.value === "yes-whitelist") {
+        await addToWhitelist(toolPermissionInfo.category, toolPermissionInfo.whitelistKey);
+        await runTool({ toolReq, config, transport });
+      } else {
+        await runTool({ toolReq, config, transport });
+      }
+    },
+    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, toolPermissionInfo],
+  );
 
-  const noConfirm = unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) || isToolWhitelisted;
+  const noConfirmationNeeded =
+    unchained ||
+    SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) ||
+    isToolWhitelisted === true;
+
   useEffect(() => {
-    if (noConfirm) {
+    if (noConfirmationNeeded) {
       runTool({ toolReq, config, transport });
     }
-  }, [ toolReq, noConfirm, config, transport, runTool ]);
+  }, [toolReq, noConfirmationNeeded, config, transport]);
 
-  if (noConfirm) return <Loading />;
+  if (noConfirmationNeeded) return <Loading />;
 
-  return <Box flexDirection="column" gap={1}>
-    { prompt }
-    <SelectInput
-      items={items}
-      onSelect={onSelect}
-      indicatorComponent={IndicatorComponent}
-      itemComponent={ToolRequestItem}
-    />
-  </Box>
+  return (
+    <Box flexDirection="column" gap={1}>
+      {prompt}
+      <SelectInput
+        items={items}
+        onSelect={onSelect}
+        indicatorComponent={IndicatorComponent}
+        itemComponent={ToolRequestItem}
+      />
+    </Box>
+  );
 }
 
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {

@@ -1,5 +1,5 @@
 import { t, toTypescript } from "structural";
-import { DiffEditSchema } from "../tools/tool-defs/fileOperations/edit.ts";
+import { DiffEditSchema } from "../tools/tool-defs/file-operations/edit.ts";
 type DiffEdit = t.GetType<typeof DiffEditSchema>;
 
 export const DiffApplySuccess = t.subtype({

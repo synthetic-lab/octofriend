@@ -17,15 +17,10 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-import { PermissionsData, WhitelistType } from "./tools/permissions/index.ts";
-import { type ToolPermissionInfo } from "./tools/permissions/tool-pattern-extractor.ts";
 
-import {
-  createWhitelist,
-  isWhitelisted,
-  addToWhitelist,
-} from "./tools/permissions/whitelist.ts";
+import { createWhitelist, isWhitelisted, addToWhitelist } from "./tools/permissions/whitelist.ts";
 import { loadTools } from "./tools/index.ts";
+import { MergedWhitelist, WhitelistCategory } from "./tools/permissions/merged-whitelist.ts";
 
 export type RunArgs = {
   config: Config;
@@ -110,13 +105,12 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
-  editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
-  addToWhitelist: (tool: { type: WhitelistType; pattern: string }) => void,
-  isWhitelisted: (tool: { type: WhitelistType; value: string }) => boolean,
+  addToWhitelist: (category: WhitelistCategory, whitelistKey: string) => Promise<void>;
+  isWhitelisted: (category: WhitelistCategory, whitelistKey: string) => Promise<boolean>;
+  clearHistory: () => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
-  clearHistory: () => void;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -284,16 +278,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  addToWhitelist: (tool: Pick<ToolPermissionInfo, 'type' | 'pattern'>) => {
-    const currentWhitelist = get().whitelist;
-    const newWhitelist = addToWhitelist(currentWhitelist, tool);
-    set({ whitelist: newWhitelist });
-  },
-
-  isWhitelisted: (tool: { type: WhitelistType; value: string }) => {
-    return isWhitelisted(get().whitelist, tool);
-  },
-
   clearHistory: () => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
     const { abortResponse } = get();
@@ -304,6 +288,16 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
     }));
+  },
+
+  addToWhitelist: async (category: WhitelistCategory, whitelistKey: string) => {
+    const currentWhitelist = get().whitelist;
+    const newWhitelist = await addToWhitelist(currentWhitelist, category, whitelistKey);
+    set({ whitelist: newWhitelist });
+  },
+
+  isWhitelisted: async (category: WhitelistCategory, whitelistKey: string) => {
+    return await isWhitelisted(get().whitelist, category, whitelistKey);
   },
 
   runTool: async ({ config, toolReq, transport }) => {
