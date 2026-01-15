@@ -42,8 +42,8 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     shortcutItems.forEach(shortcutType => {
       if (shortcutType.type === "key") {
         Object.entries(shortcutType.mapping).forEach(([k, v]) => {
-          if (k === "j" || k === "k" || k === "n" || k === "p") {
-            throw new Error("Can't use j, k, n, or p as shortcuts: reserved for nav");
+          if (k === "j" || k === "k" || k === "h" || k === "l") {
+            throw new Error("Can't use j, k, h, or l as shortcuts: reserved for nav");
           }
           result.push({
             item: v,
@@ -70,14 +70,14 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         if (hasPrev) {
           result.push({
             item: { label: "Previous page", value: "prev-page" },
-            shortcut: "p",
+            shortcut: "h",
             isNavItem: true,
           });
         }
         if (hasNext) {
           result.push({
             item: { label: "Next page", value: "next-page" },
-            shortcut: "n",
+            shortcut: "l",
             isNavItem: true,
           });
         }
@@ -118,8 +118,8 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
   );
 
   useInput((input, key) => {
-    if (input === "n") {
-      const hasNext = items.some(item => item.shortcut === "n" && item.isNavItem);
+    if (input === "l") {
+      const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
       if (hasNext) {
         setPage(prev => prev + 1);
         setSelectedIndex(0);
@@ -127,8 +127,8 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         return;
       }
     }
-    if (input === "p") {
-      const hasPrev = items.some(item => item.shortcut === "p" && item.isNavItem);
+    if (input === "h") {
+      const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
       if (hasPrev && page > 0) {
         setPage(prev => prev - 1);
         setSelectedIndex(0);
