@@ -547,21 +547,31 @@ function SetDefaultModelMenu() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items = [
-    ...config.models.map(model => {
-      return {
-        label: model.nickname,
-        value: `model-${model.nickname}`,
-      };
-    }),
+  const numericItems = config.models.map(model => {
+    return {
+      label: model.nickname,
+      value: `model-${model.nickname}` as const,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
-      label: "Back to main menu",
-      value: "back",
+      type: "number" as const,
+      order: numericItems,
+    },
+    {
+      type: "key" as const,
+      mapping: {
+        b: {
+          label: "Back to main menu",
+          value: "back",
+        },
+      },
     },
   ];
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
         setMenuMode("main-menu");
         return;
@@ -580,7 +590,13 @@ function SetDefaultModelMenu() {
     [config],
   );
 
-  return <MenuPanel title="Which model should be the default?" items={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Which model should be the default?"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function RemoveModelMenu() {
