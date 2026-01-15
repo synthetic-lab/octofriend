@@ -51,7 +51,7 @@
     "cli-spinners": "^2.7.0",
     "clipboardy": "^5.0.0",
     "commander": "^13.1.0",
-    "diff": "^8.0.2",
+    "diff": "^8.0.3",
     "drizzle-orm": "^0.44.4",
     "figlet": "^1.8.0",
     "figures": "^6.1.0",
