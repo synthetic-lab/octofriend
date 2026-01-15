@@ -358,7 +358,7 @@ function MainMenu() {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
-    a: {
+    n: {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
