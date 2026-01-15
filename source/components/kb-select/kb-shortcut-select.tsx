@@ -4,6 +4,7 @@ import { Box, Text, useInput } from "ink";
 import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
+// Allowable A-Z hotkeys, minus reserved keys
 export type Hotkey =
   | "a"
   | "b"
