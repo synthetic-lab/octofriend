@@ -354,8 +354,8 @@ function MainMenu() {
     | "diff-apply-toggle"
     | "settings-menu";
   let items: Record<string, Item<Value>> = {
-    m: {
-      label: "⤭ Model switch",
+    s: {
+      label: "⤭ Switch model",
       value: "model-select" as const,
     },
     a: {
