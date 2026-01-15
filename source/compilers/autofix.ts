@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { t } from "structural";
 import { Config, assertKeyForModel } from "../config.ts";
-import { ArgumentsSchema as EditSchema } from "../tools/tool-defs/fileOperations/edit.ts";
+import { ArgumentsSchema as EditSchema } from "../tools/tool-defs/file-operations/edit.ts";
 import {
   fixEditPrompt,
   fixJsonPrompt,
