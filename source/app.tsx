@@ -419,7 +419,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   return (
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Ctrl-p to enter the menu)</Text>
+        <Text color="gray">(Ctrl+p to enter the menu)</Text>
       </Box>
       <InputWithHistory
         inputHistory={inputHistory}
