@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { isDeepStrictEqual } from "node:util";
 import { Box, Text, useInput } from "ink";
 import { IndicatorComponent } from "../select.tsx";
@@ -28,28 +28,64 @@ type KbSelectProps<V> = {
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
 };
+const PAGE_SIZE = 10;
 export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
+  const [page, setPage] = useState(0);
+
   let items = useMemo(() => {
-    return shortcutItems.flatMap(shortcutType => {
+    const result: Array<{
+      item: Item<V | "next-page" | "prev-page">;
+      shortcut: string;
+      isNavItem?: boolean;
+    }> = [];
+
+    shortcutItems.forEach(shortcutType => {
       if (shortcutType.type === "key") {
-        return Object.entries(shortcutType.mapping).map(([k, v]) => {
-          if (k === "j" || k === "k") {
-            throw new Error("Can't use j or k as shortcuts: reserved for nav");
+        Object.entries(shortcutType.mapping).forEach(([k, v]) => {
+          if (k === "j" || k === "k" || k === "n" || k === "p") {
+            throw new Error("Can't use j, k, n, or p as shortcuts: reserved for nav");
           }
-          return {
+          result.push({
             item: v,
             shortcut: k,
-          };
+          });
         });
+      } else {
+        const totalItems = shortcutType.order.length;
+        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        const hasPrev = page > 0;
+        const hasNext = page < totalPages - 1;
+
+        const start = page * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, totalItems);
+        const pageItems = shortcutType.order.slice(start, end);
+
+        pageItems.forEach((item, index) => {
+          result.push({
+            item: item,
+            shortcut: `${index}`,
+          });
+        });
+
+        if (hasPrev) {
+          result.push({
+            item: { label: "Previous page", value: "prev-page" },
+            shortcut: "p",
+            isNavItem: true,
+          });
+        }
+        if (hasNext) {
+          result.push({
+            item: { label: "Next page", value: "next-page" },
+            shortcut: "n",
+            isNavItem: true,
+          });
+        }
       }
-      return shortcutType.order.map((item, index) => {
-        return {
-          item: item,
-          shortcut: `${index}`,
-        };
-      });
     });
-  }, [shortcutItems]);
+
+    return result;
+  }, [shortcutItems, page]);
 
   const initialIndex = 0;
   const lastIndex = items.length - 1;
@@ -59,26 +95,51 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
   const [selectedIndex, setSelectedIndex] = useState(
     initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
   );
-  const previousItems = useRef(items);
+  const previousShortcutItems = useRef(shortcutItems);
 
   useEffect(() => {
-    if (
-      !isDeepStrictEqual(
-        previousItems.current.map(item => item.item.value),
-        items.map(item => item.item.value),
-      )
-    ) {
+    if (!isDeepStrictEqual(previousShortcutItems.current, shortcutItems)) {
       setRotateIndex(0);
       setSelectedIndex(0);
+      setPage(0);
     }
 
-    previousItems.current = items;
-  }, [items]);
+    previousShortcutItems.current = shortcutItems;
+  }, [shortcutItems]);
+
+  const handleSelect = useCallback(
+    (item: Item<V | "next-page" | "prev-page">) => {
+      if (item.value === "next-page" || item.value === "prev-page") {
+        return;
+      }
+      onSelect(item as Item<V>);
+    },
+    [onSelect],
+  );
 
   useInput((input, key) => {
+    if (input === "n") {
+      const hasNext = items.some(item => item.shortcut === "n" && item.isNavItem);
+      if (hasNext) {
+        setPage(prev => prev + 1);
+        setSelectedIndex(0);
+        setRotateIndex(0);
+        return;
+      }
+    }
+    if (input === "p") {
+      const hasPrev = items.some(item => item.shortcut === "p" && item.isNavItem);
+      if (hasPrev && page > 0) {
+        setPage(prev => prev - 1);
+        setSelectedIndex(0);
+        setRotateIndex(0);
+        return;
+      }
+    }
+
     for (const item of items) {
       if (item.shortcut.toLowerCase() === input.toLowerCase()) {
-        onSelect(item.item);
+        handleSelect(item.item);
         return;
       }
     }
@@ -104,9 +165,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     }
 
     if (key.return) {
-      if (typeof onSelect === "function") {
-        onSelect(items[selectedIndex].item!);
-      }
+      handleSelect(items[selectedIndex].item);
     }
   });
 
@@ -142,6 +201,18 @@ function UnderlineItem({
 }) {
   const themeColor = useColor();
   const color = isSelected ? themeColor : undefined;
+  const isNumeric = !isNaN(parseInt(shortcut, 10));
+
+  if (isNumeric) {
+    return (
+      <>
+        <Text color="gray">{shortcut}:</Text>
+        <Text> </Text>
+        <Text color={color}>{label}</Text>
+      </>
+    );
+  }
+
   return (
     <>
       <Text color={color}>{label}</Text>
