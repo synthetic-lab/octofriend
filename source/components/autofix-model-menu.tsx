@@ -4,7 +4,7 @@ import { Config, readKeyForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
 
@@ -39,20 +39,25 @@ export function AutofixModelMenu({
     if (key.escape) onCancel();
   });
 
-  const shortcutItems: Record<string, Item<"synthetic" | "custom" | "back">> = {
-    e: {
-      label: `Enable ${modelNickname} via Synthetic (recommended)`,
-      value: "synthetic",
+  const shortcutItems = [
+    {
+      type: "key" as const,
+      mapping: {
+        e: {
+          label: `Enable ${modelNickname} via Synthetic (recommended)`,
+          value: "synthetic",
+        },
+        c: {
+          label: "Use a custom diff-apply model...",
+          value: "custom",
+        },
+        b: {
+          label: "Back",
+          value: "back",
+        },
+      } as const,
     },
-    c: {
-      label: "Use a custom diff-apply model...",
-      value: "custom",
-    },
-    b: {
-      label: "Back",
-      value: "back",
-    },
-  };
+  ] satisfies ShortcutArray<"synthetic" | "custom" | "back">;
 
   const onSelect = useCallback(
     async (item: Item<"synthetic" | "custom" | "back">) => {

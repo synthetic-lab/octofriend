@@ -44,7 +44,7 @@ import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./components/kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
@@ -459,31 +459,38 @@ function RequestErrorScreen({
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
 
-  const shortcutItems: Record<string, Item<"view" | "copy-curl" | "retry" | "quit">> = {};
+  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "quit">> = {};
 
   if (!viewError) {
-    shortcutItems["v"] = {
+    mapping["v"] = {
       label: "View error",
       value: "view",
     };
   }
 
   if (curlCommand) {
-    shortcutItems["c"] = {
+    mapping["c"] = {
       label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
       value: "copy-curl",
     };
   }
 
-  shortcutItems["r"] = {
+  mapping["r"] = {
     label: "Retry",
     value: "retry",
   };
 
-  shortcutItems["q"] = {
+  mapping["q"] = {
     label: "Quit Octo",
     value: "quit",
   };
+
+  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "quit"> = [
+    {
+      type: "key" as const,
+      mapping,
+    },
+  ];
 
   const onSelect = useCallback(
     (item: Item<"view" | "copy-curl" | "retry" | "quit">) => {

@@ -8,19 +8,46 @@ export type Item<V> = {
   label: string;
   value: V;
 };
+type MapShortcutType<V> = {
+  type: "key";
+  mapping: Record<string, Item<V>>;
+};
+type NumberShortcutType<V> = {
+  type: "number";
+  order: Array<Item<V>>;
+};
+
+export type ShortcutArray<V> =
+  | [MapShortcutType<V>]
+  | [NumberShortcutType<V>]
+  | [MapShortcutType<V>, NumberShortcutType<V>]
+  | [NumberShortcutType<V>, MapShortcutType<V>]
+  | [MapShortcutType<V>, NumberShortcutType<V>, MapShortcutType<V>];
+
 type KbSelectProps<V> = {
-  shortcutItems: Record<string, Item<V>>;
+  shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
 };
 export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
   let items = useMemo(() => {
-    return Object.entries(shortcutItems).map(([k, v]) => {
-      if (k === "j" || k === "k")
-        throw new Error("Can't use j or k as shortcuts: reserved for nav");
-      return {
-        item: v,
-        shortcut: k,
-      };
+    return shortcutItems.flatMap(shortcutType => {
+      if (shortcutType.type === "key") {
+        return Object.entries(shortcutType.mapping).map(([k, v]) => {
+          if (k === "j" || k === "k") {
+            throw new Error("Can't use j or k as shortcuts: reserved for nav");
+          }
+          return {
+            item: v,
+            shortcut: k,
+          };
+        });
+      }
+      return shortcutType.order.map((item, index) => {
+        return {
+          item: item,
+          shortcut: `${index}`,
+        };
+      });
     });
   }, [shortcutItems]);
 

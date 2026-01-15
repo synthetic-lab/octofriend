@@ -8,7 +8,7 @@ import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-f
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -268,7 +268,7 @@ function FastProviderList({
   return (
     <KbShortcutPanel
       title={titleOverride || "Choose a model provider:"}
-      shortcutItems={items}
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
   );
@@ -357,16 +357,21 @@ function ImportModelsFrom({
       <CenteredBox>
         <KbShortcutPanel
           title={`You already imported all our recommended models from ${provider.name}!`}
-          shortcutItems={{
-            c: {
-              label: `Add a custom model string from ${provider.name}`,
-              value: "custom" as const,
+          shortcutItems={[
+            {
+              type: "key" as const,
+              mapping: {
+                c: {
+                  label: `Add a custom model string from ${provider.name}`,
+                  value: "custom" as const,
+                },
+                b: {
+                  label: "Back",
+                  value: "back" as const,
+                },
+              },
             },
-            b: {
-              label: "Back",
-              value: "back" as const,
-            },
-          }}
+          ]}
           onSelect={item => {
             if (item.value === "custom") return onCustomModel();
             return onCancel();

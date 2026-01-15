@@ -1,10 +1,10 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { Octo } from "../octo.tsx";
-import { Item, KbShortcutSelect } from "./kb-shortcut-select.tsx";
+import { Item, KbShortcutSelect, ShortcutArray } from "./kb-shortcut-select.tsx";
 
 type KbPanelProps<V> = {
-  shortcutItems: Record<string, Item<V>>;
+  shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
   title: string;
   children?: React.ReactNode;

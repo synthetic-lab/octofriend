@@ -7,7 +7,7 @@ import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
 import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
 import { PROVIDERS } from "../providers.ts";
 import * as logger from "../logger.ts";
@@ -111,20 +111,25 @@ function AuthAsk(
       onSelect: (route: "apiKey" | "envVar") => void;
     },
 ) {
-  const shortcutItems: Record<string, Item<"apiKey" | "envVar" | "back">> = {
-    a: {
-      label: "Enter an API key",
-      value: "apiKey",
+  const shortcutItems = [
+    {
+      type: "key" as const,
+      mapping: {
+        a: {
+          label: "Enter an API key",
+          value: "apiKey",
+        },
+        e: {
+          label: "I have an existing environment variable I use...",
+          value: "envVar",
+        },
+        b: {
+          label: "Back",
+          value: "back",
+        },
+      } as const,
     },
-    e: {
-      label: "I have an existing environment variable I use...",
-      value: "envVar",
-    },
-    b: {
-      label: "Back",
-      value: "back",
-    },
-  };
+  ] satisfies ShortcutArray<"apiKey" | "envVar" | "back">;
   const onSelect = useCallback((item: Item<"apiKey" | "envVar" | "back">) => {
     if (item.value === "back") props.back();
     else props.onSelect(item.value);

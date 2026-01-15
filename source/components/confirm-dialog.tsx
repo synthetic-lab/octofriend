@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { Box } from "ink";
-import { KbShortcutSelect, Item } from "./kb-select/kb-shortcut-select.tsx";
+import { KbShortcutSelect, Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 
 export function ConfirmDialog({
   confirmLabel,
@@ -13,18 +13,23 @@ export function ConfirmDialog({
   onConfirm: () => any;
   onReject: () => any;
 }) {
-  const items: Record<string, Item<"confirm" | "reject">> = {
-    y: {
-      label: confirmLabel,
-      value: "confirm" as const,
+  const items = [
+    {
+      type: "key" as const,
+      mapping: {
+        y: {
+          label: confirmLabel,
+          value: "confirm" as const,
+        },
+        n: {
+          label: rejectLabel,
+          value: "reject" as const,
+        },
+      },
     },
-    n: {
-      label: rejectLabel,
-      value: "reject" as const,
-    },
-  };
+  ] satisfies ShortcutArray<"confirm" | "reject">;
 
-  const onSelect = useCallback((item: (typeof items)[string]) => {
+  const onSelect = useCallback((item: Item<"confirm" | "reject">) => {
     if (item.value === "confirm") return onConfirm();
     return onReject();
   }, []);

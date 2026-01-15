@@ -12,7 +12,7 @@ import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./components/kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -427,7 +427,13 @@ function MainMenu() {
     [config, setConfig, notify],
   );
 
-  return <KbShortcutPanel title="Main Menu" shortcutItems={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Main Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function SettingsMenu() {
@@ -459,7 +465,13 @@ function SettingsMenu() {
     else setMenuMode(item.value);
   }, []);
 
-  return <KbShortcutPanel title="Settings Menu" shortcutItems={items} onSelect={onSelect} />;
+  return (
+    <KbShortcutPanel
+      title="Settings Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
 }
 
 function QuitConfirm() {
@@ -493,7 +505,7 @@ function QuitConfirm() {
   return (
     <KbShortcutPanel
       title="Are you sure you want to quit?"
-      shortcutItems={items}
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
   );

@@ -8,7 +8,7 @@ import TextInput from "./components/text-input.tsx";
 import { Config } from "./config.ts";
 import { useColor } from "./theme.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item } from "./components/kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { MenuHeader } from "./components/menu-panel.tsx";
 import { CenteredBox } from "./components/centered-box.tsx";
@@ -214,20 +214,25 @@ function AutofixSetup({
   const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
   const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
 
-  const shortcutItems: Record<string, Item<"synthetic" | "custom" | "skip">> = {
-    e: {
-      label: "💫 Enable autofix models via Synthetic (recommended)",
-      value: "synthetic",
+  const shortcutItems = [
+    {
+      type: "key" as const,
+      mapping: {
+        e: {
+          label: "💫 Enable autofix models via Synthetic (recommended)",
+          value: "synthetic",
+        },
+        c: {
+          label: "Use custom models...",
+          value: "custom",
+        },
+        s: {
+          label: "Skip for now (can be enabled later)",
+          value: "skip",
+        },
+      } as const,
     },
-    c: {
-      label: "Use custom models...",
-      value: "custom",
-    },
-    s: {
-      label: "Skip for now (can be enabled later)",
-      value: "skip",
-    },
-  };
+  ] satisfies ShortcutArray<"synthetic" | "custom" | "skip">;
 
   const onSelect = useCallback(
     (item: Item<"synthetic" | "custom" | "skip">) => {
