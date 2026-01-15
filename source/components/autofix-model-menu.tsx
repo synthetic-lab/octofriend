@@ -1,11 +1,10 @@
 import React, { useState, useCallback } from "react";
 import { Box, useInput } from "ink";
-import SelectInput from "./ink/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Config, readKeyForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
-import { MenuHeader } from "./menu-panel.tsx";
+import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
+import { Item } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
 
@@ -40,23 +39,23 @@ export function AutofixModelMenu({
     if (key.escape) onCancel();
   });
 
-  const items = [
-    {
+  const shortcutItems: Record<string, Item<"synthetic" | "custom" | "back">> = {
+    e: {
       label: `Enable ${modelNickname} via Synthetic (recommended)`,
       value: "synthetic",
     },
-    {
+    c: {
       label: "Use a custom diff-apply model...",
       value: "custom",
     },
-    {
-      label: "Cancel",
-      value: "cancel",
+    b: {
+      label: "Back",
+      value: "back",
     },
-  ];
+  };
 
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    async (item: Item<"synthetic" | "custom" | "back">) => {
       if (item.value === "synthetic") {
         const defaultEnvVar = SYNTHETIC_PROVIDER.envVar;
 
@@ -132,19 +131,14 @@ export function AutofixModelMenu({
   }
 
   return (
-    <CenteredBox>
-      <MenuHeader title={`Enable ${modelNickname} model`} />
-
+    <KbShortcutPanel
+      title={`Enable ${modelNickname} model`}
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    >
       <Box marginBottom={1} flexDirection="column" gap={1}>
         {children}
       </Box>
-
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </CenteredBox>
+    </KbShortcutPanel>
   );
 }

@@ -43,11 +43,13 @@ import {
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
-import SelectInput from "./components/ink/select-input.tsx";
+import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+import { Item } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
 import { Octo } from "./components/octo.tsx";
-import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { Menu } from "./menu.tsx";
+import SelectInput from "./components/ink/select-input.tsx";
+import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -457,34 +459,34 @@ function RequestErrorScreen({
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
 
-  const items = [
-    {
+  const shortcutItems: Record<string, Item<"view" | "copy-curl" | "retry" | "quit">> = {};
+
+  if (!viewError) {
+    shortcutItems["v"] = {
       label: "View error",
-      value: "view" as const,
-    },
-    ...(curlCommand
-      ? [
-          {
-            label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
-            value: "copy-curl" as const,
-          },
-        ]
-      : []),
-    {
-      label: "Retry",
-      value: "retry" as const,
-    },
-    {
-      label: "Quit Octo",
-      value: "quit" as const,
-    },
-  ].filter(item => {
-    if (viewError && item.value === "view") return false;
-    return true;
-  });
+      value: "view",
+    };
+  }
+
+  if (curlCommand) {
+    shortcutItems["c"] = {
+      label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
+      value: "copy-curl",
+    };
+  }
+
+  shortcutItems["r"] = {
+    label: "Retry",
+    value: "retry",
+  };
+
+  shortcutItems["q"] = {
+    label: "Quit Octo",
+    value: "quit",
+  };
 
   const onSelect = useCallback(
-    (item: (typeof items)[number]) => {
+    (item: Item<"view" | "copy-curl" | "retry" | "quit">) => {
       if (item.value === "view") {
         setViewError(true);
       } else if (item.value === "copy-curl") {
@@ -501,11 +503,11 @@ function RequestErrorScreen({
         exit();
       }
     },
-    [curlCommand, mode],
+    [curlCommand, mode, config, transport],
   );
 
   return (
-    <CenteredBox>
+    <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
       <Text color="red">{contextualMessage}</Text>
       {viewError && (
         <Box marginY={1}>
@@ -522,13 +524,7 @@ function RequestErrorScreen({
           <Text color="red">{clipboardError}</Text>
         </Box>
       )}
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
-      />
-    </CenteredBox>
+    </KbShortcutPanel>
   );
 }
 

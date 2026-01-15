@@ -6,7 +6,8 @@ import { useColor } from "../theme.ts";
 import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
 import { SetApiKey } from "./set-api-key.tsx";
-import { MenuPanel } from "./menu-panel.tsx";
+import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
+import { Item } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
 import { PROVIDERS } from "../providers.ts";
 import * as logger from "../logger.ts";
@@ -110,21 +111,21 @@ function AuthAsk(
       onSelect: (route: "apiKey" | "envVar") => void;
     },
 ) {
-  const items = [
-    {
+  const shortcutItems: Record<string, Item<"apiKey" | "envVar" | "back">> = {
+    a: {
       label: "Enter an API key",
-      value: "apiKey" as const,
+      value: "apiKey",
     },
-    {
+    e: {
       label: "I have an existing environment variable I use...",
-      value: "envVar" as const,
+      value: "envVar",
     },
-    {
+    b: {
       label: "Back",
-      value: "back" as const,
+      value: "back",
     },
-  ];
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  };
+  const onSelect = useCallback((item: Item<"apiKey" | "envVar" | "back">) => {
     if (item.value === "back") props.back();
     else props.onSelect(item.value);
   }, []);
@@ -135,14 +136,18 @@ function AuthAsk(
 
   return (
     <Back go={props.back}>
-      <MenuPanel title="How do you want to authenticate?" items={items} onSelect={onSelect}>
+      <KbShortcutPanel
+        title="How do you want to authenticate?"
+        shortcutItems={shortcutItems}
+        onSelect={onSelect}
+      >
         {provider && (
           <Text>
             It looks like you don't have the default {provider.envVar} environment variable defined
             in your current shell. How do you want to authenticate with {provider.name}?
           </Text>
         )}
-      </MenuPanel>
+      </KbShortcutPanel>
     </Back>
   );
 }
