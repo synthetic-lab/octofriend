@@ -8,7 +8,7 @@ import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-f
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -239,15 +239,20 @@ function FastProviderList({
     return {
       label: provider.name,
       value: k,
+      shortcut: provider.shortcut,
     };
   });
 
-  const providerShortcuts: Record<string, Item<keyof typeof PROVIDERS>> = {};
+  const providerShortcuts: Keymap<keyof typeof PROVIDERS> = {};
   for (const item of providerItems) {
-    providerShortcuts[item.label[0].toLowerCase()] = item;
+    providerShortcuts[item.shortcut] = {
+      label: item.label,
+      value: item.value,
+    };
   }
 
-  const items: Record<string, Item<keyof typeof PROVIDERS | "custom" | "back">> = {
+  type ProviderValue = keyof typeof PROVIDERS | "custom" | "back";
+  const items: Keymap<ProviderValue> = {
     ...providerShortcuts,
     c: {
       label: "Add a custom model...",
@@ -259,7 +264,7 @@ function FastProviderList({
     },
   };
 
-  const onSelect = useCallback((item: (typeof items)[number]) => {
+  const onSelect = useCallback((item: Item<ProviderValue>) => {
     if (item.value === "custom") return onChooseCustom();
     if (item.value === "back") return onBack();
     onChooseProvider(item.value);

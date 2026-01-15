@@ -11,7 +11,7 @@ import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -297,9 +297,9 @@ const SETTINGS_ITEMS = {
     label: "Disable auto-fixing JSON tool calls",
     value: "disable-fix-json",
   },
-} satisfies Record<string, Item<SettingsValues>>;
+} satisfies Keymap<SettingsValues>;
 function filterSettings(config: Config) {
-  let items: Record<string, Item<SettingsValues>> = {};
+  let items: Keymap<SettingsValues> = {};
   if (config.models.length > 1) {
     items = {
       ...items,
@@ -353,7 +353,7 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu";
-  let items: Record<string, Item<Value>> = {
+  let items: Keymap<Value> = {
     m: {
       label: "⤭ Switch model",
       value: "model-select" as const,
@@ -385,7 +385,7 @@ function MainMenu() {
   if (config.fixJson == null) {
     items = {
       ...items,
-      j: {
+      f: {
         label: "🪄 Enable auto-fixing JSON tool calls",
         value: "fix-json-toggle" as const,
       },
@@ -425,7 +425,7 @@ function MainMenu() {
   };
 
   const onSelect = useCallback(
-    async (item: (typeof items)[string]) => {
+    async (item: Item<Value>) => {
       if (item.value === "return") toggleMenu();
       else if (item.value === "quit") setMenuMode("quit-confirm");
       else if (item.value === "vim-toggle") {
@@ -465,7 +465,7 @@ function SettingsMenu() {
   });
 
   const settingsItems = filterSettings(config);
-  let items: Record<string, Item<SettingsValues | "back">> = {
+  let items: Keymap<SettingsValues | "back"> = {
     ...settingsItems,
     b: {
       label: "Back",
@@ -473,7 +473,7 @@ function SettingsMenu() {
     },
   };
 
-  const onSelect = useCallback((item: (typeof items)[string]) => {
+  const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
     if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
     else if (item.value === "back") setMenuMode("main-menu");
@@ -501,7 +501,7 @@ function QuitConfirm() {
     if (key.escape) setMenuMode("main-menu");
   });
 
-  const items: Record<string, Item<"no" | "yes">> = {
+  const items: Keymap<"no" | "yes"> = {
     n: {
       label: "Never mind, take me back",
       value: "no" as const,
@@ -512,7 +512,7 @@ function QuitConfirm() {
     },
   };
 
-  const onSelect = useCallback((item: (typeof items)[string]) => {
+  const onSelect = useCallback((item: Item<"no" | "yes">) => {
     if (item.value === "no") setMenuMode("main-menu");
     else app.exit();
   }, []);

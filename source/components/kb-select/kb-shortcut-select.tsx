@@ -4,13 +4,39 @@ import { Box, Text, useInput } from "ink";
 import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
+export type Hotkey =
+  | "a"
+  | "b"
+  | "c"
+  | "d"
+  | "e"
+  | "f"
+  | "g"
+  | "i"
+  | "m"
+  | "n"
+  | "o"
+  | "p"
+  | "q"
+  | "r"
+  | "s"
+  | "t"
+  | "u"
+  | "v"
+  | "w"
+  | "x"
+  | "y"
+  | "z";
+
+export type Keymap<V> = Partial<Record<Hotkey, Item<V>>>;
+
 export type Item<V> = {
   label: string;
   value: V;
 };
 type MapShortcutType<V> = {
   type: "key";
-  mapping: Record<string, Item<V>>;
+  mapping: Keymap<V>;
 };
 type NumberShortcutType<V> = {
   type: "number";

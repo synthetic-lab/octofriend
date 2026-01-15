@@ -1,4 +1,7 @@
+import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
+
 export type ProviderConfig = {
+  shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic";
   name: string;
   envVar: string;
@@ -14,6 +17,7 @@ export type ProviderConfig = {
 
 export const PROVIDERS = {
   synthetic: {
+    shortcut: "s" as const,
     name: "Synthetic",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/v1",
@@ -43,6 +47,7 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 
   openai: {
+    shortcut: "o" as const,
     type: "openai-responses",
     name: "OpenAI",
     envVar: "OPENAI_API_KEY",
@@ -71,6 +76,7 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 
   anthropic: {
+    shortcut: "a" as const,
     type: "anthropic",
     name: "Anthropic",
     envVar: "ANTHROPIC_API_KEY",
@@ -99,6 +105,7 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 
   grok: {
+    shortcut: "x" as const,
     name: "xAI",
     envVar: "XAI_API_KEY",
     baseUrl: "https://api.x.ai/v1",
