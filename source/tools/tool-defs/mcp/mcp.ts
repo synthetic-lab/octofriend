@@ -1,9 +1,9 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { Config } from "../../config.ts";
-import { getModelFromConfig } from "../../config.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../../common.ts";
+import { Config } from "../../../config.ts";
+import { getModelFromConfig } from "../../../config.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts

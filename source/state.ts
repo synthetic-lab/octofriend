@@ -17,6 +17,10 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
+import { PermissionsData, WhitelistType } from "./tools/permissions/index.ts";
+import { ToolPermissionInfo } from "./tools/permissions/tool-permission-info.ts";
+
+import { createWhitelist, isWhitelisted, addToWhitelist } from "./tools/permissions/whitelist.ts";
 import { loadTools } from "./tools/index.ts";
 
 export type RunArgs = {
@@ -84,6 +88,7 @@ export type UiState = {
   modelOverride: string | null;
   byteCount: number;
   history: Array<HistoryItem>;
+  whitelist: PermissionsData;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -98,6 +103,8 @@ export type UiState = {
     args: RunArgs,
   ) => Promise<void>;
   notify: (notif: string) => void;
+  addToWhitelist: (tool: { type: WhitelistType; pattern: string }) => Promise<void>;
+  isWhitelisted: (tool: { type: WhitelistType; value: string }) => Promise<boolean>;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
 };
@@ -110,6 +117,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
   byteCount: 0,
+  whitelist: createWhitelist(),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -221,6 +229,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       ],
     });
+  },
+
+  addToWhitelist: async (tool: Pick<ToolPermissionInfo, "type" | "pattern">) => {
+    const currentWhitelist = get().whitelist;
+    const newWhitelist = await addToWhitelist(currentWhitelist, tool);
+    set({ whitelist: newWhitelist });
+  },
+
+  isWhitelisted: async (tool: { type: WhitelistType; value: string }) => {
+    return await isWhitelisted(get().whitelist, tool);
   },
 
   runTool: async ({ config, toolReq, transport }) => {
