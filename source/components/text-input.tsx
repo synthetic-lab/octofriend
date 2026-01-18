@@ -303,8 +303,8 @@ export default function TextInput({
     <Box ref={containerRef} flexGrow={1} flexDirection="column">
       {lines.map((line, index) => {
         return (
-          <Box height={1}>
-            <Text key={`line-${index}`}>{line}</Text>
+          <Box height={1} key={`line-${index}`}>
+            <Text>{line}</Text>
           </Box>
         );
       })}
