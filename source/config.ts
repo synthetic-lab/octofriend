@@ -283,6 +283,16 @@ export async function readKeyForBaseUrl(baseUrl: string, config: Config | null) 
     }
   }
 
+  // Does it match a fix-json or diff-apply model?
+  if (config?.diffApply?.baseUrl === baseUrl && config?.diffApply?.apiEnvVar) {
+    const envVar = config.diffApply.apiEnvVar;
+    if (process.env[envVar]) return process.env[envVar];
+  }
+  if (config?.fixJson?.baseUrl === baseUrl && config?.fixJson?.apiEnvVar) {
+    const envVar = config.fixJson.apiEnvVar;
+    if (process.env[envVar]) return process.env[envVar];
+  }
+
   // We can't find the key for it
   return null;
 }
