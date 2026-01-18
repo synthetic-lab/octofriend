@@ -5,7 +5,6 @@ import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import * as toolMap from "../tools/tool-defs/index.ts";
 import { LoadedTools } from "../tools/index.ts";
 
 export async function run({

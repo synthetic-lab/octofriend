@@ -1,11 +1,27 @@
-export { default as read } from "./read.ts";
-export { default as list } from "./list.ts";
-export { default as shell } from "./bash.ts";
-export { default as edit } from "./edit.ts";
-export { default as create } from "./create.ts";
-export { default as mcp } from "./mcp.ts";
-export { default as fetch } from "./fetch.ts";
-export { default as append } from "./append.ts";
-export { default as prepend } from "./prepend.ts";
-export { default as rewrite } from "./rewrite.ts";
-export { default as skill } from "./skill.ts";
+import read from "./read.ts";
+import list from "./list.ts";
+import shell from "./bash.ts";
+import edit from "./edit.ts";
+import create from "./create.ts";
+import mcp from "./mcp.ts";
+import fetch from "./fetch.ts";
+import append from "./append.ts";
+import prepend from "./prepend.ts";
+import rewrite from "./rewrite.ts";
+import skill from "./skill.ts";
+import webSearch from "./web-search.ts";
+
+export default {
+  read,
+  list,
+  shell,
+  edit,
+  create,
+  mcp,
+  fetch,
+  append,
+  prepend,
+  rewrite,
+  skill,
+  "web-search": webSearch,
+};
