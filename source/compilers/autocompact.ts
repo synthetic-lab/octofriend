@@ -95,7 +95,7 @@ export async function generateCompactionSummary({
   }
 
   const summary = processCompactedHistory(result);
-  if (summary == null) {
+  if (summary == null || summary === "") {
     throw new CompactionRequestError(
       "Compaction result was empty, continuing without compacting messages.",
     );
@@ -109,7 +109,6 @@ export function processCompactedHistory(
   if (!compactSummaryAgentResult.success) {
     return;
   }
-
   const assistantMessage = compactSummaryAgentResult.output.find(msg => msg.role === "assistant");
   if (!assistantMessage || assistantMessage.role !== "assistant") {
     return;
