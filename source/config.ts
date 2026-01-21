@@ -54,6 +54,12 @@ const ConfigSchema = t.exact({
       enabled: t.bool,
     }),
   ),
+  search: t.optional(
+    t.subtype({
+      url: t.str,
+      apiEnvVar: t.optional(t.str),
+    }),
+  ),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
   skills: t.optional(
@@ -186,6 +192,52 @@ function sanitizeConfig(c: Config): Config {
   return sanitized;
 }
 
+export async function readSearchConfig(config: Config | null) {
+  if (config?.search) {
+    const search = config.search;
+    const url = config.search.url;
+    const key = await (async () => {
+      if (search.apiEnvVar) {
+        if (process.env[search.apiEnvVar]) return process.env[search.apiEnvVar];
+      }
+      return await readKeyForBaseUrl(url, config);
+    })();
+    if (key != null) return { url, key };
+    return null;
+  }
+
+  const url = "https://api.synthetic.new/v2/search";
+  const key = await findSyntheticKey(config);
+
+  if (key != null) return { key, url };
+  return null;
+}
+
+// Attempts to find a valid key for Synthetic. This is useful for features we know Synthetic
+// supports, e.g. the web search tool
+async function findSyntheticKey(config: Config | null) {
+  const overrides = config?.defaultApiKeyOverrides;
+  const override = overrides == null ? null : overrides["synthetic"];
+  if (override) return process.env[override];
+
+  // Every API base URL Synthetic has ever used
+  const validBaseUrls = [
+    "https://api.synthetic.new/openai/v1",
+    "https://synthetic.new/api/openai/v1",
+    "https://api.synthetic.new/v1",
+    "https://api.glhf.chat/v1",
+    "https://glhf.chat/api/v1",
+    "https://glhf.chat/api/openai/v1",
+  ];
+
+  for (const base of validBaseUrls) {
+    const key = await readKeyForBaseUrl(base, config);
+    if (key != null) return key;
+  }
+
+  return null;
+}
+
 export async function assertKeyForModel(
   model: { baseUrl: string; apiEnvVar?: string },
   config: Config | null,
@@ -199,8 +251,16 @@ export async function readKeyForModel(
   model: { baseUrl: string; apiEnvVar?: string },
   config: Config | null,
 ) {
+  // Check for API env vars defined on the model first: for individual models, those take priority
   if (model.apiEnvVar && process.env[model.apiEnvVar]) return process.env[model.apiEnvVar];
-  const provider = providerForBaseUrl(model.baseUrl);
+
+  // Otherwise, search for a key for this model's base URL
+  return await readKeyForBaseUrl(model.baseUrl, config);
+}
+
+export async function readKeyForBaseUrl(baseUrl: string, config: Config | null) {
+  // Is it a URL for a built-in provider? Check those first
+  const provider = providerForBaseUrl(baseUrl);
   if (provider) {
     const envVar = (() => {
       const key = keyFromName(provider.name);
@@ -211,8 +271,30 @@ export async function readKeyForModel(
     })();
     if (process.env[envVar]) return process.env[envVar];
   }
+
+  // Is there an entry for it in the keys file?
   const keys = await readKeys();
-  return keys[model.baseUrl] || null;
+  if (keys[baseUrl] != null) return keys[baseUrl];
+
+  // Does it match an existing model with an API env var defined?
+  for (const model of config?.models || []) {
+    if (model.baseUrl == baseUrl) {
+      if (model.apiEnvVar && process.env[model.apiEnvVar]) return process.env[model.apiEnvVar];
+    }
+  }
+
+  // Does it match a fix-json or diff-apply model?
+  if (config?.diffApply?.baseUrl === baseUrl && config?.diffApply?.apiEnvVar) {
+    const envVar = config.diffApply.apiEnvVar;
+    if (process.env[envVar]) return process.env[envVar];
+  }
+  if (config?.fixJson?.baseUrl === baseUrl && config?.fixJson?.apiEnvVar) {
+    const envVar = config.fixJson.apiEnvVar;
+    if (process.env[envVar]) return process.env[envVar];
+  }
+
+  // We can't find the key for it
+  return null;
 }
 
 export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {

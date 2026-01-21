@@ -26,27 +26,50 @@ optionally use (and we recommend using) ML models we custom-trained and
 open-sourced ([1](https://huggingface.co/syntheticlab/diff-apply),
 [2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
 call and code edit failures from the main coding models you're working with:
-the autofix models work with any coding LLM. Octo wants to help you because
-Octo is your friend.
-
-Octo works great with GLM-4.7, GPT-5.2, Claude 4.5, and Kimi K2 Thinking
-(although you can use it with pretty much anything!). Correctly handling
-multi-turn responses, especially with thinking models like GPT-5 and Claude
-(whose content may even be encrypted), can be tricky. Octo carefully manages
-thinking tokens to ensure it's always as smart as it can be. We think it's the
-best multi-LLM tool out there at managing thinking tokens, and you'll feel how
-much smarter it is.
+the autofix models work with any coding LLM. Octo works great with GLM-4.7,
+GPT-5.2, Claude 4.5, and Kimi K2 Thinking (although pretty much any agentic
+coding model will work). Octo wants to help you because Octo is your friend.
 
 Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
 selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
 yours. But you can also use it with any OpenAI-compatible API provider, with
 Anthropic, or with local LLMs you run on your own machine.
 
-Octo has helped write some of its own source code, but the codebase is
-human-first: Octo is meant to be a friendly little helper rather than a
-completely hands-free author, and that's how I use it. But if you want to live
-dangerously, you can always run `octofriend --unchained`, and skip all tool and
-edit confirmations.
+## Enabling web search
+
+By default, Octo will look for Synthetic API keys to use Synthetic's private,
+zero-data-retention search API to power Octo's web search tool. If you have any
+Synthetic models configured anywhere in Octo, Octo's search tool will Just
+Work: even non-Synthetic-hosted models, like Claude, will be able to use Octo's
+web search tool.
+
+If you don't want to use Synthetic's search API, but you still want to use the
+web search tool, you can configure the `search` config in
+`~/.config/octofriend/octofriend.json5`:
+
+```typescript
+{
+  // ...the rest of your config,
+  search: {
+    url: "some_search_api_url",
+    apiEnvVar: "SOME_ENV_VAR_FOR_AUTH"
+  },
+}
+```
+
+The search tool will make POST requests against the configured URL with the
+following format, which is compatible with both Synthetic and
+[Exa](https://exa.ai):
+
+```javascript
+{
+  query: "some search query",
+}
+```
+
+If you don't configure the `search` config, and you don't configure any
+Synthetic API keys, Octo's harness will automatically hide the web search tool
+so Octo doesn't try to call it.
 
 ## Demo
 

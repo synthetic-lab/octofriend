@@ -23,23 +23,22 @@ import {
 import { HistoryItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
-import { UnchainedContext, useColor, useUnchained, color } from "./theme.ts";
+import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
-import {
-  shell,
-  read,
-  list,
-  edit,
-  append,
-  prepend,
-  rewrite,
-  create as createTool,
-  mcp,
-  fetch as fetchTool,
-  skill,
-  SKIP_CONFIRMATION,
-} from "./tools/index.ts";
+import shell from "./tools/tool-defs/bash.ts";
+import read from "./tools/tool-defs/read.ts";
+import list from "./tools/tool-defs/list.ts";
+import edit from "./tools/tool-defs/edit.ts";
+import append from "./tools/tool-defs/append.ts";
+import prepend from "./tools/tool-defs/prepend.ts";
+import rewrite from "./tools/tool-defs/rewrite.ts";
+import createTool from "./tools/tool-defs/create.ts";
+import mcp from "./tools/tool-defs/mcp.ts";
+import fetchTool from "./tools/tool-defs/fetch.ts";
+import skill from "./tools/tool-defs/skill.ts";
+import webSearch from "./tools/tool-defs/web-search.ts";
+import { SKIP_CONFIRMATION } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
@@ -625,6 +624,7 @@ function ToolRequestRenderer({
       case "fetch":
       case "list":
       case "mcp":
+      case "web-search":
         return null;
     }
   })();
@@ -871,7 +871,17 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <RewriteToolRenderer item={item.tool.function} />;
     case "skill":
       return <SkillToolRenderer item={item.tool.function} />;
+    case "web-search":
+      return <WebSearchToolRenderer item={item.tool.function} />;
   }
+}
+
+function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
+  return (
+    <Box>
+      <Text color="gray">Octo searched the web</Text>
+    </Box>
+  );
 }
 
 function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
