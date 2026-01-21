@@ -1,5 +1,5 @@
-export function compactPrompt(conversationHistory: string) {
-  return `Here is the conversation history to summarize: ${conversationHistory}
+export function compactPrompt() {
+  return `Generate a summary of everything you've talked about and done in this conversation.
 
 You are creating an internal context summary that will replace previous messages in the conversation history.
 

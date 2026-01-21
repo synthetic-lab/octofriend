@@ -219,8 +219,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         const isSelected = index === selectedIndex;
 
         return (
-          // @ts-expect-error - `key` can't be optional but `item.value` is generic T
-          <Box key={item.key ?? item.value}>
+          <Box key={`kb-select-${index}`}>
             <IndicatorComponent isSelected={isSelected} />
             <UnderlineItem
               isSelected={isSelected}
