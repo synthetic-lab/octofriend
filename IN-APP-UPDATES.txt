@@ -1,6 +1,6 @@
-- Octo now uses autocompaction instead of rolling history windows for better
-  prompt caching and long-context tasks
-- Initial support for [Agent Skills](https://agentskills.io/)!
-- Improved prompts for GLM-4.7
-- Improved Vim emulation mode
-- Prettier scroll UI
+- Octo now has a web search tool! If you have any Synthetic models available, it
+  Just Works. To enable for other providers, read the README.
+- Shift-Tab automatically swaps between collaboration mode and unchained mode.
+- Hotkeys added for nearly all menu items!
+- Octo supports per-repo skill definitions, in `.agents/skills`, in addition to
+  the previous global skill definitions.

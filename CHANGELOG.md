@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.51] - 2026-01-20
+
+### Added
+
+- Octo now has a web search tool! If you have any Synthetic models available, it
+  Just Works. To enable for other providers, read the README.
+- Shift-Tab automatically swaps between collaboration mode and unchained mode.
+- Hotkeys added for nearly all menu items!
+
+### Changed
+
+- Octo supports per-repo skill definitions, in `.agents/skills`, in addition to
+  the previous global skill definitions.
+
+- Bugfix for `octo prompt` crash.
+
 ## [0.0.50] - 2026-01-03
 
 ### Changed
