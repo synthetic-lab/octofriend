@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.52] - 2026-01-20
+
+### Changed
+
+- Fix context size bug for autocompaction, where Octo re-reading or re-editing
+  the same large file repeatedly could bloat the autocompaction context length
+  and potentially cause context length limit errors.
+
 ## [0.0.51] - 2026-01-20
 
 ### Added
