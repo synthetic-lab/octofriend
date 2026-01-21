@@ -1,6 +1,4 @@
-import { sequenceId } from "../history.ts";
 import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
-import { toLlmIR } from "../ir/convert-history-ir.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -73,7 +71,13 @@ export async function generateCompactionSummary({
 }): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
-  const processedMessages = formatMessagesForSummary(slicedMessages);
+  const summaryMessages: LlmIR[] = [
+    ...slicedMessages,
+    {
+      role: "user",
+      content: compactPrompt(),
+    },
+  ];
 
   const result = await run({
     apiKey,
@@ -81,7 +85,7 @@ export async function generateCompactionSummary({
     handlers,
     autofixJson,
     abortSignal,
-    messages: processedMessages,
+    messages: summaryMessages,
   });
 
   if (abortSignal.aborted) return null;
@@ -97,26 +101,6 @@ export async function generateCompactionSummary({
     );
   }
   return summary;
-}
-
-export function formatMessagesForSummary(messages: LlmIR[]): LlmIR[] {
-  const lines: string[] = [];
-
-  for (const message of messages) {
-    const { role, ...rest } = message;
-    lines.push(`${message.role}: ${JSON.stringify(rest)}`);
-  }
-
-  const conjoinedMessages = lines.join("\n");
-  const promptText = compactPrompt(conjoinedMessages);
-
-  return toLlmIR([
-    {
-      type: "user" as const,
-      id: sequenceId(),
-      content: promptText,
-    },
-  ]);
 }
 
 export function processCompactedHistory(
