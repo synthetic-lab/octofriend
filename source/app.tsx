@@ -336,7 +336,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       }
 
       abortResponse();
-      if (modeData.mode === "menu") closeMenu();
+      if (modeData.mode === "menu") {
+        closeMenu();
+      } else {
+        openMenu();
+      }
     }
 
     if (key.ctrl && input === "p") {
