@@ -645,7 +645,7 @@ function ToolRequestRenderer({
       value: "yes",
     },
     {
-      label: "No, and tell Octo what to do differently",
+      label: "No, and tell Octo what to do differently (ESC)",
       value: "no",
     },
   ];
@@ -655,8 +655,14 @@ function ToolRequestRenderer({
       if (item.value === "no") rejectTool(toolReq.toolCallId);
       else await runTool({ toolReq, config, transport });
     },
-    [toolReq, config, transport],
+    [toolReq, config, transport, rejectTool, runTool],
   );
+
+  useInput((_, key) => {
+    if (key.escape) {
+      rejectTool(toolReq.toolCallId);
+    }
+  });
 
   const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
   useEffect(() => {
