@@ -545,31 +545,13 @@ function QuitConfirm() {
   );
   const app = useApp();
 
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
-  });
-
-  const items: Keymap<"no" | "yes"> = {
-    n: {
-      label: "Never mind, take me back",
-      value: "no" as const,
-    },
-    y: {
-      label: "Yes, quit",
-      value: "yes" as const,
-    },
-  };
-
-  const onSelect = useCallback((item: Item<"no" | "yes">) => {
-    if (item.value === "no") setMenuMode("main-menu");
-    else app.exit();
-  }, []);
-
   return (
-    <KbShortcutPanel
-      title="Are you sure you want to quit?"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
-      onSelect={onSelect}
+    <ConfirmDialog
+      confirmLabel="Yes, quit"
+      rejectLabel="Never mind, take me back"
+      onConfirm={() => app.exit()}
+      onReject={() => setMenuMode("main-menu")}
+      rejectFirst={true}
     />
   );
 }

@@ -7,25 +7,38 @@ export function ConfirmDialog({
   rejectLabel,
   onConfirm,
   onReject,
+  rejectFirst = false,
 }: {
   confirmLabel: string;
   rejectLabel: string;
   onConfirm: () => any;
   onReject: () => any;
+  rejectFirst?: boolean;
 }) {
   const items = [
     {
       type: "key" as const,
-      mapping: {
-        y: {
-          label: confirmLabel,
-          value: "confirm" as const,
-        },
-        n: {
-          label: rejectLabel,
-          value: "reject" as const,
-        },
-      },
+      mapping: rejectFirst
+        ? {
+            n: {
+              label: rejectLabel,
+              value: "reject" as const,
+            },
+            y: {
+              label: confirmLabel,
+              value: "confirm" as const,
+            },
+          }
+        : {
+            y: {
+              label: confirmLabel,
+              value: "confirm" as const,
+            },
+            n: {
+              label: rejectLabel,
+              value: "reject" as const,
+            },
+          },
     },
   ] satisfies ShortcutArray<"confirm" | "reject">;
 
