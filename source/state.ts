@@ -85,6 +85,7 @@ export type UiState = {
   byteCount: number;
   query: string;
   history: Array<HistoryItem>;
+  clearNonce: number;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -102,6 +103,7 @@ export type UiState = {
   notify: (notif: string) => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
+  clearHistory: () => void;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -113,6 +115,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   modelOverride: null,
   byteCount: 0,
   query: "",
+  clearNonce: 0,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -228,6 +231,14 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       ],
     });
+  },
+
+  clearHistory: () => {
+    set(state => ({
+      history: [],
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+    }));
   },
 
   runTool: async ({ config, toolReq, transport }) => {

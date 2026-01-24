@@ -130,11 +130,12 @@ export default function App({
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
-  const { history, modeData, setVimMode } = useAppStore(
+  const { history, modeData, setVimMode, clearNonce } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       setVimMode: state.setVimMode,
+      clearNonce: state.clearNonce,
     })),
   );
 
@@ -181,7 +182,7 @@ export default function App({
               <ExitOnDoubleCtrlC>
                 <TerminalSizeTracker>
                   <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems}>
+                    <Static items={staticItems} key={clearNonce}>
                       {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
                     </Static>
                     {(modeData.mode === "responding" || modeData.mode === "compacting") &&

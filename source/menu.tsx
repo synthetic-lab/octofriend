@@ -22,7 +22,9 @@ type MenuMode =
   | "fix-json-toggle"
   | "set-default-model"
   | "quit-confirm"
-  | "remove-model";
+  | "remove-model"
+  | "clear-confirm";
+
 type MenuState = {
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
@@ -47,6 +49,7 @@ export function Menu() {
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
+  if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
@@ -352,7 +355,9 @@ function MainMenu() {
     | "quit"
     | "fix-json-toggle"
     | "diff-apply-toggle"
-    | "settings-menu";
+    | "settings-menu"
+    | "clear-confirm";
+
   let items: Keymap<Value> = {
     m: {
       label: "⤭ Switch model",
@@ -361,6 +366,10 @@ function MainMenu() {
     n: {
       label: "+ Add a new model",
       value: "add-model" as const,
+    },
+    c: {
+      label: "✕ Clear conversation",
+      value: "clear-confirm" as const,
     },
   };
 
@@ -428,6 +437,7 @@ function MainMenu() {
     async (item: Item<Value>) => {
       if (item.value === "return") toggleMenu();
       else if (item.value === "quit") setMenuMode("quit-confirm");
+      else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
       else if (item.value === "vim-toggle") {
         const wasEnabled = config.vimEmulation?.["enabled"] ?? false;
 
@@ -520,6 +530,57 @@ function QuitConfirm() {
   return (
     <KbShortcutPanel
       title="Are you sure you want to quit?"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function ClearConversationConfirm() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const { clearHistory, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      clearHistory: state.clearHistory,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  const items: Keymap<"no" | "yes"> = {
+    n: {
+      label: "Never mind, take me back",
+      value: "no" as const,
+    },
+    y: {
+      label: "Yes, clear conversation",
+      value: "yes" as const,
+    },
+  };
+
+  const onSelect = useCallback(
+    (item: Item<"no" | "yes">) => {
+      if (item.value === "no") setMenuMode("main-menu");
+      else {
+        clearHistory();
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("Conversation cleared");
+      }
+    },
+    [clearHistory, toggleMenu, notify],
+  );
+
+  return (
+    <KbShortcutPanel
+      title="Are you sure you want to clear the conversation?"
       shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
