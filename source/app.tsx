@@ -304,20 +304,30 @@ async function getLatestVersion() {
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const [query, setQuery] = useState("");
   const vimEnabled = !!config.vimEmulation?.enabled;
-  const { modeData, input, abortResponse, openMenu, closeMenu, byteCount, setVimMode } =
-    useAppStore(
-      useShallow(state => ({
-        modeData: state.modeData,
-        input: state.input,
-        abortResponse: state.abortResponse,
-        closeMenu: state.closeMenu,
-        openMenu: state.openMenu,
-        byteCount: state.byteCount,
-        setVimMode: state.setVimMode,
-      })),
-    );
+  const {
+    modeData,
+    input,
+    abortResponse,
+    openMenu,
+    closeMenu,
+    byteCount,
+    setVimMode,
+    query,
+    setQuery,
+  } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+      input: state.input,
+      abortResponse: state.abortResponse,
+      closeMenu: state.closeMenu,
+      openMenu: state.openMenu,
+      byteCount: state.byteCount,
+      setVimMode: state.setVimMode,
+      query: state.query,
+      setQuery: state.setQuery,
+    })),
+  );
 
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
@@ -348,7 +358,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const onSubmit = useCallback(async () => {
     setQuery("");
     await input({ query, config, transport });
-  }, [query, config, transport]);
+  }, [query, config, transport, setQuery]);
 
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (

@@ -83,6 +83,7 @@ export type UiState = {
       };
   modelOverride: string | null;
   byteCount: number;
+  query: string;
   history: Array<HistoryItem>;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
@@ -93,6 +94,7 @@ export type UiState = {
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   setModelOverride: (m: string) => void;
+  setQuery: (query: string) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
@@ -110,6 +112,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   history: [],
   modelOverride: null,
   byteCount: 0,
+  query: "",
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -194,6 +197,10 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: { mode: "input", vimMode },
       });
     }
+  },
+
+  setQuery: query => {
+    set({ query });
   },
 
   setModelOverride: model => {
