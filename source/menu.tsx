@@ -23,7 +23,8 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
-  | "clear-confirm";
+  | "clear-confirm"
+  | "context-menu";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -53,6 +54,7 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "context-menu") return <ContextMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -356,7 +358,7 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
-    | "clear-confirm";
+    | "context-menu";
 
   let items: Keymap<Value> = {
     m: {
@@ -368,8 +370,8 @@ function MainMenu() {
       value: "add-model" as const,
     },
     c: {
-      label: "✕ Clear conversation",
-      value: "clear-confirm" as const,
+      label: "⊟ Context management",
+      value: "context-menu" as const,
     },
   };
 
@@ -437,7 +439,6 @@ function MainMenu() {
     async (item: Item<Value>) => {
       if (item.value === "return") toggleMenu();
       else if (item.value === "quit") setMenuMode("quit-confirm");
-      else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
       else if (item.value === "vim-toggle") {
         const wasEnabled = config.vimEmulation?.["enabled"] ?? false;
 
@@ -493,6 +494,43 @@ function SettingsMenu() {
   return (
     <KbShortcutPanel
       title="Settings Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function ContextMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  type ContextValues = "clear-confirm" | "back";
+  let items: Keymap<ContextValues> = {
+    r: {
+      label: "✕ Clear conversation",
+      value: "clear-confirm" as const,
+    },
+    b: {
+      label: "Back",
+      value: "back" as const,
+    },
+  };
+
+  const onSelect = useCallback((item: Item<ContextValues>) => {
+    if (item.value === "back") setMenuMode("main-menu");
+    else setMenuMode(item.value);
+  }, []);
+
+  return (
+    <KbShortcutPanel
+      title="Context Management"
       shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
