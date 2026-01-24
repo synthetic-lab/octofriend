@@ -234,6 +234,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   clearHistory: () => {
+    // Abort any ongoing responses to avoid polluting the new cleared state.
+    const { abortResponse } = get();
+    abortResponse();
+
     set(state => ({
       history: [],
       byteCount: 0,
