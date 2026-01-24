@@ -588,39 +588,17 @@ function ClearConversationConfirm() {
     })),
   );
 
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
-  });
-
-  const items: Keymap<"no" | "yes"> = {
-    n: {
-      label: "Never mind, take me back",
-      value: "no" as const,
-    },
-    y: {
-      label: "Yes, clear conversation",
-      value: "yes" as const,
-    },
-  };
-
-  const onSelect = useCallback(
-    (item: Item<"no" | "yes">) => {
-      if (item.value === "no") setMenuMode("main-menu");
-      else {
+  return (
+    <ConfirmDialog
+      confirmLabel="Yes, clear conversation"
+      rejectLabel="Never mind, take me back"
+      onConfirm={() => {
         clearHistory();
         setMenuMode("main-menu");
         toggleMenu();
         notify("Conversation cleared");
-      }
-    },
-    [clearHistory, toggleMenu, notify],
-  );
-
-  return (
-    <KbShortcutPanel
-      title="Are you sure you want to clear the conversation?"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
-      onSelect={onSelect}
+      }}
+      onReject={() => setMenuMode("main-menu")}
     />
   );
 }
