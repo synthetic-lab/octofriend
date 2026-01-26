@@ -22,7 +22,9 @@ type MenuMode =
   | "fix-json-toggle"
   | "set-default-model"
   | "quit-confirm"
-  | "remove-model";
+  | "remove-model"
+  | "clear-confirm";
+
 type MenuState = {
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
@@ -47,6 +49,7 @@ export function Menu() {
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
+  if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
@@ -352,13 +355,19 @@ function MainMenu() {
     | "quit"
     | "fix-json-toggle"
     | "diff-apply-toggle"
-    | "settings-menu";
+    | "settings-menu"
+    | "clear-confirm";
+
   let items: Keymap<Value> = {
+    n: {
+      label: "✕ New conversation",
+      value: "clear-confirm" as const,
+    },
     m: {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
-    n: {
+    a: {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
@@ -437,7 +446,8 @@ function MainMenu() {
         // Notify user
         notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
         return;
-      } else setMenuMode(item.value);
+      } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
+      else setMenuMode(item.value);
     },
     [config, setConfig, notify],
   );
@@ -497,31 +507,42 @@ function QuitConfirm() {
   );
   const app = useApp();
 
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
-  });
+  return (
+    <ConfirmDialog
+      confirmLabel="Yes, quit"
+      rejectLabel="Never mind, take me back"
+      onConfirm={() => app.exit()}
+      onReject={() => setMenuMode("main-menu")}
+      rejectFirst={true}
+    />
+  );
+}
 
-  const items: Keymap<"no" | "yes"> = {
-    n: {
-      label: "Never mind, take me back",
-      value: "no" as const,
-    },
-    y: {
-      label: "Yes, quit",
-      value: "yes" as const,
-    },
-  };
-
-  const onSelect = useCallback((item: Item<"no" | "yes">) => {
-    if (item.value === "no") setMenuMode("main-menu");
-    else app.exit();
-  }, []);
+function ClearConversationConfirm() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const { clearHistory, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      clearHistory: state.clearHistory,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
 
   return (
-    <KbShortcutPanel
-      title="Are you sure you want to quit?"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
-      onSelect={onSelect}
+    <ConfirmDialog
+      confirmLabel="Yes, start new conversation"
+      rejectLabel="Never mind, take me back"
+      onConfirm={() => {
+        clearHistory();
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("New conversation started");
+      }}
+      onReject={() => setMenuMode("main-menu")}
     />
   );
 }
