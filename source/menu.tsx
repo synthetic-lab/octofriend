@@ -359,17 +359,17 @@ function MainMenu() {
     | "clear-confirm";
 
   let items: Keymap<Value> = {
-    n: {
-      label: "✕ New conversation",
-      value: "clear-confirm" as const,
-    },
     m: {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
-    a: {
+    n: {
       label: "+ Add a new model",
       value: "add-model" as const,
+    },
+    o: {
+      label: "✕ New conversation",
+      value: "clear-confirm" as const,
     },
   };
 
