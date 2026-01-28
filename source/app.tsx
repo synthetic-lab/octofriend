@@ -164,14 +164,14 @@ export default function App({
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
-      { type: "header" },
-      { type: "version", metadata, config: currConfig },
+      { type: "header" as const },
+      { type: "version" as const, metadata, config: currConfig },
       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
       ...(updates ? [{ type: "updates" as const, updates }] : []),
-      { type: "slogan" },
+      { type: "slogan" as const },
       ...toStaticItems(history),
     ];
-  }, [history]);
+  }, [history, clearNonce, currConfig, skillNotifs, updates]);
 
   return (
     <SetConfigContext.Provider value={setCurrConfig}>

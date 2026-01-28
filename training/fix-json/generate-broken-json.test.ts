@@ -33,7 +33,7 @@ describe('JSON fuzzing functions', () => {
   describe('null manipulation functions', () => {
     it('nullCut should cut a character from null', async () => {
       const testValues = [0.5]; // Mock random to return 0.5 for index
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = nullCut({
           type: 'null',
@@ -46,14 +46,14 @@ describe('JSON fuzzing functions', () => {
             length: 4
           }
         });
-        
+
         expect(result).toBeDefined();
         expect(result?.broken).toBe('nul'); // Cut first character
       });
     });
 
     it('nullAdd should insert random characters into null', async () => {
-      const testValues = [0.5, 0]; // 0.5 for index, 0 for lowercase letter 'a'
+      const testValues = [0.5, 0.47]; // 0.5 for index 2, 0.47 for letter 'm'
 
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = nullAdd({
@@ -77,7 +77,7 @@ describe('JSON fuzzing functions', () => {
   describe('boolean manipulation functions', () => {
     it('boolCut should cut a character from true', async () => {
       const testValues = [0.5];
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = boolCut({
           type: 'boolean',
@@ -90,15 +90,15 @@ describe('JSON fuzzing functions', () => {
             length: 4
           }
         });
-        
+
         expect(result).toBeDefined();
         expect(result?.broken).toBe('tre');
       });
     });
 
     it('boolAdd should insert random characters into boolean', async () => {
-      const testValues = [0.5, 0];
-      
+      const testValues = [0.5, 0.47]; // 0.5 for index 2, 0.47 for letter 'm'
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = boolAdd({
           type: 'boolean',
@@ -111,7 +111,7 @@ describe('JSON fuzzing functions', () => {
             length: 5
           }
         });
-        
+
         expect(result).toBeDefined();
         expect(result?.broken).toMatch("famlse");
       });
@@ -131,7 +131,7 @@ describe('JSON fuzzing functions', () => {
           length: 2
         }
       });
-      
+
       expect(result).toBeDefined();
       expect(result?.broken).toBe('42.');
     });
@@ -152,7 +152,7 @@ describe('JSON fuzzing functions', () => {
 
     it('strUnescape should unescape escaped characters', async () => {
       const testValues = [0]; // First index for pickRandom
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = strUnescape(mockStringNode('"Hello\\nWorld"'));
         expect(result).toBeDefined();
@@ -161,7 +161,7 @@ describe('JSON fuzzing functions', () => {
 
     it('strRemoveQuote should remove a quote from string', async () => {
       const testValues = [0]; // First index
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = strRemoveQuote(mockStringNode('"Hello World"'));
         expect(result).toBeDefined();
@@ -170,7 +170,7 @@ describe('JSON fuzzing functions', () => {
 
     it('strEscapeQuote should escape quotes', async () => {
       const testValues = [0]; // First index
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = strEscapeQuote(mockStringNode('"Hello \"World""'));
         expect(result).toBeDefined();
@@ -214,7 +214,7 @@ describe('JSON fuzzing functions', () => {
 
     it('cutComma should cut a comma from the available positions', async () => {
       const testValues = [1]; // Second comma (index 1)
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = cutComma(mockArrayNode);
         console.log(result);
@@ -225,7 +225,7 @@ describe('JSON fuzzing functions', () => {
 
     it('dupeComma should duplicate a comma', async () => {
       const testValues = [1]; // Second comma
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = dupeComma(mockArrayNode);
         expect(result).toBeDefined();
@@ -286,11 +286,11 @@ describe('JSON fuzzing functions', () => {
         commaPositions: [2, 4] as number[],
         children: [
           [
-            { type: 'string', value: 'a', start: 1, end: 2, length: 1 }, 
+            { type: 'string', value: 'a', start: 1, end: 2, length: 1 },
             { type: 'number', value: 1, start: 3, end: 4, length: 1 }
           ],
           [
-            { type: 'string', value: 'b', start: 5, end: 6, length: 1 }, 
+            { type: 'string', value: 'b', start: 5, end: 6, length: 1 },
             { type: 'number', value: 2, start: 7, end: 8, length: 1 }
           ]
         ],
@@ -311,7 +311,7 @@ describe('JSON fuzzing functions', () => {
 
     it('cutColor should cut a colon', async () => {
       const testValues = [0];
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = cutColon(mockObjectNode);
         expect(result).toBeDefined();
@@ -321,7 +321,7 @@ describe('JSON fuzzing functions', () => {
 
     it('dupeColon should duplicate a colon', async () => {
       const testValues = [1];
-      
+
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = dupeColon(mockObjectNode);
         expect(result).toBeDefined();

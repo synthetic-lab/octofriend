@@ -13,7 +13,7 @@
     "node": ">=16"
   },
   "scripts": {
-    "build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
+    "build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly && chmod +x dist/source/cli.js",
     "dev": "npm run build -- --watch",
     "exec": "npm run build && node ./dist/source/cli.js",
     "test": "vitest",

@@ -10,7 +10,13 @@ export async function migrate() {
       ? path.join(__dir, "../../drizzle/")
       : path.join(__dir, "../../../drizzle/");
 
-  drizzleMigrate(db(), {
-    migrationsFolder: migrationsPath,
-  });
+  try {
+    drizzleMigrate(db(), {
+      migrationsFolder: migrationsPath,
+    });
+  } catch (e) {
+    throw new Error(
+      `Migration failed at ${migrationsPath}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }

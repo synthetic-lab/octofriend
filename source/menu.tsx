@@ -11,7 +11,7 @@ import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
-import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
+import { Item, ShortcutArray, Keymap, Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -23,6 +23,10 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
+  | "session-menu"
+  | "session-list"
+  | "wipe-confirm"
+  | "start-session-confirm"
   | "clear-confirm";
 
 type MenuState = {
@@ -53,6 +57,10 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "session-menu") return <SessionsMenu />;
+  if (menuMode === "session-list") return <SessionListMenu />;
+  if (menuMode === "wipe-confirm") return <WipeHistoryConfirm />;
+  if (menuMode === "start-session-confirm") return <StartSessionConfirm />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -356,6 +364,7 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
+    | "session-menu"
     | "clear-confirm";
 
   let items: Keymap<Value> = {
@@ -367,9 +376,9 @@ function MainMenu() {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
-    o: {
-      label: "✕ New conversation",
-      value: "clear-confirm" as const,
+    s: {
+      label: "☍ Sessions",
+      value: "session-menu" as const,
     },
   };
 
@@ -446,8 +455,13 @@ function MainMenu() {
         // Notify user
         notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
         return;
-      } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
-      else setMenuMode(item.value);
+      } else if (item.value === "clear-confirm") {
+        setMenuMode("clear-confirm");
+      } else if (item.value === "session-menu") {
+        setMenuMode("session-menu");
+      } else {
+        setMenuMode(item.value);
+      }
     },
     [config, setConfig, notify],
   );
@@ -734,6 +748,188 @@ function AddModelMenuFlow() {
       onComplete={onComplete}
       onCancel={onCancel}
       onOverrideDefaultApiKey={onOverrideDefaultApiKey}
+    />
+  );
+}
+
+function SessionsMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  const { startNewSession, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      startNewSession: state.startNewSession,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  const config = useConfig();
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  const items: Keymap<"list" | "new" | "wipe" | "back"> = {
+    i: { label: "☍ List saved sessions", value: "list" },
+    n: { label: "+ Start new session", value: "new" },
+    w: { label: "✕ Wipe all history", value: "wipe" },
+    b: { label: "⟵ Back", value: "back" },
+  };
+
+  const onSelect = useCallback(
+    async (item: Item<"list" | "new" | "wipe" | "back">) => {
+      if (item.value === "list") setMenuMode("session-list");
+      else if (item.value === "new") {
+        setMenuMode("start-session-confirm");
+      } else if (item.value === "wipe") setMenuMode("wipe-confirm");
+      else setMenuMode("main-menu");
+    },
+    [config, startNewSession, notify, toggleMenu],
+  );
+
+  return (
+    <KbShortcutPanel
+      title="Sessions"
+      shortcutItems={[{ type: "key", mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function SessionListMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  const { listSessions, loadSession, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      listSessions: state.listSessions,
+      loadSession: state.loadSession,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  const [sessions, setSessions] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    listSessions().then(setSessions);
+  }, []);
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("session-menu");
+  });
+
+  // Build numeric items with chronological hotkeys (1 = oldest, N = newest)
+  // sessions is sorted DESC (newest first).
+  // If we have sessions [A, B, C] (Newest to Oldest) and total 3.
+  // A (index 0) => Hotkey 3.
+  // B (index 1) => Hotkey 2.
+  // C (index 2) => Hotkey 1.
+  const totalSessions = sessions.length;
+  const numericItems = sessions.map((session, index) => {
+    const chronoNumber = totalSessions - index;
+    // Use modulo 10 for display key if > 9.
+    const key = String(chronoNumber <= 9 ? chronoNumber : chronoNumber % 10);
+    return {
+      label: `${session.name} - ${session.lastActiveAt.toLocaleString()}`,
+      value: `session-${session.id}` as const,
+      hotkey: key,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`session-${number}` | "back"> = [
+    { type: "auto-list", order: numericItems },
+    {
+      type: "key",
+      mapping: {
+        b: { label: "⟵ Back", value: "back" },
+      },
+    },
+  ];
+
+  const onSelect = useCallback(
+    async (item: Item<`session-${number}` | "back">) => {
+      if (item.value === "back") {
+        setMenuMode("session-menu");
+        return;
+      }
+
+      const sessionId = parseInt(item.value.replace("session-", ""));
+      await loadSession(sessionId);
+      setMenuMode("main-menu");
+      toggleMenu();
+      notify("Session loaded");
+    },
+    [loadSession, notify, toggleMenu],
+  );
+
+  return (
+    <KbShortcutPanel title="Previous Sessions" shortcutItems={shortcutItems} onSelect={onSelect} />
+  );
+}
+
+function WipeHistoryConfirm() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  const { wipeAllHistory, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      wipeAllHistory: state.wipeAllHistory,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  return (
+    <ConfirmDialog
+      confirmLabel="Yes, WIPE ALL HISTORY"
+      rejectLabel="No, take me back"
+      onConfirm={async () => {
+        await wipeAllHistory();
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("All history wiped");
+      }}
+      onReject={() => setMenuMode("session-menu")}
+    />
+  );
+}
+
+function StartSessionConfirm() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const { startNewSession, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      startNewSession: state.startNewSession,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  return (
+    <ConfirmDialog
+      confirmLabel="Yes, start new session"
+      rejectLabel="Never mind, take me back"
+      onConfirm={() => {
+        startNewSession();
+        setMenuMode("main-menu");
+        toggleMenu();
+        notify("New session started");
+      }}
+      onReject={() => setMenuMode("session-menu")}
     />
   );
 }

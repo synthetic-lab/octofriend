@@ -15,6 +15,13 @@
       "when": 1757096134572,
       "tag": "0001_icy_husk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1769568086000,
+      "tag": "0002_sessions",
+      "breakpoints": true
     }
   ]
 }
