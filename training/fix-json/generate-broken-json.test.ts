@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { withMock } from 'antipattern';
+// import { withMock } from 'antipattern'; // Removed
+
 import { deps } from '../random.ts';
 import {
   BreakNode,
@@ -34,7 +35,10 @@ describe('JSON fuzzing functions', () => {
     it('nullCut should cut a character from null', async () => {
       const testValues = [0.5]; // Mock random to return 0.5 for index
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = nullCut({
           type: 'null',
           broken: 'null',
@@ -49,13 +53,18 @@ describe('JSON fuzzing functions', () => {
 
         expect(result).toBeDefined();
         expect(result?.broken).toBe('nul'); // Cut first character
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('nullAdd should insert random characters into null', async () => {
       const testValues = [0.5, 0.47]; // 0.5 for index 2, 0.47 for letter 'm'
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = nullAdd({
           type: 'null',
           broken: 'null',
@@ -70,7 +79,9 @@ describe('JSON fuzzing functions', () => {
 
         expect(result).toBeDefined();
         expect(result?.broken).toEqual("numll");
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
   });
 
@@ -78,7 +89,10 @@ describe('JSON fuzzing functions', () => {
     it('boolCut should cut a character from true', async () => {
       const testValues = [0.5];
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = boolCut({
           type: 'boolean',
           broken: 'true',
@@ -93,13 +107,18 @@ describe('JSON fuzzing functions', () => {
 
         expect(result).toBeDefined();
         expect(result?.broken).toBe('tre');
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('boolAdd should insert random characters into boolean', async () => {
       const testValues = [0.5, 0.47]; // 0.5 for index 2, 0.47 for letter 'm'
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = boolAdd({
           type: 'boolean',
           broken: 'false',
@@ -114,7 +133,9 @@ describe('JSON fuzzing functions', () => {
 
         expect(result).toBeDefined();
         expect(result?.broken).toMatch("famlse");
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
   });
 
@@ -153,28 +174,43 @@ describe('JSON fuzzing functions', () => {
     it('strUnescape should unescape escaped characters', async () => {
       const testValues = [0]; // First index for pickRandom
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = strUnescape(mockStringNode('"Hello\\nWorld"'));
         expect(result).toBeDefined();
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('strRemoveQuote should remove a quote from string', async () => {
       const testValues = [0]; // First index
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = strRemoveQuote(mockStringNode('"Hello World"'));
         expect(result).toBeDefined();
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('strEscapeQuote should escape quotes', async () => {
       const testValues = [0]; // First index
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = strEscapeQuote(mockStringNode('"Hello \"World""'));
         expect(result).toBeDefined();
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('strPrefixQuote should prepend quote', () => {
@@ -215,22 +251,32 @@ describe('JSON fuzzing functions', () => {
     it('cutComma should cut a comma from the available positions', async () => {
       const testValues = [1]; // Second comma (index 1)
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = cutComma(mockArrayNode);
         console.log(result);
         expect(result).toBeDefined();
         expect(result?.broken.commaCuts.size).toBe(1);
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('dupeComma should duplicate a comma', async () => {
       const testValues = [1]; // Second comma
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = dupeComma(mockArrayNode);
         expect(result).toBeDefined();
         expect(result?.broken.commaDupes).toBeDefined();
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('cutComma should return null when no commas remain', () => {
@@ -312,21 +358,31 @@ describe('JSON fuzzing functions', () => {
     it('cutColor should cut a colon', async () => {
       const testValues = [0];
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = cutColon(mockObjectNode);
         expect(result).toBeDefined();
         expect(result?.broken.colonCuts.size).toBe(1);
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('dupeColon should duplicate a colon', async () => {
       const testValues = [1];
 
-      await withMock(deps, 'random', mockRandom(testValues), () => {
+      const originalV = deps.random;
+      deps.random = mockRandom(testValues);
+
+      try {
         const result = dupeColon(mockObjectNode);
         expect(result).toBeDefined();
         expect(result?.broken.colonDupes).toBeDefined();
-      });
+      } finally {
+        deps.random = originalV;
+      }
     });
 
     it('cutColor should return null when no colons remain', () => {

@@ -1,10 +1,9 @@
-import { registry } from "antipattern";
-
-export const deps = registry({
+// Revert: manual dependency injection
+export const deps = {
   random() {
     return Math.random();
   },
-});
+};
 
 export function pickRandom<T>(arr: Array<T>): T {
   const index = randomIndex(arr);
