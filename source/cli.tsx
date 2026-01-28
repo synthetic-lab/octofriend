@@ -152,8 +152,10 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
       />,
+      {
+        exitOnCtrlC: false,
+      },
     );
-
     await waitUntilExit();
 
     console.log("\nApprox. tokens used:");
