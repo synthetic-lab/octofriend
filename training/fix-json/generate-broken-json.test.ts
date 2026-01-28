@@ -217,6 +217,7 @@ describe('JSON fuzzing functions', () => {
 
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = cutComma(mockArrayNode);
+        console.log(result);
         expect(result).toBeDefined();
         expect(result?.broken.commaCuts.size).toBe(1);
       });
@@ -255,6 +256,7 @@ describe('JSON fuzzing functions', () => {
 
     it('cutClose should cut closing bracket', () => {
       const result = cutClose(mockBracesNode);
+      console.log(result);
       expect(result?.broken.closeCut).toBe(true);
     });
 
