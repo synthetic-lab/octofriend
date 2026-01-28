@@ -34,6 +34,7 @@ export type Keymap<V> = Partial<Record<Hotkey, Item<V>>>;
 export type Item<V> = {
   label: string;
   value: V;
+  hotkey?: string;
 };
 
 /*
@@ -107,7 +108,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         pageItems.forEach((item, index) => {
           result.push({
             item: item,
-            shortcut: `${index}`,
+            shortcut: item.hotkey || `${(index + 1) % 10}`,
           });
         });
 
