@@ -75,7 +75,7 @@ const getLineInsertEnd = (text: string, lineIndex: number): number => {
 
 const getTargetPosition = (text: string, lineIndex: number, columnIndex: number): number => {
   const line = getLineText(text, lineIndex);
-  const targetCol = Math.min(columnIndex, line.length);
+  const targetCol = line.length === 0 ? 0 : Math.min(columnIndex, line.length - 1);
   return getLineStart(text, lineIndex) + targetCol;
 };
 
@@ -446,7 +446,10 @@ export function useVimKeyHandler(
           return vimCommandResult(cursorPosition, valueLength);
         },
         l: () => {
-          if (cursorPosition < valueLength - 1) {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
+
+          if (cursorPosition < lineEnd) {
             return vimCommandResult(cursorPosition + 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
