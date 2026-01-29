@@ -18,13 +18,13 @@ export function useEmacsKeyHandler() {
       currentValue: string,
       showCursor: boolean,
     ): EmacsResult {
-      // Ctrl+A: Beginning of line
-      if (key.ctrl && input === "a") {
+      // Ctrl+A or Home: Beginning of line
+      if ((key.ctrl && input === "a") || key.home) {
         return { consumed: true, newCursorPosition: 0 };
       }
 
-      // Ctrl+E: End of line
-      if (key.ctrl && input === "e") {
+      // Ctrl+E or End: End of line
+      if ((key.ctrl && input === "e") || key.end) {
         return { consumed: true, newCursorPosition: valueLength };
       }
 

@@ -604,7 +604,7 @@ export function useVimKeyHandler(
         },
       };
 
-      // Arrow keys redirect to vim commands
+      // Arrow keys and Home/End redirect to vim commands
       if (key.leftArrow) {
         return commands["h"]();
       }
@@ -619,6 +619,14 @@ export function useVimKeyHandler(
 
       if (key.downArrow) {
         return commands["j"]();
+      }
+
+      if (key.home) {
+        return commands["0"]();
+      }
+
+      if (key.end) {
+        return commands["$"]();
       }
 
       // Check character commands
