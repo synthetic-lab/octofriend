@@ -44,8 +44,8 @@ export function useEmacsKeyHandler() {
         return { consumed: true };
       }
 
-      // Meta+B: Back one word
-      if (key.meta && input === "b") {
+      // Meta+B or Ctrl+Left: Back one word
+      if ((key.meta && input === "b") || (key.ctrl && key.leftArrow)) {
         if (showCursor && cursorPosition > 0) {
           let wordStart = cursorPosition;
           // Skip whitespace
@@ -61,8 +61,8 @@ export function useEmacsKeyHandler() {
         return { consumed: true };
       }
 
-      // Meta+F: Forward one word
-      if (key.meta && input === "f") {
+      // Meta+F or Ctrl+Right: Forward one word
+      if ((key.meta && input === "f") || (key.ctrl && key.rightArrow)) {
         if (showCursor && cursorPosition < valueLength) {
           let wordEnd = cursorPosition;
           // Skip whitespace
