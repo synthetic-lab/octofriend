@@ -55,11 +55,48 @@ const getLineStart = (text: string, lineIndex: number): number => {
   return position;
 };
 
+const getLineEnd = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lines = text.split("\n");
+  const lineLength = lines[lineIndex]?.length || 0;
+  return lineStart + lineLength - 1;
+};
+
+const getLineText = (text: string, lineIndex: number): string => {
+  const lines = text.split("\n");
+  return lines[lineIndex] || "";
+};
+
+const getLineInsertEnd = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lineLength = getLineText(text, lineIndex).length;
+  return lineStart + lineLength;
+};
+
+const getTargetPosition = (text: string, lineIndex: number, columnIndex: number): number => {
+  const line = getLineText(text, lineIndex);
+  const targetCol = Math.min(columnIndex, line.length);
+  return getLineStart(text, lineIndex) + targetCol;
+};
+
+const getFirstNonWhitespacePosition = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lineEnd = getLineInsertEnd(text, lineIndex);
+
+  let position = lineStart;
+
+  while (position < lineEnd && isWhitespace(text[position])) {
+    position++;
+  }
+
+  return position;
+};
+
 const getLineRange = (text: string, cursorPosition: number): { start: number; end: number } => {
   const currentLineInfo = getLineInfo(text, cursorPosition);
   const start = getLineStart(text, currentLineInfo.lineIndex);
   const lines = text.split("\n");
-  const line = lines[currentLineInfo.lineIndex];
+  const line = getLineText(text, currentLineInfo.lineIndex);
   let end = start + line.length;
   if (currentLineInfo.lineIndex < lines.length - 1) {
     end += 1; // Include the newline character
@@ -169,14 +206,9 @@ const motions: Record<string, Motion> = {
     return { start: cursorPosition, end: lastCharPos + 1 };
   },
   "^": (text, cursorPosition) => {
-    let newCursorPosition = 0;
-    const textLength = text.length;
-
-    while (newCursorPosition < textLength && isWhitespace(text[newCursorPosition])) {
-      newCursorPosition++;
-    }
-
-    return { start: cursorPosition, end: newCursorPosition };
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    const position = getFirstNonWhitespacePosition(text, currentLineInfo.lineIndex);
+    return { start: cursorPosition, end: position };
   },
 };
 
@@ -416,14 +448,15 @@ export function useVimKeyHandler(
           return vimCommandResult(cursorPosition, valueLength);
         },
         k: () => {
-          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
 
           if (currentLineInfo.lineIndex > 0) {
             const targetLineIndex = currentLineInfo.lineIndex - 1;
-            const targetLine = lines[targetLineIndex];
-            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
-            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            const newCursorPosition = getTargetPosition(
+              currentValue,
+              targetLineIndex,
+              currentLineInfo.columnIndex,
+            );
             return vimCommandResult(newCursorPosition, valueLength);
           }
 
@@ -435,15 +468,18 @@ export function useVimKeyHandler(
 
           if (currentLineInfo.lineIndex < lines.length - 1) {
             const targetLineIndex = currentLineInfo.lineIndex + 1;
-            const targetLine = lines[targetLineIndex];
-            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
-            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            const newCursorPosition = getTargetPosition(
+              currentValue,
+              targetLineIndex,
+              currentLineInfo.columnIndex,
+            );
             return vimCommandResult(newCursorPosition, valueLength);
           }
 
           return vimCommandResult(cursorPosition, valueLength);
         },
         o: () => {
+          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
           const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex + 1);
           saveState(currentValue, cursorPosition);
@@ -581,26 +617,13 @@ export function useVimKeyHandler(
         },
         $: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-          const lines = currentValue.split("\n");
-          const currentLine = lines[currentLineInfo.lineIndex];
-          const lineEnd = lineStart + currentLine.length - 1;
+          const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
           return { consumed: true, newCursorPosition: lineEnd };
         },
         "^": () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-          const lines = currentValue.split("\n");
-          const currentLine = lines[currentLineInfo.lineIndex];
-          const lineEnd = lineStart + currentLine.length;
-
-          let newCursorPosition = lineStart;
-
-          while (newCursorPosition < lineEnd && isWhitespace(currentValue[newCursorPosition])) {
-            newCursorPosition++;
-          }
-
-          return { consumed: true, newCursorPosition };
+          const position = getFirstNonWhitespacePosition(currentValue, currentLineInfo.lineIndex);
+          return { consumed: true, newCursorPosition: position };
         },
         I: () => {
           enterInsertMode(currentValue, cursorPosition);
@@ -608,11 +631,11 @@ export function useVimKeyHandler(
         },
         A: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-          const lines = currentValue.split("\n");
-          const currentLine = lines[currentLineInfo.lineIndex];
           enterInsertMode(currentValue, cursorPosition);
-          return { consumed: true, newCursorPosition: lineStart + currentLine.length };
+          return {
+            consumed: true,
+            newCursorPosition: getLineInsertEnd(currentValue, currentLineInfo.lineIndex),
+          };
         },
       };
 
