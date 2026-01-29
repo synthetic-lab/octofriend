@@ -404,7 +404,9 @@ export function useVimKeyHandler(
           return { consumed: true, newCursorPosition };
         },
         h: () => {
-          if (cursorPosition > 0) {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          if (cursorPosition > lineStart) {
             return vimCommandResult(cursorPosition - 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
@@ -575,16 +577,28 @@ export function useVimKeyHandler(
           return vimCommandResult(vimPos, valueLength);
         },
         "0": () => {
-          return { consumed: true, newCursorPosition: 0 };
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          return { consumed: true, newCursorPosition: lineStart };
         },
         $: () => {
-          const lastCharPos = Math.max(0, valueLength - 1);
-          return { consumed: true, newCursorPosition: lastCharPos };
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          const lines = currentValue.split("\n");
+          const currentLine = lines[currentLineInfo.lineIndex];
+          const lineEnd = lineStart + currentLine.length - 1;
+          return { consumed: true, newCursorPosition: lineEnd };
         },
         "^": () => {
-          let newCursorPosition = 0;
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          const lines = currentValue.split("\n");
+          const currentLine = lines[currentLineInfo.lineIndex];
+          const lineEnd = lineStart + currentLine.length;
 
-          while (newCursorPosition < valueLength && isWhitespace(currentValue[newCursorPosition])) {
+          let newCursorPosition = lineStart;
+
+          while (newCursorPosition < lineEnd && isWhitespace(currentValue[newCursorPosition])) {
             newCursorPosition++;
           }
 
