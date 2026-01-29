@@ -630,8 +630,10 @@ export function useVimKeyHandler(
           return { consumed: true, newCursorPosition: position };
         },
         I: () => {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const position = getFirstNonWhitespacePosition(currentValue, currentLineInfo.lineIndex);
           enterInsertMode(currentValue, cursorPosition);
-          return { consumed: true, newCursorPosition: 0 };
+          return { consumed: true, newCursorPosition: position };
         },
         A: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
