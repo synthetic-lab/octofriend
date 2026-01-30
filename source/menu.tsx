@@ -1,6 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useContext } from "react";
 import { create } from "zustand";
-import { useInput, useApp, Text } from "ink";
+import { useInput, useApp, Text, Box } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
@@ -12,6 +12,9 @@ import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
+import * as path from "path";
+import { Transport } from "./transports/transport-common.ts";
+import { TransportContext } from "./transport-context.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -23,7 +26,8 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
-  | "clear-confirm";
+  | "clear-confirm"
+  | "create-octo-md";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -53,6 +57,7 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "create-octo-md") return <CreateOctoMdFlow />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -356,7 +361,8 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
-    | "clear-confirm";
+    | "clear-confirm"
+    | "create-octo-md";
 
   let items: Keymap<Value> = {
     m: {
@@ -370,6 +376,10 @@ function MainMenu() {
     o: {
       label: "✕ New conversation",
       value: "clear-confirm" as const,
+    },
+    c: {
+      label: "◎ Create OCTO.md",
+      value: "create-octo-md" as const,
     },
   };
 
@@ -736,4 +746,139 @@ function AddModelMenuFlow() {
       onOverrideDefaultApiKey={onOverrideDefaultApiKey}
     />
   );
+}
+
+type CreateOctoMdState =
+  | {
+      mode: "checking";
+    }
+  | {
+      mode: "confirm-create";
+    }
+  | {
+      mode: "confirm-update";
+    }
+  | {
+      mode: "sending-prompt";
+    };
+
+function CreateOctoMdFlow() {
+  const [state, setState] = React.useState<CreateOctoMdState>({ mode: "checking" });
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const { toggleMenu, input } = useAppStore(
+    useShallow(state => ({
+      toggleMenu: state.toggleMenu,
+      input: state.input,
+    })),
+  );
+  const config = useConfig();
+  const transport = useContext(TransportContext);
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  const checkIfOctoMdExists = useCallback(
+    async (workingDir: string) => {
+      try {
+        const octoMdPath = path.join(workingDir, "OCTO.md");
+        const exists = await transport.pathExists(new AbortController().signal, octoMdPath);
+        setState(exists ? { mode: "confirm-update" } : { mode: "confirm-create" });
+      } catch {
+        setState({ mode: "confirm-create" });
+      }
+    },
+    [transport],
+  );
+
+  const sendCreatePrompt = useCallback(async () => {
+    setState({ mode: "sending-prompt" });
+    setMenuMode("main-menu");
+    toggleMenu();
+    await input({
+      query:
+        "Create an OCTO.md file for this project. The file should contain project-specific instructions for me (Octo) to follow when working on this codebase. Analyze the project structure, package.json, and any existing configuration files to understand the codebase, then create comprehensive instructions.",
+      config,
+      transport,
+    });
+  }, [config, transport, setMenuMode, toggleMenu, input]);
+
+  const sendUpdatePrompt = useCallback(async () => {
+    setState({ mode: "sending-prompt" });
+    setMenuMode("main-menu");
+    toggleMenu();
+    await input({
+      query:
+        "Update the existing OCTO.md file for this project. Read the current OCTO.md file first, then enhance it with any missing or outdated information based on the current state of the codebase.",
+      config,
+      transport,
+    });
+  }, [config, transport, setMenuMode, toggleMenu, input]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const getCwd = async () => {
+      try {
+        const workingDir = await transport.cwd(controller.signal);
+        checkIfOctoMdExists(workingDir);
+      } catch {
+        setState({ mode: "confirm-create" });
+      }
+    };
+    getCwd();
+    return () => controller.abort();
+  }, [transport, checkIfOctoMdExists]);
+
+  if (state.mode === "checking") {
+    return (
+      <Box>
+        <Text>Checking for OCTO.md...</Text>
+      </Box>
+    );
+  }
+
+  if (state.mode === "confirm-create") {
+    return (
+      <Box flexDirection="column">
+        <Text>No OCTO.md found in this directory.</Text>
+        <Text>
+          Would you like to create one? I'll analyze the project and generate appropriate
+          instructions.
+        </Text>
+        <ConfirmDialog
+          confirmLabel="Create OCTO.md"
+          rejectLabel="Cancel"
+          onConfirm={sendCreatePrompt}
+          onReject={() => setMenuMode("main-menu")}
+          rejectFirst={true}
+        />
+      </Box>
+    );
+  }
+
+  if (state.mode === "confirm-update") {
+    return (
+      <Box flexDirection="column">
+        <Text>An OCTO.md file already exists.</Text>
+        <Text>
+          Would you like to update it? I'll read the current file and enhance it with any missing
+          information.
+        </Text>
+        <ConfirmDialog
+          confirmLabel="Update OCTO.md"
+          rejectLabel="Cancel"
+          onConfirm={sendUpdatePrompt}
+          onReject={() => setMenuMode("main-menu")}
+          rejectFirst={true}
+        />
+      </Box>
+    );
+  }
+
+  const _: "sending-prompt" = state.mode;
+  return null;
 }
