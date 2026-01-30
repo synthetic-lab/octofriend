@@ -905,8 +905,23 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
 
 function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
-  const file = fsOld.readFileSync(filePath, "utf8");
-  const lines = countLines(file);
+
+  let file: string;
+  let lines: number;
+  try {
+    file = fsOld.readFileSync(filePath, "utf8");
+    lines = countLines(file);
+  } catch (error) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text color="yellow">⚠️ Warning: Could not read original file</Text>
+        <Text color="gray">File not found: {filePath}</Text>
+        <Text>Octo wants to create the file (showing content as new):</Text>
+        <FileRenderer contents={text} filePath={filePath} />
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the end of the file:</Text>
@@ -973,6 +988,21 @@ function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
 
 function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> }) {
   const { text, filePath } = item.arguments;
+
+  let originalContent: string;
+  try {
+    originalContent = fsOld.readFileSync(filePath, "utf8");
+  } catch (error) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text color="yellow">⚠️ Warning: Could not read original file</Text>
+        <Text color="gray">File not found: {filePath}</Text>
+        <Text>Octo wants to create the file (showing content as new):</Text>
+        <FileRenderer contents={text} filePath={filePath} />
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the beginning of the file:</Text>
@@ -983,14 +1013,25 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
 
 function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath } = item.arguments;
+
+  let oldContent: string;
+  try {
+    oldContent = fsOld.readFileSync(filePath, "utf8");
+  } catch (error) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text color="red">⚠️ Warning: Could not display diff preview</Text>
+        <Text color="gray">File not found: {filePath}</Text>
+        <Text>Octo wants to rewrite the file (showing new content only):</Text>
+        <FileRenderer contents={text} filePath={filePath} />
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer
-        oldText={fsOld.readFileSync(filePath, "utf8")}
-        newText={text}
-        filepath={filePath}
-      />
+      <DiffRenderer oldText={oldContent} newText={text} filepath={filePath} />
     </Box>
   );
 }
