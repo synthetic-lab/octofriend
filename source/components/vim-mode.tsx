@@ -4,6 +4,15 @@ import type { Key } from "ink";
 import { useColor } from "../theme.ts";
 
 const isWhitespace = (char: string): boolean => /\s/.test(char);
+const isNewline = (char: string): boolean => char === "\n";
+
+const trimNewlinesFromEnd = (text: string, start: number, end: number): number => {
+  let trimmedEnd = end;
+  for (; trimmedEnd > start; trimmedEnd--) {
+    if (!isNewline(text[trimmedEnd - 1])) break;
+  }
+  return trimmedEnd;
+};
 
 const clampToVimBounds = (pos: number, textLength: number): number => {
   return Math.min(Math.max(0, pos), Math.max(0, textLength - 1));
