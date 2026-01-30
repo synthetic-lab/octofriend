@@ -1,9 +1,11 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useContext } from "react";
 import { create } from "zustand";
 import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
+import { TransportContext } from "./app.tsx";
+import { MODES } from "./modes.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
@@ -12,6 +14,7 @@ import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
+import * as logger from "./logger.ts";
 
 type MenuMode =
   | "main-menu"
@@ -23,7 +26,8 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
-  | "clear-confirm";
+  | "clear-confirm"
+  | "select-exit-mode";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -53,6 +57,7 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "select-exit-mode") return <SelectExitModeMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -327,12 +332,15 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu, notify } = useAppStore(
+  const { toggleMenu, notify, modeIndex } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
+      modeIndex: state.modeIndex,
     })),
   );
+  const currentMode = MODES[modeIndex];
+  const isPlanMode = currentMode === "plan";
 
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -342,6 +350,7 @@ function MainMenu() {
 
   const config = useConfig();
   const setConfig = useSetConfig();
+  const transport = useContext(TransportContext);
 
   useInput((_, key) => {
     if (key.escape) toggleMenu();
@@ -356,7 +365,8 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
-    | "clear-confirm";
+    | "clear-confirm"
+    | "exit-plan-mode";
 
   let items: Keymap<Value> = {
     m: {
@@ -421,6 +431,17 @@ function MainMenu() {
     };
   }
 
+  // Add exit plan mode option when in plan mode
+  if (isPlanMode) {
+    items = {
+      ...items,
+      p: {
+        label: "📋 Exit plan mode and implement",
+        value: "exit-plan-mode" as const,
+      },
+    };
+  }
+
   items = {
     ...items,
     b: {
@@ -447,9 +468,12 @@ function MainMenu() {
         notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
         return;
       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
-      else setMenuMode(item.value);
+      else if (item.value === "exit-plan-mode") {
+        setMenuMode("select-exit-mode");
+        return;
+      } else setMenuMode(item.value);
     },
-    [config, setConfig, notify],
+    [config, setConfig, notify, toggleMenu, transport],
   );
 
   return (
@@ -686,6 +710,74 @@ function RemoveModelMenu() {
     <KbShortcutPanel
       title="Which model do you want to remove?"
       shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function SelectExitModeMenu() {
+  const { exitPlanModeAndImplement, toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      exitPlanModeAndImplement: state.exitPlanModeAndImplement,
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  const config = useConfig();
+  const transport = useContext(TransportContext);
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  type ExitModeValue = "collaboration" | "unchained" | "back";
+
+  const items: Keymap<ExitModeValue> = {
+    c: {
+      label: "Collaboration mode - Ask before running edits/shell",
+      value: "collaboration",
+    },
+    u: {
+      label: "Unchained mode - Run edits/shell automatically",
+      value: "unchained",
+    },
+    b: {
+      label: "Back",
+      value: "back",
+    },
+  };
+
+  const onSelect = useCallback(
+    async (item: Item<ExitModeValue>) => {
+      if (item.value === "back") {
+        setMenuMode("main-menu");
+        return;
+      }
+
+      try {
+        await exitPlanModeAndImplement(config, transport, item.value);
+        setMenuMode("main-menu");
+        toggleMenu();
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logger.error("info", "Failed to exit plan mode", { error: errorMessage });
+        notify(`Failed to exit plan mode: ${errorMessage}`);
+      }
+    },
+    [config, exitPlanModeAndImplement, toggleMenu, transport, notify],
+  );
+
+  return (
+    <KbShortcutPanel
+      title="Which mode should Octo use to implement the plan?"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />
   );
