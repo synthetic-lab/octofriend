@@ -222,9 +222,16 @@ const motions: Record<string, Motion> = {
 };
 
 const operators: Record<string, Operator> = {
-  d: (text, { start, end }) => {
-    const actualEnd = Math.min(end, text.length);
+  d: (text, { start, end }, motionChar) => {
+    let actualEnd = Math.min(end, text.length);
     const actualStart = Math.min(start, actualEnd);
+
+    // Don't delete newlines at the end of the range for motion-based deletions (de, d$, etc.)
+    // But do delete newlines for line-based deletions (dd)
+    if (motionChar !== "d") {
+      actualEnd = trimNewlinesFromEnd(text, actualStart, actualEnd);
+    }
+
     const newText = text.slice(0, actualStart) + text.slice(actualEnd);
     let newCursorPosition = actualStart;
     if (newText.length === 0) {
@@ -232,6 +239,14 @@ const operators: Record<string, Operator> = {
     } else if (newCursorPosition >= newText.length) {
       newCursorPosition = newText.length - 1;
     }
+
+    // Don't leave the cursor on a newline character (unless it's line deletion)
+    if (motionChar !== "d") {
+      while (newCursorPosition > 0 && isNewline(newText[newCursorPosition])) {
+        newCursorPosition--;
+      }
+    }
+
     return { newText, newCursorPosition };
   },
   c: (text, { start, end }, motionChar) => {
