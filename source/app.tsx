@@ -914,7 +914,7 @@ function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   } catch (error) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="yellow">⚠️ Warning: Could not read original file</Text>
+        <Text color="yellow">Warning: Could not read original file</Text>
         <Text color="gray">File not found: {filePath}</Text>
         <Text>Octo wants to create the file (showing content as new):</Text>
         <FileRenderer contents={text} filePath={filePath} />
@@ -995,7 +995,7 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
   } catch (error) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="yellow">⚠️ Warning: Could not read original file</Text>
+        <Text color="yellow">Warning: Could not read original file</Text>
         <Text color="gray">File not found: {filePath}</Text>
         <Text>Octo wants to create the file (showing content as new):</Text>
         <FileRenderer contents={text} filePath={filePath} />
@@ -1020,7 +1020,7 @@ function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> })
   } catch (error) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text color="red">⚠️ Warning: Could not display diff preview</Text>
+        <Text color="red">Warning: Could not display diff preview</Text>
         <Text color="gray">File not found: {filePath}</Text>
         <Text>Octo wants to rewrite the file (showing new content only):</Text>
         <FileRenderer contents={text} filePath={filePath} />
