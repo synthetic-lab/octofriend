@@ -2,16 +2,17 @@ import React, { useCallback } from "react";
 import { create } from "zustand";
 import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "./state.ts";
+import { useAppStore, useModel } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
 import { readKeyForModel } from "./config.ts";
-import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
+import { keyFromName, SYNTHETIC_PROVIDER, providerForBaseUrl } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
+import { MenuQuotaIndicator, useQuotaData } from "./components/synthetic-quota-indicator.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -344,6 +345,10 @@ function MainMenu() {
 
   const config = useConfig();
   const setConfig = useSetConfig();
+  const quotaData = useQuotaData();
+  const model = useModel();
+  const provider = providerForBaseUrl(model.baseUrl);
+  const isSynthetic = provider === SYNTHETIC_PROVIDER;
 
   useInput((_, key) => {
     if (key.escape) toggleMenu();
@@ -464,7 +469,9 @@ function MainMenu() {
       title="Main Menu"
       shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
-    />
+    >
+      {isSynthetic ? <MenuQuotaIndicator quota={quotaData} /> : null}
+    </KbShortcutPanel>
   );
 }
 

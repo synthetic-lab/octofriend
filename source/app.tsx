@@ -63,6 +63,7 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
+import { QuotaProvider } from "./components/synthetic-quota-indicator.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
@@ -183,27 +184,29 @@ export default function App({
           <UnchainedContext.Provider value={isUnchained}>
             <TransportContext.Provider value={transport}>
               <CwdContext.Provider value={cwd}>
-                <ExitOnDoubleCtrlC>
-                  <TerminalSizeTracker>
-                    <Box flexDirection="column" width="100%" height="100%">
-                      <Static items={staticItems} key={clearNonce}>
-                        {(item, index) => (
-                          <StaticItemRenderer item={item} key={`static-${index}`} />
-                        )}
-                      </Static>
-                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                        (modeData.inflightResponse.reasoningContent ||
-                          modeData.inflightResponse.content) && (
-                          <MessageDisplay item={modeData.inflightResponse} />
-                        )}
-                      <BottomBar
-                        inputHistory={inputHistory}
-                        metadata={metadata}
-                        tempNotification={tempNotification}
-                      />
-                    </Box>
-                  </TerminalSizeTracker>
-                </ExitOnDoubleCtrlC>
+                <QuotaProvider>
+                  <ExitOnDoubleCtrlC>
+                    <TerminalSizeTracker>
+                      <Box flexDirection="column" width="100%" height="100%">
+                        <Static items={staticItems} key={clearNonce}>
+                          {(item, index) => (
+                            <StaticItemRenderer item={item} key={`static-${index}`} />
+                          )}
+                        </Static>
+                        {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                          (modeData.inflightResponse.reasoningContent ||
+                            modeData.inflightResponse.content) && (
+                            <MessageDisplay item={modeData.inflightResponse} />
+                          )}
+                        <BottomBar
+                          inputHistory={inputHistory}
+                          metadata={metadata}
+                          tempNotification={tempNotification}
+                        />
+                      </Box>
+                    </TerminalSizeTracker>
+                  </ExitOnDoubleCtrlC>
+                </QuotaProvider>
               </CwdContext.Provider>
             </TransportContext.Provider>
           </UnchainedContext.Provider>
