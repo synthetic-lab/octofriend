@@ -4,3 +4,4 @@ dist
 /training/fix-json/unfat/output
 .DS_Store
 *.DS_Store
+.plans/
