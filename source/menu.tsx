@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { create } from "zustand";
-import { useInput, useApp, Text } from "ink";
+import { useInput, useApp, Text, Box } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
@@ -12,6 +12,8 @@ import { readKeyForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
+import { TransportContext } from "./app.tsx";
+import { Transport } from "./transports/transport-common.ts";
 
 type MenuMode =
   | "main-menu"
@@ -23,7 +25,8 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
-  | "clear-confirm";
+  | "clear-confirm"
+  | "init-octo-md-confirm";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -53,6 +56,7 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "init-octo-md-confirm") return <InitOctoMdConfirm />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -327,21 +331,23 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu, notify } = useAppStore(
+  const { toggleMenu, notify, input } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
+      input: state.input,
     })),
   );
+
+  const config = useConfig();
+  const transport = React.useContext(TransportContext) as Transport;
+  const setConfig = useSetConfig();
 
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-
-  const config = useConfig();
-  const setConfig = useSetConfig();
 
   useInput((_, key) => {
     if (key.escape) toggleMenu();
@@ -356,7 +362,8 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
-    | "clear-confirm";
+    | "clear-confirm"
+    | "init-octo-md-trigger";
 
   let items: Keymap<Value> = {
     m: {
@@ -370,6 +377,10 @@ function MainMenu() {
     o: {
       label: "✕ New conversation",
       value: "clear-confirm" as const,
+    },
+    i: {
+      label: "◎ Create OCTO.md",
+      value: "init-octo-md-trigger" as const,
     },
   };
 
@@ -447,9 +458,11 @@ function MainMenu() {
         notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
         return;
       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
-      else setMenuMode(item.value);
+      else if (item.value === "init-octo-md-trigger") {
+        setMenuMode("init-octo-md-confirm");
+      } else setMenuMode(item.value);
     },
-    [config, setConfig, notify],
+    [config, setConfig, notify, toggleMenu, input, transport],
   );
 
   return (
@@ -734,6 +747,60 @@ function AddModelMenuFlow() {
       onComplete={onComplete}
       onCancel={onCancel}
       onOverrideDefaultApiKey={onOverrideDefaultApiKey}
+    />
+  );
+}
+
+function InitOctoMdConfirm() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const { toggleMenu, input } = useAppStore(
+    useShallow(state => ({
+      toggleMenu: state.toggleMenu,
+      input: state.input,
+    })),
+  );
+  const config = useConfig();
+  const transport = React.useContext(TransportContext) as Transport;
+  const [octoMdExists, setOctoMdExists] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const { fileExists } = await import("./fs-utils.ts");
+      const exists = await fileExists("OCTO.md");
+      setOctoMdExists(exists);
+    })();
+  }, []);
+
+  if (octoMdExists === null) {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text>Checking for existing OCTO.md...</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <ConfirmDialog
+      title={octoMdExists ? "OCTO.md already exists" : "Create OCTO.md"}
+      message={
+        octoMdExists
+          ? "There is already an OCTO.md file in this directory. Do you want to update it with improved context?"
+          : "Octo will analyze the project and create an OCTO.md file with helpful context for future conversations."
+      }
+      confirmLabel={octoMdExists ? "Yes, update it" : "Yes, create it"}
+      rejectLabel="Never mind"
+      onConfirm={async () => {
+        setMenuMode("main-menu");
+        toggleMenu();
+        await input({ config, query: "/init", transport });
+      }}
+      onReject={() => {
+        setMenuMode("main-menu");
+      }}
     />
   );
 }

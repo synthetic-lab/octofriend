@@ -118,6 +118,44 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
 
   input: async ({ config, query, transport }) => {
+    if (query === "/init") {
+      const { fileExists } = await import("./fs-utils.ts");
+      const octoMdExists = await fileExists("OCTO.md");
+
+      if (octoMdExists) {
+        query = `There is already an OCTO.md file in this directory. Please review it and update it to be more helpful and comprehensive.
+
+You should:
+1. First, read the existing OCTO.md to understand what's already there
+2. Explore the project structure using the list tool to understand the codebase
+3. Read key files like package.json, README.md, or similar to understand the project's purpose, dependencies, and architecture
+4. Update the OCTO.md file with improved or missing context including:
+   - What this project is about
+   - Tech stack and key dependencies
+   - Project structure overview
+   - Build/test/development commands
+   - Any coding conventions or guidelines specific to this project
+   - Helpful tips for working effectively with this codebase
+
+Use the rewrite tool to update the OCTO.md file. Focus on actionable, specific guidance rather than generic advice. Keep existing good content and improve or expand on it.`;
+      } else {
+        query = `Please analyze the current project and create an OCTO.md file. 
+
+You should:
+1. First, explore the project structure using the list tool to understand the codebase
+2. Read key files like package.json, README.md, or similar to understand the project's purpose, dependencies, and architecture
+3. Create an OCTO.md file with helpful context including:
+   - What this project is about
+   - Tech stack and key dependencies
+   - Project structure overview
+   - Build/test/development commands
+   - Any coding conventions or guidelines specific to this project
+   - Helpful tips for working effectively with this codebase
+
+The OCTO.md should be useful for an AI assistant like me to help with future tasks in this project. Focus on actionable, specific guidance rather than generic advice.`;
+      }
+    }
+
     const userMessage: UserItem = {
       type: "user",
       id: sequenceId(),

@@ -111,7 +111,7 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-const TransportContext = createContext<Transport>(new LocalTransport());
+export const TransportContext = createContext<Transport>(new LocalTransport());
 
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";

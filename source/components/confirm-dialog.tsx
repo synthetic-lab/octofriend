@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Box } from "ink";
+import { Box, Text, useInput } from "ink";
 import { KbShortcutSelect, Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 
 export function ConfirmDialog({
@@ -8,12 +8,16 @@ export function ConfirmDialog({
   onConfirm,
   onReject,
   rejectFirst = false,
+  title,
+  message,
 }: {
   confirmLabel: string;
   rejectLabel: string;
   onConfirm: () => any;
   onReject: () => any;
   rejectFirst?: boolean;
+  title?: string;
+  message?: string;
 }) {
   const items = [
     {
@@ -47,9 +51,19 @@ export function ConfirmDialog({
     return onReject();
   }, []);
 
+  useInput((_, key) => {
+    if (key.escape) {
+      onReject();
+    }
+  });
+
   return (
-    <Box justifyContent="center">
-      <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
+    <Box flexDirection="column" gap={1}>
+      {title && <Text bold>{title}</Text>}
+      {message && <Text>{message}</Text>}
+      <Box justifyContent="center">
+        <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
+      </Box>
     </Box>
   );
 }
