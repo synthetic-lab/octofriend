@@ -191,13 +191,7 @@ export default function TextInput({
         // Vim didn't consume it, continue with normal processing
       }
 
-      if (
-        key.upArrow ||
-        key.downArrow ||
-        (key.ctrl && input === "c") ||
-        key.tab ||
-        (key.shift && key.tab)
-      ) {
+      if (key.upArrow || key.downArrow || key.ctrl || key.tab || (key.shift && key.tab)) {
         return;
       }
 
