@@ -527,7 +527,6 @@ export function useVimKeyHandler(
           return vimCommandResult(cursorPosition, valueLength);
         },
         o: () => {
-          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
           const insertPosition = getLineStart(currentValue, currentLineInfo.lineIndex + 1);
           saveState(currentValue, cursorPosition);
