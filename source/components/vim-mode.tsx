@@ -676,6 +676,20 @@ export function useVimKeyHandler(
             newCursorPosition: getLineInsertEnd(currentValue, currentLineInfo.lineIndex),
           };
         },
+        D: () => {
+          saveState(currentValue, cursorPosition);
+          const range = motions["$"](currentValue, cursorPosition);
+          const result = operators["d"](currentValue, range, "$");
+
+          return {
+            consumed: true,
+            newValue: result.newText,
+            newCursorPosition: clampToVimBounds(
+              result.newCursorPosition ?? cursorPosition,
+              result.newText.length,
+            ),
+          };
+        },
       };
 
       // Arrow keys redirect to vim commands
