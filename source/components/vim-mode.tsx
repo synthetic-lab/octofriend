@@ -213,8 +213,9 @@ const motions: Record<string, Motion> = {
     return { start: lineStart, end: cursorPosition };
   },
   $: (text, cursorPosition) => {
-    const lastCharPos = Math.max(0, text.length - 1);
-    return { start: cursorPosition, end: lastCharPos + 1 };
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    const lineEnd = getLineEnd(text, currentLineInfo.lineIndex);
+    return { start: cursorPosition, end: lineEnd + 1 };
   },
   "^": (text, cursorPosition) => {
     const currentLineInfo = getLineInfo(text, cursorPosition);
