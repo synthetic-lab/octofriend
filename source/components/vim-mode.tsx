@@ -465,6 +465,15 @@ export function useVimKeyHandler(
           return { consumed: true };
         },
         a: () => {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+
+          // If the line is empty (just a newline), "a" should behave like "i"
+          if (currentLine.length === 0) {
+            enterInsertMode(currentValue, cursorPosition);
+            return { consumed: true };
+          }
+
           const newCursorPosition = Math.min(valueLength, cursorPosition + 1);
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true, newCursorPosition };
