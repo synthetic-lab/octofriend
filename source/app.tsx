@@ -64,6 +64,11 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
+import {
+  SyntheticQuotaIndicator,
+  useSyntheticQuotaWithModeRefresh,
+  type QuotaData,
+} from "./components/synthetic-quota-indicator.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
@@ -227,6 +232,10 @@ function BottomBar({
       modeData: state.modeData,
     })),
   );
+  const quotaData = useSyntheticQuotaWithModeRefresh(modeData.mode);
+
+  const vimEnabled = useConfig().vimEmulation?.enabled;
+  const vimMode = vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
 
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
@@ -260,7 +269,11 @@ function BottomBar({
 
   return (
     <Box flexDirection="column" width="100%">
-      <BottomBarContent inputHistory={inputHistory} />
+      <BottomBarContent
+        inputHistory={inputHistory}
+        quotaData={quotaData}
+        versionCheck={versionCheck}
+      />
       <Box width="100%" justifyContent="space-between" height={1} flexShrink={0} flexGrow={1}>
         <Box height={1}>
           <Text color={themeColor}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Text>
@@ -271,7 +284,12 @@ function BottomBar({
             </Text>
           )}
         </Box>
-        <Text color={themeColor}>{versionCheck}</Text>
+        <Box>
+          {!versionCheck && !(vimEnabled && vimMode === "INSERT") && (
+            <SyntheticQuotaIndicator quota={quotaData} />
+          )}
+          <Text color={themeColor}>{versionCheck}</Text>
+        </Box>
       </Box>
       <Box minHeight={1}>
         {displayedTempNotification && (
@@ -302,7 +320,15 @@ async function getLatestVersion() {
   }
 }
 
-function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+function BottomBarContent({
+  inputHistory,
+  quotaData,
+  versionCheck,
+}: {
+  inputHistory: InputHistory;
+  quotaData: QuotaData | null;
+  versionCheck: string;
+}) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const vimEnabled = !!config.vimEmulation?.enabled;
@@ -440,7 +466,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         vimMode={vimMode}
         setVimMode={setVimMode}
       />
-      <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+      {vimEnabled && vimMode === "INSERT" ? (
+        <Box width="100%" justifyContent="space-between">
+          <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+          {!versionCheck && <SyntheticQuotaIndicator quota={quotaData} />}
+        </Box>
+      ) : (
+        <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+      )}
     </Box>
   );
 }
