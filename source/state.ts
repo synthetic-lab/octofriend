@@ -6,7 +6,8 @@ import {
   CompactionCheckpointItem,
   sequenceId,
 } from "./history.ts";
-import { runTool, ToolError } from "./tools/index.ts";
+import { runTool, ToolError, loadTools, PLAN_MODE_TOOLS } from "./tools/index.ts";
+import { MODES, PlanModeConfig } from "./modes.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
@@ -17,7 +18,8 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-import { loadTools } from "./tools/index.ts";
+import * as logger from "./logger.ts";
+import { displayPath } from "./str.ts";
 
 export type RunArgs = {
   config: Config;
@@ -86,6 +88,9 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
+  modeIndex: number; // Index into MODES array
+  activePlanFilePath: string | null; // Path currently being used by agent tools (active mode)
+  sessionPlanFilePath: string | null; // Path allocated for this session (survives mode switches)
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -104,6 +109,14 @@ export type UiState = {
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
   clearHistory: () => void;
+  setActivePlanFilePath: (path: string | null) => void;
+  setSessionPlanFilePath: (path: string | null) => void;
+  setModeIndex: (index: number) => void;
+  exitPlanModeAndImplement: (
+    config: Config,
+    transport: Transport,
+    targetMode: "collaboration" | "unchained",
+  ) => Promise<void>;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -116,6 +129,9 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
+  modeIndex: 0,
+  activePlanFilePath: null,
+  sessionPlanFilePath: null,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -242,12 +258,89 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [],
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
+      sessionPlanFilePath: null,
+      activePlanFilePath: null,
     }));
+  },
+
+  setActivePlanFilePath: (path: string | null) => {
+    set({ activePlanFilePath: path });
+  },
+
+  setSessionPlanFilePath: (path: string | null) => {
+    set({ sessionPlanFilePath: path });
+  },
+
+  setModeIndex: (index: number) => {
+    set({
+      modeIndex: index,
+    });
+  },
+
+  exitPlanModeAndImplement: async (
+    config: Config,
+    transport: Transport,
+    targetMode: "collaboration" | "unchained",
+  ) => {
+    const { clearHistory, notify, input, activePlanFilePath } = get();
+
+    if (!activePlanFilePath) {
+      notify("No plan file available. Cannot exit plan mode.");
+      return;
+    }
+
+    // Read the plan file content
+    let planContent = "";
+    try {
+      const signal = new AbortController().signal;
+      planContent = await transport.readFile(signal, activePlanFilePath);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to read plan file in exitPlanModeAndImplement", {
+        activePlanFilePath,
+        error: errorMessage,
+      });
+      notify(
+        `Failed to read plan file at ${displayPath(activePlanFilePath)}. Please try again or describe what you want to implement.`,
+      );
+      return;
+    }
+
+    const modeName = targetMode === "collaboration" ? "Collaboration" : "Unchained";
+
+    const modeIndex = MODES.indexOf(targetMode);
+
+    clearHistory();
+    set({
+      modeIndex,
+      activePlanFilePath: null,
+      modeData: { mode: "input", vimMode: "INSERT" },
+    });
+
+    if (planContent) {
+      notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
+    } else {
+      notify(
+        `Exited plan mode. Entering ${modeName} mode. No plan content found - please describe what you want to implement.`,
+      );
+    }
+
+    if (planContent) {
+      await input({
+        config,
+        transport,
+        query: `Please implement the following plan:\n\n${planContent}`,
+      });
+    }
   },
 
   runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
+    const currentMode = MODES[get().modeIndex];
+    const isPlanMode = currentMode === "plan";
+    const { activePlanFilePath } = get();
+
     set({
       modeData: {
         mode: "tool-waiting",
@@ -255,7 +348,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     });
 
-    const tools = await loadTools(transport, abortController.signal, config);
+    const tools = await loadTools(
+      transport,
+      abortController.signal,
+      config,
+      isPlanMode ? PLAN_MODE_TOOLS : undefined,
+      isPlanMode ? activePlanFilePath : null,
+    );
+
     try {
       const result = await runTool(
         abortController.signal,
@@ -266,15 +366,25 @@ export const useAppStore = create<UiState>((set, get) => ({
         modelOverride,
       );
 
-      const toolHistoryItem: HistoryItem = {
-        type: "tool-output",
-        id: sequenceId(),
-        result,
-        toolCallId: toolReq.toolCallId,
-      };
+      let toolHistoryItem: HistoryItem;
+      if (toolReq.function.name === "write-plan") {
+        // write-plan tool is only loaded when activePlanFilePath is non-null
+        toolHistoryItem = {
+          type: "plan-written",
+          id: sequenceId(),
+          planFilePath: activePlanFilePath!,
+          content: result != null && "content" in result ? result.content : String(result),
+        };
+      } else {
+        toolHistoryItem = {
+          type: "tool-output",
+          id: sequenceId(),
+          result,
+          toolCallId: toolReq.toolCallId,
+        };
+      }
 
       const history: HistoryItem[] = [...get().history, toolHistoryItem];
-
       set({ history });
     } catch (e) {
       const history = [
@@ -297,6 +407,12 @@ export const useAppStore = create<UiState>((set, get) => ({
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
+    const currentMode = MODES[get().modeIndex];
+    const isPlanMode = currentMode === "plan";
+    const { activePlanFilePath } = get();
+    const planModeConfig: PlanModeConfig = isPlanMode
+      ? { isPlanMode: true, planFilePath: activePlanFilePath }
+      : { isPlanMode: false };
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
 
@@ -308,6 +424,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         config,
         transport,
         abortSignal: abortController.signal,
+        planModeConfig,
         handler: {
           startResponse: () => {
             throttle.flush();
@@ -497,7 +614,13 @@ async function tryTransformToolError(
         error:
           "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
-    } catch {
+    } catch (readErr) {
+      const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
+      logger.error("info", "FileTracker.readUntracked failed during file-outdated check", {
+        filePath: e.filePath,
+        toolName: toolReq.function.name,
+        error: errorMessage,
+      });
       return {
         type: "file-unreadable",
         path: e.filePath,
