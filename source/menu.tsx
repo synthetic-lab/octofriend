@@ -332,11 +332,12 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu, notify, modeIndex } = useAppStore(
+  const { toggleMenu, notify, modeIndex, activePlanFilePath } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
       modeIndex: state.modeIndex,
+      activePlanFilePath: state.activePlanFilePath,
     })),
   );
   const currentMode = MODES[modeIndex];
@@ -431,8 +432,8 @@ function MainMenu() {
     };
   }
 
-  // Add exit plan mode option when in plan mode
-  if (isPlanMode) {
+  // Add exit plan mode option when in plan mode and there's an active plan
+  if (isPlanMode && activePlanFilePath) {
     items = {
       ...items,
       p: {

@@ -414,6 +414,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     query,
     setQuery,
     exitPlanModeAndImplement,
+    activePlanFilePath,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -426,6 +427,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       query: state.query,
       setQuery: state.setQuery,
       exitPlanModeAndImplement: state.exitPlanModeAndImplement,
+      activePlanFilePath: state.activePlanFilePath,
     })),
   );
 
@@ -456,12 +458,16 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     if (isPlanMode && key.ctrl && modeData.mode === "input") {
       if (input === "u") {
         // Exit to unchained mode (fire and forget)
-        exitPlanModeAndImplement(config, transport, "unchained");
+        if (activePlanFilePath) {
+          exitPlanModeAndImplement(config, transport, "unchained");
+        }
         return;
       }
       if (input === "c") {
         // Exit to collaboration mode (fire and forget)
-        exitPlanModeAndImplement(config, transport, "collaboration");
+        if (activePlanFilePath) {
+          exitPlanModeAndImplement(config, transport, "collaboration");
+        }
         return;
       }
     }
@@ -542,7 +548,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">
-          {isPlanMode
+          {isPlanMode && activePlanFilePath
             ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+C: collab)"
             : "(Ctrl+p to enter the menu)"}
         </Text>
