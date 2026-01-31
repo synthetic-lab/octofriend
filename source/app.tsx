@@ -141,6 +141,7 @@ export default function App({
     sessionPlanFilePath,
     setSessionPlanFilePath,
     notify,
+    activePlanFilePath,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -153,6 +154,7 @@ export default function App({
       sessionPlanFilePath: state.sessionPlanFilePath,
       setSessionPlanFilePath: state.setSessionPlanFilePath,
       notify: state.notify,
+      activePlanFilePath: state.activePlanFilePath,
     })),
   );
 
@@ -279,6 +281,7 @@ export default function App({
                         metadata={metadata}
                         tempNotification={tempNotification}
                         currentMode={currentMode}
+                        activePlanFilePath={activePlanFilePath}
                       />
                     </Box>
                   </TerminalSizeTracker>
@@ -297,11 +300,13 @@ function BottomBar({
   metadata,
   tempNotification,
   currentMode,
+  activePlanFilePath,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
   currentMode: ModeType;
+  activePlanFilePath: string | null;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
 
@@ -349,7 +354,7 @@ function BottomBar({
       case "unchained":
         return "⚡ Unchained mode";
       case "plan":
-        return "📋 Plan mode";
+        return activePlanFilePath ? "📋 Plan mode" : "📋 Plan mode (initializing...)";
       default:
         return "Collaboration mode";
     }
