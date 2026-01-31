@@ -604,7 +604,16 @@ export function useVimKeyHandler(
         },
       };
 
-      // Arrow keys redirect to vim commands
+      // Ctrl+Arrow keys redirect to vim word navigation (check before regular arrows)
+      if (key.ctrl && key.leftArrow) {
+        return commands["b"]();
+      }
+
+      if (key.ctrl && key.rightArrow) {
+        return commands["e"]();
+      }
+
+      // Arrow keys and Home/End redirect to vim commands
       if (key.leftArrow) {
         return commands["h"]();
       }
@@ -619,6 +628,14 @@ export function useVimKeyHandler(
 
       if (key.downArrow) {
         return commands["j"]();
+      }
+
+      if (key.home) {
+        return commands["0"]();
+      }
+
+      if (key.end) {
+        return commands["$"]();
       }
 
       // Check character commands
