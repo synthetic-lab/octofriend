@@ -29,11 +29,17 @@ function isExpectedGitError(e: unknown): boolean {
 export async function getPlanFilePath(transport: Transport, signal: AbortSignal): Promise<string> {
   try {
     const branch = await transport.shell(signal, "git branch --show-current", 5000);
-    const sanitized = branch.trim().replace(/[^a-zA-Z0-9_-]/g, "-");
+    const trimmed = branch.trim();
+    // Handle detached HEAD or other cases where branch name is empty
+    if (!trimmed) {
+      throw new Error("Empty branch name");
+    }
+    const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, "-");
     const uniqueId = generateUniqueId();
     return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
   } catch (e) {
-    if (!isExpectedGitError(e)) throw e;
+    if (!isExpectedGitError(e) && !(e instanceof Error && e.message === "Empty branch name"))
+      throw e;
     const cwd = await transport.cwd(signal);
     const dirName = path.basename(cwd);
     const sanitized = dirName.replace(/[^a-zA-Z0-9_-]/g, "-");

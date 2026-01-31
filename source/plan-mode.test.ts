@@ -93,12 +93,13 @@ describe("getPlanFilePath", () => {
   it("handles empty branch name (edge case) with unique ID", async () => {
     const transport = createMockTransport({
       shell: vi.fn().mockResolvedValue("\n"),
+      cwd: vi.fn().mockResolvedValue("/path/to/my-project"),
     });
 
     const result = await getPlanFilePath(transport, signal);
 
-    // Empty branch name results in just the unique ID
-    expect(result).toMatch(/^\.plans\/-[a-z0-9]{6}\.md$/);
+    // Empty branch name falls back to directory name
+    expect(result).toMatch(/^\.plans\/my-project-[a-z0-9]{6}\.md$/);
   });
 
   it("generates unique IDs for different calls", async () => {
