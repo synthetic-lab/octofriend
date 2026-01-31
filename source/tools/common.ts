@@ -50,7 +50,12 @@ export type ToolResult = {
 export type ToolDef<T> = {
   ArgumentsSchema: t.Type<any>;
   Schema: t.Type<T>;
-  validate: (abortSignal: AbortSignal, transport: Transport, t: T, cfg: Config) => Promise<null>;
+  validate: (
+    abortSignal: AbortSignal,
+    transport: Transport,
+    t: T,
+    cfg: Config,
+  ) => Promise<null | ToolError>;
   run: (
     abortSignal: AbortSignal,
     transport: Transport,
