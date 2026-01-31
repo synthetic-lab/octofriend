@@ -3,6 +3,9 @@ import { Box, Text, useInput } from "ink";
 import { useTaskStore, useTaskStoreShallow, Task, TaskProgress } from "../task-manager.ts";
 import { useColor } from "../theme.ts";
 
+// Delay before clearing completed tasks from the list (ms)
+const CLEAR_COMPLETED_DELAY = 3000;
+
 // Tree drawing characters
 const TREE_BRANCH = "├─";
 const TREE_LAST = "└─";
@@ -130,6 +133,21 @@ export function TaskList() {
       closeTaskList();
     }
   });
+
+  // Auto-clear completed/failed/cancelled tasks after a delay
+  React.useEffect(() => {
+    const completedTasks = taskList.filter(
+      t => t.status === "completed" || t.status === "failed" || t.status === "cancelled",
+    );
+
+    if (completedTasks.length === 0) return;
+
+    const timer = setTimeout(() => {
+      useTaskStore.getState().clearCompletedTasks();
+    }, CLEAR_COMPLETED_DELAY);
+
+    return () => clearTimeout(timer);
+  }, [taskList]);
 
   // Compact view when closed - show summary line
   if (!showTaskList) {
