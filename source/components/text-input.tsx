@@ -154,6 +154,11 @@ export default function TextInput({
     (input, key) => {
       if (isInitializing) return;
 
+      // Prevent Ctrl+p from being typed into input (it opens the menu)
+      if (key.ctrl && input === "p") {
+        return;
+      }
+
       const currentValue = valueRef.current;
       const previousCursorOffset = cursorOffsetRef.current;
       const previousCursorWidth = cursorWidthRef.current;
