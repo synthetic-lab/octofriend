@@ -17,7 +17,7 @@ type QuotaResponse = {
       renewsAt: string;
     };
   };
-  toolCalls: {
+  toolCallDiscounts: {
     limit: number;
     requests: number;
     renewsAt: string;
@@ -33,7 +33,7 @@ type QuotaEntry = {
 type QuotaData = {
   subscription: QuotaEntry;
   search: QuotaEntry;
-  toolCalls: QuotaEntry;
+  toolCallDiscounts: QuotaEntry;
   loading: boolean;
   error: boolean;
 };
@@ -46,7 +46,7 @@ export function useSyntheticQuotaData(refreshTrigger: number): QuotaData | null 
   const [quota, setQuota] = useState<QuotaData>({
     subscription: { used: 0, limit: 0, renewsAt: null },
     search: { used: 0, limit: 0, renewsAt: null },
-    toolCalls: { used: 0, limit: 0, renewsAt: null },
+    toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
     loading: true,
     error: false,
   });
@@ -89,7 +89,7 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
       return {
         subscription: { used: 0, limit: 0, renewsAt: null },
         search: { used: 0, limit: 0, renewsAt: null },
-        toolCalls: { used: 0, limit: 0, renewsAt: null },
+        toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
         loading: false,
         error: true,
       };
@@ -107,10 +107,10 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
         limit: data.search.hourly.limit,
         renewsAt: new Date(data.search.hourly.renewsAt),
       },
-      toolCalls: {
-        used: data.toolCalls.requests,
-        limit: data.toolCalls.limit,
-        renewsAt: new Date(data.toolCalls.renewsAt),
+      toolCallDiscounts: {
+        used: data.toolCallDiscounts.requests,
+        limit: data.toolCallDiscounts.limit,
+        renewsAt: new Date(data.toolCallDiscounts.renewsAt),
       },
       loading: false,
       error: false,
@@ -119,7 +119,7 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
     return {
       subscription: { used: 0, limit: 0, renewsAt: null },
       search: { used: 0, limit: 0, renewsAt: null },
-      toolCalls: { used: 0, limit: 0, renewsAt: null },
+      toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
       loading: false,
       error: true,
     };
@@ -161,7 +161,8 @@ export const SyntheticQuotaIndicator = React.memo(({ quota }: { quota: QuotaData
   return (
     <Text color="gray">
       <QuotaLabel label="R" quota={quota.subscription} />{" "}
-      <QuotaLabel label="S" quota={quota.search} /> <QuotaLabel label="T" quota={quota.toolCalls} />
+      <QuotaLabel label="S" quota={quota.search} />{" "}
+      <QuotaLabel label="T" quota={quota.toolCallDiscounts} />
     </Text>
   );
 });
