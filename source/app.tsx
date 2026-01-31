@@ -415,6 +415,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setQuery,
     exitPlanModeAndImplement,
     activePlanFilePath,
+    history,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -428,8 +429,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setQuery: state.setQuery,
       exitPlanModeAndImplement: state.exitPlanModeAndImplement,
       activePlanFilePath: state.activePlanFilePath,
+      history: state.history,
     })),
   );
+
+  const hasPlanBeenWritten = history.some(item => item.type === "plan-written");
 
   const vimMode = vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
 
@@ -548,7 +552,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">
-          {isPlanMode && activePlanFilePath
+          {isPlanMode && activePlanFilePath && hasPlanBeenWritten
             ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+C: collab)"
             : "(Ctrl+p to enter the menu)"}
         </Text>
