@@ -437,7 +437,7 @@ function MainMenu() {
     items = {
       ...items,
       p: {
-        label: "📋 Exit plan mode and implement",
+        label: "Exit plan mode and implement",
         value: "exit-plan-mode" as const,
       },
     };
