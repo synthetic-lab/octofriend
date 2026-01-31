@@ -363,6 +363,94 @@ describe("runTool", () => {
     // Should convert non-content result to string
     expect(planWrittenItem).toHaveProperty("content");
   });
+
+  it("falls back to captured activePlanFilePath when store value is cleared during write-plan", async () => {
+    useAppStore.setState({
+      modeIndex: MODES.indexOf("plan"),
+      activePlanFilePath: "/plans/test.md",
+    });
+
+    // Simulate a race condition: another UI event clears activePlanFilePath during tool execution
+    vi.spyOn(toolsModule, "runTool").mockImplementation(async () => {
+      useAppStore.setState({ activePlanFilePath: null });
+      return { content: "plan content", lines: 1 } as ToolResult;
+    });
+
+    const toolReq = createToolRequest("write-plan", { content: "plan content" });
+
+    const store = useAppStore.getState();
+    await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
+
+    const history = useAppStore.getState().history;
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
+
+    expect(planWrittenItem).toBeDefined();
+    expect(planWrittenItem).toMatchObject({
+      type: "plan-written",
+      planFilePath: "/plans/test.md",
+      content: "plan content",
+    });
+  });
+
+  it("prefers current store activePlanFilePath over captured value for write-plan", async () => {
+    useAppStore.setState({
+      modeIndex: MODES.indexOf("plan"),
+      activePlanFilePath: "/plans/old.md",
+    });
+
+    // Store value changes to a new path during tool execution
+    vi.spyOn(toolsModule, "runTool").mockImplementation(async () => {
+      useAppStore.setState({ activePlanFilePath: "/plans/new.md" });
+      return { content: "plan content", lines: 1 } as ToolResult;
+    });
+
+    const toolReq = createToolRequest("write-plan", { content: "plan content" });
+
+    const store = useAppStore.getState();
+    await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
+
+    const history = useAppStore.getState().history;
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
+
+    expect(planWrittenItem).toBeDefined();
+    expect(planWrittenItem).toMatchObject({
+      type: "plan-written",
+      planFilePath: "/plans/new.md",
+      content: "plan content",
+    });
+  });
+
+  it("creates tool-failed when activePlanFilePath is null for write-plan", async () => {
+    useAppStore.setState({
+      modeIndex: MODES.indexOf("plan"),
+      activePlanFilePath: null,
+    });
+
+    vi.spyOn(toolsModule, "runTool").mockResolvedValue({
+      content: "plan content",
+      lines: 1,
+    } as ToolResult);
+
+    const toolReq = createToolRequest("write-plan", { content: "plan content" }, "call-null");
+
+    const store = useAppStore.getState();
+    await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
+
+    const history = useAppStore.getState().history;
+    const toolFailedItem = history.find((item: HistoryItem) => item.type === "tool-failed");
+
+    expect(toolFailedItem).toBeDefined();
+    expect(toolFailedItem).toMatchObject({
+      type: "tool-failed",
+      error: "Plan file path became unavailable during write. Please retry.",
+      toolCallId: "call-null",
+      toolName: "write-plan",
+    });
+
+    // Should NOT have a plan-written item
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
+    expect(planWrittenItem).toBeUndefined();
+  });
 });
 
 describe("exitPlanModeAndImplement", () => {

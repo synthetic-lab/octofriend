@@ -319,18 +319,15 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     if (planContent) {
       notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
-    } else {
-      notify(
-        `Exited plan mode. Entering ${modeName} mode. No plan content found - please describe what you want to implement.`,
-      );
-    }
-
-    if (planContent) {
       await input({
         config,
         transport,
         query: `Please implement the following plan:\n\n${planContent}`,
       });
+    } else {
+      notify(
+        `Exited plan mode. Entering ${modeName} mode. No plan content found - please describe what you want to implement.`,
+      );
     }
   },
 
@@ -368,11 +365,14 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       let toolHistoryItem: HistoryItem;
       if (toolReq.function.name === "write-plan") {
-        // write-plan tool is only loaded when activePlanFilePath is non-null
+        const planPath = get().activePlanFilePath ?? activePlanFilePath;
+        if (!planPath) {
+          throw new ToolError("Plan file path became unavailable during write. Please retry.");
+        }
         toolHistoryItem = {
           type: "plan-written",
           id: sequenceId(),
-          planFilePath: activePlanFilePath!,
+          planFilePath: planPath,
           content: result != null && "content" in result ? result.content : String(result),
         };
       } else {

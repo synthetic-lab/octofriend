@@ -31,24 +31,24 @@ function shouldFallbackToCwd(e: unknown): boolean {
   return isExpectedGitError(e) || (e instanceof Error && e.message === EMPTY_BRANCH_ERROR);
 }
 
+function buildPlanPath(name: string): string {
+  const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, "-");
+  const uniqueId = generateUniqueId();
+  return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
+}
+
 export async function getPlanFilePath(transport: Transport, signal: AbortSignal): Promise<string> {
   try {
     const branch = await transport.shell(signal, "git branch --show-current", 5000);
     const trimmed = branch.trim();
-    // Handle detached HEAD or other cases where branch name is empty
     if (!trimmed) {
       throw new Error(EMPTY_BRANCH_ERROR);
     }
-    const sanitized = trimmed.replace(/[^a-zA-Z0-9_-]/g, "-");
-    const uniqueId = generateUniqueId();
-    return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
+    return buildPlanPath(trimmed);
   } catch (e) {
     if (!shouldFallbackToCwd(e)) throw e;
     const cwd = await transport.cwd(signal);
-    const dirName = path.basename(cwd);
-    const sanitized = dirName.replace(/[^a-zA-Z0-9_-]/g, "-");
-    const uniqueId = generateUniqueId();
-    return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
+    return buildPlanPath(path.basename(cwd));
   }
 }
 

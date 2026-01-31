@@ -351,7 +351,6 @@ function MainMenu() {
 
   const config = useConfig();
   const setConfig = useSetConfig();
-  const transport = useContext(TransportContext);
 
   useInput((_, key) => {
     if (key.escape) toggleMenu();
@@ -474,7 +473,7 @@ function MainMenu() {
         return;
       } else setMenuMode(item.value);
     },
-    [config, setConfig, notify, toggleMenu, transport],
+    [config, setConfig, notify, toggleMenu],
   );
 
   return (

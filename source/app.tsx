@@ -23,7 +23,7 @@ import {
 import { HistoryItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
-import { UnchainedContext, PlanModeContext, useColor, useUnchained } from "./theme.ts";
+import { UnchainedContext, PlanModeContext, useColor } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
@@ -421,6 +421,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     exitPlanModeAndImplement,
     activePlanFilePath,
     history,
+    notify,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -435,6 +436,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       exitPlanModeAndImplement: state.exitPlanModeAndImplement,
       activePlanFilePath: state.activePlanFilePath,
       history: state.history,
+      notify: state.notify,
     })),
   );
 
@@ -466,16 +468,22 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     // Direct shortcuts to exit plan mode and implement
     if (isPlanMode && key.ctrl && modeData.mode === "input") {
       if (input === "u") {
-        // Exit to unchained mode (fire and forget)
         if (activePlanFilePath) {
-          exitPlanModeAndImplement(config, transport, "unchained");
+          exitPlanModeAndImplement(config, transport, "unchained").catch(err => {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
+            notify(`Failed to exit plan mode: ${errorMessage}`);
+          });
         }
         return;
       }
-      if (input === "c") {
-        // Exit to collaboration mode (fire and forget)
+      if (input === "o") {
         if (activePlanFilePath) {
-          exitPlanModeAndImplement(config, transport, "collaboration");
+          exitPlanModeAndImplement(config, transport, "collaboration").catch(err => {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
+            notify(`Failed to exit plan mode: ${errorMessage}`);
+          });
         }
         return;
       }
@@ -558,7 +566,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">
           {isPlanMode && activePlanFilePath && hasPlanBeenWritten
-            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+C: collab)"
+            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
             : "(Ctrl+p to enter the menu)"}
         </Text>
       </Box>
@@ -737,11 +745,8 @@ function ToolRequestRenderer({
       modeIndex: state.modeIndex,
     })),
   );
-  const unchained = useUnchained();
-  const currentMode = MODES[modeIndex];
-  const isPlanMode = currentMode === "plan";
-  // In plan mode, disable unchained auto-execution; plan mode tools still skip confirmation via SKIP_CONFIRMATION
-  const noConfirm = (unchained && !isPlanMode) || SKIP_CONFIRMATION.includes(toolReq.function.name);
+  const isUnchained = MODES[modeIndex] === "unchained";
+  const noConfirm = isUnchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
 
   const prompt = (() => {
     const fn = toolReq.function;

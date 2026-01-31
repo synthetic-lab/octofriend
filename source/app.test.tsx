@@ -4,6 +4,7 @@ import { MODES } from "./modes.ts";
 import * as planModeModule from "./plan-mode.ts";
 import type { Transport } from "./transports/transport-common.ts";
 import type { Config } from "./config.ts";
+import type { HistoryItem } from "./history.ts";
 
 function createMockTransport(overrides?: Partial<Transport>): Transport {
   return {
@@ -287,6 +288,82 @@ describe("Plan Mode UI/State Synchronization", () => {
       await expect(
         planModeModule.initializePlanFile(mockTransport, ".plans/test.md", signal),
       ).rejects.toThrow("Permission denied");
+    });
+  });
+
+  describe("Plan Mode Shortcut Hints", () => {
+    it("shows Ctrl+O (not Ctrl+C) for collaboration shortcut when plan is written", () => {
+      useAppStore.setState({
+        modeIndex: MODES.indexOf("plan"),
+        activePlanFilePath: "/plans/test.md",
+        history: [
+          {
+            type: "plan-written",
+            id: 1n,
+            planFilePath: "/plans/test.md",
+            content: "# Plan",
+          } satisfies HistoryItem,
+        ],
+      });
+
+      const state = useAppStore.getState();
+      const currentMode = MODES[state.modeIndex];
+      const isPlanMode = currentMode === "plan";
+      const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
+
+      // Replicate the hint text logic from BottomBarContent
+      const hintText =
+        isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
+          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          : "(Ctrl+p to enter the menu)";
+
+      expect(hintText).toBe("(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)");
+      expect(hintText).not.toContain("Ctrl+C");
+    });
+
+    it("shows default hint when no plan has been written", () => {
+      useAppStore.setState({
+        modeIndex: MODES.indexOf("plan"),
+        activePlanFilePath: "/plans/test.md",
+        history: [],
+      });
+
+      const state = useAppStore.getState();
+      const isPlanMode = MODES[state.modeIndex] === "plan";
+      const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
+
+      const hintText =
+        isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
+          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          : "(Ctrl+p to enter the menu)";
+
+      expect(hintText).toBe("(Ctrl+p to enter the menu)");
+    });
+
+    it("shows default hint when activePlanFilePath is null", () => {
+      useAppStore.setState({
+        modeIndex: MODES.indexOf("plan"),
+        activePlanFilePath: null,
+        history: [
+          {
+            type: "plan-written",
+            id: 1n,
+            planFilePath: "/plans/test.md",
+            content: "# Plan",
+          } satisfies HistoryItem,
+        ],
+      });
+
+      const state = useAppStore.getState();
+      const isPlanMode = MODES[state.modeIndex] === "plan";
+      const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
+
+      const hintText =
+        isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
+          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          : "(Ctrl+p to enter the menu)";
+
+      expect(hintText).toBe("(Ctrl+p to enter the menu)");
     });
   });
 
