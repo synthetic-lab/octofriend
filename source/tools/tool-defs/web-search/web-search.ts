@@ -1,6 +1,6 @@
 import { t } from "structural";
-import { attempt, defineTool } from "../common.ts";
-import { readSearchConfig } from "../../config.ts";
+import { attempt, defineTool } from "../../common.ts";
+import { readSearchConfig } from "../../../config.ts";
 
 const ArgumentsSchema = t.subtype({
   query: t.str.comment("The search query"),

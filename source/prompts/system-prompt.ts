@@ -1,7 +1,7 @@
 import path from "path";
 import { t, toTypescript } from "structural";
 import { Config } from "../config.ts";
-import { getMcpClient } from "../tools/tool-defs/mcp.ts";
+import { getMcpClient } from "../tools/tool-defs/mcp/mcp.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";

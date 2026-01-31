@@ -1,8 +1,8 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
-import { getModelFromConfig } from "../../config.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../../common.ts";
+import { getModelFromConfig } from "../../../config.ts";
 import { compile } from "html-to-text";
-import { AbortError } from "../../transports/transport-common.ts";
+import { AbortError } from "../../../transports/transport-common.ts";
 
 const converter = compile({
   wordwrap: 130,
