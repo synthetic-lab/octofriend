@@ -32,6 +32,7 @@ import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
 import { makeAutofixJson } from "./compilers/autofix.ts";
+import { useAppStore } from "./state.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 
@@ -155,7 +156,6 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         exitOnCtrlC: false,
       },
     );
-
     await waitUntilExit();
 
     console.log("\nApprox. tokens used:");

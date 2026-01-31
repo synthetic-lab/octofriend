@@ -18,6 +18,8 @@ import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
+import { db, schema } from "./db/db.ts";
+import { eq, desc, asc, inArray } from "drizzle-orm";
 
 export type RunArgs = {
   config: Config;
@@ -81,6 +83,7 @@ export type UiState = {
         mode: "tool-waiting";
         abortController: AbortController;
       };
+  currentSessionId: number | null;
   modelOverride: string | null;
   byteCount: number;
   query: string;
@@ -104,6 +107,13 @@ export type UiState = {
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
   clearHistory: () => void;
+  startNewSession: () => void;
+  loadSession: (sessionId: number) => Promise<void>;
+  listSessions: () => Promise<
+    Array<{ id: number; name: string; lastActiveAt: Date; model: string }>
+  >;
+  wipeAllHistory: () => Promise<void>;
+  _ensureSession: (config: Config) => Promise<number>;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -116,6 +126,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
+  currentSessionId: null,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -126,6 +137,31 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     let history = [...get().history, userMessage];
     set({ history });
+
+    const sessionId = await get()._ensureSession(config);
+    if (sessionId != null) {
+      await db()
+        .insert(schema.messagesTable)
+        .values({
+          sessionId,
+          sequenceId: Number(userMessage.id),
+          data: serializeHistoryItem(userMessage),
+          createdAt: new Date(),
+        });
+      await db()
+        .update(schema.sessionsTable)
+        .set({ lastActiveAt: new Date() })
+        .where(eq(schema.sessionsTable.id, sessionId));
+
+      // Update session name if it's the first user message
+      if (history.filter(m => m.type === "user").length === 1) {
+        await db()
+          .update(schema.sessionsTable)
+          .set({ name: query.slice(0, 50) })
+          .where(eq(schema.sessionsTable.id, sessionId));
+      }
+    }
+
     await get()._runAgent({ config, transport });
   },
 
@@ -233,18 +269,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  clearHistory: () => {
-    // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse } = get();
-    abortResponse();
-
-    set(state => ({
-      history: [],
-      byteCount: 0,
-      clearNonce: state.clearNonce + 1,
-    }));
-  },
-
   runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
@@ -276,6 +300,18 @@ export const useAppStore = create<UiState>((set, get) => ({
       const history: HistoryItem[] = [...get().history, toolHistoryItem];
 
       set({ history });
+
+      const sessionId = await get()._ensureSession(config);
+      if (sessionId != null) {
+        await db()
+          .insert(schema.messagesTable)
+          .values({
+            sessionId,
+            sequenceId: Number(toolHistoryItem.id),
+            data: serializeHistoryItem(toolHistoryItem),
+            createdAt: new Date(),
+          });
+      }
     } catch (e) {
       const history = [
         ...get().history,
@@ -408,8 +444,28 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      historyCopy.push(...outputToHistory(finish.irs));
+      const outputMessages = outputToHistory(finish.irs);
+      historyCopy.push(...outputMessages);
       set({ history: [...historyCopy] });
+
+      const sessionId = await get()._ensureSession(config);
+      if (sessionId != null) {
+        for (const msg of outputMessages) {
+          await db()
+            .insert(schema.messagesTable)
+            .values({
+              sessionId,
+              sequenceId: Number(msg.id),
+              data: serializeHistoryItem(msg),
+              createdAt: new Date(),
+            });
+        }
+        await db()
+          .update(schema.sessionsTable)
+          .set({ lastActiveAt: new Date() })
+          .where(eq(schema.sessionsTable.id, sessionId));
+      }
+
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
         set({ modeData: { mode: "input", vimMode: "INSERT" } });
@@ -468,7 +524,112 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ byteCount: 0 });
     }
   },
+
+  clearHistory: () => {
+    // Abort any ongoing responses to avoid polluting the new cleared state.
+    const { abortResponse, history } = get();
+    abortResponse();
+
+    // Only update state if there's actually history to clear
+    // This prevents unnecessary Static component remounts that cause duplicate intros
+    if (history.length > 0) {
+      // Clear screen before state update
+      if (process.stdout.isTTY) {
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+      }
+      set(state => ({
+        history: [],
+        byteCount: 0,
+        currentSessionId: null,
+        clearNonce: state.clearNonce + 1,
+      }));
+    }
+  },
+
+  startNewSession: () => {
+    get().clearHistory();
+  },
+
+  loadSession: async sessionId => {
+    const messages = await db()
+      .select()
+      .from(schema.messagesTable)
+      .where(eq(schema.messagesTable.sessionId, sessionId))
+      .orderBy(schema.messagesTable.id);
+
+    const history: HistoryItem[] = messages.map(m => deserializeHistoryItem(m.data));
+
+    // Clear screen before state update
+    if (process.stdout.isTTY) {
+      process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+    }
+
+    set({
+      currentSessionId: sessionId,
+      history,
+      clearNonce: get().clearNonce + 1,
+    });
+  },
+
+  listSessions: async () => {
+    // Only return sessions that have at least one message
+    const sessionsWithMessages = db()
+      .select({ sessionId: schema.messagesTable.sessionId })
+      .from(schema.messagesTable)
+      .groupBy(schema.messagesTable.sessionId);
+
+    return db()
+      .select()
+      .from(schema.sessionsTable)
+      .where(inArray(schema.sessionsTable.id, sessionsWithMessages))
+      .orderBy(desc(schema.sessionsTable.id));
+  },
+
+  wipeAllHistory: async () => {
+    const { history } = get();
+    await db().delete(schema.sessionsTable);
+    // Messages will be deleted by cascade
+
+    // Only update state if there's actually history to clear
+    if (history.length > 0) {
+      // Clear screen before state update
+      if (process.stdout.isTTY) {
+        process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
+      }
+      set({
+        currentSessionId: null,
+        history: [],
+        clearNonce: get().clearNonce + 1,
+      });
+    }
+  },
+
+  _ensureSession: async (config: Config) => {
+    let sessionId = get().currentSessionId;
+    if (sessionId == null) {
+      const model = getModelFromConfig(config, get().modelOverride);
+      const [newSession] = await db()
+        .insert(schema.sessionsTable)
+        .values({
+          name: "New Session",
+          lastActiveAt: new Date(),
+          model: model.nickname,
+        })
+        .returning();
+      sessionId = newSession.id;
+      set({ currentSessionId: sessionId });
+    }
+    return sessionId;
+  },
 }));
+
+function serializeHistoryItem(item: HistoryItem): string {
+  return JSON.stringify(item, (k, v) => (typeof v === "bigint" ? v.toString() : v));
+}
+
+function deserializeHistoryItem(data: string): HistoryItem {
+  return JSON.parse(data, (k, v) => (k === "id" && typeof v === "string" ? BigInt(v) : v));
+}
 
 async function tryTransformToolError(
   signal: AbortSignal,
