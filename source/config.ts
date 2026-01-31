@@ -67,6 +67,11 @@ const ConfigSchema = t.exact({
       paths: t.optional(t.array(t.str)),
     }),
   ),
+  defaultSubAgentModel: t.optional(
+    t.str.comment(
+      "Default model nickname to use for sub-agents. Can be overridden per-agent or at runtime.",
+    ),
+  ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;

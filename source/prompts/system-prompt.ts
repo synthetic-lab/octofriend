@@ -86,10 +86,13 @@ ${config.yourName} with the task.
 You may need to use tools again after some back-and-forth with ${config.yourName}, as they help you
 refine your solution.
 
-You can only run tools or edits one-by-one. After viewing tool output or editing files, you may need
-to run more tools or edits in a step-by-step process. If you want to run multiple tools in a row,
-don't worry: just state your plan out loud, and then follow it over the course of multiple messages.
-Don't overthink.
+You can run tools in PARALLEL when they are independent of each other. For example, if you need to
+explore 5 different directories, make 5 Task calls at once rather than one at a time. The tasks will
+run concurrently and you'll get results faster.
+
+After viewing tool output or editing files, you may need to run more tools or edits. If you want to
+run multiple tools in a row, just state your plan out loud, and then call all the tools you need in
+parallel. Don't overthink.
 
 # Coding guidelines
 

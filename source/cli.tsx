@@ -2,6 +2,7 @@
 import { setupDb } from "./db/setup.ts";
 setupDb();
 
+import { setMaxListeners } from "node:events";
 import React from "react";
 import path from "path";
 import os from "os";
@@ -234,6 +235,7 @@ bench
 
     console.log("Benchmarking", model.nickname);
     const abortController = new AbortController();
+    setMaxListeners(0, abortController.signal);
     const timer = setInterval(() => {
       console.log("Still working...");
     }, 5000);
@@ -354,6 +356,7 @@ cli
 
     const autofixJson = makeAutofixJson(config);
     const abortController = new AbortController();
+    setMaxListeners(0, abortController.signal);
 
     let seenReasoning = false;
     let seenContent = false;

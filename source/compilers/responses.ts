@@ -56,7 +56,7 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
           reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
         };
       }
-      const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+      const toolCalls = ir.toolCalls || (ir.toolCall ? [ir.toolCall] : []);
       return {
         role: "assistant",
         content: [
@@ -84,7 +84,7 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
         },
       };
     }
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || (ir.toolCall ? [ir.toolCall] : []);
     return {
       role: "assistant",
       content: [
@@ -424,33 +424,54 @@ export const runResponsesAgent: Compiler = async ({
       return { success: true, output: [assistantHistoryItem], curl };
     }
 
-    const firstToolCall = toolCalls[0];
-    const chatToolCall = {
-      toolCallId: firstToolCall.toolCallId,
-      toolName: firstToolCall.toolName,
-      args: firstToolCall.input,
-    };
-    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
+    // Parse all tool calls in parallel
+    const parseResults = await Promise.all(
+      toolCalls.map(async tc => {
+        const chatToolCall = {
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
+          args: tc.input,
+        };
+        const result = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
+        return { result, toolCall: tc };
+      }),
+    );
 
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantHistoryItem,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: firstToolCall.toolName,
-            arguments: JSON.stringify(firstToolCall.input),
-            toolCallId: firstToolCall.toolCallId,
-          },
-        ],
-      };
+    // Separate successful and failed parses
+    const successfulTools: ToolCallRequest[] = [];
+    const malformedTools: Array<{
+      role: "tool-malformed";
+      error: string;
+      toolName: string;
+      arguments: string;
+      toolCallId: string;
+    }> = [];
+
+    for (const { result, toolCall } of parseResults) {
+      if (result.status === "error") {
+        malformedTools.push({
+          role: "tool-malformed",
+          error: result.message,
+          toolName: toolCall.toolName,
+          arguments: JSON.stringify(toolCall.input),
+          toolCallId: toolCall.toolCallId,
+        });
+      } else {
+        successfulTools.push(result.tool);
+      }
     }
 
-    assistantHistoryItem.toolCall = parseResult.tool;
-    return { success: true, output: [assistantHistoryItem], curl };
+    // Set toolCalls (plural) with all successful parses
+    if (successfulTools.length > 0) {
+      assistantHistoryItem.toolCalls = successfulTools;
+    }
+
+    // Return assistant message plus any malformed tool messages
+    return {
+      success: true,
+      output: [assistantHistoryItem, ...malformedTools],
+      curl,
+    };
   } catch (e) {
     return {
       success: false,

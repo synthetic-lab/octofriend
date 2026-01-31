@@ -21,6 +21,7 @@ type MenuMode =
   | "diff-apply-toggle"
   | "fix-json-toggle"
   | "set-default-model"
+  | "set-sub-agent-model"
   | "quit-confirm"
   | "remove-model"
   | "clear-confirm";
@@ -48,6 +49,7 @@ export function Menu() {
   if (menuMode === "settings-menu") return <SettingsMenu />;
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
+  if (menuMode === "set-sub-agent-model") return <SetSubAgentModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
   if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
@@ -280,6 +282,7 @@ function SwitchModelMenu() {
 
 type SettingsValues =
   | "set-default-model"
+  | "set-sub-agent-model"
   | "remove-model"
   | "disable-diff-apply"
   | "disable-fix-json";
@@ -287,6 +290,10 @@ const SETTINGS_ITEMS = {
   c: {
     label: "Change the default model",
     value: "set-default-model",
+  },
+  s: {
+    label: "Set default sub-agent model",
+    value: "set-sub-agent-model",
   },
   r: {
     label: "Remove a model",
@@ -307,6 +314,7 @@ function filterSettings(config: Config) {
     items = {
       ...items,
       c: SETTINGS_ITEMS.c,
+      s: SETTINGS_ITEMS.s,
       r: SETTINGS_ITEMS.r,
     };
   }
@@ -483,12 +491,15 @@ function SettingsMenu() {
     },
   };
 
-  const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
-    if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
-    else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
-    else if (item.value === "back") setMenuMode("main-menu");
-    else setMenuMode(item.value);
-  }, []);
+  const onSelect = useCallback(
+    (item: Item<SettingsValues | "back">) => {
+      if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
+      else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
+      else if (item.value === "back") setMenuMode("main-menu");
+      else setMenuMode(item.value);
+    },
+    [setMenuMode],
+  );
 
   return (
     <KbShortcutPanel
@@ -613,6 +624,92 @@ function SetDefaultModelMenu() {
   return (
     <KbShortcutPanel
       title="Which model should be the default?"
+      shortcutItems={shortcutItems}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function SetSubAgentModelMenu() {
+  const { toggleMenu, notify } = useAppStore(
+    useShallow(state => ({
+      toggleMenu: state.toggleMenu,
+      notify: state.notify,
+    })),
+  );
+
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("settings-menu");
+  });
+
+  const numericItems = config.models.map(model => {
+    const isCurrentDefault = config.defaultSubAgentModel === model.nickname;
+    const isInherited =
+      !config.defaultSubAgentModel && model.nickname === config.models[0]?.nickname;
+    const indicator = isCurrentDefault || isInherited ? " (current)" : "";
+    return {
+      label: `${model.nickname}${indicator}`,
+      value: `model-${model.nickname}` as const,
+    };
+  });
+
+  const shortcutItems: ShortcutArray<`model-${string}` | "inherit" | "back"> = [
+    {
+      type: "auto-list" as const,
+      order: numericItems,
+    },
+    {
+      type: "key" as const,
+      mapping: {
+        i: {
+          label: "Inherit from parent model",
+          value: "inherit",
+        },
+        b: {
+          label: "Back to settings menu",
+          value: "back",
+        },
+      },
+    },
+  ];
+
+  const onSelect = useCallback(
+    async (item: Item<`model-${string}` | "inherit" | "back">) => {
+      if (item.value === "back") {
+        setMenuMode("settings-menu");
+        return;
+      }
+      if (item.value === "inherit") {
+        const newConfig = { ...config };
+        delete newConfig.defaultSubAgentModel;
+        await setConfig(newConfig);
+        notify("Sub-agent model: inherit from parent");
+        setMenuMode("settings-menu");
+        return;
+      }
+      const target = item.value.replace("model-", "");
+      await setConfig({
+        ...config,
+        defaultSubAgentModel: target,
+      });
+      notify(`Sub-agent model: ${target}`);
+      setMenuMode("settings-menu");
+      toggleMenu();
+    },
+    [config],
+  );
+
+  return (
+    <KbShortcutPanel
+      title="Which model should sub-agents use by default?"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     />
