@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { getPlanFilePath, initializePlanFile } from "./plan-mode.ts";
 import type { Transport } from "./transports/transport-common.ts";
-import * as logger from "./logger.ts";
 
 const PLAN_TEMPLATE = `# Implementation Plan
 
@@ -34,7 +33,7 @@ function createMockTransport(overrides?: Partial<Transport>): Transport {
     readdir: vi.fn(),
     modTime: vi.fn(),
     resolvePath: vi.fn(),
-    cwd: vi.fn(),
+    cwd: vi.fn().mockResolvedValue("/home/user/my-project"),
     close: vi.fn(),
     ...overrides,
   };
@@ -63,14 +62,14 @@ describe("getPlanFilePath", () => {
     expect(result).toMatch(/^\.plans\/feature-test_branch-123-[a-z0-9]{6}\.md$/);
   });
 
-  it("falls back to default with unique ID when expected git error occurs", async () => {
+  it("falls back to directory name with unique ID when expected git error occurs", async () => {
     const transport = createMockTransport({
       shell: vi.fn().mockRejectedValue(new Error("fatal: not a git repository")),
     });
 
     const result = await getPlanFilePath(transport, signal);
 
-    expect(result).toMatch(/^\.plans\/default-[a-z0-9]{6}\.md$/);
+    expect(result).toMatch(/^\.plans\/my-project-[a-z0-9]{6}\.md$/);
   });
 
   it("re-throws unexpected errors", async () => {
@@ -114,23 +113,6 @@ describe("getPlanFilePath", () => {
     expect(result1).toMatch(/^\.plans\/main-[a-z0-9]{6}\.md$/);
     expect(result2).toMatch(/^\.plans\/main-[a-z0-9]{6}\.md$/);
     expect(result1).not.toBe(result2);
-  });
-
-  it("logs error message when expected git error occurs", async () => {
-    const logErrorSpy = vi.spyOn(logger, "error");
-    const transport = createMockTransport({
-      shell: vi.fn().mockRejectedValue(new Error("git: command not found")),
-    });
-
-    await getPlanFilePath(transport, signal);
-
-    expect(logErrorSpy).toHaveBeenCalledWith(
-      "info",
-      "Failed to get current git branch, using default",
-      expect.objectContaining({
-        error: expect.any(String),
-      }),
-    );
   });
 });
 

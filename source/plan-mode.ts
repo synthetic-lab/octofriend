@@ -1,7 +1,6 @@
 import path from "path";
 import { randomUUID } from "crypto";
 import { Transport } from "./transports/transport-common.ts";
-import * as logger from "./logger.ts";
 
 const PLAN_DIR = ".plans";
 const ID_LENGTH = 6;
@@ -35,12 +34,11 @@ export async function getPlanFilePath(transport: Transport, signal: AbortSignal)
     return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
   } catch (e) {
     if (!isExpectedGitError(e)) throw e;
-    const errorMessage = e instanceof Error ? e.message : String(e);
-    logger.error("info", "Failed to get current git branch, using default", {
-      error: errorMessage,
-    });
+    const cwd = await transport.cwd(signal);
+    const dirName = path.basename(cwd);
+    const sanitized = dirName.replace(/[^a-zA-Z0-9_-]/g, "-");
     const uniqueId = generateUniqueId();
-    return path.join(PLAN_DIR, `default-${uniqueId}.md`);
+    return path.join(PLAN_DIR, `${sanitized}-${uniqueId}.md`);
   }
 }
 
