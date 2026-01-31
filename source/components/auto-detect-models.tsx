@@ -3,7 +3,7 @@ import { Box, Text, useInput } from "ink";
 import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
-import { Config } from "../config.ts";
+import { Config, Auth } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
@@ -28,7 +28,7 @@ type StepData =
   | {
       step: "found";
       provider: ProviderConfig;
-      overrideEnvVar: string | null;
+      overrideAuth: Auth | null;
       useEnvVar: boolean;
     }
   | {
@@ -38,7 +38,7 @@ type StepData =
   | {
       step: "override-model-string";
       provider: ProviderConfig;
-      overrideEnvVar: string | null;
+      overrideAuth: Auth | null;
       useEnvVar: boolean;
     };
 
@@ -80,7 +80,7 @@ export function ModelSetup({
           to: {
             step: "found",
             provider,
-            overrideEnvVar: null,
+            overrideAuth: null,
             useEnvVar: true,
           },
         });
@@ -141,8 +141,10 @@ export function ModelSetup({
                   baseUrl: stepData.provider.baseUrl,
                   ...t,
                 };
-                if (stepData.useEnvVar) {
-                  base.apiEnvVar = getEnvVar(stepData.provider, config, stepData.overrideEnvVar);
+                if (stepData.overrideAuth) {
+                  base.auth = stepData.overrideAuth;
+                } else if (stepData.useEnvVar) {
+                  base.apiEnvVar = getEnvVar(stepData.provider, config, null);
                 }
                 return base;
               }),
@@ -157,7 +159,7 @@ export function ModelSetup({
               to: {
                 step: "override-model-string",
                 provider: stepData.provider,
-                overrideEnvVar: stepData.overrideEnvVar,
+                overrideAuth: stepData.overrideAuth,
                 useEnvVar: stepData.useEnvVar,
               },
             });
@@ -169,10 +171,10 @@ export function ModelSetup({
       return (
         <CustomAuthFlow
           config={config}
-          onComplete={async envVar => {
-            if (envVar) {
+          onComplete={async auth => {
+            if (auth && auth.type === "env") {
               await onOverrideDefaultApiKey({
-                [keyFromName(stepData.provider.name)]: envVar,
+                [keyFromName(stepData.provider.name)]: auth.name,
               });
             }
             dispatch({
@@ -180,7 +182,7 @@ export function ModelSetup({
               to: {
                 step: "found",
                 provider: stepData.provider,
-                overrideEnvVar: envVar || null,
+                overrideAuth: auth || null,
                 useEnvVar: false,
               },
             });
@@ -209,14 +211,15 @@ export function ModelSetup({
               to: {
                 step: "found",
                 provider: stepData.provider,
-                overrideEnvVar: stepData.overrideEnvVar,
+                overrideAuth: stepData.overrideAuth,
                 useEnvVar: stepData.useEnvVar,
               },
             });
           }}
           baseUrl={stepData.provider.baseUrl}
-          envVar={
-            stepData.useEnvVar ? stepData.overrideEnvVar || stepData.provider.envVar : undefined
+          auth={
+            stepData.overrideAuth ||
+            (stepData.useEnvVar ? { type: "env", name: stepData.provider.envVar } : undefined)
           }
         />
       );

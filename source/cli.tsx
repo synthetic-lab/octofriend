@@ -14,6 +14,7 @@ import {
   readConfig,
   readMetadata,
   readKeyForModel,
+  readKeyForModelWithDetails,
   assertKeyForModel,
   AUTOFIX_KEYS,
 } from "./config.ts";
@@ -329,16 +330,31 @@ cli
       process.exit(1);
     }
 
-    const apiKey = await readKeyForModel(model, config);
-    if (apiKey == null) {
+    const keyResult = await readKeyForModelWithDetails(model, config);
+    if (!keyResult.ok) {
       console.error(`${model.nickname} doesn't have an API key set up.`);
-      if (model.apiEnvVar) {
-        console.error(
-          `It was set to use the ${model.apiEnvVar} env var, but that env var doesn't exist in the current shell. Hint: do you need to re-source your .bash_profile or .zshrc?`,
-        );
+      const error = keyResult.error;
+
+      if (error.type === "missing") {
+        console.error(`${error.message}`);
+        if (model.auth?.type === "env") {
+          console.error(`Hint: do you need to re-source your .bash_profile or .zshrc?`);
+        }
+      } else if (error.type === "command_failed") {
+        console.error(`Command execution failed: ${error.message}`);
+        if (error.exitCode != null) {
+          console.error(`Exit code: ${error.exitCode}`);
+        }
+        if (error.stderr) {
+          console.error(`stderr: ${error.stderr}`);
+        }
+      } else if (error.type === "invalid") {
+        console.error(`Invalid auth configuration: ${error.message}`);
       }
+
       process.exit(1);
     }
+    const apiKey = keyResult.key;
 
     const messages: LlmIR[] = [];
     messages.push({

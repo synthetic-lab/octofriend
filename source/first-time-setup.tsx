@@ -5,7 +5,7 @@ import path from "path";
 import json5 from "json5";
 import { execSync } from "child_process";
 import TextInput from "./components/text-input.tsx";
-import { Config } from "./config.ts";
+import { Config, Auth } from "./config.ts";
 import { useColor } from "./theme.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -265,16 +265,19 @@ function AutofixSetup({
     return (
       <CustomAuthFlow
         config={null}
-        onComplete={async envVar => {
-          if (envVar) await onOverrideDefaultApiKey(envVar);
+        onComplete={async auth => {
+          if (auth && auth.type === "env") await onOverrideDefaultApiKey(auth.name);
+          const authField = auth ? { auth } : {};
           onComplete({
             diffApply: {
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: "hf:syntheticlab/diff-apply",
+              ...authField,
             },
             fixJson: {
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: "hf:syntheticlab/fix-json",
+              ...authField,
             },
           });
         }}
