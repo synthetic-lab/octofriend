@@ -402,6 +402,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const vimEnabled = !!config.vimEmulation?.enabled;
+  const isPlanMode = useContext(PlanModeContext);
   const {
     modeData,
     input,
@@ -412,6 +413,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setVimMode,
     query,
     setQuery,
+    exitPlanModeAndImplement,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -423,6 +425,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setVimMode: state.setVimMode,
       query: state.query,
       setQuery: state.setQuery,
+      exitPlanModeAndImplement: state.exitPlanModeAndImplement,
     })),
   );
 
@@ -447,6 +450,20 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
     if (key.ctrl && input === "p") {
       openMenu();
+    }
+
+    // Direct shortcuts to exit plan mode and implement
+    if (isPlanMode && key.ctrl && modeData.mode === "input") {
+      if (input === "u") {
+        // Exit to unchained mode (fire and forget)
+        exitPlanModeAndImplement(config, transport, "unchained");
+        return;
+      }
+      if (input === "c") {
+        // Exit to collaboration mode (fire and forget)
+        exitPlanModeAndImplement(config, transport, "collaboration");
+        return;
+      }
     }
   });
   const color = useColor();
@@ -524,7 +541,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   return (
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Ctrl+p to enter the menu)</Text>
+        <Text color="gray">
+          {isPlanMode
+            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+C: collab)"
+            : "(Ctrl+p to enter the menu)"}
+        </Text>
       </Box>
       <InputWithHistory
         inputHistory={inputHistory}
