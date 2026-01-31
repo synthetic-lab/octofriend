@@ -1,11 +1,15 @@
 import { t } from "structural";
 import { Config } from "../config.ts";
+import { error } from "../logger.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 export class ToolError extends Error {
-  constructor(message: string) {
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = this.constructor.name;
+    if (cause) {
+      this.cause = cause;
+    }
   }
 }
 
@@ -14,8 +18,10 @@ export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promise<T> {
   try {
     return await callback();
-  } catch {
-    throw new ToolError(errMessage);
+  } catch (e) {
+    const originalError = e instanceof Error ? e.message : String(e);
+    error("info", `[ToolError] ${errMessage}`, { originalError });
+    throw new ToolError(errMessage, e);
   }
 }
 
@@ -64,6 +70,7 @@ export type ToolFactory<T> = (
   signal: AbortSignal,
   transport: Transport,
   config: Config,
+  planFilePath: string | null,
 ) => Promise<ToolDef<T> | null>;
 
 export function defineTool<T>(factory: ToolFactory<T>): ToolFactory<T> {

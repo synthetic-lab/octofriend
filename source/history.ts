@@ -90,6 +90,12 @@ export type CompactionCheckpointItem = SequenceIdTagged<{
   summary: string;
 }>;
 
+export type PlanWrittenItem = SequenceIdTagged<{
+  type: "plan-written";
+  planFilePath: string;
+  content: string;
+}>;
+
 export type HistoryItem =
   | UserItem
   | AssistantItem
@@ -103,7 +109,8 @@ export type HistoryItem =
   | RequestFailed
   | CompactionFailed
   | Notification
-  | CompactionCheckpointItem;
+  | CompactionCheckpointItem
+  | PlanWrittenItem;
 
 let monotonicGuid = 0n;
 export function sequenceId() {

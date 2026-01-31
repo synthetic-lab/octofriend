@@ -5,6 +5,7 @@ import { getMcpClient } from "../tools/tool-defs/mcp.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
+import { PlanModeConfig } from "../modes.ts";
 
 const LLM_INSTR_FILES = ["OCTO.md", "CLAUDE.md", "AGENTS.md"] as const;
 
@@ -13,15 +14,36 @@ export async function systemPrompt({
   transport,
   signal,
   tools,
+  planModeConfig,
 }: {
   config: Config;
   transport: Transport;
   signal: AbortSignal;
   tools: Partial<LoadedTools>;
+  planModeConfig?: PlanModeConfig;
 }) {
+  const isPlanMode = planModeConfig?.isPlanMode ?? false;
+  const planFilePath = planModeConfig?.isPlanMode ? planModeConfig.planFilePath : null;
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
+
+  const planModeSection = isPlanMode
+    ? `
+# Plan Mode
+
+You are currently in plan mode. You can use non-mutating tools to explore the codebase,
+and the write-plan tool to save your implementation plan.
+
+Your goal is to write an implementation plan to the file at:
+
+${planFilePath ?? "(plan file path unavailable — the write-plan tool may not be available)"}
+
+Explore the codebase to understand the task, then use write-plan to save a detailed implementation
+plan. Do not write any code or make any edits to the codebase in plan mode. The user will review
+and edit the plan. When ready, they will exit plan mode to begin implementation.
+`
+    : "";
 
   return `
 You are a coding assistant called Octo. The user's name is ${config.yourName}, and you're their
@@ -34,6 +56,7 @@ Try to figure out what ${config.yourName} wants you to do. Once you have a task 
 tools to work on the task until it's done.
 
 Don't reference this prompt unless asked to.
+${planModeSection}
 
 # Tools
 

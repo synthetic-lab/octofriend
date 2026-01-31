@@ -14,12 +14,17 @@ export async function loadTools(
   transport: Transport,
   signal: AbortSignal,
   config: Config,
+  allowedTools?: Array<keyof LoadedTools>,
+  planFilePath: string | null = null,
 ): Promise<Partial<LoadedTools>> {
   const loaded: Partial<LoadedTools> = {};
 
   await Promise.all(
     (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => {
-      const toolDef = await toolMap[key](signal, transport, config);
+      if (allowedTools && !allowedTools.includes(key)) {
+        return;
+      }
+      const toolDef = await toolMap[key](signal, transport, config, planFilePath);
       if (toolDef) {
         // @ts-ignore
         loaded[key] = toolDef;
@@ -30,13 +35,17 @@ export async function loadTools(
   return loaded as LoadedTools;
 }
 
-export const SKIP_CONFIRMATION: Array<keyof LoadedTools> = [
+export const READONLY_TOOLS: Array<keyof LoadedTools> = [
   "read",
   "list",
   "fetch",
   "skill",
   "web-search",
 ];
+
+export const PLAN_MODE_TOOLS: Array<keyof LoadedTools> = [...READONLY_TOOLS, "write-plan"];
+
+export const SKIP_CONFIRMATION: Array<keyof LoadedTools> = [...READONLY_TOOLS, "write-plan"];
 
 export async function runTool(
   abortSignal: AbortSignal,

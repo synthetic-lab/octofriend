@@ -79,9 +79,8 @@ export class LocalTransport implements Transport {
 
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
     return new Promise<string>((resolve, reject) => {
-      const child = spawn(cmd, {
+      const child = spawn("bash", ["-c", cmd], {
         cwd: process.cwd(),
-        shell: "bash",
         timeout,
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
