@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
+import { FileSuggestionBox } from "./file-suggestions/index.js";
 
 interface Props {
   inputHistory: InputHistory;
@@ -18,8 +19,17 @@ export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
+  const [suggestionState, setSuggestionState] = useState<{
+    isVisible: boolean;
+    triggerPosition: number;
+    query: string;
+  } | null>(null);
 
   useInput((input, key) => {
+    if (suggestionState?.isVisible) {
+      return;
+    }
+
     if (key.upArrow) {
       if (currentIndex === -1) {
         setOriginalInput(props.value);
@@ -60,6 +70,10 @@ export const InputWithHistory = React.memo((props: Props) => {
   });
 
   const handleSubmit = () => {
+    if (suggestionState?.isVisible) {
+      return;
+    }
+
     if (props.value.trim()) {
       props.inputHistory.appendToInputHistory(props.value.trim());
     }
@@ -75,26 +89,67 @@ export const InputWithHistory = React.memo((props: Props) => {
       setOriginalInput("");
     }
     props.onChange(value);
+
+    const atIndex = value.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const query = value.slice(atIndex + 1);
+      setSuggestionState({
+        isVisible: true,
+        triggerPosition: atIndex,
+        query,
+      });
+    } else {
+      setSuggestionState(null);
+    }
   };
 
+  const handleSuggestionSelect = useCallback(
+    (filename: string) => {
+      if (!suggestionState) return;
+
+      const before = props.value.slice(0, suggestionState.triggerPosition);
+      const after = props.value.slice(
+        suggestionState.triggerPosition + suggestionState.query.length + 1,
+      );
+      const newValue = before + filename + after;
+
+      props.onChange(newValue);
+      setSuggestionState(null);
+    },
+    [props.value, suggestionState],
+  );
+
   return (
-    <Box
-      width="100%"
-      borderLeft={false}
-      borderRight={false}
-      borderStyle="single"
-      borderColor={themeColor}
-      gap={1}
-    >
-      <Text color="gray">&gt;</Text>
-      <TextInput
-        value={props.value}
-        onChange={handleChange}
-        onSubmit={handleSubmit}
-        vimEnabled={props.vimEnabled}
-        vimMode={props.vimMode}
-        setVimMode={props.setVimMode}
-      />
+    <Box flexDirection="column">
+      <Box flexGrow={1} flexDirection="column-reverse" justifyContent="flex-end">
+        {suggestionState?.isVisible && (
+          <FileSuggestionBox
+            query={suggestionState.query}
+            isVisible={suggestionState.isVisible}
+            onSelect={handleSuggestionSelect}
+            onDismiss={() => setSuggestionState(null)}
+          />
+        )}
+      </Box>
+
+      <Box
+        width="100%"
+        borderLeft={false}
+        borderRight={false}
+        borderStyle="single"
+        borderColor={themeColor}
+        gap={1}
+      >
+        <Text color="gray">&gt;</Text>
+        <TextInput
+          value={props.value}
+          onChange={handleChange}
+          onSubmit={handleSubmit}
+          vimEnabled={props.vimEnabled}
+          vimMode={props.vimMode}
+          setVimMode={props.setVimMode}
+        />
+      </Box>
     </Box>
   );
 });
