@@ -70,6 +70,7 @@ import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 import { MODES, ModeType, MODE_NOTIFICATIONS } from "./modes.ts";
+import { getPlatform } from "./platform.ts";
 
 type Props = {
   config: Config;
@@ -487,6 +488,30 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         }
         return;
       }
+      if (input === "e") {
+        if (activePlanFilePath) {
+          const platform = getPlatform();
+          let openCommand: string;
+          switch (platform) {
+            case "macos":
+              openCommand = `open "${activePlanFilePath}"`;
+              break;
+            case "windows":
+              openCommand = `start "" "${activePlanFilePath}"`;
+              break;
+            case "linux":
+            default:
+              openCommand = `xdg-open "${activePlanFilePath}"`;
+              break;
+          }
+          transport.shell(new AbortController().signal, openCommand, 5000).catch(err => {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            logger.error("info", "Failed to open plan in editor", { error: errorMessage });
+            notify(`Failed to open plan in editor: ${errorMessage}`);
+          });
+        }
+        return;
+      }
     }
   });
   const color = useColor();
@@ -566,7 +591,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">
           {isPlanMode && activePlanFilePath && hasPlanBeenWritten
-            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab | Ctrl+E: edit plan)"
             : "(Ctrl+p to enter the menu)"}
         </Text>
       </Box>
