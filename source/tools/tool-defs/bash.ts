@@ -1,5 +1,10 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import {
+  ToolError,
+  defineTool,
+  USER_ABORTED_ERROR_MESSAGE,
+  createPlanModeToolResult,
+} from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -26,18 +31,32 @@ const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  validate: async () => null,
-  async run(abortSignal, transport, call) {
-    const { cmd, timeout } = call.arguments;
-    try {
-      return { content: await transport.shell(abortSignal, cmd, timeout) };
-    } catch (e) {
-      if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
-      if (e instanceof CommandFailedError) throw new ToolError(e.message);
-      throw e;
+export default defineTool<t.GetType<typeof Schema>>(
+  async (_signal, _transport, _config, planFilePath) => {
+    // If in plan mode, return a tool that shows the plan mode message
+    if (planFilePath) {
+      return {
+        Schema,
+        ArgumentsSchema,
+        validate: async () => null,
+        run: async () => createPlanModeToolResult(),
+      };
     }
+
+    return {
+      Schema,
+      ArgumentsSchema,
+      validate: async () => null,
+      async run(abortSignal, transport, call) {
+        const { cmd, timeout } = call.arguments;
+        try {
+          return { content: await transport.shell(abortSignal, cmd, timeout) };
+        } catch (e) {
+          if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+          if (e instanceof CommandFailedError) throw new ToolError(e.message);
+          throw e;
+        }
+      },
+    };
   },
-}));
+);

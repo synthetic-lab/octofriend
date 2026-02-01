@@ -1,6 +1,11 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool } from "../common.ts";
+import {
+  ToolError,
+  attemptUntrackedRead,
+  defineTool,
+  createPlanModeToolResult,
+} from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
@@ -27,27 +32,41 @@ export const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  validate,
-  async run(signal, transport, call) {
-    const { filePath } = call.arguments;
-    const diff = call.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
+export default defineTool<t.GetType<typeof Schema>>(
+  async (_signal, _transport, _config, planFilePath) => {
+    // If in plan mode, return a tool that shows the plan mode message
+    if (planFilePath) {
+      return {
+        Schema,
+        ArgumentsSchema,
+        validate: async () => null,
+        run: async () => createPlanModeToolResult(),
+      };
+    }
 
-    const file = await attemptUntrackedRead(transport, signal, filePath);
-    const replaced = runEdit({
-      path: filePath,
-      file,
-      diff,
-    });
-    await fileTracker.write(transport, signal, filePath, replaced);
     return {
-      content: "",
+      Schema,
+      ArgumentsSchema,
+      validate,
+      async run(signal, transport, call) {
+        const { filePath } = call.arguments;
+        const diff = call.arguments;
+        await fileTracker.assertCanEdit(transport, signal, filePath);
+
+        const file = await attemptUntrackedRead(transport, signal, filePath);
+        const replaced = runEdit({
+          path: filePath,
+          file,
+          diff,
+        });
+        await fileTracker.write(transport, signal, filePath, replaced);
+        return {
+          content: "",
+        };
+      },
     };
   },
-}));
+);
 
 async function validate(
   signal: AbortSignal,

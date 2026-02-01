@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool } from "../common.ts";
+import { ToolError, attempt, defineTool, createPlanModeToolResult } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 export const ArgumentsSchema = t.subtype({
@@ -29,19 +29,33 @@ async function validate(
   return null;
 }
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  validate,
-  async run(signal, transport, call) {
-    await validate(signal, transport, call);
-    const { filePath, content } = call.arguments;
-    return attempt(`Failed to create file ${filePath}`, async () => {
-      await fileTracker.write(transport, signal, filePath, content);
+export default defineTool<t.GetType<typeof Schema>>(
+  async (_signal, _transport, _config, planFilePath) => {
+    // If in plan mode, return a tool that shows the plan mode message
+    if (planFilePath) {
       return {
-        content: "",
-        lines: content.split("\n").length,
+        Schema,
+        ArgumentsSchema,
+        validate: async () => null,
+        run: async () => createPlanModeToolResult(),
       };
-    });
+    }
+
+    return {
+      Schema,
+      ArgumentsSchema,
+      validate,
+      async run(signal, transport, call) {
+        await validate(signal, transport, call);
+        const { filePath, content } = call.arguments;
+        return attempt(`Failed to create file ${filePath}`, async () => {
+          await fileTracker.write(transport, signal, filePath, content);
+          return {
+            content: "",
+            lines: content.split("\n").length,
+          };
+        });
+      },
+    };
   },
-}));
+);

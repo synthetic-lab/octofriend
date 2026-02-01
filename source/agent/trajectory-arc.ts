@@ -10,7 +10,7 @@ import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { loadTools, PLAN_MODE_TOOLS } from "../tools/index.ts";
+import { loadTools } from "../tools/index.ts";
 import { PlanModeConfig } from "../modes.ts";
 import * as logger from "../logger.ts";
 
@@ -109,14 +109,8 @@ export async function trajectoryArc({
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
 
-  // In plan mode, only load plan mode tools (read-only plus write-plan)
-  const tools = await loadTools(
-    transport,
-    abortSignal,
-    config,
-    isPlanMode ? PLAN_MODE_TOOLS : undefined,
-    isPlanMode ? planFilePath : null,
-  );
+  // Load all tools - write tools will check planFilePath and show reminder in plan mode
+  const tools = await loadTools(transport, abortSignal, config, undefined, planFilePath);
 
   const parsedCompaction = await maybeAutocompact({
     apiKey,

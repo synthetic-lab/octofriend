@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool } from "../common.ts";
+import { attemptUntrackedRead, defineTool, createPlanModeToolResult } from "../common.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -18,25 +18,39 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  async validate(signal, transport, toolCall) {
-    await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-    await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-    return null;
-  },
-  async run(signal, transport, call) {
-    const { filePath } = call.arguments;
-    const edit = call.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
-    const replaced = runEdit({ edit });
-    await fileTracker.write(transport, signal, filePath, replaced);
+export default defineTool<t.GetType<typeof Schema>>(
+  async (_signal, _transport, _config, planFilePath) => {
+    // If in plan mode, return a tool that shows the plan mode message
+    if (planFilePath) {
+      return {
+        Schema,
+        ArgumentsSchema,
+        validate: async () => null,
+        run: async () => createPlanModeToolResult(),
+      };
+    }
+
     return {
-      content: "",
+      Schema,
+      ArgumentsSchema,
+      async validate(signal, transport, toolCall) {
+        await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
+        await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
+        return null;
+      },
+      async run(signal, transport, call) {
+        const { filePath } = call.arguments;
+        const edit = call.arguments;
+        await fileTracker.assertCanEdit(transport, signal, filePath);
+        const replaced = runEdit({ edit });
+        await fileTracker.write(transport, signal, filePath, replaced);
+        return {
+          content: "",
+        };
+      },
     };
   },
-}));
+);
 
 function runEdit({ edit }: { edit: t.GetType<typeof ArgumentsSchema> }): string {
   return edit.text;

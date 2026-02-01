@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { trajectoryArc } from "./trajectory-arc.ts";
-import { PLAN_MODE_TOOLS } from "../tools/index.ts";
 import type { Transport } from "../transports/transport-common.ts";
 
 import { run } from "../compilers/run.ts";
@@ -83,7 +82,7 @@ describe("trajectoryArc plan mode", () => {
     vi.mocked(loadTools).mockResolvedValue({} as any);
   });
 
-  it("passes PLAN_MODE_TOOLS to loadTools when isPlanMode is true", async () => {
+  it("always passes undefined for allowedTools to load all tools", async () => {
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,
@@ -99,12 +98,12 @@ describe("trajectoryArc plan mode", () => {
       mockTransport,
       expect.any(AbortSignal),
       mockConfig,
-      PLAN_MODE_TOOLS,
+      undefined,
       "/plans/test.md",
     );
   });
 
-  it("passes undefined allowedTools when isPlanMode is false", async () => {
+  it("passes null planFilePath when isPlanMode is false", async () => {
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,
@@ -125,7 +124,8 @@ describe("trajectoryArc plan mode", () => {
     );
   });
 
-  it("passes planFilePath only when isPlanMode is true", async () => {
+  it("passes correct planFilePath based on isPlanMode", async () => {
+    // When isPlanMode is true, planFilePath should be set
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,
@@ -141,7 +141,7 @@ describe("trajectoryArc plan mode", () => {
       mockTransport,
       expect.any(AbortSignal),
       mockConfig,
-      PLAN_MODE_TOOLS,
+      undefined,
       "/plans/test.md",
     );
 
