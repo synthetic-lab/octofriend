@@ -753,4 +753,32 @@ describe("exitPlanModeAndImplement", () => {
     expect(useAppStore.getState().activePlanFilePath).toBeNull();
     expect(useAppStore.getState().sessionPlanFilePath).toBeNull();
   });
+
+  it("handles input() failure after successful plan read", async () => {
+    const planContent = "# Plan";
+    mockTransport.readFile = vi.fn().mockResolvedValue(planContent);
+
+    useAppStore.setState({
+      activePlanFilePath: "/plans/test.md",
+      modeIndex: MODES.indexOf("plan"),
+      history: [{ type: "user" as const, id: sequenceId(), content: "previous" }],
+    });
+
+    const store = useAppStore.getState();
+    const inputSpy = vi.spyOn(store, "input").mockRejectedValue(new Error("API key invalid"));
+
+    // The error should propagate since input() is not wrapped in try-catch
+    await expect(
+      store.exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration"),
+    ).rejects.toThrow("API key invalid");
+
+    // Verify input was called
+    expect(inputSpy).toHaveBeenCalled();
+
+    // Verify history was already cleared (this happens before input)
+    expect(useAppStore.getState().clearNonce).toBe(1);
+
+    // Mode should still be changed (this happens before input too)
+    expect(useAppStore.getState().modeIndex).toBe(0);
+  });
 });

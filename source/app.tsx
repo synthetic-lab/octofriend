@@ -387,7 +387,9 @@ async function getLatestVersion() {
     const contents = await response.json();
     const packageInfo = PackageSchema.slice(contents);
     return packageInfo["dist-tags"].latest;
-  } catch {
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    logger.log("verbose", "Version check failed", { error: errorMessage });
     return null;
   }
 }

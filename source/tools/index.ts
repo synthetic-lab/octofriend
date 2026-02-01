@@ -3,6 +3,7 @@ import toolMap from "./tool-defs/index.ts";
 import { ToolDef, ToolResult, ToolError } from "./common.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
+import * as logger from "../logger.ts";
 export { ToolError } from "./common.ts";
 
 export type LoadedTools = {
@@ -31,8 +32,12 @@ export async function loadTools(
           loaded[key] = toolDef;
         }
       } catch (error) {
-        // Log which specific tool failed but continue loading others
-        console.error(`Failed to load tool "${key}":`, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("info", `Failed to load tool "${key}"`, { error: errorMessage });
+        // Fail fast for critical tools
+        if (["read", "write", "edit", "write-plan"].includes(key)) {
+          throw new Error(`Critical tool "${key}" failed to load: ${errorMessage}`);
+        }
       }
     }),
   );
