@@ -173,7 +173,7 @@ export function TaskList() {
         <Text color={runningCount > 0 ? themeColor : "gray"}>
           Running {runningCount} agent{runningCount !== 1 ? "s" : ""}…
         </Text>
-        <Text dimColor> (esc to collapse)</Text>
+        <Text dimColor> (Ctrl+T to collapse)</Text>
       </Box>
 
       {/* Tree */}

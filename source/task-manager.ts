@@ -66,7 +66,7 @@ export type TaskState = {
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: new Map(),
   selectedTaskId: null,
-  showTaskList: false,
+  showTaskList: true,
   notifications: [],
 
   createTask: (agentName, prompt, files) => {
