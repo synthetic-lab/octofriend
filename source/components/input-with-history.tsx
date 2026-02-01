@@ -53,12 +53,14 @@ export const InputWithHistory = React.memo((props: Props) => {
         setCurrentIndex(newIndex);
         props.onChange(history[newIndex]);
       } else {
+        // Reset to original input
         setCurrentIndex(-1);
         props.onChange(originalInput);
       }
       return;
     }
 
+    // Reset navigation state when user types anything else
     if (input || key.return || key.escape || key.backspace || key.delete) {
       if (currentIndex !== -1) {
         setCurrentIndex(-1);
