@@ -37,7 +37,7 @@ export async function loadTools(
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error("info", `Failed to load tool "${key}"`, { error: errorMessage });
         // Fail fast for critical tools
-        if (["read", "edit", "write-plan"].includes(key)) {
+        if (["read", "edit"].includes(key)) {
           throw new Error(`Critical tool "${key}" failed to load: ${errorMessage}`);
         }
       }

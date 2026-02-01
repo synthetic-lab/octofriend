@@ -94,3 +94,17 @@ export function createPlanModeToolResult(): ToolResult {
     content: PLAN_MODE_MESSAGE,
   };
 }
+
+export function planModeGuard(
+  planFilePath: string | null,
+  Schema: t.Type<any>,
+  ArgumentsSchema: t.Type<any>,
+): ToolDef<any> | null {
+  if (!planFilePath) return null;
+  return {
+    Schema,
+    ArgumentsSchema,
+    validate: async () => null,
+    run: async () => createPlanModeToolResult(),
+  };
+}

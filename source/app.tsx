@@ -193,9 +193,8 @@ export default function App({
         if (abortController.signal.aborted) return;
         const errorMessage = pathErr instanceof Error ? pathErr.message : String(pathErr);
         logger.error("info", "Failed to determine plan file path", { error: errorMessage });
-        notify(
-          "Plan mode: failed to determine plan file path. The write-plan tool will not be available.",
-        );
+        notify("Plan mode initialization failed. Returning to collaboration mode.");
+        setModeIndex(MODES.indexOf("collaboration"));
         return;
       } finally {
         isInitializingPlanRef.current = false;
@@ -214,6 +213,7 @@ export default function App({
     sessionPlanFilePath,
     setActivePlanFilePath,
     setSessionPlanFilePath,
+    setModeIndex,
     transport,
     notify,
   ]);
@@ -435,6 +435,18 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
   const vimMode = vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
 
+  function handleExitPlanMode(targetMode: "collaboration" | "unchained") {
+    if (!activePlanFilePath) {
+      notify("Plan file is still initializing. Please wait.");
+      return;
+    }
+    exitPlanModeAndImplement(config, transport, targetMode).catch(err => {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
+      notify(`Failed to exit plan mode: ${errorMessage}`);
+    });
+  }
+
   useCtrlC(() => {
     if (vimEnabled) return;
     setQuery("");
@@ -459,23 +471,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     // Direct shortcuts to exit plan mode and implement
     if (isPlanMode && key.ctrl && modeData.mode === "input") {
       if (input === "u") {
-        if (activePlanFilePath) {
-          exitPlanModeAndImplement(config, transport, "unchained").catch(err => {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
-            notify(`Failed to exit plan mode: ${errorMessage}`);
-          });
-        }
+        handleExitPlanMode("unchained");
         return;
       }
       if (input === "o") {
-        if (activePlanFilePath) {
-          exitPlanModeAndImplement(config, transport, "collaboration").catch(err => {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
-            notify(`Failed to exit plan mode: ${errorMessage}`);
-          });
-        }
+        handleExitPlanMode("collaboration");
         return;
       }
       if (input === "e") {
@@ -499,6 +499,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
             logger.error("info", "Failed to open plan in editor", { error: errorMessage });
             notify(`Failed to open plan in editor: ${errorMessage}`);
           });
+        } else {
+          notify("Plan file is still initializing. Please wait.");
         }
         return;
       }

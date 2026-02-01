@@ -16,7 +16,7 @@ export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
     // Only available when planFilePath is set (i.e., in plan mode)
     if (!planFilePath) {
-      throw new Error("write-plan tool is not available outside of plan mode");
+      return null;
     }
 
     return {

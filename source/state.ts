@@ -289,7 +289,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   setActivePlanFilePath: (path: string | null) => {
     const currentModeIndex = get().modeIndex;
-    if (path === null && currentModeIndex === 2) {
+    if (path === null && MODES[currentModeIndex] === "plan") {
       logger.error("verbose", "Warning: Clearing activePlanFilePath while in plan mode");
     }
     set({ activePlanFilePath: path });
@@ -327,7 +327,7 @@ export const useAppStore = create<UiState>((set, get) => ({
    * @param config - Application config for tool execution
    * @param transport - Transport interface for file operations
    * @param targetMode - The execution mode to switch to ("collaboration" or "unchained")
-   * @throws No error is thrown; failures notify the user and return early
+   * @throws Errors from input/agent execution propagate to the caller
    */
   exitPlanModeAndImplement: async (
     config: Config,
@@ -415,29 +415,33 @@ export const useAppStore = create<UiState>((set, get) => ({
         modelOverride,
       );
 
-      let toolHistoryItem: HistoryItem;
       if (toolReq.function.name === "write-plan") {
         const planPath = get().activePlanFilePath ?? activePlanFilePath;
         if (!planPath) {
           throw new ToolError("Plan file path became unavailable during write. Please retry.");
         }
-        toolHistoryItem = {
-          type: "plan-written",
-          id: sequenceId(),
-          planFilePath: planPath,
-          content: result != null && "content" in result ? result.content : String(result),
-        };
-      } else {
-        toolHistoryItem = {
+        const toolOutputItem: HistoryItem = {
           type: "tool-output",
           id: sequenceId(),
           result,
           toolCallId: toolReq.toolCallId,
         };
+        const planWrittenItem: HistoryItem = {
+          type: "plan-written",
+          id: sequenceId(),
+          planFilePath: planPath,
+          content: result != null && "content" in result ? result.content : String(result),
+        };
+        set({ history: [...get().history, toolOutputItem, planWrittenItem] });
+      } else {
+        const toolHistoryItem: HistoryItem = {
+          type: "tool-output",
+          id: sequenceId(),
+          result,
+          toolCallId: toolReq.toolCallId,
+        };
+        set({ history: [...get().history, toolHistoryItem] });
       }
-
-      const history: HistoryItem[] = [...get().history, toolHistoryItem];
-      set({ history });
     } catch (e) {
       const history = [
         ...get().history,
@@ -480,20 +484,13 @@ export const useAppStore = create<UiState>((set, get) => ({
         );
       }
     }
+    if (isPlanMode && activePlanFilePath === null) {
+      throw new Error(
+        "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
+      );
+    }
     const planModeConfig: PlanModeConfig = isPlanMode
-      ? {
-          isPlanMode: true,
-          planFilePath: (() => {
-            // Type assertion: we guarantee activePlanFilePath is non-null when isPlanMode is true
-            // This is a runtime invariant enforced by the mode switching logic
-            if (activePlanFilePath === null) {
-              throw new Error(
-                "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
-              );
-            }
-            return activePlanFilePath;
-          })(),
-        }
+      ? { isPlanMode: true, planFilePath: activePlanFilePath! }
       : { isPlanMode: false };
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
@@ -669,6 +666,8 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 }));
 
+const SYSTEM_ERROR_CODES = ["EMFILE", "ENFILE", "ENOMEM", "EACCES", "EPERM", "ENOSPC", "EIO"];
+
 /**
  * Transforms tool errors into appropriate history items.
  *
@@ -719,8 +718,6 @@ async function tryTransformToolError(
           ? String((readErr as NodeJS.ErrnoException).code)
           : "UNKNOWN";
 
-      // System-level errors that should not be converted to user messages
-      const SYSTEM_ERROR_CODES = ["EMFILE", "ENFILE", "ENOMEM", "EACCES", "EPERM", "ENOSPC", "EIO"];
       if (SYSTEM_ERROR_CODES.includes(errorCode)) {
         logger.error("info", "System-level error during file-outdated check, re-throwing", {
           filePath: e.filePath,

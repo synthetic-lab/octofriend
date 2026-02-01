@@ -109,7 +109,7 @@ export async function trajectoryArc({
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
 
-  // Load all tools - write tools will check planFilePath and show reminder in plan mode
+  // Load all tools - mutation tools receive planFilePath and return plan-mode placeholders
   const tools = await loadTools(transport, abortSignal, config, undefined, planFilePath);
 
   const parsedCompaction = await maybeAutocompact({

@@ -1,16 +1,6 @@
-/**
- * Plan Mode Tool Pattern:
- *
- * Tools that mutate the codebase check planFilePath first.
- * If planFilePath is non-null, we're in plan mode and should return
- * a placeholder tool that returns PLAN_MODE_MESSAGE instead of
- * performing the mutation. This prevents accidental edits during
- * planning while still keeping the schema available for the LLM.
- */
-
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool, createPlanModeToolResult } from "../common.ts";
+import { ToolError, attempt, defineTool, planModeGuard } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 export const ArgumentsSchema = t.subtype({
@@ -40,16 +30,9 @@ async function validate(
 }
 
 export default defineTool<t.GetType<typeof Schema>>(
-  async (_signal, _transport, _config, planFilePath) => {
-    // If in plan mode, return a tool that shows the plan mode message
-    if (planFilePath) {
-      return {
-        Schema,
-        ArgumentsSchema,
-        validate: async () => null,
-        run: async () => createPlanModeToolResult(),
-      };
-    }
+  async (signal, transport, config, planFilePath) => {
+    const guard = planModeGuard(planFilePath, Schema, ArgumentsSchema);
+    if (guard) return guard;
 
     return {
       Schema,

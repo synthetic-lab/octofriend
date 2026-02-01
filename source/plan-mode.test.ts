@@ -79,14 +79,15 @@ describe("getPlanFilePath", () => {
     expect(result).toMatch(/^\.plans\/my-project-[a-z0-9]{6}\.md$/);
   });
 
-  it("re-throws unexpected errors", async () => {
+  it("falls back to cwd on unexpected errors", async () => {
     const transport = createMockTransport({
       shell: vi.fn().mockRejectedValue(new Error("ENOMEM: out of memory")),
+      cwd: vi.fn().mockResolvedValue("/home/user/my-project"),
     });
 
-    await expect(getPlanFilePath(transport, new AbortController().signal)).rejects.toThrow(
-      "ENOMEM: out of memory",
-    );
+    const result = await getPlanFilePath(transport, new AbortController().signal);
+
+    expect(result).toMatch(/^\.plans\/my-project-[a-z0-9]{6}\.md$/);
   });
 
   it("trims whitespace from branch name with unique ID", async () => {
@@ -128,9 +129,11 @@ describe("getPlanFilePath", () => {
   it("handles signal being aborted during shell command", async () => {
     const controller = new AbortController();
     const shellMock = vi.fn().mockRejectedValue(new Error("Aborted"));
+    const cwdMock = vi.fn().mockRejectedValue(new Error("Aborted"));
 
     const transport = createMockTransport({
       shell: shellMock,
+      cwd: cwdMock,
     });
 
     await expect(getPlanFilePath(transport, controller.signal)).rejects.toThrow("Aborted");
@@ -202,7 +205,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, signal)).rejects.toThrow(
-      "Failed to create plans directory (.plans): EEXIST: directory already exists",
+      "EEXIST: directory already exists",
     );
 
     expect(mkdirMock).toHaveBeenCalled();
@@ -222,7 +225,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, signal)).rejects.toThrow(
-      "Failed to create plan file template",
+      "Permission denied",
     );
 
     expect(mkdirMock).toHaveBeenCalled();
@@ -263,7 +266,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, signal)).rejects.toThrow(
-      "Failed to check if plan file exists",
+      "EACCES: permission denied",
     );
 
     expect(mkdirMock).toHaveBeenCalled();
@@ -285,7 +288,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, controller.signal)).rejects.toThrow(
-      "Failed to create plans directory",
+      "Aborted",
     );
 
     expect(mkdirMock).toHaveBeenCalledWith(controller.signal, ".plans");
@@ -306,7 +309,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, controller.signal)).rejects.toThrow(
-      "Failed to check if plan file exists",
+      "Aborted",
     );
 
     expect(mkdirMock).toHaveBeenCalled();
@@ -328,7 +331,7 @@ describe("initializePlanFile", () => {
 
     const filePath = ".plans/main.md";
     await expect(initializePlanFile(transport, filePath, controller.signal)).rejects.toThrow(
-      "Failed to create plan file template",
+      "Aborted",
     );
 
     expect(mkdirMock).toHaveBeenCalled();

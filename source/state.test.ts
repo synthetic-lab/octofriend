@@ -161,18 +161,16 @@ describe("runTool", () => {
     );
   });
 
-  it("creates plan-written history item when write-plan tool succeeds", async () => {
+  it("creates both tool-output and plan-written history items when write-plan tool succeeds", async () => {
     const planContent = "# Test Plan\n\nImplementation steps";
+    const toolResult = { content: planContent, lines: 3 } as ToolResult;
 
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      modeIndex: MODES.indexOf("plan"),
       activePlanFilePath: "/plans/test.md",
     });
 
-    vi.spyOn(toolsModule, "runTool").mockResolvedValue({
-      content: planContent,
-      lines: 3,
-    } as ToolResult);
+    vi.spyOn(toolsModule, "runTool").mockResolvedValue(toolResult);
 
     const toolReq = createToolRequest("write-plan", { content: planContent });
 
@@ -180,14 +178,26 @@ describe("runTool", () => {
     await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
 
     const history = useAppStore.getState().history;
-    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
 
+    const toolOutputItem = history.find((item: HistoryItem) => item.type === "tool-output");
+    expect(toolOutputItem).toBeDefined();
+    expect(toolOutputItem).toMatchObject({
+      type: "tool-output",
+      result: toolResult,
+      toolCallId: "call-1",
+    });
+
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
     expect(planWrittenItem).toBeDefined();
     expect(planWrittenItem).toMatchObject({
       type: "plan-written",
       planFilePath: "/plans/test.md",
       content: planContent,
     });
+
+    const toolOutputIndex = history.indexOf(toolOutputItem!);
+    const planWrittenIndex = history.indexOf(planWrittenItem!);
+    expect(toolOutputIndex).toBeLessThan(planWrittenIndex);
   });
 
   it("creates tool-output history item for non-write-plan tools", async () => {
@@ -346,10 +356,8 @@ describe("runTool", () => {
       activePlanFilePath: "/plans/test.md",
     });
 
-    // Return a result without content property (edge case)
-    vi.spyOn(toolsModule, "runTool").mockResolvedValue({
-      someOtherProperty: "value",
-    } as unknown as ToolResult);
+    const mockResult = { someOtherProperty: "value" } as unknown as ToolResult;
+    vi.spyOn(toolsModule, "runTool").mockResolvedValue(mockResult);
 
     const toolReq = createToolRequest("write-plan", { content: "test" });
 
@@ -357,10 +365,17 @@ describe("runTool", () => {
     await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
 
     const history = useAppStore.getState().history;
-    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
 
+    const toolOutputItem = history.find((item: HistoryItem) => item.type === "tool-output");
+    expect(toolOutputItem).toBeDefined();
+    expect(toolOutputItem).toMatchObject({
+      type: "tool-output",
+      result: mockResult,
+      toolCallId: "call-1",
+    });
+
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
     expect(planWrittenItem).toBeDefined();
-    // Should convert non-content result to string
     expect(planWrittenItem).toHaveProperty("content");
   });
 
@@ -370,10 +385,10 @@ describe("runTool", () => {
       activePlanFilePath: "/plans/test.md",
     });
 
-    // Simulate a race condition: another UI event clears activePlanFilePath during tool execution
+    const toolResult = { content: "plan content", lines: 1 } as ToolResult;
     vi.spyOn(toolsModule, "runTool").mockImplementation(async () => {
       useAppStore.setState({ activePlanFilePath: null });
-      return { content: "plan content", lines: 1 } as ToolResult;
+      return toolResult;
     });
 
     const toolReq = createToolRequest("write-plan", { content: "plan content" });
@@ -382,8 +397,16 @@ describe("runTool", () => {
     await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
 
     const history = useAppStore.getState().history;
-    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
 
+    const toolOutputItem = history.find((item: HistoryItem) => item.type === "tool-output");
+    expect(toolOutputItem).toBeDefined();
+    expect(toolOutputItem).toMatchObject({
+      type: "tool-output",
+      result: toolResult,
+      toolCallId: "call-1",
+    });
+
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
     expect(planWrittenItem).toBeDefined();
     expect(planWrittenItem).toMatchObject({
       type: "plan-written",
@@ -398,10 +421,10 @@ describe("runTool", () => {
       activePlanFilePath: "/plans/old.md",
     });
 
-    // Store value changes to a new path during tool execution
+    const toolResult = { content: "plan content", lines: 1 } as ToolResult;
     vi.spyOn(toolsModule, "runTool").mockImplementation(async () => {
       useAppStore.setState({ activePlanFilePath: "/plans/new.md" });
-      return { content: "plan content", lines: 1 } as ToolResult;
+      return toolResult;
     });
 
     const toolReq = createToolRequest("write-plan", { content: "plan content" });
@@ -410,8 +433,16 @@ describe("runTool", () => {
     await store.runTool({ config: mockConfig, transport: mockTransport, toolReq });
 
     const history = useAppStore.getState().history;
-    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
 
+    const toolOutputItem = history.find((item: HistoryItem) => item.type === "tool-output");
+    expect(toolOutputItem).toBeDefined();
+    expect(toolOutputItem).toMatchObject({
+      type: "tool-output",
+      result: toolResult,
+      toolCallId: "call-1",
+    });
+
+    const planWrittenItem = history.find((item: HistoryItem) => item.type === "plan-written");
     expect(planWrittenItem).toBeDefined();
     expect(planWrittenItem).toMatchObject({
       type: "plan-written",
