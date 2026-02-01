@@ -149,12 +149,13 @@ export function TaskList() {
     return () => clearTimeout(timer);
   }, [taskList]);
 
+  // Hide completely when there are no tasks (regardless of expand/collapse state)
+  if (taskList.length === 0) {
+    return null;
+  }
+
   // Compact view when closed - show summary line
   if (!showTaskList) {
-    if (taskList.length === 0) {
-      return null;
-    }
-
     return (
       <Box>
         <Text color={runningCount > 0 ? themeColor : "gray"}>
@@ -167,7 +168,7 @@ export function TaskList() {
 
   // Expanded tree view
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginBottom={2}>
       {/* Header */}
       <Box>
         <Text color={runningCount > 0 ? themeColor : "gray"}>
@@ -177,22 +178,16 @@ export function TaskList() {
       </Box>
 
       {/* Tree */}
-      {taskList.length === 0 ? (
-        <Box marginLeft={2}>
-          <Text dimColor>No tasks yet. Use the Task tool to delegate work to agents.</Text>
-        </Box>
-      ) : (
-        <Box flexDirection="column">
-          {taskList.map((task, index) => (
-            <TaskTreeItem
-              key={task.id}
-              task={task}
-              isLast={index === taskList.length - 1}
-              isExpanded={showTaskList}
-            />
-          ))}
-        </Box>
-      )}
+      <Box flexDirection="column">
+        {taskList.map((task, index) => (
+          <TaskTreeItem
+            key={task.id}
+            task={task}
+            isLast={index === taskList.length - 1}
+            isExpanded={showTaskList}
+          />
+        ))}
+      </Box>
     </Box>
   );
 }
