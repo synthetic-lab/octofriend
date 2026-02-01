@@ -3,9 +3,6 @@ import { Box, Text, useInput } from "ink";
 import { useTaskStore, useTaskStoreShallow, Task, TaskProgress } from "../task-manager.ts";
 import { useColor } from "../theme.ts";
 
-// Delay before clearing completed tasks from the list (ms)
-const CLEAR_COMPLETED_DELAY = 3000;
-
 // Tree drawing characters
 const TREE_BRANCH = "├─";
 const TREE_LAST = "└─";
@@ -114,40 +111,21 @@ function TaskTreeItem({
 
 export function TaskList() {
   const themeColor = useColor();
-  const { tasks, showTaskList, closeTaskList } = useTaskStoreShallow(state => ({
+  const { tasks, showTaskList, closeTaskList, enableAutoClear } = useTaskStoreShallow(state => ({
     tasks: state.tasks,
     showTaskList: state.showTaskList,
     closeTaskList: state.closeTaskList,
+    enableAutoClear: state.enableAutoClear,
   }));
 
   const taskList = Array.from(tasks.values()).sort((a, b) => b.startTime - a.startTime);
   const activeTasks = taskList.filter(t => t.status === "pending" || t.status === "running");
   const runningCount = activeTasks.length;
 
-  // Keyboard shortcuts - only handle Esc/q to close (Ctrl+T is handled globally in app.tsx)
-  useInput((input, key) => {
-    if (!showTaskList) return;
-
-    // When open, handle close shortcuts
-    if (key.escape || input === "q") {
-      closeTaskList();
-    }
-  });
-
-  // Auto-clear completed/failed/cancelled tasks after a delay
+  // Enable auto-clear on mount
   React.useEffect(() => {
-    const completedTasks = taskList.filter(
-      t => t.status === "completed" || t.status === "failed" || t.status === "cancelled",
-    );
-
-    if (completedTasks.length === 0) return;
-
-    const timer = setTimeout(() => {
-      useTaskStore.getState().clearCompletedTasks();
-    }, CLEAR_COMPLETED_DELAY);
-
-    return () => clearTimeout(timer);
-  }, [taskList]);
+    enableAutoClear();
+  }, [enableAutoClear]);
 
   // Hide completely when there are no tasks (regardless of expand/collapse state)
   if (taskList.length === 0) {

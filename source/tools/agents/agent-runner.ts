@@ -177,9 +177,12 @@ Remember: You are running in an isolated context. The parent agent handles all u
   let assistantContent = "";
   let hasReportedThinking = false;
 
+  // Maximum iteration limit to prevent infinite loops
+  const MAX_ITERATIONS = 3;
+  let iterations = 0;
+
   // Run the full conversation loop
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (iterations < MAX_ITERATIONS) {
     if (abortSignal.aborted) {
       return { content: "" };
     }
@@ -259,7 +262,12 @@ Remember: You are running in an isolated context. The parent agent handles all u
     if (finish.reason.type === "needs-response") {
       // The agent has completed its response - we're done
       break;
-    } else if (finish.reason.type === "request-tool") {
+    }
+
+    // Increment iteration counter
+    iterations++;
+
+    if (finish.reason.type === "request-tool") {
       // The agent wants to use a tool - execute it and continue
       const toolCall = finish.reason.toolCall;
 
