@@ -1,4 +1,5 @@
 import { t } from "structural";
+import { error } from "../../logger.ts";
 import { defineTool, attempt } from "../common.ts";
 
 export const ArgumentsSchema = t.subtype({
@@ -16,6 +17,7 @@ export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
     // Only available when planFilePath is set (i.e., in plan mode)
     if (!planFilePath) {
+      error("info", "[write-plan] Tool unavailable: not in plan mode (planFilePath is null)");
       return null;
     }
 
