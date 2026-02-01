@@ -738,6 +738,7 @@ function ToolRequestRenderer({
   toolReq: ToolCallRequest;
 } & RunArgs) {
   const themeColor = useColor();
+  const isPlanMode = useContext(PlanModeContext);
   const { runTool, rejectTool, modeIndex } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
@@ -746,7 +747,7 @@ function ToolRequestRenderer({
     })),
   );
   const isUnchained = MODES[modeIndex] === "unchained";
-  const noConfirm = isUnchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
+  const noConfirm = isUnchained || isPlanMode || SKIP_CONFIRMATION.includes(toolReq.function.name);
 
   const prompt = (() => {
     const fn = toolReq.function;
