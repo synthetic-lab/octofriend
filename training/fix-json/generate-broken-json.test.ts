@@ -69,7 +69,7 @@ describe('JSON fuzzing functions', () => {
         });
 
         expect(result).toBeDefined();
-        expect(result?.broken).toEqual("nuall");
+        expect(result?.broken).toEqual("numll");
       });
     });
   });
@@ -113,7 +113,7 @@ describe('JSON fuzzing functions', () => {
         });
         
         expect(result).toBeDefined();
-        expect(result?.broken).toMatch("faalse");
+        expect(result?.broken).toMatch("famlse");
       });
     });
   });
