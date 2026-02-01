@@ -8,6 +8,7 @@ import {
 } from "./history.ts";
 import { runTool, ToolError, loadTools, PLAN_MODE_TOOLS } from "./tools/index.ts";
 import { MODES, PlanModeConfig } from "./modes.ts";
+import { initializePlanFile } from "./plan-mode.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
@@ -88,9 +89,29 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
-  modeIndex: number; // Index into MODES array
-  activePlanFilePath: string | null; // Path currently being used by agent tools (active mode)
-  sessionPlanFilePath: string | null; // Path allocated for this session (survives mode switches)
+  /**
+   * Index into MODES array.
+   *
+   * Valid range: 0 to MODES.length - 1 (0=collaboration, 1=unchained, 2=plan)
+   *
+   * Note: The bounds of this index are not enforced at the type level. Runtime code
+   * should ensure valid indices are used when accessing MODES[modeIndex].
+   */
+  modeIndex: number;
+  /** Path currently being used by agent tools for plan operations.
+   * This is the active plan file that tools read from/write to.
+   * Set when entering plan mode, cleared when exiting.
+   */
+  activePlanFilePath: string | null;
+  /** Path allocated for this session (survives mode switches).
+   * This persists even when switching to other modes so the plan
+   * can be resumed later. Cleared when session is cleared.
+   */
+  sessionPlanFilePath: string | null;
+  /** Tracks whether the plan file has been initialized (created with template).
+   * Used to ensure lazy initialization only happens once per session.
+   */
+  planFileInitialized: boolean;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -111,6 +132,7 @@ export type UiState = {
   clearHistory: () => void;
   setActivePlanFilePath: (path: string | null) => void;
   setSessionPlanFilePath: (path: string | null) => void;
+  setPlanFileInitialized: (initialized: boolean) => void;
   setModeIndex: (index: number) => void;
   exitPlanModeAndImplement: (
     config: Config,
@@ -132,6 +154,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   modeIndex: 0,
   activePlanFilePath: null,
   sessionPlanFilePath: null,
+  planFileInitialized: false,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -260,6 +283,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       clearNonce: state.clearNonce + 1,
       sessionPlanFilePath: null,
       activePlanFilePath: null,
+      planFileInitialized: false,
     }));
   },
 
@@ -269,6 +293,10 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   setSessionPlanFilePath: (path: string | null) => {
     set({ sessionPlanFilePath: path });
+  },
+
+  setPlanFileInitialized: (initialized: boolean) => {
+    set({ planFileInitialized: initialized });
   },
 
   setModeIndex: (index: number) => {
@@ -409,9 +437,39 @@ export const useAppStore = create<UiState>((set, get) => ({
     const apiKey = await assertKeyForModel(model, config);
     const currentMode = MODES[get().modeIndex];
     const isPlanMode = currentMode === "plan";
-    const { activePlanFilePath } = get();
+    const { activePlanFilePath, planFileInitialized } = get();
+
+    // Lazy initialization of plan file on first message in plan mode
+    if (isPlanMode && activePlanFilePath && !planFileInitialized) {
+      try {
+        await initializePlanFile(transport, activePlanFilePath, abortController.signal);
+        set({ planFileInitialized: true });
+      } catch (initErr) {
+        if (abortController.signal.aborted) return;
+        const errorMessage = initErr instanceof Error ? initErr.message : String(initErr);
+        logger.error("info", "Plan file initialization failed", {
+          planFilePath: activePlanFilePath,
+          error: errorMessage,
+        });
+        get().notify(
+          `Plan mode: failed to initialize plan file at ${activePlanFilePath}. You can create it manually.`,
+        );
+      }
+    }
     const planModeConfig: PlanModeConfig = isPlanMode
-      ? { isPlanMode: true, planFilePath: activePlanFilePath }
+      ? {
+          isPlanMode: true,
+          planFilePath: (() => {
+            // Type assertion: we guarantee activePlanFilePath is non-null when isPlanMode is true
+            // This is a runtime invariant enforced by the mode switching logic
+            if (activePlanFilePath === null) {
+              throw new Error(
+                "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
+              );
+            }
+            return activePlanFilePath;
+          })(),
+        }
       : { isPlanMode: false };
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
@@ -587,6 +645,22 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 }));
 
+/**
+ * Transforms tool errors into appropriate history items.
+ *
+ * Handles known error types (ToolError, FileOutdatedError) by converting them
+ * into user-friendly history items. System-level errors (EMFILE, ENOMEM) are
+ * re-thrown to prevent masking critical issues.
+ *
+ * @param signal - Abort signal for file operations
+ * @param transport - The transport interface for file system operations
+ * @param toolReq - The tool request that caused the error
+ * @param e - The error that occurred
+ * @returns A history item describing the error
+ * @throws {Error} System-level errors (EMFILE, ENOMEM) that should not be
+ *         converted to user messages
+ * @throws {Error} Unexpected errors not categorized as ToolError or FileOutdatedError
+ */
 async function tryTransformToolError(
   signal: AbortSignal,
   transport: Transport,
@@ -616,10 +690,29 @@ async function tryTransformToolError(
       };
     } catch (readErr) {
       const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
-      logger.error("info", "FileTracker.readUntracked failed during file-outdated check", {
+      const errorCode =
+        readErr instanceof Error && "code" in readErr
+          ? String((readErr as NodeJS.ErrnoException).code)
+          : "UNKNOWN";
+
+      // System-level errors that should not be converted to user messages
+      const SYSTEM_ERROR_CODES = ["EMFILE", "ENFILE", "ENOMEM", "EACCES", "EPERM", "ENOSPC", "EIO"];
+      if (SYSTEM_ERROR_CODES.includes(errorCode)) {
+        logger.error("info", "System-level error during file-outdated check, re-throwing", {
+          filePath: e.filePath,
+          toolName: toolReq.function.name,
+          errorCode,
+          errorMessage,
+        });
+        throw readErr;
+      }
+
+      // Expected file errors (ENOENT, etc.) - convert to user message
+      logger.log("info", "FileTracker.readUntracked failed during file-outdated check", {
         filePath: e.filePath,
         toolName: toolReq.function.name,
         error: errorMessage,
+        errorCode,
       });
       return {
         type: "file-unreadable",
@@ -630,6 +723,12 @@ async function tryTransformToolError(
       };
     }
   }
+  // Unknown error type - re-throw to avoid masking issues
+  const errorMessage = e instanceof Error ? e.message : String(e);
+  logger.error("info", "Unknown error type in tryTransformToolError, re-throwing", {
+    errorMessage,
+    toolName: toolReq.function.name,
+  });
   throw e;
 }
 

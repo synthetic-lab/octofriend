@@ -45,7 +45,7 @@ import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
-import { getPlanFilePath, initializePlanFile } from "./plan-mode.ts";
+import { getPlanFilePath } from "./plan-mode.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
@@ -170,7 +170,7 @@ export default function App({
     setModeIndex(MODES.indexOf(unchained ? "unchained" : "collaboration"));
   }, [markUpdatesSeen, setVimMode, setModeIndex, unchained]);
 
-  // Initialize plan file when entering plan mode
+  // Initialize plan file path when entering plan mode (file creation is deferred)
   const isInitializingPlanRef = useRef(false);
   useEffect(() => {
     const abortController = new AbortController();
@@ -204,18 +204,6 @@ export default function App({
       if (abortController.signal.aborted) return;
       setSessionPlanFilePath(path);
       setActivePlanFilePath(path);
-
-      try {
-        await initializePlanFile(transport, path, abortController.signal);
-      } catch (initErr) {
-        if (abortController.signal.aborted) return;
-        const errorMessage = initErr instanceof Error ? initErr.message : String(initErr);
-        logger.error("info", "Plan file initialization failed", {
-          planFilePath: path,
-          error: errorMessage,
-        });
-        notify(`Plan mode: failed to initialize plan file at ${path}. You can create it manually.`);
-      }
     }
     initPlan();
     return () => {

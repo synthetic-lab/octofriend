@@ -23,7 +23,9 @@ export async function systemPrompt({
   planModeConfig?: PlanModeConfig;
 }) {
   const isPlanMode = planModeConfig?.isPlanMode ?? false;
-  const planFilePath = planModeConfig?.isPlanMode ? planModeConfig.planFilePath : null;
+  // With the strengthened PlanModeConfig type, planFilePath is guaranteed to be a string
+  // when isPlanMode is true. The null assignment is only for the false case where it's unused.
+  const planFilePath = planModeConfig?.isPlanMode === true ? planModeConfig.planFilePath : null;
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
   const currDirStr = currDir.map(entry => JSON.stringify(entry)).join("\n");
@@ -37,7 +39,7 @@ and the write-plan tool to save your implementation plan.
 
 Your goal is to write an implementation plan to the file at:
 
-${planFilePath ?? "(plan file path unavailable — the write-plan tool may not be available)"}
+${planFilePath}
 
 Explore the codebase to understand the task, then use write-plan to save a detailed implementation
 plan. Do not write any code or make any edits to the codebase in plan mode. The user will review

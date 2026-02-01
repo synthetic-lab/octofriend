@@ -119,6 +119,47 @@ describe("loadTools", () => {
     // Tools should be loaded (factories receive the planFilePath parameter)
     expect(Object.keys(loaded).length).toBeGreaterThan(0);
   });
+
+  it("handles individual tool loading failures gracefully", async () => {
+    // Create a scenario where one tool fails to load
+    // The skill tool calls transport.cwd during initialization
+    const failingTransport = {
+      ...mockTransport,
+      cwd: vi.fn().mockRejectedValue(new Error("Tool loading failed")),
+    };
+
+    // Load tools - despite the skill tool failing, other tools should still load
+    const loaded = await loadTools(failingTransport, signal, mockConfig, undefined, null);
+
+    // Should still have other tools loaded even if one tool failed
+    expect(Object.keys(loaded).length).toBeGreaterThan(0);
+
+    // Basic tools should still be available
+    expect(loaded.read).toBeDefined();
+    expect(loaded.list).toBeDefined();
+    expect(loaded.fetch).toBeDefined();
+
+    // The skill tool likely failed to load due to the error
+    expect(loaded.skill).toBeUndefined();
+  });
+
+  it("continues loading other tools when one tool fails", async () => {
+    // Test that a single tool failure doesn't prevent other tools from loading
+    const failingTransport = {
+      ...mockTransport,
+      shell: vi.fn().mockRejectedValue(new Error("Shell command failed during tool loading")),
+    };
+
+    const loaded = await loadTools(failingTransport, signal, mockConfig, undefined, null);
+
+    // Verify that some tools still loaded despite the error
+    // Shell tool likely won't load due to the error
+    expect(Object.keys(loaded).length).toBeGreaterThan(0);
+
+    // Read and list tools use other transport methods, should still load
+    expect(loaded.read).toBeDefined();
+    expect(loaded.list).toBeDefined();
+  });
 });
 
 describe("SKIP_CONFIRMATION", () => {

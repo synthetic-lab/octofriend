@@ -78,24 +78,4 @@ describe("systemPrompt", () => {
 
     expect(result).not.toContain("# Plan Mode");
   });
-
-  it("shows fallback message when planFilePath is null", async () => {
-    const transport = createMockTransport();
-    const config = createMockConfig();
-    const planModeConfig: PlanModeConfig = {
-      isPlanMode: true,
-      planFilePath: null,
-    };
-
-    const result = await systemPrompt({
-      config,
-      transport,
-      signal: new AbortController().signal,
-      tools: {},
-      planModeConfig,
-    });
-
-    expect(result).toContain("# Plan Mode");
-    expect(result).toContain("plan file path unavailable");
-  });
 });

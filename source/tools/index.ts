@@ -24,10 +24,15 @@ export async function loadTools(
       if (allowedTools && !allowedTools.includes(key)) {
         return;
       }
-      const toolDef = await toolMap[key](signal, transport, config, planFilePath);
-      if (toolDef) {
-        // @ts-ignore
-        loaded[key] = toolDef;
+      try {
+        const toolDef = await toolMap[key](signal, transport, config, planFilePath);
+        if (toolDef) {
+          // @ts-ignore
+          loaded[key] = toolDef;
+        }
+      } catch (error) {
+        // Log which specific tool failed but continue loading others
+        console.error(`Failed to load tool "${key}":`, error);
       }
     }),
   );

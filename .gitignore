@@ -5,3 +5,6 @@ dist
 .DS_Store
 *.DS_Store
 .plans/
+
+# E2E tests - to be included in a follow-up PR
+/tests/e2e/
