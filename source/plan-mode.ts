@@ -5,7 +5,7 @@ import * as logger from "./logger.ts";
 
 /** Directory where plan files are stored (relative to project root) */
 const PLAN_DIR = ".plans";
-/** Length of unique ID appended to plan filenames (6 chars = ~16 million combinations) */
+/** Length of unique ID appended to plan filenames (6 hex chars = 16,777,216 combinations) */
 const ID_LENGTH = 6;
 /** Error message for empty git branch (triggers fallback to cwd) */
 const EMPTY_BRANCH_ERROR = "Empty branch name";

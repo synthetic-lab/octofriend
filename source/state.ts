@@ -288,6 +288,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setActivePlanFilePath: (path: string | null) => {
+    const currentModeIndex = get().modeIndex;
+    if (path === null && currentModeIndex === 2) {
+      logger.error("verbose", "Warning: Clearing activePlanFilePath while in plan mode");
+    }
     set({ activePlanFilePath: path });
   },
 
@@ -300,11 +304,31 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setModeIndex: (index: number) => {
-    set({
-      modeIndex: index,
-    });
+    if (index < 0 || index >= MODES.length) {
+      throw new Error(`Invalid modeIndex: ${index}. Must be 0-${MODES.length - 1}`);
+    }
+    set({ modeIndex: index });
   },
 
+  /**
+   * Exits plan mode, reads the plan file, and begins implementation in the specified mode.
+   *
+   * This method:
+   * 1. Reads the plan file content
+   * 2. Clears all conversation history
+   * 3. Transitions to the specified execution mode (collaboration or unchained)
+   * 4. Sends the plan content as a new user message to start implementation
+   *
+   * Side effects:
+   * - Clears all conversation history
+   * - Changes the operating mode
+   * - Sends a new user message with plan content
+   *
+   * @param config - Application config for tool execution
+   * @param transport - Transport interface for file operations
+   * @param targetMode - The execution mode to switch to ("collaboration" or "unchained")
+   * @throws No error is thrown; failures notify the user and return early
+   */
   exitPlanModeAndImplement: async (
     config: Config,
     transport: Transport,

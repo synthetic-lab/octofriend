@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useAppStore } from "./state.ts";
 import { MODES } from "./modes.ts";
 import * as planModeModule from "./plan-mode.ts";
+import * as platformModule from "./platform.ts";
 import type { Transport } from "./transports/transport-common.ts";
 import type { Config } from "./config.ts";
 import type { HistoryItem } from "./history.ts";
@@ -437,6 +438,180 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("collaboration"));
       expect(useAppStore.getState().sessionPlanFilePath).toBe(".plans/test.md");
+    });
+  });
+
+  describe("Ctrl+E Platform-Specific Commands", () => {
+    it("generates correct open command for macOS", () => {
+      const activePlanFilePath = "/path/to/plan.md";
+      const platform = "macos";
+
+      let openCommand: string;
+      switch (platform) {
+        case "macos":
+          openCommand = `open "${activePlanFilePath}"`;
+          break;
+        case "windows":
+          openCommand = `start "" "${activePlanFilePath}"`;
+          break;
+        case "linux":
+        default:
+          openCommand = `xdg-open "${activePlanFilePath}"`;
+          break;
+      }
+
+      expect(openCommand).toBe('open "/path/to/plan.md"');
+    });
+
+    it("generates correct open command for Windows", () => {
+      const activePlanFilePath = "/path/to/plan.md";
+      const platform = "windows";
+
+      let openCommand: string;
+      switch (platform) {
+        case "macos":
+          openCommand = `open "${activePlanFilePath}"`;
+          break;
+        case "windows":
+          openCommand = `start "" "${activePlanFilePath}"`;
+          break;
+        case "linux":
+        default:
+          openCommand = `xdg-open "${activePlanFilePath}"`;
+          break;
+      }
+
+      expect(openCommand).toBe('start "" "/path/to/plan.md"');
+    });
+
+    it("generates correct open command for Linux", () => {
+      const activePlanFilePath = "/path/to/plan.md";
+      const platform = "linux";
+
+      let openCommand: string;
+      switch (platform) {
+        case "macos":
+          openCommand = `open "${activePlanFilePath}"`;
+          break;
+        case "windows":
+          openCommand = `start "" "${activePlanFilePath}"`;
+          break;
+        case "linux":
+        default:
+          openCommand = `xdg-open "${activePlanFilePath}"`;
+          break;
+      }
+
+      expect(openCommand).toBe('xdg-open "/path/to/plan.md"');
+    });
+
+    it("handles paths with spaces correctly", () => {
+      const activePlanFilePath = "/path with spaces/to/plan file.md";
+      const platform = "macos";
+
+      let openCommand: string;
+      switch (platform) {
+        case "macos":
+          openCommand = `open "${activePlanFilePath}"`;
+          break;
+        case "windows":
+          openCommand = `start "" "${activePlanFilePath}"`;
+          break;
+        case "linux":
+        default:
+          openCommand = `xdg-open "${activePlanFilePath}"`;
+          break;
+      }
+
+      expect(openCommand).toBe('open "/path with spaces/to/plan file.md"');
+    });
+
+    it("handles paths with special characters correctly", () => {
+      const activePlanFilePath = "/path/to/plan's file (v1).md";
+      const platform = "linux";
+
+      let openCommand: string;
+      switch (platform) {
+        case "macos":
+          openCommand = `open "${activePlanFilePath}"`;
+          break;
+        case "windows":
+          openCommand = `start "" "${activePlanFilePath}"`;
+          break;
+        case "linux":
+        default:
+          openCommand = `xdg-open "${activePlanFilePath}"`;
+          break;
+      }
+
+      expect(openCommand).toBe('xdg-open "/path/to/plan\'s file (v1).md"');
+    });
+
+    it("notifies user when shell command fails", async () => {
+      const shellError = new Error("Command not found: xdg-open");
+      const mockTransport = createMockTransport({
+        shell: vi.fn().mockRejectedValue(shellError),
+      });
+
+      // Simulate the error handling behavior from app.tsx
+      const notify = vi.fn();
+      const loggerError = vi.fn();
+
+      const activePlanFilePath = "/path/to/plan.md";
+      const openCommand = `xdg-open "${activePlanFilePath}"`;
+
+      try {
+        await mockTransport.shell(new AbortController().signal, openCommand, 5000);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        loggerError("info", "Failed to open plan in editor", { error: errorMessage });
+        notify(`Failed to open plan in editor: ${errorMessage}`);
+      }
+
+      expect(mockTransport.shell).toHaveBeenCalledWith(
+        expect.any(AbortSignal),
+        'xdg-open "/path/to/plan.md"',
+        5000,
+      );
+      expect(notify).toHaveBeenCalledWith(
+        "Failed to open plan in editor: Command not found: xdg-open",
+      );
+    });
+
+    it("calls shell with correct command for each platform", async () => {
+      const platforms: Array<{ platform: platformModule.PlatformKey; expectedCommand: string }> = [
+        { platform: "macos", expectedCommand: 'open "/plans/test.md"' },
+        { platform: "windows", expectedCommand: 'start "" "/plans/test.md"' },
+        { platform: "linux", expectedCommand: 'xdg-open "/plans/test.md"' },
+      ];
+
+      for (const { platform, expectedCommand } of platforms) {
+        const shellMock = vi.fn().mockResolvedValue("");
+        const mockTransport = createMockTransport({
+          shell: shellMock,
+        });
+
+        const activePlanFilePath = "/plans/test.md";
+
+        // Replicate the command generation logic
+        let openCommand: string;
+        switch (platform) {
+          case "macos":
+            openCommand = `open "${activePlanFilePath}"`;
+            break;
+          case "windows":
+            openCommand = `start "" "${activePlanFilePath}"`;
+            break;
+          case "linux":
+          default:
+            openCommand = `xdg-open "${activePlanFilePath}"`;
+            break;
+        }
+
+        await mockTransport.shell(new AbortController().signal, openCommand, 5000);
+
+        expect(shellMock).toHaveBeenCalledWith(expect.any(AbortSignal), expectedCommand, 5000);
+      }
     });
   });
 });

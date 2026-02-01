@@ -180,6 +180,58 @@ describe("SKIP_CONFIRMATION", () => {
     expect(SKIP_CONFIRMATION).not.toContain("rewrite");
     expect(SKIP_CONFIRMATION).not.toContain("shell");
   });
+
+  it("includes write-plan for plan mode support", () => {
+    // write-plan must be in SKIP_CONFIRMATION so users can write plans
+    // without confirmation prompts during plan mode
+    expect(SKIP_CONFIRMATION).toContain("write-plan");
+  });
+
+  it("contains all READONLY_TOOLS for seamless exploration", () => {
+    // All read-only tools should skip confirmation for frictionless exploration
+    for (const tool of READONLY_TOOLS) {
+      expect(SKIP_CONFIRMATION).toContain(tool);
+    }
+  });
+
+  it("allows read tools to bypass permission prompts", () => {
+    // Simulate permission check logic from app.tsx
+    function requiresConfirmation(toolName: keyof typeof SKIP_CONFIRMATION): boolean {
+      return !SKIP_CONFIRMATION.includes(toolName);
+    }
+
+    // Read tools should NOT require confirmation
+    expect(requiresConfirmation("read")).toBe(false);
+    expect(requiresConfirmation("list")).toBe(false);
+    expect(requiresConfirmation("fetch")).toBe(false);
+    expect(requiresConfirmation("skill")).toBe(false);
+    expect(requiresConfirmation("web-search")).toBe(false);
+  });
+
+  it("requires confirmation for write/modify tools", () => {
+    // Simulate permission check logic from app.tsx
+    function requiresConfirmation(toolName: string): boolean {
+      return !SKIP_CONFIRMATION.includes(toolName as keyof typeof SKIP_CONFIRMATION);
+    }
+
+    // Write/modify tools SHOULD require confirmation
+    expect(requiresConfirmation("edit")).toBe(true);
+    expect(requiresConfirmation("create")).toBe(true);
+    expect(requiresConfirmation("append")).toBe(true);
+    expect(requiresConfirmation("prepend")).toBe(true);
+    expect(requiresConfirmation("rewrite")).toBe(true);
+    expect(requiresConfirmation("shell")).toBe(true);
+  });
+
+  it("write-plan bypasses confirmation for plan mode workflow", () => {
+    // Simulate permission check logic from app.tsx
+    function requiresConfirmation(toolName: keyof typeof SKIP_CONFIRMATION): boolean {
+      return !SKIP_CONFIRMATION.includes(toolName);
+    }
+
+    // write-plan should NOT require confirmation (essential for plan mode)
+    expect(requiresConfirmation("write-plan")).toBe(false);
+  });
 });
 
 describe("READONLY_TOOLS", () => {

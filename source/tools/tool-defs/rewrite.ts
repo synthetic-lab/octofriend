@@ -1,3 +1,13 @@
+/**
+ * Plan Mode Tool Pattern:
+ *
+ * Tools that mutate the codebase check planFilePath first.
+ * If planFilePath is non-null, we're in plan mode and should return
+ * a placeholder tool that returns PLAN_MODE_MESSAGE instead of
+ * performing the mutation. This prevents accidental edits during
+ * planning while still keeping the schema available for the LLM.
+ */
+
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attemptUntrackedRead, defineTool, createPlanModeToolResult } from "../common.ts";

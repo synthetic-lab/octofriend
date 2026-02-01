@@ -14,7 +14,7 @@ export const MODES: ModeType[] = ["collaboration", "unchained", "plan"];
  * Runtime code must guarantee that `activePlanFilePath` is non-null before creating a config
  * with `isPlanMode: true`.
  *
- * @see activePlanFilePath - The path currently being used by agent tools
+ * @see activePlanFilePath in source/state.ts - The path currently being used by agent tools
  */
 export type PlanModeConfig = { isPlanMode: false } | { isPlanMode: true; planFilePath: string };
 export const MODE_NOTIFICATIONS: Record<ModeType, string> = {
