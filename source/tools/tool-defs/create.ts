@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool, planModeGuard } from "../common.ts";
+import { ToolError, attempt, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 export const ArgumentsSchema = t.subtype({
@@ -31,9 +31,6 @@ async function validate(
 
 export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
-    const guard = planModeGuard(planFilePath, Schema, ArgumentsSchema);
-    if (guard) return guard;
-
     return {
       Schema,
       ArgumentsSchema,

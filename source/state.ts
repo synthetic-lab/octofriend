@@ -347,6 +347,13 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const modeName = targetMode === "collaboration" ? "Collaboration" : "Unchained";
 
+    if (!planContent) {
+      notify(
+        "Plan is empty - no content to implement. Please write a plan first, then exit plan mode.",
+      );
+      return;
+    }
+
     const { abortResponse } = get();
     abortResponse();
     set(state => ({
@@ -360,18 +367,12 @@ export const useAppStore = create<UiState>((set, get) => ({
       modeData: { mode: "input", vimMode: "INSERT" },
     }));
 
-    if (planContent) {
-      notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
-      await input({
-        config,
-        transport,
-        query: `Please implement the following plan:\n\n${planContent}`,
-      });
-    } else {
-      notify(
-        `Exited plan mode. Entering ${modeName} mode. No plan content found - please describe what you want to implement.`,
-      );
-    }
+    notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
+    await input({
+      config,
+      transport,
+      query: `Please implement the following plan:\n\n${planContent}`,
+    });
   },
 
   runTool: async ({ config, toolReq, transport }) => {

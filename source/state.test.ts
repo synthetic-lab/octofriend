@@ -738,13 +738,15 @@ describe("exitPlanModeAndImplement", () => {
     );
   });
 
-  it("handles empty plan content — notifies and still switches modes", async () => {
+  it("handles empty plan content — stays in plan mode and notifies", async () => {
     mockTransport.readFile = vi.fn().mockResolvedValue("");
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
       currentMode: "plan" as ModeType,
     });
+
+    const initialClearNonce = useAppStore.getState().clearNonce;
 
     const store = useAppStore.getState();
     const inputSpy = vi.spyOn(store, "input").mockResolvedValue(undefined);
@@ -754,17 +756,18 @@ describe("exitPlanModeAndImplement", () => {
     // input should NOT be called (there's no plan content to implement)
     expect(inputSpy).not.toHaveBeenCalled();
 
-    // A notification containing "No plan content found" should appear in history
+    // A notification containing "Plan is empty" should appear in history
     const history = useAppStore.getState().history;
     const notification = history.find((item: HistoryItem) => item.type === "notification");
     expect(notification).toBeDefined();
     if (notification && notification.type === "notification") {
-      expect(notification.content).toContain("No plan content found");
+      expect(notification.content).toContain("Plan is empty");
     }
 
-    // The mode should still switch (clearNonce incremented, no longer in plan mode)
-    expect(useAppStore.getState().clearNonce).toBeGreaterThan(0);
-    expect(useAppStore.getState().currentMode).not.toBe("plan");
+    // Mode should stay at plan (early return, no state destruction)
+    expect(useAppStore.getState().currentMode).toBe("plan");
+    // clearNonce should NOT be incremented
+    expect(useAppStore.getState().clearNonce).toBe(initialClearNonce);
   });
 
   it("clearHistory resets plan paths", () => {

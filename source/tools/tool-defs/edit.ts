@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool, planModeGuard } from "../common.ts";
+import { ToolError, attemptUntrackedRead, defineTool } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
@@ -29,9 +29,6 @@ export const Schema = t.subtype({
 
 export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
-    const guard = planModeGuard(planFilePath, Schema, ArgumentsSchema);
-    if (guard) return guard;
-
     return {
       Schema,
       ArgumentsSchema,

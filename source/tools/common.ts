@@ -78,33 +78,3 @@ export function defineTool<T>(factory: ToolFactory<T>): ToolFactory<T> {
 }
 
 export type ToolSchemaFrom<T extends ToolFactory<any>> = T extends ToolFactory<infer T> ? T : never;
-
-export const PLAN_MODE_MESSAGE = `
-You are currently in plan mode. You cannot make edits to the codebase while in plan mode.
-
-Your goal is to write an implementation plan to the plan file. Please focus on exploring
-the codebase and iterating on your plan. When you're ready to implement, the user will
-exit plan mode to begin implementation.
-
-Use the write-plan tool to save your implementation plan.
-`.trim();
-
-export function createPlanModeToolResult(): ToolResult {
-  return {
-    content: PLAN_MODE_MESSAGE,
-  };
-}
-
-export function planModeGuard(
-  planFilePath: string | null,
-  Schema: t.Type<any>,
-  ArgumentsSchema: t.Type<any>,
-): ToolDef<any> | null {
-  if (!planFilePath) return null;
-  return {
-    Schema,
-    ArgumentsSchema,
-    validate: async () => null,
-    run: async () => createPlanModeToolResult(),
-  };
-}

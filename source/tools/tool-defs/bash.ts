@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, planModeGuard } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -28,9 +28,6 @@ const Schema = t.subtype({
 
 export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
-    const guard = planModeGuard(planFilePath, Schema, ArgumentsSchema);
-    if (guard) return guard;
-
     return {
       Schema,
       ArgumentsSchema,

@@ -201,7 +201,7 @@ describe("Menu exit plan mode", () => {
       expect(finalState.activePlanFilePath).toBeNull();
     });
 
-    it("handles empty plan content gracefully", async () => {
+    it("handles empty plan content gracefully — stays in plan mode", async () => {
       const readFileMock = vi.fn().mockResolvedValue("");
       const mockTransport = createMockTransport({
         readFile: readFileMock,
@@ -213,6 +213,7 @@ describe("Menu exit plan mode", () => {
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
         history: [],
+        clearNonce: 0,
       });
 
       // Empty plan content should not call input(), so no error expected
@@ -223,9 +224,18 @@ describe("Menu exit plan mode", () => {
       // Verify file was read
       expect(readFileMock).toHaveBeenCalledWith(expect.any(AbortSignal), ".plans/test.md");
 
+      // Should stay in plan mode (early return, no state destruction)
       const finalState = useAppStore.getState();
-      expect(finalState.currentMode).toBe("collaboration");
-      expect(finalState.activePlanFilePath).toBeNull();
+      expect(finalState.currentMode).toBe("plan");
+      expect(finalState.activePlanFilePath).toBe(".plans/test.md");
+      expect(finalState.clearNonce).toBe(0);
+
+      // Should have a notification about empty plan
+      const notification = finalState.history.find(item => item.type === "notification");
+      expect(notification).toBeDefined();
+      if (notification && notification.type === "notification") {
+        expect(notification.content).toContain("Plan is empty");
+      }
     });
 
     it("handles read errors gracefully", async () => {

@@ -4,7 +4,7 @@ import { ModeType } from "./modes.ts";
 import * as planModeModule from "./plan-mode.ts";
 import * as platformModule from "./platform.ts";
 import type { Transport } from "./transports/transport-common.ts";
-import type { Config } from "./config.ts";
+
 import type { HistoryItem } from "./history.ts";
 
 function createMockTransport(overrides?: Partial<Transport>): Transport {
@@ -22,21 +22,6 @@ function createMockTransport(overrides?: Partial<Transport>): Transport {
     close: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
-}
-
-function createMockConfig(): Config {
-  return {
-    yourName: "test",
-    models: [
-      {
-        nickname: "test-model",
-        type: "standard",
-        model: "gpt-4",
-        context: 8000,
-        baseUrl: "https://api.openai.com",
-      },
-    ],
-  } as Config;
 }
 
 describe("Plan Mode UI/State Synchronization", () => {
@@ -441,177 +426,228 @@ describe("Plan Mode UI/State Synchronization", () => {
     });
   });
 
-  describe("Ctrl+E Platform-Specific Commands", () => {
-    it("generates correct open command for macOS", () => {
+  describe("Ctrl+E Platform-Specific Spawn Commands", () => {
+    it("generates correct spawn cmd and args for macOS", () => {
       const activePlanFilePath = "/path/to/plan.md";
       const platform: string = "macos";
 
-      let openCommand: string;
+      let cmd: string;
+      let args: string[];
       switch (platform) {
         case "macos":
-          openCommand = `open "${activePlanFilePath}"`;
+          cmd = "open";
+          args = [activePlanFilePath];
           break;
         case "windows":
-          openCommand = `start "" "${activePlanFilePath}"`;
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
           break;
         case "linux":
         default:
-          openCommand = `xdg-open "${activePlanFilePath}"`;
+          cmd = "xdg-open";
+          args = [activePlanFilePath];
           break;
       }
 
-      expect(openCommand).toBe('open "/path/to/plan.md"');
+      expect(cmd).toBe("open");
+      expect(args).toEqual(["/path/to/plan.md"]);
     });
 
-    it("generates correct open command for Windows", () => {
+    it("generates correct spawn cmd and args for Windows", () => {
       const activePlanFilePath = "/path/to/plan.md";
       const platform: string = "windows";
 
-      let openCommand: string;
+      let cmd: string;
+      let args: string[];
       switch (platform) {
         case "macos":
-          openCommand = `open "${activePlanFilePath}"`;
+          cmd = "open";
+          args = [activePlanFilePath];
           break;
         case "windows":
-          openCommand = `start "" "${activePlanFilePath}"`;
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
           break;
         case "linux":
         default:
-          openCommand = `xdg-open "${activePlanFilePath}"`;
+          cmd = "xdg-open";
+          args = [activePlanFilePath];
           break;
       }
 
-      expect(openCommand).toBe('start "" "/path/to/plan.md"');
+      expect(cmd).toBe("cmd");
+      expect(args).toEqual(["/c", "start", "", "/path/to/plan.md"]);
     });
 
-    it("generates correct open command for Linux", () => {
+    it("generates correct spawn cmd and args for Linux", () => {
       const activePlanFilePath = "/path/to/plan.md";
       const platform: string = "linux";
 
-      let openCommand: string;
+      let cmd: string;
+      let args: string[];
       switch (platform) {
         case "macos":
-          openCommand = `open "${activePlanFilePath}"`;
+          cmd = "open";
+          args = [activePlanFilePath];
           break;
         case "windows":
-          openCommand = `start "" "${activePlanFilePath}"`;
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
           break;
         case "linux":
         default:
-          openCommand = `xdg-open "${activePlanFilePath}"`;
+          cmd = "xdg-open";
+          args = [activePlanFilePath];
           break;
       }
 
-      expect(openCommand).toBe('xdg-open "/path/to/plan.md"');
+      expect(cmd).toBe("xdg-open");
+      expect(args).toEqual(["/path/to/plan.md"]);
     });
 
-    it("handles paths with spaces correctly", () => {
+    it("passes paths with spaces safely as array args (no shell injection)", () => {
       const activePlanFilePath = "/path with spaces/to/plan file.md";
       const platform: string = "macos";
 
-      let openCommand: string;
+      let cmd: string;
+      let args: string[];
       switch (platform) {
         case "macos":
-          openCommand = `open "${activePlanFilePath}"`;
+          cmd = "open";
+          args = [activePlanFilePath];
           break;
         case "windows":
-          openCommand = `start "" "${activePlanFilePath}"`;
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
           break;
         case "linux":
         default:
-          openCommand = `xdg-open "${activePlanFilePath}"`;
+          cmd = "xdg-open";
+          args = [activePlanFilePath];
           break;
       }
 
-      expect(openCommand).toBe('open "/path with spaces/to/plan file.md"');
+      expect(cmd).toBe("open");
+      expect(args).toEqual(["/path with spaces/to/plan file.md"]);
     });
 
-    it("handles paths with special characters correctly", () => {
+    it("passes paths with special characters safely as array args", () => {
       const activePlanFilePath = "/path/to/plan's file (v1).md";
       const platform: string = "linux";
 
-      let openCommand: string;
+      let cmd: string;
+      let args: string[];
       switch (platform) {
         case "macos":
-          openCommand = `open "${activePlanFilePath}"`;
+          cmd = "open";
+          args = [activePlanFilePath];
           break;
         case "windows":
-          openCommand = `start "" "${activePlanFilePath}"`;
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
           break;
         case "linux":
         default:
-          openCommand = `xdg-open "${activePlanFilePath}"`;
+          cmd = "xdg-open";
+          args = [activePlanFilePath];
           break;
       }
 
-      expect(openCommand).toBe('xdg-open "/path/to/plan\'s file (v1).md"');
+      expect(cmd).toBe("xdg-open");
+      expect(args).toEqual(["/path/to/plan's file (v1).md"]);
     });
 
-    it("notifies user when shell command fails", async () => {
-      const shellError = new Error("Command not found: xdg-open");
-      const mockTransport = createMockTransport({
-        shell: vi.fn().mockRejectedValue(shellError),
-      });
-
-      // Simulate the error handling behavior from app.tsx
-      const notify = vi.fn();
-      const loggerError = vi.fn();
-
-      const activePlanFilePath = "/path/to/plan.md";
-      const openCommand = `xdg-open "${activePlanFilePath}"`;
-
-      try {
-        await mockTransport.shell(new AbortController().signal, openCommand, 5000);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        loggerError("info", "Failed to open plan in editor", { error: errorMessage });
-        notify(`Failed to open plan in editor: ${errorMessage}`);
-      }
-
-      expect(mockTransport.shell).toHaveBeenCalledWith(
-        expect.any(AbortSignal),
-        'xdg-open "/path/to/plan.md"',
-        5000,
-      );
-      expect(notify).toHaveBeenCalledWith(
-        "Failed to open plan in editor: Command not found: xdg-open",
-      );
-    });
-
-    it("calls shell with correct command for each platform", async () => {
-      const platforms: Array<{ platform: platformModule.PlatformKey; expectedCommand: string }> = [
-        { platform: "macos", expectedCommand: 'open "/plans/test.md"' },
-        { platform: "windows", expectedCommand: 'start "" "/plans/test.md"' },
-        { platform: "linux", expectedCommand: 'xdg-open "/plans/test.md"' },
+    it("generates correct spawn cmd and args for each platform", () => {
+      const platforms: Array<{
+        platform: platformModule.PlatformKey;
+        expectedCmd: string;
+        expectedArgs: string[];
+      }> = [
+        { platform: "macos", expectedCmd: "open", expectedArgs: ["/plans/test.md"] },
+        {
+          platform: "windows",
+          expectedCmd: "cmd",
+          expectedArgs: ["/c", "start", "", "/plans/test.md"],
+        },
+        { platform: "linux", expectedCmd: "xdg-open", expectedArgs: ["/plans/test.md"] },
       ];
 
-      for (const { platform, expectedCommand } of platforms) {
-        const shellMock = vi.fn().mockResolvedValue("");
-        const mockTransport = createMockTransport({
-          shell: shellMock,
-        });
-
+      for (const { platform, expectedCmd, expectedArgs } of platforms) {
         const activePlanFilePath = "/plans/test.md";
 
-        // Replicate the command generation logic
-        let openCommand: string;
+        let cmd: string;
+        let args: string[];
         switch (platform) {
           case "macos":
-            openCommand = `open "${activePlanFilePath}"`;
+            cmd = "open";
+            args = [activePlanFilePath];
             break;
           case "windows":
-            openCommand = `start "" "${activePlanFilePath}"`;
+            cmd = "cmd";
+            args = ["/c", "start", "", activePlanFilePath];
             break;
           case "linux":
           default:
-            openCommand = `xdg-open "${activePlanFilePath}"`;
+            cmd = "xdg-open";
+            args = [activePlanFilePath];
             break;
         }
 
-        await mockTransport.shell(new AbortController().signal, openCommand, 5000);
-
-        expect(shellMock).toHaveBeenCalledWith(expect.any(AbortSignal), expectedCommand, 5000);
+        expect(cmd).toBe(expectedCmd);
+        expect(args).toEqual(expectedArgs);
       }
+    });
+  });
+
+  describe("Plan Mode Shortcuts Query Guard", () => {
+    it("should only trigger shortcuts when query is empty", () => {
+      useAppStore.setState({
+        currentMode: "plan" as ModeType,
+        activePlanFilePath: "/plans/test.md",
+        modeData: { mode: "input", vimMode: "INSERT" },
+        query: "",
+      });
+
+      const state = useAppStore.getState();
+      const isPlanMode = state.currentMode === "plan";
+      const isInputMode = state.modeData.mode === "input";
+      const queryIsEmpty = state.query === "";
+
+      // Shortcuts should fire when all conditions met
+      expect(isPlanMode && isInputMode && queryIsEmpty).toBe(true);
+    });
+
+    it("should not trigger shortcuts when query has text", () => {
+      useAppStore.setState({
+        currentMode: "plan" as ModeType,
+        activePlanFilePath: "/plans/test.md",
+        modeData: { mode: "input", vimMode: "INSERT" },
+        query: "some user text",
+      });
+
+      const state = useAppStore.getState();
+      const isPlanMode = state.currentMode === "plan";
+      const isInputMode = state.modeData.mode === "input";
+      const queryIsEmpty = state.query === "";
+
+      // Shortcuts should NOT fire when query has text
+      expect(isPlanMode && isInputMode && queryIsEmpty).toBe(false);
+    });
+
+    it("should not trigger shortcuts outside plan mode even with empty query", () => {
+      useAppStore.setState({
+        currentMode: "collaboration" as ModeType,
+        activePlanFilePath: null,
+        modeData: { mode: "input", vimMode: "INSERT" },
+        query: "",
+      });
+
+      const state = useAppStore.getState();
+      const isPlanMode = state.currentMode === "plan";
+      const isInputMode = state.modeData.mode === "input";
+      const queryIsEmpty = state.query === "";
+
+      expect(isPlanMode && isInputMode && queryIsEmpty).toBe(false);
     });
   });
 });

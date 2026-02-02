@@ -1,4 +1,5 @@
 import * as fsOld from "fs";
+import { spawn } from "child_process";
 import React, {
   useState,
   useCallback,
@@ -167,7 +168,7 @@ export default function App({
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
-    // Initialize modeIndex based on unchained prop
+    // Initialize mode based on unchained prop
     setMode(unchained ? "unchained" : "collaboration");
   }, [markUpdatesSeen, setVimMode, setMode, unchained]);
 
@@ -470,7 +471,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     }
 
     // Direct shortcuts to exit plan mode and implement
-    if (isPlanMode && key.ctrl && modeData.mode === "input") {
+    if (isPlanMode && key.ctrl && modeData.mode === "input" && query === "") {
       if (input === "u") {
         handleExitPlanMode("unchained");
         return;
@@ -482,23 +483,28 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       if (input === "e") {
         if (activePlanFilePath) {
           const platform = getPlatform();
-          let openCommand: string;
+          let cmd: string;
+          let args: string[];
           switch (platform) {
             case "macos":
-              openCommand = `open "${activePlanFilePath}"`;
+              cmd = "open";
+              args = [activePlanFilePath];
               break;
             case "windows":
-              openCommand = `start "" "${activePlanFilePath}"`;
+              cmd = "cmd";
+              args = ["/c", "start", "", activePlanFilePath];
               break;
             case "linux":
             default:
-              openCommand = `xdg-open "${activePlanFilePath}"`;
+              cmd = "xdg-open";
+              args = [activePlanFilePath];
               break;
           }
-          transport.shell(new AbortController().signal, openCommand, 5000).catch(err => {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            logger.error("info", "Failed to open plan in editor", { error: errorMessage });
-            notify(`Failed to open plan in editor: ${errorMessage}`);
+          const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+          child.unref();
+          child.on("error", err => {
+            logger.error("info", "Failed to open plan in editor", { error: err.message });
+            notify(`Failed to open plan in editor: ${err.message}`);
           });
         } else {
           notify("Plan file is still initializing. Please wait.");

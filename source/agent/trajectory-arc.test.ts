@@ -4,7 +4,7 @@ import type { Transport } from "../transports/transport-common.ts";
 
 import { run } from "../compilers/run.ts";
 import { shouldAutoCompactHistory } from "../compilers/autocompact.ts";
-import { loadTools } from "../tools/index.ts";
+import { loadTools, PLAN_MODE_TOOLS } from "../tools/index.ts";
 
 vi.mock("../compilers/run.ts", () => ({
   run: vi.fn(),
@@ -82,7 +82,7 @@ describe("trajectoryArc plan mode", () => {
     vi.mocked(loadTools).mockResolvedValue({} as any);
   });
 
-  it("always passes undefined for allowedTools to load all tools", async () => {
+  it("passes PLAN_MODE_TOOLS for allowedTools when in plan mode", async () => {
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,
@@ -98,7 +98,7 @@ describe("trajectoryArc plan mode", () => {
       mockTransport,
       expect.any(AbortSignal),
       mockConfig,
-      undefined,
+      PLAN_MODE_TOOLS,
       "/plans/test.md",
     );
   });
@@ -124,8 +124,8 @@ describe("trajectoryArc plan mode", () => {
     );
   });
 
-  it("passes correct planFilePath based on isPlanMode", async () => {
-    // When isPlanMode is true, planFilePath should be set
+  it("passes correct allowedTools and planFilePath based on isPlanMode", async () => {
+    // When isPlanMode is true, allowedTools should be PLAN_MODE_TOOLS and planFilePath should be set
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,
@@ -141,13 +141,13 @@ describe("trajectoryArc plan mode", () => {
       mockTransport,
       expect.any(AbortSignal),
       mockConfig,
-      undefined,
+      PLAN_MODE_TOOLS,
       "/plans/test.md",
     );
 
     vi.clearAllMocks();
 
-    // When isPlanMode is false, planFilePath should be null
+    // When isPlanMode is false, allowedTools should be undefined and planFilePath should be null
     await trajectoryArc({
       apiKey: "test-key",
       model: mockModel,

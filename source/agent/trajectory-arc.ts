@@ -10,7 +10,7 @@ import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { loadTools } from "../tools/index.ts";
+import { loadTools, PLAN_MODE_TOOLS } from "../tools/index.ts";
 import { PlanModeConfig } from "../modes.ts";
 import * as logger from "../logger.ts";
 
@@ -109,8 +109,14 @@ export async function trajectoryArc({
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
 
-  // Load all tools - mutation tools receive planFilePath and return plan-mode placeholders
-  const tools = await loadTools(transport, abortSignal, config, undefined, planFilePath);
+  // In plan mode, only load the allowed tool subset; otherwise load all tools
+  const tools = await loadTools(
+    transport,
+    abortSignal,
+    config,
+    isPlanMode ? PLAN_MODE_TOOLS : undefined,
+    planFilePath,
+  );
 
   const parsedCompaction = await maybeAutocompact({
     apiKey,

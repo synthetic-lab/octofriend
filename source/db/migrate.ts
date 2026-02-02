@@ -24,6 +24,12 @@ export async function migrate() {
     console.error(`[MIGRATE] cwd: ${process.cwd()}`);
   }
 
+  if (!journalExists) {
+    throw new Error(
+      `Migration journal not found at ${journalPath}. Ensure the drizzle migrations directory is included in the build output.`,
+    );
+  }
+
   drizzleMigrate(db(), {
     migrationsFolder: migrationsPath,
   });
