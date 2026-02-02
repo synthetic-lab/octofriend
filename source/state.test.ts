@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useAppStore } from "./state.ts";
-import { MODES } from "./modes.ts";
+import { ModeType } from "./modes.ts";
 import { Config } from "./config.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { sequenceId, HistoryItem } from "./history.ts";
@@ -40,7 +40,7 @@ describe("runTool", () => {
     // Reset the store state before each test
     useAppStore.setState({
       history: [],
-      modeIndex: 0,
+      currentMode: "collaboration" as ModeType,
       activePlanFilePath: null,
       modeData: { mode: "input", vimMode: "INSERT" },
       byteCount: 0,
@@ -97,7 +97,7 @@ describe("runTool", () => {
 
   it("passes planFilePath to loadTools when in plan mode", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -119,7 +119,7 @@ describe("runTool", () => {
 
   it("passes null planFilePath to loadTools when not in plan mode", async () => {
     useAppStore.setState({
-      modeIndex: 0, // collaboration mode
+      currentMode: "collaboration" as ModeType, // collaboration mode
       activePlanFilePath: "/plans/test.md", // set but should not be passed
     });
 
@@ -141,7 +141,7 @@ describe("runTool", () => {
 
   it("passes null planFilePath when planFilePath is null in plan mode", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      currentMode: "plan" as ModeType, // plan mode
       activePlanFilePath: null,
     });
 
@@ -166,7 +166,7 @@ describe("runTool", () => {
     const toolResult = { content: planContent, lines: 3 } as ToolResult;
 
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -202,7 +202,7 @@ describe("runTool", () => {
 
   it("creates tool-output history item for non-write-plan tools", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      currentMode: "plan" as ModeType, // plan mode
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -234,7 +234,7 @@ describe("runTool", () => {
 
   it("creates tool-failed history item when tool throws ToolError in plan mode", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      currentMode: "plan" as ModeType, // plan mode
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -259,7 +259,7 @@ describe("runTool", () => {
 
   it("sets modeData to tool-waiting during tool execution", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -292,7 +292,7 @@ describe("runTool", () => {
 
   it("calls _runAgent after tool completion", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -311,7 +311,7 @@ describe("runTool", () => {
 
   it("does not call _runAgent when aborted", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -352,7 +352,7 @@ describe("runTool", () => {
 
   it("handles write-plan tool result without content property", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -381,7 +381,7 @@ describe("runTool", () => {
 
   it("falls back to captured activePlanFilePath when store value is cleared during write-plan", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/test.md",
     });
 
@@ -417,7 +417,7 @@ describe("runTool", () => {
 
   it("prefers current store activePlanFilePath over captured value for write-plan", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: "/plans/old.md",
     });
 
@@ -453,7 +453,7 @@ describe("runTool", () => {
 
   it("creates tool-failed when activePlanFilePath is null for write-plan", async () => {
     useAppStore.setState({
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: null,
     });
 
@@ -492,7 +492,7 @@ describe("exitPlanModeAndImplement", () => {
     // Reset the store state before each test
     useAppStore.setState({
       history: [],
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       activePlanFilePath: null,
       modeData: { mode: "input", vimMode: "INSERT" },
       byteCount: 0,
@@ -569,7 +569,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      currentMode: "plan" as ModeType, // plan mode
     });
 
     const store = useAppStore.getState();
@@ -578,10 +578,8 @@ describe("exitPlanModeAndImplement", () => {
     await store.exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration");
 
     const state = useAppStore.getState();
-    const currentMode = MODES[state.modeIndex];
-    const isPlanMode = currentMode === "plan";
-    expect(isPlanMode).toBe(false);
-    expect(state.modeIndex).toBe(0); // Should switch to collaboration mode
+    expect(state.currentMode).not.toBe("plan");
+    expect(state.currentMode).toBe("collaboration");
   });
 
   it("clears planFilePath on exit", async () => {
@@ -590,7 +588,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
     });
 
     const store = useAppStore.getState();
@@ -608,7 +606,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/missing.md",
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
     });
 
     const store = useAppStore.getState();
@@ -623,8 +621,7 @@ describe("exitPlanModeAndImplement", () => {
     expect(useAppStore.getState().clearNonce).toBe(initialClearNonce);
 
     // Mode should stay at plan (early return, no mode switch)
-    const currentMode = MODES[useAppStore.getState().modeIndex];
-    expect(currentMode).toBe("plan");
+    expect(useAppStore.getState().currentMode).toBe("plan");
 
     // Should notify with the file path included
     const history = useAppStore.getState().history;
@@ -688,7 +685,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
-      modeIndex: MODES.indexOf("plan"), // plan mode
+      currentMode: "plan" as ModeType, // plan mode
     });
 
     const store = useAppStore.getState();
@@ -697,10 +694,8 @@ describe("exitPlanModeAndImplement", () => {
     await store.exitPlanModeAndImplement(mockConfig, mockTransport, "unchained");
 
     const state = useAppStore.getState();
-    const currentMode = MODES[state.modeIndex];
-    const isPlanMode = currentMode === "plan";
-    expect(isPlanMode).toBe(false);
-    expect(state.modeIndex).toBe(1); // Should switch to unchained mode
+    expect(state.currentMode).not.toBe("plan");
+    expect(state.currentMode).toBe("unchained");
   });
 
   it("calls notify with correct message when entering collaboration mode", async () => {
@@ -748,7 +743,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
     });
 
     const store = useAppStore.getState();
@@ -769,8 +764,7 @@ describe("exitPlanModeAndImplement", () => {
 
     // The mode should still switch (clearNonce incremented, no longer in plan mode)
     expect(useAppStore.getState().clearNonce).toBeGreaterThan(0);
-    const currentMode = MODES[useAppStore.getState().modeIndex];
-    expect(currentMode).not.toBe("plan");
+    expect(useAppStore.getState().currentMode).not.toBe("plan");
   });
 
   it("clearHistory resets plan paths", () => {
@@ -791,7 +785,7 @@ describe("exitPlanModeAndImplement", () => {
 
     useAppStore.setState({
       activePlanFilePath: "/plans/test.md",
-      modeIndex: MODES.indexOf("plan"),
+      currentMode: "plan" as ModeType,
       history: [{ type: "user" as const, id: sequenceId(), content: "previous" }],
     });
 
@@ -810,6 +804,6 @@ describe("exitPlanModeAndImplement", () => {
     expect(useAppStore.getState().clearNonce).toBe(1);
 
     // Mode should still be changed (this happens before input too)
-    expect(useAppStore.getState().modeIndex).toBe(0);
+    expect(useAppStore.getState().currentMode).toBe("collaboration");
   });
 });

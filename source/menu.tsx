@@ -5,7 +5,6 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "./state.ts";
 import { useConfig, useSetConfig, Config } from "./config.ts";
 import { TransportContext } from "./app.tsx";
-import { MODES } from "./modes.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
@@ -34,7 +33,7 @@ type MenuState = {
   setMenuMode: (mode: MenuMode) => void;
 };
 
-const useMenuState = create<MenuState>((set, _) => ({
+const useMenuState = create<MenuState>(set => ({
   menuMode: "main-menu",
   setMenuMode: menuMode => {
     set({ menuMode });
@@ -332,15 +331,14 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu, notify, modeIndex, activePlanFilePath } = useAppStore(
+  const { toggleMenu, notify, currentMode, activePlanFilePath } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
-      modeIndex: state.modeIndex,
+      currentMode: state.currentMode,
       activePlanFilePath: state.activePlanFilePath,
     })),
   );
-  const currentMode = MODES[modeIndex];
   const isPlanMode = currentMode === "plan";
 
   const { setMenuMode } = useMenuState(

@@ -196,8 +196,8 @@ describe("SKIP_CONFIRMATION", () => {
 
   it("allows read tools to bypass permission prompts", () => {
     // Simulate permission check logic from app.tsx
-    function requiresConfirmation(toolName: keyof typeof SKIP_CONFIRMATION): boolean {
-      return !SKIP_CONFIRMATION.includes(toolName);
+    function requiresConfirmation(toolName: string): boolean {
+      return !(SKIP_CONFIRMATION as readonly string[]).includes(toolName);
     }
 
     // Read tools should NOT require confirmation
@@ -211,7 +211,7 @@ describe("SKIP_CONFIRMATION", () => {
   it("requires confirmation for write/modify tools", () => {
     // Simulate permission check logic from app.tsx
     function requiresConfirmation(toolName: string): boolean {
-      return !SKIP_CONFIRMATION.includes(toolName as keyof typeof SKIP_CONFIRMATION);
+      return !(SKIP_CONFIRMATION as readonly string[]).includes(toolName);
     }
 
     // Write/modify tools SHOULD require confirmation
@@ -225,8 +225,8 @@ describe("SKIP_CONFIRMATION", () => {
 
   it("write-plan bypasses confirmation for plan mode workflow", () => {
     // Simulate permission check logic from app.tsx
-    function requiresConfirmation(toolName: keyof typeof SKIP_CONFIRMATION): boolean {
-      return !SKIP_CONFIRMATION.includes(toolName);
+    function requiresConfirmation(toolName: string): boolean {
+      return !(SKIP_CONFIRMATION as readonly string[]).includes(toolName);
     }
 
     // write-plan should NOT require confirmation (essential for plan mode)

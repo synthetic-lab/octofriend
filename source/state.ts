@@ -7,7 +7,7 @@ import {
   sequenceId,
 } from "./history.ts";
 import { runTool, ToolError, loadTools, PLAN_MODE_TOOLS } from "./tools/index.ts";
-import { MODES, PlanModeConfig } from "./modes.ts";
+import { ModeType, PlanModeConfig } from "./modes.ts";
 import { initializePlanFile } from "./plan-mode.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
@@ -89,15 +89,7 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
-  /**
-   * Index into MODES array.
-   *
-   * Valid range: 0 to MODES.length - 1 (0=collaboration, 1=unchained, 2=plan)
-   *
-   * Note: The bounds of this index are not enforced at the type level. Runtime code
-   * should ensure valid indices are used when accessing MODES[modeIndex].
-   */
-  modeIndex: number;
+  currentMode: ModeType;
   /** Path currently being used by agent tools for plan operations.
    * This is the active plan file that tools read from/write to.
    * Set when entering plan mode, cleared when exiting.
@@ -133,7 +125,7 @@ export type UiState = {
   setActivePlanFilePath: (path: string | null) => void;
   setSessionPlanFilePath: (path: string | null) => void;
   setPlanFileInitialized: (initialized: boolean) => void;
-  setModeIndex: (index: number) => void;
+  setMode: (mode: ModeType) => void;
   exitPlanModeAndImplement: (
     config: Config,
     transport: Transport,
@@ -151,7 +143,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
-  modeIndex: 0,
+  currentMode: "collaboration",
   activePlanFilePath: null,
   sessionPlanFilePath: null,
   planFileInitialized: false,
@@ -288,8 +280,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setActivePlanFilePath: (path: string | null) => {
-    const currentModeIndex = get().modeIndex;
-    if (path === null && MODES[currentModeIndex] === "plan") {
+    if (path === null && get().currentMode === "plan") {
       logger.error("verbose", "Warning: Clearing activePlanFilePath while in plan mode");
     }
     set({ activePlanFilePath: path });
@@ -303,11 +294,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ planFileInitialized: initialized });
   },
 
-  setModeIndex: (index: number) => {
-    if (index < 0 || index >= MODES.length) {
-      throw new Error(`Invalid modeIndex: ${index}. Must be 0-${MODES.length - 1}`);
-    }
-    set({ modeIndex: index });
+  setMode: (mode: ModeType) => {
+    set({ currentMode: mode });
   },
 
   /**
@@ -334,18 +322,17 @@ export const useAppStore = create<UiState>((set, get) => ({
     transport: Transport,
     targetMode: "collaboration" | "unchained",
   ) => {
-    const { clearHistory, notify, input, activePlanFilePath } = get();
+    const { notify, input, activePlanFilePath } = get();
 
     if (!activePlanFilePath) {
       notify("No plan file available. Cannot exit plan mode.");
       return;
     }
 
-    // Read the plan file content
     let planContent = "";
     try {
-      const signal = new AbortController().signal;
-      planContent = await transport.readFile(signal, activePlanFilePath);
+      const abortController = new AbortController();
+      planContent = await transport.readFile(abortController.signal, activePlanFilePath);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       logger.error("info", "Failed to read plan file in exitPlanModeAndImplement", {
@@ -360,14 +347,18 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const modeName = targetMode === "collaboration" ? "Collaboration" : "Unchained";
 
-    const modeIndex = MODES.indexOf(targetMode);
-
-    clearHistory();
-    set({
-      modeIndex,
+    const { abortResponse } = get();
+    abortResponse();
+    set(state => ({
+      history: [],
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+      sessionPlanFilePath: null,
       activePlanFilePath: null,
+      planFileInitialized: false,
+      currentMode: targetMode,
       modeData: { mode: "input", vimMode: "INSERT" },
-    });
+    }));
 
     if (planContent) {
       notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
@@ -386,8 +377,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
-    const currentMode = MODES[get().modeIndex];
-    const isPlanMode = currentMode === "plan";
+    const isPlanMode = get().currentMode === "plan";
     const { activePlanFilePath } = get();
 
     set({
@@ -463,8 +453,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
-    const currentMode = MODES[get().modeIndex];
-    const isPlanMode = currentMode === "plan";
+    const isPlanMode = get().currentMode === "plan";
     const { activePlanFilePath, planFileInitialized } = get();
 
     // Lazy initialization of plan file on first message in plan mode
@@ -474,24 +463,33 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({ planFileInitialized: true });
       } catch (initErr) {
         if (abortController.signal.aborted) return;
+        const errorCode =
+          initErr instanceof Error && "code" in initErr
+            ? String((initErr as NodeJS.ErrnoException).code)
+            : "UNKNOWN";
+        if (SYSTEM_ERROR_CODES.includes(errorCode)) throw initErr;
         const errorMessage = initErr instanceof Error ? initErr.message : String(initErr);
         logger.error("info", "Plan file initialization failed", {
           planFilePath: activePlanFilePath,
           error: errorMessage,
         });
         get().notify(
-          `Plan mode: failed to initialize plan file at ${activePlanFilePath}. You can create it manually.`,
+          `Plan mode: failed to initialize plan file at ${displayPath(activePlanFilePath)}. You can create it manually.`,
         );
       }
     }
-    if (isPlanMode && activePlanFilePath === null) {
-      throw new Error(
-        "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
-      );
+
+    let planModeConfig: PlanModeConfig;
+    if (isPlanMode) {
+      if (activePlanFilePath === null) {
+        throw new Error(
+          "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
+        );
+      }
+      planModeConfig = { isPlanMode: true, planFilePath: activePlanFilePath };
+    } else {
+      planModeConfig = { isPlanMode: false };
     }
-    const planModeConfig: PlanModeConfig = isPlanMode
-      ? { isPlanMode: true, planFilePath: activePlanFilePath! }
-      : { isPlanMode: false };
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
 

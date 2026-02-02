@@ -23,8 +23,6 @@ export async function systemPrompt({
   planModeConfig?: PlanModeConfig;
 }) {
   const isPlanMode = planModeConfig?.isPlanMode ?? false;
-  // With the strengthened PlanModeConfig type, planFilePath is guaranteed to be a string
-  // when isPlanMode is true. The null assignment is only for the false case where it's unused.
   const planFilePath = planModeConfig?.isPlanMode === true ? planModeConfig.planFilePath : null;
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
@@ -65,12 +63,12 @@ ${planModeSection}
 You have access to the following tools, defined as TypeScript types:
 
 ${Object.entries(tools)
-  .filter(([toolName, _]) => {
+  .filter(([toolName]) => {
     if (config.mcpServers) return true;
     if (toolName !== "mcp") return true;
     return false;
   })
-  .map(([_, tool]) => {
+  .map(([, tool]) => {
     return toTypescript(tool.Schema);
   })
   .join("\n\n")}

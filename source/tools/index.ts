@@ -31,7 +31,7 @@ export async function loadTools(
           // @ts-ignore
           loaded[key] = toolDef;
         } else {
-          logger.error("verbose", `Tool "${key}" returned null and was not loaded`);
+          logger.log("verbose", `Tool "${key}" returned null and was not loaded`);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

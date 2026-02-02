@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useAppStore } from "./state.ts";
-import { MODES } from "./modes.ts";
+import { ModeType } from "./modes.ts";
 import * as planModeModule from "./plan-mode.ts";
 import * as platformModule from "./platform.ts";
 import type { Transport } from "./transports/transport-common.ts";
@@ -43,7 +43,7 @@ describe("Plan Mode UI/State Synchronization", () => {
   beforeEach(() => {
     useAppStore.setState({
       history: [],
-      modeIndex: 0,
+      currentMode: "collaboration" as ModeType,
       activePlanFilePath: null,
       sessionPlanFilePath: null,
       modeData: { mode: "input", vimMode: "INSERT" },
@@ -61,12 +61,12 @@ describe("Plan Mode UI/State Synchronization", () => {
   describe("BottomBar Mode Label Logic", () => {
     it("should display '📋 Plan mode' when in plan mode with active file path", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: "/plans/test.md",
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
       const isPlanMode = currentMode === "plan";
 
       expect(isPlanMode).toBe(true);
@@ -89,12 +89,12 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("should display '📋 Plan mode (initializing...)' when in plan mode without file path", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: null,
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
 
       expect(currentMode).toBe("plan");
       expect(state.activePlanFilePath).toBeNull();
@@ -115,12 +115,12 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("should display '⚡ Unchained mode' in unchained mode", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("unchained"),
+        currentMode: "unchained" as ModeType,
         activePlanFilePath: null,
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
 
       const modeLabel = (() => {
         switch (currentMode) {
@@ -138,12 +138,12 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("should display 'Collaboration mode' in collaboration mode", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
         activePlanFilePath: null,
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
 
       const modeLabel = (() => {
         switch (currentMode) {
@@ -163,7 +163,7 @@ describe("Plan Mode UI/State Synchronization", () => {
   describe("Plan File State Management", () => {
     it("sets activePlanFilePath when entering plan mode with session file", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
         activePlanFilePath: null,
         sessionPlanFilePath: ".plans/existing.md",
       });
@@ -175,18 +175,18 @@ describe("Plan Mode UI/State Synchronization", () => {
       const sessionPath = useAppStore.getState().sessionPlanFilePath;
       if (sessionPath) {
         useAppStore.setState({
-          modeIndex: MODES.indexOf("plan"),
+          currentMode: "plan" as ModeType,
           activePlanFilePath: sessionPath,
         });
       }
 
       expect(useAppStore.getState().activePlanFilePath).toBe(".plans/existing.md");
-      expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("plan"));
+      expect(useAppStore.getState().currentMode).toBe("plan");
     });
 
     it("clears activePlanFilePath when exiting plan mode", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: "/plans/test.md",
         sessionPlanFilePath: "/plans/test.md",
       });
@@ -195,7 +195,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       // Simulate the useShiftTab behavior that clears activePlanFilePath on exit
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
         activePlanFilePath: null,
       });
 
@@ -205,14 +205,14 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("preserves sessionPlanFilePath across mode switches", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: "/plans/test.md",
         sessionPlanFilePath: "/plans/test.md",
       });
 
       // Switch to unchained (should clear active but keep session)
       useAppStore.setState({
-        modeIndex: MODES.indexOf("unchained"),
+        currentMode: "unchained" as ModeType,
         activePlanFilePath: null,
       });
 
@@ -221,7 +221,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       // Switch back to plan (should restore active from session)
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: useAppStore.getState().sessionPlanFilePath,
       });
 
@@ -295,7 +295,7 @@ describe("Plan Mode UI/State Synchronization", () => {
   describe("Plan Mode Shortcut Hints", () => {
     it("shows Ctrl+O (not Ctrl+C) for collaboration shortcut when plan is written", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: "/plans/test.md",
         history: [
           {
@@ -308,7 +308,7 @@ describe("Plan Mode UI/State Synchronization", () => {
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
       const isPlanMode = currentMode === "plan";
       const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
 
@@ -324,13 +324,13 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("shows default hint when no plan has been written", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: "/plans/test.md",
         history: [],
       });
 
       const state = useAppStore.getState();
-      const isPlanMode = MODES[state.modeIndex] === "plan";
+      const isPlanMode = state.currentMode === "plan";
       const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
 
       const hintText =
@@ -343,7 +343,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("shows default hint when activePlanFilePath is null", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: null,
         history: [
           {
@@ -356,7 +356,7 @@ describe("Plan Mode UI/State Synchronization", () => {
       });
 
       const state = useAppStore.getState();
-      const isPlanMode = MODES[state.modeIndex] === "plan";
+      const isPlanMode = state.currentMode === "plan";
       const hasPlanBeenWritten = state.history.some(item => item.type === "plan-written");
 
       const hintText =
@@ -379,12 +379,12 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       for (const { mode, hasFile, expected } of testCases) {
         useAppStore.setState({
-          modeIndex: MODES.indexOf(mode),
+          currentMode: mode as ModeType,
           activePlanFilePath: hasFile ? "/plans/test.md" : null,
         });
 
         const state = useAppStore.getState();
-        const currentMode = MODES[state.modeIndex];
+        const currentMode = state.currentMode;
 
         const modeLabel = (() => {
           switch (currentMode) {
@@ -404,39 +404,39 @@ describe("Plan Mode UI/State Synchronization", () => {
     it("maintains correct state through mode cycle", () => {
       // Start in collaboration
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
         activePlanFilePath: null,
         sessionPlanFilePath: null,
       });
 
-      expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("collaboration"));
+      expect(useAppStore.getState().currentMode).toBe("collaboration");
 
       // Enter plan mode (simulate file initialization)
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
       });
 
-      expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("plan"));
+      expect(useAppStore.getState().currentMode).toBe("plan");
       expect(useAppStore.getState().activePlanFilePath).toBe(".plans/test.md");
 
       // Exit to unchained (clears active but keeps session)
       useAppStore.setState({
-        modeIndex: MODES.indexOf("unchained"),
+        currentMode: "unchained" as ModeType,
         activePlanFilePath: null,
       });
 
-      expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("unchained"));
+      expect(useAppStore.getState().currentMode).toBe("unchained");
       expect(useAppStore.getState().activePlanFilePath).toBeNull();
       expect(useAppStore.getState().sessionPlanFilePath).toBe(".plans/test.md");
 
       // Back to collaboration (no change to session)
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
       });
 
-      expect(useAppStore.getState().modeIndex).toBe(MODES.indexOf("collaboration"));
+      expect(useAppStore.getState().currentMode).toBe("collaboration");
       expect(useAppStore.getState().sessionPlanFilePath).toBe(".plans/test.md");
     });
   });
@@ -444,7 +444,7 @@ describe("Plan Mode UI/State Synchronization", () => {
   describe("Ctrl+E Platform-Specific Commands", () => {
     it("generates correct open command for macOS", () => {
       const activePlanFilePath = "/path/to/plan.md";
-      const platform = "macos";
+      const platform: string = "macos";
 
       let openCommand: string;
       switch (platform) {
@@ -465,7 +465,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("generates correct open command for Windows", () => {
       const activePlanFilePath = "/path/to/plan.md";
-      const platform = "windows";
+      const platform: string = "windows";
 
       let openCommand: string;
       switch (platform) {
@@ -486,7 +486,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("generates correct open command for Linux", () => {
       const activePlanFilePath = "/path/to/plan.md";
-      const platform = "linux";
+      const platform: string = "linux";
 
       let openCommand: string;
       switch (platform) {
@@ -507,7 +507,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("handles paths with spaces correctly", () => {
       const activePlanFilePath = "/path with spaces/to/plan file.md";
-      const platform = "macos";
+      const platform: string = "macos";
 
       let openCommand: string;
       switch (platform) {
@@ -528,7 +528,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
     it("handles paths with special characters correctly", () => {
       const activePlanFilePath = "/path/to/plan's file (v1).md";
-      const platform = "linux";
+      const platform: string = "linux";
 
       let openCommand: string;
       switch (platform) {

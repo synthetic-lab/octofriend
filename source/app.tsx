@@ -69,7 +69,7 @@ import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
-import { MODES, ModeType, MODE_NOTIFICATIONS } from "./modes.ts";
+import { ModeType, MODE_NOTIFICATIONS, nextMode } from "./modes.ts";
 import { getPlatform } from "./platform.ts";
 
 type Props = {
@@ -136,21 +136,23 @@ export default function App({
     modeData,
     setVimMode,
     clearNonce,
-    modeIndex,
-    setModeIndex,
+    currentMode,
+    setMode,
     setActivePlanFilePath,
     sessionPlanFilePath,
     setSessionPlanFilePath,
     notify,
     activePlanFilePath,
+    setPlanFileInitialized,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       setVimMode: state.setVimMode,
       clearNonce: state.clearNonce,
-      modeIndex: state.modeIndex,
-      setModeIndex: state.setModeIndex,
+      currentMode: state.currentMode,
+      setMode: state.setMode,
+      setPlanFileInitialized: state.setPlanFileInitialized,
       setActivePlanFilePath: state.setActivePlanFilePath,
       sessionPlanFilePath: state.sessionPlanFilePath,
       setSessionPlanFilePath: state.setSessionPlanFilePath,
@@ -159,7 +161,6 @@ export default function App({
     })),
   );
 
-  const currentMode = MODES[modeIndex];
   const isPlanMode = currentMode === "plan";
   const isUnchained = currentMode === "unchained";
 
@@ -167,8 +168,8 @@ export default function App({
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
     // Initialize modeIndex based on unchained prop
-    setModeIndex(MODES.indexOf(unchained ? "unchained" : "collaboration"));
-  }, [markUpdatesSeen, setVimMode, setModeIndex, unchained]);
+    setMode(unchained ? "unchained" : "collaboration");
+  }, [markUpdatesSeen, setVimMode, setMode, unchained]);
 
   // Initialize plan file path when entering plan mode (file creation is deferred)
   const isInitializingPlanRef = useRef(false);
@@ -194,7 +195,7 @@ export default function App({
         const errorMessage = pathErr instanceof Error ? pathErr.message : String(pathErr);
         logger.error("info", "Failed to determine plan file path", { error: errorMessage });
         notify("Plan mode initialization failed. Returning to collaboration mode.");
-        setModeIndex(MODES.indexOf("collaboration"));
+        setMode("collaboration");
         return;
       } finally {
         isInitializingPlanRef.current = false;
@@ -213,7 +214,7 @@ export default function App({
     sessionPlanFilePath,
     setActivePlanFilePath,
     setSessionPlanFilePath,
-    setModeIndex,
+    setMode,
     transport,
     notify,
   ]);
@@ -225,13 +226,13 @@ export default function App({
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
   useShiftTab(() => {
-    const next = (modeIndex + 1) % MODES.length;
-    const newMode = MODES[next];
+    const newMode = nextMode(currentMode);
     setTempNotification(MODE_NOTIFICATIONS[newMode]);
     if (currentMode === "plan" && newMode !== "plan") {
       setActivePlanFilePath(null);
+      setPlanFileInitialized(false);
     }
-    setModeIndex(next);
+    setMode(newMode);
   });
 
   const staticItems: StaticItem[] = useMemo(() => {
@@ -756,14 +757,14 @@ function ToolRequestRenderer({
 } & RunArgs) {
   const themeColor = useColor();
   const isPlanMode = useContext(PlanModeContext);
-  const { runTool, rejectTool, modeIndex } = useAppStore(
+  const { runTool, rejectTool, currentMode } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
-      modeIndex: state.modeIndex,
+      currentMode: state.currentMode,
     })),
   );
-  const isUnchained = MODES[modeIndex] === "unchained";
+  const isUnchained = currentMode === "unchained";
   const noConfirm = isUnchained || isPlanMode || SKIP_CONFIRMATION.includes(toolReq.function.name);
 
   const prompt = (() => {
@@ -1056,6 +1057,12 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    case "write-plan":
+      return (
+        <Box>
+          <Text color="gray">Octo updated the plan</Text>
+        </Box>
+      );
     default:
       return null;
   }

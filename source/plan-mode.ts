@@ -1,6 +1,7 @@
 import path from "path";
 import { randomUUID } from "crypto";
 import { Transport } from "./transports/transport-common.ts";
+import * as logger from "./logger.ts";
 
 /** Directory where plan files are stored (relative to project root) */
 const PLAN_DIR = ".plans";
@@ -22,8 +23,11 @@ export async function getPlanFilePath(transport: Transport, signal: AbortSignal)
     const branch = await transport.shell(signal, "git branch --show-current", 5000);
     const trimmed = branch.trim();
     if (trimmed) branchName = trimmed;
-  } catch {
-    // Git unavailable or failed, fall back to cwd
+  } catch (err) {
+    if (signal.aborted) throw err;
+    logger.log("verbose", "Git branch detection failed, falling back to cwd", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   if (!branchName) {

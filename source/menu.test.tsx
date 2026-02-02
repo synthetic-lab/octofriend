@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useAppStore } from "./state.ts";
-import { MODES } from "./modes.ts";
+import { ModeType } from "./modes.ts";
 import { TransportContext } from "./app.tsx";
 import { Config } from "./config.ts";
 import type { Transport } from "./transports/transport-common.ts";
@@ -41,7 +41,7 @@ describe("Menu exit plan mode", () => {
   beforeEach(() => {
     useAppStore.setState({
       history: [],
-      modeIndex: 0,
+      currentMode: "collaboration" as ModeType,
       activePlanFilePath: null,
       sessionPlanFilePath: null,
       modeData: { mode: "input", vimMode: "INSERT" },
@@ -72,12 +72,12 @@ describe("Menu exit plan mode", () => {
   describe("Exit plan mode menu item visibility", () => {
     it("shows exit plan mode option when in plan mode with active plan file", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
       const isPlanMode = currentMode === "plan";
       const hasActivePlan = state.activePlanFilePath !== null;
 
@@ -89,12 +89,12 @@ describe("Menu exit plan mode", () => {
 
     it("hides exit plan mode option when not in plan mode", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("collaboration"),
+        currentMode: "collaboration" as ModeType,
         activePlanFilePath: ".plans/test.md",
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
       const isPlanMode = currentMode === "plan";
       const hasActivePlan = state.activePlanFilePath !== null;
 
@@ -105,12 +105,12 @@ describe("Menu exit plan mode", () => {
 
     it("hides exit plan mode option when in plan mode but no active plan file", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: null,
       });
 
       const state = useAppStore.getState();
-      const currentMode = MODES[state.modeIndex];
+      const currentMode = state.currentMode;
       const isPlanMode = currentMode === "plan";
       const hasActivePlan = state.activePlanFilePath !== null;
 
@@ -126,7 +126,7 @@ describe("Menu exit plan mode", () => {
       const mockConfig = createMockConfig();
 
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: null,
       });
 
@@ -150,10 +150,10 @@ describe("Menu exit plan mode", () => {
       const mockConfig = createMockConfig();
 
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
-        history: [{ type: "user", message: "test", id: 1n }],
+        history: [{ type: "user", content: "test", id: 1n }],
       });
 
       // The method will try to call input() which requires API keys,
@@ -167,7 +167,7 @@ describe("Menu exit plan mode", () => {
 
       // Verify state changes happened before the error
       const finalState = useAppStore.getState();
-      expect(finalState.modeIndex).toBe(MODES.indexOf("collaboration"));
+      expect(finalState.currentMode).toBe("collaboration");
       expect(finalState.activePlanFilePath).toBeNull();
     });
 
@@ -180,7 +180,7 @@ describe("Menu exit plan mode", () => {
       const mockConfig = createMockConfig();
 
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
         history: [],
@@ -197,7 +197,7 @@ describe("Menu exit plan mode", () => {
 
       // Verify state changes happened before the error
       const finalState = useAppStore.getState();
-      expect(finalState.modeIndex).toBe(MODES.indexOf("unchained"));
+      expect(finalState.currentMode).toBe("unchained");
       expect(finalState.activePlanFilePath).toBeNull();
     });
 
@@ -209,7 +209,7 @@ describe("Menu exit plan mode", () => {
       const mockConfig = createMockConfig();
 
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
         history: [],
@@ -224,7 +224,7 @@ describe("Menu exit plan mode", () => {
       expect(readFileMock).toHaveBeenCalledWith(expect.any(AbortSignal), ".plans/test.md");
 
       const finalState = useAppStore.getState();
-      expect(finalState.modeIndex).toBe(MODES.indexOf("collaboration"));
+      expect(finalState.currentMode).toBe("collaboration");
       expect(finalState.activePlanFilePath).toBeNull();
     });
 
@@ -235,10 +235,10 @@ describe("Menu exit plan mode", () => {
       const mockConfig = createMockConfig();
 
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
         sessionPlanFilePath: ".plans/test.md",
-        history: [{ type: "user", message: "test", id: 1n }],
+        history: [{ type: "user", content: "test", id: 1n }],
       });
 
       await useAppStore
@@ -247,7 +247,7 @@ describe("Menu exit plan mode", () => {
 
       // Should stay in plan mode when read fails
       const finalState = useAppStore.getState();
-      expect(finalState.modeIndex).toBe(MODES.indexOf("plan"));
+      expect(finalState.currentMode).toBe("plan");
       expect(finalState.activePlanFilePath).toBe(".plans/test.md");
       // History should not be cleared on error
       expect(finalState.history).toHaveLength(2); // Original + error notification
@@ -283,7 +283,7 @@ describe("Menu exit plan mode", () => {
 
     it("selecting 'back' returns to main menu without exiting plan mode", () => {
       useAppStore.setState({
-        modeIndex: MODES.indexOf("plan"),
+        currentMode: "plan" as ModeType,
         activePlanFilePath: ".plans/test.md",
       });
 
@@ -297,7 +297,7 @@ describe("Menu exit plan mode", () => {
 
       // Verify plan mode state is unchanged
       const state = useAppStore.getState();
-      expect(state.modeIndex).toBe(MODES.indexOf("plan"));
+      expect(state.currentMode).toBe("plan");
       expect(state.activePlanFilePath).toBe(".plans/test.md");
     });
   });
