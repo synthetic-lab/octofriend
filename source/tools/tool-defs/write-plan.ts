@@ -18,7 +18,7 @@ const Schema = t
 export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
     if (!planFilePath) {
-      logger.log("info", "write-plan tool not loaded: planFilePath is not set");
+      logger.log("verbose", "write-plan tool not loaded: planFilePath is not set");
       return null;
     }
 
