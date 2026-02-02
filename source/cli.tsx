@@ -216,6 +216,7 @@ bench
     "--prompt <prompt>",
     "Custom prompt to benchmark with. If omitted, uses the default prompt.",
   )
+  .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
   .action(async opts => {
     const { config } = await loadConfigWithoutReauth();
     const model = opts.model
@@ -229,81 +230,167 @@ bench
       process.exit(1);
     }
 
+    const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
     const apiKey = await assertKeyForModel(model, config);
     const autofixJson = makeAutofixJson(config);
+    const modelToUse = model;
 
-    console.log("Benchmarking", model.nickname);
+    console.log(
+      `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
+    );
     const abortController = new AbortController();
     const timer = setInterval(() => {
       console.log("Still working...");
     }, 5000);
-    const start = new Date();
-    let firstToken: Date | null = null;
-    const tokenTimestamps: Date[] = [];
-    const result = await run({
-      apiKey,
-      model,
-      autofixJson,
-      messages: [
-        {
-          role: "user",
-          content:
-            opts.prompt ??
-            "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+
+    type SuccessfulBenchmark = {
+      tokens: number;
+      ttft: number;
+      tokenElapsed: number;
+      interTokenLatencies: number[];
+      success: true;
+    };
+
+    type FailedBenchmark = {
+      success: false;
+      error: string;
+    };
+
+    type BenchmarkResult = SuccessfulBenchmark | FailedBenchmark;
+
+    async function runSingleBenchmark(): Promise<BenchmarkResult> {
+      const start = new Date();
+      let firstToken: Date | null = null;
+      const tokenTimestamps: Date[] = [];
+
+      const result = await run({
+        apiKey,
+        model: modelToUse,
+        autofixJson,
+        messages: [
+          {
+            role: "user",
+            content:
+              opts.prompt ??
+              "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+          },
+        ],
+        handlers: {
+          onTokens: () => {
+            const now = new Date();
+            tokenTimestamps.push(now);
+            if (firstToken == null) firstToken = now;
+          },
+          onAutofixJson: () => {},
         },
-      ],
-      handlers: {
-        onTokens: () => {
-          const now = new Date();
-          tokenTimestamps.push(now);
-          if (firstToken == null) firstToken = now;
-        },
-        onAutofixJson: () => {},
-      },
-      abortSignal: abortController.signal,
-    });
-    if (!result.success) {
-      console.error(result.requestError);
-      console.error(`cURL: ${result.curl}`);
+        abortSignal: abortController.signal,
+      });
+
+      if (!result.success) {
+        return {
+          success: false,
+          error: result.requestError,
+        };
+      }
+
+      const end = new Date();
+
+      if (firstToken == null) {
+        return {
+          success: false,
+          error: "No tokens received",
+        };
+      }
+
+      const ttft = (firstToken as Date).getTime() - start.getTime();
+      const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
+
+      const firstResult = result.output[0];
+      if (firstResult.role !== "assistant") {
+        return {
+          success: false,
+          error: "No assistant response",
+        };
+      }
+
+      const tokens = firstResult.outputTokens;
+
+      const interTokenLatencies: number[] = [];
+      for (let i = 1; i < tokenTimestamps.length; i++) {
+        const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i - 1].getTime();
+        interTokenLatencies.push(latency);
+      }
+
+      return {
+        tokens,
+        ttft,
+        tokenElapsed,
+        interTokenLatencies,
+        success: true,
+      };
+    }
+
+    const benchmarkStart = new Date();
+    const results = await Promise.all(
+      Array.from({ length: concurrency }, () => runSingleBenchmark()),
+    );
+    const benchmarkEnd = new Date();
+
+    clearInterval(timer);
+
+    const failures = results.filter((r): r is FailedBenchmark => !r.success);
+    if (failures.length > 0) {
+      console.error(`\n${failures.length} request(s) failed:`);
+      for (const f of failures) {
+        console.error(`  - ${f.error}`);
+      }
+      if (failures.length === concurrency) {
+        process.exit(1);
+      }
+    }
+
+    const successes = results.filter((r): r is SuccessfulBenchmark => r.success);
+
+    if (successes.length === 0) {
+      console.log("No successful requests");
       process.exit(1);
     }
 
-    clearInterval(timer);
-    const end = new Date();
+    const totalTokens = successes.reduce((sum, r) => sum + r.tokens, 0);
+    const avgTokens = totalTokens / successes.length;
+    const avgTtft = successes.reduce((sum, r) => sum + r.ttft, 0) / successes.length;
 
-    const first: null | Date = firstToken as null | Date;
-    if (first == null) {
-      console.log("No tokens sent");
-      return;
-    }
+    const allInterTokenLatencies = successes.flatMap(r => r.interTokenLatencies);
+    const avgTokenElapsed =
+      successes.reduce((sum, r) => sum + r.tokenElapsed, 0) / successes.length;
 
-    const ttft = first.getTime() - start.getTime();
-    const tokenElapsed = end.getTime() - first.getTime();
-
-    const firstResult = result.output[0];
-    if (firstResult.role !== "assistant") throw new Error("No assistant response");
-    const tokens = firstResult.outputTokens;
-    const seconds = tokenElapsed / 1000;
-    // Calculate inter-token latencies
-    const interTokenLatencies: number[] = [];
-    for (let i = 1; i < tokenTimestamps.length; i++) {
-      const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i - 1].getTime();
-      interTokenLatencies.push(latency);
-    }
-
-    const minLatency = Math.min(...interTokenLatencies);
-    const maxLatency = Math.max(...interTokenLatencies);
-    const avgLatency = interTokenLatencies.reduce((a, b) => a + b, 0) / interTokenLatencies.length;
+    const totalTime = (benchmarkEnd.getTime() - benchmarkStart.getTime()) / 1000;
+    const tps = totalTokens / totalTime;
 
     console.log(`\n
-Tokens: ${tokens}
-Time: ${seconds}s
-Time to first token: ${ttft / 1000}s
-Inter-token latencies:
+Successful requests: ${successes.length}/${concurrency}
+Total tokens: ${totalTokens}
+Avg tokens per request: ${avgTokens.toFixed(2)}
+Total time: ${totalTime.toFixed(2)}s
+Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
+`);
+
+    if (allInterTokenLatencies.length > 0) {
+      const minLatency = Math.min(...allInterTokenLatencies);
+      const maxLatency = Math.max(...allInterTokenLatencies);
+      const avgLatency =
+        allInterTokenLatencies.reduce((a, b) => a + b, 0) / allInterTokenLatencies.length;
+
+      console.log(`Inter-token latencies (${allInterTokenLatencies.length} total):
   Min: ${minLatency}ms
   Max: ${maxLatency}ms
   Avg: ${avgLatency.toFixed(2)}ms
-Tok/sec output: ${tokens / seconds}
+  Avg stream time per request: ${(avgTokenElapsed / 1000).toFixed(3)}s
+`);
+    }
+
+    console.log(`Tok/sec output (overall): ${tps.toFixed(2)}
+Tok/sec output (per-request avg): ${successes.map(r => r.tokens / (r.tokenElapsed / 1000)).reduce((a, b) => a + b, 0) / successes.length}
 `);
   });
 
