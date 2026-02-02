@@ -160,6 +160,42 @@ describe("loadTools", () => {
     expect(loaded.read).toBeDefined();
     expect(loaded.list).toBeDefined();
   });
+
+  it("throws error when critical read tool fails to load", async () => {
+    // Mock the read tool to throw during initialization
+    const toolMap = await import("./tool-defs/index.ts");
+    const originalRead = toolMap.default.read;
+
+    // Replace with a failing factory
+    toolMap.default.read = vi.fn().mockRejectedValue(new Error("Critical read failure"));
+
+    try {
+      await expect(loadTools(mockTransport, signal, mockConfig, undefined, null)).rejects.toThrow(
+        'Critical tool "read" failed to load',
+      );
+    } finally {
+      // Restore original
+      toolMap.default.read = originalRead;
+    }
+  });
+
+  it("throws error when critical edit tool fails to load", async () => {
+    // Mock the edit tool to throw during initialization
+    const toolMap = await import("./tool-defs/index.ts");
+    const originalEdit = toolMap.default.edit;
+
+    // Replace with a failing factory
+    toolMap.default.edit = vi.fn().mockRejectedValue(new Error("Critical edit failure"));
+
+    try {
+      await expect(loadTools(mockTransport, signal, mockConfig, undefined, null)).rejects.toThrow(
+        'Critical tool "edit" failed to load',
+      );
+    } finally {
+      // Restore original
+      toolMap.default.edit = originalEdit;
+    }
+  });
 });
 
 describe("SKIP_CONFIRMATION", () => {
