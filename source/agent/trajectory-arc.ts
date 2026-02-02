@@ -13,6 +13,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools, PLAN_MODE_TOOLS } from "../tools/index.ts";
 import { PlanModeConfig } from "../modes.ts";
 import * as logger from "../logger.ts";
+import { isFileNotFoundError, isPermissionError } from "../errors.ts";
 
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
@@ -343,10 +344,8 @@ export async function trajectoryArc({
         // Only log expected autofix failures, not unexpected errors
         const errorMessage = autofixErr instanceof Error ? autofixErr.message : String(autofixErr);
         if (
-          autofixErr instanceof Error &&
-          (errorMessage.includes("ENOENT") ||
-            errorMessage.includes("EACCES") ||
-            errorMessage.includes("validation"))
+          isFileNotFoundError(autofixErr) ||
+          (autofixErr instanceof Error && errorMessage.includes("validation"))
         ) {
           logger.error("verbose", "Autofix attempt failed, falling back to original tool error", {
             toolName: fn.name,
@@ -468,13 +467,8 @@ async function tryTransformFileOutdatedError(
     };
   } catch (readErr) {
     // Only transform expected file read errors
-    const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
-    if (
-      readErr instanceof Error &&
-      (errorMessage.includes("ENOENT") ||
-        errorMessage.includes("EACCES") ||
-        errorMessage.includes("permission"))
-    ) {
+    if (isFileNotFoundError(readErr) || isPermissionError(readErr)) {
+      const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
       logger.error("verbose", "FileTracker.readUntracked failed in tryTransformFileOutdatedError", {
         filePath: e.filePath,
         error: errorMessage,

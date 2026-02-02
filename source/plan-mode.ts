@@ -2,6 +2,12 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { Transport } from "./transports/transport-common.ts";
 import * as logger from "./logger.ts";
+import {
+  isGitNotRepositoryError,
+  isFileNotFoundError,
+  isPermissionError,
+  isAbortError,
+} from "./errors.ts";
 
 /** Directory where plan files are stored (relative to transport working directory) */
 const PLAN_DIR = ".plans";
@@ -24,19 +30,29 @@ export async function getPlanFilePath(transport: Transport, signal: AbortSignal)
     const trimmed = branch.trim();
     if (trimmed) branchName = trimmed;
   } catch (err) {
-    if (signal.aborted) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    const isExpectedGitError =
-      message.includes("not a git repository") || message.includes("Command failed");
-    if (!isExpectedGitError) {
+    if (signal.aborted || isAbortError(err)) throw err;
+    if (!isGitNotRepositoryError(err)) {
+      const message = err instanceof Error ? err.message : String(err);
       logger.error("info", "Unexpected error during git branch detection", { error: message });
     }
+    const message = err instanceof Error ? err.message : String(err);
     logger.log("verbose", "Git branch detection failed, falling back to cwd", { error: message });
   }
 
   if (!branchName) {
-    const cwdPath = await transport.cwd(signal);
-    branchName = path.basename(cwdPath);
+    try {
+      const cwdPath = await transport.cwd(signal);
+      branchName = path.basename(cwdPath);
+    } catch (err) {
+      if (signal.aborted || isAbortError(err)) throw err;
+      if (!isFileNotFoundError(err) && !isPermissionError(err)) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.error("info", "Unexpected error getting cwd", { error: message });
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      logger.log("verbose", "Failed to get cwd, using fallback branch name", { error: message });
+      branchName = "plan";
+    }
   }
 
   return buildPlanPath(branchName);
