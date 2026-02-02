@@ -181,7 +181,9 @@ export default function App({
       if (isInitializingPlanRef.current) return;
 
       if (sessionPlanFilePath) {
-        setActivePlanFilePath(sessionPlanFilePath);
+        if (activePlanFilePath !== sessionPlanFilePath) {
+          setActivePlanFilePath(sessionPlanFilePath);
+        }
         return;
       }
 
