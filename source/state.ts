@@ -490,8 +490,15 @@ export const useAppStore = create<UiState>((set, get) => ({
           error: errorMessage,
         });
         get().notify(
-          `Plan mode: failed to initialize plan file at ${displayPath(activePlanFilePath)}. You can create it manually.`,
+          `Plan mode: failed to initialize plan file at ${displayPath(activePlanFilePath)}. You can create it manually. Switching to collaboration mode.`,
         );
+        set({
+          activePlanFilePath: null,
+          planFileInitialized: false,
+          currentMode: "collaboration",
+        });
+        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        return;
       }
     }
 
