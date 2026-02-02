@@ -795,10 +795,8 @@ describe("exitPlanModeAndImplement", () => {
     const store = useAppStore.getState();
     const inputSpy = vi.spyOn(store, "input").mockRejectedValue(new Error("API key invalid"));
 
-    // The error should propagate since input() is not wrapped in try-catch
-    await expect(
-      store.exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration"),
-    ).rejects.toThrow("API key invalid");
+    // The error is caught and user is notified instead of propagating
+    await store.exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration");
 
     // Verify input was called
     expect(inputSpy).toHaveBeenCalled();
@@ -808,5 +806,12 @@ describe("exitPlanModeAndImplement", () => {
 
     // Mode should still be changed (this happens before input too)
     expect(useAppStore.getState().currentMode).toBe("collaboration");
+
+    // Verify a notification was sent about the failure
+    const history = useAppStore.getState().history;
+    const notification = history.find(
+      h => h.type === "notification" && h.content.includes("Implementation failed to start"),
+    );
+    expect(notification).toBeDefined();
   });
 });

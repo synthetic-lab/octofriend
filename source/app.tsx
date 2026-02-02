@@ -144,7 +144,7 @@ export default function App({
     setSessionPlanFilePath,
     notify,
     activePlanFilePath,
-    setPlanFileInitialized,
+    leavePlanMode,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -153,12 +153,12 @@ export default function App({
       clearNonce: state.clearNonce,
       currentMode: state.currentMode,
       setMode: state.setMode,
-      setPlanFileInitialized: state.setPlanFileInitialized,
       setActivePlanFilePath: state.setActivePlanFilePath,
       sessionPlanFilePath: state.sessionPlanFilePath,
       setSessionPlanFilePath: state.setSessionPlanFilePath,
       notify: state.notify,
       activePlanFilePath: state.activePlanFilePath,
+      leavePlanMode: state.leavePlanMode,
     })),
   );
 
@@ -168,7 +168,6 @@ export default function App({
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
-    // Initialize mode based on unchained prop
     setMode(unchained ? "unchained" : "collaboration");
   }, [markUpdatesSeen, setVimMode, setMode, unchained]);
 
@@ -206,7 +205,11 @@ export default function App({
       setSessionPlanFilePath(path);
       setActivePlanFilePath(path);
     }
-    initPlan();
+    initPlan().catch(err => {
+      logger.error("info", "Plan initialization failed unexpectedly", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
     return () => {
       abortController.abort();
     };
@@ -230,10 +233,10 @@ export default function App({
     const newMode = nextMode(currentMode);
     setTempNotification(MODE_NOTIFICATIONS[newMode]);
     if (currentMode === "plan" && newMode !== "plan") {
-      setActivePlanFilePath(null);
-      setPlanFileInitialized(false);
+      leavePlanMode(newMode);
+    } else {
+      setMode(newMode);
     }
-    setMode(newMode);
   });
 
   const staticItems: StaticItem[] = useMemo(() => {
@@ -472,7 +475,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
     // Direct shortcuts to exit plan mode and implement
     if (isPlanMode && key.ctrl && modeData.mode === "input" && query === "") {
-      if (input === "u") {
+      if (input === "g") {
         handleExitPlanMode("unchained");
         return;
       }
@@ -480,7 +483,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         handleExitPlanMode("collaboration");
         return;
       }
-      if (input === "e") {
+      if (input === "l") {
         if (activePlanFilePath) {
           const platform = getPlatform();
           let cmd: string;
@@ -590,7 +593,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">
           {isPlanMode && activePlanFilePath && hasPlanBeenWritten
-            ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab | Ctrl+E: edit plan)"
+            ? "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)"
             : "(Ctrl+p to enter the menu)"}
         </Text>
       </Box>
@@ -771,7 +774,10 @@ function ToolRequestRenderer({
     })),
   );
   const isUnchained = currentMode === "unchained";
-  const noConfirm = isUnchained || isPlanMode || SKIP_CONFIRMATION.includes(toolReq.function.name);
+  const noConfirm =
+    isUnchained ||
+    isPlanMode ||
+    (SKIP_CONFIRMATION as ReadonlyArray<string>).includes(toolReq.function.name);
 
   const prompt = (() => {
     const fn = toolReq.function;

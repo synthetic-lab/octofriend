@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { Transport } from "./transports/transport-common.ts";
 import * as logger from "./logger.ts";
 
-/** Directory where plan files are stored (relative to project root) */
+/** Directory where plan files are stored (relative to transport working directory) */
 const PLAN_DIR = ".plans";
 /** Length of unique ID appended to plan filenames (6 hex chars = 16,777,216 combinations) */
 const ID_LENGTH = 6;
@@ -25,9 +25,13 @@ export async function getPlanFilePath(transport: Transport, signal: AbortSignal)
     if (trimmed) branchName = trimmed;
   } catch (err) {
     if (signal.aborted) throw err;
-    logger.log("verbose", "Git branch detection failed, falling back to cwd", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    const message = err instanceof Error ? err.message : String(err);
+    const isExpectedGitError =
+      message.includes("not a git repository") || message.includes("Command failed");
+    if (!isExpectedGitError) {
+      logger.error("info", "Unexpected error during git branch detection", { error: message });
+    }
+    logger.log("verbose", "Git branch detection failed, falling back to cwd", { error: message });
   }
 
   if (!branchName) {

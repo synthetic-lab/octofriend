@@ -156,16 +156,15 @@ describe("Menu exit plan mode", () => {
         history: [{ type: "user", content: "test", id: 1n }],
       });
 
-      // The method will try to call input() which requires API keys,
-      // so we expect it to throw after the state transition
-      await expect(
-        useAppStore.getState().exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration"),
-      ).rejects.toThrow();
+      // The method catches input() errors and notifies instead of throwing
+      await useAppStore
+        .getState()
+        .exitPlanModeAndImplement(mockConfig, mockTransport, "collaboration");
 
-      // Verify file was read before the error
+      // Verify file was read
       expect(readFileMock).toHaveBeenCalledWith(expect.any(AbortSignal), ".plans/test.md");
 
-      // Verify state changes happened before the error
+      // Verify state changes happened
       const finalState = useAppStore.getState();
       expect(finalState.currentMode).toBe("collaboration");
       expect(finalState.activePlanFilePath).toBeNull();
@@ -186,16 +185,13 @@ describe("Menu exit plan mode", () => {
         history: [],
       });
 
-      // The method will try to call input() which requires API keys,
-      // so we expect it to throw after the state transition
-      await expect(
-        useAppStore.getState().exitPlanModeAndImplement(mockConfig, mockTransport, "unchained"),
-      ).rejects.toThrow();
+      // The method catches input() errors and notifies instead of throwing
+      await useAppStore.getState().exitPlanModeAndImplement(mockConfig, mockTransport, "unchained");
 
-      // Verify file was read before the error
+      // Verify file was read
       expect(readFileMock).toHaveBeenCalledWith(expect.any(AbortSignal), ".plans/test.md");
 
-      // Verify state changes happened before the error
+      // Verify state changes happened
       const finalState = useAppStore.getState();
       expect(finalState.currentMode).toBe("unchained");
       expect(finalState.activePlanFilePath).toBeNull();

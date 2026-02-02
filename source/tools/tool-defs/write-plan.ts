@@ -1,5 +1,6 @@
 import { t } from "structural";
 import { defineTool, attempt } from "../common.ts";
+import * as logger from "../../logger.ts";
 
 export const ArgumentsSchema = t.subtype({
   content: t.str.comment("The implementation plan content to write"),
@@ -10,12 +11,14 @@ const Schema = t
     name: t.value("write-plan"),
     arguments: ArgumentsSchema,
   })
-  .comment("Writes content to the plan file (only available in plan mode)");
+  .comment(
+    "Writes content to the plan file (only available when called with a non-null planFilePath, typically in plan mode)",
+  );
 
 export default defineTool<t.GetType<typeof Schema>>(
   async (signal, transport, config, planFilePath) => {
-    // Only available when planFilePath is set (i.e., in plan mode)
     if (!planFilePath) {
+      logger.log("info", "write-plan tool not loaded: planFilePath is not set");
       return null;
     }
 

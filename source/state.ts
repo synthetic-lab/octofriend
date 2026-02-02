@@ -92,16 +92,16 @@ export type UiState = {
   currentMode: ModeType;
   /** Path currently being used by agent tools for plan operations.
    * This is the active plan file that tools read from/write to.
-   * Set when entering plan mode, cleared when exiting.
+   * Set asynchronously after entering plan mode via useEffect initialization, cleared when exiting.
    */
   activePlanFilePath: string | null;
-  /** Path allocated for this session (survives mode switches).
+  /** Path allocated for this session (survives Shift+Tab mode cycling).
    * This persists even when switching to other modes so the plan
-   * can be resumed later. Cleared when session is cleared.
+   * can be resumed later. Cleared when implementing a plan via exitPlanModeAndImplement or when session is cleared.
    */
   sessionPlanFilePath: string | null;
   /** Tracks whether the plan file has been initialized (created with template).
-   * Used to ensure lazy initialization only happens once per session.
+   * Resets when leaving plan mode or clearing history.
    */
   planFileInitialized: boolean;
   input: (args: RunArgs & { query: string }) => Promise<void>;
@@ -126,6 +126,7 @@ export type UiState = {
   setSessionPlanFilePath: (path: string | null) => void;
   setPlanFileInitialized: (initialized: boolean) => void;
   setMode: (mode: ModeType) => void;
+  leavePlanMode: (newMode: ModeType) => void;
   exitPlanModeAndImplement: (
     config: Config,
     transport: Transport,
@@ -281,7 +282,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   setActivePlanFilePath: (path: string | null) => {
     if (path === null && get().currentMode === "plan") {
-      logger.error("verbose", "Warning: Clearing activePlanFilePath while in plan mode");
+      logger.error("info", "Warning: Clearing activePlanFilePath while in plan mode");
     }
     set({ activePlanFilePath: path });
   },
@@ -298,24 +299,30 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ currentMode: mode });
   },
 
+  leavePlanMode: (newMode: ModeType) => {
+    set({
+      activePlanFilePath: null,
+      planFileInitialized: false,
+      currentMode: newMode,
+    });
+  },
+
   /**
    * Exits plan mode, reads the plan file, and begins implementation in the specified mode.
    *
    * This method:
-   * 1. Reads the plan file content
-   * 2. Clears all conversation history
-   * 3. Transitions to the specified execution mode (collaboration or unchained)
-   * 4. Sends the plan content as a new user message to start implementation
+   * 1. Validates the plan file path exists (returns early with notification if null)
+   * 2. Reads the plan file content (returns early with notification on read failure)
+   * 3. Validates plan content is non-empty (returns early with notification if empty/whitespace)
+   * 4. Clears all conversation history and plan state
+   * 5. Transitions to the specified execution mode (collaboration or unchained)
+   * 6. Sends the plan content as a new user message to start implementation
    *
-   * Side effects:
-   * - Clears all conversation history
-   * - Changes the operating mode
-   * - Sends a new user message with plan content
+   * On implementation failure, notifies user with plan file path for manual retry.
    *
    * @param config - Application config for tool execution
    * @param transport - Transport interface for file operations
    * @param targetMode - The execution mode to switch to ("collaboration" or "unchained")
-   * @throws Errors from input/agent execution propagate to the caller
    */
   exitPlanModeAndImplement: async (
     config: Config,
@@ -323,31 +330,31 @@ export const useAppStore = create<UiState>((set, get) => ({
     targetMode: "collaboration" | "unchained",
   ) => {
     const { notify, input, activePlanFilePath } = get();
+    const planFilePath = activePlanFilePath;
 
-    if (!activePlanFilePath) {
+    if (!planFilePath) {
       notify("No plan file available. Cannot exit plan mode.");
       return;
     }
 
     let planContent = "";
     try {
-      const abortController = new AbortController();
-      planContent = await transport.readFile(abortController.signal, activePlanFilePath);
+      planContent = await transport.readFile(AbortSignal.timeout(10000), planFilePath);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       logger.error("info", "Failed to read plan file in exitPlanModeAndImplement", {
-        activePlanFilePath,
+        planFilePath,
         error: errorMessage,
       });
       notify(
-        `Failed to read plan file at ${displayPath(activePlanFilePath)}. Please try again or describe what you want to implement.`,
+        `Failed to read plan file at ${displayPath(planFilePath)}. Please try again or describe what you want to implement.`,
       );
       return;
     }
 
     const modeName = targetMode === "collaboration" ? "Collaboration" : "Unchained";
 
-    if (!planContent) {
+    if (!planContent.trim()) {
       notify(
         "Plan is empty - no content to implement. Please write a plan first, then exit plan mode.",
       );
@@ -368,11 +375,19 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
 
     notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
-    await input({
-      config,
-      transport,
-      query: `Please implement the following plan:\n\n${planContent}`,
-    });
+    try {
+      await input({
+        config,
+        transport,
+        query: `Please implement the following plan:\n\n${planContent}`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to start plan implementation", { error: errorMessage });
+      notify(
+        `Implementation failed to start. Your plan is still at ${displayPath(planFilePath)}. Try again or paste the plan content manually.`,
+      );
+    }
   },
 
   runTool: async ({ config, toolReq, transport }) => {
@@ -483,9 +498,9 @@ export const useAppStore = create<UiState>((set, get) => ({
     let planModeConfig: PlanModeConfig;
     if (isPlanMode) {
       if (activePlanFilePath === null) {
-        throw new Error(
-          "Invariant violation: activePlanFilePath is null when isPlanMode is true. Mode switching logic should ensure this never happens.",
-        );
+        get().notify("Plan mode is still initializing. Please wait a moment and try again.");
+        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        return;
       }
       planModeConfig = { isPlanMode: true, planFilePath: activePlanFilePath };
     } else {

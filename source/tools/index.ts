@@ -15,7 +15,7 @@ export async function loadTools(
   transport: Transport,
   signal: AbortSignal,
   config: Config,
-  allowedTools?: Array<keyof LoadedTools>,
+  allowedTools?: ReadonlyArray<keyof LoadedTools>,
   planFilePath: string | null = null,
 ): Promise<Partial<LoadedTools>> {
   const loaded: Partial<LoadedTools> = {};
@@ -47,17 +47,9 @@ export async function loadTools(
   return loaded as LoadedTools;
 }
 
-export const READONLY_TOOLS: Array<keyof LoadedTools> = [
-  "read",
-  "list",
-  "fetch",
-  "skill",
-  "web-search",
-];
-
-export const PLAN_MODE_TOOLS: Array<keyof LoadedTools> = [...READONLY_TOOLS, "write-plan"];
-
-export const SKIP_CONFIRMATION: Array<keyof LoadedTools> = [...READONLY_TOOLS, "write-plan"];
+export const READONLY_TOOLS = ["read", "list", "fetch", "skill", "web-search"] as const;
+export const PLAN_MODE_TOOLS = [...READONLY_TOOLS, "write-plan"] as const;
+export const SKIP_CONFIRMATION = [...READONLY_TOOLS, "write-plan"] as const;
 
 export async function runTool(
   abortSignal: AbortSignal,
