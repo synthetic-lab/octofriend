@@ -3,9 +3,43 @@ import { useInput } from "ink";
 import { glob } from "tinyglobby";
 import fs from "fs/promises";
 import path from "path";
+import ignore from "ignore";
 
 const CACHE_TTL = 5000;
 const GITIGNORE_CACHE_TTL = 300000;
+
+const FOLDERS = new Set([
+  "node_modules",
+  "bower_components",
+  ".pnpm-store",
+  "vendor",
+  ".npm",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  "target",
+  "bin",
+  "obj",
+  ".git",
+  ".svn",
+  ".hg",
+  ".vscode",
+  ".idea",
+  ".turbo",
+  ".output",
+  "desktop",
+  ".sst",
+  ".cache",
+  ".webkit-cache",
+  "__pycache__",
+  ".pytest_cache",
+  "mypy_cache",
+  ".history",
+  ".gradle",
+]);
+
+const FOLDER_PATTERNS = [...FOLDERS].map(f => `${f}/**`);
 
 type FileListEntry = {
   files: string[];
@@ -13,7 +47,7 @@ type FileListEntry = {
 };
 
 type GitignoreCacheEntry = {
-  patterns: string[];
+  content: string;
   timestamp: number;
 };
 
@@ -21,13 +55,13 @@ const fileCache = new Map<string, FileListEntry>();
 const pendingRequests = new Map<string, Promise<string[]>>();
 const gitignoreCache = new Map<string, GitignoreCacheEntry>();
 
-async function getGitignorePatterns(cwd: string): Promise<string[]> {
+async function getGitignoreFilter(cwd: string): Promise<ignore.Ignore> {
   const cacheKey = cwd;
   const cached = gitignoreCache.get(cacheKey);
   const now = Date.now();
 
   if (cached && now - cached.timestamp < GITIGNORE_CACHE_TTL) {
-    return cached.patterns;
+    return ignore().add(cached.content);
   }
 
   const gitignorePath = path.join(cwd, ".gitignore");
@@ -36,17 +70,11 @@ async function getGitignorePatterns(cwd: string): Promise<string[]> {
   try {
     content = await fs.readFile(gitignorePath, "utf-8");
   } catch {
-    return [];
+    return ignore();
   }
 
-  const patterns = content
-    .split("\n")
-    .filter(line => line && !line.trim().startsWith("#"))
-    .map(line => line.trim())
-    .filter(line => line && line !== ".git/");
-
-  gitignoreCache.set(cacheKey, { patterns, timestamp: now });
-  return patterns;
+  gitignoreCache.set(cacheKey, { content, timestamp: now });
+  return ignore().add(content);
 }
 
 async function getCachedFileList(): Promise<string[]> {
@@ -63,13 +91,18 @@ async function getCachedFileList(): Promise<string[]> {
     return pending;
   }
 
-  const gitignorePatterns = await getGitignorePatterns(cwd);
+  const ig = await getGitignoreFilter(cwd);
 
+  // Two-stage filtering strategy:
+  // 1. Pre-filter: Use FOLDER_PATTERNS to exclude common directories (node_modules, .git, etc.)
+  //    at the glob search level for performance. This prevents searching inside these dirs.
+  // 2. Post-filter: Use the ignore library to filter results based on .gitignore rules.
+  //    This provides full gitignore spec compliance (negation, anchored patterns, etc.)
   const promise = glob(["**/*"], {
     cwd,
-    ignore: [...gitignorePatterns, "node_modules/**", ".git/**", "dist/**"],
+    ignore: FOLDER_PATTERNS,
     absolute: false,
-  });
+  }).then(files => ig.filter(files));
 
   pendingRequests.set(cwd, promise);
 
