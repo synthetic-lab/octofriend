@@ -674,6 +674,8 @@ function ToolRequestRenderer({
       case "mcp":
       case "web-search":
         return null;
+      default:
+        return null;
     }
   })();
 
@@ -952,6 +954,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    default:
+      return null;
   }
 }
 
