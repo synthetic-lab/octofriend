@@ -25,7 +25,7 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
-import { FileRenderer } from "./components/file-renderer.tsx";
+import { FileRenderer, type FileOperation } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
 import read from "./tools/tool-defs/read.ts";
 import list from "./tools/tool-defs/list.ts";
@@ -906,26 +906,13 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
 function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
 
-  let file: string;
-  let lines: number;
-  try {
-    file = fsOld.readFileSync(filePath, "utf8");
-    lines = countLines(file);
-  } catch (error) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Text color="yellow">Warning: Could not read original file</Text>
-        <Text color="gray">File not found: {filePath}</Text>
-        <Text>Octo wants to create the file (showing content as new):</Text>
-        <FileRenderer contents={text} filePath={filePath} />
-      </Box>
-    );
-  }
+  const renderedFile = <FileRenderer contents={text} filePath={filePath} operation="append" />;
+  if (!renderedFile) return null;
 
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the end of the file:</Text>
-      <FileRenderer contents={text} filePath={filePath} startLineNr={lines} />
+      {renderedFile}
     </Box>
   );
 }
@@ -989,24 +976,13 @@ function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
 function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> }) {
   const { text, filePath } = item.arguments;
 
-  let originalContent: string;
-  try {
-    originalContent = fsOld.readFileSync(filePath, "utf8");
-  } catch (error) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Text color="yellow">Warning: Could not read original file</Text>
-        <Text color="gray">File not found: {filePath}</Text>
-        <Text>Octo wants to create the file (showing content as new):</Text>
-        <FileRenderer contents={text} filePath={filePath} />
-      </Box>
-    );
-  }
+  const renderedFile = <FileRenderer contents={text} filePath={filePath} operation="prepend" />;
+  if (!renderedFile) return null;
 
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the beginning of the file:</Text>
-      <FileRenderer contents={text} filePath={filePath} />
+      {renderedFile}
     </Box>
   );
 }
@@ -1014,24 +990,10 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
 function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath } = item.arguments;
 
-  let oldContent: string;
-  try {
-    oldContent = fsOld.readFileSync(filePath, "utf8");
-  } catch (error) {
-    return (
-      <Box flexDirection="column" gap={1}>
-        <Text color="red">Warning: Could not display diff preview</Text>
-        <Text color="gray">File not found: {filePath}</Text>
-        <Text>Octo wants to rewrite the file (showing new content only):</Text>
-        <FileRenderer contents={text} filePath={filePath} />
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer oldText={oldContent} newText={text} filepath={filePath} />
+      <DiffRenderer oldText={""} newText={text} filepath={filePath} />
     </Box>
   );
 }
@@ -1061,7 +1023,11 @@ function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> 
         <Text>:</Text>
       </Box>
       <Box>
-        <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
+        <FileRenderer
+          contents={item.arguments.content}
+          filePath={item.arguments.filePath}
+          operation="create"
+        />
       </Box>
     </Box>
   );
