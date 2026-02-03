@@ -1,4 +1,3 @@
-import * as fsOld from "fs";
 import React, {
   useState,
   useCallback,
@@ -993,7 +992,7 @@ function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> })
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer oldText={""} newText={text} filepath={filePath} />
+      <DiffRenderer oldText={undefined} newText={text} filepath={filePath} />
     </Box>
   );
 }

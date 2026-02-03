@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import { diffLines } from "diff";
 import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
-import { readFileSync } from "fs";
+import * as fsOld from "fs";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 
 export function DiffRenderer({
@@ -11,15 +11,16 @@ export function DiffRenderer({
   newText,
   filepath,
 }: {
-  oldText: string;
+  oldText: string | undefined;
   newText: string;
   filepath: string;
 }) {
   try {
     const language = fileExtLanguage(filepath);
-    const file = readFileSync(filepath, "utf8");
+    const file = fsOld.readFileSync(filepath, "utf8");
+    const effectiveOldText = oldText ?? file;
 
-    const diff = diffLines(oldText, newText);
+    const diff = diffLines(effectiveOldText, newText);
     const diffWithChanged: Array<
       | (typeof diff)[number]
       | {
@@ -53,10 +54,10 @@ export function DiffRenderer({
       diffWithChanged.push(curr);
     }
 
-    const startLine = getStartLine(file, oldText);
+    const startLine = getStartLine(file, oldText || "");
     const oldLineCounter = buildLineCounter(startLine);
     const newLineCounter = buildLineCounter(startLine);
-    const maxOldLines = startLine + countLines(oldText);
+    const maxOldLines = startLine + countLines(effectiveOldText);
     const maxNewLines = startLine + countLines(newText);
     const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
 
@@ -79,7 +80,7 @@ export function DiffRenderer({
                   newValue={part.value}
                   newAdded
                   language={language}
-                  oldText={oldText}
+                  oldText={effectiveOldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -95,7 +96,7 @@ export function DiffRenderer({
                   oldValue={part.value}
                   oldRemoved
                   language={language}
-                  oldText={oldText}
+                  oldText={effectiveOldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -113,7 +114,7 @@ export function DiffRenderer({
                   oldRemoved
                   newAdded
                   language={language}
-                  oldText={oldText}
+                  oldText={effectiveOldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -128,7 +129,7 @@ export function DiffRenderer({
                 oldValue={part.value}
                 newValue={part.value}
                 language={language}
-                oldText={oldText}
+                oldText={effectiveOldText}
                 newText={newText}
                 oldLineCounter={oldLineCounter}
                 newLineCounter={newLineCounter}
