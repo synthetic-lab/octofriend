@@ -6,7 +6,9 @@ import {
   CompactionCheckpointItem,
   sequenceId,
 } from "./history.ts";
-import { runTool, ToolError } from "./tools/index.ts";
+import { runTool, ToolError, loadTools, PLAN_MODE_TOOLS } from "./tools/index.ts";
+import { ModeType, PlanModeConfig } from "./modes.ts";
+import { initializePlanFile } from "./plan-mode.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
@@ -17,7 +19,8 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-import { loadTools } from "./tools/index.ts";
+import * as logger from "./logger.ts";
+import { displayPath } from "./str.ts";
 
 export type RunArgs = {
   config: Config;
@@ -86,6 +89,21 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
+  currentMode: ModeType;
+  /** Path currently being used by agent tools for plan operations.
+   * This is the active plan file that tools read from/write to.
+   * Set asynchronously after entering plan mode via useEffect initialization, cleared when exiting.
+   */
+  activePlanFilePath: string | null;
+  /** Path allocated for this session (survives Shift+Tab mode cycling).
+   * This persists even when switching to other modes so the plan
+   * can be resumed later. Cleared when implementing a plan via exitPlanModeAndImplement or when session is cleared.
+   */
+  sessionPlanFilePath: string | null;
+  /** Tracks whether the plan file has been initialized (created with template).
+   * Resets when leaving plan mode or clearing history.
+   */
+  planFileInitialized: boolean;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -104,6 +122,16 @@ export type UiState = {
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
   clearHistory: () => void;
+  setActivePlanFilePath: (path: string | null) => void;
+  setSessionPlanFilePath: (path: string | null) => void;
+  setPlanFileInitialized: (initialized: boolean) => void;
+  setMode: (mode: ModeType) => void;
+  leavePlanMode: (newMode: ModeType) => void;
+  exitPlanModeAndImplement: (
+    config: Config,
+    transport: Transport,
+    targetMode: "collaboration" | "unchained",
+  ) => Promise<void>;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -116,6 +144,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
+  currentMode: "collaboration",
+  activePlanFilePath: null,
+  sessionPlanFilePath: null,
+  planFileInitialized: false,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -242,12 +274,128 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [],
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
+      sessionPlanFilePath: null,
+      activePlanFilePath: null,
+      planFileInitialized: false,
     }));
+  },
+
+  setActivePlanFilePath: (path: string | null) => {
+    if (path === null && get().currentMode === "plan") {
+      logger.error("info", "Warning: Clearing activePlanFilePath while in plan mode");
+    }
+    set({ activePlanFilePath: path });
+  },
+
+  setSessionPlanFilePath: (path: string | null) => {
+    set({ sessionPlanFilePath: path });
+  },
+
+  setPlanFileInitialized: (initialized: boolean) => {
+    set({ planFileInitialized: initialized });
+  },
+
+  setMode: (mode: ModeType) => {
+    set({ currentMode: mode });
+  },
+
+  leavePlanMode: (newMode: ModeType) => {
+    set({
+      activePlanFilePath: null,
+      planFileInitialized: false,
+      currentMode: newMode,
+    });
+  },
+
+  /**
+   * Exits plan mode, reads the plan file, and begins implementation in the specified mode.
+   *
+   * This method:
+   * 1. Validates the plan file path exists (returns early with notification if null)
+   * 2. Reads the plan file content (returns early with notification on read failure)
+   * 3. Validates plan content is non-empty (returns early with notification if empty/whitespace)
+   * 4. Clears all conversation history and plan state
+   * 5. Transitions to the specified execution mode (collaboration or unchained)
+   * 6. Sends the plan content as a new user message to start implementation
+   *
+   * On implementation failure, notifies user with plan file path for manual retry.
+   *
+   * @param config - Application config for tool execution
+   * @param transport - Transport interface for file operations
+   * @param targetMode - The execution mode to switch to ("collaboration" or "unchained")
+   */
+  exitPlanModeAndImplement: async (
+    config: Config,
+    transport: Transport,
+    targetMode: "collaboration" | "unchained",
+  ) => {
+    const { notify, input, activePlanFilePath } = get();
+    const planFilePath = activePlanFilePath;
+
+    if (!planFilePath) {
+      notify("No plan file available. Cannot exit plan mode.");
+      return;
+    }
+
+    let planContent = "";
+    try {
+      planContent = await transport.readFile(AbortSignal.timeout(10000), planFilePath);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to read plan file in exitPlanModeAndImplement", {
+        planFilePath,
+        error: errorMessage,
+      });
+      notify(
+        `Failed to read plan file at ${displayPath(planFilePath)}. Please try again or describe what you want to implement.`,
+      );
+      return;
+    }
+
+    const modeName = targetMode === "collaboration" ? "Collaboration" : "Unchained";
+
+    if (!planContent.trim()) {
+      notify(
+        "Plan is empty - no content to implement. Please write a plan first, then exit plan mode.",
+      );
+      return;
+    }
+
+    const { abortResponse } = get();
+    abortResponse();
+    set(state => ({
+      history: [],
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+      sessionPlanFilePath: null,
+      activePlanFilePath: null,
+      planFileInitialized: false,
+      currentMode: targetMode,
+      modeData: { mode: "input", vimMode: "INSERT" },
+    }));
+
+    notify(`Exited plan mode. Entering ${modeName} mode. Beginning implementation from plan.`);
+    try {
+      await input({
+        config,
+        transport,
+        query: `Please implement the following plan:\n\n${planContent}`,
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to start plan implementation", { error: errorMessage });
+      notify(
+        `Implementation failed to start. Your plan is still at ${displayPath(planFilePath)}. Try again or paste the plan content manually.`,
+      );
+    }
   },
 
   runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
+    const isPlanMode = get().currentMode === "plan";
+    const { activePlanFilePath } = get();
+
     set({
       modeData: {
         mode: "tool-waiting",
@@ -255,7 +403,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     });
 
-    const tools = await loadTools(transport, abortController.signal, config);
+    const tools = await loadTools(
+      transport,
+      abortController.signal,
+      config,
+      isPlanMode ? PLAN_MODE_TOOLS : undefined,
+      isPlanMode ? activePlanFilePath : null,
+    );
+
     try {
       const result = await runTool(
         abortController.signal,
@@ -266,16 +421,33 @@ export const useAppStore = create<UiState>((set, get) => ({
         modelOverride,
       );
 
-      const toolHistoryItem: HistoryItem = {
-        type: "tool-output",
-        id: sequenceId(),
-        result,
-        toolCallId: toolReq.toolCallId,
-      };
-
-      const history: HistoryItem[] = [...get().history, toolHistoryItem];
-
-      set({ history });
+      if (toolReq.function.name === "write-plan") {
+        const planPath = get().activePlanFilePath ?? activePlanFilePath;
+        if (!planPath) {
+          throw new ToolError("Plan file path became unavailable during write. Please retry.");
+        }
+        const toolOutputItem: HistoryItem = {
+          type: "tool-output",
+          id: sequenceId(),
+          result,
+          toolCallId: toolReq.toolCallId,
+        };
+        const planWrittenItem: HistoryItem = {
+          type: "plan-written",
+          id: sequenceId(),
+          planFilePath: planPath,
+          content: result != null && "content" in result ? result.content : String(result),
+        };
+        set({ history: [...get().history, toolOutputItem, planWrittenItem] });
+      } else {
+        const toolHistoryItem: HistoryItem = {
+          type: "tool-output",
+          id: sequenceId(),
+          result,
+          toolCallId: toolReq.toolCallId,
+        };
+        set({ history: [...get().history, toolHistoryItem] });
+      }
     } catch (e) {
       const history = [
         ...get().history,
@@ -297,6 +469,50 @@ export const useAppStore = create<UiState>((set, get) => ({
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
+    const isPlanMode = get().currentMode === "plan";
+    const { activePlanFilePath, planFileInitialized } = get();
+
+    // Lazy initialization of plan file on first message in plan mode
+    if (isPlanMode && activePlanFilePath && !planFileInitialized) {
+      try {
+        await initializePlanFile(transport, activePlanFilePath, abortController.signal);
+        set({ planFileInitialized: true });
+      } catch (initErr) {
+        if (abortController.signal.aborted) return;
+        const errorCode =
+          initErr instanceof Error && "code" in initErr
+            ? String((initErr as NodeJS.ErrnoException).code)
+            : "UNKNOWN";
+        if (SYSTEM_ERROR_CODES.includes(errorCode)) throw initErr;
+        const errorMessage = initErr instanceof Error ? initErr.message : String(initErr);
+        logger.error("info", "Plan file initialization failed", {
+          planFilePath: activePlanFilePath,
+          error: errorMessage,
+        });
+        get().notify(
+          `Plan mode: failed to initialize plan file at ${displayPath(activePlanFilePath)}. You can create it manually. Switching to collaboration mode.`,
+        );
+        set({
+          activePlanFilePath: null,
+          planFileInitialized: false,
+          currentMode: "collaboration",
+        });
+        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        return;
+      }
+    }
+
+    let planModeConfig: PlanModeConfig;
+    if (isPlanMode) {
+      if (activePlanFilePath === null) {
+        get().notify("Plan mode is still initializing. Please wait a moment and try again.");
+        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        return;
+      }
+      planModeConfig = { isPlanMode: true, planFilePath: activePlanFilePath };
+    } else {
+      planModeConfig = { isPlanMode: false };
+    }
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
 
@@ -308,6 +524,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         config,
         transport,
         abortSignal: abortController.signal,
+        planModeConfig,
         handler: {
           startResponse: () => {
             throttle.flush();
@@ -470,6 +687,24 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 }));
 
+const SYSTEM_ERROR_CODES = ["EMFILE", "ENFILE", "ENOMEM", "EACCES", "EPERM", "ENOSPC", "EIO"];
+
+/**
+ * Transforms tool errors into appropriate history items.
+ *
+ * Handles known error types (ToolError, FileOutdatedError) by converting them
+ * into user-friendly history items. System-level errors (EMFILE, ENOMEM) are
+ * re-thrown to prevent masking critical issues.
+ *
+ * @param signal - Abort signal for file operations
+ * @param transport - The transport interface for file system operations
+ * @param toolReq - The tool request that caused the error
+ * @param e - The error that occurred
+ * @returns A history item describing the error
+ * @throws {Error} System-level errors (EMFILE, ENOMEM) that should not be
+ *         converted to user messages
+ * @throws {Error} Unexpected errors not categorized as ToolError or FileOutdatedError
+ */
 async function tryTransformToolError(
   signal: AbortSignal,
   transport: Transport,
@@ -497,7 +732,30 @@ async function tryTransformToolError(
         error:
           "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
-    } catch {
+    } catch (readErr) {
+      const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
+      const errorCode =
+        readErr instanceof Error && "code" in readErr
+          ? String((readErr as NodeJS.ErrnoException).code)
+          : "UNKNOWN";
+
+      if (SYSTEM_ERROR_CODES.includes(errorCode)) {
+        logger.error("info", "System-level error during file-outdated check, re-throwing", {
+          filePath: e.filePath,
+          toolName: toolReq.function.name,
+          errorCode,
+          errorMessage,
+        });
+        throw readErr;
+      }
+
+      // Expected file errors (ENOENT, etc.) - convert to user message
+      logger.log("info", "FileTracker.readUntracked failed during file-outdated check", {
+        filePath: e.filePath,
+        toolName: toolReq.function.name,
+        error: errorMessage,
+        errorCode,
+      });
       return {
         type: "file-unreadable",
         path: e.filePath,
@@ -507,6 +765,12 @@ async function tryTransformToolError(
       };
     }
   }
+  // Unknown error type - re-throw to avoid masking issues
+  const errorMessage = e instanceof Error ? e.message : String(e);
+  logger.error("info", "Unknown error type in tryTransformToolError, re-throwing", {
+    errorMessage,
+    toolName: toolReq.function.name,
+  });
   throw e;
 }
 

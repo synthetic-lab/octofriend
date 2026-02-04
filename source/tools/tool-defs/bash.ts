@@ -13,8 +13,7 @@ const Schema = t.subtype({
   name: t.value("shell"),
   arguments: ArgumentsSchema,
 }).comment(`
-  Runs a shell command in the cwd. This tool uses /bin/sh. Do NOT use bash-isms; they won't work.
-  Only use POSIX-compliant shell.
+  Runs a shell command in the cwd using bash.
 
   The shell command is run as a subshell, not connected to a PTY, so don't run interactive commands:
   only run commands that will work headless.
@@ -26,18 +25,22 @@ const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  validate: async () => null,
-  async run(abortSignal, transport, call) {
-    const { cmd, timeout } = call.arguments;
-    try {
-      return { content: await transport.shell(abortSignal, cmd, timeout) };
-    } catch (e) {
-      if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
-      if (e instanceof CommandFailedError) throw new ToolError(e.message);
-      throw e;
-    }
+export default defineTool<t.GetType<typeof Schema>>(
+  async (signal, transport, config, planFilePath) => {
+    return {
+      Schema,
+      ArgumentsSchema,
+      validate: async () => null,
+      async run(abortSignal, transport, call) {
+        const { cmd, timeout } = call.arguments;
+        try {
+          return { content: await transport.shell(abortSignal, cmd, timeout) };
+        } catch (e) {
+          if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+          if (e instanceof CommandFailedError) throw new ToolError(e.message);
+          throw e;
+        }
+      },
+    };
   },
-}));
+);

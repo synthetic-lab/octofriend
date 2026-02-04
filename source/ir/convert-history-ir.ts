@@ -154,7 +154,8 @@ function lowerItem(item: HistoryItem): LoweredHistory | null {
   if (
     item.type !== "request-failed" &&
     item.type !== "compaction-failed" &&
-    item.type !== "notification"
+    item.type !== "notification" &&
+    item.type !== "plan-written"
   )
     return item;
   return null;
@@ -287,6 +288,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         case "shell":
         case "mcp":
         case "web-search":
+        case "write-plan":
           return [
             prev,
             {

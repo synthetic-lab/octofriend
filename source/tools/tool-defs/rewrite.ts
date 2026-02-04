@@ -18,25 +18,29 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  async validate(signal, transport, toolCall) {
-    await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-    await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-    return null;
-  },
-  async run(signal, transport, call) {
-    const { filePath } = call.arguments;
-    const edit = call.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
-    const replaced = runEdit({ edit });
-    await fileTracker.write(transport, signal, filePath, replaced);
+export default defineTool<t.GetType<typeof Schema>>(
+  async (signal, transport, config, planFilePath) => {
     return {
-      content: "",
+      Schema,
+      ArgumentsSchema,
+      async validate(signal, transport, toolCall) {
+        await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
+        await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
+        return null;
+      },
+      async run(signal, transport, call) {
+        const { filePath } = call.arguments;
+        const edit = call.arguments;
+        await fileTracker.assertCanEdit(transport, signal, filePath);
+        const replaced = runEdit({ edit });
+        await fileTracker.write(transport, signal, filePath, replaced);
+        return {
+          content: "",
+        };
+      },
     };
   },
-}));
+);
 
 function runEdit({ edit }: { edit: t.GetType<typeof ArgumentsSchema> }): string {
   return edit.text;

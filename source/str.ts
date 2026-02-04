@@ -1,3 +1,18 @@
+import path from "path";
+import os from "os";
+
+export function displayPath(absolutePath: string): string {
+  const cwd = process.cwd();
+  if (absolutePath.startsWith(cwd + path.sep)) {
+    return "./" + path.relative(cwd, absolutePath);
+  }
+  const home = os.homedir();
+  if (absolutePath.startsWith(home + path.sep)) {
+    return "~/" + path.relative(home, absolutePath);
+  }
+  return absolutePath;
+}
+
 export function countLines(content: string) {
   return content.split("\n").length;
 }

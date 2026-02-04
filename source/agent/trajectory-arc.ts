@@ -10,7 +10,10 @@ import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { loadTools } from "../tools/index.ts";
+import { loadTools, PLAN_MODE_TOOLS } from "../tools/index.ts";
+import { PlanModeConfig } from "../modes.ts";
+import * as logger from "../logger.ts";
+import { isFileNotFoundError, isPermissionError } from "../errors.ts";
 
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
@@ -85,6 +88,7 @@ export async function trajectoryArc({
   config,
   transport,
   abortSignal,
+  planModeConfig,
   handler,
 }: {
   apiKey: string;
@@ -93,16 +97,27 @@ export async function trajectoryArc({
   config: Config;
   transport: Transport;
   abortSignal: AbortSignal;
+  planModeConfig: PlanModeConfig;
   handler: {
     [K in AnyState]: (state: StateEvents[K]) => void;
   };
 }): Promise<Finish> {
+  const isPlanMode = planModeConfig.isPlanMode;
+  const planFilePath = isPlanMode ? planModeConfig.planFilePath : null;
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [...messages];
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
-  const tools = await loadTools(transport, abortSignal, config);
+
+  // In plan mode, only load the allowed tool subset; otherwise load all tools
+  const tools = await loadTools(
+    transport,
+    abortSignal,
+    config,
+    isPlanMode ? PLAN_MODE_TOOLS : undefined,
+    planFilePath,
+  );
 
   const parsedCompaction = await maybeAutocompact({
     apiKey,
@@ -152,6 +167,7 @@ export async function trajectoryArc({
         transport,
         tools,
         signal: abortSignal,
+        planModeConfig,
       });
     },
   });
@@ -210,6 +226,7 @@ export async function trajectoryArc({
       config,
       transport,
       abortSignal,
+      planModeConfig,
       messages: messagesCopy.concat(irs),
       handler,
     });
@@ -259,6 +276,7 @@ export async function trajectoryArc({
         config,
         transport,
         abortSignal,
+        planModeConfig,
         messages: messagesCopy.concat(retryIrs),
         handler,
       });
@@ -319,7 +337,27 @@ export async function trajectoryArc({
             irs,
           };
         }
-      } catch {}
+      } catch (autofixErr) {
+        // Don't mask abort errors
+        if (abortSignal.aborted) throw autofixErr;
+
+        // Only log expected autofix failures, not unexpected errors
+        const errorMessage = autofixErr instanceof Error ? autofixErr.message : String(autofixErr);
+        if (
+          isFileNotFoundError(autofixErr) ||
+          (autofixErr instanceof Error && errorMessage.includes("validation"))
+        ) {
+          logger.error("verbose", "Autofix attempt failed, falling back to original tool error", {
+            toolName: fn.name,
+            toolPath: path,
+            error: errorMessage,
+          });
+        } else {
+          // Re-throw unexpected errors
+          throw autofixErr;
+        }
+        // Fall through to show the original tool error and proceed to retry
+      }
     }
 
     const retryIrs = [
@@ -338,6 +376,7 @@ export async function trajectoryArc({
       config,
       transport,
       abortSignal,
+      planModeConfig,
       messages: messagesCopy.concat(retryIrs),
       handler,
     });
@@ -426,12 +465,22 @@ async function tryTransformFileOutdatedError(
       error:
         "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
     };
-  } catch {
-    return {
-      role: "file-unreadable",
-      path: e.filePath,
-      toolCall,
-      error: `File ${e.filePath} could not be read. Has it been deleted?`,
-    };
+  } catch (readErr) {
+    // Only transform expected file read errors
+    if (isFileNotFoundError(readErr) || isPermissionError(readErr)) {
+      const errorMessage = readErr instanceof Error ? readErr.message : String(readErr);
+      logger.error("verbose", "FileTracker.readUntracked failed in tryTransformFileOutdatedError", {
+        filePath: e.filePath,
+        error: errorMessage,
+      });
+      return {
+        role: "file-unreadable",
+        path: e.filePath,
+        toolCall,
+        error: `File ${e.filePath} could not be read. Has it been deleted?`,
+      };
+    }
+    // Re-throw unexpected errors
+    throw readErr;
   }
 }

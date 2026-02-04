@@ -26,7 +26,7 @@ describe('JSON fuzzing functions', () => {
   const mockRandom = (returnValues: number[]) => {
     let index = 0;
     return () => {
-      return returnValues[index++] || 0.5;
+      return returnValues[index++] ?? 0.5;
     };
   };
 
@@ -53,7 +53,7 @@ describe('JSON fuzzing functions', () => {
     });
 
     it('nullAdd should insert random characters into null', async () => {
-      const testValues = [0.5, 0]; // 0.5 for index, 0 for lowercase letter 'a'
+      const testValues = [0.5, 12 / 26]; // 0.5 for index, ~0.46 for lowercase letter 'm'
 
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = nullAdd({
@@ -97,7 +97,7 @@ describe('JSON fuzzing functions', () => {
     });
 
     it('boolAdd should insert random characters into boolean', async () => {
-      const testValues = [0.5, 0];
+      const testValues = [0.5, 12 / 26]; // 0.5 for index, ~0.46 for lowercase letter 'm'
       
       await withMock(deps, 'random', mockRandom(testValues), () => {
         const result = boolAdd({
