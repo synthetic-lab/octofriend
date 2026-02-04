@@ -256,3 +256,8 @@ underlying error messages from APIs or tool calls, run Octo with the
 ```bash
 OCTO_VERBOSE=1 octofriend
 ```
+
+## Opting into canary versions
+
+If you want to use unreleased versions of Octo, clone this repo and read the
+instructions in `canary.sh` to install `canary-octo` in your shell.
