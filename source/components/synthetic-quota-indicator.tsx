@@ -122,13 +122,29 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
   }
 }
 
-function formatRenewsAt(date: Date): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "pm" : "am";
-  const displayHours = hours % 12 || 12;
-  const displayMinutes = minutes.toString().padStart(2, "0");
-  return `${displayHours}:${displayMinutes}${ampm}`;
+function formatTimeUntil(renewsAt: Date): string {
+  const now = new Date();
+  const diffMs = renewsAt.getTime() - now.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMins < 60) {
+    return `In ${diffMins}m`;
+  }
+
+  const diffHours = Math.floor(diffMins / 60);
+  const remainingMins = diffMins % 60;
+
+  if (diffHours < 24) {
+    return remainingMins > 0 ? `In ${diffHours}h ${remainingMins}m` : `In ${diffHours}h`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  const remainingHours = diffHours % 24;
+
+  if (remainingHours > 0) {
+    return `In ${diffDays}d ${remainingHours}h`;
+  }
+  return `In ${diffDays}d`;
 }
 
 function QuotaLabel({ label, quota }: { label: string; quota: QuotaEntry }) {
@@ -137,7 +153,7 @@ function QuotaLabel({ label, quota }: { label: string; quota: QuotaEntry }) {
   if (isFull && quota.renewsAt) {
     return (
       <Text>
-        {label}:{formatRenewsAt(quota.renewsAt)}
+        {label}:{formatTimeUntil(quota.renewsAt)}
       </Text>
     );
   }
