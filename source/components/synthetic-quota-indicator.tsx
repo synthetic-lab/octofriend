@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { Text } from "ink";
 import { useConfig, assertKeyForModel } from "../config.ts";
 import { useModel } from "../state.ts";
-import { providerForBaseUrl } from "../providers.ts";
+import { providerForBaseUrl, SYNTHETIC_PROVIDER } from "../providers.ts";
 
 type QuotaResponseEntry = {
   limit: number;
@@ -49,7 +49,7 @@ export function useSyntheticQuotaData(refreshTrigger: number): QuotaData | null 
   const isFetchingRef = useRef(false);
 
   const provider = providerForBaseUrl(model.baseUrl);
-  const isSynthetic = provider?.name === "Synthetic";
+  const isSynthetic = provider === SYNTHETIC_PROVIDER;
 
   const loadQuota = async () => {
     if (!isSynthetic || isFetchingRef.current) return;
