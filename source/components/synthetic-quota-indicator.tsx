@@ -4,24 +4,18 @@ import { useConfig, assertKeyForModel } from "../config.ts";
 import { useModel } from "../state.ts";
 import { providerForBaseUrl } from "../providers.ts";
 
+type QuotaResponseEntry = {
+  limit: number;
+  requests: number;
+  renewsAt: string;
+};
+
 type QuotaResponse = {
-  subscription: {
-    limit: number;
-    requests: number;
-    renewsAt: string;
-  };
+  subscription: QuotaResponseEntry;
   search: {
-    hourly: {
-      limit: number;
-      requests: number;
-      renewsAt: string;
-    };
+    hourly: QuotaResponseEntry;
   };
-  toolCallDiscounts: {
-    limit: number;
-    requests: number;
-    renewsAt: string;
-  };
+  toolCallDiscounts: QuotaResponseEntry;
 };
 
 type QuotaEntry = {
