@@ -156,9 +156,9 @@ export const SyntheticQuotaIndicator = React.memo(({ quota }: { quota: QuotaData
 
   return (
     <Text color="gray">
-      <QuotaLabel label="R" quota={quota.subscription} />{" "}
-      <QuotaLabel label="S" quota={quota.search} />{" "}
-      <QuotaLabel label="T" quota={quota.toolCallDiscounts} />
+      <QuotaLabel label="Req" quota={quota.subscription} />{" "}
+      <QuotaLabel label="Srch" quota={quota.search} />{" "}
+      <QuotaLabel label="Tool" quota={quota.toolCallDiscounts} />
     </Text>
   );
 });
