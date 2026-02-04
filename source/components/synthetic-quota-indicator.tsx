@@ -24,6 +24,8 @@ type QuotaEntry = {
   renewsAt: Date | null;
 };
 
+const DEFAULT_QUOTA_ENTRY: QuotaEntry = { used: 0, limit: 0, renewsAt: null };
+
 type QuotaData = {
   subscription: QuotaEntry;
   search: QuotaEntry;
@@ -38,9 +40,9 @@ export function useSyntheticQuotaData(refreshTrigger: number): QuotaData | null 
   const config = useConfig();
   const model = useModel();
   const [quota, setQuota] = useState<QuotaData>({
-    subscription: { used: 0, limit: 0, renewsAt: null },
-    search: { used: 0, limit: 0, renewsAt: null },
-    toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
+    subscription: DEFAULT_QUOTA_ENTRY,
+    search: DEFAULT_QUOTA_ENTRY,
+    toolCallDiscounts: DEFAULT_QUOTA_ENTRY,
     loading: true,
     error: false,
   });
@@ -81,9 +83,9 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
 
     if (!response.ok) {
       return {
-        subscription: { used: 0, limit: 0, renewsAt: null },
-        search: { used: 0, limit: 0, renewsAt: null },
-        toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
+        subscription: DEFAULT_QUOTA_ENTRY,
+        search: DEFAULT_QUOTA_ENTRY,
+        toolCallDiscounts: DEFAULT_QUOTA_ENTRY,
         loading: false,
         error: true,
       };
@@ -111,9 +113,9 @@ async function fetchQuota(apiKey: string): Promise<QuotaData> {
     };
   } catch {
     return {
-      subscription: { used: 0, limit: 0, renewsAt: null },
-      search: { used: 0, limit: 0, renewsAt: null },
-      toolCallDiscounts: { used: 0, limit: 0, renewsAt: null },
+      subscription: DEFAULT_QUOTA_ENTRY,
+      search: DEFAULT_QUOTA_ENTRY,
+      toolCallDiscounts: DEFAULT_QUOTA_ENTRY,
       loading: false,
       error: true,
     };
