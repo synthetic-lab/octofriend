@@ -86,6 +86,7 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
+  lastUserPromptId: bigint | null;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -100,6 +101,7 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
+  editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
@@ -116,6 +118,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
+  lastUserPromptId: null,
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -125,7 +128,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     };
 
     let history = [...get().history, userMessage];
-    set({ history });
+    set({ history, lastUserPromptId: userMessage.id });
     await get()._runAgent({ config, transport });
   },
 
@@ -133,6 +136,42 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (get().modeData.mode === mode) {
       await get()._runAgent(args);
     }
+  },
+
+  editAndRetryFrom: (mode, _args) => {
+    if (get().modeData.mode !== mode) {
+      return;
+    }
+
+    const { history, lastUserPromptId, byteCount } = get();
+
+    if (lastUserPromptId === null) {
+      set({
+        query: "",
+        byteCount: 0,
+        modeData: { mode: "input", vimMode: "INSERT" },
+      });
+      return;
+    }
+
+    const lastUserItem = history.find(item => item.id === lastUserPromptId);
+    if (!lastUserItem || lastUserItem.type !== "user") {
+      set({
+        query: "",
+        byteCount: 0,
+        modeData: { mode: "input", vimMode: "INSERT" },
+      });
+      return;
+    }
+
+    const filteredHistory = history.filter(item => item.id < lastUserPromptId);
+    set(state => ({
+      history: filteredHistory,
+      query: lastUserItem.content,
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+      modeData: { mode: "input", vimMode: "INSERT" },
+    }));
   },
 
   rejectTool: toolCallId => {
