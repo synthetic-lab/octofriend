@@ -24,6 +24,10 @@ export function Markdown({ markdown }: { markdown: string }) {
   );
 }
 
+function renderChildren(tokens: Token[]): React.ReactNode {
+  return tokens.map((token, index) => <TokenRenderer key={index} token={token} />);
+}
+
 function TokenRenderer({ token }: { token: Token }): React.ReactElement {
   if (!isMarkedToken(token)) {
     throw new Error(`Unknown markdown token type: ${token.type}`);
@@ -112,7 +116,7 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
 }
 
 function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
-  return <Text inverse> {token.text} </Text>;
+  return <Text inverse>{token.text}</Text>;
 }
 
 function DefRenderer({ token }: { token: Tokens.Def }) {
@@ -123,13 +127,13 @@ function DefRenderer({ token }: { token: Tokens.Def }) {
 function DelRenderer({ token }: { token: Tokens.Del }) {
   return (
     <Text strikethrough dimColor>
-      {renderTokensAsPlaintext(token.tokens)}
+      {renderChildren(token.tokens)}
     </Text>
   );
 }
 
 function EmRenderer({ token }: { token: Tokens.Em }) {
-  return <Text italic>{renderTokensAsPlaintext(token.tokens)}</Text>;
+  return <Text italic>{renderChildren(token.tokens)}</Text>;
 }
 
 function EscapeRenderer({ token }: { token: Tokens.Escape }) {
@@ -147,7 +151,7 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   return (
     <Box marginTop={1} marginBottom={1} paddingLeft={indent}>
       <Text color={color} bold>
-        {marker} {renderTokensAsPlaintext(token.tokens)}
+        {marker} {renderChildren(token.tokens)}
       </Text>
     </Box>
   );
@@ -175,7 +179,7 @@ function LinkRenderer({ token }: { token: Tokens.Link }) {
   const linkText = renderTokensAsPlaintext(token.tokens);
   return (
     <Text color="blue">
-      {linkText} ({token.href})
+      {linkText} ({token.href}){renderChildren(token.tokens)} ({token.href})
     </Text>
   );
 }
@@ -251,13 +255,13 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
   return (
     <Box marginBottom={1}>
-      <Text>{renderTokensAsPlaintext(token.tokens)}</Text>
+      <Text>{renderChildren(token.tokens)}</Text>
     </Box>
   );
 }
 
 function StrongRenderer({ token }: { token: Tokens.Strong }) {
-  return <Text bold>{renderTokensAsPlaintext(token.tokens)}</Text>;
+  return <Text bold>{renderChildren(token.tokens)}</Text>;
 }
 
 function TableRenderer({ token }: { token: Tokens.Table }) {
@@ -320,7 +324,7 @@ function TableRowRenderer({
 
 function TextRenderer({ token }: { token: Tokens.Text }) {
   if (token.tokens) {
-    return <Text>{renderTokensAsPlaintext(token.tokens)}</Text>;
+    return <Text>{renderChildren(token.tokens)}</Text>;
   }
   return <Text>{token.text}</Text>;
 }
