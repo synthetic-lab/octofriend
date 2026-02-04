@@ -1,22 +1,25 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { Text } from "ink";
 import { useConfig, assertKeyForModel } from "../config.ts";
 import { useModel } from "../state.ts";
 import { providerForBaseUrl, SYNTHETIC_PROVIDER } from "../providers.ts";
+import { t } from "structural";
 
-type QuotaResponseEntry = {
-  limit: number;
-  requests: number;
-  renewsAt: string;
-};
+const QuotaEntryHeaderSchema = t.subtype({
+  limit: t.num,
+  requests: t.num,
+  renewsAt: t.str,
+});
 
-type QuotaResponse = {
-  subscription: QuotaResponseEntry;
-  search: {
-    hourly: QuotaResponseEntry;
-  };
-  toolCallDiscounts: QuotaResponseEntry;
-};
+const QuotaHeaderSchema = t.subtype({
+  subscription: QuotaEntryHeaderSchema,
+  search: t.subtype({
+    hourly: QuotaEntryHeaderSchema,
+  }),
+  toolCallDiscounts: QuotaEntryHeaderSchema,
+});
+
+type QuotaResponse = t.GetType<typeof QuotaHeaderSchema>;
 
 type QuotaEntry = {
   used: number;
@@ -36,20 +39,29 @@ type QuotaData = {
 
 export type { QuotaData };
 
-export function useSyntheticQuotaData(refreshTrigger: number): QuotaData | null {
+type QuotaContextValue = {
+  quotaData: QuotaData | null;
+  setQuotaData: (data: QuotaData) => void;
+  lastUpdated: number | null;
+};
+
+const QuotaContext = createContext<QuotaContextValue | null>(null);
+
+export function QuotaProvider({ children }: { children: React.ReactNode }) {
   const config = useConfig();
   const model = useModel();
-  const [quota, setQuota] = useState<QuotaData>({
-    subscription: DEFAULT_QUOTA_ENTRY,
-    search: DEFAULT_QUOTA_ENTRY,
-    toolCallDiscounts: DEFAULT_QUOTA_ENTRY,
-    loading: true,
-    error: false,
-  });
-  const isFetchingRef = useRef(false);
-
+  const [quotaData, setQuotaData] = useState<QuotaData | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const provider = providerForBaseUrl(model.baseUrl);
   const isSynthetic = provider === SYNTHETIC_PROVIDER;
+  const isFetchingRef = useRef(false);
+
+  const updateQuota = (data: QuotaData) => {
+    if (isSynthetic) {
+      setQuotaData(data);
+      setLastUpdated(Date.now());
+    }
+  };
 
   const loadQuota = async () => {
     if (!isSynthetic || isFetchingRef.current) return;
@@ -57,20 +69,69 @@ export function useSyntheticQuotaData(refreshTrigger: number): QuotaData | null 
     isFetchingRef.current = true;
     try {
       const apiKey = await assertKeyForModel(model, config);
-      const quotaData = await fetchQuota(apiKey);
-      setQuota(quotaData);
+      const data = await fetchQuota(apiKey);
+      updateQuota(data);
     } catch {
-      setQuota(prev => ({ ...prev, loading: false, error: true }));
+      // Silently fail - the quota indicator just won't show
     } finally {
       isFetchingRef.current = false;
     }
   };
 
+  // Subscribe to module-level quota manager for header-based updates
+  useEffect(() => {
+    if (!isSynthetic) return;
+    const unsubscribe = quotaManager.subscribe(updateQuota);
+    return unsubscribe;
+  }, [isSynthetic]);
+
+  // Initial poll on mount (so we have data right away)
   useEffect(() => {
     loadQuota();
-  }, [isSynthetic, model.baseUrl, config, refreshTrigger]);
+  }, [isSynthetic, model.baseUrl, config]);
 
-  return isSynthetic ? quota : null;
+  // Background refresh every 5 minutes if data is stale
+  useEffect(() => {
+    if (!isSynthetic || !lastUpdated) return;
+
+    const interval = setInterval(
+      () => {
+        const age = Date.now() - lastUpdated;
+        const STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+        if (age > STALE_THRESHOLD) {
+          loadQuota();
+        }
+      },
+      5 * 60 * 1000,
+    ); // Check every 5 minutes
+
+    return () => clearInterval(interval);
+  }, [isSynthetic, lastUpdated, model.baseUrl, config]);
+
+  const contextValue: QuotaContextValue = {
+    quotaData: isSynthetic ? quotaData : null,
+    lastUpdated: isSynthetic ? lastUpdated : null,
+    setQuotaData: updateQuota,
+  };
+
+  return <QuotaContext.Provider value={contextValue}>{children}</QuotaContext.Provider>;
+}
+
+export function useQuotaData(): QuotaData | null {
+  const context = useContext(QuotaContext);
+  if (!context) {
+    return null;
+  }
+  return context.quotaData;
+}
+
+export function useSetQuotaData(): (data: QuotaData) => void {
+  const context = useContext(QuotaContext);
+  if (!context) {
+    throw new Error("useSetQuotaData must be used within QuotaProvider");
+  }
+  return context.setQuotaData;
 }
 
 async function fetchQuota(apiKey: string): Promise<QuotaData> {
@@ -179,38 +240,60 @@ export const SyntheticQuotaIndicator = React.memo(({ quota }: { quota: QuotaData
   );
 });
 
-export const useQuotaRefresh = () => {
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  return {
-    refreshTrigger,
-    triggerRefresh: () => setRefreshTrigger(prev => prev + 1),
-  };
-};
+export type QuotaHeaderValue = QuotaResponse;
 
 /**
- * Hook that combines quota data fetching with mode change detection.
- * Automatically refreshes quota when the app transitions to "input" mode.
+ * Module-level quota manager for updating quota data from API headers.
+ * This allows the transport layer to update quota data without React dependencies.
  */
-export function useSyntheticQuotaWithModeRefresh(currentMode: string): QuotaData | null {
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const prevModeRef = useRef<string | null>(null);
-  const refreshTriggeredRef = useRef(false);
+const quotaManager = {
+  currentData: null as QuotaData | null,
+  lastUpdated: null as number | null,
+  listeners: new Set<(data: QuotaData) => void>(),
 
-  useEffect(() => {
-    const previousMode = prevModeRef.current;
+  setData(data: QuotaData) {
+    this.currentData = data;
+    this.lastUpdated = Date.now();
+    this.listeners.forEach(listener => listener(data));
+  },
 
-    if (currentMode === "input" && previousMode !== "input") {
-      if (!refreshTriggeredRef.current) {
-        refreshTriggeredRef.current = true;
-        setRefreshTrigger(prev => prev + 1);
-      }
-    } else if (currentMode !== "input") {
-      refreshTriggeredRef.current = false;
+  subscribe(listener: (data: QuotaData) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  },
+};
+
+export function updateQuotaFromHeader(headerValue: string): void {
+  try {
+    const parsed = JSON.parse(headerValue);
+    const validated = QuotaHeaderSchema.slice(parsed);
+
+    if (validated instanceof t.Err) {
+      return;
     }
 
-    prevModeRef.current = currentMode;
-  }, [currentMode]);
+    const data: QuotaData = {
+      subscription: {
+        used: validated.subscription.requests,
+        limit: validated.subscription.limit,
+        renewsAt: new Date(validated.subscription.renewsAt),
+      },
+      search: {
+        used: validated.search.hourly.requests,
+        limit: validated.search.hourly.limit,
+        renewsAt: new Date(validated.search.hourly.renewsAt),
+      },
+      toolCallDiscounts: {
+        used: validated.toolCallDiscounts.requests,
+        limit: validated.toolCallDiscounts.limit,
+        renewsAt: new Date(validated.toolCallDiscounts.renewsAt),
+      },
+      loading: false,
+      error: false,
+    };
 
-  return useSyntheticQuotaData(refreshTrigger);
+    quotaManager.setData(data);
+  } catch {}
 }
