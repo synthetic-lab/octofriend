@@ -69,6 +69,7 @@ import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { getToolCategory } from "./tools/tool-defs/categories.ts";
 import { categoryConfigs } from "./tools/permissions/merged-whitelist.ts";
 import {
@@ -81,6 +82,7 @@ import {
 type Props = {
   config: Config;
   configPath: string;
+  cwd: string;
   metadata: Metadata;
   updates: string | null;
   unchained: boolean;
@@ -128,6 +130,7 @@ const CHAINED_NOTIF = "Octo asks permission before running edits or shell comman
 export default function App({
   config,
   configPath,
+  cwd,
   metadata,
   unchained,
   transport,
@@ -189,25 +192,29 @@ export default function App({
         <ConfigContext.Provider value={currConfig}>
           <UnchainedContext.Provider value={isUnchained}>
             <TransportContext.Provider value={transport}>
-              <ExitOnDoubleCtrlC>
-                <TerminalSizeTracker>
-                  <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems} key={clearNonce}>
-                      {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
-                    </Static>
-                    {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                      (modeData.inflightResponse.reasoningContent ||
-                        modeData.inflightResponse.content) && (
-                        <MessageDisplay item={modeData.inflightResponse} />
-                      )}
-                    <BottomBar
-                      inputHistory={inputHistory}
-                      metadata={metadata}
-                      tempNotification={tempNotification}
-                    />
-                  </Box>
-                </TerminalSizeTracker>
-              </ExitOnDoubleCtrlC>
+              <CwdContext.Provider value={cwd}>
+                <ExitOnDoubleCtrlC>
+                  <TerminalSizeTracker>
+                    <Box flexDirection="column" width="100%" height="100%">
+                      <Static items={staticItems} key={clearNonce}>
+                        {(item, index) => (
+                          <StaticItemRenderer item={item} key={`static-${index}`} />
+                        )}
+                      </Static>
+                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                        (modeData.inflightResponse.reasoningContent ||
+                          modeData.inflightResponse.content) && (
+                          <MessageDisplay item={modeData.inflightResponse} />
+                        )}
+                      <BottomBar
+                        inputHistory={inputHistory}
+                        metadata={metadata}
+                        tempNotification={tempNotification}
+                      />
+                    </Box>
+                  </TerminalSizeTracker>
+                </ExitOnDoubleCtrlC>
+              </CwdContext.Provider>
             </TransportContext.Provider>
           </UnchainedContext.Provider>
         </ConfigContext.Provider>
@@ -642,6 +649,7 @@ function ToolRequestRenderer({
 }: {
   toolReq: ToolCallRequest;
 } & RunArgs) {
+  const cwd = useCwd();
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
@@ -653,6 +661,29 @@ function ToolRequestRenderer({
   );
   const unchained = useUnchained();
 
+  const whitelistKey = (() => {
+    const fn = toolReq.function;
+    switch (fn.name) {
+      case "create":
+      case "rewrite":
+      case "append":
+      case "prepend":
+      case "read":
+      case "edit":
+      case "list":
+        return `${fn.name}:${cwd}`;
+      case "skill":
+        return `${fn.name}:*`;
+      case "shell":
+        return `${fn.name}:*`;
+      case "fetch":
+        return `${fn.name}:${fn.arguments.url}`;
+      case "mcp":
+        return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
+      case "web-search":
+        return `${fn.name}:${fn.arguments.query}`;
+    }
+  })();
   const prompt = (() => {
     const fn = toolReq.function;
     switch (fn.name) {
@@ -702,11 +733,6 @@ function ToolRequestRenderer({
     const toolOperationArgs = getToolOperationArgs(toolCategory, toolReq, transport);
 
     (async () => {
-      const whitelistKey = await getPermissionWhitelistKey(
-        toolCategory,
-        toolName,
-        toolOperationArgs,
-      );
       const permissionContext = await getPermissionContext(toolCategory, toolOperationArgs);
       const labelParts = categoryConfigs[toolCategory].yesAndAlwaysAllowLabelSuffix(whitelistKey, {
         permissionContext,

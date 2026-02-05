@@ -4,13 +4,13 @@ import * as mcpWhitelist from "../tool-defs/mcp/index.ts";
 import * as fetchWhitelist from "../tool-defs/fetch/index.ts";
 import * as skillWhitelist from "../tool-defs/skill/index.ts";
 
-export interface MergedWhitelist {
+export type MergedWhitelist = {
   fileOperations: fileOperationsWhitelist.FileOperationsWhitelist;
   command: commandWhitelist.CommandWhitelist;
   mcp: mcpWhitelist.McpWhitelist;
   fetch: fetchWhitelist.FetchWhitelist;
   skill: skillWhitelist.SkillWhitelist;
-}
+};
 
 export type WhitelistCategoryData = MergedWhitelist[keyof MergedWhitelist];
 

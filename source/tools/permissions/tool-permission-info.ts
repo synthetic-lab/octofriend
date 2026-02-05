@@ -16,34 +16,7 @@ export type ToolPermissionInfo = {
   labelParts: { text: string; bold?: boolean }[];
 };
 
-type AllToolsFromDefs = (typeof TOOL_CATEGORIES)[keyof typeof TOOL_CATEGORIES][number];
-
-type ToolToCategory = {
-  [K in keyof typeof TOOL_CATEGORIES as (typeof TOOL_CATEGORIES)[K][number]]: K;
-};
-
-type ToolArgs<T extends AllToolsFromDefs> = CategoryArgsMap[ToolToCategory[T]];
-
 type AnyToolArgs = CategoryArgsMap[keyof CategoryArgsMap];
-
-export function getToolOperationArgs<T extends WhitelistCategory>(
-  toolCategory: T,
-  toolReq: ToolCallRequest,
-  transport: Transport,
-): AnyToolArgs {
-  switch (toolCategory) {
-    case "fileOperations":
-      return { transport, abortSignal: new AbortController().signal } as FileOperationArgs;
-    case "command":
-      return toolReq.function.arguments as CommandArgs;
-    case "mcp":
-      return toolReq.function.arguments as McpArgs;
-    case "fetch":
-      return toolReq.function.arguments as FetchArgs;
-    case "skill":
-      return toolReq.function.arguments as SkillArgs;
-  }
-}
 
 export async function getPermissionContext<T extends WhitelistCategory>(
   category: T,
@@ -67,20 +40,3 @@ export async function getPermissionWhitelistKey<T extends WhitelistCategory>(
   >;
   return config.getPermissionWhitelistKey(toolName, args);
 }
-
-type ToolConfig<T extends AllToolsFromDefs> = {
-  category: WhitelistCategory;
-  getPermissionWhitelistKey: (toolName: T, args: ToolArgs<T>) => string;
-  formatLabelParts: (key: string, context: LabelContext) => { text: string; bold?: boolean }[];
-};
-
-type ToolConfigs = {
-  [T in AllToolsFromDefs]: ToolConfig<T>;
-};
-
-type CategoryConfigsType = {
-  [K in WhitelistCategory]: {
-    getPermissionWhitelistKey: (toolName: string, args: CategoryArgsMap[K]) => string;
-    formatLabelParts: (key: string, context: LabelContext) => { text: string; bold?: boolean }[];
-  };
-};

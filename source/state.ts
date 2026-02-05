@@ -105,6 +105,7 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
+  editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
   addToWhitelist: (category: WhitelistCategory, whitelistKey: string) => Promise<void>;
   isWhitelisted: (category: WhitelistCategory, whitelistKey: string) => Promise<boolean>;
