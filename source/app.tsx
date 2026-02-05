@@ -974,14 +974,10 @@ function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
 
 function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> }) {
   const { text, filePath } = item.arguments;
-
-  const renderedFile = <FileRenderer contents={text} filePath={filePath} operation="prepend" />;
-  if (!renderedFile) return null;
-
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the beginning of the file:</Text>
-      {renderedFile}
+      <FileRenderer contents={text} filePath={filePath} />
     </Box>
   );
 }
@@ -992,7 +988,7 @@ function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> })
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer oldText={undefined} newText={text} filepath={filePath} />
+      <DiffRenderer newText={text} filepath={filePath} />
     </Box>
   );
 }

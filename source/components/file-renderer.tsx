@@ -5,7 +5,7 @@ import { CODE_GUTTER_COLOR } from "../theme.ts";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 
-export type FileOperation = "create" | "append" | "prepend";
+export type FileOperation = "create" | "append";
 
 export function FileRenderer({
   contents,
@@ -20,7 +20,7 @@ export function FileRenderer({
 }) {
   let start = startLineNr || 1;
 
-  if (operation === "append" || operation === "prepend") {
+  if (operation === "append") {
     try {
       const file = readFileSync(filePath, "utf8");
       const lines = countLines(file);

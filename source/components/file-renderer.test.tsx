@@ -58,33 +58,6 @@ describe("FileRenderer", () => {
     });
   });
 
-  describe("operation=prepend", () => {
-    it("reads existing file and calculates line numbers", () => {
-      vi.mocked(readFileSync).mockReturnValue("existing line 1\nexisting line 2\n");
-
-      const { lastFrame } = render(
-        <FileRenderer contents="prepended line" filePath="/test.txt" operation="prepend" />,
-      );
-
-      expect(readFileSync).toHaveBeenCalledWith("/test.txt", "utf8");
-      const output = lastFrame() || "";
-      expect(output).toContain("4");
-      expect(output).toContain("prepended line");
-    });
-
-    it("returns empty when file does not exist", () => {
-      vi.mocked(readFileSync).mockImplementation(() => {
-        throw new Error("ENOENT: no such file or directory");
-      });
-
-      const { lastFrame } = render(
-        <FileRenderer contents="new content" filePath="/nonexistent.txt" operation="prepend" />,
-      );
-
-      expect(lastFrame()).toBe("");
-    });
-  });
-
   describe("no operation specified", () => {
     it("renders content without reading file", () => {
       const { lastFrame } = render(<FileRenderer contents="some content" filePath="/test.txt" />);
