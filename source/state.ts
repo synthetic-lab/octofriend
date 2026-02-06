@@ -96,6 +96,7 @@ export type UiState = {
   openMenu: () => void;
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
+  resetPreMenuVimMode: () => void;
   setModelOverride: (m: string) => void;
   setQuery: (query: string) => void;
   retryFrom: (
@@ -249,6 +250,10 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: { mode: "input", vimMode },
       });
     }
+  },
+
+  resetPreMenuVimMode: () => {
+    set({ preMenuVimMode: "INSERT" });
   },
 
   setQuery: query => {
