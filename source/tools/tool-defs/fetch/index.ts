@@ -33,10 +33,6 @@ export const config: CategoryConfig<FetchWhitelist, FetchArgs> = {
       return `${toolName}:${args.url}`;
     }
   },
-  yesAndAlwaysAllowLabelSuffix: (whitelistKey: string, _context) => {
-    const domain = whitelistKey.split(":", 2)[1] || "";
-    return [{ text: "fetches from " }, { text: domain, bold: true }];
-  },
   addToWhitelist,
   isWhitelisted,
 };

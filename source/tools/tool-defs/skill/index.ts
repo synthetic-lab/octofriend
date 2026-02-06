@@ -25,10 +25,6 @@ export async function isWhitelisted(): Promise<boolean> {
 
 export const config: CategoryConfig<SkillWhitelist, SkillArgs> = {
   getPermissionWhitelistKey: async (toolName, _args) => `${toolName}:${WILDCARD}`,
-  yesAndAlwaysAllowLabelSuffix: (whitelistKey: string, _context) => {
-    const domain = whitelistKey.split(":", 2)[1] || "";
-    return [{ text: "skill execution" }];
-  },
   addToWhitelist,
   isWhitelisted,
 };

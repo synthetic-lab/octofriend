@@ -48,10 +48,6 @@ export async function isWhitelisted(
 export const config: CategoryConfig<McpWhitelist, McpArgs> = {
   getPermissionWhitelistKey: async (toolName, args) =>
     `${toolName}:${extractMcpPattern(args.tool)}`,
-  yesAndAlwaysAllowLabelSuffix: (whitelistKey: string, _context) => [
-    { text: "MCP tools matching " },
-    { text: whitelistKey.split(":", 2)[1] || "", bold: true },
-  ],
   addToWhitelist,
   isWhitelisted,
 };

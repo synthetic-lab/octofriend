@@ -21,7 +21,6 @@ export async function isWhitelisted(): Promise<boolean> {
 
 export const config: CategoryConfig<WebSearchWhiteList, WebSearchArgs> = {
   getPermissionWhitelistKey: async () => "web-search",
-  yesAndAlwaysAllowLabelSuffix: () => [{ text: "Web Searches" }],
   addToWhitelist,
   isWhitelisted,
 };

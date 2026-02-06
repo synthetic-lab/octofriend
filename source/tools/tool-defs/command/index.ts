@@ -26,10 +26,6 @@ export async function isWhitelisted(
 
 export const config: CategoryConfig<CommandWhitelist, CommandArgs> = {
   getPermissionWhitelistKey: async (toolName, args) => `${toolName}:${args.cmd}`,
-  yesAndAlwaysAllowLabelSuffix: (whitelistKey: string, _context) => [
-    { text: "commands starting with " },
-    { text: whitelistKey.split(":", 2)[1] || "", bold: true },
-  ],
   addToWhitelist,
   isWhitelisted,
 };

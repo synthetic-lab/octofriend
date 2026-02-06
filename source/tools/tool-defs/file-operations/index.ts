@@ -7,7 +7,7 @@ export { default as read } from "./read.ts";
 export { default as list } from "./list.ts";
 
 import { Transport } from "../../../transports/transport-common.ts";
-import { CategoryConfig, LabelContext } from "../../permissions/category-whitelist-types.ts";
+import { CategoryConfig } from "../../permissions/category-whitelist-types.ts";
 
 export type FileOperationsWhitelist = Set<string>;
 
@@ -39,33 +39,6 @@ export const config: CategoryConfig<FileOperationsWhitelist, FileOperationArgs> 
   },
   getPermissionContext: async ({ transport, abortSignal }) => {
     return await transport.cwd(abortSignal);
-  },
-  yesAndAlwaysAllowLabelSuffix: (whitelistKey: string, context: LabelContext) => {
-    const getOperationText = (name: string) => {
-      switch (name) {
-        case "read":
-          return "file reads";
-        case "edit":
-          return "file edits";
-        case "create":
-          return "file creation";
-        case "append":
-          return "appending to files";
-        case "prepend":
-          return "prepending to files";
-        case "rewrite":
-          return "file rewrites";
-        case "list":
-          return "listing files";
-        default:
-          return "performing file operations";
-      }
-    };
-
-    const toolName = whitelistKey.split(":", 1)[0];
-    const operation = getOperationText(toolName);
-
-    return [{ text: `${operation} in ` }, { text: context.permissionContext, bold: true }];
   },
   addToWhitelist,
   isWhitelisted,

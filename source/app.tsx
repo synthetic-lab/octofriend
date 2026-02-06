@@ -71,13 +71,6 @@ import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { getToolCategory } from "./tools/tool-defs/categories.ts";
-import { categoryConfigs } from "./tools/permissions/merged-whitelist.ts";
-import {
-  getPermissionContext,
-  getToolOperationArgs,
-  getPermissionWhitelistKey,
-  ToolPermissionInfo,
-} from "./tools/permissions/tool-permission-info.ts";
 
 type Props = {
   config: Config;
@@ -620,23 +613,18 @@ const ToolRequestItem = React.memo(
   ({
     isSelected = false,
     label,
-    formattedSuffix,
+    whitelistAllowDescription,
   }: {
     isSelected?: boolean;
     label: string;
-    formattedSuffix?: { text: string; bold?: boolean }[];
+    whitelistAllowDescription?: React.ReactNode;
   }) => {
     const themeColor = useColor();
 
     return (
       <Text color={isSelected ? themeColor : undefined}>
         {label}
-        {formattedSuffix &&
-          formattedSuffix.map((part, index) => (
-            <Text key={index} bold={part.bold}>
-              {part.text}
-            </Text>
-          ))}
+        {whitelistAllowDescription}
       </Text>
     );
   },
@@ -720,32 +708,15 @@ function ToolRequestRenderer({
   const toolName = toolReq.function.name;
   const toolCategory = getToolCategory(toolReq.function.name);
 
-  const [toolPermissionInfo, setToolPermissionInfo] = useState<ToolPermissionInfo | null>(null);
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!toolCategory) {
-      setToolPermissionInfo(null);
       setIsToolWhitelisted(null);
       return;
     }
 
-    const toolOperationArgs = getToolOperationArgs(toolCategory, toolReq, transport);
-
     (async () => {
-      const permissionContext = await getPermissionContext(toolCategory, toolOperationArgs);
-      const labelParts = categoryConfigs[toolCategory].yesAndAlwaysAllowLabelSuffix(whitelistKey, {
-        permissionContext,
-        toolName,
-      });
-
-      setToolPermissionInfo({
-        category: toolCategory,
-        whitelistKey,
-        label: labelParts.map(p => p.text).join(""),
-        labelParts,
-      });
-
       const whitelisted = await isWhitelisted(toolCategory, whitelistKey);
       setIsToolWhitelisted(whitelisted);
     })();
@@ -754,25 +725,22 @@ function ToolRequestRenderer({
   type SelectItem = {
     label: string;
     value: string;
-    formattedSuffix?: { text: string; bold?: boolean }[];
-    tool?: ToolPermissionInfo;
+    whitelistAllowDescription?: React.ReactNode;
   };
-
+  console.log("isToolWhitelisted", isToolWhitelisted);
   const items: SelectItem[] = [
     {
       label: "Yes",
       value: "yes",
     },
-    ...(toolPermissionInfo &&
-    !SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) &&
+    ...(!SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) &&
     !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolReq.function.name) &&
     !isToolWhitelisted
       ? [
           {
-            label: "Yes, and always allow ",
-            formattedSuffix: toolPermissionInfo.labelParts,
+            label: "Yes, and always allow",
             value: "yes-whitelist",
-            tool: toolPermissionInfo,
+            whitelistAllowDescription: <WhitelistAllowDescription toolCallRequest={toolReq} />,
           },
         ]
       : []),
@@ -786,14 +754,14 @@ function ToolRequestRenderer({
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
         rejectTool(toolReq.toolCallId);
-      } else if (toolPermissionInfo && item.value === "yes-whitelist") {
-        await addToWhitelist(toolPermissionInfo.category, toolPermissionInfo.whitelistKey);
+      } else if (toolCategory && item.value === "yes-whitelist") {
+        await addToWhitelist(toolCategory, whitelistKey);
         await runTool({ toolReq, config, transport });
       } else {
         await runTool({ toolReq, config, transport });
       }
     },
-    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, toolPermissionInfo],
+    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey],
   );
 
   const noConfirmationNeeded =
@@ -1180,6 +1148,105 @@ function McpToolRenderer({ item }: { item: ToolSchemaFrom<typeof mcp> }) {
       <Text color="gray">Arguments: {JSON.stringify(item.arguments.arguments)}</Text>
     </Box>
   );
+}
+
+function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
+  const fn = toolCallRequest.function;
+  const cwd = useCwd();
+  switch (fn.name) {
+    case "shell": {
+      return (
+        <Text>
+          <Text> commands starting with </Text>
+          <Text bold>{fn.arguments.cmd}</Text>
+        </Text>
+      );
+    }
+    case "fetch": {
+      return (
+        <Text>
+          <Text> fetches from </Text>
+          <Text bold>{fn.arguments.url}</Text>
+        </Text>
+      );
+    }
+    case "web-search": {
+      return <Text>Web Searches</Text>;
+    }
+    case "read": {
+      return (
+        <Text>
+          <Text> file reads in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "edit": {
+      return (
+        <Text>
+          <Text> file edits in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "create": {
+      return (
+        <Text>
+          <Text> file creation in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "append": {
+      return (
+        <Text>
+          <Text> appending to files in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "prepend": {
+      return (
+        <Text>
+          <Text> prepending to files in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "rewrite": {
+      return (
+        <Text>
+          <Text> file rewrites in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "list": {
+      return (
+        <Text>
+          <Text> listing files in </Text>
+          <Text bold>{cwd}</Text>
+        </Text>
+      );
+    }
+    case "mcp": {
+      return (
+        <Text>
+          <Text>
+            {" "}
+            MCP tools with Server: <Text bold>{fn.arguments.server}</Text> using Tool:{" "}
+            <Text bold>{fn.arguments.tool}</Text>
+          </Text>
+        </Text>
+      );
+    }
+    case "skill": {
+      return <Text>${fn.arguments.skillName} skill executions</Text>;
+    }
+    default: {
+      return <Text> this operation.</Text>;
+    }
+  }
 }
 
 const OCTO_MARGIN = 1;

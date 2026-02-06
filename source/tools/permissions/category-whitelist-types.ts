@@ -6,11 +6,6 @@ import { SkillArgs } from "../tool-defs/skill/index.ts";
 import { WebSearchArgs } from "../tool-defs/web-search/index.ts";
 import { WhitelistCategoryData } from "./merged-whitelist.ts";
 
-export type LabelContext = {
-  permissionContext: string;
-  toolName?: string;
-};
-
 type ToolOperationArgs =
   | FileOperationArgs
   | McpArgs
@@ -25,10 +20,6 @@ export type CategoryConfig<
 > = {
   getPermissionWhitelistKey: (toolName: string, args: TArgs) => Promise<string>;
   getPermissionContext?: (args: TArgs) => Promise<string>;
-  yesAndAlwaysAllowLabelSuffix: (
-    whitelistKey: string,
-    context: LabelContext,
-  ) => { text: string; bold?: boolean }[];
   addToWhitelist: (whitelist: TWhitelist, whitelistKey: string) => Promise<TWhitelist>;
   isWhitelisted: (whitelist: TWhitelist, whitelistKey: string) => Promise<boolean>;
 };
