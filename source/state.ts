@@ -26,6 +26,7 @@ export type RunArgs = {
 
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
+  preMenuVimMode: "NORMAL" | "INSERT" | null;
   modeData:
     | {
         mode: "input";
@@ -109,6 +110,7 @@ export type UiState = {
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
+  preMenuVimMode: null,
   modeData: {
     mode: "input" as const,
     vimMode: "INSERT" as const,
@@ -214,21 +216,29 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (modeData.mode === "input") {
       set({
         modeData: { mode: "menu" },
+        preMenuVimMode: modeData.vimMode,
       });
     } else if (modeData.mode === "menu") {
+      const { preMenuVimMode } = get();
       set({
-        modeData: { mode: "input", vimMode: "NORMAL" },
+        modeData: { mode: "input", vimMode: preMenuVimMode ?? "INSERT" },
+        preMenuVimMode: null,
       });
     }
   },
   closeMenu: () => {
+    const { preMenuVimMode } = get();
     set({
-      modeData: { mode: "input", vimMode: "INSERT" },
+      modeData: { mode: "input", vimMode: preMenuVimMode ?? "INSERT" },
+      preMenuVimMode: null,
     });
   },
   openMenu: () => {
+    const { modeData } = get();
+    const currentVimMode = modeData.mode === "input" ? modeData.vimMode : "INSERT";
     set({
       modeData: { mode: "menu" },
+      preMenuVimMode: currentVimMode,
     });
   },
 
