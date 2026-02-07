@@ -26,7 +26,7 @@ describe('JSON fuzzing functions', () => {
   const mockRandom = (returnValues: number[]) => {
     let index = 0;
     return () => {
-      return returnValues[index++] || 0.5;
+      return returnValues[index++] ?? 0.5;
     };
   };
 
@@ -69,7 +69,7 @@ describe('JSON fuzzing functions', () => {
         });
 
         expect(result).toBeDefined();
-        expect(result?.broken).toEqual("numll");
+        expect(result?.broken).toEqual("nuall");
       });
     });
   });
@@ -113,7 +113,7 @@ describe('JSON fuzzing functions', () => {
         });
         
         expect(result).toBeDefined();
-        expect(result?.broken).toMatch("famlse");
+        expect(result?.broken).toMatch("faalse");
       });
     });
   });

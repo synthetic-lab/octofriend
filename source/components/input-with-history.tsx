@@ -142,7 +142,14 @@ export const InputWithHistory = React.memo((props: Props) => {
           />
         )}
       </Box>
-      <Box width="100%" borderStyle="round" borderColor={themeColor} gap={1}>
+      <Box
+        width="100%"
+        borderLeft={false}
+        borderRight={false}
+        borderStyle="single"
+        borderColor={themeColor}
+        gap={1}
+      >
         <Text color="gray">&gt;</Text>
         <TextInput
           value={props.value}

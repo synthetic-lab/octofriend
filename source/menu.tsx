@@ -79,10 +79,11 @@ function AutofixToggle({
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { toggleMenu, notify } = useAppStore(
+  const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
+      resetPreMenuVimMode: state.resetPreMenuVimMode,
     })),
   );
 
@@ -327,10 +328,11 @@ function filterSettings(config: Config) {
 }
 
 function MainMenu() {
-  const { toggleMenu, notify } = useAppStore(
+  const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
+      resetPreMenuVimMode: state.resetPreMenuVimMode,
     })),
   );
 
@@ -442,6 +444,11 @@ function MainMenu() {
 
         // Write ONLY to config - single source of truth
         await setConfig({ ...config, vimEmulation: { enabled: !wasEnabled } });
+
+        // When switching from Emacs to Vim, default to INSERT mode
+        if (!wasEnabled) {
+          resetPreMenuVimMode();
+        }
 
         // Notify user
         notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);

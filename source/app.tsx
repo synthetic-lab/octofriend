@@ -458,9 +458,10 @@ function RequestErrorScreen({
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const { retryFrom } = useAppStore(
+  const { retryFrom, editAndRetryFrom } = useAppStore(
     useShallow(state => ({
       retryFrom: state.retryFrom,
+      editAndRetryFrom: state.editAndRetryFrom,
     })),
   );
   const { exit } = useApp();
@@ -469,7 +470,7 @@ function RequestErrorScreen({
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
 
-  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "quit">> = {};
+  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">> = {};
 
   if (!viewError) {
     mapping["v"] = {
@@ -490,12 +491,17 @@ function RequestErrorScreen({
     value: "retry",
   };
 
+  mapping["e"] = {
+    label: "Edit & retry",
+    value: "edit-retry",
+  };
+
   mapping["q"] = {
     label: "Quit Octo",
     value: "quit",
   };
 
-  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "quit"> = [
+  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "edit-retry" | "quit"> = [
     {
       type: "key" as const,
       mapping,
@@ -503,7 +509,7 @@ function RequestErrorScreen({
   ];
 
   const onSelect = useCallback(
-    (item: Item<"view" | "copy-curl" | "retry" | "quit">) => {
+    (item: Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">) => {
       if (item.value === "view") {
         setViewError(true);
       } else if (item.value === "copy-curl") {
@@ -515,6 +521,8 @@ function RequestErrorScreen({
         }
       } else if (item.value === "retry") {
         retryFrom(mode, { config, transport });
+      } else if (item.value === "edit-retry") {
+        editAndRetryFrom(mode, { config, transport });
       } else {
         const _: "quit" = item.value;
         exit();
