@@ -1,7 +1,7 @@
 import { t } from "structural";
-import { fileTracker } from "../../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool } from "../../common.ts";
-import { Transport } from "../../../transports/transport-common.ts";
+import { fileTracker } from "../file-tracker.ts";
+import { ToolError, attemptUntrackedRead, defineTool } from "../common.ts";
+import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {

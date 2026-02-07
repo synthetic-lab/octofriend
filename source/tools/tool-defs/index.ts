@@ -1,6 +1,27 @@
-export { edit, create, append, prepend, rewrite, read, list } from "./file-operations/index.ts";
-export { shell } from "./command/index.ts";
-export { mcp } from "./mcp/index.ts";
-export { fetch } from "./fetch/index.ts";
-export { skill } from "./skill/index.ts";
-export { webSearch as "web-search" } from "./web-search/index.ts";
+import read from "./read.ts";
+import list from "./list.ts";
+import shell from "./bash.ts";
+import edit from "./edit.ts";
+import create from "./create.ts";
+import mcp from "./mcp.ts";
+import fetch from "./fetch.ts";
+import append from "./append.ts";
+import prepend from "./prepend.ts";
+import rewrite from "./rewrite.ts";
+import skill from "./skill.ts";
+import webSearch from "./web-search.ts";
+
+export default {
+  read,
+  list,
+  shell,
+  edit,
+  create,
+  mcp,
+  fetch,
+  append,
+  prepend,
+  rewrite,
+  skill,
+  "web-search": webSearch,
+};

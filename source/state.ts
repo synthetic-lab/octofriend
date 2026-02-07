@@ -17,10 +17,7 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-
-import { createWhitelist, isWhitelisted, addToWhitelist } from "./tools/permissions/whitelist.ts";
 import { loadTools } from "./tools/index.ts";
-import { MergedWhitelist, WhitelistCategory } from "./tools/permissions/merged-whitelist.ts";
 
 export type RunArgs = {
   config: Config;
@@ -90,7 +87,7 @@ export type UiState = {
   history: Array<HistoryItem>;
   clearNonce: number;
   lastUserPromptId: bigint | null;
-  whitelist: MergedWhitelist;
+  whitelist: Set<string>;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -107,8 +104,8 @@ export type UiState = {
   ) => Promise<void>;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
-  addToWhitelist: (category: WhitelistCategory, whitelistKey: string) => Promise<void>;
-  isWhitelisted: (category: WhitelistCategory, whitelistKey: string) => Promise<boolean>;
+  addToWhitelist: (whitelistKey: string) => Promise<void>;
+  isWhitelisted: (whitelistKey: string) => Promise<boolean>;
   clearHistory: () => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
@@ -125,7 +122,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptId: null,
-  whitelist: createWhitelist(),
+  whitelist: new Set<string>(),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -291,14 +288,15 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  addToWhitelist: async (category: WhitelistCategory, whitelistKey: string) => {
+  addToWhitelist: async (whitelistKey: string) => {
     const currentWhitelist = get().whitelist;
-    const newWhitelist = await addToWhitelist(currentWhitelist, category, whitelistKey);
+    const newWhitelist = new Set(currentWhitelist);
+    newWhitelist.add(whitelistKey);
     set({ whitelist: newWhitelist });
   },
 
-  isWhitelisted: async (category: WhitelistCategory, whitelistKey: string) => {
-    return await isWhitelisted(get().whitelist, category, whitelistKey);
+  isWhitelisted: async (whitelistKey: string) => {
+    return get().whitelist.has(whitelistKey);
   },
 
   runTool: async ({ config, toolReq, transport }) => {

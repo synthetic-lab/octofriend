@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
-export const CwdContext = createContext<string>(process.cwd());
+const nullByte = "\0";
+export const CwdContext = createContext<string>(nullByte);
 
 export function useCwd(): string {
   return useContext(CwdContext);

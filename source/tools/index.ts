@@ -1,13 +1,9 @@
 import { t } from "structural";
-import * as toolMap from "./tool-defs/index.ts";
+import toolMap from "./tool-defs/index.ts";
 import { ToolDef, ToolResult, ToolError } from "./common.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 export { ToolError } from "./common.ts";
-
-export const SKIP_CONFIRMATION_TOOLS: string[] = ["read", "list", "fetch", "skill", "web-search"];
-
-export const ALWAYS_REQUEST_PERMISSION_TOOLS: string[] = ["shell"];
 
 export type LoadedTools = {
   [K in keyof typeof toolMap]: Exclude<Awaited<ReturnType<(typeof toolMap)[K]>>, null>;
@@ -33,6 +29,17 @@ export async function loadTools(
 
   return loaded as LoadedTools;
 }
+
+export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
+  "read",
+  "list",
+  "fetch",
+  "skill",
+  "web-search",
+];
+
+export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = ["shell"];
+
 export async function runTool(
   abortSignal: AbortSignal,
   transport: Transport,

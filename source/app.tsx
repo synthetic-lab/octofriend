@@ -26,22 +26,20 @@ import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
-import {
-  edit,
-  create as createTool,
-  append,
-  prepend,
-  rewrite,
-  read,
-  list,
-  shell,
-  mcp,
-  fetch as fetchTool,
-  skill,
-  "web-search" as webSearch,
-} from "./tools/tool-defs/index.ts";
+import shell from "./tools/tool-defs/bash.ts";
+import read from "./tools/tool-defs/read.ts";
+import list from "./tools/tool-defs/list.ts";
+import edit from "./tools/tool-defs/edit.ts";
+import append from "./tools/tool-defs/append.ts";
+import prepend from "./tools/tool-defs/prepend.ts";
+import rewrite from "./tools/tool-defs/rewrite.ts";
+import createTool from "./tools/tool-defs/create.ts";
+import mcp from "./tools/tool-defs/mcp.ts";
+import fetchTool from "./tools/tool-defs/fetch.ts";
+import skill from "./tools/tool-defs/skill.ts";
+import webSearch from "./tools/tool-defs/web-search.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
-import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/file-operations/edit.ts";
+import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
@@ -70,7 +68,6 @@ import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
-import { getToolCategory } from "./tools/tool-defs/categories.ts";
 
 type Props = {
   config: Config;
@@ -652,24 +649,25 @@ function ToolRequestRenderer({
   const whitelistKey = (() => {
     const fn = toolReq.function;
     switch (fn.name) {
+      case "read":
+      case "list":
+        return "read:*";
       case "create":
       case "rewrite":
       case "append":
       case "prepend":
-      case "read":
       case "edit":
-      case "list":
-        return `${fn.name}:${cwd}`;
+        return "edits:*";
       case "skill":
         return `${fn.name}:*`;
       case "shell":
         return `${fn.name}:*`;
       case "fetch":
-        return `${fn.name}:${fn.arguments.url}`;
+        return `${fn.name}:*`;
       case "mcp":
         return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
       case "web-search":
-        return `${fn.name}:${fn.arguments.query}`;
+        return `${fn.name}:*`;
     }
   })();
   const prompt = (() => {
@@ -706,35 +704,28 @@ function ToolRequestRenderer({
   })();
 
   const toolName = toolReq.function.name;
-  const toolCategory = getToolCategory(toolReq.function.name);
 
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!toolCategory) {
-      setIsToolWhitelisted(null);
-      return;
-    }
-
     (async () => {
-      const whitelisted = await isWhitelisted(toolCategory, whitelistKey);
+      const whitelisted = await isWhitelisted(whitelistKey);
       setIsToolWhitelisted(whitelisted);
     })();
-  }, [toolCategory, toolName, toolReq, transport, isWhitelisted]);
+  }, [whitelistKey, isWhitelisted]);
 
   type SelectItem = {
     label: string;
     value: string;
     whitelistAllowDescription?: React.ReactNode;
   };
-  console.log("isToolWhitelisted", isToolWhitelisted);
   const items: SelectItem[] = [
     {
       label: "Yes",
       value: "yes",
     },
-    ...(!SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) &&
-    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolReq.function.name) &&
+    ...(!SKIP_CONFIRMATION_TOOLS.includes(toolName) &&
+    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolName) &&
     !isToolWhitelisted
       ? [
           {
@@ -754,8 +745,8 @@ function ToolRequestRenderer({
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
         rejectTool(toolReq.toolCallId);
-      } else if (toolCategory && item.value === "yes-whitelist") {
-        await addToWhitelist(toolCategory, whitelistKey);
+      } else if (item.value === "yes-whitelist") {
+        await addToWhitelist(whitelistKey);
         await runTool({ toolReq, config, transport });
       } else {
         await runTool({ toolReq, config, transport });
@@ -1165,14 +1156,14 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "fetch": {
       return (
         <Text>
-          <Text> fetches from </Text>
-          <Text bold>{fn.arguments.url}</Text>
+          <Text> fetches from the web.</Text>
         </Text>
       );
     }
     case "web-search": {
       return <Text>Web Searches</Text>;
     }
+    case "list":
     case "read": {
       return (
         <Text>
@@ -1181,50 +1172,14 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
         </Text>
       );
     }
-    case "edit": {
-      return (
-        <Text>
-          <Text> file edits in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
-      );
-    }
-    case "create": {
-      return (
-        <Text>
-          <Text> file creation in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
-      );
-    }
-    case "append": {
-      return (
-        <Text>
-          <Text> appending to files in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
-      );
-    }
-    case "prepend": {
-      return (
-        <Text>
-          <Text> prepending to files in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
-      );
-    }
+    case "edit":
+    case "create":
+    case "append":
+    case "prepend":
     case "rewrite": {
       return (
         <Text>
-          <Text> file rewrites in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
-      );
-    }
-    case "list": {
-      return (
-        <Text>
-          <Text> listing files in </Text>
+          <Text> file changes in </Text>
           <Text bold>{cwd}</Text>
         </Text>
       );
@@ -1241,10 +1196,7 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
       );
     }
     case "skill": {
-      return <Text>${fn.arguments.skillName} skill executions</Text>;
-    }
-    default: {
-      return <Text> this operation.</Text>;
+      return <Text>{fn.arguments.skillName} skill executions</Text>;
     }
   }
 }
