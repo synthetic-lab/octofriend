@@ -1,4 +1,3 @@
-import * as fsOld from "fs";
 import React, {
   useState,
   useCallback,
@@ -25,7 +24,7 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
-import { FileRenderer } from "./components/file-renderer.tsx";
+import { FileRenderer, type FileOperation } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
 import read from "./tools/tool-defs/read.ts";
 import list from "./tools/tool-defs/list.ts";
@@ -913,12 +912,14 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
 
 function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
-  const file = fsOld.readFileSync(filePath, "utf8");
-  const lines = countLines(file);
+
+  const renderedFile = <FileRenderer contents={text} filePath={filePath} operation="append" />;
+  if (!renderedFile) return null;
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the end of the file:</Text>
-      <FileRenderer contents={text} filePath={filePath} startLineNr={lines} />
+      {renderedFile}
     </Box>
   );
 }
@@ -991,14 +992,11 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
 
 function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath } = item.arguments;
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer
-        oldText={fsOld.readFileSync(filePath, "utf8")}
-        newText={text}
-        filepath={filePath}
-      />
+      <DiffRenderer newText={text} filepath={filePath} />
     </Box>
   );
 }
@@ -1028,7 +1026,11 @@ function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> 
         <Text>:</Text>
       </Box>
       <Box>
-        <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
+        <FileRenderer
+          contents={item.arguments.content}
+          filePath={item.arguments.filePath}
+          operation="create"
+        />
       </Box>
     </Box>
   );
