@@ -93,11 +93,21 @@ export const InputWithHistory = React.memo((props: Props) => {
     const atIndex = value.lastIndexOf("@");
     if (atIndex !== -1) {
       const query = value.slice(atIndex + 1);
-      setSuggestionState({
-        isVisible: true,
-        triggerPosition: atIndex,
-        query,
-      });
+
+      // Only show suggestion if actively typing a filename after @
+      // Check if query looks like a valid partial filename (no spaces, valid chars)
+      const isTypingFilename = /^[a-zA-Z0-9_./-]*$/.test(query);
+
+      if (isTypingFilename) {
+        setSuggestionState({
+          isVisible: true,
+          triggerPosition: atIndex,
+          query,
+        });
+      } else {
+        // User moved on (added space or other delimiter) - dismiss suggestion
+        setSuggestionState(null);
+      }
     } else {
       setSuggestionState(null);
     }
@@ -111,7 +121,8 @@ export const InputWithHistory = React.memo((props: Props) => {
       const after = props.value.slice(
         suggestionState.triggerPosition + suggestionState.query.length + 1,
       );
-      const newValue = before + filename + after;
+      // Keep the @ symbol in the filename so it can be auto-read
+      const newValue = before + "@" + filename + after;
 
       props.onChange(newValue);
       setSuggestionState(null);

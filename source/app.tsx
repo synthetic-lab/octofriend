@@ -837,11 +837,32 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   const _: "user" = item.type;
 
   return (
-    <Box marginY={1}>
-      <Box marginRight={1}>
-        <Text color="white">▶</Text>
+    <Box flexDirection="column" marginY={1}>
+      {/* Show auto-read files if present */}
+      {item.autoReadFiles && item.autoReadFiles.length > 0 && (
+        <Box marginBottom={1}>
+          <Text>
+            📄{" "}
+            {item.autoReadFiles.map((file, idx) => (
+              <React.Fragment key={file.path}>
+                {idx > 0 && ", "}
+                <Text color={file.isLarge ? "gray" : "white"}>
+                  @{file.path}
+                  {file.isLarge && " (large)"}
+                </Text>
+              </React.Fragment>
+            ))}
+          </Text>
+        </Box>
+      )}
+
+      {/* User message */}
+      <Box flexDirection="row">
+        <Box marginRight={1}>
+          <Text color="white">▶</Text>
+        </Box>
+        <Text>{item.content}</Text>
       </Box>
-      <Text>{item.content}</Text>
     </Box>
   );
 });
