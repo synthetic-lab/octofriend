@@ -64,6 +64,11 @@ import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
+import {
+  SyntheticQuotaIndicator,
+  QuotaProvider,
+  useQuotaData,
+} from "./components/synthetic-quota-indicator.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
@@ -179,25 +184,29 @@ export default function App({
         <ConfigContext.Provider value={currConfig}>
           <UnchainedContext.Provider value={isUnchained}>
             <TransportContext.Provider value={transport}>
-              <ExitOnDoubleCtrlC>
-                <TerminalSizeTracker>
-                  <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems} key={clearNonce}>
-                      {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
-                    </Static>
-                    {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                      (modeData.inflightResponse.reasoningContent ||
-                        modeData.inflightResponse.content) && (
-                        <MessageDisplay item={modeData.inflightResponse} />
-                      )}
-                    <BottomBar
-                      inputHistory={inputHistory}
-                      metadata={metadata}
-                      tempNotification={tempNotification}
-                    />
-                  </Box>
-                </TerminalSizeTracker>
-              </ExitOnDoubleCtrlC>
+              <QuotaProvider>
+                <ExitOnDoubleCtrlC>
+                  <TerminalSizeTracker>
+                    <Box flexDirection="column" width="100%" height="100%">
+                      <Static items={staticItems} key={clearNonce}>
+                        {(item, index) => (
+                          <StaticItemRenderer item={item} key={`static-${index}`} />
+                        )}
+                      </Static>
+                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                        (modeData.inflightResponse.reasoningContent ||
+                          modeData.inflightResponse.content) && (
+                          <MessageDisplay item={modeData.inflightResponse} />
+                        )}
+                      <BottomBar
+                        inputHistory={inputHistory}
+                        metadata={metadata}
+                        tempNotification={tempNotification}
+                      />
+                    </Box>
+                  </TerminalSizeTracker>
+                </ExitOnDoubleCtrlC>
+              </QuotaProvider>
             </TransportContext.Provider>
           </UnchainedContext.Provider>
         </ConfigContext.Provider>
@@ -227,6 +236,10 @@ function BottomBar({
       modeData: state.modeData,
     })),
   );
+  const quotaData = useQuotaData();
+
+  const vimEnabled = useConfig().vimEmulation?.enabled;
+  const vimMode = vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
 
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
@@ -261,8 +274,8 @@ function BottomBar({
   return (
     <Box flexDirection="column" width="100%">
       <BottomBarContent inputHistory={inputHistory} />
-      <Box width="100%" justifyContent="space-between" height={1} flexShrink={0} flexGrow={1}>
-        <Box height={1}>
+      <Box flexDirection="column" width="100%">
+        <Box width="100%">
           <Text color={themeColor}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Text>
           {!ctrlCPressed && (
             <Text color={"gray"}>
@@ -271,7 +284,12 @@ function BottomBar({
             </Text>
           )}
         </Box>
-        <Text color={themeColor}>{versionCheck}</Text>
+        <Box width="100%">
+          <SyntheticQuotaIndicator quota={quotaData} />
+        </Box>
+        <Box width="100%">
+          <Text color={themeColor}>{versionCheck}</Text>
+        </Box>
       </Box>
       <Box minHeight={1}>
         {displayedTempNotification && (
