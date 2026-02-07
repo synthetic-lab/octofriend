@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from "react";
 import { Box, Text } from "ink";
 import TextInput from "./text-input.tsx";
-import { Config, assertKeyForModel } from "../config.ts";
+import { Config, assertKeyForModel, Auth } from "../config.ts";
 import { useColor } from "../theme.ts";
 import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
@@ -11,6 +11,7 @@ import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
 import { PROVIDERS } from "../providers.ts";
 import * as logger from "../logger.ts";
+import { parse } from "shell-quote";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false; error: string };
@@ -39,30 +40,33 @@ type FullFlowRouteData = {
   envVar: ModelStepRoute<{
     baseUrl: string;
   }>;
+  command: ModelStepRoute<{
+    baseUrl: string;
+  }>;
   apiKey: ModelStepRoute<{
     baseUrl: string;
   }>;
   postAuth: ModelStepRoute<{
     baseUrl: string;
-    envVar?: string;
+    auth?: Auth;
   }>;
   model: ModelStepRoute<{
     baseUrl: string;
-    envVar?: string;
+    auth?: Auth;
   }>;
   testConnection: ModelStepRoute<{
     baseUrl: string;
-    envVar?: string;
+    auth?: Auth;
     model: string;
   }>;
   nickname: ModelStepRoute<{
     baseUrl: string;
-    envVar?: string;
+    auth?: Auth;
     model: string;
   }>;
   context: ModelStepRoute<{
     baseUrl: string;
-    envVar?: string;
+    auth?: Auth;
     model: string;
     nickname: string;
   }>;
@@ -108,7 +112,7 @@ const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl").build("baseUrl", to =>
 function AuthAsk(
   props: FullFlowRouteData["authAsk"] &
     Pick<Transitions<void>, "back"> & {
-      onSelect: (route: "apiKey" | "envVar") => void;
+      onSelect: (route: "apiKey" | "envVar" | "command") => void;
     },
 ) {
   const shortcutItems = [
@@ -123,14 +127,18 @@ function AuthAsk(
           label: "I have an existing environment variable I use...",
           value: "envVar",
         },
+        c: {
+          label: "Use a command (e.g. pass, op, gopass)...",
+          value: "command",
+        },
         b: {
           label: "Back",
           value: "back",
         },
       } as const,
     },
-  ] satisfies ShortcutArray<"apiKey" | "envVar" | "back">;
-  const onSelect = useCallback((item: Item<"apiKey" | "envVar" | "back">) => {
+  ] satisfies ShortcutArray<"apiKey" | "envVar" | "command" | "back">;
+  const onSelect = useCallback((item: Item<"apiKey" | "envVar" | "command" | "back">) => {
     if (item.value === "back") props.back();
     else props.onSelect(item.value);
   }, []);
@@ -174,7 +182,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
           `.trim(),
           };
         }}
-        onSubmit={envVar => to.postAuth({ ...props, envVar })}
+        onSubmit={envVar => to.postAuth({ ...props, auth: { type: "env", name: envVar } })}
       >
         <Box flexDirection="column">
           {props.renderExamples && (
@@ -200,6 +208,60 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
     </Back>
   );
 });
+
+const command = fullFlow
+  .withRoutes("authAsk", "command", "postAuth")
+  .build("command", to => props => {
+    return (
+      <Back go={() => to.authAsk(props)}>
+        <Step<string[]>
+          title="What command should Octo run to get the API key?"
+          prompt="Command:"
+          parse={val => {
+            const parsed = parse(val);
+            // shell-quote returns an array that may include shell operators (objects)
+            // We filter to keep only string arguments for the command
+            return parsed.filter((item): item is string => typeof item === "string");
+          }}
+          validate={val => {
+            const parsed = parse(val);
+
+            // Detect shell operators (pipes, redirects, etc.) which shell-quote parses as objects
+            const hasOperators = parsed.some(item => typeof item !== "string");
+            if (hasOperators) {
+              return {
+                valid: false,
+                error:
+                  "Shell operators like pipes (|) and redirects (>, <) aren't supported. Enter only the command and its arguments.",
+              };
+            }
+
+            const [commandName] = parsed;
+            if (!commandName) {
+              return { valid: false, error: "Command can't be empty" };
+            }
+            return { valid: true };
+          }}
+          onSubmit={command => to.postAuth({ ...props, auth: { type: "command", command } })}
+        >
+          <Box flexDirection="column">
+            <Text>
+              Enter the command and arguments separated by spaces. The command should output only
+              the API key to stdout.
+            </Text>
+            {props.renderExamples && (
+              <>
+                <Text>Examples:</Text>
+                <Text bold>pass show openai/api-key</Text>
+                <Text bold>op read "op://vault/openai/key"</Text>
+                <Text bold>gopass show -o openai/key</Text>
+              </>
+            )}
+          </Box>
+        </Step>
+      </Back>
+    );
+  });
 
 type Transitions<T> = {
   back: () => void;
@@ -273,7 +335,7 @@ function TestConnection(
   useEffect(() => {
     testConnection({
       model: props.model,
-      apiEnvVar: props.envVar,
+      auth: props.auth,
       baseUrl: props.baseUrl,
       config: props.config,
     }).then(valid => {
@@ -325,7 +387,7 @@ const nickname = fullFlow
 
 function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>, "back">) {
   const color = useColor();
-  const { baseUrl, envVar, model, nickname, done } = props;
+  const { baseUrl, auth, model, nickname, done } = props;
   return (
     <Back go={props.back}>
       <Step<number>
@@ -347,7 +409,7 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             model,
             nickname,
             context,
-            apiEnvVar: envVar,
+            auth,
           })
         }
       >
@@ -375,6 +437,7 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
 const fullFlowRoutes = fullFlow.route({
   baseUrl,
   envVar,
+  command,
   apiKey,
   nickname,
 
@@ -477,13 +540,13 @@ export function CustomModelFlow({
   onComplete,
   onCancel,
   baseUrl,
-  envVar,
+  auth,
   config,
 }: {
   onComplete: (args: Model) => any;
   onCancel: () => any;
   baseUrl: string;
-  envVar: string | undefined;
+  auth?: Auth;
   config: Config | null;
 }) {
   const [errorMessage, setErrorMessage] = useState("");
@@ -496,7 +559,7 @@ export function CustomModelFlow({
           done: onComplete,
           cancel: onCancel,
           baseUrl,
-          envVar,
+          auth,
           config,
         }}
       />
@@ -504,18 +567,22 @@ export function CustomModelFlow({
   );
 }
 
-const customAuthDoneCtx = createContext<(apiKeyEnvVar?: string) => any>(() => {});
-type CustomAuthFlowData = Pick<FullFlowRouteData, "authAsk" | "envVar" | "apiKey" | "postAuth">;
+const customAuthDoneCtx = createContext<(auth?: Auth) => any>(() => {});
+type CustomAuthFlowData = Pick<
+  FullFlowRouteData,
+  "authAsk" | "envVar" | "command" | "apiKey" | "postAuth"
+>;
 const customAuthFlow = router<CustomAuthFlowData>();
 const customAuthRoutes = customAuthFlow.route({
   authAsk: to => props => {
     return <AuthAsk {...props} onSelect={route => to[route](props)} back={() => props.cancel()} />;
   },
   envVar,
+  command,
   apiKey,
   postAuth: _ => props => {
     const done = useContext(customAuthDoneCtx);
-    return <PostAuth {...props} handleAuth={() => done(props.envVar)} />;
+    return <PostAuth {...props} handleAuth={() => done(props.auth)} />;
   },
 });
 
@@ -525,7 +592,7 @@ export function CustomAuthFlow({
   baseUrl,
   config,
 }: {
-  onComplete: (apiEnvVar?: string) => any;
+  onComplete: (auth?: Auth) => any;
   onCancel: () => any;
   baseUrl: string;
   config: Config | null;
@@ -551,12 +618,21 @@ export function CustomAuthFlow({
 
 type CustomAutofixFlowRouteData = Pick<
   FullFlowRouteData,
-  "baseUrl" | "authAsk" | "envVar" | "apiKey" | "postAuth" | "model" | "testConnection" | "context"
+  | "baseUrl"
+  | "authAsk"
+  | "envVar"
+  | "command"
+  | "apiKey"
+  | "postAuth"
+  | "model"
+  | "testConnection"
+  | "context"
 >;
 const customAutofixFlow = router<CustomAutofixFlowRouteData>();
 const customAutofixRoutes = customAutofixFlow.route({
   baseUrl,
   envVar,
+  command,
   apiKey,
 
   authAsk: to => props => {
@@ -676,13 +752,13 @@ function Step<T>(props: AddModelStep<T>) {
 
 type MinConnectArgs = {
   model: string;
-  apiEnvVar?: string;
+  auth?: Auth;
   baseUrl: string;
   config: Config | null;
 };
-async function testConnection({ model, apiEnvVar, baseUrl, config }: MinConnectArgs) {
+async function testConnection({ model, auth, baseUrl, config }: MinConnectArgs) {
   try {
-    const apiKey = await assertKeyForModel({ baseUrl, apiEnvVar }, config);
+    const apiKey = await assertKeyForModel({ baseUrl, auth }, config);
     const client = new OpenAI({
       baseURL: baseUrl,
       apiKey,

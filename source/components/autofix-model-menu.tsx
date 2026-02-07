@@ -98,12 +98,12 @@ export function AutofixModelMenu({
       <CustomAutofixFlow
         config={config}
         onComplete={model => {
-          const val = {
+          const val: Exclude<Config["diffApply"], undefined> = {
             baseUrl: model.baseUrl,
-            apiEnvVar: model.apiEnvVar,
+            auth: model.auth,
             model: model.model,
           };
-          if (model.apiEnvVar == null) delete val.apiEnvVar;
+          if (model.auth == null) delete val.auth;
           onComplete(val);
         }}
         onCancel={() => setStep("choose")}
@@ -117,12 +117,18 @@ export function AutofixModelMenu({
         config={config}
         baseUrl={SYNTHETIC_PROVIDER.baseUrl}
         onCancel={() => setStep("choose")}
-        onComplete={async envVar => {
-          if (envVar) {
-            await onOverrideDefaultApiKey(envVar);
+        onComplete={async auth => {
+          if (auth && auth.type === "env") {
+            await onOverrideDefaultApiKey(auth.name);
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,
+            });
+          } else if (auth) {
+            onComplete({
+              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+              model: defaultModel,
+              auth,
             });
           } else {
             onComplete({
