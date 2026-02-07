@@ -4,7 +4,7 @@ import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
-import { validateTool, ToolError } from "../tools/index.ts";
+import { validateTool, ToolError, LoadedTools } from "../tools/index.ts";
 import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
@@ -66,6 +66,7 @@ type Finish = {
     | {
         type: "request-tool";
         toolCall: ToolCallRequest;
+        toolCalls?: ToolCallRequest[]; // For parallel tool execution
       }
     | {
         type: "request-error";
@@ -86,6 +87,8 @@ export async function trajectoryArc({
   transport,
   abortSignal,
   handler,
+  systemPrompt: customSystemPrompt,
+  tools,
 }: {
   apiKey: string;
   model: ModelConfig;
@@ -96,13 +99,15 @@ export async function trajectoryArc({
   handler: {
     [K in AnyState]: (state: StateEvents[K]) => void;
   };
+  systemPrompt?: () => Promise<string>;
+  tools?: Partial<LoadedTools>;
 }): Promise<Finish> {
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [...messages];
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
-  const tools = await loadTools(transport, abortSignal, config);
+  const loadedTools = tools ?? (await loadTools(transport, abortSignal, config));
 
   const parsedCompaction = await maybeAutocompact({
     apiKey,
@@ -131,7 +136,7 @@ export async function trajectoryArc({
     model,
     autofixJson,
     abortSignal,
-    tools,
+    tools: loadedTools,
     messages: messagesCopy,
     handlers: {
       onTokens: (tokens, type) => {
@@ -146,14 +151,16 @@ export async function trajectoryArc({
         handler.autofixingJson(null);
       },
     },
-    systemPrompt: async () => {
-      return systemPrompt({
-        config,
-        transport,
-        tools,
-        signal: abortSignal,
-      });
-    },
+    systemPrompt:
+      customSystemPrompt ??
+      (async () => {
+        return systemPrompt({
+          config,
+          transport,
+          tools: loadedTools,
+          signal: abortSignal,
+        });
+      }),
   });
 
   function maybeBufferedMessage(): TrajectoryOutputIR[] {
@@ -221,9 +228,88 @@ export async function trajectoryArc({
     };
   }
 
-  const { toolCall } = lastIr;
+  // Check for parallel tool calls first
+  const toolCalls = lastIr.toolCalls;
+  const singleToolCall = lastIr.toolCall;
 
-  if (toolCall == null) {
+  if (!toolCalls && !singleToolCall) {
+    return {
+      type: "finish",
+      reason: {
+        type: "needs-response",
+      },
+      irs,
+    };
+  }
+
+  // Handle parallel tool calls
+  if (toolCalls && toolCalls.length > 0) {
+    // Validate all tools first
+    for (const tc of toolCalls) {
+      try {
+        await validateTool(abortSignal, transport, loadedTools, tc.function, config);
+      } catch (e) {
+        // If validation fails for any tool, return error for that tool
+        if (e instanceof FileOutdatedError) {
+          const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
+            abortSignal,
+            transport,
+            tc,
+            e,
+          );
+          const retryIrs = [...irs, errorIrs];
+          handler.retryTool({ irs: retryIrs });
+          const retried = await trajectoryArc({
+            apiKey,
+            model,
+            config,
+            transport,
+            abortSignal,
+            messages: messagesCopy.concat(retryIrs),
+            handler,
+          });
+          return {
+            type: "finish",
+            irs: [...irs, ...retried.irs],
+            reason: retried.reason,
+          };
+        }
+        // For other errors, create a tool error message
+        if (e instanceof ToolError) {
+          const toolErrorIr: TrajectoryOutputIR = {
+            role: "tool-error",
+            toolCallId: tc.toolCallId,
+            toolName: tc.function.name,
+            error: e.message,
+          };
+          return {
+            type: "finish",
+            irs: [...irs, toolErrorIr],
+            reason: {
+              type: "request-tool",
+              toolCall: tc,
+              toolCalls: toolCalls.filter(t => t.toolCallId !== tc.toolCallId),
+            },
+          };
+        }
+        throw e;
+      }
+    }
+
+    // All tools validated, return them for parallel execution
+    return {
+      type: "finish",
+      reason: {
+        type: "request-tool",
+        toolCall: toolCalls[0],
+        toolCalls: toolCalls,
+      },
+      irs,
+    };
+  }
+
+  // Handle single tool call (backward compatibility)
+  if (!singleToolCall) {
     return {
       type: "finish",
       reason: {
@@ -234,12 +320,12 @@ export async function trajectoryArc({
   }
 
   try {
-    await validateTool(abortSignal, transport, tools, toolCall.function, config);
+    await validateTool(abortSignal, transport, loadedTools, singleToolCall.function, config);
     return {
       type: "finish",
       reason: {
         type: "request-tool",
-        toolCall,
+        toolCall: singleToolCall,
       },
       irs,
     };
@@ -248,7 +334,7 @@ export async function trajectoryArc({
       const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
         abortSignal,
         transport,
-        toolCall,
+        singleToolCall,
         e,
       );
       const retryIrs = [...irs, errorIrs];
@@ -271,7 +357,7 @@ export async function trajectoryArc({
 
     if (!(e instanceof ToolError)) throw e;
 
-    const fn = toolCall.function;
+    const fn = singleToolCall.function;
     if (fn.name === "edit") {
       handler.autofixingDiff(null);
       const path = fn.arguments.filePath;
@@ -286,8 +372,8 @@ export async function trajectoryArc({
             ...irs.slice(0, -1),
             {
               role: "tool-error",
-              toolCallId: toolCall.toolCallId,
-              toolName: toolCall.function.name,
+              toolCallId: singleToolCall.toolCallId,
+              toolName: singleToolCall.function.name,
               error: e.message,
             },
           ]);
@@ -298,7 +384,7 @@ export async function trajectoryArc({
           await validateTool(
             abortSignal,
             transport,
-            tools,
+            loadedTools,
             {
               name: "edit",
               arguments: fix,
@@ -314,7 +400,7 @@ export async function trajectoryArc({
             type: "finish",
             reason: {
               type: "request-tool",
-              toolCall,
+              toolCall: singleToolCall,
             },
             irs,
           };
@@ -326,8 +412,8 @@ export async function trajectoryArc({
       ...irs,
       {
         role: "tool-error" as const,
-        toolCallId: toolCall.toolCallId,
-        toolName: toolCall.function.name,
+        toolCallId: singleToolCall.toolCallId,
+        toolName: singleToolCall.function.name,
         error: e.message,
       },
     ];

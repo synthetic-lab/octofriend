@@ -30,6 +30,7 @@ export type AssistantMessage = {
   };
   anthropic?: AnthropicAssistantData;
   toolCall?: ToolCallRequest;
+  toolCalls?: ToolCallRequest[]; // For parallel tool calls
   tokenUsage: number;
   outputTokens: number;
 };
