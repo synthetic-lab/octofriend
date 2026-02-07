@@ -427,6 +427,22 @@ describe("Plan Mode UI/State Synchronization", () => {
   });
 
   describe("Ctrl+E Platform-Specific Spawn Commands", () => {
+    const originalEditor = process.env.EDITOR;
+
+    beforeEach(() => {
+      // Unset EDITOR for consistent testing of fallback behavior
+      delete process.env.EDITOR;
+    });
+
+    afterEach(() => {
+      // Restore original EDITOR value
+      if (originalEditor !== undefined) {
+        process.env.EDITOR = originalEditor;
+      } else {
+        delete process.env.EDITOR;
+      }
+    });
+
     it("generates correct spawn cmd and args for macOS", () => {
       const activePlanFilePath = "/path/to/plan.md";
       const platform: string = "macos";
@@ -444,8 +460,10 @@ describe("Plan Mode UI/State Synchronization", () => {
           break;
         case "linux":
         default:
-          cmd = "xdg-open";
-          args = [activePlanFilePath];
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
           break;
       }
 
@@ -470,8 +488,10 @@ describe("Plan Mode UI/State Synchronization", () => {
           break;
         case "linux":
         default:
-          cmd = "xdg-open";
-          args = [activePlanFilePath];
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
           break;
       }
 
@@ -496,12 +516,14 @@ describe("Plan Mode UI/State Synchronization", () => {
           break;
         case "linux":
         default:
-          cmd = "xdg-open";
-          args = [activePlanFilePath];
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
           break;
       }
 
-      expect(cmd).toBe("xdg-open");
+      expect(cmd).toBe("vi");
       expect(args).toEqual(["/path/to/plan.md"]);
     });
 
@@ -522,8 +544,10 @@ describe("Plan Mode UI/State Synchronization", () => {
           break;
         case "linux":
         default:
-          cmd = "xdg-open";
-          args = [activePlanFilePath];
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
           break;
       }
 
@@ -548,12 +572,14 @@ describe("Plan Mode UI/State Synchronization", () => {
           break;
         case "linux":
         default:
-          cmd = "xdg-open";
-          args = [activePlanFilePath];
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
           break;
       }
 
-      expect(cmd).toBe("xdg-open");
+      expect(cmd).toBe("vi");
       expect(args).toEqual(["/path/to/plan's file (v1).md"]);
     });
 
@@ -569,7 +595,7 @@ describe("Plan Mode UI/State Synchronization", () => {
           expectedCmd: "cmd",
           expectedArgs: ["/c", "start", "", "/plans/test.md"],
         },
-        { platform: "linux", expectedCmd: "xdg-open", expectedArgs: ["/plans/test.md"] },
+        { platform: "linux", expectedCmd: "vi", expectedArgs: ["/plans/test.md"] },
       ];
 
       for (const { platform, expectedCmd, expectedArgs } of platforms) {
@@ -588,14 +614,78 @@ describe("Plan Mode UI/State Synchronization", () => {
             break;
           case "linux":
           default:
-            cmd = "xdg-open";
-            args = [activePlanFilePath];
+            cmd = process.env.EDITOR || "vi";
+            const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+            cmd = editorArgs[0] || "vi";
+            args = [...editorArgs.slice(1), activePlanFilePath];
             break;
         }
 
         expect(cmd).toBe(expectedCmd);
         expect(args).toEqual(expectedArgs);
       }
+    });
+
+    it("uses $EDITOR environment variable when set on Linux", () => {
+      const activePlanFilePath = "/path/to/plan.md";
+      const platform: string = "linux";
+
+      // Set EDITOR environment variable
+      process.env.EDITOR = "hx";
+
+      let cmd: string;
+      let args: string[];
+      switch (platform) {
+        case "macos":
+          cmd = "open";
+          args = [activePlanFilePath];
+          break;
+        case "windows":
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
+          break;
+        case "linux":
+        default:
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
+          break;
+      }
+
+      expect(cmd).toBe("hx");
+      expect(args).toEqual(["/path/to/plan.md"]);
+    });
+
+    it("parses $EDITOR with arguments on Linux", () => {
+      const activePlanFilePath = "/path/to/plan.md";
+      const platform: string = "linux";
+
+      // Set EDITOR with arguments
+      process.env.EDITOR = "vim -c 'set ft=markdown'";
+
+      let cmd: string;
+      let args: string[];
+      switch (platform) {
+        case "macos":
+          cmd = "open";
+          args = [activePlanFilePath];
+          break;
+        case "windows":
+          cmd = "cmd";
+          args = ["/c", "start", "", activePlanFilePath];
+          break;
+        case "linux":
+        default:
+          cmd = process.env.EDITOR || "vi";
+          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+          cmd = editorArgs[0] || "vi";
+          args = [...editorArgs.slice(1), activePlanFilePath];
+          break;
+      }
+
+      expect(cmd).toBe("vim");
+      expect(args).toEqual(["-c", "'set", "ft=markdown'", "/path/to/plan.md"]);
     });
   });
 

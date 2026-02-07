@@ -1,5 +1,5 @@
 import * as fsOld from "fs";
-import { spawn } from "child_process";
+import { spawn, type SpawnOptions } from "child_process";
 import React, {
   useState,
   useCallback,
@@ -490,23 +490,35 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           const platform = getPlatform();
           let cmd: string;
           let args: string[];
+          let spawnOptions: SpawnOptions | undefined;
           switch (platform) {
             case "macos":
               cmd = "open";
               args = [activePlanFilePath];
+              spawnOptions = { stdio: "ignore", detached: true };
               break;
             case "windows":
               cmd = "cmd";
               args = ["/c", "start", "", activePlanFilePath];
+              spawnOptions = { stdio: "ignore", detached: true };
               break;
             case "linux":
             default:
-              cmd = "xdg-open";
-              args = [activePlanFilePath];
+              cmd = process.env.EDITOR || "vi";
+              const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+              cmd = editorArgs[0] || "vi";
+              args = [...editorArgs.slice(1), activePlanFilePath];
+              spawnOptions = { stdio: "inherit" };
               break;
           }
-          const child = spawn(cmd, args, { stdio: "ignore", detached: true });
-          child.unref();
+          const child = spawn(cmd, args, spawnOptions);
+          if (spawnOptions?.detached) {
+            child.unref();
+          } else {
+            child.on("exit", () => {
+              // Re-render the app content after the editor closes
+            });
+          }
           child.on("error", err => {
             logger.error("info", "Failed to open plan in editor", { error: err.message });
             notify(`Failed to open plan in editor: ${err.message}`);
