@@ -28,8 +28,8 @@ export const PROVIDERS = {
         context: 198 * 1024,
       },
       {
-        model: "hf:moonshotai/Kimi-K2-Thinking",
-        nickname: "Kimi K2 0905",
+        model: "hf:moonshotai/Kimi-K2.5",
+        nickname: "Kimi K2.5",
         context: 256 * 1024,
       },
       {
