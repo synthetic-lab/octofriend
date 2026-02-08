@@ -1,61 +1,43 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { FileRenderer } from "./file-renderer.tsx";
-import { readFileSync } from "fs";
-
-vi.mock("fs", () => ({
-  readFileSync: vi.fn(),
-}));
 
 describe("FileRenderer", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("renders content starting from line 1 by default", () => {
+    const { lastFrame } = render(
+      <FileRenderer
+        contents="function example() {\n  return 'hello';\n}"
+        filePath="/test/example.js"
+      />,
+    );
+
+    const output = lastFrame() || "";
+    expect(output).toContain("function example() {");
+    expect(output).toContain("return 'hello'");
+    expect(output).toContain("1");
   });
 
-  describe("operation=append", () => {
-    it("reads existing file and calculates line numbers", () => {
-      vi.mocked(readFileSync).mockReturnValue("existing line 1\nexisting line 2\n");
+  it("uses startLineNr when provided", () => {
+    const { lastFrame } = render(
+      <FileRenderer contents="appended line" filePath="/test.txt" startLineNr={10} />,
+    );
 
-      const { lastFrame } = render(
-        <FileRenderer contents="appended line" filePath="/test.txt" operation="append" />,
-      );
-
-      expect(readFileSync).toHaveBeenCalledWith("/test.txt", "utf8");
-      const output = lastFrame() || "";
-      expect(output).toContain("4");
-      expect(output).toContain("appended line");
-    });
-
-    it("returns empty when file does not exist", () => {
-      vi.mocked(readFileSync).mockImplementation(() => {
-        throw new Error("ENOENT: no such file or directory");
-      });
-
-      const { lastFrame } = render(
-        <FileRenderer contents="new content" filePath="/nonexistent.txt" operation="append" />,
-      );
-
-      expect(lastFrame()).toBe("");
-    });
+    const output = lastFrame() || "";
+    expect(output).toContain("10");
+    expect(output).toContain("appended line");
   });
 
-  describe("no operation specified", () => {
-    it("renders content without reading file", () => {
-      const { lastFrame } = render(<FileRenderer contents="some content" filePath="/test.txt" />);
+  it("renders multiple lines starting from provided line number", () => {
+    const { lastFrame } = render(
+      <FileRenderer contents="line 1\nline 2\nline 3" filePath="/test.txt" startLineNr={5} />,
+    );
 
-      expect(readFileSync).not.toHaveBeenCalled();
-      const output = lastFrame() || "";
-      expect(output).toContain("some content");
-    });
-
-    it("uses startLineNr when provided", () => {
-      const { lastFrame } = render(
-        <FileRenderer contents="content" filePath="/test.txt" startLineNr={10} />,
-      );
-
-      const output = lastFrame() || "";
-      expect(output).toContain("10");
-    });
+    const output = lastFrame() || "";
+    // Should render all content starting from line 5
+    expect(output).toContain("line 1");
+    expect(output).toContain("line 2");
+    expect(output).toContain("line 3");
+    expect(output).toContain("5");
   });
 });

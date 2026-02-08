@@ -1,34 +1,19 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { readFileSync } from "fs";
 import { CODE_GUTTER_COLOR } from "../theme.ts";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 
-export type FileOperation = "append";
-
 export function FileRenderer({
   contents,
   filePath,
-  operation,
   startLineNr,
 }: {
   contents: string;
   filePath: string;
-  operation?: FileOperation;
   startLineNr?: number;
 }) {
   let start = startLineNr || 1;
-
-  if (operation === "append") {
-    try {
-      const file = readFileSync(filePath, "utf8");
-      const lines = countLines(file);
-      start = lines + 1;
-    } catch {
-      return null;
-    }
-  }
   const lines = countLines(contents) + start;
   const maxWidth = numWidth(lines);
   const gutterWidth = maxWidth + 1;

@@ -24,7 +24,7 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
-import { FileRenderer, type FileOperation } from "./components/file-renderer.tsx";
+import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
 import read from "./tools/tool-defs/read.ts";
 import list from "./tools/tool-defs/list.ts";
@@ -66,6 +66,7 @@ import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import { readFileSync } from "fs";
 
 type Props = {
   config: Config;
@@ -905,7 +906,18 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
 function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
 
-  const renderedFile = <FileRenderer contents={text} filePath={filePath} operation="append" />;
+  let startLineNr = 1;
+  try {
+    const file = readFileSync(filePath, "utf8");
+    const lines = countLines(file);
+    startLineNr = lines + 1;
+  } catch {
+    return null;
+  }
+
+  const renderedFile = (
+    <FileRenderer contents={text} filePath={filePath} startLineNr={startLineNr} />
+  );
   if (!renderedFile) return null;
 
   return (
