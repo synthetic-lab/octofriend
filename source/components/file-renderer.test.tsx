@@ -13,24 +13,6 @@ describe("FileRenderer", () => {
     vi.clearAllMocks();
   });
 
-  describe("operation=create", () => {
-    it("renders content starting from line 1 without reading file", () => {
-      const { lastFrame } = render(
-        <FileRenderer
-          contents="function example() {\n  return 'hello';\n}"
-          filePath="/test/example.js"
-          operation="create"
-        />,
-      );
-
-      const output = lastFrame() || "";
-      expect(output).toContain("function example() {");
-      expect(output).toContain("return 'hello'");
-      expect(output).toContain("1");
-      expect(readFileSync).not.toHaveBeenCalled();
-    });
-  });
-
   describe("operation=append", () => {
     it("reads existing file and calculates line numbers", () => {
       vi.mocked(readFileSync).mockReturnValue("existing line 1\nexisting line 2\n");

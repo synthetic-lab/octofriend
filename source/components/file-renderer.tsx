@@ -5,7 +5,7 @@ import { CODE_GUTTER_COLOR } from "../theme.ts";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 
-export type FileOperation = "create" | "append";
+export type FileOperation = "append";
 
 export function FileRenderer({
   contents,

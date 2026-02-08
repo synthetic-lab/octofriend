@@ -1018,11 +1018,7 @@ function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> 
         <Text>:</Text>
       </Box>
       <Box>
-        <FileRenderer
-          contents={item.arguments.content}
-          filePath={item.arguments.filePath}
-          operation="create"
-        />
+        <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
       </Box>
     </Box>
   );
