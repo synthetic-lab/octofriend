@@ -18,13 +18,13 @@ export function useEmacsKeyHandler() {
       currentValue: string,
       showCursor: boolean,
     ): EmacsResult {
-      // Ctrl+A: Beginning of line
-      if (key.ctrl && input === "a") {
+      // Ctrl+A or Home: Beginning of line
+      if ((key.ctrl && input === "a") || key.home) {
         return { consumed: true, newCursorPosition: 0 };
       }
 
-      // Ctrl+E: End of line
-      if (key.ctrl && input === "e") {
+      // Ctrl+E or End: End of line
+      if ((key.ctrl && input === "e") || key.end) {
         return { consumed: true, newCursorPosition: valueLength };
       }
 
@@ -44,8 +44,8 @@ export function useEmacsKeyHandler() {
         return { consumed: true };
       }
 
-      // Meta+B: Back one word
-      if (key.meta && input === "b") {
+      // Meta+B or Ctrl+Left: Back one word
+      if ((key.meta && input === "b") || (key.ctrl && key.leftArrow)) {
         if (showCursor && cursorPosition > 0) {
           let wordStart = cursorPosition;
           // Skip whitespace
@@ -61,8 +61,8 @@ export function useEmacsKeyHandler() {
         return { consumed: true };
       }
 
-      // Meta+F: Forward one word
-      if (key.meta && input === "f") {
+      // Meta+F or Ctrl+Right: Forward one word
+      if ((key.meta && input === "f") || (key.ctrl && key.rightArrow)) {
         if (showCursor && cursorPosition < valueLength) {
           let wordEnd = cursorPosition;
           // Skip whitespace
