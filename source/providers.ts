@@ -25,22 +25,22 @@ export const PROVIDERS = {
       {
         model: "hf:zai-org/GLM-4.7",
         nickname: "GLM-4.7",
-        context: 128 * 1024,
+        context: 198 * 1024,
       },
       {
         model: "hf:moonshotai/Kimi-K2-Thinking",
         nickname: "Kimi K2 0905",
-        context: 128 * 1024,
+        context: 256 * 1024,
       },
       {
         model: "hf:MiniMaxAI/MiniMax-M2.1",
         nickname: "MiniMax M2.1",
-        context: 96 * 1024,
+        context: 192 * 1024,
       },
       {
         model: "hf:openai/gpt-oss-120b",
         nickname: "GPT-OSS-120b",
-        context: 64 * 1024,
+        context: 128 * 1024,
       },
     ],
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
