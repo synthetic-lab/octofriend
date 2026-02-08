@@ -89,8 +89,8 @@ export const PROVIDERS = {
         reasoning: "medium",
       },
       {
-        model: "claude-opus-4-5-20251101",
-        nickname: "Claude 4.5 Opus",
+        model: "claude-opus-4-6",
+        nickname: "Claude 4.6 Opus",
         context: 200 * 1024,
         reasoning: "medium",
       },
