@@ -29,19 +29,23 @@ async function validate(
   return null;
 }
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
-  Schema,
-  ArgumentsSchema,
-  validate,
-  async run(signal, transport, call) {
-    await validate(signal, transport, call);
-    const { filePath, content } = call.arguments;
-    return attempt(`Failed to create file ${filePath}`, async () => {
-      await fileTracker.write(transport, signal, filePath, content);
-      return {
-        content: "",
-        lines: content.split("\n").length,
-      };
-    });
+export default defineTool<t.GetType<typeof Schema>>(
+  async (signal, transport, config, planFilePath) => {
+    return {
+      Schema,
+      ArgumentsSchema,
+      validate,
+      async run(signal, transport, call) {
+        await validate(signal, transport, call);
+        const { filePath, content } = call.arguments;
+        return attempt(`Failed to create file ${filePath}`, async () => {
+          await fileTracker.write(transport, signal, filePath, content);
+          return {
+            content: "",
+            lines: content.split("\n").length,
+          };
+        });
+      },
+    };
   },
-}));
+);
