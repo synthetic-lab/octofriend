@@ -1,6 +1,6 @@
 {
   "name": "octofriend",
-  "version": "0.0.52",
+  "version": "0.0.53",
   "license": "MIT",
   "repository": "github:synthetic-lab/octofriend",
   "bin": {
@@ -14,10 +14,13 @@
   },
   "scripts": {
     "build": "babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
+    "postbuild": "chmod +x dist/source/cli.js",
     "dev": "npm run build -- --watch",
     "exec": "npm run build && node ./dist/source/cli.js",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "vitest run -c tests/e2e/vitest.config.ts",
+    "test:e2e:watch": "vitest -c tests/e2e/vitest.config.ts",
     "prepublishOnly": "npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
