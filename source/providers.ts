@@ -85,19 +85,19 @@ export const PROVIDERS = {
       {
         model: "claude-sonnet-4-5-20250929",
         nickname: "Claude 4.5 Sonnet",
-        context: 200 * 1024,
+        context: 200 * 1000,
         reasoning: "medium",
       },
       {
         model: "claude-opus-4-6",
         nickname: "Claude 4.6 Opus",
-        context: 200 * 1024,
+        context: 200 * 1000,
         reasoning: "medium",
       },
       {
         model: "claude-haiku-4-5-20251001",
         nickname: "Claude 4.5 Haiku",
-        context: 200 * 1024,
+        context: 200 * 1000,
         reasoning: "medium",
       },
     ],
