@@ -1,17 +1,13 @@
 import React from "react";
 import figlet from "figlet";
 import { Box, Text } from "ink";
-import { color } from "./theme.ts";
+import { useColor } from "./theme.ts";
 
-type HeaderProps = {
-  unchained: boolean;
-};
-
-export const Header = React.memo(({ unchained }: HeaderProps) => {
+export const Header = React.memo(() => {
   const font: figlet.Fonts = "Delta Corps Priest 1";
   const top = figlet.textSync("Octo", { font });
   const bottom = figlet.textSync("Friend", { font });
-  const themeColor = color(unchained);
+  const themeColor = useColor();
 
   return (
     <Box flexDirection="column">

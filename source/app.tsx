@@ -1,4 +1,5 @@
 import * as fsOld from "fs";
+import { spawn, type SpawnOptions } from "child_process";
 import React, {
   useState,
   useCallback,
@@ -23,7 +24,7 @@ import {
 import { HistoryItem, ToolCallItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
-import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
+import { UnchainedContext, PlanModeContext, useColor } from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
@@ -45,11 +46,13 @@ import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
+import { getPlanFilePath } from "./plan-mode.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
+import * as logger from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
@@ -61,12 +64,14 @@ import {
 } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
 import { Markdown } from "./markdown/index.tsx";
-import { countLines } from "./str.ts";
+import { countLines, displayPath } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import { ModeType, MODE_NOTIFICATIONS, nextMode } from "./modes.ts";
+import { getPlatform } from "./platform.ts";
 
 type Props = {
   config: Config;
@@ -111,10 +116,8 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
   }));
 }
 
-const TransportContext = createContext<Transport>(new LocalTransport());
+export const TransportContext = createContext<Transport>(new LocalTransport());
 
-const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
-const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
 export default function App({
   config,
   configPath,
@@ -126,23 +129,101 @@ export default function App({
   bootSkills,
 }: Props) {
   const [currConfig, setCurrConfig] = useState(config);
-  const [isUnchained, setIsUnchained] = useState(unchained);
   const [tempNotification, setTempNotification] = useState<string | null>(
-    isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
+    MODE_NOTIFICATIONS[unchained ? "unchained" : "collaboration"],
   );
-  const { history, modeData, setVimMode, clearNonce } = useAppStore(
+  const {
+    history,
+    modeData,
+    setVimMode,
+    clearNonce,
+    currentMode,
+    setMode,
+    setActivePlanFilePath,
+    sessionPlanFilePath,
+    setSessionPlanFilePath,
+    notify,
+    activePlanFilePath,
+    leavePlanMode,
+  } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       setVimMode: state.setVimMode,
       clearNonce: state.clearNonce,
+      currentMode: state.currentMode,
+      setMode: state.setMode,
+      setActivePlanFilePath: state.setActivePlanFilePath,
+      sessionPlanFilePath: state.sessionPlanFilePath,
+      setSessionPlanFilePath: state.setSessionPlanFilePath,
+      notify: state.notify,
+      activePlanFilePath: state.activePlanFilePath,
+      leavePlanMode: state.leavePlanMode,
     })),
   );
+
+  const isPlanMode = currentMode === "plan";
+  const isUnchained = currentMode === "unchained";
 
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
-  }, []);
+    setMode(unchained ? "unchained" : "collaboration");
+  }, [markUpdatesSeen, setVimMode, setMode, unchained]);
+
+  // Initialize plan file path when entering plan mode (file creation is deferred)
+  const isInitializingPlanRef = useRef(false);
+  useEffect(() => {
+    const abortController = new AbortController();
+    async function initPlan() {
+      if (!isPlanMode) return;
+
+      if (isInitializingPlanRef.current) return;
+
+      if (sessionPlanFilePath) {
+        if (activePlanFilePath !== sessionPlanFilePath) {
+          setActivePlanFilePath(sessionPlanFilePath);
+        }
+        return;
+      }
+
+      isInitializingPlanRef.current = true;
+
+      let path: string;
+      try {
+        path = await getPlanFilePath(transport, abortController.signal);
+      } catch (pathErr) {
+        if (abortController.signal.aborted) return;
+        const errorMessage = pathErr instanceof Error ? pathErr.message : String(pathErr);
+        logger.error("info", "Failed to determine plan file path", { error: errorMessage });
+        notify("Plan mode initialization failed. Returning to collaboration mode.");
+        setMode("collaboration");
+        return;
+      } finally {
+        isInitializingPlanRef.current = false;
+      }
+
+      if (abortController.signal.aborted) return;
+      setSessionPlanFilePath(path);
+      setActivePlanFilePath(path);
+    }
+    initPlan().catch(err => {
+      logger.error("info", "Plan initialization failed unexpectedly", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    isPlanMode,
+    sessionPlanFilePath,
+    setActivePlanFilePath,
+    setSessionPlanFilePath,
+    setMode,
+    transport,
+    notify,
+  ]);
 
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {
@@ -151,15 +232,13 @@ export default function App({
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
   useShiftTab(() => {
-    setIsUnchained(prev => {
-      const unchained = !prev;
-      if (unchained) {
-        setTempNotification(UNCHAINED_NOTIF);
-      } else {
-        setTempNotification(CHAINED_NOTIF);
-      }
-      return unchained;
-    });
+    const newMode = nextMode(currentMode);
+    setTempNotification(MODE_NOTIFICATIONS[newMode]);
+    if (currentMode === "plan" && newMode !== "plan") {
+      leavePlanMode(newMode);
+    } else {
+      setMode(newMode);
+    }
   });
 
   const staticItems: StaticItem[] = useMemo(() => {
@@ -178,27 +257,33 @@ export default function App({
       <ConfigPathContext.Provider value={configPath}>
         <ConfigContext.Provider value={currConfig}>
           <UnchainedContext.Provider value={isUnchained}>
-            <TransportContext.Provider value={transport}>
-              <ExitOnDoubleCtrlC>
-                <TerminalSizeTracker>
-                  <Box flexDirection="column" width="100%" height="100%">
-                    <Static items={staticItems} key={clearNonce}>
-                      {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
-                    </Static>
-                    {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                      (modeData.inflightResponse.reasoningContent ||
-                        modeData.inflightResponse.content) && (
-                        <MessageDisplay item={modeData.inflightResponse} />
-                      )}
-                    <BottomBar
-                      inputHistory={inputHistory}
-                      metadata={metadata}
-                      tempNotification={tempNotification}
-                    />
-                  </Box>
-                </TerminalSizeTracker>
-              </ExitOnDoubleCtrlC>
-            </TransportContext.Provider>
+            <PlanModeContext.Provider value={isPlanMode}>
+              <TransportContext.Provider value={transport}>
+                <ExitOnDoubleCtrlC>
+                  <TerminalSizeTracker>
+                    <Box flexDirection="column" width="100%" height="100%">
+                      <Static items={staticItems} key={clearNonce}>
+                        {(item, index) => (
+                          <StaticItemRenderer item={item} key={`static-${index}`} />
+                        )}
+                      </Static>
+                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                        (modeData.inflightResponse.reasoningContent ||
+                          modeData.inflightResponse.content) && (
+                          <MessageDisplay item={modeData.inflightResponse} />
+                        )}
+                      <BottomBar
+                        inputHistory={inputHistory}
+                        metadata={metadata}
+                        tempNotification={tempNotification}
+                        currentMode={currentMode}
+                        activePlanFilePath={activePlanFilePath}
+                      />
+                    </Box>
+                  </TerminalSizeTracker>
+                </ExitOnDoubleCtrlC>
+              </TransportContext.Provider>
+            </PlanModeContext.Provider>
           </UnchainedContext.Provider>
         </ConfigContext.Provider>
       </ConfigPathContext.Provider>
@@ -210,10 +295,14 @@ function BottomBar({
   inputHistory,
   metadata,
   tempNotification,
+  currentMode,
+  activePlanFilePath,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
+  currentMode: ModeType;
+  activePlanFilePath: string | null;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
 
@@ -256,7 +345,16 @@ function BottomBar({
 
   if (modeData.mode === "menu") return <Menu />;
 
-  const unchained = useUnchained();
+  const modeLabel = (() => {
+    switch (currentMode) {
+      case "unchained":
+        return "⚡ Unchained mode";
+      case "plan":
+        return activePlanFilePath ? "📋 Plan mode" : "📋 Plan mode (initializing...)";
+      default:
+        return "Collaboration mode";
+    }
+  })();
 
   return (
     <Box flexDirection="column" width="100%">
@@ -266,8 +364,7 @@ function BottomBar({
           <Text color={themeColor}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Text>
           {!ctrlCPressed && (
             <Text color={"gray"}>
-              {unchained ? "⚡ Unchained mode" : "Collaboration mode"}{" "}
-              <Text dimColor>(Shift+Tab to toggle)</Text>
+              {modeLabel} <Text dimColor>(Shift+Tab to toggle)</Text>
             </Text>
           )}
         </Box>
@@ -297,7 +394,9 @@ async function getLatestVersion() {
     const contents = await response.json();
     const packageInfo = PackageSchema.slice(contents);
     return packageInfo["dist-tags"].latest;
-  } catch {
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    logger.log("verbose", "Version check failed", { error: errorMessage });
     return null;
   }
 }
@@ -306,6 +405,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
   const vimEnabled = !!config.vimEmulation?.enabled;
+  const isPlanMode = useContext(PlanModeContext);
   const {
     modeData,
     input,
@@ -316,6 +416,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setVimMode,
     query,
     setQuery,
+    exitPlanModeAndImplement,
+    activePlanFilePath,
+    history,
+    notify,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -327,11 +431,28 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setVimMode: state.setVimMode,
       query: state.query,
       setQuery: state.setQuery,
+      exitPlanModeAndImplement: state.exitPlanModeAndImplement,
+      activePlanFilePath: state.activePlanFilePath,
+      history: state.history,
+      notify: state.notify,
     })),
   );
 
-  const vimMode =
-    vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
+  const hasPlanBeenWritten = history.some(item => item.type === "plan-written");
+
+  const vimMode = vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
+
+  function handleExitPlanMode(targetMode: "collaboration" | "unchained") {
+    if (!activePlanFilePath) {
+      notify("Plan file is still initializing. Please wait.");
+      return;
+    }
+    exitPlanModeAndImplement(config, transport, targetMode).catch(err => {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      logger.error("info", "Failed to exit plan mode via shortcut", { error: errorMessage });
+      notify(`Failed to exit plan mode: ${errorMessage}`);
+    });
+  }
 
   useCtrlC(() => {
     if (vimEnabled) return;
@@ -352,6 +473,61 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
     if (key.ctrl && input === "p") {
       openMenu();
+    }
+
+    // Direct shortcuts to exit plan mode and implement
+    if (isPlanMode && key.ctrl && modeData.mode === "input" && query === "") {
+      if (input === "g") {
+        handleExitPlanMode("unchained");
+        return;
+      }
+      if (input === "o") {
+        handleExitPlanMode("collaboration");
+        return;
+      }
+      if (input === "l") {
+        if (activePlanFilePath) {
+          const platform = getPlatform();
+          let cmd: string;
+          let args: string[];
+          let spawnOptions: SpawnOptions | undefined;
+          switch (platform) {
+            case "macos":
+              cmd = "open";
+              args = [activePlanFilePath];
+              spawnOptions = { stdio: "ignore", detached: true };
+              break;
+            case "windows":
+              cmd = "cmd";
+              args = ["/c", "start", "", activePlanFilePath];
+              spawnOptions = { stdio: "ignore", detached: true };
+              break;
+            case "linux":
+            default:
+              cmd = process.env.EDITOR || "vi";
+              const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
+              cmd = editorArgs[0] || "vi";
+              args = [...editorArgs.slice(1), activePlanFilePath];
+              spawnOptions = { stdio: "inherit" };
+              break;
+          }
+          const child = spawn(cmd, args, spawnOptions);
+          if (spawnOptions?.detached) {
+            child.unref();
+          } else {
+            child.on("exit", () => {
+              // Re-render the app content after the editor closes
+            });
+          }
+          child.on("error", err => {
+            logger.error("info", "Failed to open plan in editor", { error: err.message });
+            notify(`Failed to open plan in editor: ${err.message}`);
+          });
+        } else {
+          notify("Plan file is still initializing. Please wait.");
+        }
+        return;
+      }
     }
   });
   const color = useColor();
@@ -429,7 +605,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   return (
     <Box flexDirection="column">
       <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Ctrl+p to enter the menu)</Text>
+        <Text color="gray">
+          {isPlanMode && activePlanFilePath && hasPlanBeenWritten
+            ? "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)"
+            : "(Ctrl+p to enter the menu)"}
+        </Text>
       </Box>
       <InputWithHistory
         inputHistory={inputHistory}
@@ -599,13 +779,19 @@ function ToolRequestRenderer({
   toolReq: ToolCallRequest;
 } & RunArgs) {
   const themeColor = useColor();
-  const { runTool, rejectTool } = useAppStore(
+  const isPlanMode = useContext(PlanModeContext);
+  const { runTool, rejectTool, currentMode } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
+      currentMode: state.currentMode,
     })),
   );
-  const unchained = useUnchained();
+  const isUnchained = currentMode === "unchained";
+  const noConfirm =
+    isUnchained ||
+    isPlanMode ||
+    (SKIP_CONFIRMATION as ReadonlyArray<string>).includes(toolReq.function.name);
 
   const prompt = (() => {
     const fn = toolReq.function;
@@ -614,7 +800,7 @@ function ToolRequestRenderer({
         return (
           <Box>
             <Text>Create file </Text>
-            <Text color={themeColor}>{fn.arguments.filePath}</Text>
+            <Text color={themeColor}>{displayPath(fn.arguments.filePath)}</Text>
             <Text>?</Text>
           </Box>
         );
@@ -625,7 +811,7 @@ function ToolRequestRenderer({
         return (
           <Box>
             <Text>Make these changes to </Text>
-            <Text color={themeColor}>{fn.arguments.filePath}</Text>
+            <Text color={themeColor}>{displayPath(fn.arguments.filePath)}</Text>
             <Text>?</Text>
           </Box>
         );
@@ -636,6 +822,7 @@ function ToolRequestRenderer({
       case "list":
       case "mcp":
       case "web-search":
+      default:
         return null;
     }
   })();
@@ -659,7 +846,6 @@ function ToolRequestRenderer({
     [toolReq, config, transport],
   );
 
-  const noConfirm = unchained || SKIP_CONFIRMATION.includes(toolReq.function.name);
   useEffect(() => {
     if (noConfirm) {
       runTool({ toolReq, config, transport });
@@ -684,9 +870,8 @@ function ToolRequestRenderer({
 const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
   const themeColor = useColor();
   const model = useModel();
-  const unchained = useUnchained();
 
-  if (item.type === "header") return <Header unchained={unchained} />;
+  if (item.type === "header") return <Header />;
   if (item.type === "version") {
     return (
       <Box marginTop={1} marginLeft={1} flexDirection="column">
@@ -834,6 +1019,20 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
     return <CompactionSummaryRenderer summary={item.summary} />;
   }
 
+  if (item.type === "plan-written") {
+    return (
+      <Box flexDirection="column" marginY={1}>
+        <Text color="green">✓ Plan written to {item.planFilePath}</Text>
+        <Box marginTop={1} borderStyle="round" borderColor="gray" padding={1}>
+          <Markdown markdown={item.content} />
+        </Box>
+        <Text color="gray" dimColor>
+          Press Ctrl+P and select "Exit plan mode and implement" when ready
+        </Text>
+      </Box>
+    );
+  }
+
   const _: "user" = item.type;
 
   return (
@@ -884,6 +1083,14 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    case "write-plan":
+      return (
+        <Box>
+          <Text color="gray">Octo updated the plan</Text>
+        </Box>
+      );
+    default:
+      return null;
   }
 }
 
@@ -943,7 +1150,7 @@ function ReadToolRenderer({ item }: { item: ToolSchemaFrom<typeof read> }) {
   return (
     <Box>
       <Text color="gray">{item.name}: </Text>
-      <Text color={themeColor}>{item.arguments.filePath}</Text>
+      <Text color={themeColor}>{displayPath(item.arguments.filePath)}</Text>
     </Box>
   );
 }
@@ -953,7 +1160,7 @@ function ListToolRenderer({ item }: { item: ToolSchemaFrom<typeof list> }) {
   return (
     <Box>
       <Text color="gray">{item.name}: </Text>
-      <Text color={themeColor}>{item?.arguments?.dirPath || process.cwd()}</Text>
+      <Text color={themeColor}>{displayPath(item?.arguments?.dirPath || process.cwd())}</Text>
     </Box>
   );
 }
@@ -964,7 +1171,7 @@ function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
     <Box flexDirection="column">
       <Box>
         <Text>Edit: </Text>
-        <Text color={themeColor}>{item.arguments.filePath}</Text>
+        <Text color={themeColor}>{displayPath(item.arguments.filePath)}</Text>
       </Box>
       <DiffEditRenderer filePath={item.arguments.filePath} item={item.arguments} />
     </Box>
@@ -1016,7 +1223,7 @@ function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> 
     <Box flexDirection="column" gap={1}>
       <Box>
         <Text>Octo wants to create </Text>
-        <Text color={themeColor}>{item.arguments.filePath}</Text>
+        <Text color={themeColor}>{displayPath(item.arguments.filePath)}</Text>
         <Text>:</Text>
       </Box>
       <Box>

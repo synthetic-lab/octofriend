@@ -47,3 +47,40 @@ export function errorToString(error: unknown): string {
   // Fallback for null/undefined/everything else
   return String(error);
 }
+
+/**
+ * Checks if an error indicates we're not in a git repository.
+ * Used when git commands fail due to missing .git directory.
+ */
+export function isGitNotRepositoryError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("not a git repository") || message.includes("Command failed");
+}
+
+/**
+ * Checks if an error is a file not found (ENOENT) error.
+ */
+export function isFileNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("ENOENT");
+}
+
+/**
+ * Checks if an error is a permission denied error (EACCES, EPERM, etc).
+ */
+export function isPermissionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("EACCES") ||
+    message.includes("EPERM") ||
+    message.includes("permission") ||
+    message.includes("Permission")
+  );
+}
+
+/**
+ * Checks if an error is an abort/cancellation error.
+ */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.message === "Aborted";
+}
