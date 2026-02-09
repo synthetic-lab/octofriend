@@ -1,4 +1,3 @@
-import * as fsOld from "fs";
 import React, {
   useState,
   useCallback,
@@ -67,6 +66,7 @@ import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import { readFileSync } from "fs";
 
 type Props = {
   config: Config;
@@ -913,12 +913,25 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
 
 function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
-  const file = fsOld.readFileSync(filePath, "utf8");
-  const lines = countLines(file);
+
+  let startLineNr = 1;
+  try {
+    const file = readFileSync(filePath, "utf8");
+    const lines = countLines(file);
+    startLineNr = lines + 1;
+  } catch {
+    return null;
+  }
+
+  const renderedFile = (
+    <FileRenderer contents={text} filePath={filePath} startLineNr={startLineNr} />
+  );
+  if (!renderedFile) return null;
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to add the following to the end of the file:</Text>
-      <FileRenderer contents={text} filePath={filePath} startLineNr={lines} />
+      {renderedFile}
     </Box>
   );
 }
@@ -991,14 +1004,11 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
 
 function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath } = item.arguments;
+
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer
-        oldText={fsOld.readFileSync(filePath, "utf8")}
-        newText={text}
-        filepath={filePath}
-      />
+      <DiffRenderer newText={text} filepath={filePath} />
     </Box>
   );
 }
