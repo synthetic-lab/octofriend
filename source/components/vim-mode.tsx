@@ -336,7 +336,14 @@ export function useVimKeyHandler(
         if (key.escape || (key.ctrl && input === "c")) {
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
-            newCursorPosition = cursorPosition - 1;
+            // Special case: if we're at the start of an empty line, stay there
+            // (empty line = only valid position is column 0)
+            const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+            const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+            const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+            if (!(cursorPosition === lineStart && currentLine.length === 0)) {
+              newCursorPosition = cursorPosition - 1;
+            }
           }
           if (insertStartStateRef.current !== null) {
             saveState(insertStartStateRef.current.text, insertStartStateRef.current.cursorPosition);
