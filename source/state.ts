@@ -1,3 +1,4 @@
+import { setMaxListeners } from "node:events";
 import { Config, useConfig, getModelFromConfig, assertKeyForModel } from "./config.ts";
 import {
   HistoryItem,
@@ -40,6 +41,7 @@ export type UiState = {
     | {
         mode: "tool-request";
         toolReq: ToolCallRequest;
+        toolReqs?: ToolCallRequest[]; // For parallel tool execution
       }
     | {
         mode: "error-recovery";
@@ -90,6 +92,7 @@ export type UiState = {
   lastUserPromptId: bigint | null;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
+  runTools: (args: RunArgs & { toolReqs: ToolCallRequest[] }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
   abortResponse: () => void;
   toggleMenu: () => void;
@@ -302,6 +305,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   runTool: async ({ config, toolReq, transport }) => {
     const modelOverride = get().modelOverride;
     const abortController = new AbortController();
+    setMaxListeners(0, abortController.signal);
     set({
       modeData: {
         mode: "tool-waiting",
@@ -344,9 +348,58 @@ export const useAppStore = create<UiState>((set, get) => ({
     await get()._runAgent({ config, transport });
   },
 
+  runTools: async ({ config, toolReqs, transport }) => {
+    const modelOverride = get().modelOverride;
+    const abortController = new AbortController();
+    setMaxListeners(0, abortController.signal);
+    set({
+      modeData: {
+        mode: "tool-waiting",
+        abortController,
+      },
+    });
+
+    const tools = await loadTools(transport, abortController.signal, config);
+
+    // Run all tools in parallel
+    const toolPromises = toolReqs.map(async toolReq => {
+      try {
+        const result = await runTool(
+          abortController.signal,
+          transport,
+          tools,
+          toolReq.function,
+          config,
+          modelOverride,
+        );
+        return {
+          type: "tool-output" as const,
+          id: sequenceId(),
+          result,
+          toolCallId: toolReq.toolCallId,
+        };
+      } catch (e) {
+        return await tryTransformToolError(abortController.signal, transport, toolReq, e);
+      }
+    });
+
+    // Wait for all tools to complete
+    const results = await Promise.all(toolPromises);
+
+    // Add all results to history
+    const history: HistoryItem[] = [...get().history, ...results];
+    set({ history });
+
+    if (get()._maybeHandleAbort(abortController.signal)) {
+      return;
+    }
+    await get()._runAgent({ config, transport });
+  },
+
   _runAgent: async ({ config, transport }) => {
     const historyCopy = [...get().history];
     const abortController = new AbortController();
+    setMaxListeners(0, abortController.signal);
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
@@ -485,6 +538,7 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: {
           mode: "tool-request",
           toolReq: finishReason.toolCall,
+          toolReqs: finishReason.toolCalls,
         },
       });
     } catch (e) {

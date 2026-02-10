@@ -36,6 +36,7 @@ export const SKIP_CONFIRMATION: Array<keyof LoadedTools> = [
   "fetch",
   "skill",
   "web-search",
+  "task", // Sub-agents run without confirmation
 ];
 
 export async function runTool(
@@ -56,7 +57,7 @@ export async function validateTool(
   loaded: Partial<LoadedTools>,
   tool: ToolCall,
   config: Config,
-): Promise<null> {
+): Promise<null | ToolError> {
   const toolDef = lookup(loaded, tool);
   return await toolDef.validate(abortSignal, transport, tool, config);
 }

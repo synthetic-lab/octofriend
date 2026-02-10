@@ -122,11 +122,14 @@ async function toLlmMessages(
 
 function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage {
   if (ir.role === "assistant") {
-    const { toolCall } = ir;
+    const { toolCall, toolCalls } = ir;
     const reasoning: { reasoning_content?: string } = {};
     if (ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
 
-    if (toolCall == null || prev?.role === "tool-malformed") {
+    // Handle multiple tool calls (parallel)
+    const allToolCalls = toolCalls || (toolCall ? [toolCall] : []);
+
+    if (allToolCalls.length === 0 || prev?.role === "tool-malformed") {
       return {
         ...reasoning,
         role: "assistant",
@@ -137,18 +140,14 @@ function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage
       ...reasoning,
       role: "assistant",
       content: ir.content,
-      tool_calls: [
-        {
-          type: "function",
-          function: {
-            name: toolCall.function.name,
-            arguments: toolCall.function.arguments
-              ? JSON.stringify(toolCall.function.arguments)
-              : "{}",
-          },
-          id: toolCall.toolCallId,
+      tool_calls: allToolCalls.map(tc => ({
+        type: "function",
+        function: {
+          name: tc.function.name,
+          arguments: tc.function.arguments ? JSON.stringify(tc.function.arguments) : "{}",
         },
-      ],
+        id: tc.toolCallId,
+      })),
     };
   }
   if (ir.role === "user") {
@@ -364,13 +363,12 @@ export const runAgent: Compiler = async ({
       },
     });
 
+    const currTools: ResponseToolCall[] = [];
     let currTool: Partial<ResponseToolCall> | null = null;
-    let doneParsingTools = false;
 
     try {
       for await (const chunk of res) {
         if (abortSignal.aborted) break;
-        if (doneParsingTools) break;
         if (chunk.usage) {
           usage.input = chunk.usage.prompt_tokens;
           usage.output = chunk.usage.completion_tokens;
@@ -406,6 +404,15 @@ export const runAgent: Compiler = async ({
               (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
               "tool",
             );
+            // If we see a new tool call ID, save the current one and start fresh
+            if (deltaCall.id && currTool != null && deltaCall.id !== currTool.id) {
+              // Save the completed tool
+              const validated = ResponseToolCallSchema.sliceResult(currTool);
+              if (!(validated instanceof t.Err)) {
+                currTools.push(validated);
+              }
+              currTool = null;
+            }
             if (currTool == null) {
               currTool = {
                 id: deltaCall.id,
@@ -415,10 +422,6 @@ export const runAgent: Compiler = async ({
                 },
               };
             } else {
-              if (deltaCall.id && deltaCall.id !== currTool.id) {
-                doneParsingTools = true;
-                break;
-              }
               if (deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
               if (deltaCall.function.arguments)
                 currTool.function!.arguments += deltaCall.function.arguments;
@@ -432,6 +435,14 @@ export const runAgent: Compiler = async ({
         // Fall through to return abbreviated response
       } else {
         throw e;
+      }
+    }
+
+    // Add the last in-progress tool to the array if it exists
+    if (currTool != null) {
+      const validated = ResponseToolCallSchema.sliceResult(currTool);
+      if (!(validated instanceof t.Err)) {
+        currTools.push(validated);
       }
     }
 
@@ -460,50 +471,40 @@ export const runAgent: Compiler = async ({
     // If aborted, don't try to parse tool calls - just return the assistant response
     if (abortSignal.aborted) return { success: true, output: [assistantIr], curl };
 
-    // If no tool call, we're done
-    if (currTool == null) return { success: true, output: [assistantIr], curl };
+    // If no tool calls, we're done
+    if (currTools.length === 0) return { success: true, output: [assistantIr], curl };
 
-    // Got this far? Parse out the tool call
-    const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
-    if (validatedTool instanceof t.Err) {
-      const toolCallId = currTool["id"];
-      if (toolCallId == null) throw new Error("Impossible tool call: no id given");
+    // Parse all tool calls
+    const parsedTools: ToolCallRequest[] = [];
+    const malformedTools: any[] = [];
+
+    for (const validatedTool of currTools) {
+      const parseResult = await parseTool(validatedTool, toolDefs, autofixJson, abortSignal);
+
+      if (parseResult.status === "error") {
+        malformedTools.push({
+          role: "tool-malformed" as const,
+          error: parseResult.message,
+          toolName: validatedTool.function.name,
+          arguments: validatedTool.function.arguments,
+          toolCallId: validatedTool.id,
+        });
+      } else {
+        parsedTools.push(parseResult.tool);
+      }
+    }
+
+    // If there are malformed tools, return them as errors
+    if (malformedTools.length > 0) {
       return {
         success: true,
         curl,
-        output: [
-          assistantIr,
-          {
-            role: "tool-malformed",
-            error: validatedTool.message,
-            toolCallId,
-            toolName: currTool.function?.name,
-            arguments: currTool.function?.arguments,
-          },
-        ],
+        output: [assistantIr, ...malformedTools],
       };
     }
 
-    const parseResult = await parseTool(validatedTool, toolDefs, autofixJson, abortSignal);
-
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantIr,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: validatedTool.function.name,
-            arguments: validatedTool.function.arguments,
-            toolCallId: validatedTool.id,
-          },
-        ],
-      };
-    }
-
-    assistantIr.toolCall = parseResult.tool;
+    // Set all parsed tool calls
+    assistantIr.toolCalls = parsedTools;
     return { success: true, output: [assistantIr], curl };
   });
 };

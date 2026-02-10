@@ -42,7 +42,7 @@ function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
 function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || (ir.toolCall ? [ir.toolCall] : []);
     return {
       role: "assistant",
       content: [
@@ -180,7 +180,6 @@ function generateCurlFrom(params: {
     tools,
     tool_choice: {
       type: "auto",
-      disable_parallel_tool_use: true,
     },
     max_tokens: maxTokens,
     stream: true,
@@ -274,7 +273,6 @@ export const runAnthropicAgent: Compiler = async ({
       ...toolParams,
       tool_choice: {
         type: "auto",
-        disable_parallel_tool_use: true,
       },
       max_tokens: maxTokens,
       ...thinking,
@@ -299,14 +297,12 @@ export const runAnthropicAgent: Compiler = async ({
           data: string;
         }
     > = [];
-    let inProgressTool:
-      | {
-          id: string;
-          index: number;
-          name: string;
-          partialJson: string;
-        }
-      | undefined = undefined;
+    const inProgressTools: Array<{
+      id: string;
+      index: number;
+      name: string;
+      partialJson: string;
+    }> = [];
 
     // Handle streaming chunks
     for await (const chunk of result) {
@@ -362,26 +358,26 @@ export const runAnthropicAgent: Compiler = async ({
                 }
               }
               break;
-            case "input_json_delta":
-              if (inProgressTool != null && inProgressTool.index === chunk.index) {
+            case "input_json_delta": {
+              const tool = inProgressTools.find(t => t.index === chunk.index);
+              if (tool != null) {
                 onTokens(chunk.delta.partial_json, "tool");
-                inProgressTool.partialJson += chunk.delta.partial_json;
+                tool.partialJson += chunk.delta.partial_json;
               }
               break;
+            }
           }
           break;
         case "content_block_start":
           switch (chunk.content_block.type) {
             case "tool_use":
               onTokens(chunk.content_block.name, "tool");
-              if (inProgressTool == null) {
-                inProgressTool = {
-                  id: chunk.content_block.id,
-                  index: chunk.index,
-                  name: chunk.content_block.name,
-                  partialJson: "",
-                };
-              }
+              inProgressTools.push({
+                id: chunk.content_block.id,
+                index: chunk.index,
+                name: chunk.content_block.name,
+                partialJson: "",
+              });
               break;
             case "redacted_thinking":
               thinkingBlocks.push({
@@ -450,36 +446,41 @@ export const runAnthropicAgent: Compiler = async ({
     }
 
     // No tools? Return
-    if (inProgressTool == null) {
+    if (inProgressTools.length === 0) {
       return { success: true, output: [assistantMessage], curl };
     }
 
-    // Get tool calls
-    const chatToolCall = {
-      toolCallId: inProgressTool.id,
-      toolName: inProgressTool.name,
-      args: inProgressTool.partialJson,
-    };
-    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
-
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantMessage,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: inProgressTool.name,
-            arguments: inProgressTool.partialJson,
-            toolCallId: inProgressTool.id,
-          },
-        ],
+    // Parse all tool calls
+    const parsedTools: ToolCallRequest[] = [];
+    for (const tool of inProgressTools) {
+      const chatToolCall = {
+        toolCallId: tool.id,
+        toolName: tool.name,
+        args: tool.partialJson,
       };
+      const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
+
+      if (parseResult.status === "error") {
+        return {
+          success: true,
+          curl,
+          output: [
+            assistantMessage,
+            {
+              role: "tool-malformed",
+              error: parseResult.message,
+              toolName: tool.name,
+              arguments: tool.partialJson,
+              toolCallId: tool.id,
+            },
+          ],
+        };
+      }
+
+      parsedTools.push(parseResult.tool);
     }
 
-    assistantMessage.toolCall = parseResult.tool;
+    assistantMessage.toolCalls = parsedTools;
     return { success: true, output: [assistantMessage], curl };
   } catch (e) {
     return {

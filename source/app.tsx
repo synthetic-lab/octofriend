@@ -10,6 +10,8 @@ import React, {
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { InputWithHistory } from "./components/input-with-history.tsx";
+import { TaskList, TaskStatusIndicator, TaskNotifications } from "./components/task-list.tsx";
+import { useTaskStore, useTaskStoreShallow } from "./task-manager.ts";
 import { t } from "structural";
 import {
   Config,
@@ -182,6 +184,8 @@ export default function App({
               <ExitOnDoubleCtrlC>
                 <TerminalSizeTracker>
                   <Box flexDirection="column" width="100%" height="100%">
+                    <TaskList />
+                    <TaskNotifications />
                     <Static items={staticItems} key={clearNonce}>
                       {(item, index) => <StaticItemRenderer item={item} key={`static-${index}`} />}
                     </Static>
@@ -271,7 +275,11 @@ function BottomBar({
             </Text>
           )}
         </Box>
-        <Text color={themeColor}>{versionCheck}</Text>
+        <Box height={1} gap={1}>
+          <TaskStatusIndicator />
+          <Text dimColor>(Ctrl+T for tasks)</Text>
+          <Text color={themeColor}>{versionCheck}</Text>
+        </Box>
       </Box>
       <Box minHeight={1}>
         {displayedTempNotification && (
@@ -338,11 +346,34 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setQuery("");
   });
 
+  // Task list keyboard shortcut
+  const { toggleTaskList, closeTaskList, cancelAllRunningTasks, showTaskList } =
+    useTaskStoreShallow(state => ({
+      toggleTaskList: state.toggleTaskList,
+      closeTaskList: state.closeTaskList,
+      cancelAllRunningTasks: state.cancelAllRunningTasks,
+      showTaskList: state.showTaskList,
+    }));
+
   useInput((input, key) => {
+    // Task list toggle (Ctrl+T) - always works to toggle
+    if (key.ctrl && input === "t") {
+      toggleTaskList();
+      return;
+    }
+
     if (key.escape) {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
       if (vimEnabled && vimMode === "INSERT" && modeData.mode === "input") {
         setVimMode("NORMAL");
+        return;
+      }
+
+      // If task list is showing, close it AND abort/cancel sub-agents
+      if (showTaskList) {
+        closeTaskList();
+        cancelAllRunningTasks(); // Mark all tasks as cancelled
+        abortResponse(); // Abort the LLM response
         return;
       }
 
@@ -421,6 +452,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   }
 
   if (modeData.mode === "tool-request") {
+    // Check if there are multiple tool requests for parallel execution
+    if (modeData.toolReqs && modeData.toolReqs.length > 1) {
+      return (
+        <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
+      );
+    }
     return <ToolRequestRenderer toolReq={modeData.toolReq} config={config} transport={transport} />;
   }
 
@@ -645,6 +682,8 @@ function ToolRequestRenderer({
       case "mcp":
       case "web-search":
         return null;
+      default:
+        return null;
     }
   })();
 
@@ -685,6 +724,37 @@ function ToolRequestRenderer({
         indicatorComponent={IndicatorComponent}
         itemComponent={ItemComponent}
       />
+    </Box>
+  );
+}
+
+// Renderer for multiple parallel tool requests (e.g., multiple sub-agents)
+function ToolRequestsRenderer({
+  toolReqs,
+  config,
+  transport,
+}: {
+  toolReqs: ToolCallRequest[];
+} & RunArgs) {
+  const { runTools } = useAppStore(
+    useShallow(state => ({
+      runTools: state.runTools,
+    })),
+  );
+
+  useEffect(() => {
+    // Auto-run all tools in parallel (no confirmation needed for parallel tasks)
+    runTools({ toolReqs, config, transport });
+  }, []);
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <Text color="gray">Running {toolReqs.length} tasks in parallel...</Text>
+      {toolReqs.map((req, i) => (
+        <Text key={req.toolCallId} dimColor>
+          {i + 1}. {req.function.name}
+        </Text>
+      ))}
     </Box>
   );
 }
@@ -892,6 +962,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    default:
+      return null;
   }
 }
 
