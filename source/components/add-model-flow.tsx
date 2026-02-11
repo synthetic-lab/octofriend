@@ -19,6 +19,7 @@ type ValidationResult = { valid: true } | { valid: false; error: string };
 type AddModelStep<T> = {
   title: string;
   prompt: string;
+  defaultValue?: string;
   parse: (val: string) => T;
   validate: (val: string) => ValidationResult;
   onSubmit: (t: T) => any;
@@ -63,12 +64,14 @@ type FullFlowRouteData = {
     baseUrl: string;
     auth?: Auth;
     model: string;
+    metadata: ModelMetadata;
   }>;
   context: ModelStepRoute<{
     baseUrl: string;
     auth?: Auth;
     model: string;
     nickname: string;
+    metadata: ModelMetadata;
   }>;
 };
 
@@ -329,7 +332,7 @@ function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 function TestConnection(
   props: FullFlowRouteData["testConnection"] & {
     errorNav: () => any;
-  } & Transitions<void>,
+  } & Transitions<ModelMetadata>,
 ) {
   const { setErrorMessage } = useContext(errorContext);
   useEffect(() => {
@@ -338,9 +341,9 @@ function TestConnection(
       auth: props.auth,
       baseUrl: props.baseUrl,
       config: props.config,
-    }).then(valid => {
-      if (valid) {
-        props.onSubmit();
+    }).then(result => {
+      if (result.valid) {
+        props.onSubmit(result.metadata);
         return;
       }
       setErrorMessage("Connection failed.");
@@ -364,11 +367,13 @@ function TestConnection(
 const nickname = fullFlow
   .withRoutes("nickname", "model", "context")
   .build("nickname", router => props => {
+    const defaultNickname = props.metadata.name?.split("/").pop()?.replace(/-/g, " ") || "";
     return (
       <Back go={() => router.model(props)}>
         <Step<string>
           title="Let's give this model a nickname so we can easily reference it later."
           prompt="Nickname:"
+          defaultValue={defaultNickname}
           parse={val => val}
           validate={() => ({ valid: true })}
           onSubmit={nickname => router.context({ ...props, nickname })}
@@ -385,14 +390,22 @@ const nickname = fullFlow
     );
   });
 
+function formatContextTokens(tokens: number): string {
+  const halfTokens = Math.floor(tokens / 2);
+  const kValue = Math.floor(halfTokens / 1024);
+  return `${kValue}k`;
+}
+
 function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>, "back">) {
   const color = useColor();
-  const { baseUrl, auth, model, nickname, done } = props;
+  const { baseUrl, auth, model, nickname, done, metadata } = props;
+  const defaultContext = metadata.contextLength ? formatContextTokens(metadata.contextLength) : "";
   return (
     <Back go={props.back}>
       <Step<number>
         title="What's the maximum number of tokens Octo should use per request?"
         prompt="Maximum tokens:"
+        defaultValue={defaultContext}
         parse={val => {
           return parseInt(val.replace("k", ""), 10) * 1024;
         }}
@@ -467,7 +480,7 @@ const fullFlowRoutes = fullFlow.route({
         {...props}
         back={() => to.model(props)}
         errorNav={() => to.baseUrl(props)}
-        onSubmit={() => to.nickname(props)}
+        onSubmit={metadata => to.nickname({ ...props, metadata })}
       />
     );
   },
@@ -524,7 +537,7 @@ const customModelFlowRoutes = customModelFlow.route({
         {...props}
         back={() => to.model(props)}
         errorNav={() => to.model(props)}
-        onSubmit={() => to.nickname(props)}
+        onSubmit={metadata => to.nickname({ ...props, metadata })}
       />
     );
   },
@@ -661,7 +674,7 @@ const customAutofixRoutes = customAutofixFlow.route({
         {...props}
         back={() => to.model(props)}
         errorNav={() => to.model(props)}
-        onSubmit={() => to.context({ ...props, nickname: "custom-autofix" })}
+        onSubmit={metadata => to.context({ ...props, nickname: "custom-autofix", metadata })}
       />
     );
   },
@@ -698,7 +711,7 @@ export function CustomAutofixFlow({
 
 function Step<T>(props: AddModelStep<T>) {
   const { errorMessage, setErrorMessage } = useContext(errorContext);
-  const [varValue, setVarValue] = useState("");
+  const [varValue, setVarValue] = useState(props.defaultValue || "");
   const themeColor = useColor();
 
   const onValueChange = useCallback((value: string) => {
@@ -750,13 +763,26 @@ function Step<T>(props: AddModelStep<T>) {
   );
 }
 
+type ModelMetadata = {
+  name?: string;
+  contextLength?: number;
+};
+
+type TestConnectionResult = { valid: true; metadata: ModelMetadata } | { valid: false };
+
 type MinConnectArgs = {
   model: string;
   auth?: Auth;
   baseUrl: string;
   config: Config | null;
 };
-async function testConnection({ model, auth, baseUrl, config }: MinConnectArgs) {
+
+async function testConnection({
+  model,
+  auth,
+  baseUrl,
+  config,
+}: MinConnectArgs): Promise<TestConnectionResult> {
   try {
     const apiKey = await assertKeyForModel({ baseUrl, auth }, config);
     const client = new OpenAI({
@@ -764,7 +790,7 @@ async function testConnection({ model, auth, baseUrl, config }: MinConnectArgs) 
       apiKey,
     });
 
-    const response = await client.chat.completions.create({
+    const testPromise = client.chat.completions.create({
       model,
       messages: [
         {
@@ -774,14 +800,63 @@ async function testConnection({ model, auth, baseUrl, config }: MinConnectArgs) 
       ],
     });
 
+    const metadataPromise = fetchModelMetadata(baseUrl, apiKey, model);
+
+    const [response, metadata] = await Promise.all([testPromise, metadataPromise]);
+
     if (response.usage) {
       trackTokens(model, "input", response.usage.prompt_tokens);
       trackTokens(model, "output", response.usage.completion_tokens);
     }
 
-    return true;
+    return { valid: true, metadata };
   } catch (e) {
     logger.error("verbose", e);
-    return false;
+    return { valid: false };
+  }
+}
+
+async function fetchModelMetadata(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+): Promise<ModelMetadata> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return {};
+    }
+
+    const data = await response.json();
+    const models = data.data || data;
+
+    if (!Array.isArray(models)) {
+      return {};
+    }
+
+    const modelInfo = models.find((m: { id?: string }) => m.id === model);
+    if (!modelInfo) {
+      return {};
+    }
+
+    return {
+      name: modelInfo.name,
+      contextLength: modelInfo.context_length,
+    };
+  } catch {
+    clearTimeout(timeoutId);
+    return {};
   }
 }
