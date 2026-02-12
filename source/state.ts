@@ -88,6 +88,7 @@ export type UiState = {
   history: Array<HistoryItem>;
   clearNonce: number;
   lastUserPromptId: bigint | null;
+  whitelist: Set<string>;
   input: (args: RunArgs & { query: string }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
@@ -105,9 +106,11 @@ export type UiState = {
   ) => Promise<void>;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
+  addToWhitelist: (whitelistKey: string) => Promise<void>;
+  isWhitelisted: (whitelistKey: string) => Promise<boolean>;
+  clearHistory: () => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   _runAgent: (args: RunArgs) => Promise<void>;
-  clearHistory: () => void;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -122,6 +125,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptId: null,
+  whitelist: new Set<string>(),
 
   input: async ({ config, query, transport }) => {
     const userMessage: UserItem = {
@@ -297,6 +301,17 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
     }));
+  },
+
+  addToWhitelist: async (whitelistKey: string) => {
+    const currentWhitelist = get().whitelist;
+    const newWhitelist = new Set(currentWhitelist);
+    newWhitelist.add(whitelistKey);
+    set({ whitelist: newWhitelist });
+  },
+
+  isWhitelisted: async (whitelistKey: string) => {
+    return get().whitelist.has(whitelistKey);
   },
 
   runTool: async ({ config, toolReq, transport }) => {
