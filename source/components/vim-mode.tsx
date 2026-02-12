@@ -4,6 +4,15 @@ import type { Key } from "ink";
 import { useColor } from "../theme.ts";
 
 const isWhitespace = (char: string): boolean => /\s/.test(char);
+const isNewline = (char: string): boolean => char === "\n";
+
+const trimNewlinesFromEnd = (text: string, start: number, end: number): number => {
+  let trimmedEnd = end;
+  for (; trimmedEnd > start; trimmedEnd--) {
+    if (!isNewline(text[trimmedEnd - 1])) break;
+  }
+  return trimmedEnd;
+};
 
 const clampToVimBounds = (pos: number, textLength: number): number => {
   return Math.min(Math.max(0, pos), Math.max(0, textLength - 1));
@@ -55,11 +64,48 @@ const getLineStart = (text: string, lineIndex: number): number => {
   return position;
 };
 
+const getLineEnd = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lines = text.split("\n");
+  const lineLength = lines[lineIndex]?.length || 0;
+  return lineStart + Math.max(0, lineLength - 1);
+};
+
+const getLineText = (text: string, lineIndex: number): string => {
+  const lines = text.split("\n");
+  return lines[lineIndex] || "";
+};
+
+const getLineInsertEnd = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lineLength = getLineText(text, lineIndex).length;
+  return lineStart + lineLength;
+};
+
+const getTargetPosition = (text: string, lineIndex: number, columnIndex: number): number => {
+  const line = getLineText(text, lineIndex);
+  const targetCol = line.length === 0 ? 0 : Math.min(columnIndex, line.length - 1);
+  return getLineStart(text, lineIndex) + targetCol;
+};
+
+const getFirstNonWhitespacePosition = (text: string, lineIndex: number): number => {
+  const lineStart = getLineStart(text, lineIndex);
+  const lineEnd = getLineInsertEnd(text, lineIndex);
+
+  let position = lineStart;
+
+  while (position < lineEnd && isWhitespace(text[position])) {
+    position++;
+  }
+
+  return position;
+};
+
 const getLineRange = (text: string, cursorPosition: number): { start: number; end: number } => {
   const currentLineInfo = getLineInfo(text, cursorPosition);
   const start = getLineStart(text, currentLineInfo.lineIndex);
   const lines = text.split("\n");
-  const line = lines[currentLineInfo.lineIndex];
+  const line = getLineText(text, currentLineInfo.lineIndex);
   let end = start + line.length;
   if (currentLineInfo.lineIndex < lines.length - 1) {
     end += 1; // Include the newline character
@@ -161,29 +207,34 @@ const motions: Record<string, Motion> = {
     const vimEndPos = Math.max(0, endPos - 1);
     return { start: cursorPosition, end: vimEndPos + 1 };
   },
-  "0": (_, cursorPosition) => {
-    return { start: cursorPosition, end: 0 };
+  "0": (text, cursorPosition) => {
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    const lineStart = getLineStart(text, currentLineInfo.lineIndex);
+    return { start: lineStart, end: cursorPosition };
   },
   $: (text, cursorPosition) => {
-    const lastCharPos = Math.max(0, text.length - 1);
-    return { start: cursorPosition, end: lastCharPos + 1 };
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    const lineEnd = getLineEnd(text, currentLineInfo.lineIndex);
+    return { start: cursorPosition, end: lineEnd + 1 };
   },
   "^": (text, cursorPosition) => {
-    let newCursorPosition = 0;
-    const textLength = text.length;
-
-    while (newCursorPosition < textLength && isWhitespace(text[newCursorPosition])) {
-      newCursorPosition++;
-    }
-
-    return { start: cursorPosition, end: newCursorPosition };
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    const position = getFirstNonWhitespacePosition(text, currentLineInfo.lineIndex);
+    return { start: cursorPosition, end: position };
   },
 };
 
 const operators: Record<string, Operator> = {
-  d: (text, { start, end }) => {
-    const actualEnd = Math.min(end, text.length);
+  d: (text, { start, end }, motionChar) => {
+    let actualEnd = Math.min(end, text.length);
     const actualStart = Math.min(start, actualEnd);
+
+    // Don't delete newlines at the end of the range for motion-based deletions (de, d$, etc.)
+    // But do delete newlines for line-based deletions (dd)
+    if (motionChar !== "d") {
+      actualEnd = trimNewlinesFromEnd(text, actualStart, actualEnd);
+    }
+
     const newText = text.slice(0, actualStart) + text.slice(actualEnd);
     let newCursorPosition = actualStart;
     if (newText.length === 0) {
@@ -191,6 +242,21 @@ const operators: Record<string, Operator> = {
     } else if (newCursorPosition >= newText.length) {
       newCursorPosition = newText.length - 1;
     }
+
+    // Don't leave the cursor on a newline character (unless it's line deletion)
+    // Also skip this if the cursor is on an empty line (newline is the only valid position)
+    if (motionChar !== "d") {
+      const cursorLineInfo = getLineInfo(newText, newCursorPosition);
+      const cursorLine = getLineText(newText, cursorLineInfo.lineIndex);
+      while (
+        newCursorPosition > 0 &&
+        isNewline(newText[newCursorPosition]) &&
+        cursorLine.length > 0
+      ) {
+        newCursorPosition--;
+      }
+    }
+
     return { newText, newCursorPosition };
   },
   c: (text, { start, end }, motionChar) => {
@@ -270,7 +336,14 @@ export function useVimKeyHandler(
         if (key.escape || (key.ctrl && input === "c")) {
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
-            newCursorPosition = cursorPosition - 1;
+            // Special case: if we're at the start of an empty line, stay there
+            // (empty line = only valid position is column 0)
+            const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+            const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+            const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+            if (!(cursorPosition === lineStart && currentLine.length === 0)) {
+              newCursorPosition = cursorPosition - 1;
+            }
           }
           if (insertStartStateRef.current !== null) {
             saveState(insertStartStateRef.current.text, insertStartStateRef.current.cursorPosition);
@@ -399,31 +472,46 @@ export function useVimKeyHandler(
           return { consumed: true };
         },
         a: () => {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+
+          // If the line is empty (just a newline), "a" should behave like "i"
+          if (currentLine.length === 0) {
+            enterInsertMode(currentValue, cursorPosition);
+            return { consumed: true };
+          }
+
           const newCursorPosition = Math.min(valueLength, cursorPosition + 1);
           enterInsertMode(currentValue, cursorPosition);
           return { consumed: true, newCursorPosition };
         },
         h: () => {
-          if (cursorPosition > 0) {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          if (cursorPosition > lineStart) {
             return vimCommandResult(cursorPosition - 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
         },
         l: () => {
-          if (cursorPosition < valueLength - 1) {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
+
+          if (cursorPosition < lineEnd) {
             return vimCommandResult(cursorPosition + 1, valueLength);
           }
           return vimCommandResult(cursorPosition, valueLength);
         },
         k: () => {
-          const lines = currentValue.split("\n");
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
 
           if (currentLineInfo.lineIndex > 0) {
             const targetLineIndex = currentLineInfo.lineIndex - 1;
-            const targetLine = lines[targetLineIndex];
-            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
-            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            const newCursorPosition = getTargetPosition(
+              currentValue,
+              targetLineIndex,
+              currentLineInfo.columnIndex,
+            );
             return vimCommandResult(newCursorPosition, valueLength);
           }
 
@@ -435,9 +523,11 @@ export function useVimKeyHandler(
 
           if (currentLineInfo.lineIndex < lines.length - 1) {
             const targetLineIndex = currentLineInfo.lineIndex + 1;
-            const targetLine = lines[targetLineIndex];
-            const targetCol = Math.min(currentLineInfo.columnIndex, targetLine.length);
-            const newCursorPosition = getLineStart(currentValue, targetLineIndex) + targetCol;
+            const newCursorPosition = getTargetPosition(
+              currentValue,
+              targetLineIndex,
+              currentLineInfo.columnIndex,
+            );
             return vimCommandResult(newCursorPosition, valueLength);
           }
 
@@ -575,32 +665,47 @@ export function useVimKeyHandler(
           return vimCommandResult(vimPos, valueLength);
         },
         "0": () => {
-          return { consumed: true, newCursorPosition: 0 };
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+          return { consumed: true, newCursorPosition: lineStart };
         },
         $: () => {
-          const lastCharPos = Math.max(0, valueLength - 1);
-          return { consumed: true, newCursorPosition: lastCharPos };
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
+          return { consumed: true, newCursorPosition: lineEnd };
         },
         "^": () => {
-          let newCursorPosition = 0;
-
-          while (newCursorPosition < valueLength && isWhitespace(currentValue[newCursorPosition])) {
-            newCursorPosition++;
-          }
-
-          return { consumed: true, newCursorPosition };
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const position = getFirstNonWhitespacePosition(currentValue, currentLineInfo.lineIndex);
+          return { consumed: true, newCursorPosition: position };
         },
         I: () => {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const position = getFirstNonWhitespacePosition(currentValue, currentLineInfo.lineIndex);
           enterInsertMode(currentValue, cursorPosition);
-          return { consumed: true, newCursorPosition: 0 };
+          return { consumed: true, newCursorPosition: position };
         },
         A: () => {
           const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-          const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-          const lines = currentValue.split("\n");
-          const currentLine = lines[currentLineInfo.lineIndex];
           enterInsertMode(currentValue, cursorPosition);
-          return { consumed: true, newCursorPosition: lineStart + currentLine.length };
+          return {
+            consumed: true,
+            newCursorPosition: getLineInsertEnd(currentValue, currentLineInfo.lineIndex),
+          };
+        },
+        D: () => {
+          saveState(currentValue, cursorPosition);
+          const range = motions["$"](currentValue, cursorPosition);
+          const result = operators["d"](currentValue, range, "$");
+
+          return {
+            consumed: true,
+            newValue: result.newText,
+            newCursorPosition: clampToVimBounds(
+              result.newCursorPosition ?? cursorPosition,
+              result.newText.length,
+            ),
+          };
         },
       };
 
