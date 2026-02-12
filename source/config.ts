@@ -51,6 +51,7 @@ const ModelConfigSchema = t.exact({
   model: t.str,
   context: t.num,
   reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
+  multimodal: t.optional(t.bool),
 });
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 

@@ -3,20 +3,27 @@ import { Box, Text, useInput } from "ink";
 import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
+import { ImageInfo } from "../utils/image-utils.ts";
 
 interface Props {
+  attachedImages: ImageInfo[];
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
+  onImagePathsAttached?: (imagePaths: string[]) => any;
+  onRemoveLastImage?: () => any;
   onSubmit: () => any;
+  isLoadingImage?: boolean;
   vimEnabled?: boolean;
   vimMode?: "NORMAL" | "INSERT";
   setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  multimodal?: boolean;
 }
 
 export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
+
   const [originalInput, setOriginalInput] = useState("");
 
   useInput((input, key) => {
@@ -88,12 +95,17 @@ export const InputWithHistory = React.memo((props: Props) => {
     >
       <Text color="gray">&gt;</Text>
       <TextInput
+        attachedImages={props.attachedImages}
+        isLoadingImage={props.isLoadingImage}
         value={props.value}
         onChange={handleChange}
+        onRemoveLastImage={props.onRemoveLastImage}
+        onImagePathsAttached={props.onImagePathsAttached}
         onSubmit={handleSubmit}
         vimEnabled={props.vimEnabled}
         vimMode={props.vimMode}
         setVimMode={props.setVimMode}
+        multimodal={props.multimodal}
       />
     </Box>
   );

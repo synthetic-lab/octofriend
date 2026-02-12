@@ -6,6 +6,7 @@ import {
   CompactionCheckpointItem,
   sequenceId,
 } from "./history.ts";
+import { ImageInfo } from "./utils/image-utils.ts";
 import { runTool, ToolError } from "./tools/index.ts";
 import { create } from "zustand";
 import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
@@ -89,7 +90,7 @@ export type UiState = {
   clearNonce: number;
   lastUserPromptId: bigint | null;
   whitelist: Set<string>;
-  input: (args: RunArgs & { query: string }) => Promise<void>;
+  input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCallId: string) => void;
   abortResponse: () => void;
@@ -127,11 +128,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   lastUserPromptId: null,
   whitelist: new Set<string>(),
 
-  input: async ({ config, query, transport }) => {
+  input: async ({ config, query, transport, images }) => {
     const userMessage: UserItem = {
       type: "user",
       id: sequenceId(),
       content: query,
+      images: images && images.length > 0 ? images.map(img => img.dataUrl) : undefined,
     };
 
     let history = [...get().history, userMessage];

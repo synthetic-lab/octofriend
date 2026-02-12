@@ -70,6 +70,7 @@ export type AssistantItem = SequenceIdTagged<{
 export type UserItem = SequenceIdTagged<{
   type: "user";
   content: string;
+  images?: string[];
 }>;
 
 export type RequestFailed = SequenceIdTagged<{

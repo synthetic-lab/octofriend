@@ -3,6 +3,7 @@ import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { countIRTokens } from "../ir/count-ir-tokens.ts";
 import { AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData } from "../ir/llm-ir.ts";
+import { getMimeTypeFromDataUrl, extractBase64FromDataUrl } from "../utils/image-utils.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -61,6 +62,22 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessagePara
   }
 
   if (ir.role === "user") {
+    if (ir.images && ir.images.length > 0) {
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: ir.content },
+          ...ir.images.map(dataUrl => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: getMimeTypeFromDataUrl(dataUrl) || "image/png",
+              data: extractBase64FromDataUrl(dataUrl),
+            },
+          })),
+        ],
+      };
+    }
     return {
       role: "user",
       content: ir.content,

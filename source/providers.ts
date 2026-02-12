@@ -11,6 +11,7 @@ export type ProviderConfig = {
     nickname: string;
     context: number;
     reasoning?: "low" | "medium" | "high";
+    multimodal?: boolean;
   }>;
   testModel: string;
 };
@@ -23,6 +24,12 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
+        model: "hf:nvidia/Kimi-K2.5-NVFP4",
+        nickname: "Kimi K2.5 NVFP4",
+        context: 256 * 1024,
+        multimodal: true,
+      },
+      {
         model: "hf:zai-org/GLM-4.7",
         nickname: "GLM-4.7",
         context: 198 * 1024,
@@ -31,6 +38,7 @@ export const PROVIDERS = {
         model: "hf:moonshotai/Kimi-K2.5",
         nickname: "Kimi K2.5",
         context: 256 * 1024,
+        multimodal: true,
       },
       {
         model: "hf:MiniMaxAI/MiniMax-M2.1",

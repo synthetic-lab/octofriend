@@ -18,9 +18,20 @@ import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 
+export type Content =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | {
+          type: "image_url";
+          image_url: {
+            url: string;
+          };
+        }
+    >;
 export type UserMessage = {
   role: "user";
-  content: string;
+  content: Content;
 };
 
 export type AssistantMessage = {
@@ -152,7 +163,19 @@ function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage
     };
   }
   if (ir.role === "user") {
-    return ir;
+    if (ir.images && ir.images.length > 0) {
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: ir.content },
+          ...ir.images.map(url => ({
+            type: "image_url" as const,
+            image_url: { url },
+          })),
+        ],
+      };
+    }
+    return { role: "user", content: ir.content };
   }
 
   if (ir.role === "tool-output") {

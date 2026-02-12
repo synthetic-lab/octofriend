@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
-import { InputWithHistory } from "./components/input-with-history.tsx";
 import { t } from "structural";
 import {
   Config,
@@ -59,6 +58,8 @@ import {
   useCtrlCPressed,
 } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
+import { MultimediaInput } from "./components/multimedia-input.tsx";
+import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
@@ -311,6 +312,7 @@ async function getLatestVersion() {
 
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
+  const model = useModel();
   const transport = useContext(TransportContext);
   const vimEnabled = !!config.vimEmulation?.enabled;
   const {
@@ -363,10 +365,13 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
   const color = useColor();
 
-  const onSubmit = useCallback(async () => {
-    setQuery("");
-    await input({ query, config, transport });
-  }, [query, config, transport, setQuery]);
+  const onSubmit = useCallback(
+    async (text: string, images: ImageInfo[]) => {
+      setQuery("");
+      await input({ query: text, config, transport, images });
+    },
+    [query, config, transport, setQuery],
+  );
 
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (
@@ -438,7 +443,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       <Box marginLeft={1} justifyContent="flex-end">
         <Text color="gray">(Ctrl+p to enter the menu)</Text>
       </Box>
-      <InputWithHistory
+      <MultimediaInput
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}
@@ -446,6 +451,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         vimEnabled={vimEnabled}
         vimMode={vimMode}
         setVimMode={setVimMode}
+        multimodal={model.multimodal}
       />
       <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
     </Box>
@@ -937,11 +943,20 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   const _: "user" = item.type;
 
   return (
-    <Box marginY={1}>
-      <Box marginRight={1}>
-        <Text color="white">▶</Text>
+    <Box marginY={1} flexDirection="column">
+      <Box>
+        <Box marginRight={1}>
+          <Text color="white">▶</Text>
+        </Box>
+        {item.images && item.images.length > 0 && (
+          <Box marginRight={1}>
+            <Text inverse>
+              ⟦ 📎 {item.images.length} image{item.images.length > 1 ? "s" : ""} attached ⟧
+            </Text>
+          </Box>
+        )}
+        <Text>{item.content}</Text>
       </Box>
-      <Text>{item.content}</Text>
     </Box>
   );
 });

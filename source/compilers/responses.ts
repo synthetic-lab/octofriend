@@ -105,6 +105,18 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
   }
 
   if (ir.role === "user") {
+    if (ir.images && ir.images.length > 0) {
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: ir.content },
+          ...ir.images.map(dataUrl => ({
+            type: "image" as const,
+            image: dataUrl,
+          })),
+        ],
+      };
+    }
     return {
       role: "user",
       content: ir.content,

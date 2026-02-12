@@ -37,6 +37,7 @@ export type AssistantMessage = {
 export type UserMessage = {
   role: "user";
   content: string;
+  images?: string[];
 };
 
 export type ToolOutputMessage = {

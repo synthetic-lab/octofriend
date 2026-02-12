@@ -359,6 +359,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     {
       role: "user",
       content: item.content,
+      images: item.images,
     },
   ];
 }

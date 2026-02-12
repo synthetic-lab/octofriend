@@ -9,13 +9,30 @@ export type WrapResult = {
 /**
  * Hard-wrap text at word boundaries, preserving existing newlines.
  * Returns wrapped text and position mapping for cursor tracking.
+ *
+ * optional param: firstLineWidth - if provided, the width of the first line.
+ *   Useful for text where the first line has non-text content that takes up some width.
  */
-export function wrapTextWithMapping(text: string, width: number): WrapResult {
+export function wrapTextWithMapping(
+  text: string,
+  width: number,
+  firstLineWidth?: number,
+): WrapResult {
   if (width <= 0) {
     // Invalid width, return unchanged
     const mapping = Array.from({ length: text.length + 1 }, (_, i) => i);
     return { wrapped: text, originalToWrapped: mapping, wrappedToOriginal: mapping };
   }
+
+  let effectiveWidth = firstLineWidth !== undefined ? firstLineWidth : width;
+  let pastFirstLine = false;
+
+  const switchToFullWidth = () => {
+    if (!pastFirstLine) {
+      pastFirstLine = true;
+      effectiveWidth = width;
+    }
+  };
 
   const originalToWrapped: number[] = [];
   const wrappedToOriginal: number[] = [];
@@ -42,26 +59,27 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
         const wordWidth = stringWidth(word);
 
         // Check if word fits on current line (leave 1 cell for cursor)
-        if (!lineStart && lineWidth + wordWidth >= width) {
+        if (!lineStart && lineWidth + wordWidth >= effectiveWidth) {
           // Word doesn't fit - wrap to new line (soft newline)
           wrapped += "\n";
           wrappedToOriginal[wrappedPos] = -1; // Inserted newline
           wrappedPos++;
           lineWidth = 0;
           lineStart = true;
+          switchToFullWidth();
         }
 
-        // Handle words longer than width (hard-break them)
-        if (wordWidth >= width) {
+        if (wordWidth >= effectiveWidth) {
           const chars = [...word];
           for (const char of chars) {
             const charWidth = stringWidth(char);
 
-            if (!lineStart && lineWidth + charWidth >= width) {
+            if (!lineStart && lineWidth + charWidth >= effectiveWidth) {
               wrapped += "\n";
               wrappedToOriginal[wrappedPos] = -1; // Inserted newline
               wrappedPos++;
               lineWidth = 0;
+              switchToFullWidth();
             }
 
             originalToWrapped[originalPos] = wrappedPos;
@@ -94,6 +112,7 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
       wrapped += "\n";
       wrappedPos++;
       originalPos++;
+      switchToFullWidth();
     }
   }
 
