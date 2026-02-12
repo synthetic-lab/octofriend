@@ -71,7 +71,86 @@ import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size
 import { ToolCallRequest } from "./ir/llm-ir.ts";
 import { useShiftTab } from "./hooks/use-shift-tab.tsx";
 import { ModeType, MODE_NOTIFICATIONS, nextMode } from "./modes.ts";
-import { getPlatform } from "./platform.ts";
+import { getPlatform, type PlatformKey } from "./platform.ts";
+
+function splitEditorCommand(input: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+    } else if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        parts.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+
+  if (current.length > 0) {
+    parts.push(current);
+  }
+
+  return parts;
+}
+
+export function resolveEditorCommand(
+  platform: PlatformKey,
+  filePath: string,
+): { cmd: string; args: string[]; spawnOptions: SpawnOptions } {
+  const editor = process.env["VISUAL"] || process.env["EDITOR"];
+
+  switch (platform) {
+    case "macos":
+      if (editor) {
+        const editorParts = splitEditorCommand(editor);
+        return {
+          cmd: editorParts[0]!,
+          args: [...editorParts.slice(1), filePath],
+          spawnOptions: { stdio: "inherit" },
+        };
+      }
+      return {
+        cmd: "open",
+        args: ["-t", filePath],
+        spawnOptions: { stdio: "ignore", detached: true },
+      };
+    case "windows":
+      return {
+        cmd: "cmd",
+        args: ["/c", "start", "", filePath],
+        spawnOptions: { stdio: "ignore", detached: true },
+      };
+    case "linux":
+    default: {
+      if (editor) {
+        const parts = splitEditorCommand(editor);
+        return {
+          cmd: parts[0]!,
+          args: [...parts.slice(1), filePath],
+          spawnOptions: { stdio: "inherit" },
+        };
+      }
+      return {
+        cmd: "vi",
+        args: [filePath],
+        spawnOptions: { stdio: "inherit" },
+      };
+    }
+  }
+}
 
 type Props = {
   config: Config;
@@ -488,29 +567,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       if (input === "l") {
         if (activePlanFilePath) {
           const platform = getPlatform();
-          let cmd: string;
-          let args: string[];
-          let spawnOptions: SpawnOptions | undefined;
-          switch (platform) {
-            case "macos":
-              cmd = "open";
-              args = [activePlanFilePath];
-              spawnOptions = { stdio: "ignore", detached: true };
-              break;
-            case "windows":
-              cmd = "cmd";
-              args = ["/c", "start", "", activePlanFilePath];
-              spawnOptions = { stdio: "ignore", detached: true };
-              break;
-            case "linux":
-            default:
-              cmd = process.env.EDITOR || "vi";
-              const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-              cmd = editorArgs[0] || "vi";
-              args = [...editorArgs.slice(1), activePlanFilePath];
-              spawnOptions = { stdio: "inherit" };
-              break;
-          }
+          const { cmd, args, spawnOptions } = resolveEditorCommand(platform, activePlanFilePath);
           const child = spawn(cmd, args, spawnOptions);
           if (spawnOptions?.detached) {
             child.unref();

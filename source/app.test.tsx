@@ -4,6 +4,7 @@ import { ModeType } from "./modes.ts";
 import * as planModeModule from "./plan-mode.ts";
 import * as platformModule from "./platform.ts";
 import type { Transport } from "./transports/transport-common.ts";
+import { resolveEditorCommand } from "./app.tsx";
 
 import type { HistoryItem } from "./history.ts";
 
@@ -300,10 +301,12 @@ describe("Plan Mode UI/State Synchronization", () => {
       // Replicate the hint text logic from BottomBarContent
       const hintText =
         isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
-          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          ? "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)"
           : "(Ctrl+p to enter the menu)";
 
-      expect(hintText).toBe("(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)");
+      expect(hintText).toBe(
+        "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)",
+      );
       expect(hintText).not.toContain("Ctrl+C");
     });
 
@@ -320,7 +323,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       const hintText =
         isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
-          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          ? "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)"
           : "(Ctrl+p to enter the menu)";
 
       expect(hintText).toBe("(Ctrl+p to enter the menu)");
@@ -346,7 +349,7 @@ describe("Plan Mode UI/State Synchronization", () => {
 
       const hintText =
         isPlanMode && state.activePlanFilePath && hasPlanBeenWritten
-          ? "(Ctrl+P: menu | Ctrl+U: unchained | Ctrl+O: collab)"
+          ? "(Ctrl+P: menu | Ctrl+G: unchained | Ctrl+O: collab | Ctrl+L: edit plan)"
           : "(Ctrl+p to enter the menu)";
 
       expect(hintText).toBe("(Ctrl+p to enter the menu)");
@@ -426,161 +429,56 @@ describe("Plan Mode UI/State Synchronization", () => {
     });
   });
 
-  describe("Ctrl+E Platform-Specific Spawn Commands", () => {
-    const originalEditor = process.env.EDITOR;
+  describe("Ctrl+L Platform-Specific Spawn Commands", () => {
+    const originalEditor = process.env["EDITOR"];
+    const originalVisual = process.env["VISUAL"];
 
     beforeEach(() => {
-      // Unset EDITOR for consistent testing of fallback behavior
-      delete process.env.EDITOR;
+      delete process.env["EDITOR"];
+      delete process.env["VISUAL"];
     });
 
     afterEach(() => {
-      // Restore original EDITOR value
       if (originalEditor !== undefined) {
-        process.env.EDITOR = originalEditor;
+        process.env["EDITOR"] = originalEditor;
       } else {
-        delete process.env.EDITOR;
+        delete process.env["EDITOR"];
+      }
+      if (originalVisual !== undefined) {
+        process.env["VISUAL"] = originalVisual;
+      } else {
+        delete process.env["VISUAL"];
       }
     });
 
     it("generates correct spawn cmd and args for macOS", () => {
-      const activePlanFilePath = "/path/to/plan.md";
-      const platform: string = "macos";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("open");
-      expect(args).toEqual(["/path/to/plan.md"]);
+      const result = resolveEditorCommand("macos", "/path/to/plan.md");
+      expect(result.cmd).toBe("open");
+      expect(result.args).toEqual(["-t", "/path/to/plan.md"]);
     });
 
     it("generates correct spawn cmd and args for Windows", () => {
-      const activePlanFilePath = "/path/to/plan.md";
-      const platform: string = "windows";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("cmd");
-      expect(args).toEqual(["/c", "start", "", "/path/to/plan.md"]);
+      const result = resolveEditorCommand("windows", "/path/to/plan.md");
+      expect(result.cmd).toBe("cmd");
+      expect(result.args).toEqual(["/c", "start", "", "/path/to/plan.md"]);
     });
 
     it("generates correct spawn cmd and args for Linux", () => {
-      const activePlanFilePath = "/path/to/plan.md";
-      const platform: string = "linux";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("vi");
-      expect(args).toEqual(["/path/to/plan.md"]);
+      const result = resolveEditorCommand("linux", "/path/to/plan.md");
+      expect(result.cmd).toBe("vi");
+      expect(result.args).toEqual(["/path/to/plan.md"]);
     });
 
     it("passes paths with spaces safely as array args (no shell injection)", () => {
-      const activePlanFilePath = "/path with spaces/to/plan file.md";
-      const platform: string = "macos";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("open");
-      expect(args).toEqual(["/path with spaces/to/plan file.md"]);
+      const result = resolveEditorCommand("macos", "/path with spaces/to/plan file.md");
+      expect(result.cmd).toBe("open");
+      expect(result.args).toEqual(["-t", "/path with spaces/to/plan file.md"]);
     });
 
     it("passes paths with special characters safely as array args", () => {
-      const activePlanFilePath = "/path/to/plan's file (v1).md";
-      const platform: string = "linux";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("vi");
-      expect(args).toEqual(["/path/to/plan's file (v1).md"]);
+      const result = resolveEditorCommand("linux", "/path/to/plan's file (v1).md");
+      expect(result.cmd).toBe("vi");
+      expect(result.args).toEqual(["/path/to/plan's file (v1).md"]);
     });
 
     it("generates correct spawn cmd and args for each platform", () => {
@@ -589,7 +487,7 @@ describe("Plan Mode UI/State Synchronization", () => {
         expectedCmd: string;
         expectedArgs: string[];
       }> = [
-        { platform: "macos", expectedCmd: "open", expectedArgs: ["/plans/test.md"] },
+        { platform: "macos", expectedCmd: "open", expectedArgs: ["-t", "/plans/test.md"] },
         {
           platform: "windows",
           expectedCmd: "cmd",
@@ -599,93 +497,47 @@ describe("Plan Mode UI/State Synchronization", () => {
       ];
 
       for (const { platform, expectedCmd, expectedArgs } of platforms) {
-        const activePlanFilePath = "/plans/test.md";
-
-        let cmd: string;
-        let args: string[];
-        switch (platform) {
-          case "macos":
-            cmd = "open";
-            args = [activePlanFilePath];
-            break;
-          case "windows":
-            cmd = "cmd";
-            args = ["/c", "start", "", activePlanFilePath];
-            break;
-          case "linux":
-          default:
-            cmd = process.env.EDITOR || "vi";
-            const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-            cmd = editorArgs[0] || "vi";
-            args = [...editorArgs.slice(1), activePlanFilePath];
-            break;
-        }
-
-        expect(cmd).toBe(expectedCmd);
-        expect(args).toEqual(expectedArgs);
+        const result = resolveEditorCommand(platform, "/plans/test.md");
+        expect(result.cmd).toBe(expectedCmd);
+        expect(result.args).toEqual(expectedArgs);
       }
     });
 
     it("uses $EDITOR environment variable when set on Linux", () => {
-      const activePlanFilePath = "/path/to/plan.md";
-      const platform: string = "linux";
-
-      // Set EDITOR environment variable
-      process.env.EDITOR = "hx";
-
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
-
-      expect(cmd).toBe("hx");
-      expect(args).toEqual(["/path/to/plan.md"]);
+      process.env["EDITOR"] = "hx";
+      const result = resolveEditorCommand("linux", "/path/to/plan.md");
+      expect(result.cmd).toBe("hx");
+      expect(result.args).toEqual(["/path/to/plan.md"]);
     });
 
     it("parses $EDITOR with arguments on Linux", () => {
-      const activePlanFilePath = "/path/to/plan.md";
-      const platform: string = "linux";
+      process.env["EDITOR"] = "vim -c 'set ft=markdown'";
+      const result = resolveEditorCommand("linux", "/path/to/plan.md");
+      expect(result.cmd).toBe("vim");
+      expect(result.args).toEqual(["-c", "set ft=markdown", "/path/to/plan.md"]);
+    });
 
-      // Set EDITOR with arguments
-      process.env.EDITOR = "vim -c 'set ft=markdown'";
+    it("uses $EDITOR on macOS when set", () => {
+      process.env["EDITOR"] = "code --wait";
+      const result = resolveEditorCommand("macos", "/path/to/plan.md");
+      expect(result.cmd).toBe("code");
+      expect(result.args).toEqual(["--wait", "/path/to/plan.md"]);
+      expect(result.spawnOptions).toEqual({ stdio: "inherit" });
+    });
 
-      let cmd: string;
-      let args: string[];
-      switch (platform) {
-        case "macos":
-          cmd = "open";
-          args = [activePlanFilePath];
-          break;
-        case "windows":
-          cmd = "cmd";
-          args = ["/c", "start", "", activePlanFilePath];
-          break;
-        case "linux":
-        default:
-          cmd = process.env.EDITOR || "vi";
-          const editorArgs = process.env.EDITOR ? cmd.split(/\s+/) : [];
-          cmd = editorArgs[0] || "vi";
-          args = [...editorArgs.slice(1), activePlanFilePath];
-          break;
-      }
+    it("prefers $VISUAL over $EDITOR", () => {
+      process.env["VISUAL"] = "code --wait";
+      process.env["EDITOR"] = "nano";
+      const result = resolveEditorCommand("linux", "/path/to/plan.md");
+      expect(result.cmd).toBe("code");
+      expect(result.args).toEqual(["--wait", "/path/to/plan.md"]);
+    });
 
-      expect(cmd).toBe("vim");
-      expect(args).toEqual(["-c", "'set", "ft=markdown'", "/path/to/plan.md"]);
+    it("falls back to $EDITOR when $VISUAL is not set", () => {
+      process.env["EDITOR"] = "nano";
+      const result = resolveEditorCommand("linux", "/path/to/plan.md");
+      expect(result.cmd).toBe("nano");
+      expect(result.args).toEqual(["/path/to/plan.md"]);
     });
   });
 
