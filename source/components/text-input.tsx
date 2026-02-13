@@ -304,7 +304,6 @@ export default function TextInput({
     (placeholder ? (value.length > 0 ? renderedValue : renderedPlaceholder) : renderedValue) || "";
 
   const lines = toRender.split("\n");
-
   return (
     <Box ref={containerRef} flexGrow={1} flexDirection="column">
       {lines.map((line, index) => {

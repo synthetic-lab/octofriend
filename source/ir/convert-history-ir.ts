@@ -133,41 +133,9 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
   const lowered: LoweredHistory[] = [];
 
   // Filter out irrelevant high-level history items, keeping only the LLM-relevant ones
-  // Also expand UserItems with autoReadFiles into separate entries
   for (const item of history) {
     const loweredItem = lowerItem(item);
-    if (!loweredItem) continue;
-
-    // Expand UserItem with autoReadFiles - add file contents first
-    if (loweredItem.type === "user" && loweredItem.autoReadFiles) {
-      const largeFiles: string[] = [];
-
-      for (const file of loweredItem.autoReadFiles) {
-        if (!file.isLarge && file.content) {
-          // Small file - inject content with unique ID
-          lowered.push({
-            type: "user",
-            id: sequenceId(),
-            content: `File content for @${file.path}:\n\n${file.content}`,
-          } as UserItem);
-        } else {
-          // Large file - collect for combined message
-          largeFiles.push(file.path);
-        }
-      }
-
-      // Inject combined message for large files
-      if (largeFiles.length > 0) {
-        const fileList = largeFiles.map(f => `- @${f}`).join("\n");
-        lowered.push({
-          type: "user",
-          id: sequenceId(),
-          content: `The following files are too large to auto-read. Use the 'read' tool to access them:\n${fileList}`,
-        } as UserItem);
-      }
-    }
-
-    lowered.push(loweredItem);
+    if (loweredItem) lowered.push(loweredItem);
   }
 
   // Transform

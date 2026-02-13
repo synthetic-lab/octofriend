@@ -4,7 +4,6 @@ import {
   UserItem,
   AssistantItem,
   CompactionCheckpointItem,
-  AutoReadFileInfo,
   sequenceId,
 } from "./history.ts";
 import { runTool, ToolError } from "./tools/index.ts";
@@ -125,43 +124,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   lastUserPromptId: null,
 
   input: async ({ config, query, transport }) => {
-    const MAX_AUTO_READ_CHARS = 20000; // ~5000 tokens at 4 chars/token
-
-    // Extract @file mentions from query
-    const mentionedFiles = extractFileMentions(query);
-
-    // Auto-read mentioned files with character limit
-    const autoReadFiles: AutoReadFileInfo[] = [];
-
-    for (const filePath of mentionedFiles) {
-      try {
-        const content = await fileTracker.read(transport, new AbortController().signal, filePath);
-
-        if (content.length <= MAX_AUTO_READ_CHARS) {
-          // Small file - include content
-          autoReadFiles.push({
-            path: filePath,
-            content,
-            isLarge: false,
-          });
-        } else {
-          // Large file - skip content, just track for UI
-          autoReadFiles.push({
-            path: filePath,
-            isLarge: true,
-          });
-        }
-      } catch (e) {
-        // File couldn't be read - skip it (will be handled by LLM if needed)
-        console.error(`Failed to auto-read @${filePath}:`, e);
-      }
-    }
-
     const userMessage: UserItem = {
       type: "user",
       id: sequenceId(),
       content: query,
-      autoReadFiles: autoReadFiles.length > 0 ? autoReadFiles : undefined,
     };
 
     let history = [...get().history, userMessage];
@@ -596,25 +562,6 @@ async function tryTransformToolError(
     }
   }
   throw e;
-}
-
-/**
- * Extract @file mentions from a query string.
- * Matches patterns like @filename, @path/to/file, @./relative/path
- * Returns array of file paths without the @ prefix.
- */
-function extractFileMentions(query: string): string[] {
-  const mentions: string[] = [];
-  // Match @ followed by file path characters (alphanumeric, dots, slashes, underscores, hyphens)
-  // Stop at whitespace or common punctuation
-  const mentionRegex = /@([a-zA-Z0-9_./-]+(?:\.[a-zA-Z0-9]+)?)/g;
-  let match;
-
-  while ((match = mentionRegex.exec(query)) !== null) {
-    mentions.push(match[1]);
-  }
-
-  return mentions;
 }
 
 export function useModel() {

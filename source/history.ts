@@ -67,16 +67,9 @@ export type AssistantItem = SequenceIdTagged<{
   outputTokens: number;
 }>;
 
-export type AutoReadFileInfo = {
-  path: string;
-  content?: string;
-  isLarge: boolean;
-};
-
 export type UserItem = SequenceIdTagged<{
   type: "user";
   content: string;
-  autoReadFiles?: AutoReadFileInfo[];
 }>;
 
 export type RequestFailed = SequenceIdTagged<{

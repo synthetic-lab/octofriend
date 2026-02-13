@@ -356,10 +356,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
   const color = useColor();
 
-  const onSubmit = useCallback(async () => {
-    setQuery("");
-    await input({ query, config, transport });
-  }, [query, config, transport, setQuery]);
+  const onSubmit = useCallback(
+    async (submittedQuery?: string) => {
+      const finalQuery = submittedQuery ?? query;
+      setQuery("");
+      await input({ query: finalQuery, config, transport });
+    },
+    [query, config, transport, setQuery],
+  );
 
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (
@@ -846,25 +850,6 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
 
   return (
     <Box flexDirection="column" marginY={1}>
-      {/* Show auto-read files if present */}
-      {item.autoReadFiles && item.autoReadFiles.length > 0 && (
-        <Box marginBottom={1}>
-          <Text>
-            📄{" "}
-            {item.autoReadFiles.map((file, idx) => (
-              <React.Fragment key={file.path}>
-                {idx > 0 && ", "}
-                <Text color={file.isLarge ? "gray" : "white"}>
-                  @{file.path}
-                  {file.isLarge && " (large)"}
-                </Text>
-              </React.Fragment>
-            ))}
-          </Text>
-        </Box>
-      )}
-
-      {/* User message */}
       <Box flexDirection="row">
         <Box marginRight={1}>
           <Text color="white">▶</Text>

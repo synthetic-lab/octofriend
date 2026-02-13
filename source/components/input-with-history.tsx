@@ -9,7 +9,7 @@ interface Props {
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
-  onSubmit: () => any;
+  onSubmit: (value?: string) => any;
   vimEnabled?: boolean;
   vimMode?: "NORMAL" | "INSERT";
   setVimMode?: (mode: "NORMAL" | "INSERT") => void;
@@ -24,6 +24,7 @@ export const InputWithHistory = React.memo((props: Props) => {
     triggerPosition: number;
     query: string;
   } | null>(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
 
   useInput((input, key) => {
     if (suggestionState?.isVisible) {
@@ -74,13 +75,16 @@ export const InputWithHistory = React.memo((props: Props) => {
       return;
     }
 
+    const transformedValue = replaceSelectedMentions(props.value, selectedSuggestions);
+
     if (props.value.trim()) {
       props.inputHistory.appendToInputHistory(props.value.trim());
     }
 
     setCurrentIndex(-1);
     setOriginalInput("");
-    props.onSubmit();
+    setSelectedSuggestions(new Set());
+    props.onSubmit(transformedValue);
   };
 
   const handleChange = (value: string) => {
@@ -121,10 +125,15 @@ export const InputWithHistory = React.memo((props: Props) => {
       const after = props.value.slice(
         suggestionState.triggerPosition + suggestionState.query.length + 1,
       );
-      // Keep the @ symbol in the filename so it can be auto-read
-      const newValue = before + "@" + filename + after;
+      // Keep the @ symbol in the editor; it gets replaced with a path on submit.
+      const newValue = before + "@" + filename + " " + after;
 
       props.onChange(newValue);
+      setSelectedSuggestions(prev => {
+        const next = new Set(prev);
+        next.add(filename);
+        return next;
+      });
       setSuggestionState(null);
     },
     [props.value, suggestionState],
@@ -164,3 +173,21 @@ export const InputWithHistory = React.memo((props: Props) => {
     </Box>
   );
 });
+
+function replaceSelectedMentions(input: string, selectedSuggestions: Set<string>): string {
+  let output = input;
+
+  for (const filename of selectedSuggestions) {
+    const normalizedPath =
+      filename.startsWith("/") || filename.startsWith("./") || filename.startsWith("../")
+        ? filename
+        : `./${filename}`;
+
+    const escapedFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const mentionRegex = new RegExp(`(^|[^\\w@])@${escapedFilename}(?=$|[^\\w./-])`, "g");
+
+    output = output.replace(mentionRegex, `$1${normalizedPath}`);
+  }
+
+  return output;
+}
