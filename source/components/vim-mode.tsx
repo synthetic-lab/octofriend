@@ -137,6 +137,9 @@ type TextState = {
 };
 
 const motions: Record<string, Motion> = {
+  // In vim, a "word" is either: (1) a sequence of letters/digits/underscores,
+  // OR (2) a sequence of other non-blank characters (punctuation). These two
+  // types of words are distinct - "foo-bar" contains 3 words: "foo", "-", "bar".
   w: (text, cursorPosition) => {
     const textLength = text.length;
     if (cursorPosition >= textLength) {
@@ -147,16 +150,26 @@ const motions: Record<string, Motion> = {
     let endPosition: number;
 
     if (isWhitespace(currentChar)) {
+      // In whitespace: skip to the next non-whitespace
       endPosition = cursorPosition;
       while (endPosition < textLength && isWhitespace(text[endPosition])) {
         endPosition++;
       }
     } else {
-      let wordEnd = cursorPosition;
-      while (wordEnd < textLength && !isWhitespace(text[wordEnd])) {
-        wordEnd++;
+      // On a non-whitespace char: skip chars of the same class, then skip whitespace
+      const currentCharIsWord = isWordChar(currentChar);
+      endPosition = cursorPosition;
+
+      // Skip characters of the same class
+      while (endPosition < textLength && !isWhitespace(text[endPosition])) {
+        const charIsWord = isWordChar(text[endPosition]);
+        if (charIsWord !== currentCharIsWord) {
+          break;
+        }
+        endPosition++;
       }
-      endPosition = wordEnd;
+
+      // Skip trailing whitespace to reach start of next word/WORD
       while (endPosition < textLength && isWhitespace(text[endPosition])) {
         endPosition++;
       }
@@ -629,6 +642,9 @@ export function useVimKeyHandler(
           }
           return { consumed: true };
         },
+        // In vim, a "word" is either: (1) a sequence of letters/digits/underscores,
+        // OR (2) a sequence of other non-blank characters (punctuation). These two
+        // types of words are distinct - "foo-bar" contains 3 words: "foo", "-", "bar".
         w: () => {
           const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
           if (earlyExit) return earlyExit;
@@ -637,6 +653,7 @@ export function useVimKeyHandler(
           let newCursorPosition: number;
 
           if (isWhitespace(currentChar)) {
+            // In whitespace: skip to the next non-whitespace
             newCursorPosition = cursorPosition;
             while (
               newCursorPosition < valueLength &&
@@ -645,12 +662,23 @@ export function useVimKeyHandler(
               newCursorPosition++;
             }
           } else {
-            let wordEnd = cursorPosition;
-            while (wordEnd < valueLength && !isWhitespace(currentValue[wordEnd])) {
-              wordEnd++;
+            // On a non-whitespace char: skip chars of the same class, then skip whitespace
+            const currentCharIsWord = isWordChar(currentChar);
+            newCursorPosition = cursorPosition;
+
+            // Skip characters of the same class
+            while (
+              newCursorPosition < valueLength &&
+              !isWhitespace(currentValue[newCursorPosition])
+            ) {
+              const charIsWord = isWordChar(currentValue[newCursorPosition]);
+              if (charIsWord !== currentCharIsWord) {
+                break;
+              }
+              newCursorPosition++;
             }
 
-            newCursorPosition = wordEnd;
+            // Skip trailing whitespace to reach start of next word
             while (
               newCursorPosition < valueLength &&
               isWhitespace(currentValue[newCursorPosition])
