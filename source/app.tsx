@@ -363,10 +363,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
   const color = useColor();
 
-  const onSubmit = useCallback(async () => {
-    setQuery("");
-    await input({ query, config, transport });
-  }, [query, config, transport, setQuery]);
+  const onSubmit = useCallback(
+    async (submittedQuery?: string) => {
+      const finalQuery = submittedQuery ?? query;
+      setQuery("");
+      await input({ query: finalQuery, config, transport });
+    },
+    [query, config, transport, setQuery],
+  );
 
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (
@@ -937,11 +941,13 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   const _: "user" = item.type;
 
   return (
-    <Box marginY={1}>
-      <Box marginRight={1}>
-        <Text color="white">▶</Text>
+    <Box flexDirection="column" marginY={1}>
+      <Box flexDirection="row">
+        <Box marginRight={1}>
+          <Text color="white">▶</Text>
+        </Box>
+        <Text>{item.content}</Text>
       </Box>
-      <Text>{item.content}</Text>
     </Box>
   );
 });
