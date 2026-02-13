@@ -201,6 +201,27 @@ const motions: Record<string, Motion> = {
 
     return { start: start, end: cursorPosition };
   },
+  // A "WORD" is a sequence of non-blank characters, separated by whitespace.
+  // "foo-bar" is a single WORD, but "foo bar" is two WORDs.
+  B: (text, cursorPosition) => {
+    if (cursorPosition === 0) {
+      return { start: 0, end: 0 };
+    }
+
+    let start = cursorPosition;
+
+    // Skip whitespace
+    while (start > 0 && isWhitespace(text[start - 1])) {
+      start--;
+    }
+
+    // Skip all non-whitespace characters (the entire WORD)
+    while (start > 0 && !isWhitespace(text[start - 1])) {
+      start--;
+    }
+
+    return { start: start, end: cursorPosition };
+  },
   e: (text, cursorPosition) => {
     const textLength = text.length;
     const currentChar = text[cursorPosition];
@@ -671,6 +692,26 @@ export function useVimKeyHandler(
             if (currentCharIsWord !== firstCharIsWord) {
               break;
             }
+            wordStart--;
+          }
+
+          return vimCommandResult(wordStart, valueLength);
+        },
+        // A "WORD" is a sequence of non-blank characters, separated by whitespace.
+        // "foo-bar" is a single WORD, but "foo bar" is two WORDs.
+        B: () => {
+          const earlyExit = vimEarlyExit(cursorPosition === 0);
+          if (earlyExit) return earlyExit;
+
+          let wordStart = cursorPosition;
+
+          // Skip whitespace
+          while (wordStart > 0 && isWhitespace(currentValue[wordStart - 1])) {
+            wordStart--;
+          }
+
+          // Skip all non-whitespace characters (the entire WORD)
+          while (wordStart > 0 && !isWhitespace(currentValue[wordStart - 1])) {
             wordStart--;
           }
 
