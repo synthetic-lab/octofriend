@@ -17,6 +17,7 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
+import { updateQuotaFromHeader } from "../components/synthetic-quota-indicator.ts";
 
 export type UserMessage = {
   role: "user";
@@ -316,21 +317,28 @@ export const runAgent: Compiler = async ({
     } = {};
     if (model.reasoning) reasoning.reasoning_effort = model.reasoning;
 
-    const res = await client.chat.completions.create(
-      {
-        ...reasoning,
-        model: model.model,
-        messages: messages,
-        ...toolsParam,
-        stream: true,
-        stream_options: {
-          include_usage: true,
+    const { response, data: res } = await client.chat.completions
+      .create(
+        {
+          ...reasoning,
+          model: model.model,
+          messages: messages,
+          ...toolsParam,
+          stream: true,
+          stream_options: {
+            include_usage: true,
+          },
         },
-      },
-      {
-        signal: abortSignal,
-      },
-    );
+        {
+          signal: abortSignal,
+        },
+      )
+      .withResponse();
+
+    const quotaHeader = response.headers.get("x-synthetic-quotas");
+    if (quotaHeader) {
+      updateQuotaFromHeader(quotaHeader);
+    }
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
