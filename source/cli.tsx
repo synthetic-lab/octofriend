@@ -36,6 +36,152 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 
+async function runWithConcurrencyLimit<T>(
+  concurrency: number,
+  task: (index: number) => Promise<T>,
+): Promise<T[]> {
+  const results: T[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (let i = 0; i < concurrency; i++) {
+    const index = i;
+    const promise = task(index).then(result => {
+      results.push(result);
+    });
+    executing.push(promise);
+
+    if (executing.length >= 100) {
+      await Promise.race(executing);
+      executing.splice(0, executing.findIndex(p => p === promise) + 1);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
+}
+
+const LARGE_CONTEXT_GROUPS = [
+  // Group 0: Core kernel
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/sched/core.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/fork.c",
+  ],
+  // Group 1: Filesystems
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/fs/ext4/inode.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/fs/ext4/super.c",
+  ],
+  // Group 2: Memory management
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/mm/memory.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/mm/page_alloc.c",
+  ],
+  // Group 3: Networking
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/net/ipv4/tcp_input.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/net/ipv4/tcp_output.c",
+  ],
+  // Group 4: Block layer
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/block/blk-mq.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/block/elevator.c",
+  ],
+  // Group 5: Drivers - GPU
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/gpu/drm/i915/i915_gem.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/gpu/drm/drm_file.c",
+  ],
+  // Group 6: Virtualization
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/virt/kvm/kvm_main.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/arch/x86/kvm/x86.c",
+  ],
+  // Group 7: Security
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/security/selinux/ss/services.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/security/keys/key.c",
+  ],
+  // Group 8: Crypto
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/crypto/api.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/crypto/cipher.c",
+  ],
+  // Group 9: Device tree
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/of/base.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/of/platform.c",
+  ],
+  // Group 10: Sound/ALSA
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/sound/core/init.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/sound/core/pcm.c",
+  ],
+  // Group 11: USB
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/usb/core/hub.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/usb/core/urb.c",
+  ],
+  // Group 12: PCI
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/pci/pci.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/pci/probe.c",
+  ],
+  // Group 13: ACPI
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/acpi/acpi.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/acpi/scan.c",
+  ],
+  // Group 14: Tracing/ftrace
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/trace/ftrace.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/trace/trace.c",
+  ],
+  // Group 15: BPF
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/bpf/core.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/bpf/syscall.c",
+  ],
+  // Group 16: SCSI
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/scsi/scsi.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/drivers/scsi/sd.c",
+  ],
+  // Group 17: Time/clock
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/time/timer.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/time/clocksource.c",
+  ],
+  // Group 18: RCU
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/rcu/tree.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/rcu/update.c",
+  ],
+  // Group 19: Module loader
+  [
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/module/main.c",
+    "https://raw.githubusercontent.com/torvalds/linux/master/kernel/kmod.c",
+  ],
+];
+
+async function fetchLargeContextGroup(groupIndex: number): Promise<string> {
+  const urls = LARGE_CONTEXT_GROUPS[groupIndex % LARGE_CONTEXT_GROUPS.length];
+
+  const contents: string[] = [];
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { redirect: "follow" });
+      if (response.ok) {
+        const text = await response.text();
+        contents.push(`\n\n=== ${url} ===\n\n${text}`);
+      }
+    } catch {
+      // Skip failed fetches
+    }
+  }
+
+  return contents.join("\n");
+}
+
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
@@ -220,6 +366,10 @@ bench
     "Custom prompt to benchmark with. If omitted, uses the default prompt.",
   )
   .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
+  .option(
+    "--large-context",
+    "Downloads large files (~100k tokens) and includes them in the benchmark prompt",
+  )
   .action(async opts => {
     const { config } = await loadConfigWithoutReauth();
     const model = opts.model
@@ -237,6 +387,10 @@ bench
     const apiKey = await assertKeyForModel(model, config);
     const autofixJson = makeAutofixJson(config);
     const modelToUse = model;
+
+    const basePrompt =
+      opts.prompt ?? "Write me a short story about a frog going to the moon. Do not use ANY tools.";
+    const useLargeContext = opts.largeContext;
 
     console.log(
       `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
@@ -261,10 +415,16 @@ bench
 
     type BenchmarkResult = SuccessfulBenchmark | FailedBenchmark;
 
-    async function runSingleBenchmark(): Promise<BenchmarkResult> {
+    async function runSingleBenchmark(index: number): Promise<BenchmarkResult> {
       const start = new Date();
       let firstToken: Date | null = null;
       const tokenTimestamps: Date[] = [];
+
+      let benchmarkPrompt = basePrompt;
+      if (useLargeContext) {
+        const largeContext = await fetchLargeContextGroup(index);
+        benchmarkPrompt = `Here are some large code files for context:\n\n${largeContext}\n\nNow, ${basePrompt}`;
+      }
 
       const result = await run({
         apiKey,
@@ -273,9 +433,7 @@ bench
         messages: [
           {
             role: "user",
-            content:
-              opts.prompt ??
-              "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+            content: benchmarkPrompt,
           },
         ],
         handlers: {
@@ -334,9 +492,7 @@ bench
     }
 
     const benchmarkStart = new Date();
-    const results = await Promise.all(
-      Array.from({ length: concurrency }, () => runSingleBenchmark()),
-    );
+    const results = await runWithConcurrencyLimit(concurrency, runSingleBenchmark);
     const benchmarkEnd = new Date();
 
     clearInterval(timer);
