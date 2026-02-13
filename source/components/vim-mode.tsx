@@ -5,6 +5,7 @@ import { useColor } from "../theme.ts";
 
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
+const isWordChar = (char: string): boolean => /[a-zA-Z0-9_]/.test(char);
 
 const trimNewlinesFromEnd = (text: string, start: number, end: number): number => {
   let trimmedEnd = end;
@@ -163,16 +164,38 @@ const motions: Record<string, Motion> = {
 
     return { start: cursorPosition, end: endPosition };
   },
+  // In vim, a "word" is either: (1) a sequence of letters/digits/underscores,
+  // OR (2) a sequence of other non-blank characters (punctuation). These two
+  // types of words are distinct - "foo-bar" contains 3 words: "foo", "-", "bar".
   b: (text, cursorPosition) => {
     if (cursorPosition === 0) {
       return { start: 0, end: 0 };
     }
 
     let start = cursorPosition;
+
+    // Skip whitespace
     while (start > 0 && isWhitespace(text[start - 1])) {
       start--;
     }
+
+    // If we're at the start of the text after skipping whitespace, we're done
+    if (start === 0) {
+      return { start: 0, end: cursorPosition };
+    }
+
+    // Determine the character class of the first non-whitespace char we're on
+    const firstNonWsChar = text[start - 1];
+    const firstCharIsWord = isWordChar(firstNonWsChar);
+
+    // Continue skipping characters of the same class
     while (start > 0 && !isWhitespace(text[start - 1])) {
+      const currentChar = text[start - 1];
+      const currentCharIsWord = isWordChar(currentChar);
+      // Stop when we hit a different character class
+      if (currentCharIsWord !== firstCharIsWord) {
+        break;
+      }
       start--;
     }
 
@@ -617,15 +640,37 @@ export function useVimKeyHandler(
 
           return vimCommandResult(newCursorPosition, valueLength);
         },
+        // In vim, a "word" is either: (1) a sequence of letters/digits/underscores,
+        // OR (2) a sequence of other non-blank characters (punctuation). These two
+        // types of words are distinct - "foo-bar" contains 3 words: "foo", "-", "bar".
         b: () => {
           const earlyExit = vimEarlyExit(cursorPosition === 0);
           if (earlyExit) return earlyExit;
 
           let wordStart = cursorPosition;
+
+          // Skip whitespace
           while (wordStart > 0 && isWhitespace(currentValue[wordStart - 1])) {
             wordStart--;
           }
+
+          // If we're at the start of the text after skipping whitespace, we're done
+          if (wordStart === 0) {
+            return vimCommandResult(0, valueLength);
+          }
+
+          // Determine the character class of the first non-whitespace char we're on
+          const firstNonWsChar = currentValue[wordStart - 1];
+          const firstCharIsWord = isWordChar(firstNonWsChar);
+
+          // Continue skipping characters of the same class
           while (wordStart > 0 && !isWhitespace(currentValue[wordStart - 1])) {
+            const currentChar = currentValue[wordStart - 1];
+            const currentCharIsWord = isWordChar(currentChar);
+            // Stop when we hit a different character class
+            if (currentCharIsWord !== firstCharIsWord) {
+              break;
+            }
             wordStart--;
           }
 
