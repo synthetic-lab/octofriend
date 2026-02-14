@@ -237,7 +237,7 @@ export const runAnthropicAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = toModelMessage(irs, model.multimodal);
+  const messages = toModelMessage(irs, model.multimodal?.enabled);
   const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
   const toolDefs = tools || {};

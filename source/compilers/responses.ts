@@ -282,7 +282,7 @@ export const runResponsesAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toModelMessage(irs, systemPrompt, model.multimodal);
+  const messages = await toModelMessage(irs, systemPrompt, model.multimodal?.enabled);
 
   // Convert tools to AI SDK format
   const toolDefs = tools || {};

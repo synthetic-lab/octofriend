@@ -42,6 +42,11 @@ export type AuthError =
 
 export type KeyResult = { ok: true; key: string } | { ok: false; error: AuthError };
 
+const MultimodalConfigSchema = t.exact({
+  enabled: t.bool,
+  maxSize: t.num, // in MB
+});
+
 const ModelConfigSchema = t.exact({
   type: t.optional(t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic"))),
   nickname: t.str,
@@ -51,7 +56,7 @@ const ModelConfigSchema = t.exact({
   model: t.str,
   context: t.num,
   reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
-  multimodal: t.optional(t.bool),
+  multimodal: t.optional(MultimodalConfigSchema),
 });
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 

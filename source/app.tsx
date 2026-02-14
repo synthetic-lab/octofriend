@@ -451,7 +451,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         vimEnabled={vimEnabled}
         vimMode={vimMode}
         setVimMode={setVimMode}
-        multimodal={model.multimodal}
+        multimodal={model.multimodal?.enabled}
       />
       <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
     </Box>

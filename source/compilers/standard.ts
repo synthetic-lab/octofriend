@@ -304,7 +304,7 @@ export const runAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toLlmMessages(irs, systemPrompt, model.multimodal);
+  const messages = await toLlmMessages(irs, systemPrompt, model.multimodal?.enabled);
 
   const toolDefs = tools || {};
   const toolsMap = Object.entries(toolDefs).map(([name, tool]) => {

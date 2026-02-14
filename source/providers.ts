@@ -1,5 +1,10 @@
 import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
 
+export type MultimodalConfig = {
+  enabled: boolean;
+  maxSize: number; // in MB
+};
+
 export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic";
@@ -11,7 +16,7 @@ export type ProviderConfig = {
     nickname: string;
     context: number;
     reasoning?: "low" | "medium" | "high";
-    multimodal?: boolean;
+    multimodal?: MultimodalConfig;
   }>;
   testModel: string;
 };
@@ -27,7 +32,7 @@ export const PROVIDERS = {
         model: "hf:nvidia/Kimi-K2.5-NVFP4",
         nickname: "Kimi K2.5 NVFP4",
         context: 256 * 1024,
-        multimodal: true,
+        multimodal: { enabled: true, maxSize: 10 },
       },
       {
         model: "hf:zai-org/GLM-4.7",
@@ -38,7 +43,7 @@ export const PROVIDERS = {
         model: "hf:moonshotai/Kimi-K2.5",
         nickname: "Kimi K2.5",
         context: 256 * 1024,
-        multimodal: true,
+        multimodal: { enabled: true, maxSize: 10 },
       },
       {
         model: "hf:MiniMaxAI/MiniMax-M2.1",
