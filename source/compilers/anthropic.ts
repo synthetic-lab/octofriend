@@ -18,7 +18,7 @@ const ThinkingBlockSchema = t.subtype({
   signature: t.str,
 });
 
-function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
+function toModelMessage(messages: LlmIR[], multimodal?: boolean): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
   const irs = [...messages];
@@ -29,9 +29,9 @@ function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen));
+      output.push(modelMessageFromIr(ir, seen, multimodal));
     } else {
-      output.push(modelMessageFromIr(ir, false));
+      output.push(modelMessageFromIr(ir, false, multimodal));
     }
   }
 
@@ -40,7 +40,11 @@ function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
   return output;
 }
 
-function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessageParam {
+function modelMessageFromIr(
+  ir: LlmIR,
+  seenPath: boolean,
+  multimodal?: boolean,
+): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCall ? [ir.toolCall] : [];
@@ -63,19 +67,26 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessagePara
 
   if (ir.role === "user") {
     if (ir.images && ir.images.length > 0) {
+      if (multimodal) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(dataUrl => ({
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: getMimeTypeFromDataUrl(dataUrl) || "image/png",
+                data: extractBase64FromDataUrl(dataUrl),
+              },
+            })),
+          ],
+        };
+      }
+      const imageBlurbs = ir.images.map(() => "[An image was attached here.]");
       return {
         role: "user",
-        content: [
-          { type: "text", text: ir.content },
-          ...ir.images.map(dataUrl => ({
-            type: "image" as const,
-            source: {
-              type: "base64" as const,
-              media_type: getMimeTypeFromDataUrl(dataUrl) || "image/png",
-              data: extractBase64FromDataUrl(dataUrl),
-            },
-          })),
-        ],
+        content: `${ir.content}\n\n${imageBlurbs.join("\n")}`,
       };
     }
     return {
@@ -226,7 +237,7 @@ export const runAnthropicAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = toModelMessage(irs);
+  const messages = toModelMessage(irs, model.multimodal);
   const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
   const toolDefs = tools || {};

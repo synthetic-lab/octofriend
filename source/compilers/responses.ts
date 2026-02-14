@@ -15,6 +15,7 @@ import * as irPrompts from "../prompts/ir-prompts.ts";
 async function toModelMessage(
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
+  multimodal?: boolean,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -26,9 +27,9 @@ async function toModelMessage(
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen));
+      output.push(modelMessageFromIr(ir, seen, multimodal));
     } else {
-      output.push(modelMessageFromIr(ir, false));
+      output.push(modelMessageFromIr(ir, false, multimodal));
     }
   }
 
@@ -46,7 +47,7 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
+function modelMessageFromIr(ir: LlmIR, seenPath: boolean, multimodal?: boolean): ModelMessage {
   if (ir.role === "assistant") {
     if (ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -106,15 +107,23 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
 
   if (ir.role === "user") {
     if (ir.images && ir.images.length > 0) {
+      if (multimodal) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(dataUrl => ({
+              type: "image" as const,
+              image: dataUrl,
+            })),
+          ],
+        };
+      }
+      // Non-multimodal: convert images to text blurbs
+      const imageBlurbs = ir.images.map(() => "[An image was attached here.]");
       return {
         role: "user",
-        content: [
-          { type: "text", text: ir.content },
-          ...ir.images.map(dataUrl => ({
-            type: "image" as const,
-            image: dataUrl,
-          })),
-        ],
+        content: `${ir.content}\n\n${imageBlurbs.join("\n")}`,
       };
     }
     return {
@@ -273,7 +282,7 @@ export const runResponsesAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toModelMessage(irs, systemPrompt);
+  const messages = await toModelMessage(irs, systemPrompt, model.multimodal);
 
   // Convert tools to AI SDK format
   const toolDefs = tools || {};

@@ -101,6 +101,7 @@ JSON`;
 async function toLlmMessages(
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
+  multimodal?: boolean,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
   const irs = [...messages];
@@ -112,9 +113,9 @@ async function toLlmMessages(
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(llmFromIr(ir, prev, seen));
+      output.push(llmFromIr(ir, prev, seen, multimodal));
     } else {
-      output.push(llmFromIr(ir, prev, false));
+      output.push(llmFromIr(ir, prev, false, multimodal));
     }
     prev = ir;
   }
@@ -131,7 +132,12 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage {
+function llmFromIr(
+  ir: LlmIR,
+  prev: LlmIR | null,
+  seenPath: boolean,
+  multimodal?: boolean,
+): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -164,16 +170,21 @@ function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage
   }
   if (ir.role === "user") {
     if (ir.images && ir.images.length > 0) {
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: ir.content },
-          ...ir.images.map(url => ({
-            type: "image_url" as const,
-            image_url: { url },
-          })),
-        ],
-      };
+      if (multimodal) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(url => ({
+              type: "image_url" as const,
+              image_url: { url },
+            })),
+          ],
+        };
+      }
+      // Non-multimodal: convert images to text blurbs
+      const imageBlurbs = ir.images.map(() => "[An image was attached here.]");
+      return { role: "user", content: `${ir.content}\n\n${imageBlurbs.join("\n")}` };
     }
     return { role: "user", content: ir.content };
   }
@@ -293,7 +304,7 @@ export const runAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toLlmMessages(irs, systemPrompt);
+  const messages = await toLlmMessages(irs, systemPrompt, model.multimodal);
 
   const toolDefs = tools || {};
   const toolsMap = Object.entries(toolDefs).map(([name, tool]) => {
