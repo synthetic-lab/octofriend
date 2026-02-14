@@ -360,17 +360,7 @@ async function findSyntheticKey(config: Config | null) {
   const override = overrides == null ? null : overrides["synthetic"];
   if (override) return process.env[override];
 
-  // Every API base URL Synthetic has ever used
-  const validBaseUrls = [
-    "https://api.synthetic.new/openai/v1",
-    "https://synthetic.new/api/openai/v1",
-    "https://api.synthetic.new/v1",
-    "https://api.glhf.chat/v1",
-    "https://glhf.chat/api/v1",
-    "https://glhf.chat/api/openai/v1",
-  ];
-
-  for (const base of validBaseUrls) {
+  for (const base of SYNTHETIC_BASE_URLS) {
     const key = await readKeyForBaseUrl(base, config);
     if (key != null) return key;
   }
@@ -472,6 +462,38 @@ export async function readKeyForBaseUrlResult(
 
   // We can't find the key for it
   return { ok: false, error: { type: "missing", message: `No API key found for ${baseUrl}` } };
+}
+
+// Every API base URL Synthetic has ever used
+const SYNTHETIC_BASE_URLS = [
+  "https://api.synthetic.new/openai/v1",
+  "https://synthetic.new/api/openai/v1",
+  "https://api.synthetic.new/v1",
+  "https://api.glhf.chat/v1",
+  "https://glhf.chat/api/v1",
+  "https://glhf.chat/api/openai/v1",
+];
+
+/**
+ * Checks if there's an existing API key available for a given base URL.
+ * For Synthetic, checks all known base URLs since they've changed over time.
+ */
+export async function hasExistingKeyForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<boolean> {
+  const key = await readKeyForBaseUrl(baseUrl, config);
+  if (key != null) return true;
+
+  if (SYNTHETIC_BASE_URLS.includes(baseUrl)) {
+    for (const url of SYNTHETIC_BASE_URLS) {
+      if (url !== baseUrl) {
+        const syntheticKey = await readKeyForBaseUrl(url, config);
+        if (syntheticKey != null) return true;
+      }
+    }
+  }
+  return false;
 }
 
 export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {
