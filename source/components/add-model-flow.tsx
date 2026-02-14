@@ -65,6 +65,7 @@ type FullFlowRouteData = {
     auth?: Auth;
     model: string;
     metadata: ModelMetadata;
+    nickname?: string;
   }>;
   context: ModelStepRoute<{
     baseUrl: string;
@@ -367,7 +368,8 @@ function TestConnection(
 const nickname = fullFlow
   .withRoutes("nickname", "model", "context")
   .build("nickname", router => props => {
-    const defaultNickname = props.metadata.name?.split("/").pop()?.replace(/-/g, " ") || "";
+    const defaultNickname =
+      props.nickname || props.metadata.name?.split("/").pop()?.replace(/-/g, " ") || "";
     return (
       <Back go={() => router.model(props)}>
         <Step<string>
@@ -391,8 +393,8 @@ const nickname = fullFlow
   });
 
 function formatContextTokens(tokens: number): string {
-  const halfTokens = Math.floor(tokens / 2);
-  const kValue = Math.floor(halfTokens / 1024);
+  const halfTokens = tokens / 2;
+  const kValue = Math.round(halfTokens / 1024);
   return `${kValue}k`;
 }
 
@@ -800,7 +802,7 @@ async function testConnection({
       ],
     });
 
-    const metadataPromise = fetchModelMetadata(baseUrl, apiKey, model);
+    const metadataPromise = fetchModelMetadata(client, model);
 
     const [response, metadata] = await Promise.all([testPromise, metadataPromise]);
 
@@ -816,37 +818,13 @@ async function testConnection({
   }
 }
 
-async function fetchModelMetadata(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-): Promise<ModelMetadata> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000);
-
+async function fetchModelMetadata(client: OpenAI, model: string): Promise<ModelMetadata> {
   try {
-    const response = await fetch(`${baseUrl}/models`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      signal: controller.signal,
-    });
+    const models = await client.models.list({ timeout: 3000 });
+    const modelInfo = models.data.find(m => m.id === model) as
+      | (OpenAI.Models.Model & { name?: string; context_length?: number })
+      | undefined;
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      return {};
-    }
-
-    const data = await response.json();
-    const models = data.data || data;
-
-    if (!Array.isArray(models)) {
-      return {};
-    }
-
-    const modelInfo = models.find((m: { id?: string }) => m.id === model);
     if (!modelInfo) {
       return {};
     }
@@ -856,7 +834,6 @@ async function fetchModelMetadata(
       contextLength: modelInfo.context_length,
     };
   } catch {
-    clearTimeout(timeoutId);
     return {};
   }
 }
