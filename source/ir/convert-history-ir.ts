@@ -287,6 +287,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         case "shell":
         case "mcp":
         case "web-search":
+        case "glob":
+        case "grep":
           return [
             prev,
             {
