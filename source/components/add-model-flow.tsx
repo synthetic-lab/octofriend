@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from "react";
 import { Box, Text } from "ink";
 import TextInput from "./text-input.tsx";
-import { Config, assertKeyForModel, Auth } from "../config.ts";
+import { Config, assertKeyForModel, Auth, hasExistingKeyForBaseUrl } from "../config.ts";
 import { useColor } from "../theme.ts";
 import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
@@ -82,7 +82,7 @@ const errorContext = createContext<{
 
 const fullFlow = router<FullFlowRouteData>();
 
-const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl").build("baseUrl", to => props => {
+const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl", "postAuth").build("baseUrl", to => props => {
   return (
     <Back go={props.cancel}>
       <Step<string>
@@ -90,8 +90,13 @@ const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl").build("baseUrl", to =>
         prompt="Base URL:"
         parse={val => val}
         validate={() => ({ valid: true })}
-        onSubmit={baseUrl => {
-          to.authAsk({ ...props, baseUrl });
+        onSubmit={async baseUrl => {
+          const hasExistingKey = await hasExistingKeyForBaseUrl(baseUrl, props.config);
+          if (hasExistingKey) {
+            to.postAuth({ ...props, baseUrl });
+          } else {
+            to.authAsk({ ...props, baseUrl });
+          }
         }}
       >
         <Box flexDirection="column">
@@ -115,6 +120,10 @@ function AuthAsk(
       onSelect: (route: "apiKey" | "envVar" | "command") => void;
     },
 ) {
+  const provider = Object.values(PROVIDERS).find(provider => {
+    return provider.baseUrl === props.baseUrl;
+  });
+
   const shortcutItems = [
     {
       type: "key" as const,
@@ -142,10 +151,6 @@ function AuthAsk(
     if (item.value === "back") props.back();
     else props.onSelect(item.value);
   }, []);
-
-  const provider = Object.values(PROVIDERS).find(provider => {
-    return provider.baseUrl === props.baseUrl;
-  });
 
   return (
     <Back go={props.back}>
@@ -598,6 +603,24 @@ export function CustomAuthFlow({
   config: Config | null;
 }) {
   const [errorMessage, setErrorMessage] = useState("");
+  const [hasCheckedExistingKey, setHasCheckedExistingKey] = useState(false);
+
+  useEffect(() => {
+    if (!hasCheckedExistingKey) {
+      hasExistingKeyForBaseUrl(baseUrl, config).then(hasKey => {
+        if (hasKey) {
+          onComplete();
+        }
+        setHasCheckedExistingKey(true);
+      });
+    }
+  }, [hasCheckedExistingKey, baseUrl, config, onComplete]);
+
+  // Show nothing while checking for existing key (will auto-complete if found)
+  if (!hasCheckedExistingKey) {
+    return <></>;
+  }
+
   return (
     <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
       <customAuthDoneCtx.Provider value={onComplete}>
