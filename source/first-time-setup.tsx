@@ -5,7 +5,7 @@ import path from "path";
 import json5 from "json5";
 import { execSync } from "child_process";
 import TextInput from "./components/text-input.tsx";
-import { Config, Auth } from "./config.ts";
+import { Config, Auth, CURRENT_CONFIG_VERSION } from "./config.ts";
 import { useColor } from "./theme.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -169,6 +169,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
 
             setNameError(null);
             const config: Config = {
+              configVersion: CURRENT_CONFIG_VERSION,
               yourName: trimmedName,
               models: step.models,
             };

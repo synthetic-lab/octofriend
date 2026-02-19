@@ -16,6 +16,33 @@ const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
+export const CURRENT_CONFIG_VERSION = 1;
+
+type Migration = (raw: Record<string, any>) => Record<string, any>;
+
+const MIGRATIONS: Record<number, Migration> = {
+  1: raw => ({
+    ...raw,
+    models: (Array.isArray(raw["models"]) ? raw["models"] : []).map((model: any) => {
+      if (model.multimodal) return model;
+      const provider = providerForBaseUrl(model.baseUrl) as ProviderConfig | null;
+      const canonical = provider?.models.find((m: any) => m.model === model.model);
+      if (canonical?.multimodal) return { ...model, multimodal: canonical.multimodal };
+      return model;
+    }),
+  }),
+};
+
+function migrateConfig(raw: Record<string, any>): Record<string, any> {
+  let version: number = raw["configVersion"] ?? 0;
+  while (version < CURRENT_CONFIG_VERSION) {
+    const migration = MIGRATIONS[version + 1];
+    if (migration) raw = migration(raw);
+    version++;
+  }
+  return { ...raw, configVersion: CURRENT_CONFIG_VERSION };
+}
+
 const McpServerConfigSchema = t.exact({
   command: t.str,
   args: t.optional(t.array(t.str)),
@@ -51,10 +78,12 @@ const ModelConfigSchema = t.exact({
   model: t.str,
   context: t.num,
   reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
+  multimodal: t.optional(t.subtype({ enabled: t.bool, maxSizeMB: t.num })),
 });
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 
 const ConfigSchema = t.exact({
+  configVersion: t.optional(t.num),
   yourName: t.str,
   models: t.array(ModelConfigSchema),
   diffApply: t.optional(
@@ -294,7 +323,10 @@ function getDefaultEnvVar(provider: ProviderConfig, config: Config) {
 export async function writeConfig(c: Config, configPath: string) {
   const dir = path.dirname(configPath);
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(configPath, json5.stringify(sanitizeConfig(c), null, 2));
+  await fs.writeFile(
+    configPath,
+    json5.stringify({ configVersion: CURRENT_CONFIG_VERSION, ...sanitizeConfig(c) }, null, 2),
+  );
 }
 
 function sanitizeConfig(c: Config): Config {
@@ -519,9 +551,16 @@ export function getModelFromConfig(config: Config, modelOverride: string | null)
   return config.models[0];
 }
 
-export async function readConfig(path: string): Promise<Config> {
-  const file = await fs.readFile(path, "utf8");
-  return ConfigSchema.slice(json5.parse(file.trim()));
+export async function readConfig(filePath: string): Promise<Config> {
+  const file = await fs.readFile(filePath, "utf8");
+  const parsed = json5.parse(file.trim());
+  const fileVersion: number = parsed["configVersion"] ?? 0;
+  const raw = migrateConfig(parsed);
+  const config = ConfigSchema.slice(raw);
+  if (fileVersion < CURRENT_CONFIG_VERSION) {
+    await writeConfig(config, filePath);
+  }
+  return config;
 }
 
 export type Metadata = {

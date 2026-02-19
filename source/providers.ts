@@ -1,5 +1,10 @@
 import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
 
+export type MultimodalConfig = {
+  enabled: boolean;
+  maxSizeMB: number;
+};
+
 export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic";
@@ -11,6 +16,7 @@ export type ProviderConfig = {
     nickname: string;
     context: number;
     reasoning?: "low" | "medium" | "high";
+    multimodal?: MultimodalConfig;
   }>;
   testModel: string;
 };
@@ -31,6 +37,7 @@ export const PROVIDERS = {
         model: "hf:moonshotai/Kimi-K2.5",
         nickname: "Kimi K2.5",
         context: 256 * 1024,
+        multimodal: { enabled: true, maxSizeMB: 10 },
       },
       {
         model: "hf:MiniMaxAI/MiniMax-M2.1",
@@ -58,18 +65,21 @@ export const PROVIDERS = {
         nickname: "GPT-5.2 Pro",
         context: 200 * 1024,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 20 },
       },
       {
         model: "gpt-5.2-2025-12-11",
         nickname: "GPT-5.2",
         context: 200 * 1024,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 20 },
       },
       {
         model: "gpt-5-mini-2025-08-07",
         nickname: "GPT-5 Mini",
         context: 200 * 1024,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 20 },
       },
     ],
     testModel: "gpt-5-mini-2025-08-07",
@@ -87,18 +97,21 @@ export const PROVIDERS = {
         nickname: "Claude 4.5 Sonnet",
         context: 200 * 1000,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 30 },
       },
       {
         model: "claude-opus-4-6",
         nickname: "Claude 4.6 Opus",
         context: 200 * 1000,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 30 },
       },
       {
         model: "claude-haiku-4-5-20251001",
         nickname: "Claude 4.5 Haiku",
         context: 200 * 1000,
         reasoning: "medium",
+        multimodal: { enabled: true, maxSizeMB: 30 },
       },
     ],
     testModel: "claude-haiku-4-5-20251001",
@@ -109,7 +122,14 @@ export const PROVIDERS = {
     name: "xAI",
     envVar: "XAI_API_KEY",
     baseUrl: "https://api.x.ai/v1",
-    models: [{ model: "grok-4-latest", nickname: "Grok 4", context: 64 * 1024 }],
+    models: [
+      {
+        model: "grok-4-latest",
+        nickname: "Grok 4",
+        context: 64 * 1024,
+        multimodal: { enabled: true, maxSizeMB: 20 },
+      },
+    ],
     testModel: "grok-4-latest",
   } satisfies ProviderConfig,
 };
