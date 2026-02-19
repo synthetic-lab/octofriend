@@ -1166,12 +1166,12 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "fetch": {
       return (
         <Text>
-          <Text> fetches from the web.</Text>
+          <Text> fetches from the web during this session.</Text>
         </Text>
       );
     }
     case "web-search": {
-      return <Text>Web Searches</Text>;
+      return <Text> Web Searches during this session.</Text>;
     }
     case "list":
     case "read": {

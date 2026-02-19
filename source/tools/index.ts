@@ -30,13 +30,7 @@ export async function loadTools(
   return loaded as LoadedTools;
 }
 
-export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
-  "read",
-  "list",
-  "fetch",
-  "skill",
-  "web-search",
-];
+export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = ["read", "list", "skill"];
 
 export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = ["shell"];
 
