@@ -24,10 +24,10 @@ const MIGRATIONS: Record<number, Migration> = {
   1: raw => ({
     ...raw,
     models: (Array.isArray(raw["models"]) ? raw["models"] : []).map((model: any) => {
-      if (model.multimodal) return model;
       const provider = providerForBaseUrl(model.baseUrl) as ProviderConfig | null;
       const canonical = provider?.models.find((m: any) => m.model === model.model);
-      if (canonical?.multimodal) return { ...model, multimodal: canonical.multimodal };
+      if (canonical?.modalities !== undefined)
+        return { ...model, modalities: canonical.modalities };
       return model;
     }),
   }),
@@ -78,7 +78,17 @@ const ModelConfigSchema = t.exact({
   model: t.str,
   context: t.num,
   reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
-  multimodal: t.optional(t.subtype({ enabled: t.bool, maxSizeMB: t.num })),
+  modalities: t.optional(
+    t.subtype({
+      image: t.optional(
+        t.subtype({
+          enabled: t.bool,
+          maxSizeMB: t.num,
+          acceptedMimeTypes: t.array(t.str),
+        }),
+      ),
+    }),
+  ),
 });
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
 
