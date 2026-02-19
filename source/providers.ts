@@ -195,6 +195,9 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 };
 
+export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
+  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Kimi K2.5";
+
 export type ProviderKey = keyof typeof PROVIDERS;
 
 export function recommendedModel(provider: ProviderKey): ProviderConfig["models"][number] {

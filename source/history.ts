@@ -1,5 +1,6 @@
 import { ToolResult } from "./tools/common.ts";
 import { ToolCallRequest, AnthropicAssistantData } from "./ir/llm-ir.ts";
+import { ImageInfo } from "./utils/image-utils.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint;
@@ -70,6 +71,7 @@ export type AssistantItem = SequenceIdTagged<{
 export type UserItem = SequenceIdTagged<{
   type: "user";
   content: string;
+  images?: ImageInfo[];
 }>;
 
 export type RequestFailed = SequenceIdTagged<{

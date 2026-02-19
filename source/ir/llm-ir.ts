@@ -1,4 +1,5 @@
 import { ToolCall } from "../tools/index.ts";
+import { ImageInfo } from "../utils/image-utils.ts";
 
 export type ToolCallRequest = {
   type: "function";
@@ -37,6 +38,7 @@ export type AssistantMessage = {
 export type UserMessage = {
   role: "user";
   content: string;
+  images?: ImageInfo[];
 };
 
 export type ToolOutputMessage = {

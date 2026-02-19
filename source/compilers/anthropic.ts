@@ -10,6 +10,7 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
+import { MultimodalConfig } from "../providers.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -17,7 +18,10 @@ const ThinkingBlockSchema = t.subtype({
   signature: t.str,
 });
 
-function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
+function toModelMessage(
+  messages: LlmIR[],
+  modalities?: MultimodalConfig,
+): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
   const irs = [...messages];
@@ -30,7 +34,7 @@ function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
       seenPaths.add(ir.path);
       output.push(modelMessageFromIr(ir, seen));
     } else {
-      output.push(modelMessageFromIr(ir, false));
+      output.push(modelMessageFromIr(ir, false, modalities));
     }
   }
 
@@ -39,7 +43,11 @@ function toModelMessage(messages: LlmIR[]): Array<Anthropic.MessageParam> {
   return output;
 }
 
-function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessageParam {
+function modelMessageFromIr(
+  ir: LlmIR,
+  seenPath: boolean,
+  modalities?: MultimodalConfig,
+): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCall ? [ir.toolCall] : [];
@@ -61,6 +69,28 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): Anthropic.MessagePara
   }
 
   if (ir.role === "user") {
+    if (ir.images && ir.images.length > 0) {
+      if (modalities?.image?.enabled) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(img => ({
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: img.mimeType,
+                data: img.base64Data,
+              },
+            })),
+          ],
+        };
+      }
+      return {
+        role: "user",
+        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+      };
+    }
     return {
       role: "user",
       content: ir.content,
@@ -209,7 +239,7 @@ export const runAnthropicAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = toModelMessage(irs);
+  const messages = toModelMessage(irs, model.modalities);
   const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
   const toolDefs = tools || {};

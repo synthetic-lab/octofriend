@@ -1,9 +1,59 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { Text, useInput, Box, DOMElement, measureElement } from "ink";
 import chalk from "chalk";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { useEmacsKeyHandler } from "./emacs-mode.tsx";
 import { wrapTextWithMapping } from "../text-wrap.ts";
+import stringWidth from "string-width";
+import { ImageInfo, parseImagePaths } from "../utils/image-utils.ts";
+import { MultimodalConfig } from "../providers.ts";
+
+function getImageBadgeText(index: number): string {
+  return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
+}
+
+function getImageBadgeWidth(index: number): number {
+  return stringWidth(getImageBadgeText(index)) + 1; // extra space for marginRight
+}
+
+const LOADING_BADGE_TEXT = "⟦ ⏳ Attaching image... ⟧";
+const LOADING_BADGE_WIDTH = stringWidth(LOADING_BADGE_TEXT) + 1;
+
+type BadgeItem = { index: number; isLoading: boolean };
+
+function computeImageBadgeLayout(imageCount: number, isLoading: boolean, containerWidth: number) {
+  const badgeRows: BadgeItem[][] = [];
+  let currentRow: BadgeItem[] = [];
+  let currentRowWidth = 0;
+
+  const totalItems = imageCount + (isLoading ? 1 : 0);
+
+  for (let i = 0; i < totalItems; i++) {
+    // only 1 loading badge will be shown at a time (sequential image loading)
+    // the loading badge will be on the same row as the most recent image badge if it fits
+    // otherwise on a new row
+    const isCurrentLoading = isLoading && i === totalItems - 1;
+    const currentBadgeWidth = isCurrentLoading ? LOADING_BADGE_WIDTH : getImageBadgeWidth(i);
+
+    if (currentRow.length > 0 && currentRowWidth + currentBadgeWidth > containerWidth) {
+      badgeRows.push(currentRow);
+      currentRow = [{ index: i, isLoading: isCurrentLoading }];
+      currentRowWidth = currentBadgeWidth;
+    } else {
+      currentRow.push({ index: i, isLoading: isCurrentLoading });
+      currentRowWidth += currentBadgeWidth;
+    }
+  }
+
+  let remainingWidthForText = containerWidth;
+
+  if (currentRow.length > 0) {
+    badgeRows.push(currentRow);
+    remainingWidthForText = containerWidth - currentRowWidth;
+  }
+
+  return { badgeRows, remainingWidthForText };
+}
 
 export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
 
@@ -15,24 +65,34 @@ type Props = {
   readonly highlightPastedText?: boolean;
   readonly value: string;
   readonly onChange: (value: string) => void;
+  readonly onImagePathsAttached?: (imagePaths: string[]) => any;
   readonly onSubmit?: (value: string) => void;
+  readonly showLoadingImageBadge?: boolean;
   readonly vimEnabled?: boolean;
   readonly vimMode?: "NORMAL" | "INSERT";
   readonly setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  readonly attachedImages?: ImageInfo[];
+  readonly onRemoveLastImage?: () => any;
+  readonly modalities?: MultimodalConfig;
 };
 
 export default function TextInput({
+  attachedImages,
   value: originalValue,
+  showLoadingImageBadge = false,
   placeholder = "",
   focus = true,
   mask,
   highlightPastedText = false,
   showCursor = true,
   onChange,
+  onImagePathsAttached,
+  onRemoveLastImage,
   onSubmit,
   vimEnabled = false,
   vimMode = "NORMAL",
   setVimMode,
+  modalities,
 }: Props) {
   const [state, setState] = useState({
     cursorOffset: 0,
@@ -60,6 +120,7 @@ export default function TextInput({
       setMeasuredWidth(dimensions.width);
     }
   }
+
   // Measure container width on layout
   useLayoutEffect(() => {
     handleElementSize();
@@ -111,8 +172,22 @@ export default function TextInput({
 
   const value = mask ? mask.repeat(originalValue.length) : originalValue;
 
-  // Wrap text to measured width
-  const { wrapped, originalToWrapped } = wrapTextWithMapping(value, measuredWidth);
+  const { badgeRows: imageBadgeRows, remainingWidthForText } = useMemo(
+    () =>
+      computeImageBadgeLayout(attachedImages?.length ?? 0, showLoadingImageBadge, measuredWidth),
+    [attachedImages?.length, showLoadingImageBadge, measuredWidth],
+  );
+
+  const hasImageBadges = imageBadgeRows.length > 0;
+  const MIN_USABLE_TEXT_WIDTH = 5;
+  const textStartsOnBadgeRow = hasImageBadges && remainingWidthForText >= MIN_USABLE_TEXT_WIDTH;
+  const remainingWidthForFirstTextLine = textStartsOnBadgeRow ? remainingWidthForText : undefined;
+
+  const { wrapped, originalToWrapped } = wrapTextWithMapping(
+    value,
+    measuredWidth,
+    remainingWidthForFirstTextLine,
+  );
   const wrappedCursorPosition = originalToWrapped[renderCursorPosition] ?? renderCursorPosition;
 
   let renderedValue = wrapped;
@@ -198,6 +273,18 @@ export default function TextInput({
         // Vim didn't consume it, continue with normal processing
       }
 
+      if (input.length > 1) {
+        const imagePaths = parseImagePaths(input);
+        if (imagePaths && onImagePathsAttached) {
+          onImagePathsAttached(imagePaths);
+          if (modalities?.image?.enabled) {
+            // automatic behavior when pasting an image is pasting its filePath as text
+            // on models that support image inputs, attach an image rather than input the filePath in TextInput
+            return;
+          }
+        }
+      }
+
       if (
         key.upArrow ||
         key.downArrow ||
@@ -262,6 +349,10 @@ export default function TextInput({
             currentValue.slice(cursorPosition, currentValue.length);
 
           nextCursorPosition--;
+        } else if (attachedImages && attachedImages.length > 0) {
+          if (onRemoveLastImage) {
+            onRemoveLastImage();
+          }
         }
       } else {
         nextValue =
@@ -306,11 +397,31 @@ export default function TextInput({
     (placeholder ? (value.length > 0 ? renderedValue : renderedPlaceholder) : renderedValue) || "";
 
   const lines = toRender.split(LINE_SPLIT_REGEX);
+
+  const hasSharedRow = textStartsOnBadgeRow && imageBadgeRows.length > 0;
+  const textLinesToRender = hasSharedRow ? lines.slice(1) : lines;
+
   return (
     <Box ref={containerRef} flexGrow={1} flexDirection="column">
-      {lines.map((line, index) => {
+      {imageBadgeRows.map((imageBadgeItems, rowIndex) => {
+        const isSharedRow = hasSharedRow && rowIndex === imageBadgeRows.length - 1;
+
         return (
-          <Box height={1} key={`line-${index}`}>
+          <Box flexDirection="row" height={1} key={`badge-row-${rowIndex}`}>
+            {imageBadgeItems.map(item => (
+              <Box key={`image-badge-${item.index}`} marginRight={1}>
+                <Text inverse>
+                  {item.isLoading ? LOADING_BADGE_TEXT : getImageBadgeText(item.index)}
+                </Text>
+              </Box>
+            ))}
+            {isSharedRow && <Text>{lines[0]}</Text>}
+          </Box>
+        );
+      })}
+      {textLinesToRender.map((line, index) => {
+        return (
+          <Box height={1} key={`text-line-${index}`}>
             <Text>{line}</Text>
           </Box>
         );
