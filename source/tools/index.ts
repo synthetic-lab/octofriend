@@ -33,7 +33,6 @@ export async function loadTools(
 export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "read",
   "list",
-  "fetch",
   "skill",
   "web-search",
 ];
