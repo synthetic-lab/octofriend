@@ -386,6 +386,9 @@ export const runAgent: Compiler = async ({
           | {
               tool_calls: Array<ResponseToolCall>;
             }
+          | {
+              reasoning: string;
+            }
           | null;
 
         if (delta && "content" in delta && delta.content) {
@@ -395,6 +398,10 @@ export const runAgent: Compiler = async ({
           if (reasoningContent == null) reasoningContent = "";
           reasoningContent += delta.reasoning_content;
           onTokens(delta.reasoning_content, "reasoning");
+        } else if (delta && "reasoning" in delta && delta.reasoning) {
+          if (reasoningContent == null) reasoningContent = "";
+          reasoningContent += delta.reasoning;
+          onTokens(delta.reasoning, "reasoning");
         } else if (
           delta &&
           "tool_calls" in delta &&
