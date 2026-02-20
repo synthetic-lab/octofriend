@@ -242,9 +242,19 @@ export async function resolveAuth(auth: Auth): Promise<KeyResult> {
  * Converts legacy apiEnvVar to Auth, or returns existing auth.
  * Used for migration compatibility.
  */
-export function getAuthForModel(model: { auth?: Auth; apiEnvVar?: string }): Auth | null {
-  if (model.auth) return model.auth;
-  if (model.apiEnvVar) return { type: "env", name: model.apiEnvVar };
+function getAuthForModel(model: { auth?: Auth; apiEnvVar?: string }): Auth | null {
+  if (model.auth) {
+    if (model.auth.type === "command") return model.auth;
+    const envVar = model.auth.name;
+    if (process.env[envVar])
+      return {
+        type: "env",
+        name: envVar,
+      };
+  }
+  if (model.apiEnvVar && process.env[model.apiEnvVar]) {
+    return { type: "env", name: model.apiEnvVar };
+  }
   return null;
 }
 
