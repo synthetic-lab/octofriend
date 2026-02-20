@@ -86,37 +86,39 @@ const errorContext = createContext<{
 
 const fullFlow = router<FullFlowRouteData>();
 
-const baseUrl = fullFlow.withRoutes("authAsk", "baseUrl", "postAuth").build("baseUrl", to => props => {
-  return (
-    <Back go={props.cancel}>
-      <Step<string>
-        title="What's the base URL for the API you're connecting to?"
-        prompt="Base URL:"
-        parse={val => val}
-        validate={() => ({ valid: true })}
-        onSubmit={async baseUrl => {
-          const hasExistingKey = await hasExistingKeyForBaseUrl(baseUrl, props.config);
-          if (hasExistingKey) {
-            to.postAuth({ ...props, baseUrl });
-          } else {
-            to.authAsk({ ...props, baseUrl });
-          }
-        }}
-      >
-        <Box flexDirection="column">
-          {props.renderExamples && (
-            <Box marginBottom={1}>
-              <Text>(For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)</Text>
-            </Box>
-          )}
-          <Text>
-            You can usually find this information in your inference provider's documentation.
-          </Text>
-        </Box>
-      </Step>
-    </Back>
-  );
-});
+const baseUrl = fullFlow
+  .withRoutes("authAsk", "baseUrl", "postAuth")
+  .build("baseUrl", to => props => {
+    return (
+      <Back go={props.cancel}>
+        <Step<string>
+          title="What's the base URL for the API you're connecting to?"
+          prompt="Base URL:"
+          parse={val => val}
+          validate={() => ({ valid: true })}
+          onSubmit={async baseUrl => {
+            const hasExistingKey = await hasExistingKeyForBaseUrl(baseUrl, props.config);
+            if (hasExistingKey) {
+              to.postAuth({ ...props, baseUrl });
+            } else {
+              to.authAsk({ ...props, baseUrl });
+            }
+          }}
+        >
+          <Box flexDirection="column">
+            {props.renderExamples && (
+              <Box marginBottom={1}>
+                <Text>(For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)</Text>
+              </Box>
+            )}
+            <Text>
+              You can usually find this information in your inference provider's documentation.
+            </Text>
+          </Box>
+        </Step>
+      </Back>
+    );
+  });
 
 function AuthAsk(
   props: FullFlowRouteData["authAsk"] &
