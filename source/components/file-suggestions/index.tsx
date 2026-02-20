@@ -1,7 +1,7 @@
 import React from "react";
 import { Box, useInput } from "ink";
-import { useFileSearch } from "./use-file-search.js";
-import { SuggestionList } from "./SuggestionList.js";
+import { useFileSearch } from "./use-file-search.ts";
+import { SuggestionList } from "./suggestion-list.tsx";
 
 interface FileSuggestionBoxProps {
   query: string;

@@ -65,7 +65,11 @@ import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
-import { useShiftTab } from "./hooks/use-shift-tab.tsx";
+import {
+  InputPriorityProvider,
+  usePriorityInput,
+  UNCHAINED_PRIORITY,
+} from "./hooks/use-priority-input.tsx";
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 
@@ -117,6 +121,30 @@ const TransportContext = createContext<Transport>(new LocalTransport());
 
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
+
+function UnchainedShiftTabHandler({
+  setIsUnchained,
+  setTempNotification,
+}: {
+  setIsUnchained: (fn: (prev: boolean) => boolean) => void;
+  setTempNotification: (notif: string | null) => void;
+}) {
+  usePriorityInput(UNCHAINED_PRIORITY, (_, key) => {
+    if (key.shift && key.tab) {
+      setIsUnchained(prev => {
+        const unchained = !prev;
+        if (unchained) {
+          setTempNotification(UNCHAINED_NOTIF);
+        } else {
+          setTempNotification(CHAINED_NOTIF);
+        }
+        return unchained;
+      });
+    }
+  });
+  return null;
+}
+
 export default function App({
   config,
   configPath,
@@ -153,17 +181,6 @@ export default function App({
     skillNotifs.push("Configured skills:");
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
-  useShiftTab(() => {
-    setIsUnchained(prev => {
-      const unchained = !prev;
-      if (unchained) {
-        setTempNotification(UNCHAINED_NOTIF);
-      } else {
-        setTempNotification(CHAINED_NOTIF);
-      }
-      return unchained;
-    });
-  });
 
   const staticItems: StaticItem[] = useMemo(() => {
     return [
@@ -177,39 +194,45 @@ export default function App({
   }, [history]);
 
   return (
-    <SetConfigContext.Provider value={setCurrConfig}>
-      <ConfigPathContext.Provider value={configPath}>
-        <ConfigContext.Provider value={currConfig}>
-          <UnchainedContext.Provider value={isUnchained}>
-            <TransportContext.Provider value={transport}>
-              <CwdContext.Provider value={cwd}>
-                <ExitOnDoubleCtrlC>
-                  <TerminalSizeTracker>
-                    <Box flexDirection="column" width="100%" height="100%">
-                      <Static items={staticItems} key={clearNonce}>
-                        {(item, index) => (
-                          <StaticItemRenderer item={item} key={`static-${index}`} />
-                        )}
-                      </Static>
-                      {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                        (modeData.inflightResponse.reasoningContent ||
-                          modeData.inflightResponse.content) && (
-                          <MessageDisplay item={modeData.inflightResponse} />
-                        )}
-                      <BottomBar
-                        inputHistory={inputHistory}
-                        metadata={metadata}
-                        tempNotification={tempNotification}
-                      />
-                    </Box>
-                  </TerminalSizeTracker>
-                </ExitOnDoubleCtrlC>
-              </CwdContext.Provider>
-            </TransportContext.Provider>
-          </UnchainedContext.Provider>
-        </ConfigContext.Provider>
-      </ConfigPathContext.Provider>
-    </SetConfigContext.Provider>
+    <InputPriorityProvider>
+      <UnchainedShiftTabHandler
+        setIsUnchained={setIsUnchained}
+        setTempNotification={setTempNotification}
+      />
+      <SetConfigContext.Provider value={setCurrConfig}>
+        <ConfigPathContext.Provider value={configPath}>
+          <ConfigContext.Provider value={currConfig}>
+            <UnchainedContext.Provider value={isUnchained}>
+              <TransportContext.Provider value={transport}>
+                <CwdContext.Provider value={cwd}>
+                  <ExitOnDoubleCtrlC>
+                    <TerminalSizeTracker>
+                      <Box flexDirection="column" width="100%" height="100%">
+                        <Static items={staticItems} key={clearNonce}>
+                          {(item, index) => (
+                            <StaticItemRenderer item={item} key={`static-${index}`} />
+                          )}
+                        </Static>
+                        {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                          (modeData.inflightResponse.reasoningContent ||
+                            modeData.inflightResponse.content) && (
+                            <MessageDisplay item={modeData.inflightResponse} />
+                          )}
+                        <BottomBar
+                          inputHistory={inputHistory}
+                          metadata={metadata}
+                          tempNotification={tempNotification}
+                        />
+                      </Box>
+                    </TerminalSizeTracker>
+                  </ExitOnDoubleCtrlC>
+                </CwdContext.Provider>
+              </TransportContext.Provider>
+            </UnchainedContext.Provider>
+          </ConfigContext.Provider>
+        </ConfigPathContext.Provider>
+      </SetConfigContext.Provider>
+    </InputPriorityProvider>
   );
 }
 

@@ -1,6 +1,5 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { useColor } from "../../theme.ts";
 
 interface SuggestionListProps {
   items: string[];
@@ -8,9 +7,7 @@ interface SuggestionListProps {
   onSelect: (filename: string) => void;
 }
 
-export function SuggestionList({ items, selectedIndex, onSelect }: SuggestionListProps) {
-  const themeColor = useColor();
-
+export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
   return (
     <Box flexDirection="column">
       {items.map((item, index) => {
@@ -20,7 +17,7 @@ export function SuggestionList({ items, selectedIndex, onSelect }: SuggestionLis
         return (
           <Box key={item}>
             {isSelected ? (
-              <Text inverse backgroundColor={themeColor}>
+              <Text inverse>
                 {">"} {displayPath}
               </Text>
             ) : (

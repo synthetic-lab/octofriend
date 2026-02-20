@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { useInput } from "ink";
 import { glob } from "tinyglobby";
 import fs from "fs/promises";
 import path from "path";
 import ignore from "ignore";
+import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 
+const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
 const GITIGNORE_CACHE_TTL = 300000;
 
@@ -118,13 +119,13 @@ async function getCachedFileList(): Promise<string[]> {
 async function searchFiles(query: string): Promise<string[]> {
   const files = await getCachedFileList();
 
-  if (!query) return files.slice(0, 20);
+  if (!query) return files.slice(0, MAX_SUGGESTIONS);
 
   const queryLower = query.toLowerCase();
 
   const matches = files.filter(f => f.toLowerCase().includes(queryLower));
   if (matches.length > 0) {
-    return matches.slice(0, 20);
+    return matches.slice(0, MAX_SUGGESTIONS);
   }
 
   return files
@@ -190,21 +191,24 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     };
   }, []);
 
-  useInput(
-    (input: string, key: { upArrow?: boolean; downArrow?: boolean; return?: boolean }) => {
-      if (key.upArrow) {
-        setSelectedIndex(prev => Math.max(0, prev - 1));
-      } else if (key.downArrow) {
-        setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
-      } else if (key.return) {
-        const selected = results[selectedIndex];
-        if (selected) {
-          options.onSelect(selected);
-        }
+  const selectPrev = () => {
+    console.error(selectedIndex, setSelectedIndex);
+    setSelectedIndex(Math.max(0, selectedIndex - 1));
+  };
+
+  usePriorityInput(FILE_SUGGESTIONS_PRIORITY, (_, key) => {
+    if (key.upArrow || (key.shift && key.tab)) {
+      console.error(setSelectedIndex);
+      selectPrev();
+    } else if (key.downArrow || key.tab) {
+      setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
+    } else if (key.return) {
+      const selected = results[selectedIndex];
+      if (selected) {
+        options.onSelect(selected);
       }
-    },
-    { isActive: true },
-  );
+    }
+  });
 
   return { results, selectedIndex, isLoading };
 }
