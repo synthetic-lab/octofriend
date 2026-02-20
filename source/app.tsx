@@ -52,6 +52,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { LocalTransport } from "./transports/local.ts";
+import { TransportContext } from "./transport-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import {
   useCtrlC,
@@ -116,8 +117,6 @@ function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
     item: message,
   }));
 }
-
-const TransportContext = createContext<Transport>(new LocalTransport());
 
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";

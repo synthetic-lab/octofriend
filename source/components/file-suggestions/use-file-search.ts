@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { glob } from "tinyglobby";
-import fs from "fs/promises";
-import path from "path";
 import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
+import { useTransport } from "../../transport-context.ts";
+import { globFiles } from "../../transports/transport-common.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
@@ -56,7 +55,10 @@ const fileCache = new Map<string, FileListEntry>();
 const pendingRequests = new Map<string, Promise<string[]>>();
 const gitignoreCache = new Map<string, GitignoreCacheEntry>();
 
-async function getGitignoreFilter(cwd: string): Promise<ignore.Ignore> {
+async function getGitignoreFilter(
+  cwd: string,
+  readFile: (path: string) => Promise<string>,
+): Promise<ignore.Ignore> {
   const cacheKey = cwd;
   const cached = gitignoreCache.get(cacheKey);
   const now = Date.now();
@@ -65,11 +67,11 @@ async function getGitignoreFilter(cwd: string): Promise<ignore.Ignore> {
     return ignore().add(cached.content);
   }
 
-  const gitignorePath = path.join(cwd, ".gitignore");
+  const gitignorePath = `${cwd}/.gitignore`;
   let content: string;
 
   try {
-    content = await fs.readFile(gitignorePath, "utf-8");
+    content = await readFile(gitignorePath);
   } catch {
     return ignore();
   }
@@ -78,8 +80,11 @@ async function getGitignoreFilter(cwd: string): Promise<ignore.Ignore> {
   return ignore().add(content);
 }
 
-async function getCachedFileList(): Promise<string[]> {
-  const cwd = process.cwd();
+async function getCachedFileList(
+  transport: ReturnType<typeof useTransport>,
+  signal: AbortSignal,
+): Promise<string[]> {
+  const cwd = await transport.cwd(signal);
   const now = Date.now();
   const cached = fileCache.get(cwd);
 
@@ -92,17 +97,11 @@ async function getCachedFileList(): Promise<string[]> {
     return pending;
   }
 
-  const ig = await getGitignoreFilter(cwd);
+  const readFile = async (filePath: string) => transport.readFile(signal, filePath);
+  const ig = await getGitignoreFilter(cwd, readFile);
 
-  // Two-stage filtering strategy:
-  // 1. Pre-filter: Use FOLDER_PATTERNS to exclude common directories (node_modules, .git, etc.)
-  //    at the glob search level for performance. This prevents searching inside these dirs.
-  // 2. Post-filter: Use the ignore library to filter results based on .gitignore rules.
-  //    This provides full gitignore spec compliance (negation, anchored patterns, etc.)
-  const promise = glob(["**/*"], {
-    cwd,
+  const promise = globFiles(signal, transport, ["**/*"], {
     ignore: FOLDER_PATTERNS,
-    absolute: false,
   }).then(files => ig.filter(files));
 
   pendingRequests.set(cwd, promise);
@@ -116,8 +115,15 @@ async function getCachedFileList(): Promise<string[]> {
   }
 }
 
-async function searchFiles(query: string): Promise<string[]> {
-  const files = await getCachedFileList();
+async function searchFiles(
+  query: string,
+  transport: ReturnType<typeof useTransport>,
+  signal: AbortSignal,
+): Promise<string[]> {
+  const files = await getCachedFileList(transport, signal);
+
+  // Sort by path length (shortest first) for better UX
+  files.sort((a, b) => a.length - b.length);
 
   if (!query) return files.slice(0, MAX_SUGGESTIONS);
 
@@ -145,13 +151,20 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
   const [results, setResults] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const transport = useTransport();
 
   const timerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const currentRequestId = useRef(0);
   const isMounted = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     clearTimeout(timerRef.current);
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     const thisRequest = ++currentRequestId.current;
     const debounceMs = options.debounceMs ?? 100;
@@ -162,14 +175,19 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
           setIsLoading(true);
         }
 
-        const matches = await searchFiles(query);
+        const signal = abortControllerRef.current!.signal;
+        const matches = await searchFiles(query, transport, signal);
 
         if (thisRequest === currentRequestId.current && isMounted.current) {
           setResults(matches);
           setSelectedIndex(0);
         }
       } catch (err) {
-        if (thisRequest === currentRequestId.current && err instanceof Error) {
+        if (
+          thisRequest === currentRequestId.current &&
+          err instanceof Error &&
+          err.name !== "AbortError"
+        ) {
           console.error("Search failed:", err);
         }
       } finally {
@@ -182,23 +200,22 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     return () => {
       clearTimeout(timerRef.current);
     };
-  }, [query, options.debounceMs]);
+  }, [query, options.debounceMs, transport]);
 
   useEffect(() => {
     return () => {
       isMounted.current = false;
       clearTimeout(timerRef.current);
+      abortControllerRef.current?.abort();
     };
   }, []);
 
   const selectPrev = () => {
-    console.error(selectedIndex, setSelectedIndex);
-    setSelectedIndex(Math.max(0, selectedIndex - 1));
+    setSelectedIndex(prev => Math.max(0, prev - 1));
   };
 
   usePriorityInput(FILE_SUGGESTIONS_PRIORITY, (_, key) => {
     if (key.upArrow || (key.shift && key.tab)) {
-      console.error(setSelectedIndex);
       selectPrev();
     } else if (key.downArrow || key.tab) {
       setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
