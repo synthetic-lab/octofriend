@@ -379,10 +379,15 @@ Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
 `);
 
     if (allInterTokenLatencies.length > 0) {
-      const minLatency = Math.min(...allInterTokenLatencies);
-      const maxLatency = Math.max(...allInterTokenLatencies);
-      const avgLatency =
-        allInterTokenLatencies.reduce((a, b) => a + b, 0) / allInterTokenLatencies.length;
+      let minLatency = allInterTokenLatencies[0];
+      let maxLatency = allInterTokenLatencies[0];
+      let total = 0;
+      for (const latency of allInterTokenLatencies) {
+        if (minLatency > latency) minLatency = latency;
+        if (maxLatency < latency) maxLatency = latency;
+        total += latency;
+      }
+      const avgLatency = total / allInterTokenLatencies.length;
 
       console.log(`Inter-token latencies (${allInterTokenLatencies.length} total):
   Min: ${minLatency}ms
