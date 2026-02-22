@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { attempt, defineTool, ToolError } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { walkDirectory, globToRegex } from "../utils.ts";
 
 const ArgumentsSchema = t.subtype({
   pattern: t.str.comment("Regex pattern to search for"),
@@ -28,91 +29,6 @@ If you're searching for common patterns that might match many lines, prefer "fil
 then selectively read the specific files you need rather than dumping all matches into context.`,
   );
 
-// Simple glob matching for file filtering (no ** support needed for file extensions)
-function matchesGlob(filename: string, pattern: string): boolean {
-  const regex = pattern
-    .replace(/\*\*/g, "<<<DOUBLESTAR>>>")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, ".")
-    .replace(/<<<DOUBLESTAR>>>/g, ".*");
-  return new RegExp(regex + "$").test(filename);
-}
-
-async function grepRecursive(
-  signal: AbortSignal,
-  transport: Transport,
-  dirPath: string,
-  regex: RegExp,
-  globPattern: string | undefined,
-  contextLines: number,
-  results: Array<{
-    path: string;
-    lineNumber: number;
-    line: string;
-    contextBefore: string[];
-    contextAfter: string[];
-  }>,
-  fileMatchCounts: Map<string, number>,
-  visited: Set<string>,
-): Promise<void> {
-  const resolved = await transport.resolvePath(signal, dirPath);
-  if (visited.has(resolved)) return;
-  visited.add(resolved);
-
-  const entries = await transport.readdir(signal, dirPath);
-
-  for (const entry of entries) {
-    const fullPath = await transport.resolvePath(signal, dirPath + "/" + entry.entry);
-
-    if (entry.isDirectory) {
-      await grepRecursive(
-        signal,
-        transport,
-        fullPath,
-        regex,
-        globPattern,
-        contextLines,
-        results,
-        fileMatchCounts,
-        visited,
-      );
-    } else {
-      // Check glob filter if provided
-      if (globPattern && !matchesGlob(entry.entry, globPattern)) {
-        continue;
-      }
-
-      try {
-        const content = await transport.readFile(signal, fullPath);
-        const lines = content.split("\n");
-        let fileMatches = 0;
-
-        for (let i = 0; i < lines.length; i++) {
-          if (regex.test(lines[i])) {
-            fileMatches++;
-            const contextBefore = lines.slice(Math.max(0, i - contextLines), i);
-            const contextAfter = lines.slice(i + 1, Math.min(lines.length, i + 1 + contextLines));
-
-            results.push({
-              path: fullPath,
-              lineNumber: i + 1,
-              line: lines[i],
-              contextBefore,
-              contextAfter,
-            });
-          }
-        }
-
-        if (fileMatches > 0) {
-          fileMatchCounts.set(fullPath, (fileMatchCounts.get(fullPath) || 0) + fileMatches);
-        }
-      } catch {
-        // Skip files that can't be read (binary, permissions, etc.)
-      }
-    }
-  }
-}
-
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema,
   ArgumentsSchema,
@@ -130,6 +46,7 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
     return attempt(`Grep failed for pattern: ${pattern}`, async () => {
       const flags = caseInsensitive ? "i" : "";
       const regex = new RegExp(pattern, flags);
+      const globFilter = globPattern ? globToRegex(globPattern) : null;
 
       const results: Array<{
         path: string;
@@ -139,18 +56,47 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
         contextAfter: string[];
       }> = [];
       const fileMatchCounts = new Map<string, number>();
-      const visited = new Set<string>();
 
-      await grepRecursive(
+      await walkDirectory(
         abortSignal,
         transport,
         searchPath,
-        regex,
-        globPattern,
-        contextLines,
-        results,
-        fileMatchCounts,
-        visited,
+        async ({ path, name, isDirectory }) => {
+          if (isDirectory) return;
+
+          if (globFilter && !globFilter.test(name)) {
+            return;
+          }
+
+          try {
+            const content = await transport.readFile(abortSignal, path);
+            const lines = content.split("\n");
+            let fileMatches = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+              if (regex.test(lines[i])) {
+                fileMatches++;
+                const contextBefore = lines.slice(Math.max(0, i - contextLines), i);
+                const contextAfter = lines.slice(
+                  i + 1,
+                  Math.min(lines.length, i + 1 + contextLines),
+                );
+
+                results.push({
+                  path,
+                  lineNumber: i + 1,
+                  line: lines[i],
+                  contextBefore,
+                  contextAfter,
+                });
+              }
+            }
+
+            if (fileMatches > 0) {
+              fileMatchCounts.set(path, (fileMatchCounts.get(path) || 0) + fileMatches);
+            }
+          } catch {}
+        },
       );
 
       if (outputMode === "files") {
@@ -165,7 +111,6 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
         return { content: counts.join("\n") };
       }
 
-      // content mode (default)
       const formatted = results.map(r => {
         let output = `${r.path}:${r.lineNumber}:${r.line}`;
         if (contextLines > 0 && (r.contextBefore.length > 0 || r.contextAfter.length > 0)) {
