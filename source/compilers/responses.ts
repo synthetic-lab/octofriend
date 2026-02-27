@@ -5,7 +5,7 @@ import { Compiler } from "./compiler-interface.ts";
 import { LlmIR, ToolCallRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { countIRTokens } from "../ir/count-ir-tokens.ts";
+import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
@@ -395,7 +395,7 @@ export const runResponsesAgent: Compiler = async ({
     let tokenDelta = 0;
     if (usage.input !== 0 || usage.output !== 0) {
       if (!abortSignal.aborted) {
-        const previousTokens = countIRTokens(irs);
+        const previousTokens = sumAssistantTokens(irs);
         tokenDelta = usage.input + usage.output + usage.reasoning - previousTokens;
       }
     }

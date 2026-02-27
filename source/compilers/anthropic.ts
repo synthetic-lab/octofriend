@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { countIRTokens } from "../ir/count-ir-tokens.ts";
+import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData } from "../ir/llm-ir.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
@@ -414,7 +414,7 @@ export const runAnthropicAgent: Compiler = async ({
     let tokenDelta = 0;
     if (usage.input !== 0 || usage.output !== 0) {
       if (!abortSignal.aborted) {
-        const previousTokens = countIRTokens(irs);
+        const previousTokens = sumAssistantTokens(irs);
         tokenDelta = usage.input + usage.output - previousTokens;
       }
     }

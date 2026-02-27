@@ -8,7 +8,7 @@ import {
   AgentResult,
   ToolCallRequest,
 } from "../ir/llm-ir.ts";
-import { countIRTokens } from "../ir/count-ir-tokens.ts";
+import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
@@ -451,7 +451,7 @@ export const runAgent: Compiler = async ({
       trackTokens(model.model, "input", usage.input);
       trackTokens(model.model, "output", usage.output);
       if (!abortSignal.aborted) {
-        const previousTokens = countIRTokens(irs);
+        const previousTokens = sumAssistantTokens(irs);
         tokenDelta = usage.input + usage.output - previousTokens;
       }
     }

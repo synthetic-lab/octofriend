@@ -3,7 +3,7 @@ import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
-import { countIRTokens } from "../ir/count-ir-tokens.ts";
+import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
 import { CompactionRequestError } from "../errors.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
@@ -45,7 +45,7 @@ export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]):
   const slicedMessages = messages.slice(checkpointIndex);
   const maxContextWindow = model.context;
   const maxAllowedTokens = Math.floor(maxContextWindow * AUTOCOMPACT_THRESHOLD);
-  const currentTokens = countIRTokens(slicedMessages);
+  const currentTokens = approximateIRTokens(slicedMessages);
 
   return currentTokens >= maxAllowedTokens;
 }
@@ -114,5 +114,13 @@ export function processCompactedHistory(
     return;
   }
 
-  return assistantMessage.content;
+  if (assistantMessage.content) {
+    return assistantMessage.content;
+  }
+
+  if (assistantMessage.reasoningContent) {
+    return assistantMessage.reasoningContent;
+  }
+
+  return undefined;
 }
