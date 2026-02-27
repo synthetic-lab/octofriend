@@ -1,4 +1,5 @@
 import stringWidth from "string-width";
+import { LINE_SPLIT_REGEX } from "./components/text-input.tsx";
 
 export type WrapResult = {
   wrapped: string;
@@ -24,7 +25,7 @@ export function wrapTextWithMapping(text: string, width: number): WrapResult {
   let originalPos = 0;
 
   // Split by existing newlines to preserve them
-  const paragraphs = text.split("\n");
+  const paragraphs = text.split(LINE_SPLIT_REGEX);
 
   for (let pIndex = 0; pIndex < paragraphs.length; pIndex++) {
     const paragraph = paragraphs[pIndex];

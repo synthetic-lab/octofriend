@@ -5,6 +5,8 @@ import { useVimKeyHandler } from "./vim-mode.tsx";
 import { useEmacsKeyHandler } from "./emacs-mode.tsx";
 import { wrapTextWithMapping } from "../text-wrap.ts";
 
+export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
+
 type Props = {
   readonly placeholder?: string;
   readonly focus?: boolean;
@@ -125,7 +127,7 @@ export default function TextInput({
 
     renderedValue = wrapped.length > 0 ? "" : chalk.inverse(" ");
 
-    const lines = wrapped.split("\n");
+    const lines = wrapped.split(LINE_SPLIT_REGEX);
     let i = 0;
 
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
@@ -303,7 +305,7 @@ export default function TextInput({
   const toRender =
     (placeholder ? (value.length > 0 ? renderedValue : renderedPlaceholder) : renderedValue) || "";
 
-  const lines = toRender.split("\n");
+  const lines = toRender.split(LINE_SPLIT_REGEX);
   return (
     <Box ref={containerRef} flexGrow={1} flexDirection="column">
       {lines.map((line, index) => {
