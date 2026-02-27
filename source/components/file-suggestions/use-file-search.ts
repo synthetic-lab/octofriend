@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
-import { globFiles } from "../../transports/transport-common.ts";
+import { findFiles } from "../../transports/transport-common.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
@@ -100,8 +100,8 @@ async function getCachedFileList(
   const readFile = async (filePath: string) => transport.readFile(signal, filePath);
   const ig = await getGitignoreFilter(cwd, readFile);
 
-  const promise = globFiles(signal, transport, ["**/*"], {
-    ignore: FOLDER_PATTERNS,
+  const promise = findFiles(signal, transport, {
+    type: "f",
   }).then(files => ig.filter(files));
 
   pendingRequests.set(cwd, promise);

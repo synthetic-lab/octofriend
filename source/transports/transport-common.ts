@@ -1,4 +1,5 @@
 import ignore from "ignore";
+import { quote } from "shell-quote";
 
 export interface Transport {
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
@@ -52,22 +53,56 @@ const EXCLUDED_DIRS = [
   ".gradle",
 ];
 
-export async function globFiles(
+export async function findFiles(
   signal: AbortSignal,
   transport: Transport,
-  patterns: string[],
-  options: { cwd?: string; ignore?: string[] } = {},
+  options: {
+    cwd?: string;
+    name?: string; // -name pattern (e.g. "*.js")
+    path?: string; // -path pattern (e.g. "*/test/*")
+    maxDepth?: number; // -maxdepth N
+    type?: "f" | "d"; // -type f or -type d
+  } = {},
 ): Promise<string[]> {
   const cwd = options.cwd || (await transport.cwd(signal));
 
   // Build find command with directory pruning
-  const pruneArgs = EXCLUDED_DIRS.map(d => `-name ${d} -prune`).join(" -o ");
-  const findCmd = `find ${cwd} ${pruneArgs} -o -type f -print`;
+  const pruneArgs = EXCLUDED_DIRS.map(d => `-name ${quote([d])} -prune`).join(" -o ");
+
+  // Build safe find predicates with proper shell escaping
+  const predicates: string[] = [];
+
+  if (
+    options.maxDepth !== undefined &&
+    Number.isInteger(options.maxDepth) &&
+    options.maxDepth >= 0
+  ) {
+    predicates.push(`-maxdepth ${options.maxDepth}`);
+  }
+
+  if (options.name !== undefined) {
+    predicates.push(`-name ${quote([options.name])}`);
+  }
+
+  if (options.path !== undefined) {
+    predicates.push(`-path ${quote([options.path])}`);
+  }
+
+  if (options.type === "f" || options.type === "d") {
+    predicates.push(`-type ${options.type}`);
+  }
+
+  // Default to -type f if no type specified
+  if (predicates.length === 0) {
+    predicates.push("-type f");
+  }
+
+  const findCmd = `find ${quote([cwd])} ${pruneArgs} -o ${predicates.join(" ")} -print`;
 
   const output = await transport.shell(signal, findCmd, 30000);
 
   // Parse output and make paths relative to cwd
-  const files = output
+  return output
     .split("\n")
     .map(line => line.trim())
     .filter(line => line.length > 0)
@@ -80,14 +115,6 @@ export async function globFiles(
       }
       return fullPath;
     });
-
-  // Apply ignore patterns
-  if (options.ignore && options.ignore.length > 0) {
-    const ig = ignore().add(options.ignore);
-    return ig.filter(files);
-  }
-
-  return files;
 }
 
 export class TransportError extends Error {
