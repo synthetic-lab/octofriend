@@ -1,4 +1,3 @@
-import ignore from "ignore";
 import { quote } from "shell-quote";
 
 export interface Transport {
