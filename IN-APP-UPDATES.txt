@@ -1,6 +1,10 @@
-- Octo now has a web search tool! If you have any Synthetic models available, it
-  Just Works. To enable for other providers, read the README.
-- Shift-Tab automatically swaps between collaboration mode and unchained mode.
-- Hotkeys added for nearly all menu items!
-- Octo supports per-repo skill definitions, in `.agents/skills`, in addition to
-  the previous global skill definitions.
+- Octo now supports image input! For multimodal models, try dragging and
+  dropping images into your terminal
+- Added @-autocompletion for file names: type @ and a snazzy new filepicker will
+  open up
+- In Collaboration Mode, you can whitelist tools for Octo to auto-accept with
+  the new "Always allow..." menu item in the permission prompt
+- Added support for using shell commands to access API keys, for better
+  password-manager support.
+- Improved Vim emulation
+- And a lot more! Run `octo changelog` to see the full list.

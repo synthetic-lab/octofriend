@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.0.53] - 02-27-2026
 
 ### Added
 
@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - @-tagging specific files now opens an autocompletion menu, making it easy to
   tell Octo about specific files on your filesystem: even deeply-nested ones.
+
+- You can now whitelist tools in Collaboration Mode so Octo doesn't prompt for
+  permission before running them.
 
 - Octo now supports authenticating via shell commands, meaning password
   managers are supported for managing API keys.
@@ -35,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Octo's git repo now includes a `canary.sh` and `canary.fish` set of scripts.
   Source them from your bashrc/zshrc/config.fish to enable a `canary-octo`
   command that builds and runs `main` instead of using the released version.
+
+- Octo now has a CONTRIBUTING.md to explain the guidelines for contributions!
 
 ### Changed
 
