@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+
+- @-tagging specific files now opens an autocompletion menu, making it easy to
+  tell Octo about specific files on your filesystem: even deeply-nested ones.
+
+- Octo now supports authenticating via shell commands, meaning password
+  managers are supported for managing API keys.
+
+- When encountering request errors, there's now an "Edit and retry" option to
+  edit your last message and retry it.
+
+- Improved Vim emulation: capital-B and capital-W are now supported, and Octo
+  has better support for handling newlines
+
+- New menu option to clear conversation state
+
+- Model metadata is automatically fetched from supported providers when
+  entering new, custom model strings, for easier setup of context length and
+  naming.
+
+- `octo bench tps` now takes an optional `--concurrency` flag to benchmark
+  concurrent requests
+
+- Octo's git repo now includes a `canary.sh` and `canary.fish` set of scripts.
+  Source them from your bashrc/zshrc/config.fish to enable a `canary-octo`
+  command that builds and runs `main` instead of using the released version.
+
+### Changed
+
+- Input is now preserved when entering/exiting the menu
+
+- Crash fix in file tool rendering for files that don't exist
+
+- Input boxes now support the Home and End keys, as well as Ctrl-arrow
+  navigation.
+
+- Improved API key tracking, so you need to enter API keys less frequently
+  during initial setup.
+
+- Fix for nested Markdown rendering
+
+- Vim mode state is preserved between menu enter/exit
+
+- Removed sidebars for input box for simpler copy/paste
+
+- Fix for multiline paste
+
+- Fetch now requires explicit permission during Collaboration Mode, to prevent
+  prompt injection exfiltration attacks via Web Search
+
+- Autocompaction bugfixes
+
 ## [0.0.52] - 2026-01-20
 
 ### Changed
