@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- You can now drag-and-drop images into the input box for multimodal models
+  that accept image input.
+
 - @-tagging specific files now opens an autocompletion menu, making it easy to
   tell Octo about specific files on your filesystem: even deeply-nested ones.
 
