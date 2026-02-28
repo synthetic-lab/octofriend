@@ -241,6 +241,19 @@ export default function TextInput({
       const previousCursorWidth = cursorWidthRef.current;
       let cursorPosition = currentValue.length + previousCursorOffset;
 
+      if (input.length > 1) {
+        const imagePaths = parseImagePaths(input);
+
+        if (imagePaths && onImagePathsAttached) {
+          onImagePathsAttached(imagePaths);
+          if (modalities?.image?.enabled) {
+            // automatic behavior when pasting an image is pasting its filePath as text
+            // on models that support image inputs, attach an image rather than input the filePath in TextInput
+            return;
+          }
+        }
+      }
+
       // Try Vim handler first if Vim mode is enabled
       if (vimEnabled) {
         const vimResult = vimHandler.handle(
@@ -271,18 +284,6 @@ export default function TextInput({
           return; // Vim consumed the key
         }
         // Vim didn't consume it, continue with normal processing
-      }
-
-      if (input.length > 1) {
-        const imagePaths = parseImagePaths(input);
-        if (imagePaths && onImagePathsAttached) {
-          onImagePathsAttached(imagePaths);
-          if (modalities?.image?.enabled) {
-            // automatic behavior when pasting an image is pasting its filePath as text
-            // on models that support image inputs, attach an image rather than input the filePath in TextInput
-            return;
-          }
-        }
       }
 
       if (

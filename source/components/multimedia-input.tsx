@@ -32,6 +32,7 @@ export const MultimediaInput = React.memo((props: Props) => {
   const acceptedMimeTypes = props.modalities?.image?.acceptedMimeTypes;
 
   useCtrlC(() => {
+    if (props.vimEnabled) return;
     setAttachedImages([]);
     setErrorMessages([]);
   });
