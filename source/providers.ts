@@ -34,11 +34,6 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:zai-org/GLM-4.7",
-        nickname: "GLM-4.7",
-        context: 198 * 1024,
-      },
-      {
         model: "hf:moonshotai/Kimi-K2.5",
         nickname: "Kimi K2.5",
         context: 256 * 1024,
@@ -51,14 +46,14 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "hf:MiniMaxAI/MiniMax-M2.1",
-        nickname: "MiniMax M2.1",
+        model: "hf:MiniMaxAI/MiniMax-M2.5",
+        nickname: "MiniMax M2.5",
         context: 192 * 1024,
       },
       {
-        model: "hf:openai/gpt-oss-120b",
-        nickname: "GPT-OSS-120b",
-        context: 128 * 1024,
+        model: "hf:zai-org/GLM-4.7",
+        nickname: "GLM-4.7",
+        context: 198 * 1024,
       },
     ],
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
@@ -72,7 +67,20 @@ export const PROVIDERS = {
     baseUrl: "https://api.openai.com/v1",
     models: [
       {
-        model: "gpt-5.2-pro-2025-12-11",
+        model: "gpt-5.3-codex",
+        nickname: "GPT-5.3 Codex",
+        context: 200 * 1024,
+        reasoning: "medium",
+        modalities: {
+          image: {
+            enabled: true,
+            maxSizeMB: 20,
+            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        },
+      },
+      {
+        model: "gpt-5.2-pro",
         nickname: "GPT-5.2 Pro",
         context: 200 * 1024,
         reasoning: "medium",
@@ -85,7 +93,7 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "gpt-5.2-2025-12-11",
+        model: "gpt-5.2",
         nickname: "GPT-5.2",
         context: 200 * 1024,
         reasoning: "medium",
@@ -98,7 +106,7 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "gpt-5-mini-2025-08-07",
+        model: "gpt-5-mini",
         nickname: "GPT-5 Mini",
         context: 200 * 1024,
         reasoning: "medium",
@@ -122,7 +130,7 @@ export const PROVIDERS = {
     baseUrl: "https://api.anthropic.com",
     models: [
       {
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-6",
         nickname: "Claude 4.5 Sonnet",
         context: 200 * 1000,
         reasoning: "medium",
@@ -148,7 +156,7 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-haiku-4-5",
         nickname: "Claude 4.5 Haiku",
         context: 200 * 1000,
         reasoning: "medium",
