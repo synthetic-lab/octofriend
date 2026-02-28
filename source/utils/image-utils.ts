@@ -42,7 +42,9 @@ export function replaceInputWithSafeCharacters(input: string): string {
   let escaped = false;
   let sanitized = "";
   for (const char of input) {
-    if (char === "\\") {
+    if (char === "\n" || char === "\r") {
+      sanitized += char;
+    } else if (char === "\\") {
       escaped = !escaped;
       sanitized += CHARACTER_PLACEHOLDER;
     } else if (char === " " && !escaped) {
@@ -67,13 +69,13 @@ export function separateFilePaths(input: string): string[] {
       cursor += separatedPlaceholderPath.length + 1;
     }
   }
-  return filePaths;
+  return filePaths.flatMap(path => path.split("\n"));
 }
 
 function sanitizeFilePath(path: string): string {
   // 1. Strip wrapping quotes (Single or Double)
   // Terminals often wrap paths in quotes instead of escaping them.
-  let cleanPath = path.replace(/^['"]|['"]$/g, "");
+  let cleanPath = path.trim().replace(/^['"]|['"]$/g, "");
 
   // 2. Unescape all shell-escaped characters
   // This looks for a backslash followed by ANY character, and replaces it
