@@ -73,20 +73,50 @@ export function separateFilePaths(input: string): string[] {
 }
 
 function sanitizeFilePath(path: string): string {
-  // 1. Strip wrapping quotes (Single or Double)
-  // Terminals often wrap paths in quotes instead of escaping them.
-  let cleanPath = path.trim().replace(/^['"]|['"]$/g, "");
-
-  // 2. Unescape all shell-escaped characters
-  // This looks for a backslash followed by ANY character, and replaces it
-  // with just that character.
-  // e.g., "\ " -> " ", "\(" -> "(", "\\" -> "\"
-  cleanPath = cleanPath.replace(/\\(.)/g, "$1");
+  const trimmed = path.trim();
+  const cleanPath = trimmed.replace(/\\(.)/g, "$1");
   return cleanPath;
 }
 
+function dequote(input: string): string {
+  return dequoteType(dequoteType(input, "'"), '"');
+}
+
+function dequoteType(input: string, quoteType: string): string {
+  let inQuote = false;
+  let chars: string[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char === quoteType) {
+      inQuote = !inQuote;
+      continue;
+    }
+
+    if (!inQuote) {
+      chars.push(char);
+      continue;
+    }
+
+    switch (char) {
+      case " ":
+        chars.push("\\", " ");
+        break;
+      case "\n":
+        chars.push("\\", "n");
+        break;
+      case "\r":
+        chars.push("\\", "\r");
+        break;
+      default:
+        chars.push(char);
+    }
+  }
+  return chars.join("");
+}
+
 export function parseImagePaths(input: string): string[] | null {
-  const filePaths = separateFilePaths(input);
+  const dequoted = dequote(input);
+  const filePaths = separateFilePaths(dequoted);
   const sanitizedFilePaths = filePaths.map(path => sanitizeFilePath(path));
   const imagePaths: string[] = [];
   for (const path of sanitizedFilePaths) {
