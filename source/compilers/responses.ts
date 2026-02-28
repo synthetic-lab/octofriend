@@ -11,10 +11,12 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
+import { MultimodalConfig } from "../providers.ts";
 
 async function toModelMessage(
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
+  modalities?: MultimodalConfig,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
@@ -28,7 +30,7 @@ async function toModelMessage(
       seenPaths.add(ir.path);
       output.push(modelMessageFromIr(ir, seen));
     } else {
-      output.push(modelMessageFromIr(ir, false));
+      output.push(modelMessageFromIr(ir, false, modalities));
     }
   }
 
@@ -46,7 +48,11 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
+function modelMessageFromIr(
+  ir: LlmIR,
+  seenPath: boolean,
+  modalities?: MultimodalConfig,
+): ModelMessage {
   if (ir.role === "assistant") {
     if (ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -105,6 +111,24 @@ function modelMessageFromIr(ir: LlmIR, seenPath: boolean): ModelMessage {
   }
 
   if (ir.role === "user") {
+    if (ir.images && ir.images.length > 0) {
+      if (modalities?.image?.enabled) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(img => ({
+              type: "image" as const,
+              image: img.dataUrl,
+            })),
+          ],
+        };
+      }
+      return {
+        role: "user",
+        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+      };
+    }
     return {
       role: "user",
       content: ir.content,
@@ -261,7 +285,7 @@ export const runResponsesAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toModelMessage(irs, systemPrompt);
+  const messages = await toModelMessage(irs, systemPrompt, model.modalities);
 
   // Convert tools to AI SDK format
   const toolDefs = tools || {};

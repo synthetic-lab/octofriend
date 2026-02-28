@@ -17,10 +17,22 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
+import { MultimodalConfig } from "../providers.ts";
 
+type Content =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | {
+          type: "image_url";
+          image_url: {
+            url: string;
+          };
+        }
+    >;
 export type UserMessage = {
   role: "user";
-  content: string;
+  content: Content;
 };
 
 export type AssistantMessage = {
@@ -90,6 +102,7 @@ JSON`;
 async function toLlmMessages(
   messages: LlmIR[],
   systemPrompt?: () => Promise<string>,
+  modalities?: MultimodalConfig,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
   const irs = [...messages];
@@ -103,7 +116,7 @@ async function toLlmMessages(
       seenPaths.add(ir.path);
       output.push(llmFromIr(ir, prev, seen));
     } else {
-      output.push(llmFromIr(ir, prev, false));
+      output.push(llmFromIr(ir, prev, false, modalities));
     }
     prev = ir;
   }
@@ -120,7 +133,12 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage {
+function llmFromIr(
+  ir: LlmIR,
+  prev: LlmIR | null,
+  seenPath: boolean,
+  modalities?: MultimodalConfig,
+): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCall } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -152,7 +170,25 @@ function llmFromIr(ir: LlmIR, prev: LlmIR | null, seenPath: boolean): LlmMessage
     };
   }
   if (ir.role === "user") {
-    return ir;
+    if (ir.images && ir.images.length > 0) {
+      if (modalities?.image?.enabled) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: ir.content },
+            ...ir.images.map(img => ({
+              type: "image_url" as const,
+              image_url: { url: img.dataUrl },
+            })),
+          ],
+        };
+      }
+      return {
+        role: "user",
+        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+      };
+    }
+    return { role: "user", content: ir.content };
   }
 
   if (ir.role === "tool-output") {
@@ -270,7 +306,7 @@ export const runAgent: Compiler = async ({
   autofixJson,
   tools,
 }) => {
-  const messages = await toLlmMessages(irs, systemPrompt);
+  const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
   const toolDefs = tools || {};
   const toolsMap = Object.entries(toolDefs).map(([name, tool]) => {

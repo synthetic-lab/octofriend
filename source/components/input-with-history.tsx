@@ -4,15 +4,22 @@ import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
+import { ImageInfo } from "../utils/image-utils.ts";
+import { MultimodalConfig } from "../providers.ts";
 
 interface Props {
+  attachedImages: ImageInfo[];
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
+  onImagePathsAttached?: (imagePaths: string[]) => any;
+  onRemoveLastImage?: () => any;
   onSubmit: (value?: string) => any;
+  showLoadingImageBadge?: boolean;
   vimEnabled?: boolean;
   vimMode?: "NORMAL" | "INSERT";
   setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  modalities?: MultimodalConfig;
 }
 
 export const InputWithHistory = React.memo((props: Props) => {
@@ -162,12 +169,17 @@ export const InputWithHistory = React.memo((props: Props) => {
       >
         <Text color="gray">&gt;</Text>
         <TextInput
+          attachedImages={props.attachedImages}
+          showLoadingImageBadge={props.showLoadingImageBadge}
           value={props.value}
           onChange={handleChange}
+          onRemoveLastImage={props.onRemoveLastImage}
+          onImagePathsAttached={props.onImagePathsAttached}
           onSubmit={handleSubmit}
           vimEnabled={props.vimEnabled}
           vimMode={props.vimMode}
           setVimMode={props.setVimMode}
+          modalities={props.modalities}
         />
       </Box>
     </Box>
