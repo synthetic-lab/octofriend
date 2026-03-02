@@ -3,6 +3,7 @@ import { Text, Box } from "ink";
 import { assertKeyForModel, useConfig } from "../config.ts";
 import { useModel } from "../state.ts";
 import { t } from "structural";
+import { formatTimeUntil } from "../time.ts";
 
 const QuotaResponseSchema = t.subtype({
   subscription: t.subtype({
@@ -19,34 +20,6 @@ type QuotaData = {
   limit: number;
   renewsAt: Date;
 };
-
-function formatTimeUntil(renewsAt: Date): string {
-  const now = new Date();
-  const diffMs = renewsAt.getTime() - now.getTime();
-  const diffMins = Math.floor(diffMs / (1000 * 60));
-
-  if (diffMins < 60) {
-    return `in ${diffMins} minute${diffMins !== 1 ? "s" : ""}`;
-  }
-
-  const diffHours = Math.floor(diffMins / 60);
-  const remainingMins = diffMins % 60;
-
-  if (diffHours < 24) {
-    if (remainingMins > 0) {
-      return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""} ${remainingMins} minute${remainingMins !== 1 ? "s" : ""}`;
-    }
-    return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`;
-  }
-
-  const diffDays = Math.floor(diffHours / 24);
-  const remainingHours = diffHours % 24;
-
-  if (remainingHours > 0) {
-    return `in ${diffDays} day${diffDays !== 1 ? "s" : ""} ${remainingHours} hour${remainingHours !== 1 ? "s" : ""}`;
-  }
-  return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
-}
 
 async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
   try {
@@ -108,7 +81,7 @@ export const MenuQuotaIndicator = React.memo(() => {
   if (loading) {
     return (
       <Box flexDirection="column" alignItems="center">
-        <Text color="gray">Synthetic Subscription:</Text>
+        <Text color="gray">Synthetic Subscription</Text>
         <Text color="gray">Loading quota...</Text>
       </Box>
     );
