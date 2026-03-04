@@ -3,6 +3,7 @@ import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { ModelConfig } from "../config.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
+import { QuotaData } from "../utils/quota.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
@@ -24,6 +25,7 @@ export async function run({
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
     onAutofixJson: (done: Promise<void>) => any;
+    onQuotaUpdated?: (quota: QuotaData) => void;
   };
   abortSignal: AbortSignal;
   systemPrompt?: () => Promise<string>;
@@ -46,6 +48,7 @@ export async function run({
     systemPrompt,
     irs: slicedMessages,
     onTokens: handlers.onTokens,
+    onQuotaUpdated: handlers.onQuotaUpdated,
     autofixJson: (badJson: string, signal: AbortSignal) => {
       const fixPromise = autofixJson(badJson, signal);
       handlers.onAutofixJson(fixPromise.then(() => {}));

@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
+import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
@@ -49,6 +50,7 @@ export type StateEvents = {
   retryTool: {
     irs: TrajectoryOutputIR[];
   };
+  onQuotaUpdated: QuotaData;
 };
 
 export type AnyState = keyof StateEvents;
@@ -145,6 +147,7 @@ export async function trajectoryArc({
       onAutofixJson: () => {
         handler.autofixingJson(null);
       },
+      onQuotaUpdated: quota => handler.onQuotaUpdated(quota),
     },
     systemPrompt: async () => {
       return systemPrompt({

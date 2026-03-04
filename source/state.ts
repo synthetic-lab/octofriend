@@ -17,6 +17,7 @@ import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.t
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
 
@@ -84,6 +85,7 @@ export type UiState = {
         abortController: AbortController;
       };
   modelOverride: string | null;
+  quotaData: QuotaData | null;
   byteCount: number;
   query: string;
   history: Array<HistoryItem>;
@@ -122,6 +124,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
   history: [],
   modelOverride: null,
+  quotaData: null,
   byteCount: 0,
   query: "",
   clearNonce: 0,
@@ -471,6 +474,8 @@ export const useAppStore = create<UiState>((set, get) => ({
               },
             });
           },
+
+          onQuotaUpdated: quota => set({ quotaData: quota }),
 
           retryTool: event => {
             throttle.flush();
