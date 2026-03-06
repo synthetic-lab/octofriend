@@ -16,7 +16,7 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { MultimodalConfig } from "../providers.ts";
+import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 
 type Content =
@@ -114,7 +114,7 @@ async function toLlmMessages(
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(llmFromIr(ir, prev, seen));
+      output.push(llmFromIr(ir, prev, seen, modalities));
     } else {
       output.push(llmFromIr(ir, prev, false, modalities));
     }
@@ -200,10 +200,23 @@ function llmFromIr(
   }
 
   if (ir.role === "file-read") {
+    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
+    if (ir.image && imageCheck?.ok) {
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
+          {
+            type: "image_url",
+            image_url: { url: ir.image.dataUrl },
+          },
+        ],
+      };
+    }
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: irPrompts.fileRead(ir.content, seenPath),
+      content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
     };
   }
 

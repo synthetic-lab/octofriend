@@ -279,6 +279,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
               content: item.result.content,
               toolCall: prev.toolCall,
               path: path.resolve(prev.toolCall.function.arguments.filePath),
+              image: item.result.image,
             },
           ];
         case "skill":

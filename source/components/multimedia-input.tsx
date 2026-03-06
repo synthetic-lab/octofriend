@@ -1,14 +1,13 @@
 import React, { useState, useCallback } from "react";
-import fs from "fs/promises";
 import { Box, Text } from "ink";
 import { InputWithHistory } from "./input-with-history.tsx";
 import { InputHistory } from "../input-history/index.ts";
-import { ImageInfo, loadImageFromPath, getMimeTypeFromPath } from "../utils/image-utils.ts";
+import { ImageInfo, loadImageFromPath } from "../utils/image-utils.ts";
 import { useCtrlC } from "./exit-on-double-ctrl-c.tsx";
 import {
   DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
-  ImageModalityConfig,
   MultimodalConfig,
+  canDisplayImage,
 } from "../providers.ts";
 
 interface Props {
@@ -27,10 +26,6 @@ export const MultimediaInput = React.memo((props: Props) => {
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
-  const maxSizeMB = props.modalities?.image?.maxSizeMB ?? 10;
-  const maxSizeBytes = maxSizeMB * 1024 * 1024;
-  const acceptedMimeTypes = props.modalities?.image?.acceptedMimeTypes;
-
   useCtrlC(() => {
     if (props.vimEnabled) return;
     setAttachedImages([]);
@@ -38,31 +33,15 @@ export const MultimediaInput = React.memo((props: Props) => {
   });
 
   const tryLoadImage = useCallback(
-    async (
-      imageModalityConfig: ImageModalityConfig,
-      inputPath: string,
-    ): Promise<ImageInfo | null> => {
+    async (inputPath: string): Promise<ImageInfo | null> => {
       try {
-        await fs.access(inputPath);
-        const mimeType = getMimeTypeFromPath(inputPath);
-        const { maxSizeMB = 10, acceptedMimeTypes } = imageModalityConfig;
-        const maxSizeBytes = maxSizeMB * 1024 * 1024;
-        if (!mimeType || (acceptedMimeTypes && !acceptedMimeTypes.includes(mimeType))) {
-          setErrorMessages(prev => [
-            ...prev,
-            `Unsupported image format. Supported formats are ${acceptedMimeTypes.join(", ")}.`,
-          ]);
+        const image = await loadImageFromPath(inputPath);
+        const imageCheck = canDisplayImage(props.modalities, image);
+        if (!imageCheck.ok) {
+          setErrorMessages(prev => [...prev, imageCheck.reason]);
           return null;
         }
-        const stats = await fs.stat(inputPath);
-        if (stats.size > maxSizeBytes) {
-          setErrorMessages(prev => [
-            ...prev,
-            `The maximum image size for this model is ${maxSizeMB}MB.`,
-          ]);
-          return null;
-        }
-        return await loadImageFromPath(inputPath);
+        return image;
       } catch (error) {
         setErrorMessages(prev => [
           ...prev,
@@ -71,7 +50,7 @@ export const MultimediaInput = React.memo((props: Props) => {
         return null;
       }
     },
-    [maxSizeMB, maxSizeBytes, acceptedMimeTypes],
+    [props.modalities],
   );
 
   const handleRemoveLastImage = useCallback(() => {
@@ -80,8 +59,7 @@ export const MultimediaInput = React.memo((props: Props) => {
 
   const handleImagePathsAttached = useCallback(
     async (imagePaths: string[]) => {
-      const imageModalityConfig = props.modalities?.image;
-      if (!imageModalityConfig?.enabled) {
+      if (!props.modalities?.image?.enabled) {
         setErrorMessages(prev => [
           ...prev,
           `This model does not support image attachments.\nSwitch to a supported model (e.g. ${DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE}).`,
@@ -90,7 +68,7 @@ export const MultimediaInput = React.memo((props: Props) => {
       }
       for (const imagePath of imagePaths) {
         setShowLoadingImageBadge(true);
-        const imageInfo = await tryLoadImage(imageModalityConfig, imagePath);
+        const imageInfo = await tryLoadImage(imagePath);
 
         setShowLoadingImageBadge(false);
         if (imageInfo) {

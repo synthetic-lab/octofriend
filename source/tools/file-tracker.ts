@@ -37,6 +37,16 @@ export class FileTracker {
     return content;
   }
 
+  async recordFileReadTimestamp(
+    transport: Transport,
+    signal: AbortSignal,
+    filePath: string,
+  ): Promise<void> {
+    const absolutePath = await transport.resolvePath(signal, filePath);
+    const modified = await transport.modTime(signal, absolutePath);
+    this.readTimestamps.set(absolutePath, modified);
+  }
+
   async write(
     transport: Transport,
     signal: AbortSignal,

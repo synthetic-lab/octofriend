@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { ImageInfo } from "../utils/image-utils.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -45,6 +46,8 @@ export type ToolResult = {
 
   // The line count to show in the UI, if it's not just the number of lines in the content
   lines?: number;
+
+  image?: ImageInfo;
 };
 
 export type ToolDef<T> = {

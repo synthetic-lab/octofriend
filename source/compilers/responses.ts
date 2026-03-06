@@ -11,7 +11,7 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { MultimodalConfig } from "../providers.ts";
+import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
 
 async function toModelMessage(
@@ -29,7 +29,7 @@ async function toModelMessage(
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen));
+      output.push(modelMessageFromIr(ir, seen, modalities));
     } else {
       output.push(modelMessageFromIr(ir, false, modalities));
     }
@@ -137,6 +137,19 @@ function modelMessageFromIr(
   }
 
   if (ir.role === "file-read") {
+    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
+    if (ir.image && imageCheck?.ok) {
+      return {
+        role: "user",
+        content: [
+          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
+          {
+            type: "image" as const,
+            image: ir.image.dataUrl,
+          },
+        ],
+      };
+    }
     return {
       role: "tool",
       content: [
@@ -146,7 +159,7 @@ function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: irPrompts.fileRead(ir.content, seenPath),
+            value: irPrompts.fileRead(ir.content, seenPath, imageCheck),
           },
         },
       ],
