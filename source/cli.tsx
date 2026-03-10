@@ -12,16 +12,14 @@ import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
 import {
   readConfig,
-  readMetadata,
   readKeyForModel,
   readKeyForModelWithDetails,
   assertKeyForModel,
   AUTOFIX_KEYS,
+  APP_METADATA,
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
-import OpenAI from "openai";
-import { LlmMessage } from "./compilers/standard.ts";
 import { LlmIR } from "./ir/llm-ir.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
@@ -115,7 +113,6 @@ docker
 
 async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
   try {
-    const metadata = await readMetadata();
     let { config, configPath } = await loadConfig(opts.config);
 
     // Connect to all MCP servers on boot
@@ -148,7 +145,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         config={config}
         configPath={configPath}
         cwd={cwd}
-        metadata={metadata}
+        metadata={APP_METADATA}
         unchained={!!opts.unchained}
         transport={opts.transport}
         updates={await readUpdates()}
@@ -180,8 +177,7 @@ cli
   .command("version")
   .description("Prints the current version")
   .action(async () => {
-    const metadata = await readMetadata();
-    console.log(metadata.version);
+    console.log(APP_METADATA.version);
   });
 
 cli

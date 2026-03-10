@@ -12,6 +12,7 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { MultimodalConfig } from "../providers.ts";
+import { APP_METADATA } from "../config.ts";
 
 async function toModelMessage(
   messages: LlmIR[],
@@ -331,6 +332,9 @@ export const runResponsesAgent: Compiler = async ({
     const openai = createOpenAI({
       baseURL: model.baseUrl,
       apiKey,
+      headers: {
+        "User-Agent": `octofriend/${APP_METADATA.version}`,
+      },
     });
 
     const result = streamText({
