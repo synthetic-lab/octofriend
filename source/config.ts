@@ -16,6 +16,7 @@ const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
+export const APP_METADATA = await readMetadata();
 export const CURRENT_CONFIG_VERSION = 1;
 
 type Migration = (raw: Record<string, any>) => Record<string, any>;
@@ -587,7 +588,7 @@ export type Metadata = {
   version: string;
 };
 
-export async function readMetadata(): Promise<Metadata> {
+async function readMetadata(): Promise<Metadata> {
   const packageFile = await fs.readFile(path.join(__dir, "../../package.json"), "utf8");
   const packageJson = JSON.parse(packageFile);
 

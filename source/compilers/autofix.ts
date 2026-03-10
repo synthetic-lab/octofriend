@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { t } from "structural";
 import { Config, assertKeyForModel } from "../config.ts";
 import { ArgumentsSchema as EditSchema } from "../tools/tool-defs/edit.ts";
@@ -9,6 +8,7 @@ import {
   DiffApplyResponse,
 } from "../prompts/autofix-prompts.ts";
 import { trackTokens } from "../token-tracker.ts";
+import { getDefaultOpenaiClient } from "./openai.ts";
 
 type Edit = t.GetType<typeof EditSchema>;
 export async function autofixEdit(
@@ -69,10 +69,7 @@ async function autofix(
   if (modelConf == null) return null;
 
   const apiKey = await assertKeyForModel({ baseUrl: modelConf.baseUrl }, config);
-  const client = new OpenAI({
-    baseURL: modelConf.baseUrl,
-    apiKey,
-  });
+  const client = getDefaultOpenaiClient({ baseUrl: modelConf.baseUrl, apiKey });
   const model = modelConf.model;
   try {
     const response = await client.chat.completions.create(

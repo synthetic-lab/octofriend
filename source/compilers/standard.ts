@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { t, toJSONSchema, toTypescript } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
@@ -18,6 +17,7 @@ import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { MultimodalConfig } from "../providers.ts";
+import { getDefaultOpenaiClient } from "./openai.ts";
 
 type Content =
   | string
@@ -342,10 +342,7 @@ export const runAgent: Compiler = async ({
     ...toolsParam,
   });
   return await handleKnownErrors(curl, async () => {
-    const client = new OpenAI({
-      baseURL: model.baseUrl,
-      apiKey,
-    });
+    const client = getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey });
 
     let reasoning: {
       reasoning_effort?: "low" | "medium" | "high";

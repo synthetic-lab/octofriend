@@ -12,6 +12,7 @@ import { router, Back } from "../router.tsx";
 import { PROVIDERS } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
+import { getDefaultOpenaiClient } from "../compilers/openai.ts";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false; error: string };
@@ -812,10 +813,7 @@ async function testConnection({
 }: MinConnectArgs): Promise<TestConnectionResult> {
   try {
     const apiKey = await assertKeyForModel({ baseUrl, auth }, config);
-    const client = new OpenAI({
-      baseURL: baseUrl,
-      apiKey,
-    });
+    const client = getDefaultOpenaiClient({ baseUrl, apiKey });
 
     const testPromise = client.chat.completions.create({
       model,
