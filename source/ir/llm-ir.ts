@@ -52,6 +52,7 @@ export type FileReadMessage = {
   content: string;
   toolCall: ToolCallRequest;
   path: string;
+  image?: ImageInfo;
 };
 
 export type FileMutateMethod = {

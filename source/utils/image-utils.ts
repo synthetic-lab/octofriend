@@ -14,7 +14,8 @@ export type ImageInfo = {
   mimeType: ImageMimeType;
   base64Data: string;
   dataUrl: string;
-  filePath?: string;
+  filePath: string;
+  sizeBytes: number;
 };
 
 const IMAGE_EXTENSIONS: Record<string, ImageMimeType> = {
@@ -169,6 +170,7 @@ export async function loadImageFromPath(filePath: string): Promise<ImageInfo> {
     base64Data,
     dataUrl,
     filePath: path.resolve(filePath),
+    sizeBytes: buffer.length,
   };
 }
 

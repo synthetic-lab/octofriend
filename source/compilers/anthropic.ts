@@ -10,7 +10,7 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { MultimodalConfig } from "../providers.ts";
+import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -32,7 +32,7 @@ function toModelMessage(
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen));
+      output.push(modelMessageFromIr(ir, seen, modalities));
     } else {
       output.push(modelMessageFromIr(ir, false, modalities));
     }
@@ -98,13 +98,36 @@ function modelMessageFromIr(
   }
 
   if (ir.role === "file-read") {
+    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
+    if (ir.image && imageCheck?.ok) {
+      return {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: ir.toolCall.toolCallId,
+            content: [
+              { type: "text", text: ir.content },
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: ir.image.mimeType,
+                  data: ir.image.base64Data,
+                },
+              },
+            ],
+          },
+        ],
+      };
+    }
     return {
       role: "user",
       content: [
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content: irPrompts.fileRead(ir.content, seenPath),
+          content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
         },
       ],
     };
