@@ -36,6 +36,7 @@ import mcp from "./tools/tool-defs/mcp.ts";
 import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
+import find from "./tools/tool-defs/find.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
@@ -687,14 +688,12 @@ function ToolRequestRenderer({
       case "prepend":
       case "edit":
         return "edits:*";
-      case "skill":
-        return `${fn.name}:*`;
-      case "shell":
-        return `${fn.name}:*`;
-      case "fetch":
-        return `${fn.name}:*`;
       case "mcp":
         return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
+      case "skill":
+      case "shell":
+      case "fetch":
+      case "find":
       case "web-search":
         return `${fn.name}:*`;
     }
@@ -727,6 +726,7 @@ function ToolRequestRenderer({
       case "fetch":
       case "list":
       case "mcp":
+      case "find":
       case "web-search":
         return null;
     }
@@ -1022,9 +1022,31 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    case "find":
+      return <FindRenderer item={item.tool.function} />;
   }
 }
 
+function FindRenderer({ item }: { item: ToolSchemaFrom<typeof find> }) {
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">Octo searched for files:</Text>
+      <FindArg name="CWD" arg={item.arguments.cwd} />
+      <FindArg name="Filename pattern" arg={item.arguments.search.name} />
+      <FindArg name="Path pattern" arg={item.arguments.search.path} />
+      <FindArg name="Max depth" arg={item.arguments.search.maxDepth} />
+    </Box>
+  );
+}
+function FindArg({ name, arg }: { name: string; arg: string | number | undefined }) {
+  const color = useColor();
+  if (arg == null) return null;
+  return (
+    <Text>
+      <Text color="gray">{name}:</Text> <Text color={color}>{arg}</Text>
+    </Text>
+  );
+}
 function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
   return (
     <Box>
@@ -1193,6 +1215,8 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
   const fn = toolCallRequest.function;
   const cwd = useCwd();
   switch (fn.name) {
+    case "find":
+      return <Text> find commands in this session.</Text>;
     case "shell": {
       return (
         <Text>
