@@ -46,7 +46,7 @@ export const MenuQuotaIndicator = React.memo(() => {
     assertKeyForModel(model, config)
       .then(apiKey => fetchQuota(apiKey))
       .then(data => {
-        if (!cancelled) setFetchedQuota(data);
+        if (!cancelled) setFetchedQuota(prev => prev ?? data);
       })
       .catch(() => {
         /* ignore errors, they're out-of-place in the menu */
