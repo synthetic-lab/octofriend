@@ -1,100 +1,74 @@
 import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import { assertKeyForModel, useConfig } from "../config.ts";
-import { useModel } from "../state.ts";
-import { t } from "structural";
+import { useModel, useAppStore } from "../state.ts";
+import { QuotaData, QuotaEntry } from "../utils/quota.ts";
+import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntil } from "../time.ts";
-
-const QuotaResponseSchema = t.subtype({
-  subscription: t.subtype({
-    limit: t.num,
-    requests: t.num,
-    renewsAt: t.str,
-  }),
-});
-
-type QuotaResponse = t.GetType<typeof QuotaResponseSchema>;
-
-type QuotaData = {
-  used: number;
-  limit: number;
-  renewsAt: Date;
-};
 
 async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
   try {
     const response = await fetch("https://api.synthetic.new/v2/quotas", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
-
     if (!response.ok) return null;
-
-    const data: QuotaResponse = await response.json();
-    const validated = QuotaResponseSchema.slice(data);
-
-    if (validated instanceof t.Err) return null;
-
-    return {
-      used: validated.subscription.requests,
-      limit: validated.subscription.limit,
-      renewsAt: new Date(validated.subscription.renewsAt),
-    };
+    return parseQuotaJson(await response.text()) ?? null;
   } catch {
     return null;
   }
 }
 
+type QuotaRowProps = {
+  label: string;
+  entry: QuotaEntry;
+};
+
+function QuotaRow({ label, entry }: QuotaRowProps) {
+  return (
+    <Box flexDirection="row" flexWrap="wrap">
+      <Text>{`${label}: ${entry.used} / ${entry.limit}`}</Text>
+      <Text color="gray">{` · refreshes ${formatTimeUntil(entry.renewsAt)}`}</Text>
+    </Box>
+  );
+}
+
 export const MenuQuotaIndicator = React.memo(() => {
   const config = useConfig();
   const model = useModel();
-  const [quota, setQuota] = useState<QuotaData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const storeQuota = useAppStore(state => state.quotaData);
+  const [fetchedQuota, setFetchedQuota] = useState<QuotaData | null>(null);
 
+  // should only be used if menu is opened before the agent runs
+  // otherwise, quota should come from the store, read from header values in the compiler
   useEffect(() => {
+    if (storeQuota) return;
     let cancelled = false;
-
-    async function loadQuota() {
-      try {
-        const apiKey = await assertKeyForModel(model, config);
-        const data = await fetchQuota(apiKey);
-        if (!cancelled) {
-          setQuota(data);
-          setLoading(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setQuota(null);
-          setLoading(false);
-        }
-      }
-    }
-
-    loadQuota();
-
+    assertKeyForModel(model, config)
+      .then(apiKey => fetchQuota(apiKey))
+      .then(data => {
+        if (!cancelled) setFetchedQuota(prev => prev ?? data);
+      })
+      .catch(() => {
+        /* ignore errors, they're out-of-place in the menu */
+      });
     return () => {
       cancelled = true;
     };
-  }, [model, config]);
+  }, [storeQuota, model, config]);
 
-  if (loading) {
-    return (
-      <Box flexDirection="column" alignItems="center">
-        <Text color="gray">Synthetic Subscription</Text>
-        <Text color="gray">Loading quota...</Text>
-      </Box>
-    );
-  }
+  const quota = storeQuota ?? fetchedQuota;
 
-  if (!quota || quota.limit === 0) return null;
+  if (!quota) return null;
 
   return (
     <Box flexDirection="column" alignItems="center">
-      <Text>
-        Synthetic Subscription: {quota.used} / {quota.limit} Requests Used
-      </Text>
-      <Text color="gray">Limits refresh {formatTimeUntil(quota.renewsAt)}</Text>
+      <Text bold>Synthetic Subscription</Text>
+      <Box flexDirection="column">
+        <QuotaRow label="Requests" entry={quota.subscription} />
+        {quota.freeToolCalls && quota.freeToolCalls.limit > 0 && (
+          <QuotaRow label="Free Tool Calls" entry={quota.freeToolCalls} />
+        )}
+      </Box>
     </Box>
   );
 });

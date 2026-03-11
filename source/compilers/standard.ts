@@ -7,6 +7,8 @@ import {
   AgentResult,
   ToolCallRequest,
 } from "../ir/llm-ir.ts";
+import { QuotaData } from "../utils/quota.ts";
+import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -309,11 +311,23 @@ async function handleKnownErrors(
   }
 }
 
+function parseQuotaFromHeaders(headers: Headers): QuotaData | undefined {
+  const raw = headers.get("x-synthetic-quotas");
+  if (!raw) return undefined;
+  try {
+    return parseQuotaJson(raw);
+  } catch {
+    /* ignore errors, they're out-of-place in the menu */
+    return undefined;
+  }
+}
+
 export const runAgent: Compiler = async ({
   model,
   apiKey,
   irs,
   onTokens,
+  onQuotaUpdated,
   abortSignal,
   systemPrompt,
   autofixJson,
@@ -362,21 +376,26 @@ export const runAgent: Compiler = async ({
     } = {};
     if (model.reasoning) reasoning.reasoning_effort = model.reasoning;
 
-    const res = await client.chat.completions.create(
-      {
-        ...reasoning,
-        model: model.model,
-        messages: messages,
-        ...toolsParam,
-        stream: true,
-        stream_options: {
-          include_usage: true,
+    const { data: res, response } = await client.chat.completions
+      .create(
+        {
+          ...reasoning,
+          model: model.model,
+          messages: messages,
+          ...toolsParam,
+          stream: true,
+          stream_options: {
+            include_usage: true,
+          },
         },
-      },
-      {
-        signal: abortSignal,
-      },
-    );
+        {
+          signal: abortSignal,
+        },
+      )
+      .withResponse();
+
+    const quota = parseQuotaFromHeaders(response.headers);
+    if (quota) onQuotaUpdated?.(quota);
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
