@@ -101,7 +101,7 @@ export async function findFiles(
   const output = await transport.shell(signal, findCmd, 30000);
 
   // Parse output and make paths relative to cwd
-  return output
+  const results = output
     .split("\n")
     .map(line => line.trim())
     .filter(line => line.length > 0)
@@ -114,6 +114,7 @@ export async function findFiles(
       }
       return fullPath;
     });
+  return results;
 }
 
 export class TransportError extends Error {

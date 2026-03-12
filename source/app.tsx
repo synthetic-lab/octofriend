@@ -1,12 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-  useRef,
-  createContext,
-  useContext,
-} from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { t } from "structural";
@@ -36,6 +28,7 @@ import mcp from "./tools/tool-defs/mcp.ts";
 import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
+import glob from "./tools/tool-defs/glob.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
@@ -663,7 +656,6 @@ function ToolRequestRenderer({
 }: {
   toolReq: ToolCallRequest;
 } & RunArgs) {
-  const cwd = useCwd();
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
@@ -687,14 +679,12 @@ function ToolRequestRenderer({
       case "prepend":
       case "edit":
         return "edits:*";
-      case "skill":
-        return `${fn.name}:*`;
-      case "shell":
-        return `${fn.name}:*`;
-      case "fetch":
-        return `${fn.name}:*`;
       case "mcp":
         return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
+      case "skill":
+      case "shell":
+      case "fetch":
+      case "glob":
       case "web-search":
         return `${fn.name}:*`;
     }
@@ -727,6 +717,7 @@ function ToolRequestRenderer({
       case "fetch":
       case "list":
       case "mcp":
+      case "glob":
       case "web-search":
         return null;
     }
@@ -1022,9 +1013,31 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <SkillToolRenderer item={item.tool.function} />;
     case "web-search":
       return <WebSearchToolRenderer item={item.tool.function} />;
+    case "glob":
+      return <GlobRenderer item={item.tool.function} />;
   }
 }
 
+function GlobRenderer({ item }: { item: ToolSchemaFrom<typeof glob> }) {
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">Octo searched for files using a glob pattern:</Text>
+      <GlobArg name="CWD" arg={item.arguments.cwd} />
+      <GlobArg name="Filename pattern" arg={item.arguments.search.name} />
+      <GlobArg name="Path pattern" arg={item.arguments.search.path} />
+      <GlobArg name="Max depth" arg={item.arguments.search.maxDepth} />
+    </Box>
+  );
+}
+function GlobArg({ name, arg }: { name: string; arg: string | number | undefined }) {
+  const color = useColor();
+  if (arg == null) return null;
+  return (
+    <Text>
+      <Text color="gray">{name}:</Text> <Text color={color}>{arg}</Text>
+    </Text>
+  );
+}
 function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
   return (
     <Box>
@@ -1193,6 +1206,8 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
   const fn = toolCallRequest.function;
   const cwd = useCwd();
   switch (fn.name) {
+    case "glob":
+      return <Text> local glob searches in this session.</Text>;
     case "shell": {
       return (
         <Text>
