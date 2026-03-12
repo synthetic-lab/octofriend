@@ -1,12 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-  useRef,
-  createContext,
-  useContext,
-} from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } from "react";
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { t } from "structural";
@@ -664,7 +656,6 @@ function ToolRequestRenderer({
 }: {
   toolReq: ToolCallRequest;
 } & RunArgs) {
-  const cwd = useCwd();
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
