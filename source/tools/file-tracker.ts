@@ -68,9 +68,13 @@ export class FileTracker {
     if (!this.readTimestamps.has(absolutePath)) return false;
 
     const lastReadTime = this.readTimestamps.get(absolutePath)!;
-    const currentModified = await transport.modTime(signal, absolutePath);
-
-    return currentModified <= lastReadTime;
+    try {
+      const currentModified = await transport.modTime(signal, absolutePath);
+      return currentModified <= lastReadTime;
+    } catch {
+      // File was deleted or is otherwise inaccessible
+      return false;
+    }
   }
 
   async canCreate(transport: Transport, signal: AbortSignal, filePath: string) {
