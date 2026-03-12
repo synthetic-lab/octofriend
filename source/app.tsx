@@ -1021,7 +1021,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
 function GlobRenderer({ item }: { item: ToolSchemaFrom<typeof glob> }) {
   return (
     <Box flexDirection="column">
-      <Text color="gray">Octo searched for files:</Text>
+      <Text color="gray">Octo searched for files using a glob pattern:</Text>
       <GlobArg name="CWD" arg={item.arguments.cwd} />
       <GlobArg name="Filename pattern" arg={item.arguments.search.name} />
       <GlobArg name="Path pattern" arg={item.arguments.search.path} />
