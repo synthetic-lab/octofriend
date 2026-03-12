@@ -35,7 +35,7 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "list",
   "skill",
   "web-search",
-  "find",
+  "glob",
 ];
 
 export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = ["shell"];

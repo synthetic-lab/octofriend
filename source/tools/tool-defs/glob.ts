@@ -3,6 +3,7 @@ import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts"
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
+import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 
 const ArgumentsSchema = t.subtype({
   cwd: t.optional(t.str),
@@ -18,7 +19,7 @@ const ArgumentsSchema = t.subtype({
 
 const Schema = t
   .subtype({
-    name: t.value("find"),
+    name: t.value("glob"),
     arguments: ArgumentsSchema,
   })
   .comment(
@@ -35,12 +36,18 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
       const files = await findFiles(signal, transport, {
         cwd,
         ...search,
-        type: search.type == null ? undefined : search.name === "file" ? "f" : "d",
+        type: (() => {
+          if (search.type == null) return undefined;
+          if (search.type === "file") return "f";
+          const _: "directory" = search.type;
+          return "d";
+        })(),
       });
       const text = files.join("\n");
       const { context } = getModelFromConfig(config, modelOverride);
-      if (text.length > context) {
-        throw new ToolError(`Web content too large: ${text.length} bytes (max: ${context} bytes)`);
+      const tok = estimateTokens(text);
+      if (tok > context) {
+        throw new ToolError(`Find content was too large: approx ${tok} tokens returned`);
       }
       return { content: text };
     } catch (e) {
