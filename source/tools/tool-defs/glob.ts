@@ -17,14 +17,22 @@ const ArgumentsSchema = t.subtype({
   ),
 });
 
-const Schema = t
-  .subtype({
-    name: t.value("glob"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Finds files on the filesystem, using a safe subset of Unix `find` syntax. Prefer this to shelling out to `find`.",
-  );
+const Schema = t.subtype({
+  name: t.value("glob"),
+  arguments: ArgumentsSchema,
+}).comment(`
+Finds files on the filesystem, using a safe subset of Unix \`find\` syntax. Prefer this to shelling
+out to \`find\`.
+
+Note that this searches the entire cwd, which may be very large (i.e. consider that there may be
+deeply-nested directories with large amounts of files). Do NOT search for overly broad patterns,
+like *.rb: instead, use targeted search terms for specifically what you want to find, like
+*user-data*.rb if you're searching for a file for user data for example.
+
+The glob tool automatically excludes common depedency directories such as node_modules, but do not
+depend on this fact: there may be directories that it doesn't know it should ignore. Keep your glob
+terms scoped and specific.
+`);
 
 export default defineTool<t.GetType<typeof Schema>>(async () => ({
   Schema,
