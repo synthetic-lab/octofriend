@@ -1042,9 +1042,9 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | undefined
   const color = useColor();
   if (arg == null) return null;
   return (
-    <Box>
+    <Text>
       <Text color="gray">{name}:</Text> <Text color={color}>{arg}</Text>
-    </Box>
+    </Text>
   );
 }
 function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
