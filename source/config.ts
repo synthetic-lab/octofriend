@@ -574,10 +574,87 @@ export function getModelFromConfig(config: Config, modelOverride: string | null)
 
 export async function readConfig(filePath: string): Promise<Config> {
   const file = await fs.readFile(filePath, "utf8");
-  const parsed = json5.parse(file.trim());
+
+  let parsed: any;
+  try {
+    parsed = json5.parse(file.trim());
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to parse configuration file: ${filePath}\n\n` +
+        `JSON5 parsing error: ${errorMessage}\n\n` +
+        `Please check your configuration file for syntax errors (missing commas, quotes, brackets, etc.)`,
+    );
+  }
+
   const fileVersion: number = parsed["configVersion"] ?? 0;
   const raw = migrateConfig(parsed);
-  const config = ConfigSchema.slice(raw);
+
+  let config: Config;
+  try {
+    config = ConfigSchema.slice(raw);
+  } catch (error) {
+    // Provide user-friendly error messages for common config issues
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Handle MCP server configuration errors
+    // Check if the error is related to mcpServers by looking at the error message or checking if mcpServers exists in raw config
+    const mcpServers = raw["mcpServers"] as Record<string, any> | undefined;
+    const hasMcpServers =
+      mcpServers && typeof mcpServers === "object" && Object.keys(mcpServers).length > 0;
+
+    if (
+      hasMcpServers &&
+      (errorMessage.includes("mcpServers") ||
+        errorMessage.includes("[") ||
+        errorMessage.includes("undefined"))
+    ) {
+      if (mcpServers) {
+        const invalidServers: string[] = [];
+        for (const [serverName, serverConfig] of Object.entries(mcpServers)) {
+          if (!serverConfig || typeof serverConfig !== "object") {
+            invalidServers.push(`${serverName}: configuration is not an object`);
+          } else if (!serverConfig.command || typeof serverConfig.command !== "string") {
+            invalidServers.push(
+              `${serverName}: missing or invalid 'command' field (must be a string)`,
+            );
+          } else if (serverConfig.args && !Array.isArray(serverConfig.args)) {
+            invalidServers.push(`${serverName}: 'args' must be an array of strings`);
+          } else if (serverConfig.env && typeof serverConfig.env !== "object") {
+            invalidServers.push(`${serverName}: 'env' must be an object with string values`);
+          }
+        }
+
+        if (invalidServers.length > 0) {
+          throw new Error(
+            `Invalid MCP server configuration in ${filePath}:\n\n` +
+              invalidServers.map(s => `  • ${s}`).join("\n") +
+              `\n\nEach MCP server must have:\n` +
+              `  - command: string (path to the MCP server executable)\n` +
+              `  - args: string[] (optional, command arguments)\n` +
+              `  - env: object (optional, environment variables)\n\n` +
+              `Example:\n` +
+              `  mcpServers: {\n` +
+              `    myserver: {\n` +
+              `      command: "/path/to/server",\n` +
+              `      args: ["--flag"],\n` +
+              `      env: { "VAR": "value" }\n` +
+              `    }\n` +
+              `  }`,
+          );
+        }
+      }
+    }
+
+    // Generic error fallback with helpful context
+    throw new Error(
+      `Configuration file validation failed: ${filePath}\n\n` +
+        `Error: ${errorMessage}\n\n` +
+        `Please check your configuration file for syntax errors or invalid values.\n` +
+        `You can reset your config by deleting: ${filePath}`,
+    );
+  }
+
   if (fileVersion < CURRENT_CONFIG_VERSION) {
     await writeConfig(config, filePath);
   }
