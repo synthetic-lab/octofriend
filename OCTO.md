@@ -7,3 +7,7 @@ timeouts are long enough. Check your work before saying something is done: run
 Prefer `type Blah = { ... }` to `interface Blah { ... }` unless you _need_ an
 interface: i.e. if it's designed for classes to implement. If it's not, just
 use a `type`.
+
+## Tool Usage
+
+When you need to read, list, or fetch multiple independent resources, always use the batch tool with parallel=true instead of calling tools one at a time. This reduces cost and context window usage.

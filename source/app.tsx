@@ -29,6 +29,7 @@ import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
+import batch from "./tools/tool-defs/batch.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
 import { ToolSchemaFrom } from "./tools/common.ts";
@@ -686,6 +687,7 @@ function ToolRequestRenderer({
       case "fetch":
       case "glob":
       case "web-search":
+      case "batch":
         return `${fn.name}:*`;
     }
   })();
@@ -719,6 +721,7 @@ function ToolRequestRenderer({
       case "mcp":
       case "glob":
       case "web-search":
+      case "batch":
         return null;
     }
   })();
@@ -1015,6 +1018,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
       return <WebSearchToolRenderer item={item.tool.function} />;
     case "glob":
       return <GlobRenderer item={item.tool.function} />;
+    case "batch":
+      return <BatchToolRenderer item={item.tool.function} />;
   }
 }
 
@@ -1026,6 +1031,23 @@ function GlobRenderer({ item }: { item: ToolSchemaFrom<typeof glob> }) {
       <GlobArg name="Filename pattern" arg={item.arguments.search.name} />
       <GlobArg name="Path pattern" arg={item.arguments.search.path} />
       <GlobArg name="Max depth" arg={item.arguments.search.maxDepth} />
+    </Box>
+  );
+}
+
+function BatchToolRenderer({ item }: { item: ToolSchemaFrom<typeof batch> }) {
+  const color = useColor();
+  const { calls, parallel } = item.arguments;
+  const toolNames = calls.map(c => c.name).join(", ");
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">
+        Batch: <Text color={color}>{calls.length}</Text> tool{calls.length !== 1 ? "s" : ""}
+        {parallel ? " (parallel)" : " (sequential)"}
+      </Text>
+      <Text color="gray" dimColor>
+        {toolNames}
+      </Text>
     </Box>
   );
 }
@@ -1260,6 +1282,9 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     }
     case "skill": {
       return <Text>{fn.arguments.skillName} skill executions</Text>;
+    }
+    case "batch": {
+      return <Text>batch tool executions</Text>;
     }
   }
 }
