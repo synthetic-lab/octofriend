@@ -468,22 +468,62 @@ export const runAgent: Compiler = async ({
           delta.tool_calls.length > 0
         ) {
           for (const deltaCall of delta.tool_calls) {
+            // In OpenAI streaming format:
+            // - First delta: has both `id` and `index`
+            // - Subsequent deltas: only have `index` (for argument accumulation)
+            // We need to handle both cases
+
+            // Cast to any to access index property (not in our type definition but exists in API response)
+            const toolIndex = (deltaCall as any).index;
+            if (toolIndex === undefined) {
+              logger.error("verbose", "Skipping tool call delta with no index:", deltaCall);
+              continue;
+            }
+
             onTokens(
-              (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
+              (deltaCall.function?.name || "") + (deltaCall.function?.arguments || ""),
               "tool",
             );
-            const existing = currTools.get(deltaCall.id);
+
+            // Use index as the key to find the tool call
+            // We'll convert to use ID as key after streaming completes
+            const indexKey = `index_${toolIndex}`;
+            const existing = currTools.get(indexKey);
+
             if (!existing) {
-              currTools.set(deltaCall.id, {
+              // First delta for this tool call - must have an ID
+              if (!deltaCall.id) {
+                logger.error(
+                  "verbose",
+                  "First delta for index",
+                  toolIndex,
+                  "missing ID:",
+                  deltaCall,
+                );
+                continue;
+              }
+              currTools.set(indexKey, {
                 id: deltaCall.id,
                 function: {
-                  name: deltaCall.function.name || "",
-                  arguments: deltaCall.function.arguments || "",
+                  name: deltaCall.function?.name || "",
+                  arguments: deltaCall.function?.arguments || "",
                 },
               });
             } else {
-              if (deltaCall.function.name) existing.function!.name = deltaCall.function.name;
-              if (deltaCall.function.arguments)
+              // Subsequent delta - accumulate arguments
+              if (deltaCall.id && deltaCall.id !== existing.id) {
+                logger.error(
+                  "verbose",
+                  "ID mismatch at index",
+                  toolIndex,
+                  "expected:",
+                  existing.id,
+                  "got:",
+                  deltaCall.id,
+                );
+              }
+              if (deltaCall.function?.name) existing.function!.name = deltaCall.function.name;
+              if (deltaCall.function?.arguments)
                 existing.function!.arguments += deltaCall.function.arguments;
             }
           }
@@ -535,16 +575,45 @@ export const runAgent: Compiler = async ({
       error: string;
     }> = [];
 
-    for (const [id, tool] of currTools) {
+    for (const [indexKey, tool] of currTools) {
+      // The map key is "index_N" but the actual tool ID is in tool.id
+      const toolId = tool.id;
+
+      // Skip tools without IDs (should not happen if first delta had ID)
+      if (!toolId) {
+        logger.error("verbose", "Skipping tool without ID at", indexKey);
+        continue;
+      }
+
+      logger.error("verbose", "Processing tool before normalization:", {
+        indexKey,
+        toolId,
+        toolName: tool.function?.name,
+        argumentsValue: tool.function?.arguments,
+        argumentsType: typeof tool.function?.arguments,
+        argumentsLength: tool.function?.arguments?.length,
+      });
+
       // Normalize empty arguments to valid JSON
       if (tool.function && tool.function.arguments === "") {
+        logger.error("verbose", "Normalizing empty arguments to {}");
         tool.function.arguments = "{}";
       }
 
+      logger.error("verbose", "After normalization:", {
+        argumentsValue: tool.function?.arguments,
+      });
+
       const validatedTool = ResponseToolCallSchema.sliceResult(tool);
       if (validatedTool instanceof t.Err) {
+        logger.error("verbose", "Tool validation failed:", {
+          indexKey,
+          toolId,
+          tool,
+          error: validatedTool.message,
+        });
         errors.push({
-          toolCallId: id,
+          toolCallId: toolId,
           toolName: tool.function?.name,
           arguments: tool.function?.arguments,
           error: validatedTool.message,

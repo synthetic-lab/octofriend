@@ -176,11 +176,13 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   if (item.type === "tool") {
     return assertPrevAssistant("tool", item, prev, prev => {
       // Collapse the tool call into the previous assistant message
+      // If prev already has toolCalls, append to it; otherwise create new array
+      const existingToolCalls = prev.toolCalls || [];
       return [
         {
           role: "assistant",
           content: prev.content || "",
-          toolCall: item.tool,
+          toolCalls: [...existingToolCalls, item.tool],
           openai: prev.openai,
           anthropic: prev.anthropic,
           reasoningContent: prev.reasoningContent,
