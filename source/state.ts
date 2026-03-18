@@ -503,12 +503,23 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
+      // For now, process tools sequentially (UI only handles one at a time)
+      const firstTool = finishReason.toolCalls[0];
+      const remainingTools = finishReason.toolCalls.slice(1);
+
       set({
         modeData: {
           mode: "tool-request",
-          toolReq: finishReason.toolCall,
+          toolReq: firstTool,
         },
       });
+
+      // Store remaining tools for sequential processing (TODO: implement batch UI)
+      if (remainingTools.length > 0) {
+        console.log(
+          `[Parallel Tools] ${remainingTools.length} additional tools queued for execution`,
+        );
+      }
     } catch (e) {
       if (e instanceof CompactionRequestError) {
         set({

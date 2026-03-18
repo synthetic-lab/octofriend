@@ -113,16 +113,18 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
     outputTokens: output.outputTokens,
   });
 
-  if (output.toolCall) {
-    history.push({
-      type: "tool",
-      id: sequenceId(),
-      tool: {
-        type: output.toolCall.type,
-        function: output.toolCall.function,
-        toolCallId: output.toolCall.toolCallId,
-      },
-    });
+  if (output.toolCalls && output.toolCalls.length > 0) {
+    for (const toolCall of output.toolCalls) {
+      history.push({
+        type: "tool",
+        id: sequenceId(),
+        tool: {
+          type: toolCall.type,
+          function: toolCall.function,
+          toolCallId: toolCall.toolCallId,
+        },
+      });
+    }
   }
 
   return history;
@@ -202,14 +204,16 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
           {
             role: "assistant",
             content: prev.content || "",
-            toolCall: {
-              type: "function",
-              function: {
-                name: toolName as any,
-                arguments: item.original.function?.arguments || "{}",
+            toolCalls: [
+              {
+                type: "function",
+                function: {
+                  name: toolName as any,
+                  arguments: item.original.function?.arguments || "{}",
+                },
+                toolCallId: item.toolCallId,
               },
-              toolCallId: item.toolCallId,
-            },
+            ],
             openai: prev.openai,
             anthropic: prev.anthropic,
             reasoningContent: prev.reasoningContent,
@@ -220,7 +224,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             role: "tool-malformed",
             toolCallId: item.toolCallId,
             toolName,
-            arguments: item.original.function?.arguments || "",
+            arguments: item.original.function?.arguments || "{}",
             error: item.error,
           },
         ];
@@ -230,11 +234,12 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
 
   if (item.type === "tool-reject") {
     return assertPrevAssistantToolCall("tool-reject", item, prev, prev => {
+      const toolCall = prev.toolCalls[0];
       return [
         prev,
         {
           role: "tool-reject",
-          toolCall: prev.toolCall,
+          toolCall,
         },
       ];
     });
@@ -256,7 +261,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
 
   if (item.type === "tool-output") {
     return assertPrevAssistantToolCall("tool-output", item, prev, prev => {
-      switch (prev.toolCall.function.name) {
+      const toolCall = prev.toolCalls[0];
+      switch (toolCall.function.name) {
         case "append":
         case "prepend":
         case "rewrite":
@@ -267,8 +273,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             {
               role: "file-mutate",
               content: item.result.content,
-              toolCall: prev.toolCall,
-              path: path.resolve(prev.toolCall.function.arguments.filePath),
+              toolCall,
+              path: path.resolve(toolCall.function.arguments.filePath),
             },
           ];
         case "read":
@@ -277,8 +283,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             {
               role: "file-read",
               content: item.result.content,
-              toolCall: prev.toolCall,
-              path: path.resolve(prev.toolCall.function.arguments.filePath),
+              toolCall,
+              path: path.resolve(toolCall.function.arguments.filePath),
               image: item.result.image,
             },
           ];
@@ -294,7 +300,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             {
               role: "tool-output",
               content: item.result.content,
-              toolCall: prev.toolCall,
+              toolCall,
             },
           ];
       }
@@ -303,11 +309,12 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
 
   if (item.type === "file-outdated") {
     return assertPrevAssistantToolCall("file-outdated", item, prev, prev => {
+      const toolCall = prev.toolCalls[0];
       return [
         prev,
         {
           role: "file-outdated",
-          toolCall: prev.toolCall,
+          toolCall,
           error: item.error,
         },
       ];
@@ -316,11 +323,12 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
 
   if (item.type === "file-unreadable") {
     return assertPrevAssistantToolCall("file-unreadable", item, prev, prev => {
+      const toolCall = prev.toolCalls[0];
       return [
         prev,
         {
           role: "file-unreadable",
-          toolCall: prev.toolCall,
+          toolCall,
           path: item.path,
           error: item.error,
         },
@@ -384,12 +392,12 @@ function assertPrevAssistantToolCall<T extends HistoryItem["type"]>(
   item: HistoryItem & { type: T },
   prev: LlmIR | null,
   callback: (
-    prev: AssistantMessage & { toolCall: ToolCallRequest },
+    prev: AssistantMessage & { toolCalls: ToolCallRequest[] },
   ) => [LlmIR | null, LlmIR | null],
 ): [LlmIR | null, LlmIR | null] {
   return assertPrevAssistant(type, item, prev, prev => {
-    const { toolCall } = prev;
-    if (toolCall) return callback({ ...prev, toolCall });
+    const { toolCalls } = prev;
+    if (toolCalls && toolCalls.length > 0) return callback({ ...prev, toolCalls });
     throw new Error(
       `Impossible tool ordering: no prev assistant tool call for ${type}. Prev role: ${prev.role}`,
     );

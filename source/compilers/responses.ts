@@ -63,7 +63,7 @@ function modelMessageFromIr(
           reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
         };
       }
-      const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+      const toolCalls = ir.toolCalls || [];
       return {
         role: "assistant",
         content: [
@@ -91,7 +91,7 @@ function modelMessageFromIr(
         },
       };
     }
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || [];
     return {
       role: "assistant",
       content: [
@@ -490,7 +490,7 @@ export const runResponsesAgent: Compiler = async ({
       };
     }
 
-    assistantHistoryItem.toolCall = parseResult.tool;
+    assistantHistoryItem.toolCalls = [parseResult.tool];
     return { success: true, output: [assistantHistoryItem], curl };
   } catch (e) {
     return {

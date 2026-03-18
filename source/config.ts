@@ -132,6 +132,12 @@ const ConfigSchema = t.exact({
       paths: t.optional(t.array(t.str)),
     }),
   ),
+  parallelToolExecution: t.optional(
+    t.subtype({
+      enabled: t.bool,
+      maxConcurrency: t.optional(t.num),
+    }),
+  ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;

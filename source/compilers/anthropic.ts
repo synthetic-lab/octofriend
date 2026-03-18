@@ -50,7 +50,7 @@ function modelMessageFromIr(
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || [];
     return {
       role: "assistant",
       content: [
@@ -532,7 +532,7 @@ export const runAnthropicAgent: Compiler = async ({
       };
     }
 
-    assistantMessage.toolCall = parseResult.tool;
+    assistantMessage.toolCalls = [parseResult.tool];
     return { success: true, output: [assistantMessage], curl };
   } catch (e) {
     return {

@@ -30,7 +30,7 @@ export type AssistantMessage = {
     reasoningId?: string;
   };
   anthropic?: AnthropicAssistantData;
-  toolCall?: ToolCallRequest;
+  toolCalls?: ToolCallRequest[];
   tokenUsage: number;
   outputTokens: number;
 };

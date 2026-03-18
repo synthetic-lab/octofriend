@@ -67,7 +67,7 @@ type Finish = {
       }
     | {
         type: "request-tool";
-        toolCall: ToolCallRequest;
+        toolCalls: ToolCallRequest[];
       }
     | {
         type: "request-error";
@@ -224,9 +224,9 @@ export async function trajectoryArc({
     };
   }
 
-  const { toolCall } = lastIr;
+  const { toolCalls } = lastIr;
 
-  if (toolCall == null) {
+  if (!toolCalls || toolCalls.length === 0) {
     return {
       type: "finish",
       reason: {
@@ -236,17 +236,28 @@ export async function trajectoryArc({
     };
   }
 
-  try {
-    await validateTool(abortSignal, transport, tools, toolCall.function, config);
-    return {
-      type: "finish",
-      reason: {
-        type: "request-tool",
-        toolCall,
-      },
-      irs,
-    };
-  } catch (e) {
+  // Validate all tools (parallel or sequential based on config)
+  const parallelExecution = config.parallelToolExecution?.enabled ?? false;
+  const maxConcurrency = config.parallelToolExecution?.maxConcurrency ?? 5;
+
+  const validationResults = await validateTools(
+    toolCalls,
+    abortSignal,
+    transport,
+    tools,
+    config,
+    parallelExecution,
+    maxConcurrency,
+  );
+
+  // Check if any validation failed
+  const errors = validationResults.filter(r => r.status === "error");
+  if (errors.length > 0) {
+    // For now, handle just the first error (more complex error handling TBD)
+    const firstError = errors[0];
+    const toolCall = firstError.toolCall;
+    const e = firstError.error;
+
     if (e instanceof FileOutdatedError) {
       const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
         abortSignal,
@@ -274,6 +285,7 @@ export async function trajectoryArc({
 
     if (!(e instanceof ToolError)) throw e;
 
+    // Try autofix for edit tool
     const fn = toolCall.function;
     if (fn.name === "edit") {
       handler.autofixingDiff(null);
@@ -282,8 +294,6 @@ export async function trajectoryArc({
         const file = await fs.readFile(path, "utf8");
         const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
 
-        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-        // tool call
         if (abortSignal.aborted) {
           return abort([
             ...irs.slice(0, -1),
@@ -297,7 +307,6 @@ export async function trajectoryArc({
         }
 
         if (fix) {
-          // Validate that the edit applies before marking as fixed
           await validateTool(
             abortSignal,
             transport,
@@ -308,18 +317,9 @@ export async function trajectoryArc({
             },
             config,
           );
-          // If we got this far, it's valid: update the state and return
           fn.arguments = {
             ...fn.arguments,
             ...fix,
-          };
-          return {
-            type: "finish",
-            reason: {
-              type: "request-tool",
-              toolCall,
-            },
-            irs,
           };
         }
       } catch {}
@@ -350,6 +350,18 @@ export async function trajectoryArc({
       reason: retried.reason,
     };
   }
+
+  // All tools validated - return them for execution
+  return {
+    type: "finish",
+    reason: {
+      type: "request-tool",
+      toolCalls: validationResults.map(
+        r => (r as { status: "ok"; toolCall: ToolCallRequest }).toolCall,
+      ),
+    },
+    irs,
+  };
 }
 
 async function maybeAutocompact({
@@ -411,6 +423,68 @@ function abort(irs: TrajectoryOutputIR[]): Finish {
     reason: { type: "abort" },
     irs,
   };
+}
+
+async function validateTools(
+  toolCalls: ToolCallRequest[],
+  abortSignal: AbortSignal,
+  transport: Transport,
+  tools: Awaited<ReturnType<typeof loadTools>>,
+  config: Config,
+  parallel: boolean,
+  maxConcurrency: number,
+): Promise<
+  Array<
+    | { status: "ok"; toolCall: ToolCallRequest }
+    | { status: "error"; toolCall: ToolCallRequest; error: Error }
+  >
+> {
+  const validateSingle = async (toolCall: ToolCallRequest) => {
+    try {
+      await validateTool(abortSignal, transport, tools, toolCall.function, config);
+      return { status: "ok" as const, toolCall };
+    } catch (e) {
+      if (e instanceof FileOutdatedError) {
+        return { status: "error" as const, toolCall, error: e };
+      }
+      return { status: "error" as const, toolCall, error: e as Error };
+    }
+  };
+
+  if (!parallel) {
+    // Sequential validation
+    const results: Array<
+      | { status: "ok"; toolCall: ToolCallRequest }
+      | { status: "error"; toolCall: ToolCallRequest; error: Error }
+    > = [];
+    for (const toolCall of toolCalls) {
+      results.push(await validateSingle(toolCall));
+    }
+    return results;
+  }
+
+  // Parallel validation with concurrency limit
+  const chunks: ToolCallRequest[][] = [];
+  for (let i = 0; i < toolCalls.length; i += maxConcurrency) {
+    chunks.push(toolCalls.slice(i, i + maxConcurrency));
+  }
+
+  const results: Array<
+    | { status: "ok"; toolCall: ToolCallRequest }
+    | { status: "error"; toolCall: ToolCallRequest; error: Error }
+  > = [];
+
+  for (const chunk of chunks) {
+    const chunkResults = await Promise.all(chunk.map(validateSingle));
+    results.push(...chunkResults);
+
+    // Check for abort after each chunk
+    if (abortSignal.aborted) {
+      throw new Error("Aborted");
+    }
+  }
+
+  return results;
 }
 
 async function tryTransformFileOutdatedError(
