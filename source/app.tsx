@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } 
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { t } from "structural";
+import path from "node:path";
 import {
   Config,
   Metadata,
@@ -1226,12 +1227,23 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "web-search": {
       return <Text> Web Searches during this session.</Text>;
     }
-    case "list":
-    case "read": {
+    case "list": {
+      const dirPath = fn.arguments?.dirPath || cwd;
+      const directory = path.resolve(dirPath);
       return (
         <Text>
           <Text> file reads in </Text>
-          <Text bold>{cwd}</Text>
+          <Text bold>{directory}</Text>
+        </Text>
+      );
+    }
+    case "read": {
+      const filePath = fn.arguments.filePath;
+      const directory = path.dirname(path.resolve(filePath));
+      return (
+        <Text>
+          <Text> file reads in </Text>
+          <Text bold>{directory}</Text>
         </Text>
       );
     }
@@ -1240,10 +1252,12 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "append":
     case "prepend":
     case "rewrite": {
+      const filePath = fn.arguments.filePath;
+      const directory = path.dirname(path.resolve(filePath));
       return (
         <Text>
           <Text> file changes in </Text>
-          <Text bold>{cwd}</Text>
+          <Text bold>{directory}</Text>
         </Text>
       );
     }
