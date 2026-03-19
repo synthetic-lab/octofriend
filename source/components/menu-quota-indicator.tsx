@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import { assertKeyForModel, useConfig } from "../config.ts";
 import { useModel, useAppStore } from "../state.ts";
-import { QuotaData, QuotaEntry } from "../utils/quota.ts";
+import { QuotaData, RequestUsage, TokenUsage } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntil } from "../time.ts";
 
@@ -20,16 +20,29 @@ async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
 
 type QuotaRowProps = {
   label: string;
-  entry: QuotaEntry;
+  renewsAt: Date;
+  usage: string;
 };
 
-function QuotaRow({ label, entry }: QuotaRowProps) {
+function QuotaRow({ label, renewsAt, usage }: QuotaRowProps) {
   return (
     <Box flexDirection="row" flexWrap="wrap">
-      <Text>{`${label}: ${entry.used} / ${entry.limit}`}</Text>
-      <Text color="gray">{` · refreshes ${formatTimeUntil(entry.renewsAt)}`}</Text>
+      <Text>{`${label}: ${usage}`}</Text>
+      <Text color="gray">{` · refreshes ${formatTimeUntil(renewsAt)}`}</Text>
     </Box>
   );
+}
+
+function formatRequestUsage(requestUsage: RequestUsage): string {
+  return `${requestUsage.used} / ${requestUsage.limit}`;
+}
+
+function formatTokenUsage(tokenUsage: TokenUsage): string {
+  return `${Math.round((tokenUsage.current / tokenUsage.limit) * 100)}%`;
+}
+
+function formatWeeklyTokenLimit(input: TokenUsage, output: TokenUsage): string {
+  return `${formatTokenUsage(input)} input, ${formatTokenUsage(output)} output`;
 }
 
 export const MenuQuotaIndicator = React.memo(() => {
@@ -64,9 +77,27 @@ export const MenuQuotaIndicator = React.memo(() => {
     <Box flexDirection="column" alignItems="center">
       <Text bold>Synthetic Subscription</Text>
       <Box flexDirection="column">
-        <QuotaRow label="Requests" entry={quota.subscription} />
+        <QuotaRow
+          label="Requests"
+          renewsAt={quota.subscription.renewsAt}
+          usage={formatRequestUsage(quota.subscription)}
+        />
         {quota.freeToolCalls && quota.freeToolCalls.limit > 0 && (
-          <QuotaRow label="Free Tool Calls" entry={quota.freeToolCalls} />
+          <QuotaRow
+            label="Free Tool Calls"
+            renewsAt={quota.freeToolCalls.renewsAt}
+            usage={formatRequestUsage(quota.freeToolCalls)}
+          />
+        )}
+        {quota.weeklyTokenLimit && (
+          <QuotaRow
+            label="Tokens"
+            renewsAt={quota.weeklyTokenLimit.renewsAt}
+            usage={formatWeeklyTokenLimit(
+              quota.weeklyTokenLimit.input,
+              quota.weeklyTokenLimit.output,
+            )}
+          />
         )}
       </Box>
     </Box>
