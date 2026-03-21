@@ -667,19 +667,37 @@ function ToolRequestRenderer({
     })),
   );
   const unchained = useUnchained();
+  const cwd = useCwd();
 
   const whitelistKey = (() => {
     const fn = toolReq.function;
+
+    // Helper to determine the directory for file operations
+    const getDirectoryForWhitelist = (filePath: string): string => {
+      const fileDir = path.dirname(path.resolve(filePath));
+      // If the file is within cwd, whitelist the entire cwd
+      // Otherwise, whitelist the specific directory
+      return fileDir.startsWith(cwd) ? cwd : fileDir;
+    };
+
     switch (fn.name) {
-      case "read":
-      case "list":
-        return "read:*";
+      case "read": {
+        const directory = getDirectoryForWhitelist(fn.arguments.filePath);
+        return `read:${directory}`;
+      }
+      case "list": {
+        const dirPath = fn.arguments?.dirPath ? path.resolve(fn.arguments.dirPath) : cwd;
+        const directory = dirPath.startsWith(cwd) ? cwd : dirPath;
+        return `read:${directory}`;
+      }
       case "create":
       case "rewrite":
       case "append":
       case "prepend":
-      case "edit":
-        return "edits:*";
+      case "edit": {
+        const directory = getDirectoryForWhitelist(fn.arguments.filePath);
+        return `edits:${directory}`;
+      }
       case "mcp":
         return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
       case "skill":
