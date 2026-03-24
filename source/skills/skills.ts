@@ -225,7 +225,7 @@ async function getDefaultSkillsPaths(transport: Transport, signal: AbortSignal):
   const paths: string[] = [];
   const home = await getEnvVar(signal, transport, "HOME", 5000);
   paths.push(path.join(home, ".config/agents/skills"));
-  const pwd = await transport.cwd(signal);
+  const pwd = transport.cwd;
   paths.push(path.join(pwd, ".agents", "skills"));
   return paths;
 }

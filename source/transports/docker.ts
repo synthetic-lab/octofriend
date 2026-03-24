@@ -50,24 +50,42 @@ type DockerTarget =
       type: "image";
       image: Awaited<ReturnType<typeof manageContainer>>;
     };
+
 export class DockerTransport implements Transport {
   private readonly _container: string;
+  cwd: string;
 
-  constructor(private readonly _target: DockerTarget) {
+  private constructor(
+    private readonly _target: DockerTarget,
+    cwd: string,
+  ) {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
+    this.cwd = cwd;
+  }
+
+  static async create(target: DockerTarget): Promise<DockerTransport> {
+    const container = target.type === "image" ? target.image.container : target.container;
+    const cwd = await DockerTransport.runDockerCommand(
+      container,
+      ["pwd"],
+      5000,
+      new AbortController().signal,
+    );
+    return new DockerTransport(target, cwd.trim());
   }
 
   async close() {
     if (this._target.type === "image") await this._target.image.close();
   }
 
-  private async dockerExec(
-    signal: AbortSignal,
+  private static runDockerCommand(
+    container: string,
     command: string[],
     timeout: number,
+    signal: AbortSignal,
   ): Promise<string> {
-    const dockerCmd = ["docker", "exec", this._container, "/bin/sh", "-c", command.join(" ")];
+    const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
@@ -143,17 +161,22 @@ output: ${output}`,
     });
   }
 
+  private async dockerExec(
+    signal: AbortSignal,
+    command: string[],
+    timeout: number,
+  ): Promise<string> {
+    return DockerTransport.runDockerCommand(this._container, command, timeout, signal);
+  }
+
   async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
     // Create a temporary file with the contents
     const tempFile = `/tmp/octo_write_${randomSuffix()}`;
 
     // First, write the contents to the temp file using a base64 to avoid shellescape issues
     const base64Contents = Buffer.from(contents).toString("base64");
-    await this.dockerExec(
-      signal,
-      ["/bin/sh", "-c", `echo '${base64Contents}' | base64 -d > '${tempFile}'`],
-      5000,
-    );
+
+    await this.dockerExec(signal, [`echo '${base64Contents}' | base64 -d > '${tempFile}'`], 5000);
 
     try {
       // Ensure directory exists
@@ -258,10 +281,5 @@ output: ${output}`,
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
     return await this.dockerExec(signal, [command], timeout);
-  }
-
-  async cwd(signal: AbortSignal) {
-    const output = await this.dockerExec(signal, ["pwd"], 5000);
-    return output.trim();
   }
 }

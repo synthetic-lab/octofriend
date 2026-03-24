@@ -1,6 +1,7 @@
 import { quote } from "shell-quote";
 
 export interface Transport {
+  readonly cwd: string;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
   readFile: (signal: AbortSignal, file: string) => Promise<string>;
   pathExists: (signal: AbortSignal, file: string) => Promise<boolean>;
@@ -18,7 +19,6 @@ export interface Transport {
   modTime: (signal: AbortSignal, file: string) => Promise<number>;
   resolvePath: (signal: AbortSignal, path: string) => Promise<string>;
   shell: (signal: AbortSignal, command: string, timeout: number) => Promise<string>;
-  cwd: (signal: AbortSignal) => Promise<string>;
   close: () => Promise<void>;
 }
 
@@ -63,7 +63,7 @@ export async function findFiles(
     type?: "f" | "d"; // -type f or -type d
   } = {},
 ): Promise<string[]> {
-  const cwd = options.cwd || (await transport.cwd(signal));
+  const cwd = options.cwd || transport.cwd;
 
   // Build find command with directory pruning
   const pruneArgs = EXCLUDED_DIRS.map(d => `-name ${quote([d])} -prune`).join(" -o ");
