@@ -41,6 +41,88 @@ function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
 }
 
+async function runDockerCommand(
+  container: string,
+  command: string[],
+  timeout: number,
+  signal: AbortSignal,
+): Promise<string> {
+  const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
+
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
+      timeout,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let output = "";
+    let aborted = false;
+
+    const onAbort = () => {
+      aborted = true;
+      // Try graceful termination first
+      child.kill("SIGTERM");
+      // Fallback to SIGKILL if it doesn't exit quickly
+      setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {}
+      }, 500).unref?.();
+    };
+
+    if (signal.aborted) onAbort();
+    signal.addEventListener("abort", onAbort);
+
+    const cleanup = () => {
+      signal.removeEventListener("abort", onAbort);
+    };
+
+    child.stdout.on("data", data => {
+      output += data.toString();
+    });
+
+    child.stderr.on("data", data => {
+      output += data.toString();
+    });
+
+    child.on("close", code => {
+      cleanup();
+      if (aborted) {
+        reject(new AbortError());
+        return;
+      }
+      if (code === 0) {
+        resolve(output);
+      } else {
+        if (code == null) {
+          reject(
+            new CommandFailedError(
+              `Command timed out.
+output: ${output}`,
+            ),
+          );
+        } else {
+          reject(
+            new CommandFailedError(
+              `Command exited with code: ${code}
+output: ${output}`,
+            ),
+          );
+        }
+      }
+    });
+
+    child.on("error", err => {
+      cleanup();
+      if (aborted) {
+        reject(new AbortError());
+        return;
+      }
+      reject(new CommandFailedError(`Command failed: ${err.message}`));
+    });
+  });
+}
+
 type DockerTarget =
   | {
       type: "container";
@@ -50,12 +132,24 @@ type DockerTarget =
       type: "image";
       image: Awaited<ReturnType<typeof manageContainer>>;
     };
+
 export class DockerTransport implements Transport {
   private readonly _container: string;
+  cwd: string;
 
-  constructor(private readonly _target: DockerTarget) {
+  private constructor(
+    private readonly _target: DockerTarget,
+    cwd: string,
+  ) {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
+    this.cwd = cwd;
+  }
+
+  static async create(target: DockerTarget): Promise<DockerTransport> {
+    const container = target.type === "image" ? target.image.container : target.container;
+    const cwd = await runDockerCommand(container, ["pwd"], 5000, new AbortController().signal);
+    return new DockerTransport(target, cwd.trim());
   }
 
   async close() {
@@ -67,80 +161,7 @@ export class DockerTransport implements Transport {
     command: string[],
     timeout: number,
   ): Promise<string> {
-    const dockerCmd = ["docker", "exec", this._container, "/bin/sh", "-c", command.join(" ")];
-
-    return new Promise<string>((resolve, reject) => {
-      const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
-        timeout,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      let output = "";
-      let aborted = false;
-
-      const onAbort = () => {
-        aborted = true;
-        // Try graceful termination first
-        child.kill("SIGTERM");
-        // Fallback to SIGKILL if it doesn't exit quickly
-        setTimeout(() => {
-          try {
-            child.kill("SIGKILL");
-          } catch {}
-        }, 500).unref?.();
-      };
-
-      if (signal.aborted) onAbort();
-      signal.addEventListener("abort", onAbort);
-
-      const cleanup = () => {
-        signal.removeEventListener("abort", onAbort);
-      };
-
-      child.stdout.on("data", data => {
-        output += data.toString();
-      });
-
-      child.stderr.on("data", data => {
-        output += data.toString();
-      });
-
-      child.on("close", code => {
-        cleanup();
-        if (aborted) {
-          reject(new AbortError());
-          return;
-        }
-        if (code === 0) {
-          resolve(output);
-        } else {
-          if (code == null) {
-            reject(
-              new CommandFailedError(
-                `Command timed out.
-output: ${output}`,
-              ),
-            );
-          } else {
-            reject(
-              new CommandFailedError(
-                `Command exited with code: ${code}
-output: ${output}`,
-              ),
-            );
-          }
-        }
-      });
-
-      child.on("error", err => {
-        cleanup();
-        if (aborted) {
-          reject(new AbortError());
-          return;
-        }
-        reject(new CommandFailedError(`Command failed: ${err.message}`));
-      });
-    });
+    return runDockerCommand(this._container, command, timeout, signal);
   }
 
   async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
@@ -149,11 +170,8 @@ output: ${output}`,
 
     // First, write the contents to the temp file using a base64 to avoid shellescape issues
     const base64Contents = Buffer.from(contents).toString("base64");
-    await this.dockerExec(
-      signal,
-      ["/bin/sh", "-c", `echo '${base64Contents}' | base64 -d > '${tempFile}'`],
-      5000,
-    );
+
+    await this.dockerExec(signal, [`echo '${base64Contents}' | base64 -d > '${tempFile}'`], 5000);
 
     try {
       // Ensure directory exists
@@ -258,10 +276,5 @@ output: ${output}`,
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
     return await this.dockerExec(signal, [command], timeout);
-  }
-
-  async cwd(signal: AbortSignal) {
-    const output = await this.dockerExec(signal, ["pwd"], 5000);
-    return output.trim();
   }
 }

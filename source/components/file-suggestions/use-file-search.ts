@@ -84,7 +84,7 @@ async function getCachedFileList(
   transport: ReturnType<typeof useTransport>,
   signal: AbortSignal,
 ): Promise<string[]> {
-  const cwd = await transport.cwd(signal);
+  const cwd = transport.cwd;
   const now = Date.now();
   const cached = fileCache.get(cwd);
 

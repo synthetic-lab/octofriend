@@ -73,7 +73,7 @@ docker
   .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("<target>", "The Docker container")
   .action(async (target, opts) => {
-    const transport = new DockerTransport({ type: "container", container: target });
+    const transport = await DockerTransport.create({ type: "container", container: target });
 
     try {
       await runMain({
@@ -95,7 +95,7 @@ docker
   .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("[args...]", "The args to pass to `docker run`")
   .action(async (args, opts) => {
-    const transport = new DockerTransport({
+    const transport = await DockerTransport.create({
       type: "image",
       image: await manageContainer(args),
     });
@@ -137,7 +137,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     }
 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
-    const cwd = await opts.transport.cwd(timeout(5000));
+    const cwd = opts.transport.cwd;
 
     const { waitUntilExit } = render(
       <App

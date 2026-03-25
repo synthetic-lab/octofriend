@@ -30,7 +30,7 @@ export default defineTool<t.GetType<typeof Schema>>(async () => ({
   ArgumentsSchema,
   validate,
   async run(abortSignal, transport, call) {
-    const dirpath = call.arguments?.dirPath || (await transport.cwd(abortSignal));
+    const dirpath = call.arguments?.dirPath || transport.cwd;
     await validate(abortSignal, transport, call);
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(abortSignal, dirpath);
