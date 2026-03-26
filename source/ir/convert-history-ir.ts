@@ -143,8 +143,7 @@ export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
   // Transform
   for (let i = 0; i < lowered.length; i++) {
     const item = lowered[i];
-    const prev = output.length > 0 ? output[output.length - 1] : null;
-    const [newPrev, transformed] = collapseToIR(prev, item);
+    const [newPrev, transformed] = collapseToIR(output, item);
     if (newPrev) output[output.length - 1] = newPrev;
     if (transformed) output.push(transformed);
   }
@@ -162,7 +161,16 @@ function lowerItem(item: HistoryItem): LoweredHistory | null {
   return null;
 }
 
-// Given a previous LLM message (if one exists) in the conversation, a history item, and the latest
+// Find the most recent assistant message by searching backward through output
+function findPrevAssistant(output: LlmIR[]): AssistantMessage | null {
+  for (let i = output.length - 1; i >= 0; i--) {
+    const item = output[i];
+    if (item.role === "assistant") return item;
+  }
+  return null;
+}
+
+// Given previous LLM messages, a history item, and the latest
 // edits map, returns a tuple of:
 //
 // 1. What the prev message should be overwritten with
@@ -172,9 +180,11 @@ function lowerItem(item: HistoryItem): LoweredHistory | null {
 // position if you don't intend to overwrite anything. However, the transformed history-to-LLM
 // message must be a new object: do not simply return the history item, or it could be modified by
 // future calls.
-function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, LlmIR | null] {
+function collapseToIR(output: LlmIR[], item: LoweredHistory): [LlmIR | null, LlmIR | null] {
+  const prev = output.length > 0 ? output[output.length - 1] : null;
+
   if (item.type === "tool") {
-    return assertPrevAssistant("tool", item, prev, prev => {
+    return assertPrevAssistant("tool", item, output, prev => {
       // Collapse the tool call into the previous assistant message
       // If prev already has toolCalls, append to it; otherwise create new array
       const existingToolCalls = prev.toolCalls || [];
@@ -197,7 +207,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     return assertPrevAssistant(
       "tool-malformed",
       item,
-      prev,
+      output,
       (prev): [LlmIR | null, LlmIR | null] => {
         // Collapse the malformed tool call into the previous assistant message, and structure the
         // response
@@ -235,8 +245,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "tool-reject") {
-    return assertPrevAssistantToolCall("tool-reject", item, prev, prev => {
-      const toolCall = prev.toolCalls[0];
+    return assertPrevAssistantToolCall("tool-reject", item, output, item.toolCallId, prev => {
+      const toolCall = findToolById(prev.toolCalls, item.toolCallId);
       return [
         prev,
         {
@@ -248,7 +258,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "tool-failed") {
-    return assertPrevAssistantToolCall("tool-failed", item, prev, prev => {
+    return assertPrevAssistantToolCall("tool-failed", item, output, item.toolCallId, prev => {
       return [
         prev,
         {
@@ -262,8 +272,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "tool-output") {
-    return assertPrevAssistantToolCall("tool-output", item, prev, prev => {
-      const toolCall = prev.toolCalls[0];
+    return assertPrevAssistantToolCall("tool-output", item, output, item.toolCallId, prev => {
+      const toolCall = findToolById(prev.toolCalls, item.toolCallId);
       switch (toolCall.function.name) {
         case "append":
         case "prepend":
@@ -310,8 +320,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "file-outdated") {
-    return assertPrevAssistantToolCall("file-outdated", item, prev, prev => {
-      const toolCall = prev.toolCalls[0];
+    return assertPrevAssistantToolCall("file-outdated", item, output, item.toolCallId, prev => {
+      const toolCall = findToolById(prev.toolCalls, item.toolCallId);
       return [
         prev,
         {
@@ -324,8 +334,8 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "file-unreadable") {
-    return assertPrevAssistantToolCall("file-unreadable", item, prev, prev => {
-      const toolCall = prev.toolCalls[0];
+    return assertPrevAssistantToolCall("file-unreadable", item, output, item.toolCallId, prev => {
+      const toolCall = findToolById(prev.toolCalls, item.toolCallId);
       return [
         prev,
         {
@@ -376,14 +386,30 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   ];
 }
 
+// Find a tool call by ID in the toolCalls array
+function findToolById(toolCalls: ToolCallRequest[], toolCallId: string): ToolCallRequest {
+  const toolCall = toolCalls.find(tc => tc.toolCallId === toolCallId);
+  if (!toolCall) {
+    throw new Error(`Tool call ${toolCallId} not found in assistant message`);
+  }
+  return toolCall;
+}
+
 function assertPrevAssistant<T extends HistoryItem["type"]>(
   type: T,
   _: HistoryItem & { type: T },
-  prev: LlmIR | null,
+  output: LlmIR[],
   callback: (prev: AssistantMessage) => [LlmIR | null, LlmIR | null],
 ): [LlmIR | null, LlmIR | null] {
+  const prev = output.length > 0 ? output[output.length - 1] : null;
   if (prev == null) return [null, null];
   if (prev.role === "assistant") return callback(prev);
+  
+  // Search backward for the most recent assistant message
+  // This handles cases where tool errors are interleaved with tool outputs
+  const prevAssistant = findPrevAssistant(output);
+  if (prevAssistant) return callback(prevAssistant);
+  
   throw new Error(
     `Impossible tool ordering: no prev assistant response for ${type}. Prev role: ${prev.role}`,
   );
@@ -392,16 +418,25 @@ function assertPrevAssistant<T extends HistoryItem["type"]>(
 function assertPrevAssistantToolCall<T extends HistoryItem["type"]>(
   type: T,
   item: HistoryItem & { type: T },
-  prev: LlmIR | null,
+  output: LlmIR[],
+  toolCallId: string,
   callback: (
     prev: AssistantMessage & { toolCalls: ToolCallRequest[] },
   ) => [LlmIR | null, LlmIR | null],
 ): [LlmIR | null, LlmIR | null] {
-  return assertPrevAssistant(type, item, prev, prev => {
-    const { toolCalls } = prev;
-    if (toolCalls && toolCalls.length > 0) return callback({ ...prev, toolCalls });
+  return assertPrevAssistant(type, item, output, assistant => {
+    const { toolCalls } = assistant;
+    if (toolCalls && toolCalls.length > 0) {
+      // Verify the specific toolCallId exists in this assistant's tool calls
+      if (!toolCalls.find(tc => tc.toolCallId === toolCallId)) {
+        throw new Error(
+          `Tool call ${toolCallId} not found in assistant message for ${type}`
+        );
+      }
+      return callback({ ...assistant, toolCalls });
+    }
     throw new Error(
-      `Impossible tool ordering: no prev assistant tool call for ${type}. Prev role: ${prev.role}`,
+      `Impossible tool ordering: no prev assistant tool call for ${type}. Prev role: ${assistant.role}`,
     );
   });
 }
