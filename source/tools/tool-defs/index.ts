@@ -12,6 +12,7 @@ import skill from "./skill.ts";
 import webSearch from "./web-search.ts";
 import glob from "./glob.ts";
 import grep from "./grep.ts";
+import lsp from "./lsp.ts";
 
 export default {
   read,
@@ -28,4 +29,5 @@ export default {
   "web-search": webSearch,
   glob,
   grep,
+  lsp,
 };

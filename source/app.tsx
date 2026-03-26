@@ -29,7 +29,11 @@ import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
+<<<<<<< HEAD
 import grep from "./tools/tool-defs/grep.ts";
+=======
+import lsp from "./tools/tool-defs/lsp.ts";
+>>>>>>> 24b57e7 (Add LSP tool)
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
@@ -46,6 +50,7 @@ import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
+import { LspRecommendationPrompt } from "./components/lsp-recommendation-prompt.tsx";
 import {
   useCtrlC,
   ExitOnDoubleCtrlC,
@@ -68,6 +73,9 @@ import {
 } from "./hooks/use-priority-input.tsx";
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
+import { findAndCacheServersForExtension, hasCachedInstalledLsp } from "./lsp/detect.ts";
+import path from "path";
+import { LspInstallationConfig } from "./lsp/lsp-server-registry.ts";
 
 type Props = {
   config: Config;
@@ -746,9 +754,11 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
+      case "lsp":
         return `${fn.name}:*`;
     }
   })();
+
   const prompt = (() => {
     const fn = toolReq.call.parsed;
     switch (fn.name) {
@@ -780,6 +790,7 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
+      case "lsp":
         return null;
     }
   })();
@@ -1108,6 +1119,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
       return <GlobRenderer item={item.call.parsed} />;
+    case "lsp":
+      return <LspToolRenderer item={item.tool.function} />;
     case "grep":
       return <GrepRenderer item={item.call.parsed} />;
   }
@@ -1391,7 +1404,10 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
       );
     }
     case "skill": {
-      return <Text>{fn.arguments.skillName} skill executions</Text>;
+      return <Text> {fn.arguments.skillName} skill executions</Text>;
+    }
+    case "lsp": {
+      return <Text> LSP queries during this session.</Text>;
     }
   }
 }

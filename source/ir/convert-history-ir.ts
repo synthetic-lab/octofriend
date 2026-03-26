@@ -232,6 +232,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "tool-output") {
+<<<<<<< HEAD
     switch (item.toolCall.call.parsed.name) {
       case "append":
       case "prepend":
@@ -275,6 +276,53 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
           },
         ];
     }
+=======
+    return assertPrevAssistantToolCall("tool-output", item, prev, prev => {
+      switch (prev.toolCall.function.name) {
+        case "append":
+        case "prepend":
+        case "rewrite":
+        case "edit":
+        case "create":
+          return [
+            prev,
+            {
+              role: "file-mutate",
+              content: item.result.content,
+              toolCall: prev.toolCall,
+              path: path.resolve(prev.toolCall.function.arguments.filePath),
+            },
+          ];
+        case "read":
+          return [
+            prev,
+            {
+              role: "file-read",
+              content: item.result.content,
+              toolCall: prev.toolCall,
+              path: path.resolve(prev.toolCall.function.arguments.filePath),
+              image: item.result.image,
+            },
+          ];
+        case "skill":
+        case "fetch":
+        case "list":
+        case "shell":
+        case "mcp":
+        case "web-search":
+        case "glob":
+        case "lsp":
+          return [
+            prev,
+            {
+              role: "tool-output",
+              content: item.result.content,
+              toolCall: prev.toolCall,
+            },
+          ];
+      }
+    });
+>>>>>>> 541921e (Add LSP tool)
   }
 
   if (item.type === "file-outdated") {

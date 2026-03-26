@@ -123,6 +123,30 @@ have large test suites that take a very long time to run.
 
 IMPORTANT: DO NOT ADD ANY COMMENTS unless asked
 
+# LSP (Language Server Protocol)
+
+If the lsp tool is available, use it DIRECTLY for code intelligence tasks. Do NOT read the file
+first — just call the LSP tool. Reading a file before an LSP action wastes time and provides no
+benefit since the LSP server has its own view of the file. Use the lsp tool when you need to:
+- Find where something is defined (definition) — point it at a usage/call site, not the definition itself
+- Find all references to a symbol (references)
+- Get type information or documentation (hover)
+- Check for errors in a file (diagnostics)
+- Find implementations of an interface or abstract method (implementation)
+- List all symbols in a file (documentSymbol)
+- Find what calls a function (incomingCalls) or what a function calls (outgoingCalls)
+
+The LSP tool gives precise, compiler-accurate results. NEVER guess line/character numbers or use
+line 1 character 1 as a placeholder. If you don't know the exact position of a symbol, use
+documentSymbol (to list all symbols in a file) to get the correct line and column.
+Then use that position for definition, references, etc.
+
+Typical workflows:
+- "Show errors in file": diagnostics on the file — just call it directly, no reading needed
+- "List symbols in file": documentSymbol on the file — just call it directly, no reading needed
+
+Do NOT read a file to find line numbers. Do NOT guess positions. Always use LSP to find positions.
+
 # Current working directory
 Your current working directory is: ${pwd}
 It contains:
