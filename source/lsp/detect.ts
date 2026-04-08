@@ -234,6 +234,26 @@ function getProjectLspConfigPath(cwd: string): string {
   return path.join(cwd, ".octofriend", "lsp.json5");
 }
 
+export function getUsableLspExtensions(appConfig: Config): Set<string> {
+  const extensions = new Set<string>();
+
+  for (const server of RecommendedLspServers) {
+    if (!isLspDisabledByUser(server.serverName, appConfig)) {
+      for (const ext of server.extensions) {
+        extensions.add(ext);
+      }
+    }
+  }
+
+  for (const config of Object.values(cachedProjectLspConfig)) {
+    for (const ext of config.extensions) {
+      extensions.add(ext);
+    }
+  }
+
+  return extensions;
+}
+
 export async function writeProjectLspConfig(cwd: string): Promise<void> {
   const configPath = getProjectLspConfigPath(cwd);
   const dir = path.dirname(configPath);

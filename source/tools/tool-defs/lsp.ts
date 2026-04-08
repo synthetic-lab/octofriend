@@ -10,7 +10,11 @@ import {
 } from "../../lsp/client.ts";
 import type { Config } from "../../config.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import { getLspClientForFile, isLspGloballyDisabled } from "../../lsp/detect.ts";
+import {
+  getLspClientForFile,
+  isLspGloballyDisabled,
+  getUsableLspExtensions,
+} from "../../lsp/detect.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to the file to query"),
@@ -54,16 +58,7 @@ const ArgumentsSchema = t.subtype({
     ),
 });
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Query a running Language Server for code intelligence. Use this tool INSTEAD of reading files when you need type info, definitions, references, or symbol lookups since it is faster and more accurate than reading and searching manually. Inspect the action parameter's options and their descriptions to determine which action to use.",
-  );
-
-type LspToolCall = t.GetType<typeof Schema>;
+type LspToolCall = { name: "lsp"; arguments: t.GetType<typeof ArgumentsSchema> };
 export type LspToolCallArgs = t.GetType<typeof ArgumentsSchema>;
 
 function requireFilePath(call: LspToolCall): string {
@@ -120,8 +115,19 @@ async function withLspFile<R>(
 }
 
 export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
-  // Check if LSP disabled in Global Config
   if (isLspGloballyDisabled(config)) return null;
+
+  const extensions = getUsableLspExtensions(config);
+  if (extensions.size === 0) return null;
+
+  const Schema = t
+    .subtype({
+      name: t.value("lsp"),
+      arguments: ArgumentsSchema,
+    })
+    .comment(
+      `Query a running Language Server for code intelligence. Use this tool INSTEAD of reading files when you need type info, definitions, references, or symbol lookups since it is faster and more accurate than reading and searching manually. Inspect the action parameter's options and their descriptions to determine which action to use. Only use this tool for files with these extensions: ${[...extensions].join(", ")}`,
+    );
 
   return {
     Schema,
