@@ -133,7 +133,7 @@ const ConfigSchema = t.exact({
       paths: t.optional(t.array(t.str)),
     }),
   ),
-  notifyCommand: t.optional(t.str),
+  notifyFinishCommand: t.optional(t.str),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
@@ -147,7 +147,7 @@ const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 const NOTIFY_COMMAND_TIMEOUT_MS = 15_000;
 
 export async function runNotifyCommand(config: Config): Promise<void> {
-  const cmd = config.notifyCommand;
+  const cmd = config.notifyFinishCommand;
   if (!cmd || cmd.trim() === "") return;
   const shell = process.env["SHELL"] || "/bin/sh";
 
@@ -160,7 +160,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
 
     child.on("close", (code: number | null) => {
       if (code !== 0) {
-        reject(new Error(`notifyCommand exited with code ${code}`));
+        reject(new Error(`notifyFinishCommand exited with code ${code}`));
         return;
       }
       resolve();
