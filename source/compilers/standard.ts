@@ -647,24 +647,46 @@ Please try calling a valid tool.
   }
 
   // Handle double-encoded arguments, which models sometimes produce
-  if (typeof args === "string") {
-    let [err, argsParsed] = tryexpr(() => {
-      return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-    });
+  // Recursively parse string values that are actually JSON-serialized objects
+  function recursivelyDecodeStrings(value: any, depth = 0): any {
+    // Prevent infinite recursion
+    if (depth > 10) return value;
 
-    if (err) {
-      const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-      const fixResponse = await fixPromise;
-      if (!fixResponse.success) {
-        return {
-          status: "error",
-          message: "Syntax error: invalid JSON in tool call arguments",
-        };
+    if (typeof value === "string") {
+      // Try to parse the string as JSON
+      const [parseErr, parsed] = tryexpr(() => JSON.parse(value));
+      if (!parseErr) {
+        // Successfully parsed, recursively decode its contents
+        return recursivelyDecodeStrings(parsed, depth + 1);
       }
-      args = fixResponse.fixed;
-    } else {
-      args = argsParsed;
+    } else if (typeof value === "object" && value !== null) {
+      // Recursively process object properties or array elements
+      if (Array.isArray(value)) {
+        return value.map(item => recursivelyDecodeStrings(item, depth + 1));
+      } else {
+        const result: Record<string, any> = {};
+        for (const [key, val] of Object.entries(value)) {
+          result[key] = recursivelyDecodeStrings(val, depth + 1);
+        }
+        return result;
+      }
     }
+    return value;
+  }
+
+  args = recursivelyDecodeStrings(args);
+
+  // Validate that we got a proper object, not a string
+  if (typeof args === "string") {
+    const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
+    const fixResponse = await fixPromise;
+    if (!fixResponse.success) {
+      return {
+        status: "error",
+        message: "Syntax error: invalid JSON in tool call arguments",
+      };
+    }
+    args = fixResponse.fixed;
   }
 
   try {

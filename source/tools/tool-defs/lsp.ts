@@ -16,66 +16,67 @@ import {
   getUsableLspExtensions,
 } from "../../lsp/detect.ts";
 
+const LineSchema = t.num.comment("1-indexed line number");
+const CharSchema = t.num.comment("1-indexed column number");
+
+const positionFields = {
+  line: LineSchema,
+  character: CharSchema,
+} as const;
+
+const DefinitionSchema = t.subtype({
+  lspActionName: t.value("definition").comment("location where a symbol was originally defined"),
+  ...positionFields,
+});
+
+const ReferencesSchema = t.subtype({
+  lspActionName: t.value("references").comment("find all references to a symbol"),
+  ...positionFields,
+});
+
+const HoverSchema = t.subtype({
+  lspActionName: t.value("hover").comment("type info and documentation for a symbol"),
+  ...positionFields,
+});
+
+const ImplementationSchema = t.subtype({
+  lspActionName: t
+    .value("implementation")
+    .comment("jumps past interfaces and abstract classes to the code that implements them"),
+  ...positionFields,
+});
+
+const IncomingCallsSchema = t.subtype({
+  lspActionName: t.value("incomingCalls").comment("find callers of a symbol"),
+  ...positionFields,
+});
+
+const OutgoingCallsSchema = t.subtype({
+  lspActionName: t.value("outgoingCalls").comment("find callees of a symbol"),
+  ...positionFields,
+});
+
+const DiagnosticsSchema = t.subtype({
+  lspActionName: t.value("diagnostics").comment("errors and warnings for a file"),
+});
+
+const DocumentSymbolSchema = t.subtype({
+  lspActionName: t.value("documentSymbol").comment("list all symbols in a file"),
+});
+
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to the file to query"),
-  line: t.optional(
-    t.num.comment(
-      "1-indexed line number (required for definition, references, hover, implementation, incomingCalls, outgoingCalls)",
-    ),
-  ),
-  character: t.optional(
-    t.num.comment(
-      "1-indexed column number (required for definition, references, hover, implementation, incomingCalls, outgoingCalls)",
-    ),
-  ),
-  action: t
-    .value("definition")
-    .comment("location where a symbol was originally defined. Requires file, line, character")
-    .or(
-      t
-        .value("references")
-        .comment("find all references to a symbol. Requires file, line, character"),
-    )
-    .or(
-      t
-        .value("hover")
-        .comment("type info and documentation for a symbol. Requires file, line, character"),
-    )
-    .or(t.value("diagnostics").comment("errors and warnings for a file. Requires file only"))
-    .or(
-      t
-        .value("implementation")
-        .comment(
-          "similar to getDefinition, but jumps past interfaces and abstract classes to the code that implements them. Requires file, line, character",
-        ),
-    )
-    .or(t.value("documentSymbol").comment("list all symbols in a file. Requires file only"))
-    .or(
-      t.value("incomingCalls").comment("find callers of a symbol. Requires file, line, character"),
-    )
-    .or(
-      t.value("outgoingCalls").comment("find callees of a symbol. Requires file, line, character"),
-    ),
+  action: DefinitionSchema.or(ReferencesSchema)
+    .or(HoverSchema)
+    .or(ImplementationSchema)
+    .or(IncomingCallsSchema)
+    .or(OutgoingCallsSchema)
+    .or(DiagnosticsSchema)
+    .or(DocumentSymbolSchema),
 });
 
 type LspToolCall = { name: "lsp"; arguments: t.GetType<typeof ArgumentsSchema> };
 export type LspToolCallArgs = t.GetType<typeof ArgumentsSchema>;
-
-function requireFilePath(call: LspToolCall): string {
-  const { filePath, action } = call.arguments;
-  if (!filePath) {
-    throw new ToolError(`"${action}" requires a filePath argument`);
-  }
-  return filePath;
-}
-
-function requirePosition(call: LspToolCall): { line: number; character: number } {
-  const { line, character, action } = call.arguments;
-  if (line == null || character == null) {
-    throw new ToolError(`"${action}" requires both line and character arguments`);
-  }
-  return { line, character };
-}
 
 const unavailableMessage = {
   content:
@@ -135,19 +136,18 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
     validate: async () => null,
 
     async run(abortSignal, transport, call, config) {
-      const { action } = call.arguments;
+      const { action, filePath } = call.arguments;
 
-      const filePath = requireFilePath(call);
       const resolvedPath = await transport.resolvePath(abortSignal, filePath);
 
-      return attempt(`LSP ${action} failed for ${resolvedPath}`, async () => {
+      return attempt(`LSP ${action.lspActionName} failed for ${resolvedPath}`, async () => {
         const boot = await bootstrapClient(transport, config, resolvedPath);
         if (!boot.ok) return boot.message;
         const { client } = boot;
         return withLspFile(abortSignal, transport, client, resolvedPath, async client => {
-          switch (action) {
+          switch (action.lspActionName) {
             case "definition": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const locations = await client.getDefinition(resolvedPath, line - 1, character - 1);
               return {
                 content: `Definition results for ${resolvedPath}:${line}:${character}:\n${formatLocations(locations)}`,
@@ -155,7 +155,7 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "references": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const refs = await client.getReferences(resolvedPath, line - 1, character - 1);
               return {
                 content: `References for symbol at ${resolvedPath}:${line}:${character}:\n${formatLocations(refs)}`,
@@ -163,7 +163,7 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "hover": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const hover = await client.getHover(resolvedPath, line - 1, character - 1);
               return {
                 content: `Hover info for ${resolvedPath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
@@ -171,7 +171,6 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "diagnostics": {
-              // used to ensure we don't return the previous diagnostics after a file change/open
               const diagnosticsMinVersion = client.getDiagnosticsVersion();
               const diagnostics = await client.getDiagnostics(resolvedPath, diagnosticsMinVersion);
               return {
@@ -180,7 +179,7 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "implementation": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const locations = await client.getImplementation(
                 resolvedPath,
                 line - 1,
@@ -197,7 +196,7 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "incomingCalls": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const calls = await client.getIncomingCalls(resolvedPath, line - 1, character - 1);
               return {
                 content: `Incoming calls to symbol at ${resolvedPath}:${line}:${character}:\n${formatCallHierarchy(calls, "incoming")}`,
@@ -205,7 +204,7 @@ export default defineTool<LspToolCall>(async (_signal, _transport, config) => {
             }
 
             case "outgoingCalls": {
-              const { line, character } = requirePosition(call);
+              const { line, character } = action;
               const calls = await client.getOutgoingCalls(resolvedPath, line - 1, character - 1);
               return {
                 content: `Outgoing calls from symbol at ${resolvedPath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,

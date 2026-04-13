@@ -34,8 +34,6 @@ export type RunArgs = {
   transport: Transport;
 };
 
-export type InstallationChoice = "install" | "skip" | "never" | "disable-all";
-
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
   preMenuVimMode: "NORMAL" | "INSERT" | null;

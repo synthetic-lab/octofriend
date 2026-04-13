@@ -4,13 +4,18 @@ import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import type { Item, Keymap, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { LspInstallationConfig } from "../lsp/lsp-server-registry.ts";
 import { withServerDisabled, withAllServersDisabled, useConfig, useSetConfig } from "../config.ts";
-import { InstallationChoice, useAppStore } from "../state.ts";
+import { useAppStore } from "../state.ts";
 import { execFile } from "node:child_process";
 import { useUnchained } from "../theme.ts";
 import { MenuHeader } from "./kb-select/kb-shortcut-panel.tsx";
 
+type InstallationChoice = "install" | "skip" | "never" | "disable-all";
+
 // how long to show success/error messages before dismissing the prompt
 const STATUS_DISPLAY_MS = 1500;
+
+// delay before showing the prompt to catch any flash of content
+const PROMPT_DELAY_MS = 3000;
 
 type Props = {
   lspRecommendation: LspInstallationConfig;
@@ -37,13 +42,19 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
     installCmd: maybeNullInstallCmd,
   } = lspRecommendation;
   const [phase, setPhase] = useState<Phase>({ status: Status.Choosing });
+  const [ready, setReady] = useState(false);
   const extensionsString = extensions.join(", ");
 
   useEffect(() => {
-    if (unchained) {
+    const timer = setTimeout(() => setReady(true), PROMPT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (unchained && ready) {
       handleInstall();
     }
-  }, [unchained]);
+  }, [unchained, ready]);
 
   const handleSelect = useCallback(
     (item: Item<InstallationChoice>) => {
@@ -131,6 +142,10 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
       } satisfies Keymap<InstallationChoice>,
     },
   ];
+
+  if (!ready) {
+    return null;
+  }
 
   if (phase.status === Status.Choosing) {
     return (
