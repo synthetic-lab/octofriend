@@ -80,16 +80,15 @@ export class LocalTransport implements Transport {
       const child = spawn(cmd, {
         cwd: process.cwd(),
         shell: "bash",
-        timeout,
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
       });
 
       let output = "";
       let aborted = false;
+      let timedOut = false;
 
-      const onAbort = () => {
-        aborted = true;
+      function killGroup() {
         // Kill the entire process group to handle child processes
         try {
           // First, try to kill the process group with SIGTERM
@@ -108,14 +107,25 @@ export class LocalTransport implements Transport {
             } catch {}
           }
         }, 500).unref?.();
-      };
+      }
+
+      function onAbort() {
+        aborted = true;
+        killGroup();
+      }
+
+      function cleanup() {
+        signal.removeEventListener("abort", onAbort);
+        clearTimeout(timeoutHandler);
+      }
+
+      const timeoutHandler = setTimeout(() => {
+        timedOut = true;
+        killGroup();
+      }, timeout);
 
       if (signal.aborted) onAbort();
       signal.addEventListener("abort", onAbort);
-
-      const cleanup = () => {
-        signal.removeEventListener("abort", onAbort);
-      };
 
       child.stdout.on("data", data => {
         output += data.toString();
@@ -131,13 +141,22 @@ export class LocalTransport implements Transport {
           reject(new AbortError());
           return;
         }
+        if (timedOut) {
+          reject(
+            new CommandFailedError(
+              `Command timed out.
+output: ${output}`,
+            ),
+          );
+          return;
+        }
         if (code === 0) {
           resolve(output);
         } else {
           if (code == null) {
             reject(
               new CommandFailedError(
-                `Command timed out.
+                `Command killed by signal.
 output: ${output}`,
               ),
             );
