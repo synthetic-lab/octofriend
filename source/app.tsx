@@ -30,10 +30,14 @@ import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 <<<<<<< HEAD
+<<<<<<< HEAD
 import grep from "./tools/tool-defs/grep.ts";
 =======
 import lsp from "./tools/tool-defs/lsp.ts";
 >>>>>>> 24b57e7 (Add LSP tool)
+=======
+
+>>>>>>> 70d781f (Separate LSP's actions into individual tools, and DRY compiler decoding)
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
@@ -76,6 +80,7 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { findAndCacheServersForExtension, hasCachedInstalledLsp } from "./lsp/detect.ts";
 import path from "path";
 import { LspInstallationConfig } from "./lsp/lsp-server-registry.ts";
+import { isLspTool, getLspActionName } from "./tools/lsp-common.ts";
 
 type Props = {
   config: Config;
@@ -723,7 +728,9 @@ function ToolRequestRenderer({
   onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
-  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
+  const toolFn = toolReq.function;
+
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
@@ -754,8 +761,15 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
-      case "lsp":
-        return `${fn.name}:*`;
+      case "lsp-definition":
+      case "lsp-references":
+      case "lsp-hover":
+      case "lsp-diagnostics":
+      case "lsp-document-symbol":
+      case "lsp-implementation":
+      case "lsp-incoming-calls":
+      case "lsp-outgoing-calls":
+        return `${toolFn.name}:*`;
     }
   })();
 
@@ -790,7 +804,14 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
-      case "lsp":
+      case "lsp-definition":
+      case "lsp-references":
+      case "lsp-hover":
+      case "lsp-diagnostics":
+      case "lsp-document-symbol":
+      case "lsp-implementation":
+      case "lsp-incoming-calls":
+      case "lsp-outgoing-calls":
         return null;
     }
   })();
@@ -1119,7 +1140,15 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
       return <GlobRenderer item={item.call.parsed} />;
-    case "lsp":
+      return <GlobRenderer item={item.tool.function} />;
+    case "lsp-definition":
+    case "lsp-references":
+    case "lsp-hover":
+    case "lsp-diagnostics":
+    case "lsp-document-symbol":
+    case "lsp-implementation":
+    case "lsp-incoming-calls":
+    case "lsp-outgoing-calls":
       return <LspToolRenderer item={item.tool.function} />;
     case "grep":
       return <GrepRenderer item={item.call.parsed} />;
@@ -1406,9 +1435,15 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "skill": {
       return <Text> {fn.arguments.skillName} skill executions</Text>;
     }
-    case "lsp": {
+    case "lsp-definition":
+    case "lsp-references":
+    case "lsp-hover":
+    case "lsp-diagnostics":
+    case "lsp-document-symbol":
+    case "lsp-implementation":
+    case "lsp-incoming-calls":
+    case "lsp-outgoing-calls":
       return <Text> LSP queries during this session.</Text>;
-    }
   }
 }
 

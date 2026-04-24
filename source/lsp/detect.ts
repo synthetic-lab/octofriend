@@ -263,6 +263,9 @@ export async function writeProjectLspConfig(cwd: string): Promise<void> {
   for (const config of cachedInstalledLsp.values()) {
     record[config.serverName] = config;
   }
+  for (const [name, config] of Object.entries(cachedProjectLspConfig)) {
+    record[name] = config;
+  }
 
   await fs.writeFile(configPath, json5.stringify(record, null, 2));
 }

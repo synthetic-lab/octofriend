@@ -584,37 +584,8 @@ Please try calling a valid tool.
   const toolSchema = toolDef.Schema;
   let args = toolCall.args;
 
-  // Handle double-encoded arguments, which models sometimes produce
-  // Recursively parse string values that are actually JSON-serialized objects
-  function recursivelyDecodeStrings(value: any, depth = 0): any {
-    // Prevent infinite recursion
-    if (depth > 10) return value;
-
-    if (typeof value === "string") {
-      // Try to parse the string as JSON
-      const [parseErr, parsed] = tryexpr(() => JSON.parse(value));
-      if (!parseErr) {
-        // Successfully parsed, recursively decode its contents
-        return recursivelyDecodeStrings(parsed, depth + 1);
-      }
-    } else if (typeof value === "object" && value !== null) {
-      // Recursively process object properties or array elements
-      if (Array.isArray(value)) {
-        return value.map(item => recursivelyDecodeStrings(item, depth + 1));
-      } else {
-        const result: Record<string, any> = {};
-        for (const [key, val] of Object.entries(value)) {
-          result[key] = recursivelyDecodeStrings(val, depth + 1);
-        }
-        return result;
-      }
-    }
-    return value;
-  }
-
   args = recursivelyDecodeStrings(args);
 
-  // Validate that we got a proper object, not a string
   if (typeof args === "string") {
     const fixPromise = autofixJson(args, abortSignal);
     const fixResponse = await fixPromise;

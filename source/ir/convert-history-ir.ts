@@ -311,7 +311,14 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         case "mcp":
         case "web-search":
         case "glob":
-        case "lsp":
+        case "lsp-definition":
+        case "lsp-references":
+        case "lsp-hover":
+        case "lsp-diagnostics":
+        case "lsp-document-symbol":
+        case "lsp-implementation":
+        case "lsp-incoming-calls":
+        case "lsp-outgoing-calls":
           return [
             prev,
             {

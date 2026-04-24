@@ -11,12 +11,6 @@ import { MenuHeader } from "./kb-select/kb-shortcut-panel.tsx";
 
 type InstallationChoice = "install" | "skip" | "never" | "disable-all";
 
-// how long to show success/error messages before dismissing the prompt
-const STATUS_DISPLAY_MS = 1500;
-
-// delay before showing the prompt to catch any flash of content
-const PROMPT_DELAY_MS = 3000;
-
 type Props = {
   lspRecommendation: LspInstallationConfig;
   onPromptChoice: (choice: InstallationChoice) => void;
@@ -42,19 +36,13 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
     installCmd: maybeNullInstallCmd,
   } = lspRecommendation;
   const [phase, setPhase] = useState<Phase>({ status: Status.Choosing });
-  const [ready, setReady] = useState(false);
   const extensionsString = extensions.join(", ");
 
   useEffect(() => {
-    const timer = setTimeout(() => setReady(true), PROMPT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (unchained && ready) {
+    if (unchained) {
       handleInstall();
     }
-  }, [unchained, ready]);
+  }, [unchained]);
 
   const handleSelect = useCallback(
     (item: Item<InstallationChoice>) => {
@@ -82,11 +70,11 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
       if (error) {
         const message = `Failed to install ${serverName}: ${stderr || error.message}`;
         setPhase({ status: Status.Error, message });
-        setTimeout(() => dismiss("install", message), STATUS_DISPLAY_MS);
+        dismiss("install", message);
       } else {
         const message = `Successfully installed ${serverName}.`;
         setPhase({ status: Status.Done, message });
-        setTimeout(() => dismiss("install", message), STATUS_DISPLAY_MS);
+        dismiss("install", message);
       }
     });
   }
@@ -94,21 +82,21 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
   function handleSkip(): void {
     const message = "Skipping LSP server installation.";
     setPhase({ status: Status.Done, message });
-    setTimeout(() => dismiss("skip", message), STATUS_DISPLAY_MS);
+    dismiss("skip", message);
   }
 
   function handleNever(): void {
     setConfig(withServerDisabled(lspRecommendation.serverName, lspConfig));
     const message = `"${lspRecommendation.serverName}" LSP is disabled. You won't be asked about it again.`;
     setPhase({ status: Status.Done, message });
-    setTimeout(() => dismiss("never", message), STATUS_DISPLAY_MS);
+    dismiss("never", message);
   }
 
   function handleDisableAll(): void {
     setConfig(withAllServersDisabled(lspConfig));
     const message = "All future LSP recommendations disabled.";
     setPhase({ status: Status.Done, message });
-    setTimeout(() => dismiss("disable-all", message), STATUS_DISPLAY_MS);
+    dismiss("disable-all", message);
   }
 
   function handleChoice(choice: InstallationChoice) {
@@ -142,10 +130,6 @@ export function LspRecommendationPrompt({ lspRecommendation, onPromptChoice }: P
       } satisfies Keymap<InstallationChoice>,
     },
   ];
-
-  if (!ready) {
-    return null;
-  }
 
   if (phase.status === Status.Choosing) {
     return (

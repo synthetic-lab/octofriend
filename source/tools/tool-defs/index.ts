@@ -11,8 +11,19 @@ import rewrite from "./rewrite.ts";
 import skill from "./skill.ts";
 import webSearch from "./web-search.ts";
 import glob from "./glob.ts";
+<<<<<<< HEAD
 import grep from "./grep.ts";
 import lsp from "./lsp.ts";
+=======
+import lspDefinition from "./lsp-definition.ts";
+import lspReferences from "./lsp-references.ts";
+import lspHover from "./lsp-hover.ts";
+import lspDiagnostics from "./lsp-diagnostics.ts";
+import lspDocumentSymbol from "./lsp-document-symbol.ts";
+import lspImplementation from "./lsp-implementation.ts";
+import lspIncomingCalls from "./lsp-incoming-calls.ts";
+import lspOutgoingCalls from "./lsp-outgoing-calls.ts";
+>>>>>>> 70d781f (Separate LSP's actions into individual tools, and DRY compiler decoding)
 
 export default {
   read,
@@ -28,6 +39,17 @@ export default {
   skill,
   "web-search": webSearch,
   glob,
+<<<<<<< HEAD
   grep,
   lsp,
+=======
+  "lsp-definition": lspDefinition,
+  "lsp-references": lspReferences,
+  "lsp-hover": lspHover,
+  "lsp-diagnostics": lspDiagnostics,
+  "lsp-document-symbol": lspDocumentSymbol,
+  "lsp-implementation": lspImplementation,
+  "lsp-incoming-calls": lspIncomingCalls,
+  "lsp-outgoing-calls": lspOutgoingCalls,
+>>>>>>> 70d781f (Separate LSP's actions into individual tools, and DRY compiler decoding)
 };

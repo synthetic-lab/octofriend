@@ -1,0 +1,43 @@
+import { t } from "structural";
+import { defineTool } from "../common.ts";
+import { formatCallHierarchy } from "../../lsp/client.ts";
+import type { Config } from "../../config.ts";
+import type { Transport } from "../../transports/transport-common.ts";
+import { LspPositionArgumentsSchema, runLspPositionQuery } from "../lsp-common.ts";
+import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
+
+const Schema = t
+  .subtype({
+    name: t.value("lsp-outgoing-calls"),
+    arguments: LspPositionArgumentsSchema,
+  })
+  .comment("Find all callees of a symbol at the given position.");
+
+export default defineTool<{
+  name: "lsp-outgoing-calls";
+  arguments: t.GetType<typeof LspPositionArgumentsSchema>;
+}>(async (_signal, _transport, config) => {
+  if (isLspGloballyDisabled(config)) return null;
+
+  const extensions = getUsableLspExtensions(config);
+  if (extensions.size === 0) return null;
+
+  return {
+    Schema,
+    ArgumentsSchema: LspPositionArgumentsSchema,
+    validate: async () => null,
+
+    async run(abortSignal, transport, call, config, _modelOverride) {
+      return runLspPositionQuery(
+        abortSignal,
+        transport,
+        config,
+        call.arguments,
+        "outgoing calls",
+        (client, filePath, line, character) => client.getOutgoingCalls(filePath, line, character),
+        (calls, filePath, line, character) =>
+          `Outgoing calls from symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,
+      );
+    },
+  };
+});
