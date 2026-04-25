@@ -4,6 +4,7 @@ import { QuotaData } from "../utils/quota.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
 import { LoadedTools } from "../tools/index.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 export type Compiler = (params: {
   systemPrompt?: () => Promise<string>;
@@ -13,6 +14,7 @@ export type Compiler = (params: {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
   onQuotaUpdated?: (quota: QuotaData) => void;
   abortSignal: AbortSignal;
+  transport: Transport;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   tools?: Partial<LoadedTools>;
 }) => Promise<AgentResult>;

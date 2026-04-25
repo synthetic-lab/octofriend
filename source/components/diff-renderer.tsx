@@ -11,16 +11,15 @@ export function DiffRenderer({
   newText,
   filepath,
 }: {
-  oldText?: string;
+  oldText: string;
   newText: string;
   filepath: string;
 }) {
   try {
     const language = fileExtLanguage(filepath);
     const file = readFileSync(filepath, "utf8");
-    const effectiveOldText = oldText ?? file;
 
-    const diff = diffLines(effectiveOldText, newText);
+    const diff = diffLines(oldText, newText);
     const diffWithChanged: Array<
       | (typeof diff)[number]
       | {
@@ -54,10 +53,10 @@ export function DiffRenderer({
       diffWithChanged.push(curr);
     }
 
-    const startLine = getStartLine(file, effectiveOldText);
+    const startLine = getStartLine(file, oldText);
     const oldLineCounter = buildLineCounter(startLine);
     const newLineCounter = buildLineCounter(startLine);
-    const maxOldLines = startLine + countLines(effectiveOldText);
+    const maxOldLines = startLine + countLines(oldText);
     const maxNewLines = startLine + countLines(newText);
     const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
 
@@ -80,7 +79,7 @@ export function DiffRenderer({
                   newValue={part.value}
                   newAdded
                   language={language}
-                  oldText={effectiveOldText}
+                  oldText={oldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -96,7 +95,7 @@ export function DiffRenderer({
                   oldValue={part.value}
                   oldRemoved
                   language={language}
-                  oldText={effectiveOldText}
+                  oldText={oldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -114,7 +113,7 @@ export function DiffRenderer({
                   oldRemoved
                   newAdded
                   language={language}
-                  oldText={effectiveOldText}
+                  oldText={oldText}
                   newText={newText}
                   oldLineCounter={oldLineCounter}
                   newLineCounter={newLineCounter}
@@ -129,7 +128,7 @@ export function DiffRenderer({
                 oldValue={part.value}
                 newValue={part.value}
                 language={language}
-                oldText={effectiveOldText}
+                oldText={oldText}
                 newText={newText}
                 oldLineCounter={oldLineCounter}
                 newLineCounter={newLineCounter}

@@ -67,7 +67,7 @@ type Finish = {
       }
     | {
         type: "request-tool";
-        toolCall: ToolCallRequest;
+        toolCalls: ToolCallRequest[];
       }
     | {
         type: "request-error";
@@ -110,6 +110,7 @@ export async function trajectoryArc({
     apiKey,
     model,
     abortSignal,
+    transport,
     autofixJson,
     messages: messagesCopy,
     handler: {
@@ -133,6 +134,7 @@ export async function trajectoryArc({
     model,
     autofixJson,
     abortSignal,
+    transport,
     tools,
     messages: messagesCopy,
     handlers: {
@@ -224,9 +226,9 @@ export async function trajectoryArc({
     };
   }
 
-  const { toolCall } = lastIr;
+  const { toolCalls } = lastIr;
 
-  if (toolCall == null) {
+  if (toolCalls == null) {
     return {
       type: "finish",
       reason: {
@@ -236,112 +238,110 @@ export async function trajectoryArc({
     };
   }
 
-  try {
-    await validateTool(abortSignal, transport, tools, toolCall.function, config);
-    return {
-      type: "finish",
-      reason: {
-        type: "request-tool",
-        toolCall,
-      },
-      irs,
-    };
-  } catch (e) {
-    if (e instanceof FileOutdatedError) {
-      const errorIrs: TrajectoryOutputIR = await tryTransformFileOutdatedError(
-        abortSignal,
-        transport,
-        toolCall,
-        e,
+  let retryIrs: TrajectoryOutputIR[] = [];
+  const wellformedToolCalls: Array<ToolCallRequest> = [];
+  for (const toolCall of toolCalls) {
+    if (toolCall.type === "malformed-request") {
+      throw new Error(
+        "Impossible tool ordering: encountered a malformed tool with no malformed response",
       );
-      const retryIrs = [...irs, errorIrs];
-      handler.retryTool({ irs: retryIrs });
-      const retried = await trajectoryArc({
-        apiKey,
-        model,
-        config,
-        transport,
-        abortSignal,
-        messages: messagesCopy.concat(retryIrs),
-        handler,
-      });
-      return {
-        type: "finish",
-        irs: [...irs, ...retried.irs],
-        reason: retried.reason,
-      };
     }
+    wellformedToolCalls.push(toolCall);
+  }
 
-    if (!(e instanceof ToolError)) throw e;
+  // TODO: use Promise.all to do this in parallel
+  // Requires changing the signature somewhat; currently we expect that the handlers are called
+  // sequentially (i.e. we only autofix one tool at a time), but this would imply we could call the
+  // handlers multiple times within a single validation step
+  for (const toolCall of wellformedToolCalls) {
+    try {
+      await validateTool(abortSignal, transport, tools, toolCall.call, config);
+    } catch (e) {
+      if (e instanceof FileOutdatedError) {
+        const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
+          abortSignal,
+          transport,
+          toolCall,
+          e,
+        );
+        retryIrs = [...retryIrs, errorIr];
+        continue;
+      }
 
-    const fn = toolCall.function;
-    if (fn.name === "edit") {
-      handler.autofixingDiff(null);
-      const path = fn.arguments.filePath;
-      try {
-        const file = await fs.readFile(path, "utf8");
-        const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
+      if (!(e instanceof ToolError)) throw e;
 
-        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-        // tool call
-        if (abortSignal.aborted) {
-          return abort([
-            ...irs.slice(0, -1),
-            {
-              role: "tool-error",
-              toolCallId: toolCall.toolCallId,
-              toolName: toolCall.function.name,
-              error: e.message,
-            },
-          ]);
-        }
+      const fn = toolCall.call.parsed;
+      if (fn.name === "edit") {
+        handler.autofixingDiff(null);
+        const path = fn.arguments.filePath;
+        try {
+          const file = await fs.readFile(path, "utf8");
+          const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
 
-        if (fix) {
-          // Validate that the edit applies before marking as fixed
-          await validateTool(
-            abortSignal,
-            transport,
-            tools,
-            {
+          // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+          // tool call
+          if (abortSignal.aborted) {
+            return abort([
+              ...irs.slice(0, -1),
+              {
+                role: "tool-error",
+                toolCall: toolCall,
+                error: e.message,
+              },
+            ]);
+          }
+
+          if (fix) {
+            // Validate that the edit applies before marking as fixed
+            const fixed = {
               name: "edit",
               arguments: fix,
-            },
-            config,
-          );
-          // If we got this far, it's valid: update the state and return
-          fn.arguments = {
-            ...fn.arguments,
-            ...fix,
-          };
-          return {
-            type: "finish",
-            reason: {
-              type: "request-tool",
-              toolCall,
-            },
-            irs,
-          };
-        }
-      } catch {}
-    }
+            } as const;
 
-    const retryIrs = [
-      ...irs,
-      {
-        role: "tool-error" as const,
-        toolCallId: toolCall.toolCallId,
-        toolName: toolCall.function.name,
-        error: e.message,
-      },
-    ];
-    handler.retryTool({ irs: retryIrs });
+            await validateTool(
+              abortSignal,
+              transport,
+              tools,
+              {
+                original: fixed,
+                parsed: fixed,
+              },
+              config,
+            );
+
+            // If we got this far, it's valid: update the state and keep going
+            fn.arguments = {
+              ...fn.arguments,
+              ...fix,
+            };
+            continue;
+          }
+        } catch {}
+      }
+
+      retryIrs = [
+        ...retryIrs,
+        {
+          role: "tool-error" as const,
+          toolCall: toolCall,
+          error: e.message,
+        },
+      ];
+      continue;
+    }
+  }
+
+  // If you have any IRs that need to be retried, retry them
+  if (retryIrs.length > 0) {
+    const fullRetryTrajectory = [...irs, ...retryIrs];
+    handler.retryTool({ irs: fullRetryTrajectory });
     const retried = await trajectoryArc({
       apiKey,
       model,
       config,
       transport,
       abortSignal,
-      messages: messagesCopy.concat(retryIrs),
+      messages: messagesCopy.concat(fullRetryTrajectory),
       handler,
     });
     return {
@@ -350,6 +350,16 @@ export async function trajectoryArc({
       reason: retried.reason,
     };
   }
+
+  // Got this far? Everything validated. Return the tool calls
+  return {
+    type: "finish",
+    reason: {
+      type: "request-tool",
+      toolCalls: wellformedToolCalls,
+    },
+    irs,
+  };
 }
 
 async function maybeAutocompact({
@@ -357,6 +367,7 @@ async function maybeAutocompact({
   model,
   messages,
   abortSignal,
+  transport,
   handler,
   autofixJson,
 }: {
@@ -364,6 +375,7 @@ async function maybeAutocompact({
   model: ModelConfig;
   messages: LlmIR[];
   abortSignal: AbortSignal;
+  transport: Transport;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handler: {
     startCompaction: () => void;
@@ -380,6 +392,7 @@ async function maybeAutocompact({
     model,
     messages,
     abortSignal,
+    transport,
     autofixJson,
     handlers: {
       onTokens: (tokens, type) => {

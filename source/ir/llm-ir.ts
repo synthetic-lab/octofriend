@@ -2,8 +2,19 @@ import { ToolCall } from "../tools/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
 export type ToolCallRequest = {
-  type: "function";
-  function: ToolCall;
+  type: "tool-request";
+  call: ToolCall;
+  toolCallId: string;
+};
+
+export type MalformedRequest = {
+  type: "malformed-request";
+  call: {
+    original: {
+      name: string;
+      arguments: any;
+    };
+  };
   toolCallId: string;
 };
 
@@ -30,7 +41,7 @@ export type AssistantMessage = {
     reasoningId?: string;
   };
   anthropic?: AnthropicAssistantData;
-  toolCall?: ToolCallRequest;
+  toolCalls?: Array<ToolCallRequest | MalformedRequest>;
   tokenUsage: number;
   outputTokens: number;
 };
@@ -69,8 +80,7 @@ export type ToolRejectMessage = {
 
 export type ToolErrorMessage = {
   role: "tool-error";
-  toolCallId: string;
-  toolName: string;
+  toolCall: ToolCallRequest;
   error: string;
 };
 

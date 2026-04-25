@@ -10,7 +10,7 @@ import {
   SetConfigContext,
   useConfig,
 } from "./config.ts";
-import { HistoryItem, ToolCallItem } from "./history.ts";
+import { HistoryItem, ToolCallItems } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -31,7 +31,7 @@ import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
-import { ToolSchemaFrom } from "./tools/common.ts";
+import { ParsedToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -43,7 +43,6 @@ import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
-import { LocalTransport } from "./transports/local.ts";
 import { TransportContext } from "./transport-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import {
@@ -60,6 +59,7 @@ import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { ToolResult } from "./tools/common.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -176,14 +176,30 @@ export default function App({
   }
 
   const staticItems: StaticItem[] = useMemo(() => {
-    return [
-      { type: "header" },
-      { type: "version", metadata, config: currConfig },
+    const items = [
+      { type: "header" as const },
+      { type: "version" as const, metadata, config: currConfig },
       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
       ...(updates ? [{ type: "updates" as const, updates }] : []),
-      { type: "slogan" },
+      { type: "slogan" as const },
       ...toStaticItems(history),
     ];
+
+    if (modeData.mode === "tool-request") {
+      let toolCallsIdx = -1;
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        if (item.type === "history-item" && item.item.type === "tool-calls") {
+          toolCallsIdx = i;
+          break;
+        }
+      }
+      if (toolCallsIdx !== -1) {
+        items.splice(toolCallsIdx);
+      }
+    }
+
+    return items;
   }, [history]);
 
   return (
@@ -414,13 +430,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if (modeData.mode === "fix-json") {
     return <Loading overrideStrings={["Auto-fixing JSON"]} />;
   }
-  if (modeData.mode === "tool-waiting") {
-    return (
-      <Loading
-        overrideStrings={["Waiting", "Watching", "Smiling", "Hungering", "Splashing", "Writhing"]}
-      />
-    );
-  }
   if (modeData.mode === "payment-error") {
     return <PaymentErrorScreen error={modeData.error} />;
   }
@@ -449,7 +458,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   }
 
   if (modeData.mode === "tool-request") {
-    return <ToolRequestRenderer toolReq={modeData.toolReq} config={config} transport={transport} />;
+    return (
+      <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
+    );
   }
 
   const _: "menu" | "input" = modeData.mode;
@@ -649,12 +660,69 @@ const ToolRequestItem = React.memo(
   },
 );
 
+function ToolRequestsRenderer({
+  toolReqs,
+  config,
+  transport,
+}: {
+  toolReqs: ToolCallRequest[];
+} & RunArgs) {
+  const runAgent = useAppStore(state => state.runAgent);
+  const history = useAppStore(state => state.history);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  if (currentIndex >= toolReqs.length) {
+    return <FinishToolRequests runAgent={runAgent} config={config} transport={transport} />;
+  }
+
+  const currentToolReq = toolReqs[currentIndex];
+
+  let toolCallsIdx = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].type === "tool-calls") {
+      toolCallsIdx = i;
+      break;
+    }
+  }
+  const historyAfterToolCalls = toolCallsIdx !== -1 ? history.slice(toolCallsIdx + 1) : [];
+
+  return (
+    <Box flexDirection="column">
+      {historyAfterToolCalls.map((item, index) => (
+        <MessageDisplay key={`accepted-${index}`} item={item} />
+      ))}
+      <ToolMessageRenderer item={currentToolReq} />
+      <ToolRequestRenderer
+        toolReq={currentToolReq}
+        config={config}
+        transport={transport}
+        onDone={() => setCurrentIndex(i => i + 1)}
+      />
+    </Box>
+  );
+}
+
+function FinishToolRequests({
+  runAgent,
+  config,
+  transport,
+}: {
+  runAgent: (args: RunArgs) => Promise<void>;
+} & RunArgs) {
+  useEffect(() => {
+    runAgent({ config, transport });
+  }, [runAgent, config, transport]);
+  return <Loading />;
+}
+
 function ToolRequestRenderer({
   toolReq,
   config,
   transport,
+  onDone,
 }: {
   toolReq: ToolCallRequest;
+  onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
@@ -668,7 +736,7 @@ function ToolRequestRenderer({
   const unchained = useUnchained();
 
   const whitelistKey = (() => {
-    const fn = toolReq.function;
+    const fn = toolReq.call.parsed;
     switch (fn.name) {
       case "read":
       case "list":
@@ -690,7 +758,7 @@ function ToolRequestRenderer({
     }
   })();
   const prompt = (() => {
-    const fn = toolReq.function;
+    const fn = toolReq.call.parsed;
     switch (fn.name) {
       case "create":
         return (
@@ -723,7 +791,7 @@ function ToolRequestRenderer({
     }
   })();
 
-  const toolName = toolReq.function.name;
+  const toolName = toolReq.call.parsed.name;
 
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
 
@@ -764,29 +832,41 @@ function ToolRequestRenderer({
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
-        rejectTool(toolReq.toolCallId);
+        rejectTool(toolReq);
       } else if (item.value === "yes-whitelist") {
         await addToWhitelist(whitelistKey);
         await runTool({ toolReq, config, transport });
+        onDone();
       } else {
         await runTool({ toolReq, config, transport });
+        onDone();
       }
     },
-    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey],
+    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey, onDone],
   );
+
+  const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
+  const isRunning =
+    modeData.mode === "tool-request" && modeData.runningToolCallId === toolReq.toolCallId;
 
   const noConfirmationNeeded =
     unchained ||
-    SKIP_CONFIRMATION_TOOLS.includes(toolReq.function.name) ||
+    SKIP_CONFIRMATION_TOOLS.includes(toolReq.call.parsed.name) ||
     isToolWhitelisted === true;
 
   useEffect(() => {
     if (noConfirmationNeeded) {
-      runTool({ toolReq, config, transport });
+      runTool({ toolReq, config, transport }).then(onDone);
     }
   }, [toolReq, noConfirmationNeeded, config, transport]);
 
-  if (noConfirmationNeeded) return <Loading />;
+  if (noConfirmationNeeded || isRunning) {
+    return (
+      <Loading
+        overrideStrings={["Waiting", "Watching", "Smiling", "Hungering", "Splashing", "Writhing"]}
+      />
+    );
+  }
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -884,23 +964,15 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
       </Box>
     );
   }
-  if (item.type === "tool") {
-    return (
-      <Box marginTop={1}>
-        <ToolMessageRenderer item={item} />
-      </Box>
-    );
+  if (item.type === "tool-calls") {
+    // Tool calls don't need to be rendered: the tool output will handle rendering
+    return null;
   }
   if (item.type === "tool-output") {
-    const lines = (() => {
-      if (item.result.lines == null) return item.result.content.split("\n").length;
-      return item.result.lines;
-    })();
     return (
-      <Box marginBottom={1}>
-        <Text color="gray">
-          Got <Text>{lines}</Text> lines of output
-        </Text>
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer result={item.result} />
       </Box>
     );
   }
@@ -916,28 +988,46 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   }
   if (item.type === "tool-failed") {
     return (
-      <Text color="red">
-        {displayLog({
-          verbose: `Error: ${item.error}`,
-          info: "Tool returned an error...",
-        })}
-      </Text>
+      <Box flexDirection="column">
+        <ToolMessageRenderer item={item.toolCall} />
+        <Box marginLeft={2}>
+          <Text color="red">
+            {displayLog({
+              verbose: `Error: ${item.error}`,
+              info: "Tool returned an error...",
+            })}
+          </Text>
+        </Box>
+      </Box>
     );
   }
   if (item.type === "tool-reject") {
-    return <Text>Tool rejected; tell Octo what to do instead:</Text>;
+    return (
+      <Box flexDirection="column">
+        <ToolMessageRenderer item={item.toolCall} />
+        <Box marginLeft={2}>
+          <Text>Tool rejected; tell Octo what to do instead:</Text>
+        </Box>
+      </Box>
+    );
   }
   if (item.type === "file-outdated") {
     return (
       <Box flexDirection="column">
-        <Text>File was modified since it was last read; re-reading...</Text>
+        <ToolMessageRenderer item={item.toolCall} />
+        <Box marginLeft={2}>
+          <Text>File was modified since it was last read; re-reading...</Text>
+        </Box>
       </Box>
     );
   }
   if (item.type === "file-unreadable") {
     return (
       <Box flexDirection="column">
-        <Text>File could not be read — has it been deleted?</Text>
+        <ToolMessageRenderer item={item.toolCall} />
+        <Box marginLeft={2}>
+          <Text>File could not be read — has it been deleted?</Text>
+        </Box>
       </Box>
     );
   }
@@ -987,38 +1077,41 @@ function CompactionSummaryRenderer({ summary }: { summary: string }) {
   );
 }
 
-function ToolMessageRenderer({ item }: { item: ToolCallItem }) {
-  switch (item.tool.function.name) {
+function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] }) {
+  if (item.type === "malformed-request") {
+    return null;
+  }
+  switch (item.call.parsed.name) {
     case "read":
-      return <ReadToolRenderer item={item.tool.function} />;
+      return <ReadToolRenderer item={item.call.parsed} />;
     case "list":
-      return <ListToolRenderer item={item.tool.function} />;
+      return <ListToolRenderer item={item.call.parsed} />;
     case "shell":
-      return <ShellToolRenderer item={item.tool.function} />;
+      return <ShellToolRenderer item={item.call.parsed} />;
     case "edit":
-      return <EditToolRenderer item={item.tool.function} />;
+      return <EditToolRenderer item={item.call.parsed} />;
     case "create":
-      return <CreateToolRenderer item={item.tool.function} />;
+      return <CreateToolRenderer item={item.call.parsed} />;
     case "mcp":
-      return <McpToolRenderer item={item.tool.function} />;
+      return <McpToolRenderer item={item.call.parsed} />;
     case "fetch":
-      return <FetchToolRenderer item={item.tool.function} />;
+      return <FetchToolRenderer item={item.call.parsed} />;
     case "append":
-      return <AppendToolRenderer item={item.tool.function} />;
+      return <AppendToolRenderer item={item.call.parsed} />;
     case "prepend":
-      return <PrependToolRenderer item={item.tool.function} />;
+      return <PrependToolRenderer item={item.call.parsed} />;
     case "rewrite":
-      return <RewriteToolRenderer item={item.tool.function} />;
+      return <RewriteToolRenderer item={item.call.parsed} />;
     case "skill":
-      return <SkillToolRenderer item={item.tool.function} />;
+      return <SkillToolRenderer item={item.call.parsed} />;
     case "web-search":
-      return <WebSearchToolRenderer item={item.tool.function} />;
+      return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
-      return <GlobRenderer item={item.tool.function} />;
+      return <GlobRenderer item={item.call.parsed} />;
   }
 }
 
-function GlobRenderer({ item }: { item: ToolSchemaFrom<typeof glob> }) {
+function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
   return (
     <Box flexDirection="column">
       <Text color="gray">Octo searched for files using a glob pattern:</Text>
@@ -1038,7 +1131,7 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | undefined
     </Text>
   );
 }
-function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
+function WebSearchToolRenderer(_: { item: ParsedToolSchemaFrom<typeof webSearch> }) {
   return (
     <Box>
       <Text color="gray">Octo searched the web</Text>
@@ -1046,7 +1139,7 @@ function WebSearchToolRenderer(_: { item: ToolSchemaFrom<typeof webSearch> }) {
   );
 }
 
-function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
+function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
     <Box>
       <Text color="gray">Octo read the {item.arguments.skillName} skill</Text>
@@ -1054,7 +1147,7 @@ function SkillToolRenderer({ item }: { item: ToolSchemaFrom<typeof skill> }) {
   );
 }
 
-function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
+function AppendToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof append> }) {
   const { filePath, text } = item.arguments;
 
   let startLineNr = 1;
@@ -1079,7 +1172,7 @@ function AppendToolRenderer({ item }: { item: ToolSchemaFrom<typeof append> }) {
   );
 }
 
-function FetchToolRenderer({ item }: { item: ToolSchemaFrom<typeof fetchTool> }) {
+function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
   const themeColor = useColor();
   return (
     <Box>
@@ -1089,7 +1182,7 @@ function FetchToolRenderer({ item }: { item: ToolSchemaFrom<typeof fetchTool> })
   );
 }
 
-function ShellToolRenderer({ item }: { item: ToolSchemaFrom<typeof shell> }) {
+function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> }) {
   const themeColor = useColor();
   return (
     <Box flexDirection="column">
@@ -1102,7 +1195,7 @@ function ShellToolRenderer({ item }: { item: ToolSchemaFrom<typeof shell> }) {
   );
 }
 
-function ReadToolRenderer({ item }: { item: ToolSchemaFrom<typeof read> }) {
+function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
   const themeColor = useColor();
   return (
     <Box>
@@ -1112,7 +1205,7 @@ function ReadToolRenderer({ item }: { item: ToolSchemaFrom<typeof read> }) {
   );
 }
 
-function ListToolRenderer({ item }: { item: ToolSchemaFrom<typeof list> }) {
+function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
   const themeColor = useColor();
   return (
     <Box>
@@ -1122,7 +1215,7 @@ function ListToolRenderer({ item }: { item: ToolSchemaFrom<typeof list> }) {
   );
 }
 
-function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
+function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
   return (
     <Box flexDirection="column">
@@ -1135,7 +1228,7 @@ function EditToolRenderer({ item }: { item: ToolSchemaFrom<typeof edit> }) {
   );
 }
 
-function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> }) {
+function PrependToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof prepend> }) {
   const { text, filePath } = item.arguments;
   return (
     <Box flexDirection="column" gap={1}>
@@ -1145,13 +1238,13 @@ function PrependToolRenderer({ item }: { item: ToolSchemaFrom<typeof prepend> })
   );
 }
 
-function RewriteToolRenderer({ item }: { item: ToolSchemaFrom<typeof rewrite> }) {
-  const { text, filePath } = item.arguments;
+function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewrite> }) {
+  const { text, filePath, originalFileContents } = item.arguments;
 
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer newText={text} filepath={filePath} />
+      <DiffRenderer oldText={originalFileContents} newText={text} filepath={filePath} />
     </Box>
   );
 }
@@ -1171,7 +1264,7 @@ function DiffEditRenderer({
   );
 }
 
-function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> }) {
+function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof createTool> }) {
   const themeColor = useColor();
   return (
     <Box flexDirection="column" gap={1}>
@@ -1187,7 +1280,7 @@ function CreateToolRenderer({ item }: { item: ToolSchemaFrom<typeof createTool> 
   );
 }
 
-function McpToolRenderer({ item }: { item: ToolSchemaFrom<typeof mcp> }) {
+function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
   const themeColor = useColor();
   return (
     <Box flexDirection="column">
@@ -1202,8 +1295,19 @@ function McpToolRenderer({ item }: { item: ToolSchemaFrom<typeof mcp> }) {
   );
 }
 
+function ToolOutputContentRenderer({ result }: { result: ToolResult }) {
+  const lines = result.lines ?? result.content.split("\n").length;
+  return (
+    <Box marginLeft={2}>
+      <Text color="gray">
+        Got <Text>{lines}</Text> lines of output
+      </Text>
+    </Box>
+  );
+}
+
 function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
-  const fn = toolCallRequest.function;
+  const fn = toolCallRequest.call.parsed;
   const cwd = useCwd();
   switch (fn.name) {
     case "glob":

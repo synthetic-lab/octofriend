@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 
@@ -128,7 +128,7 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
+export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
   const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
   if (!hasMcp) return null;
 
@@ -136,8 +136,9 @@ export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
     Schema,
     ArgumentsSchema,
     validate: async () => null,
+    ...autoparse(ArgumentsSchema),
     async run(abortSignal, _, call, config, modelOverride) {
-      const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.arguments;
+      const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.parsed;
 
       // Helper to race any promise against the abort signal
       const withAbort = async <T>(p: Promise<T>): Promise<T> => {

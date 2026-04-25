@@ -218,6 +218,7 @@ bench
   .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
   .action(async opts => {
     const { config } = await loadConfigWithoutReauth();
+    const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
@@ -283,6 +284,7 @@ bench
           onAutofixJson: () => {},
         },
         abortSignal: abortController.signal,
+        transport,
       });
 
       if (!result.success) {
@@ -409,6 +411,7 @@ cli
   .argument("<prompt>", "The prompt you want to send to this model")
   .action(async (prompt, opts) => {
     const { config } = await loadConfig();
+    const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
@@ -484,6 +487,7 @@ cli
         onAutofixJson: () => {},
       },
       abortSignal: abortController.signal,
+      transport,
     });
     if (!result.success) {
       console.error(result.requestError);

@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
@@ -25,12 +25,13 @@ const Schema = t
   })
   .comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
+export default defineTool(Schema, ArgumentsSchema, async () => ({
   Schema,
   ArgumentsSchema,
   validate: async () => null,
+  ...autoparse(ArgumentsSchema),
   async run(signal, _, call, config, modelOverride) {
-    const { url, includeMarkup } = call.arguments;
+    const { url, includeMarkup } = call.parsed;
     try {
       const response = await fetch(url, { signal });
       const full = await response.text();

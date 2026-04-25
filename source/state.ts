@@ -4,6 +4,7 @@ import {
   UserItem,
   AssistantItem,
   CompactionCheckpointItem,
+  ToolOutputItem,
   sequenceId,
 } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
@@ -41,7 +42,8 @@ export type UiState = {
       }
     | {
         mode: "tool-request";
-        toolReq: ToolCallRequest;
+        toolReqs: ToolCallRequest[];
+        runningToolCallId: string | null;
       }
     | {
         mode: "error-recovery";
@@ -79,11 +81,8 @@ export type UiState = {
       }
     | {
         mode: "menu";
-      }
-    | {
-        mode: "tool-waiting";
-        abortController: AbortController;
       };
+
   modelOverride: string | null;
   quotaData: QuotaData | null;
   byteCount: number;
@@ -94,7 +93,7 @@ export type UiState = {
   whitelist: Set<string>;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCallId: string) => void;
+  rejectTool: (toolCall: ToolCallRequest) => void;
   abortResponse: () => void;
   toggleMenu: () => void;
   openMenu: () => void;
@@ -113,7 +112,7 @@ export type UiState = {
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
   clearHistory: () => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  _runAgent: (args: RunArgs) => Promise<void>;
+  runAgent: (args: RunArgs) => Promise<void>;
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
@@ -141,12 +140,12 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     let history = [...get().history, userMessage];
     set({ history, lastUserPromptId: userMessage.id });
-    await get()._runAgent({ config, transport });
+    await get().runAgent({ config, transport });
   },
 
   retryFrom: async (mode, args) => {
     if (get().modeData.mode === mode) {
-      await get()._runAgent(args);
+      await get().runAgent(args);
     }
   },
 
@@ -155,7 +154,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       return;
     }
 
-    const { history, lastUserPromptId, byteCount } = get();
+    const { history, lastUserPromptId } = get();
 
     if (lastUserPromptId === null) {
       set({
@@ -186,14 +185,14 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  rejectTool: toolCallId => {
+  rejectTool: toolCall => {
     set({
       history: [
         ...get().history,
         {
           type: "tool-reject",
           id: sequenceId(),
-          toolCallId,
+          toolCall,
         },
       ],
       modeData: {
@@ -320,36 +319,33 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport }) => {
-    const modelOverride = get().modelOverride;
     const abortController = new AbortController();
-    set({
-      modeData: {
-        mode: "tool-waiting",
-        abortController,
-      },
-    });
+    let { modeData } = get();
+    if (modeData.mode === "tool-request") {
+      set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
+    }
 
+    const modelOverride = get().modelOverride;
     const tools = await loadTools(transport, abortController.signal, config);
+
     try {
       const result = await runTool(
         abortController.signal,
         transport,
         tools,
-        toolReq.function,
+        toolReq.call,
         config,
         modelOverride,
       );
 
-      const toolHistoryItem: HistoryItem = {
+      const toolHistoryItem: ToolOutputItem = {
         type: "tool-output",
         id: sequenceId(),
         result,
-        toolCallId: toolReq.toolCallId,
+        toolCall: toolReq,
       };
 
-      const history: HistoryItem[] = [...get().history, toolHistoryItem];
-
-      set({ history });
+      set({ history: [...get().history, toolHistoryItem] });
     } catch (e) {
       const history = [
         ...get().history,
@@ -361,10 +357,14 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (get()._maybeHandleAbort(abortController.signal)) {
       return;
     }
-    await get()._runAgent({ config, transport });
+
+    ({ modeData } = get());
+    if (modeData.mode === "tool-request") {
+      set({ modeData: { ...modeData, runningToolCallId: null } });
+    }
   },
 
-  _runAgent: async ({ config, transport }) => {
+  runAgent: async ({ config, transport }) => {
     const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;
@@ -506,7 +506,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         modeData: {
           mode: "tool-request",
-          toolReq: finishReason.toolCall,
+          toolReqs: finishReason.toolCalls,
+          runningToolCallId: null,
         },
       });
     } catch (e) {
@@ -557,19 +558,17 @@ async function tryTransformToolError(
       type: "tool-failed",
       id: sequenceId(),
       error: e.message,
-      toolCallId: toolReq.toolCallId,
-      toolName: toolReq.function.name,
+      toolCall: toolReq,
     };
   }
   if (e instanceof FileOutdatedError) {
     const absolutePath = path.resolve(e.filePath);
-    // Actually perform the read to ensure it's readable
     try {
       await fileTracker.readUntracked(transport, signal, absolutePath);
       return {
         type: "file-outdated",
         id: sequenceId(),
-        toolCallId: toolReq.toolCallId,
+        toolCall: toolReq,
         error:
           "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
       };
@@ -578,7 +577,7 @@ async function tryTransformToolError(
         type: "file-unreadable",
         path: e.filePath,
         id: sequenceId(),
-        toolCallId: toolReq.toolCallId,
+        toolCall: toolReq,
         error: `File ${e.filePath} could not be read. Has it been deleted?`,
       };
     }

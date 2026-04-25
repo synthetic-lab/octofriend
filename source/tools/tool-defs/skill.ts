@@ -1,9 +1,9 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { defineTool, ToolDef } from "../common.ts";
+import { dynamicDefineTool, ToolDef, autoparse } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 
-export default defineTool(async function (signal, transport, config) {
+export default dynamicDefineTool("skill", async function (signal, transport, config) {
   const skills = await discoverSkills(transport, signal, config);
   if (skills.length === 0) return null;
 
@@ -31,8 +31,9 @@ export default defineTool(async function (signal, transport, config) {
     async validate() {
       return null;
     },
+    ...autoparse(ArgumentsSchema),
     async run(_1, _2, call) {
-      const { skillName } = call.arguments;
+      const { skillName } = call.parsed;
       const skill = skills.find(s => s.name === skillName)!;
 
       return {
@@ -56,5 +57,9 @@ ${skill.instructions}
 `.trim(),
       };
     },
-  } satisfies ToolDef<t.GetType<typeof Schema>>;
+  } satisfies ToolDef<
+    "skill",
+    t.GetType<typeof ArgumentsSchema>,
+    t.GetType<typeof ArgumentsSchema>
+  >;
 });

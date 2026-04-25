@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool } from "../common.ts";
+import { ToolError, attempt, defineTool, autoparse } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 export const ArgumentsSchema = t.subtype({
@@ -29,13 +29,14 @@ async function validate(
   return null;
 }
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
+export default defineTool(Schema, ArgumentsSchema, async () => ({
   Schema,
   ArgumentsSchema,
   validate,
+  ...autoparse(ArgumentsSchema),
   async run(signal, transport, call) {
-    await validate(signal, transport, call);
-    const { filePath, content } = call.arguments;
+    await validate(signal, transport, call.original);
+    const { filePath, content } = call.parsed;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
       return {

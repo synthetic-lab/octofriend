@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
@@ -34,12 +34,13 @@ depend on this fact: there may be directories that it doesn't know it should ign
 terms scoped and specific.
 `);
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
+export default defineTool(Schema, ArgumentsSchema, async () => ({
   Schema,
   ArgumentsSchema,
   validate: async () => null,
+  ...autoparse(ArgumentsSchema),
   async run(signal, transport, call, config, modelOverride) {
-    const { cwd, search } = call.arguments;
+    const { cwd, search } = call.parsed;
     try {
       const files = await findFiles(signal, transport, {
         cwd,
