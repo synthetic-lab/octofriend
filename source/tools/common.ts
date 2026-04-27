@@ -81,7 +81,7 @@ export type ToolDef<Name extends string, Arguments, Parsed> = {
     transport: Transport,
     t: {
       original: Schema<Name, Arguments>;
-      parsed: Parsed;
+      parsed: Schema<Name, Parsed>;
     },
     cfg: Config,
     modelOverride: string | null,

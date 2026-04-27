@@ -31,7 +31,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate,
   ...autoparse(ArgumentsSchema),
   async run(abortSignal, transport, call) {
-    const dirpath = call.parsed.dirPath || transport.cwd;
+    const dirpath = call.parsed.arguments.dirPath || transport.cwd;
     await validate(abortSignal, transport, call.original);
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(abortSignal, dirpath);

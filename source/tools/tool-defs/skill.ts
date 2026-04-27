@@ -33,7 +33,7 @@ export default dynamicDefineTool("skill", async function (signal, transport, con
     },
     ...autoparse(ArgumentsSchema),
     async run(_1, _2, call) {
-      const { skillName } = call.parsed;
+      const { skillName } = call.parsed.arguments;
       const skill = skills.find(s => s.name === skillName)!;
 
       return {

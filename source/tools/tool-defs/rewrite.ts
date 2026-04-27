@@ -50,8 +50,8 @@ export default defineTool(Schema, ParsedSchema, async () => ({
     };
   },
   async run(signal, transport, call) {
-    const { filePath } = call.parsed;
-    const edit = call.parsed;
+    const { filePath } = call.parsed.arguments;
+    const edit = call.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
     const replaced = runEdit({ edit });
     await fileTracker.write(transport, signal, filePath, replaced);

@@ -24,7 +24,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   },
   ...autoparse(ArgumentsSchema),
   async run(abortSignal, transport, call) {
-    const { filePath } = call.parsed;
+    const { filePath } = call.parsed.arguments;
 
     if (isImagePath(filePath)) {
       return attempt(`Could not read image ${filePath}`, async () => {

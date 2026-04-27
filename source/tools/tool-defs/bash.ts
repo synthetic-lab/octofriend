@@ -32,7 +32,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate: async () => null,
   ...autoparse(ArgumentsSchema),
   async run(abortSignal, transport, call) {
-    const { cmd, timeout } = call.parsed;
+    const { cmd, timeout } = call.parsed.arguments;
     try {
       return { content: await transport.shell(abortSignal, cmd, timeout) };
     } catch (e) {

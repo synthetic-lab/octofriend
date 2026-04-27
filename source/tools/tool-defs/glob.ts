@@ -40,7 +40,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate: async () => null,
   ...autoparse(ArgumentsSchema),
   async run(signal, transport, call, config, modelOverride) {
-    const { cwd, search } = call.parsed;
+    const { cwd, search } = call.parsed.arguments;
     try {
       const files = await findFiles(signal, transport, {
         cwd,

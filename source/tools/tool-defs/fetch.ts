@@ -31,7 +31,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate: async () => null,
   ...autoparse(ArgumentsSchema),
   async run(signal, _, call, config, modelOverride) {
-    const { url, includeMarkup } = call.parsed;
+    const { url, includeMarkup } = call.parsed.arguments;
     try {
       const response = await fetch(url, { signal });
       const full = await response.text();

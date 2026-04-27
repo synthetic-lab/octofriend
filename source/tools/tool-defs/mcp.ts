@@ -138,7 +138,11 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
     validate: async () => null,
     ...autoparse(ArgumentsSchema),
     async run(abortSignal, _, call, config, modelOverride) {
-      const { server: serverName, tool: toolName, arguments: toolArgs = {} } = call.parsed;
+      const {
+        server: serverName,
+        tool: toolName,
+        arguments: toolArgs = {},
+      } = call.parsed.arguments;
 
       // Helper to race any promise against the abort signal
       const withAbort = async <T>(p: Promise<T>): Promise<T> => {

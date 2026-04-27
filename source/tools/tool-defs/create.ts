@@ -36,7 +36,7 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   ...autoparse(ArgumentsSchema),
   async run(signal, transport, call) {
     await validate(signal, transport, call.original);
-    const { filePath, content } = call.parsed;
+    const { filePath, content } = call.parsed.arguments;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
       return {

@@ -21,8 +21,8 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate,
   ...autoparse(ArgumentsSchema),
   async run(signal, transport, call) {
-    const { filePath } = call.parsed;
-    const edit = call.parsed;
+    const { filePath } = call.parsed.arguments;
+    const edit = call.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);

@@ -39,7 +39,7 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
     validate,
     ...autoparse(ArgumentsSchema),
     async run(abortSignal, _, call) {
-      const query = call.parsed.query;
+      const query = call.parsed.arguments.query;
       return attempt(`Web search failed: ${query}`, async () => {
         const response = await fetch(searchConf.url, {
           headers: {
