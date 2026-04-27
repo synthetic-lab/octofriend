@@ -215,6 +215,23 @@ function modelMessageFromIr(
     };
   }
 
+  if (ir.role === "tool-skip") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolName: ir.toolCall.call.original.name,
+          toolCallId: ir.toolCall.toolCallId,
+          output: {
+            type: "text" as const,
+            value: irPrompts.toolSkip(ir.reason),
+          },
+        },
+      ],
+    };
+  }
+
   if (ir.role === "tool-error") {
     return {
       role: "tool",

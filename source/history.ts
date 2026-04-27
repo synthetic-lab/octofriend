@@ -41,6 +41,12 @@ export type ToolRejectItem = SequenceIdTagged<{
   toolCall: ToolCallRequest;
 }>;
 
+export type ToolSkipItem = SequenceIdTagged<{
+  type: "tool-skip";
+  toolCall: ToolCallRequest;
+  reason: string;
+}>;
+
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated";
   toolCall: ToolCallRequest;
@@ -99,6 +105,7 @@ export type HistoryItem =
   | ToolFailedItem
   | ToolMalformedItem
   | ToolRejectItem
+  | ToolSkipItem
   | FileOutdatedItem
   | FileUnreadableItem
   | RequestFailed

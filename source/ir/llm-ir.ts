@@ -84,6 +84,12 @@ export type ToolErrorMessage = {
   error: string;
 };
 
+export type ToolSkipMessage = {
+  role: "tool-skip";
+  toolCall: ToolCallRequest;
+  reason: string;
+};
+
 export type ToolMalformedMessage = {
   role: "tool-malformed";
   toolCallId: string;
@@ -119,6 +125,7 @@ export type InputIR =
   | FileMutateMethod
   | ToolRejectMessage
   | ToolErrorMessage
+  | ToolSkipMessage
   | FileOutdatedMessage
   | FileUnreadableMessage
   | CompactionCheckpoint;
@@ -128,6 +135,7 @@ export type LlmIR = OutputIR | InputIR;
 export type TrajectoryOutputIR =
   | OutputIR
   | ToolErrorMessage
+  | ToolSkipMessage
   | FileOutdatedMessage
   | FileUnreadableMessage
   | CompactionCheckpoint;

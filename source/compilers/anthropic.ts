@@ -176,6 +176,20 @@ function modelMessageFromIr(
     };
   }
 
+  if (ir.role === "tool-skip") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          is_error: true,
+          content: irPrompts.toolSkip(ir.reason),
+        },
+      ],
+    };
+  }
+
   if (ir.role === "tool-error") {
     return {
       role: "user",

@@ -25,6 +25,8 @@ function getMessageText(msg: LlmIR): string {
       return msg.summary;
     case "tool-reject":
       return "";
+    case "tool-skip":
+      return msg.reason;
   }
 }
 

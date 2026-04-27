@@ -234,6 +234,14 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
+  if (ir.role === "tool-skip") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason)),
+    };
+  }
+
   if (ir.role === "tool-malformed") {
     return {
       role: "tool",

@@ -6,6 +6,7 @@ import {
   ToolMalformedItem,
   ToolFailedItem,
   ToolRejectItem,
+  ToolSkipItem,
   FileOutdatedItem,
   FileUnreadableItem,
   AssistantItem,
@@ -23,6 +24,7 @@ type LoweredHistory =
   | ToolMalformedItem
   | ToolFailedItem
   | ToolRejectItem
+  | ToolSkipItem
   | FileOutdatedItem
   | FileUnreadableItem
   | AssistantItem
@@ -93,6 +95,17 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         type: "compaction-checkpoint",
         id: sequenceId(),
         summary: output.summary,
+      },
+    ];
+  }
+
+  if (output.role === "tool-skip") {
+    return [
+      {
+        id: sequenceId(),
+        type: "tool-skip",
+        toolCall: output.toolCall,
+        reason: output.reason,
       },
     ];
   }
@@ -233,6 +246,17 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         role: "tool-error",
         error: item.error,
         toolCall: item.toolCall,
+      },
+    ];
+  }
+
+  if (item.type === "tool-skip") {
+    return [
+      null,
+      {
+        role: "tool-skip",
+        toolCall: item.toolCall,
+        reason: item.reason,
       },
     ];
   }

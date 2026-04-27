@@ -986,6 +986,12 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
       </Box>
     );
   }
+
+  // Tool skips are tracked internally for explaining to LLMs, but are not shown to users
+  if (item.type === "tool-skip") {
+    return null;
+  }
+
   if (item.type === "file-outdated") {
     return (
       <Box flexDirection="column">

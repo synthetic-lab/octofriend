@@ -7,6 +7,13 @@ Tool call was rejected by user. Your tool call did not run. No changes were appl
 `.trim();
 }
 
+export function toolSkip(reason: string) {
+  return `
+Tool was skipped and didn't run. The reason for skipping the tool was:
+${reason}
+`.trim();
+}
+
 export function fileMutation(filePath: string) {
   return `${filePath} was updated successfully.`;
 }
