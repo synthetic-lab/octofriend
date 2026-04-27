@@ -256,6 +256,15 @@ export async function trajectoryArc({
   for (const toolCall of wellformedToolCalls) {
     try {
       await validateTool(abortSignal, transport, tools, toolCall.call, config);
+
+      // If we got this far, the tool validated successfully. Proactively push a tool-skip IR for
+      // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
+      // are invalid).
+      retryIrs.push({
+        role: "tool-skip",
+        toolCall: toolCall,
+        reason: "One of your other tool calls was invalid, so no tool calls were run",
+      });
     } catch (e) {
       if (e instanceof FileOutdatedError) {
         const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
@@ -317,6 +326,14 @@ export async function trajectoryArc({
               ...fn.arguments,
               ...fix,
             };
+
+            // Push a tool skip proactively
+            retryIrs.push({
+              role: "tool-skip",
+              toolCall: toolCall,
+              reason: "One of your other tool calls was invalid, so no tool calls were run",
+            });
+
             continue;
           }
         } catch {}
@@ -335,7 +352,14 @@ export async function trajectoryArc({
   }
 
   // If you have any IRs that need to be retried, retry them
-  if (retryIrs.length > 0) {
+  let needsRetry = false;
+  for (const ir of retryIrs) {
+    if (ir.role !== "tool-skip") {
+      needsRetry = true;
+      break;
+    }
+  }
+  if (needsRetry) {
     const fullRetryTrajectory = [...irs, ...retryIrs];
     handler.retryTool({ irs: fullRetryTrajectory });
     const retried = await trajectoryArc({
@@ -349,7 +373,7 @@ export async function trajectoryArc({
     });
     return {
       type: "finish",
-      irs: [...irs, ...retried.irs],
+      irs: [...fullRetryTrajectory, ...retried.irs],
       reason: retried.reason,
     };
   }

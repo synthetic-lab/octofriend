@@ -5,6 +5,7 @@ import {
   AssistantItem,
   CompactionCheckpointItem,
   ToolOutputItem,
+  ToolCallItems,
   sequenceId,
 } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
@@ -44,6 +45,7 @@ export type UiState = {
         mode: "tool-request";
         toolReqs: ToolCallRequest[];
         runningToolCallId: string | null;
+        abortController: AbortController;
       }
     | {
         mode: "error-recovery";
@@ -186,6 +188,44 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   rejectTool: toolCall => {
+    const history = get().history;
+
+    // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
+    // knows we rejected partway through and didn't run the rest of the array of tools.
+    //
+    // Find the most recent set of tool calls, and attempt to find any tool calls subsequent to this
+    // one that may be skipped, and mark them all as skipped.
+    let lastToolCallIndex = history.length - 1;
+    for (lastToolCallIndex; lastToolCallIndex >= 0; lastToolCallIndex--) {
+      const item = history[lastToolCallIndex];
+      if (item.type === "tool-calls") break;
+    }
+    const skippedCalls: HistoryItem[] = [];
+
+    if (lastToolCallIndex >= 0) {
+      const originatingToolCalls = history[lastToolCallIndex] as ToolCallItems;
+      for (
+        let toolCallIndex = 0;
+        toolCallIndex < originatingToolCalls.tools.length;
+        toolCallIndex++
+      ) {
+        const call = originatingToolCalls.tools[toolCallIndex];
+        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-request") {
+          const skippedCount = originatingToolCalls.tools.length - toolCallIndex - 1;
+          if (skippedCount > 0) {
+            for (let i = 0; i < skippedCount; i++) {
+              skippedCalls.push({
+                id: sequenceId(),
+                type: "tool-skip",
+                toolCall: call,
+                reason: "A previous tool call was rejected, so this tool was skipped",
+              });
+            }
+          }
+          break;
+        }
+      }
+    }
     set({
       history: [
         ...get().history,
@@ -194,6 +234,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           id: sequenceId(),
           toolCall,
         },
+        ...skippedCalls,
       ],
       modeData: {
         mode: "input",
@@ -319,11 +360,13 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport }) => {
-    const abortController = new AbortController();
     let { modeData } = get();
-    if (modeData.mode === "tool-request") {
-      set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
+    if (modeData.mode !== "tool-request") {
+      throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
+
+    const abortController = modeData.abortController;
+    set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
 
     const modelOverride = get().modelOverride;
     const tools = await loadTools(transport, abortController.signal, config);
@@ -508,6 +551,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           mode: "tool-request",
           toolReqs: finishReason.toolCalls,
           runningToolCallId: null,
+          abortController: new AbortController(),
         },
       });
     } catch (e) {

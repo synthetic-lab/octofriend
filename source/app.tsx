@@ -964,12 +964,11 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   if (item.type === "tool-failed") {
     return (
       <Box flexDirection="column">
-        <ToolMessageRenderer item={item.toolCall} />
         <Box marginLeft={2}>
           <Text color="red">
             {displayLog({
               verbose: `Error: ${item.error}`,
-              info: "Tool returned an error...",
+              info: "Tool validation failed...",
             })}
           </Text>
         </Box>
