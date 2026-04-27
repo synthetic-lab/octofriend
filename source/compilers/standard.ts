@@ -12,7 +12,6 @@ import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { tryexpr } from "../tryexpr.ts";
-import { recursivelyDecodeStrings } from "../utils/json.ts";
 import { trackTokens } from "../token-tracker.ts";
 import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
@@ -647,18 +646,25 @@ Please try calling a valid tool.
     args = fixResponse.fixed;
   }
 
-  args = recursivelyDecodeStrings(args);
-
+  // Handle double-encoded arguments, which models sometimes produce
   if (typeof args === "string") {
-    const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-    const fixResponse = await fixPromise;
-    if (!fixResponse.success) {
-      return {
-        status: "error",
-        message: "Syntax error: invalid JSON in tool call arguments",
-      };
+    let [err, argsParsed] = tryexpr(() => {
+      return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
+    });
+
+    if (err) {
+      const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
+      const fixResponse = await fixPromise;
+      if (!fixResponse.success) {
+        return {
+          status: "error",
+          message: "Syntax error: invalid JSON in tool call arguments",
+        };
+      }
+      args = fixResponse.fixed;
+    } else {
+      args = argsParsed;
     }
-    args = fixResponse.fixed;
   }
 
   try {

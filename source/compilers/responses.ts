@@ -584,18 +584,25 @@ Please try calling a valid tool.
   const toolSchema = toolDef.Schema;
   let args = toolCall.args;
 
-  args = recursivelyDecodeStrings(args);
-
+  // If args is a string, try to parse as JSON
   if (typeof args === "string") {
-    const fixPromise = autofixJson(args, abortSignal);
-    const fixResponse = await fixPromise;
-    if (!fixResponse.success) {
-      return {
-        status: "error",
-        message: "Syntax error: invalid JSON in tool call arguments",
-      };
+    let [err, parsedArgs] = tryexpr(() => {
+      return JSON.parse(args);
+    });
+
+    if (err) {
+      const fixPromise = autofixJson(args, abortSignal);
+      const fixResponse = await fixPromise;
+      if (!fixResponse.success) {
+        return {
+          status: "error",
+          message: "Syntax error: invalid JSON in tool call arguments",
+        };
+      }
+      args = fixResponse.fixed;
+    } else {
+      args = parsedArgs;
     }
-    args = fixResponse.fixed;
   }
 
   try {
