@@ -10,12 +10,6 @@ import {
   getUsableLspExtensions,
 } from "../lsp/detect.ts";
 
-export function shouldEnableLspTools(config: Config): boolean {
-  if (isLspGloballyDisabled(config)) return false;
-  const extensions = getUsableLspExtensions(config);
-  return extensions.size > 0;
-}
-
 const LSP_TOOL_ACTION_NAMES: Record<string, string> = {
   "lsp-definition": "definition",
   "lsp-references": "references",
@@ -37,6 +31,11 @@ export function getLspActionName(toolName: string): string {
 
 export const LineSchema = t.num.comment("1-indexed line number");
 export const CharSchema = t.num.comment("1-indexed column number");
+
+export function getLspExtensionsComment(extensions: Set<string>): string {
+  const extensionList = Array.from(extensions).sort().join(", ");
+  return `Only works on ${extensionList} files; this tool will fail on other file types.`;
+}
 
 export const LspPositionArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to the file to query"),

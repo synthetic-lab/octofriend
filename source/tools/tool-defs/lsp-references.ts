@@ -6,21 +6,31 @@ import type { Transport } from "../../transports/transport-common.ts";
 import {
   LspPositionArgumentsSchema,
   runLspPositionQuery,
-  shouldEnableLspTools,
+  getLspExtensionsComment,
 } from "../lsp-common.ts";
+import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp-references"),
-    arguments: LspPositionArgumentsSchema,
-  })
-  .comment("Find all references to a symbol at the given position.");
+function createSchema(extensions: Set<string>) {
+  return t
+    .subtype({
+      name: t.value("lsp-references"),
+      arguments: LspPositionArgumentsSchema,
+    })
+    .comment(
+      `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
+    );
+}
 
 export default defineTool<{
   name: "lsp-references";
   arguments: t.GetType<typeof LspPositionArgumentsSchema>;
 }>(async (_signal, _transport, config) => {
-  if (!shouldEnableLspTools(config)) return null;
+  if (isLspGloballyDisabled(config)) return null;
+
+  const extensions = getUsableLspExtensions(config);
+  if (extensions.size === 0) return null;
+
+  const Schema = createSchema(extensions);
 
   return {
     Schema,

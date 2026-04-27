@@ -3,15 +3,23 @@ import { defineTool } from "../common.ts";
 import { formatCallHierarchy } from "../../lsp/client.ts";
 import type { Config } from "../../config.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import { LspPositionArgumentsSchema, runLspPositionQuery } from "../lsp-common.ts";
+import {
+  LspPositionArgumentsSchema,
+  runLspPositionQuery,
+  getLspExtensionsComment,
+} from "../lsp-common.ts";
 import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp-incoming-calls"),
-    arguments: LspPositionArgumentsSchema,
-  })
-  .comment("Find all callers of a symbol at the given position.");
+function createSchema(extensions: Set<string>) {
+  return t
+    .subtype({
+      name: t.value("lsp-incoming-calls"),
+      arguments: LspPositionArgumentsSchema,
+    })
+    .comment(
+      `Find all callers of a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
+    );
+}
 
 export default defineTool<{
   name: "lsp-incoming-calls";
@@ -21,6 +29,8 @@ export default defineTool<{
 
   const extensions = getUsableLspExtensions(config);
   if (extensions.size === 0) return null;
+
+  const Schema = createSchema(extensions);
 
   return {
     Schema,

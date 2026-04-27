@@ -3,17 +3,23 @@ import { defineTool } from "../common.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import type { Config } from "../../config.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import { LspPositionArgumentsSchema, runLspPositionQuery } from "../lsp-common.ts";
+import {
+  LspPositionArgumentsSchema,
+  runLspPositionQuery,
+  getLspExtensionsComment,
+} from "../lsp-common.ts";
 import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp-implementation"),
-    arguments: LspPositionArgumentsSchema,
-  })
-  .comment(
-    "Find implementation locations, jumping past interfaces and abstract classes to the code that implements them.",
-  );
+function createSchema(extensions: Set<string>) {
+  return t
+    .subtype({
+      name: t.value("lsp-implementation"),
+      arguments: LspPositionArgumentsSchema,
+    })
+    .comment(
+      `Find implementation locations, jumping past interfaces and abstract classes to the code that implements them. ${getLspExtensionsComment(extensions)}`,
+    );
+}
 
 export default defineTool<{
   name: "lsp-implementation";
@@ -23,6 +29,8 @@ export default defineTool<{
 
   const extensions = getUsableLspExtensions(config);
   if (extensions.size === 0) return null;
+
+  const Schema = createSchema(extensions);
 
   return {
     Schema,

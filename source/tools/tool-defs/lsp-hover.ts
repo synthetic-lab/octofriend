@@ -1,18 +1,22 @@
 import { t } from "structural";
 import { defineTool } from "../common.ts";
-import type { Config } from "../../config.ts";
-import type { Transport } from "../../transports/transport-common.ts";
-import { LspPositionArgumentsSchema, runLspPositionQuery } from "../lsp-common.ts";
+import {
+  LspPositionArgumentsSchema,
+  runLspPositionQuery,
+  getLspExtensionsComment,
+} from "../lsp-common.ts";
 import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp-hover"),
-    arguments: LspPositionArgumentsSchema,
-  })
-  .comment(
-    "Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation.",
-  );
+function createSchema(extensions: Set<string>) {
+  return t
+    .subtype({
+      name: t.value("lsp-hover"),
+      arguments: LspPositionArgumentsSchema,
+    })
+    .comment(
+      `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`,
+    );
+}
 
 export default defineTool<{
   name: "lsp-hover";
@@ -22,6 +26,8 @@ export default defineTool<{
 
   const extensions = getUsableLspExtensions(config);
   if (extensions.size === 0) return null;
+
+  const Schema = createSchema(extensions);
 
   return {
     Schema,

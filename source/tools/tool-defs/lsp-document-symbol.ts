@@ -3,15 +3,23 @@ import { defineTool } from "../common.ts";
 import { formatDocumentSymbols } from "../../lsp/client.ts";
 import type { Config } from "../../config.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import { LspFileOnlyArgumentsSchema, runLspFileQuery } from "../lsp-common.ts";
+import {
+  LspFileOnlyArgumentsSchema,
+  runLspFileQuery,
+  getLspExtensionsComment,
+} from "../lsp-common.ts";
 import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
 
-const Schema = t
-  .subtype({
-    name: t.value("lsp-document-symbol"),
-    arguments: LspFileOnlyArgumentsSchema,
-  })
-  .comment("List all symbols (functions, classes, variables, etc.) in a file.");
+function createSchema(extensions: Set<string>) {
+  return t
+    .subtype({
+      name: t.value("lsp-document-symbol"),
+      arguments: LspFileOnlyArgumentsSchema,
+    })
+    .comment(
+      `List all symbols (functions, classes, variables, etc.) in a file. ${getLspExtensionsComment(extensions)}`,
+    );
+}
 
 export default defineTool<{
   name: "lsp-document-symbol";
@@ -21,6 +29,8 @@ export default defineTool<{
 
   const extensions = getUsableLspExtensions(config);
   if (extensions.size === 0) return null;
+
+  const Schema = createSchema(extensions);
 
   return {
     Schema,
