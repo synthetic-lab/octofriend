@@ -27,11 +27,33 @@ export const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
+export const ParsedSchema = ArgumentsSchema.and(
+  t.subtype({
+    originalFileContents: t.str,
+  }),
+);
+
+export default defineTool(Schema, ParsedSchema, async () => ({
   Schema,
   ArgumentsSchema,
+  ParsedSchema,
   validate,
-  ...autoparse(ArgumentsSchema),
+  parse: async (signal, transport, original) => {
+    const contents = await attemptUntrackedRead(transport, signal, original.arguments.filePath);
+    return {
+      success: true,
+      data: {
+        original,
+        parsed: {
+          name: original.name,
+          arguments: {
+            ...original.arguments,
+            originalFileContents: contents,
+          },
+        },
+      },
+    };
+  },
   async run(signal, transport, call) {
     const { filePath } = call.parsed.arguments;
     const diff = call.parsed.arguments;

@@ -295,7 +295,10 @@ export async function trajectoryArc({
             // Validate that the edit applies before marking as fixed
             const fixed = {
               name: "edit",
-              arguments: fix,
+              arguments: {
+                ...fn.arguments,
+                ...fix,
+              },
             } as const;
 
             await validateTool(

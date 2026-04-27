@@ -3,21 +3,21 @@ import { Box, Text } from "ink";
 import { diffLines } from "diff";
 import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
-import { readFileSync } from "fs";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 
 export function DiffRenderer({
   oldText,
   newText,
+  fileContents,
   filepath,
 }: {
   oldText: string;
   newText: string;
+  fileContents: string;
   filepath: string;
 }) {
   try {
     const language = fileExtLanguage(filepath);
-    const file = readFileSync(filepath, "utf8");
 
     const diff = diffLines(oldText, newText);
     const diffWithChanged: Array<
@@ -53,7 +53,7 @@ export function DiffRenderer({
       diffWithChanged.push(curr);
     }
 
-    const startLine = getStartLine(file, oldText);
+    const startLine = getStartLine(fileContents, oldText);
     const oldLineCounter = buildLineCounter(startLine);
     const newLineCounter = buildLineCounter(startLine);
     const maxOldLines = startLine + countLines(oldText);
@@ -139,7 +139,7 @@ export function DiffRenderer({
         </Box>
       </Box>
     );
-  } catch {
+  } catch (e) {
     return null;
   }
 }

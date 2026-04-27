@@ -30,7 +30,7 @@ import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
-import { ArgumentsSchema as EditArgumentSchema } from "./tools/tool-defs/edit.ts";
+import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
@@ -176,7 +176,7 @@ export default function App({
   }
 
   const staticItems: StaticItem[] = useMemo(() => {
-    const items = [
+    let items = [
       { type: "header" as const },
       { type: "version" as const, metadata, config: currConfig },
       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
@@ -185,22 +185,8 @@ export default function App({
       ...toStaticItems(history),
     ];
 
-    if (modeData.mode === "tool-request") {
-      let toolCallsIdx = -1;
-      for (let i = items.length - 1; i >= 0; i--) {
-        const item = items[i];
-        if (item.type === "history-item" && item.item.type === "tool-calls") {
-          toolCallsIdx = i;
-          break;
-        }
-      }
-      if (toolCallsIdx !== -1) {
-        items.splice(toolCallsIdx);
-      }
-    }
-
     return items;
-  }, [history]);
+  }, [history, currConfig, skillNotifs, updates]);
 
   return (
     <InputPriorityProvider>
@@ -668,7 +654,6 @@ function ToolRequestsRenderer({
   toolReqs: ToolCallRequest[];
 } & RunArgs) {
   const runAgent = useAppStore(state => state.runAgent);
-  const history = useAppStore(state => state.history);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   if (currentIndex >= toolReqs.length) {
@@ -677,26 +662,16 @@ function ToolRequestsRenderer({
 
   const currentToolReq = toolReqs[currentIndex];
 
-  let toolCallsIdx = -1;
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].type === "tool-calls") {
-      toolCallsIdx = i;
-      break;
-    }
-  }
-  const historyAfterToolCalls = toolCallsIdx !== -1 ? history.slice(toolCallsIdx + 1) : [];
-
   return (
     <Box flexDirection="column">
-      {historyAfterToolCalls.map((item, index) => (
-        <MessageDisplay key={`accepted-${index}`} item={item} />
-      ))}
       <ToolMessageRenderer item={currentToolReq} />
       <ToolRequestRenderer
         toolReq={currentToolReq}
         config={config}
         transport={transport}
-        onDone={() => setCurrentIndex(i => i + 1)}
+        onDone={() => {
+          setCurrentIndex(i => i + 1);
+        }}
       />
     </Box>
   );
@@ -858,7 +833,7 @@ function ToolRequestRenderer({
     if (noConfirmationNeeded) {
       runTool({ toolReq, config, transport }).then(onDone);
     }
-  }, [toolReq, noConfirmationNeeded, config, transport]);
+  }, [toolReq, noConfirmationNeeded, config, transport, onDone]);
 
   if (noConfirmationNeeded || isRunning) {
     return (
@@ -1244,7 +1219,12 @@ function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewri
   return (
     <Box flexDirection="column" gap={1}>
       <Text>Octo wants to rewrite the file:</Text>
-      <DiffRenderer oldText={originalFileContents} newText={text} filepath={filePath} />
+      <DiffRenderer
+        oldText={originalFileContents}
+        newText={text}
+        fileContents={originalFileContents}
+        filepath={filePath}
+      />
     </Box>
   );
 }
@@ -1253,13 +1233,18 @@ function DiffEditRenderer({
   item,
   filePath,
 }: {
-  item: t.GetType<typeof EditArgumentSchema>;
+  item: t.GetType<typeof EditParsedSchema>;
   filePath: string;
 }) {
   return (
     <Box flexDirection="column">
       <Text>Octo wants to make the following changes:</Text>
-      <DiffRenderer oldText={item.search} newText={item.replace} filepath={filePath} />
+      <DiffRenderer
+        oldText={item.search}
+        newText={item.replace}
+        fileContents={item.originalFileContents}
+        filepath={filePath}
+      />
     </Box>
   );
 }
