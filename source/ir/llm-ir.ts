@@ -116,6 +116,9 @@ export type CompactionCheckpoint = {
   summary: string;
 };
 
+// TODO: remove the ToolMalformedMessage from OutputIR, since it's duplicative: any assistant item
+// with a malformed request tool call is malformed, and the trajectoryArc can handle inserting the
+// malformed message when it encounters this
 export type OutputIR = AssistantMessage | ToolMalformedMessage;
 
 export type InputIR =
