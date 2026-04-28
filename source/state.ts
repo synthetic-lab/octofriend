@@ -364,6 +364,13 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (modeData.mode !== "tool-request") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
+    if (modeData.runningToolCallId != null) {
+      if (process.env["CANARY_OCTO"] === "1") {
+        throw new Error(
+          "Canary build error: attempted to run a tool when a tool was already running",
+        );
+      }
+    }
 
     const abortController = modeData.abortController;
     set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });

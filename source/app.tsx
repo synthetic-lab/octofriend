@@ -655,6 +655,9 @@ function ToolRequestsRenderer({
 } & RunArgs) {
   const runAgent = useAppStore(state => state.runAgent);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const onDone = useCallback(() => {
+    setCurrentIndex(i => i + 1);
+  }, []);
 
   if (currentIndex >= toolReqs.length) {
     return <FinishToolRequests runAgent={runAgent} config={config} transport={transport} />;
@@ -669,9 +672,7 @@ function ToolRequestsRenderer({
         toolReq={currentToolReq}
         config={config}
         transport={transport}
-        onDone={() => {
-          setCurrentIndex(i => i + 1);
-        }}
+        onDone={onDone}
       />
     </Box>
   );

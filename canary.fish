@@ -16,5 +16,6 @@ function canary-octo
         return 1
     end
     cd "$old_dir"
+    set -gx CANARY_OCTO 1
     node "$_OCTOFRIEND_DIR/dist/source/cli.js" $argv
 end
