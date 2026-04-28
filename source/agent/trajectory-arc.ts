@@ -1,5 +1,11 @@
 import fs from "fs/promises";
-import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
+import {
+  LlmIR,
+  TrajectoryOutputIR,
+  CompactionCheckpoint,
+  ToolCallRequest,
+  ToolMalformedMessage,
+} from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -203,11 +209,35 @@ export async function trajectoryArc({
     };
   }
 
-  irs = [...irs, ...result.output];
   let lastIr = result.output[result.output.length - 1];
 
   // Retry malformed tool calls
   if (lastIr.role === "tool-malformed") {
+    // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
+    // is kept in terms of input ordering vs output message ordering
+    irs = [...irs];
+    const malformed = new Map<string, ToolMalformedMessage>();
+    for (const ir of result.output) {
+      if (ir.role === "tool-malformed") {
+        malformed.set(ir.toolCallId, ir);
+      }
+    }
+    const wellformed = result.output.filter(ir => ir.role === "assistant");
+    for (const ir of wellformed) {
+      irs.push(ir);
+      for (const call of ir.toolCalls || []) {
+        if (call.type === "tool-request") {
+          irs.push({
+            role: "tool-skip",
+            toolCall: call,
+            reason: "Another tool call in this batch was malformed, so this tool call was skipped",
+          });
+        } else {
+          irs.push(malformed.get(call.toolCallId)!);
+        }
+      }
+    }
+
     handler.retryTool({ irs });
     const retried = await trajectoryArc({
       apiKey,
@@ -226,6 +256,7 @@ export async function trajectoryArc({
     };
   }
 
+  irs = [...irs, ...result.output];
   const { toolCalls } = lastIr;
 
   if (toolCalls == null) {
