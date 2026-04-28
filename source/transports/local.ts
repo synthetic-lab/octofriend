@@ -87,8 +87,11 @@ export class LocalTransport implements Transport {
       let output = "";
       let aborted = false;
       let timedOut = false;
+      let killed = false;
 
       function killGroup() {
+        if (killed) return;
+        killed = true;
         // Kill the entire process group to handle child processes
         try {
           // First, try to kill the process group with SIGTERM
