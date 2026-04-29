@@ -616,15 +616,10 @@ export type Metadata = {
 };
 
 async function readMetadata(): Promise<Metadata> {
-  const candidates = [path.join(__dir, "../package.json"), path.join(__dir, "../../package.json")];
+  const packageFile = await fs.readFile(path.join(__dir, "../../package.json"), "utf8");
+  const packageJson = JSON.parse(packageFile);
 
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) {
-      const packageFile = await fs.readFile(candidate, "utf8");
-      const packageJson = JSON.parse(packageFile);
-      return { version: packageJson["version"] };
-    }
-  }
-
-  throw new Error("Could not find package.json");
+  return {
+    version: packageJson["version"],
+  };
 }
