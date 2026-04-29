@@ -1,0 +1,24 @@
+name: Build and Run Unit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on:
+      - runs-on=${{ github.run_id }}/runner=8cpu-linux-x64/image=ubuntu24-full-x64/family=c7i+c8i/extras=s3-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run test:run
