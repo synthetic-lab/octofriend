@@ -1,11 +1,5 @@
 import fs from "fs/promises";
-import {
-  LlmIR,
-  TrajectoryOutputIR,
-  CompactionCheckpoint,
-  ToolCallRequest,
-  ToolMalformedMessage,
-} from "../ir/llm-ir.ts";
+import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
