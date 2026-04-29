@@ -13,6 +13,8 @@ import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
 
+const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
+
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
 type AssistantBuffer<AllowedType extends string> = {
@@ -277,7 +279,7 @@ export async function trajectoryArc({
       retryIrs.push({
         role: "tool-skip",
         toolCall: toolCall,
-        reason: "One of your other tool calls was invalid, so no tool calls were run",
+        reason: SKIP_INVALID_REASON,
       });
     } catch (e) {
       if (e instanceof FileOutdatedError) {
@@ -345,7 +347,7 @@ export async function trajectoryArc({
             retryIrs.push({
               role: "tool-skip",
               toolCall: toolCall,
-              reason: "One of your other tool calls was invalid, so no tool calls were run",
+              reason: SKIP_INVALID_REASON,
             });
 
             continue;
