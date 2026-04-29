@@ -2,43 +2,20 @@ import path from "path";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import json5 from "json5";
-import {
-  RecommendedLspServers,
-  type LspInstallationConfig as LspInstallationConfig,
-} from "./lsp-server-registry.ts";
+import which from "which";
+import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
 import { Config, LspServerConfigSchema } from "../config.ts";
 import { t } from "structural";
-import { execFile } from "child_process";
 
-export type LspConfigsPerExtension = Record<string, InstalledLspConfig>;
+// contents of lsp.json5, might not contain executable commands
+let cachedProjectLspConfig: Record<string, InstalledLspConfig> | null = null;
 
-// contents of lsp.json5
-const cachedProjectLspConfig: LspConfigsPerExtension = {};
-// indexed by file extension
-const cachedLspRecommendation: Map<string, LspInstallationConfig> = new Map();
-// indexed by file extension
-const cachedInstalledLsp: Map<string, InstalledLspConfig> = new Map();
-
-export function hasCachedInstalledLsp(extension: string): boolean {
-  return cachedInstalledLsp.has(extension);
-}
-
-function commandExists(binary: string): Promise<boolean> {
-  return new Promise(resolve => {
-    execFile("which", [binary], err => {
-      resolve(!err);
-    });
-  });
-}
+let usableLspsPerExtension: Record<string, InstalledLspConfig> | null = null;
 
 export async function isCommandExecutable(command: string): Promise<boolean> {
-  if (!command) return false;
-  try {
-    return await commandExists(command);
-  } catch {
-    return false;
-  }
+  const result = await which(command, { nothrow: true });
+  return result !== null;
 }
 
 export function isLspGloballyDisabled(config: Config): boolean {
@@ -51,104 +28,69 @@ export function isLspDisabledByUser(serverName: string, config: Config): boolean
   return config.lsp[serverName]?.disabled === true;
 }
 
+async function ensureUsableLspsPopulated(
+  cwd: string,
+  config: Config,
+): Promise<Record<string, InstalledLspConfig>> {
+  if (usableLspsPerExtension != null) return usableLspsPerExtension;
+
+  const tempUsableLspsPerExtension: Record<string, InstalledLspConfig> = {};
+  if (cachedProjectLspConfig == null) {
+    cachedProjectLspConfig = await loadProjectLspConfig(cwd, config);
+  }
+
+  const projectConfigServers = Object.values(cachedProjectLspConfig);
+  const recommendedServers = RecommendedLspServers.map(
+    (recommendedLsp): InstalledLspConfig => ({
+      serverName: recommendedLsp.serverName,
+      command: recommendedLsp.command,
+      extensions: recommendedLsp.extensions,
+      rootCandidates: recommendedLsp.rootCandidates ?? [],
+    }),
+  );
+  // Project configured servers override Octo's recommended servers
+  const lspServers = [...recommendedServers, ...projectConfigServers];
+  for (const server of lspServers) {
+    if (await isLspUsableInProject(server, config)) {
+      server.extensions.forEach(extension => {
+        tempUsableLspsPerExtension[extension] = server;
+      });
+    }
+  }
+  usableLspsPerExtension = tempUsableLspsPerExtension;
+  return usableLspsPerExtension;
+}
+
 /**
  * Searches lsp.json5 and recommended LSP Servers for the corresponding extension.
- * Returns either installedLsp or lspRecommendation, prioritizing installedLsp.
- * Caches results in cachedInstalledLsp and cachedLspRecommendation.
  *
- * @returns {InstalledLspConfig} installedLsp: installed LSP compatible with the file extension,
- * either installed this session or read from lsp.json5 at startup.
- * @returns {LspInstallationConfig} lspRecommendation: servers that are recommended based on
- * the file extension, but not yet installed.
+ * @returns    first installed & non-disabled LSP server
  */
-export async function findAndCacheServersForExtension(
+export async function getUsableLspForExtension(
   cwd: string,
-  appConfig: Config,
+  config: Config,
   extension: string,
-): Promise<{
-  installedLsp?: InstalledLspConfig; // first server found that has been installed and NOT disabled by user
-  lspRecommendation?: LspInstallationConfig; // first server found in lsp-server-registry that is not installed and NOT disabled by user
-}> {
-  if (isLspGloballyDisabled(appConfig)) {
-    return {};
-  }
-  // First check the caches for this extension
-  const installedLspConfig = cachedInstalledLsp.get(extension);
-  if (installedLspConfig) {
-    if (await isCommandExecutable(installedLspConfig.command[0])) {
-      return { installedLsp: installedLspConfig };
-    } else {
-      // If the command is no longer executable, remove from cache and continue searching
-      cachedInstalledLsp.delete(extension);
-    }
-  }
+): Promise<InstalledLspConfig | null> {
+  const usableLsps = await ensureUsableLspsPopulated(cwd, config);
+  return usableLsps[extension] ?? null;
+}
 
-  const lspRecommendationForExtension = cachedLspRecommendation.get(extension);
-  if (lspRecommendationForExtension) {
-    if (await isCommandExecutable(lspRecommendationForExtension.command[0])) {
-      const installedLspConfig: InstalledLspConfig = {
-        serverName: lspRecommendationForExtension.serverName,
-        command: lspRecommendationForExtension.command,
-        extensions: lspRecommendationForExtension.extensions,
-        rootCandidates: lspRecommendationForExtension.rootCandidates ?? [],
-      };
-      cachedInstalledLsp.set(extension, installedLspConfig);
-      cachedLspRecommendation.delete(extension);
-      await writeProjectLspConfig(cwd);
-      return { installedLsp: installedLspConfig };
-    }
-    return { lspRecommendation: lspRecommendationForExtension };
-  }
-
-  const projectServers = Object.values(cachedProjectLspConfig).filter(lspConfig =>
-    lspConfig.extensions.includes(extension),
-  );
-  for (const server of projectServers) {
-    const executable = server.command[0];
-    if (await isCommandExecutable(executable)) {
-      // add this server to all extensions it supports in the cache
-      server.extensions.forEach(extension => {
-        cachedInstalledLsp.set(extension, server);
-      });
-      await writeProjectLspConfig(cwd);
-      return { installedLsp: server };
-    }
-  }
-
-  const recommendedServers = RecommendedLspServers.filter(server =>
-    server.extensions.includes(extension),
-  );
-  for (const server of recommendedServers) {
-    if (!isLspDisabledByUser(server.serverName, appConfig)) {
-      const executable = server.command[0];
-      if (await isCommandExecutable(executable)) {
-        const installedLspConfig: InstalledLspConfig = {
-          serverName: server.serverName,
-          command: server.command,
-          extensions: server.extensions,
-          rootCandidates: server.rootCandidates ?? [],
-        };
-        server.extensions.forEach(extension => {
-          cachedInstalledLsp.set(extension, installedLspConfig);
-        });
-        await writeProjectLspConfig(cwd);
-        return { installedLsp: installedLspConfig };
-      } else {
-        server.extensions.forEach(extension => {
-          cachedLspRecommendation.set(extension, server);
-        });
-        return { lspRecommendation: server };
-      }
-    }
-  }
-
-  return { installedLsp: undefined, lspRecommendation: undefined };
+/**
+ * @returns    set of file extensions that have an installed non-disabled LSP server
+ */
+export async function getUsableLspExtensions(cwd: string, config: Config): Promise<Set<string>> {
+  const usableLsps = await ensureUsableLspsPopulated(cwd, config);
+  return new Set(Object.keys(usableLsps));
 }
 
 // Parses lsp.json5 and populates cachedProjectLspConfig with non-disabled LSPs
-export async function loadProjectLspConfig(cwd: string, appConfig: Config): Promise<void> {
+export async function loadProjectLspConfig(
+  cwd: string,
+  appConfig: Config,
+): Promise<Record<string, InstalledLspConfig>> {
+  cachedProjectLspConfig = {};
   if (isLspGloballyDisabled(appConfig)) {
-    return;
+    return {};
   }
   const configPath = getProjectLspConfigPath(cwd);
   try {
@@ -164,11 +106,11 @@ export async function loadProjectLspConfig(cwd: string, appConfig: Config): Prom
   } catch {
     // TODO: warn user about malformed JSON5
   }
+  return cachedProjectLspConfig;
 }
 
 export type LspServerResult =
   | { status: "found"; lspConfig: InstalledLspConfig; rootPath: string }
-  | { status: "recommending"; lspInstallationConfig: LspInstallationConfig; rootPath: string }
   | { status: "all-disabled" }
   | { status: "no-server" };
 
@@ -200,30 +142,22 @@ export function findNearestRoot(
 export async function detectLspServerForFile(
   cwd: string,
   filePath: string,
-  appConfig: Config,
+  config: Config,
 ): Promise<LspServerResult> {
-  if (isLspGloballyDisabled(appConfig)) {
+  if (isLspGloballyDisabled(config)) {
     return { status: "all-disabled" };
   }
-  const fileExtension = path.extname(filePath).toLowerCase();
-  if (!fileExtension) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (!extension) {
     return { status: "no-server" };
   }
 
-  const { installedLsp, lspRecommendation } = await findAndCacheServersForExtension(
-    cwd,
-    appConfig,
-    fileExtension,
-  );
+  const installedLsp = await getUsableLspForExtension(cwd, config, extension);
 
   if (installedLsp) {
     const rootPath = findNearestRoot(installedLsp.rootCandidates, filePath, cwd);
     if (!rootPath) return { status: "no-server" };
     return { status: "found", lspConfig: installedLsp, rootPath };
-  } else if (lspRecommendation) {
-    const rootPath = findNearestRoot(lspRecommendation.rootCandidates, filePath, cwd);
-    if (!rootPath) return { status: "no-server" };
-    return { status: "recommending", lspInstallationConfig: lspRecommendation, rootPath };
   }
   return { status: "no-server" };
 }
@@ -234,40 +168,14 @@ function getProjectLspConfigPath(cwd: string): string {
   return path.join(cwd, ".octofriend", "lsp.json5");
 }
 
-export function getUsableLspExtensions(appConfig: Config): Set<string> {
-  const extensions = new Set<string>();
-
-  for (const server of RecommendedLspServers) {
-    if (!isLspDisabledByUser(server.serverName, appConfig)) {
-      for (const ext of server.extensions) {
-        extensions.add(ext);
-      }
-    }
+async function isLspUsableInProject(server: InstalledLspConfig, config: Config): Promise<Boolean> {
+  if (isLspGloballyDisabled(config)) {
+    return false;
   }
 
-  for (const config of Object.values(cachedProjectLspConfig)) {
-    for (const ext of config.extensions) {
-      extensions.add(ext);
-    }
-  }
-
-  return extensions;
-}
-
-export async function writeProjectLspConfig(cwd: string): Promise<void> {
-  const configPath = getProjectLspConfigPath(cwd);
-  const dir = path.dirname(configPath);
-  await fs.mkdir(dir, { recursive: true });
-
-  const record: Record<string, InstalledLspConfig> = {};
-  for (const config of cachedInstalledLsp.values()) {
-    record[config.serverName] = config;
-  }
-  for (const [name, config] of Object.entries(cachedProjectLspConfig)) {
-    record[name] = config;
-  }
-
-  await fs.writeFile(configPath, json5.stringify(record, null, 2));
+  const executable = server.command[0];
+  const isLspDisabled = isLspDisabledByUser(server.serverName, config);
+  return !isLspDisabled && (await isCommandExecutable(executable));
 }
 
 export async function getLspClientForFile(

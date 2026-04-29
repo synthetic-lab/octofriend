@@ -18,7 +18,9 @@ const HEADER_DELIMITER_STRING = "\r\n\r\n";
 // effectively the same but avoids issues with buffer encoding
 const HEADER_DELIMITER_BUFFER = Buffer.from(HEADER_DELIMITER_STRING);
 
+const INITIALIZE_TIMEOUT_MS = 45_000;
 const REQUEST_TIMEOUT_MS = 5_000;
+const DIAGNOSTICS_WAIT_TIMEOUT_MS = 10_000;
 const DIAGNOSTIC_POLL_INTERVAL_MS = 100;
 
 export type InstalledLspConfig = {
@@ -160,12 +162,16 @@ export class LspClient {
       this.initialized = false;
     });
 
-    await this.request("initialize", {
-      processId: process.pid,
-      capabilities: CLIENT_CAPABILITIES,
-      rootUri: `file://${this.rootPath}`,
-      rootPath: this.rootPath,
-    });
+    await this.request(
+      "initialize",
+      {
+        processId: process.pid,
+        capabilities: CLIENT_CAPABILITIES,
+        rootUri: `file://${this.rootPath}`,
+        rootPath: this.rootPath,
+      },
+      INITIALIZE_TIMEOUT_MS,
+    );
 
     this.notify("initialized", {});
     this.initialized = true;
@@ -301,7 +307,7 @@ export class LspClient {
     if (!this.initialized) return [];
     const uri = fileUri(filePath);
     const start = Date.now();
-    while (Date.now() - start < REQUEST_TIMEOUT_MS) {
+    while (Date.now() - start < DIAGNOSTICS_WAIT_TIMEOUT_MS) {
       const diagnostics = this.latestDiagnostics.get(uri);
       const versionOk = minVersion === undefined || this.diagnosticsVersion > minVersion;
       if (diagnostics !== undefined && versionOk) return diagnostics;
@@ -323,7 +329,11 @@ export class LspClient {
     this.initialized = false;
   }
 
-  private request(method: string, params: any): Promise<any> {
+  private request(
+    method: string,
+    params: any,
+    timeoutMs: number = REQUEST_TIMEOUT_MS,
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       const stdin = this.process?.stdin;
       if (!stdin?.writable) {
@@ -345,11 +355,9 @@ export class LspClient {
       setTimeout(() => {
         if (this.pendingRequests.has(requestId)) {
           this.pendingRequests.delete(requestId);
-          reject(
-            new Error(`LSP request "${method}" timed out after ${REQUEST_TIMEOUT_MS / 1000}s`),
-          );
+          reject(new Error(`LSP request "${method}" timed out after ${timeoutMs / 1000}s`));
         }
-      }, REQUEST_TIMEOUT_MS);
+      }, timeoutMs);
     });
   }
 

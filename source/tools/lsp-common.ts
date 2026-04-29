@@ -4,11 +4,12 @@ import { fileTracker } from "./file-tracker.ts";
 import { LspClient } from "../lsp/client.ts";
 import type { Config } from "../config.ts";
 import type { Transport } from "../transports/transport-common.ts";
-import {
-  getLspClientForFile,
-  isLspGloballyDisabled,
-  getUsableLspExtensions,
-} from "../lsp/detect.ts";
+import { getLspClientForFile } from "../lsp/detect.ts";
+
+export type LspFileOnlyArgs = t.GetType<typeof LspFileOnlyArgumentsSchema>;
+export const LspFileOnlyArgumentsSchema = t.subtype({
+  filePath: t.str.comment("Path to the file to query"),
+});
 
 const LSP_TOOL_ACTION_NAMES: Record<string, string> = {
   "lsp-definition": "definition",
@@ -46,8 +47,8 @@ export const LspPositionArgumentsSchema = t.subtype({
 export type LspPositionArgs = t.GetType<typeof LspPositionArgumentsSchema>;
 
 type BootstrapResult =
-  | { ok: true; client: LspClient }
-  | { ok: false; message: { content: string } };
+  | { success: true; client: LspClient }
+  | { success: false; message: { content: string } };
 
 export async function bootstrapLspClient(
   transport: Transport,
@@ -57,14 +58,14 @@ export async function bootstrapLspClient(
   const lspClientResult = await getLspClientForFile(transport.cwd, config, filePath);
   if (lspClientResult == null) {
     return {
-      ok: false,
+      success: false,
       message: {
         content:
           "No LSP server available for this file type. Fall back to other approaches like reading files directly.",
       },
     };
   }
-  return { ok: true, client: lspClientResult };
+  return { success: true, client: lspClientResult };
 }
 
 export async function withLspFile<R>(
@@ -97,7 +98,7 @@ export async function runLspPositionQuery<R>(
 
   return attempt(`LSP ${toolName} failed for ${resolvedPath}`, async () => {
     const boot = await bootstrapLspClient(transport, config, resolvedPath);
-    if (!boot.ok) return boot.message;
+    if (!boot.success) return boot.message;
     const { client } = boot;
     return withLspFile(abortSignal, transport, client, resolvedPath, async client => {
       const result = await queryFn(client, resolvedPath, line - 1, character - 1);
@@ -107,12 +108,6 @@ export async function runLspPositionQuery<R>(
     });
   });
 }
-
-export const LspFileOnlyArgumentsSchema = t.subtype({
-  filePath: t.str.comment("Path to the file to query"),
-});
-
-export type LspFileOnlyArgs = t.GetType<typeof LspFileOnlyArgumentsSchema>;
 
 export async function runLspFileQuery<R>(
   abortSignal: AbortSignal,
@@ -128,7 +123,7 @@ export async function runLspFileQuery<R>(
 
   return attempt(`LSP ${toolName} failed for ${resolvedPath}`, async () => {
     const boot = await bootstrapLspClient(transport, config, resolvedPath);
-    if (!boot.ok) return boot.message;
+    if (!boot.success) return boot.message;
     const { client } = boot;
     return withLspFile(abortSignal, transport, client, resolvedPath, async client => {
       const result = await queryFn(client, resolvedPath);

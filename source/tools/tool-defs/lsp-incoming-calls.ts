@@ -1,8 +1,6 @@
 import { t } from "structural";
 import { defineTool } from "../common.ts";
 import { formatCallHierarchy } from "../../lsp/client.ts";
-import type { Config } from "../../config.ts";
-import type { Transport } from "../../transports/transport-common.ts";
 import {
   LspPositionArgumentsSchema,
   runLspPositionQuery,
@@ -24,10 +22,10 @@ function createSchema(extensions: Set<string>) {
 export default defineTool<{
   name: "lsp-incoming-calls";
   arguments: t.GetType<typeof LspPositionArgumentsSchema>;
-}>(async (_signal, _transport, config) => {
+}>(async (_signal, transport, config) => {
   if (isLspGloballyDisabled(config)) return null;
 
-  const extensions = getUsableLspExtensions(config);
+  const extensions = await getUsableLspExtensions(transport.cwd, config);
   if (extensions.size === 0) return null;
 
   const Schema = createSchema(extensions);

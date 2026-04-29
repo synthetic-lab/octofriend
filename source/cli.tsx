@@ -34,7 +34,6 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
-import { loadProjectLspConfig } from "./lsp/detect.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -140,7 +139,6 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
-    await loadProjectLspConfig(cwd, config);
 
     const { waitUntilExit } = render(
       <App

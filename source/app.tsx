@@ -54,7 +54,6 @@ import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
-import { LspRecommendationPrompt } from "./components/lsp-recommendation-prompt.tsx";
 import {
   useCtrlC,
   ExitOnDoubleCtrlC,
@@ -77,10 +76,7 @@ import {
 } from "./hooks/use-priority-input.tsx";
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
-import { findAndCacheServersForExtension, hasCachedInstalledLsp } from "./lsp/detect.ts";
-import path from "path";
-import { LspInstallationConfig } from "./lsp/lsp-server-registry.ts";
-import { isLspTool, getLspActionName } from "./tools/lsp-common.ts";
+import { getLspActionName } from "./tools/lsp-common.ts";
 
 type Props = {
   config: Config;
@@ -728,9 +724,13 @@ function ToolRequestRenderer({
   onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
+<<<<<<< HEAD
   const toolFn = toolReq.function;
 
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
+=======
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
+>>>>>>> 4ca5ad6 (Remove auto installation)
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
@@ -740,7 +740,6 @@ function ToolRequestRenderer({
     })),
   );
   const unchained = useUnchained();
-
   const whitelistKey = (() => {
     const fn = toolReq.call.parsed;
     switch (fn.name) {
@@ -769,7 +768,7 @@ function ToolRequestRenderer({
       case "lsp-implementation":
       case "lsp-incoming-calls":
       case "lsp-outgoing-calls":
-        return `${toolFn.name}:*`;
+        return `${fn.name}:*`;
     }
   })();
 
@@ -1140,7 +1139,6 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
       return <GlobRenderer item={item.call.parsed} />;
-      return <GlobRenderer item={item.tool.function} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -1149,7 +1147,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <LspToolRenderer item={item.tool.function} />;
+      return <LspToolRenderer item={item.call.parsed} />;
     case "grep":
       return <GrepRenderer item={item.call.parsed} />;
   }

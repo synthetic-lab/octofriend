@@ -21,10 +21,10 @@ function createSchema(extensions: Set<string>) {
 export default defineTool<{
   name: "lsp-hover";
   arguments: t.GetType<typeof LspPositionArgumentsSchema>;
-}>(async (_signal, _transport, config) => {
+}>(async (_signal, transport, config) => {
   if (isLspGloballyDisabled(config)) return null;
 
-  const extensions = getUsableLspExtensions(config);
+  const extensions = await getUsableLspExtensions(transport.cwd, config);
   if (extensions.size === 0) return null;
 
   const Schema = createSchema(extensions);
