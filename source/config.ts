@@ -5,10 +5,9 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
-import { spawn } from "child_process";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -144,7 +143,7 @@ const authCommandCache = new Map<string, string>();
 const AUTH_COMMAND_TIMEOUT_MS = 15_000;
 const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 
-const NOTIFY_COMMAND_TIMEOUT_MS = 15_000;
+const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
 
 export async function runNotifyCommand(config: Config): Promise<void> {
   const cmd = config.notifyFinishCommand;
@@ -153,7 +152,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(shell, ["-c", cmd], {
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
     });
