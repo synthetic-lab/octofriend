@@ -5,7 +5,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import json5 from "json5";
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 
@@ -132,6 +132,7 @@ const ConfigSchema = t.exact({
       paths: t.optional(t.array(t.str)),
     }),
   ),
+  notifyFinishCommand: t.optional(t.str),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
@@ -141,6 +142,32 @@ const authCommandCache = new Map<string, string>();
 
 const AUTH_COMMAND_TIMEOUT_MS = 15_000;
 const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
+
+const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
+
+export async function runNotifyCommand(config: Config): Promise<void> {
+  const cmd = config.notifyFinishCommand;
+  if (!cmd || cmd.trim() === "") return;
+  const shell = process.env["SHELL"] || "/bin/sh";
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(shell, ["-c", cmd], {
+      stdio: ["ignore", "ignore", "ignore"],
+      timeout: NOTIFY_COMMAND_TIMEOUT_MS,
+      env: process.env,
+    });
+
+    child.on("close", (code: number | null) => {
+      if (code !== 0) {
+        reject(new Error(`notifyFinishCommand exited with code ${code}`));
+        return;
+      }
+      resolve();
+    });
+
+    child.on("error", reject);
+  });
+}
 
 /**
  * Resolves an Auth config to an API key.

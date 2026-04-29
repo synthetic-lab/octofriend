@@ -257,6 +257,26 @@ underlying error messages from APIs or tool calls, run Octo with the
 OCTO_VERBOSE=1 octofriend
 ```
 
+## Notify Finish Command
+
+You can configure a command to run whenever Octo finishes responding to a prompt.
+This is useful for desktop notifications, sounds, or other integrations.
+
+This command will **not** run for tool call confirmations. It will only run when
+Octo is ready for a new prompt (eg. after responding to a prompt in unchained mode)
+
+Add a `notifyFinishCommand` to your `~/.config/octofriend/octofriend.json5`:
+
+```json5
+notifyFinishCommand: "notify-send Octo 'Finished responding!'",
+```
+
+Or for macOS:
+
+```json5
+notifyFinishCommand: 'osascript -e \'display notification "Octo finished!"\'',
+```
+
 ## Opting into canary versions
 
 If you want to use unreleased versions of Octo, clone this repo and read the

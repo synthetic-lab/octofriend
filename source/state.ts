@@ -1,4 +1,10 @@
-import { Config, useConfig, getModelFromConfig, assertKeyForModel } from "./config.ts";
+import {
+  Config,
+  useConfig,
+  getModelFromConfig,
+  assertKeyForModel,
+  runNotifyCommand,
+} from "./config.ts";
 import {
   HistoryItem,
   UserItem,
@@ -489,6 +495,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
         set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        if (finishReason.type === "needs-response") {
+          runNotifyCommand(config).catch(() => {});
+        }
         return;
       }
 
