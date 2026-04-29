@@ -1,6 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { LlmIR } from "../ir/llm-ir.ts";
+import { Metadata } from "../config.ts";
+
+vi.mock("../config.ts", () => {
+  const APP_METADATA: Metadata = {
+    version: "0.0.42",
+  };
+
+  return { APP_METADATA };
+});
 
 function userMessage(content: string): LlmIR {
   return {
