@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool, autoparse } from "../common.ts";
+import { ToolError, attemptUntrackedRead, defineTool, parseOriginalFile } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
@@ -38,22 +38,7 @@ export default defineTool(Schema, ParsedSchema, async () => ({
   ArgumentsSchema,
   ParsedSchema,
   validate,
-  parse: async (signal, transport, original) => {
-    const contents = await attemptUntrackedRead(transport, signal, original.arguments.filePath);
-    return {
-      success: true,
-      data: {
-        original,
-        parsed: {
-          name: original.name,
-          arguments: {
-            ...original.arguments,
-            originalFileContents: contents,
-          },
-        },
-      },
-    };
-  },
+  parse: parseOriginalFile,
   async run(signal, transport, call) {
     const { filePath } = call.parsed.arguments;
     const diff = call.parsed.arguments;

@@ -42,6 +42,43 @@ export async function attemptUntrackedRead(
   });
 }
 
+// Used by some edit tools to add the original file contents to the parsed data for diff tracking
+export async function parseOriginalFile<
+  Name extends string,
+  Arguments extends { filePath: string },
+>(
+  signal: AbortSignal,
+  transport: Transport,
+  original: Schema<Name, Arguments>,
+): Promise<
+  Result<ParseResult<Name, Arguments, Arguments & { originalFileContents: string }>, string>
+> {
+  try {
+    const contents = await attemptUntrackedRead(transport, signal, original.arguments.filePath);
+    return {
+      success: true,
+      data: {
+        original,
+        parsed: {
+          name: original.name,
+          arguments: {
+            ...original.arguments,
+            originalFileContents: contents,
+          },
+        },
+      },
+    };
+  } catch (e) {
+    if (e instanceof ToolError) {
+      return {
+        success: false,
+        error: e.message,
+      };
+    }
+    throw e;
+  }
+}
+
 export type ToolResult = {
   content: string;
 
