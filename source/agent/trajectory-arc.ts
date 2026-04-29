@@ -197,44 +197,34 @@ export async function trajectoryArc({
     };
   }
 
-  if (result.output.length === 0) {
-    return {
-      type: "finish",
-      irs: maybeBufferedMessage(),
-      reason: {
-        type: "request-error",
-        requestError: "No response from backend",
-        curl: result.curl,
-      },
-    };
-  }
-
-  let lastIr = result.output[result.output.length - 1];
+  let assistantMessage = result.output;
+  irs = [...irs, assistantMessage];
 
   // Retry malformed tool calls
-  if (lastIr.role === "tool-malformed") {
+  let malformedRequests = false;
+  for (const call of assistantMessage.toolCalls || []) {
+    if (call.type === "malformed-request") {
+      malformedRequests = true;
+      break;
+    }
+  }
+
+  if (malformedRequests) {
     // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
     // is kept in terms of input ordering vs output message ordering
-    irs = [...irs];
-    const malformed = new Map<string, ToolMalformedMessage>();
-    for (const ir of result.output) {
-      if (ir.role === "tool-malformed") {
-        malformed.set(ir.toolCallId, ir);
-      }
-    }
-    const wellformed = result.output.filter(ir => ir.role === "assistant");
-    for (const ir of wellformed) {
-      irs.push(ir);
-      for (const call of ir.toolCalls || []) {
-        if (call.type === "tool-request") {
-          irs.push({
-            role: "tool-skip",
-            toolCall: call,
-            reason: "Another tool call in this batch was malformed, so this tool call was skipped",
-          });
-        } else {
-          irs.push(malformed.get(call.toolCallId)!);
-        }
+    for (const call of assistantMessage.toolCalls || []) {
+      if (call.type === "tool-request") {
+        irs.push({
+          role: "tool-skip",
+          toolCall: call,
+          reason: "Another tool call in this batch was malformed, so this tool call was skipped",
+        });
+      } else {
+        const _: "malformed-request" = call.type;
+        irs.push({
+          role: "tool-malformed",
+          malformedRequest: call,
+        });
       }
     }
 
@@ -256,8 +246,7 @@ export async function trajectoryArc({
     };
   }
 
-  irs = [...irs, ...result.output];
-  const { toolCalls } = lastIr;
+  const { toolCalls } = assistantMessage;
 
   if (toolCalls == null) {
     return {

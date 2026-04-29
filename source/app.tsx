@@ -956,7 +956,7 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
     return (
       <Text color="red">
         {displayLog({
-          verbose: `Error: ${item.error}`,
+          verbose: `Error: ${item.malformedRequest.error}`,
           info: "Malformed tool call. Retrying...",
         })}
       </Text>

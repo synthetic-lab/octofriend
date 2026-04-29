@@ -306,15 +306,7 @@ bench
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
 
-      const firstResult = result.output[0];
-      if (firstResult.role !== "assistant") {
-        return {
-          success: false,
-          error: "No assistant response",
-        };
-      }
-
-      const tokens = firstResult.outputTokens;
+      const tokens = result.output.outputTokens;
 
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {

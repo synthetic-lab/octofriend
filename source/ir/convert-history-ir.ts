@@ -46,15 +46,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
       {
         type: "tool-malformed",
         id: sequenceId(),
-        error: output.error,
-        toolCallId: output.toolCallId,
-        original: {
-          id: output.toolCallId,
-          function: {
-            name: output.toolName || "unknown",
-            arguments: output.arguments || "{}",
-          },
-        },
+        malformedRequest: output.malformedRequest,
       },
     ];
   }
@@ -198,35 +190,13 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     });
   }
   if (item.type === "tool-malformed") {
-    return assertPrevAssistant(
-      "tool-malformed",
-      item,
-      prev,
-      (prev): [LlmIR | null, LlmIR | null] => {
-        // Collapse the malformed tool call into the previous assistant message, and structure the
-        // response
-        const toolName = item.original.function?.name || "unknown";
-        return [
-          {
-            role: "assistant",
-            content: prev.content || "",
-            toolCalls: [...(prev.toolCalls || [])],
-            openai: prev.openai,
-            anthropic: prev.anthropic,
-            reasoningContent: prev.reasoningContent,
-            tokenUsage: prev.tokenUsage,
-            outputTokens: prev.outputTokens,
-          } satisfies LlmIR,
-          {
-            role: "tool-malformed",
-            toolCallId: item.toolCallId,
-            toolName,
-            arguments: item.original.function?.arguments || "",
-            error: item.error,
-          },
-        ];
+    return [
+      null,
+      {
+        role: "tool-malformed",
+        malformedRequest: item.malformedRequest,
       },
-    );
+    ];
   }
 
   if (item.type === "tool-reject") {

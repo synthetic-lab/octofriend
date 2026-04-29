@@ -9,6 +9,7 @@ export type ToolCallRequest = {
 
 export type MalformedRequest = {
   type: "malformed-request";
+  error: string;
   call: {
     original: {
       name: string;
@@ -92,10 +93,7 @@ export type ToolSkipMessage = {
 
 export type ToolMalformedMessage = {
   role: "tool-malformed";
-  toolCallId: string;
-  toolName?: string;
-  arguments?: string;
-  error: string;
+  malformedRequest: MalformedRequest;
 };
 
 export type FileOutdatedMessage = {
@@ -116,14 +114,10 @@ export type CompactionCheckpoint = {
   summary: string;
 };
 
-// TODO: remove the ToolMalformedMessage from OutputIR, since it's duplicative: any assistant item
-// with a malformed request tool call is malformed, and the trajectoryArc can handle inserting the
-// malformed message when it encounters this
-export type OutputIR = AssistantMessage | ToolMalformedMessage;
-
 export type InputIR =
   | UserMessage
   | ToolOutputMessage
+  | ToolMalformedMessage
   | FileReadMessage
   | FileMutateMethod
   | ToolRejectMessage
@@ -133,10 +127,11 @@ export type InputIR =
   | FileUnreadableMessage
   | CompactionCheckpoint;
 
-export type LlmIR = OutputIR | InputIR;
+export type LlmIR = AssistantMessage | InputIR;
 
 export type TrajectoryOutputIR =
-  | OutputIR
+  | AssistantMessage
+  | ToolMalformedMessage
   | ToolErrorMessage
   | ToolSkipMessage
   | FileOutdatedMessage
@@ -146,7 +141,7 @@ export type TrajectoryOutputIR =
 export type AgentResult =
   | {
       success: true;
-      output: OutputIR[];
+      output: AssistantMessage;
       curl: string;
     }
   | {

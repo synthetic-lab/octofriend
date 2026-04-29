@@ -113,10 +113,7 @@ export function processCompactedHistory(
   if (!compactSummaryAgentResult.success) {
     return;
   }
-  const assistantMessage = compactSummaryAgentResult.output.find(msg => msg.role === "assistant");
-  if (!assistantMessage || assistantMessage.role !== "assistant") {
-    return;
-  }
+  const assistantMessage = compactSummaryAgentResult.output;
 
   if (assistantMessage.content) {
     return assistantMessage.content;

@@ -8,7 +8,6 @@ import {
   ToolCallRequest,
   MalformedRequest,
   AnthropicAssistantData,
-  OutputIR,
 } from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
 import * as logger from "../logger.ts";
@@ -210,9 +209,9 @@ function modelMessageFromIr(
       content: [
         {
           type: "tool_result",
-          tool_use_id: ir.toolCallId,
+          tool_use_id: ir.malformedRequest.toolCallId,
           is_error: true,
-          content: `Error: ${ir.error}`,
+          content: `Error: ${ir.malformedRequest.error}`,
         },
       ],
     };
@@ -539,12 +538,12 @@ export const runAnthropicAgent: Compiler = async ({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: [assistantMessage], curl };
+      return { success: true, output: assistantMessage, curl };
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return { success: true, output: [assistantMessage], curl };
+      return { success: true, output: assistantMessage, curl };
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -553,7 +552,6 @@ export const runAnthropicAgent: Compiler = async ({
       .map(([_, v]) => v);
 
     const toolCalls: Array<ToolCallRequest | MalformedRequest> = [];
-    const malformedIrs: OutputIR[] = [];
 
     for (const inProgressTool of sortedTools) {
       const chatToolCall = {
@@ -572,6 +570,7 @@ export const runAnthropicAgent: Compiler = async ({
       if (parseResult.status === "error") {
         toolCalls.push({
           type: "malformed-request",
+          error: parseResult.message,
           toolCallId: inProgressTool.id,
           call: {
             original: {
@@ -580,32 +579,15 @@ export const runAnthropicAgent: Compiler = async ({
             },
           },
         });
-        malformedIrs.push({
-          role: "tool-malformed",
-          error: parseResult.message,
-          toolName: inProgressTool.name,
-          arguments: inProgressTool.partialJson,
-          toolCallId: inProgressTool.id,
-        });
         continue;
       }
 
       toolCalls.push(parseResult.tool);
     }
 
-    if (toolCalls.length > 0) {
-      assistantMessage.toolCalls = toolCalls;
-    }
+    if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    if (malformedIrs.length > 0) {
-      return {
-        success: true,
-        curl,
-        output: [assistantMessage, ...malformedIrs],
-      };
-    }
-
-    return { success: true, output: [assistantMessage], curl };
+    return { success: true, output: assistantMessage, curl };
   } catch (e) {
     return {
       success: false,

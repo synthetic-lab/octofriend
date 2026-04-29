@@ -2,13 +2,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import {
-  LlmIR,
-  ToolCallRequest,
-  MalformedRequest,
-  AssistantMessage,
-  OutputIR,
-} from "../ir/llm-ir.ts";
+import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -255,11 +249,11 @@ function modelMessageFromIr(
       content: [
         {
           type: "tool-result",
-          toolCallId: ir.toolCallId,
-          toolName: ir.toolName || "unknown",
+          toolCallId: ir.malformedRequest.toolCallId,
+          toolName: ir.malformedRequest.call.original.name || "unknown",
           output: {
             type: "text" as const,
-            value: `Error: ${ir.error}`,
+            value: `Error: ${ir.malformedRequest.error}`,
           },
         },
       ],
@@ -499,17 +493,16 @@ export const runResponsesAgent: Compiler = async ({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return { success: true, output: [assistantHistoryItem], curl };
+      return { success: true, output: assistantHistoryItem, curl };
     }
 
     // Get tool calls
     const toolCalls = await result.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: [assistantHistoryItem], curl };
+      return { success: true, output: assistantHistoryItem, curl };
     }
 
     const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
-    const malformedIrs: OutputIR[] = [];
 
     for (const toolCall of toolCalls) {
       const chatToolCall = {
@@ -528,6 +521,7 @@ export const runResponsesAgent: Compiler = async ({
       if (parseResult.status === "error") {
         parsedToolCalls.push({
           type: "malformed-request",
+          error: parseResult.message,
           call: {
             original: {
               name: toolCall.toolName,
@@ -536,32 +530,15 @@ export const runResponsesAgent: Compiler = async ({
           },
           toolCallId: toolCall.toolCallId,
         });
-        malformedIrs.push({
-          role: "tool-malformed",
-          error: parseResult.message,
-          toolName: toolCall.toolName,
-          arguments: JSON.stringify(toolCall.input),
-          toolCallId: toolCall.toolCallId,
-        });
         continue;
       }
 
       parsedToolCalls.push(parseResult.tool);
     }
 
-    if (parsedToolCalls.length > 0) {
-      assistantHistoryItem.toolCalls = parsedToolCalls;
-    }
+    if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    if (malformedIrs.length > 0) {
-      return {
-        success: true,
-        curl,
-        output: [assistantHistoryItem, ...malformedIrs],
-      };
-    }
-
-    return { success: true, output: [assistantHistoryItem], curl };
+    return { success: true, output: assistantHistoryItem, curl };
   } catch (e) {
     return {
       success: false,

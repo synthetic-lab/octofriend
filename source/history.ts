@@ -19,15 +19,7 @@ export type ToolOutputItem = SequenceIdTagged<{
 
 export type ToolMalformedItem = SequenceIdTagged<{
   type: "tool-malformed";
-  error: string;
-  original: Partial<{
-    id: string;
-    function: Partial<{
-      name: string;
-      arguments: string;
-    }>;
-  }>;
-  toolCallId: string;
+  malformedRequest: MalformedRequest;
 }>;
 
 export type ToolFailedItem = SequenceIdTagged<{

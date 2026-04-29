@@ -7,7 +7,6 @@ import {
   AgentResult,
   ToolCallRequest,
   MalformedRequest,
-  OutputIR,
 } from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
@@ -245,8 +244,8 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
   if (ir.role === "tool-malformed") {
     return {
       role: "tool",
-      tool_call_id: ir.toolCallId,
-      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+      tool_call_id: ir.malformedRequest.toolCallId,
+      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
     };
   }
 
@@ -534,10 +533,10 @@ export const runAgent: Compiler = async ({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return { success: true, output: [assistantIr], curl };
+    if (abortSignal.aborted) return { success: true, output: assistantIr, curl };
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return { success: true, output: [assistantIr], curl };
+    if (toolCallMap.size === 0) return { success: true, output: assistantIr, curl };
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -545,7 +544,6 @@ export const runAgent: Compiler = async ({
       .map(([_, v]) => v);
 
     const toolCalls: Array<MalformedRequest | ToolCallRequest> = [];
-    const malformedIrs: OutputIR[] = [];
 
     for (const currTool of currTools) {
       const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
@@ -554,6 +552,7 @@ export const runAgent: Compiler = async ({
         if (toolCallId == null) throw new Error("Impossible tool call: no id given");
         toolCalls.push({
           type: "malformed-request",
+          error: validatedTool.message,
           call: {
             original: {
               name: currTool.function?.name || "unknown",
@@ -561,13 +560,6 @@ export const runAgent: Compiler = async ({
             },
           },
           toolCallId,
-        });
-        malformedIrs.push({
-          role: "tool-malformed",
-          error: validatedTool.message,
-          toolCallId,
-          toolName: currTool.function?.name,
-          arguments: currTool.function?.arguments,
         });
         continue;
       }
@@ -583,6 +575,7 @@ export const runAgent: Compiler = async ({
       if (parseResult.status === "error") {
         toolCalls.push({
           type: "malformed-request",
+          error: parseResult.message,
           call: {
             original: {
               name: validatedTool.function.name,
@@ -591,32 +584,15 @@ export const runAgent: Compiler = async ({
           },
           toolCallId: validatedTool.id,
         });
-        malformedIrs.push({
-          role: "tool-malformed",
-          error: parseResult.message,
-          toolName: validatedTool.function.name,
-          arguments: validatedTool.function.arguments,
-          toolCallId: validatedTool.id,
-        });
         continue;
       }
 
       toolCalls.push(parseResult.tool);
     }
 
-    if (toolCalls.length > 0) {
-      assistantIr.toolCalls = toolCalls;
-    }
+    if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    if (malformedIrs.length > 0) {
-      return {
-        success: true,
-        curl,
-        output: [assistantIr, ...malformedIrs],
-      };
-    }
-
-    return { success: true, output: [assistantIr], curl };
+    return { success: true, output: assistantIr, curl };
   });
 };
 
