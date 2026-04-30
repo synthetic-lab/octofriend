@@ -8,7 +8,15 @@ export { ToolError } from "./common.ts";
 export type LoadedTools = {
   [K in keyof typeof toolMap]: Exclude<Awaited<ReturnType<(typeof toolMap)[K]>>, null>;
 };
-export type ToolCall = t.GetType<LoadedTools[keyof LoadedTools]["Schema"]>;
+export type ToolCall = {
+  [K in keyof LoadedTools]: {
+    parsed: {
+      name: t.GetType<LoadedTools[K]["Schema"]>["name"];
+      arguments: t.GetType<LoadedTools[K]["ParsedSchema"]>;
+    };
+    original: t.GetType<LoadedTools[K]["Schema"]>;
+  };
+}[keyof LoadedTools];
 
 export async function loadTools(
   transport: Transport,
@@ -60,11 +68,14 @@ export async function validateTool(
   config: Config,
 ): Promise<null> {
   const toolDef = lookup(loaded, tool);
-  return await toolDef.validate(abortSignal, transport, tool, config);
+  return await toolDef.validate(abortSignal, transport, tool.original, config);
 }
 
-function lookup<T extends ToolCall>(loaded: Partial<LoadedTools>, t: T): ToolDef<T> {
-  const def = loaded[t.name];
-  if (def == null) throw new ToolError(`No tool named ${t.name}`);
-  return def as ToolDef<T>;
+function lookup<T extends ToolCall>(
+  loaded: Partial<LoadedTools>,
+  t: T,
+): ToolDef<any, T["original"]["arguments"], any> {
+  const def = loaded[t.original.name];
+  if (def == null) throw new ToolError(`No tool named ${t.original.name}`);
+  return def as ToolDef<any, T["original"]["arguments"], any>;
 }

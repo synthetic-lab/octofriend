@@ -218,6 +218,7 @@ bench
   .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
   .action(async opts => {
     const { config } = await loadConfigWithoutReauth();
+    const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
@@ -283,6 +284,7 @@ bench
           onAutofixJson: () => {},
         },
         abortSignal: abortController.signal,
+        transport,
       });
 
       if (!result.success) {
@@ -304,15 +306,7 @@ bench
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
 
-      const firstResult = result.output[0];
-      if (firstResult.role !== "assistant") {
-        return {
-          success: false,
-          error: "No assistant response",
-        };
-      }
-
-      const tokens = firstResult.outputTokens;
+      const tokens = result.output.outputTokens;
 
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {
@@ -409,6 +403,7 @@ cli
   .argument("<prompt>", "The prompt you want to send to this model")
   .action(async (prompt, opts) => {
     const { config } = await loadConfig();
+    const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
@@ -484,6 +479,7 @@ cli
         onAutofixJson: () => {},
       },
       abortSignal: abortController.signal,
+      transport,
     });
     if (!result.success) {
       console.error(result.requestError);

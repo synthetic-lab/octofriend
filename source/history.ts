@@ -1,57 +1,54 @@
 import { ToolResult } from "./tools/common.ts";
-import { ToolCallRequest, AnthropicAssistantData } from "./ir/llm-ir.ts";
+import { ToolCallRequest, AnthropicAssistantData, MalformedRequest } from "./ir/llm-ir.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 
 export type SequenceIdTagged<T> = T & {
   id: bigint;
 };
 
-export type ToolCallItem = SequenceIdTagged<{
-  type: "tool";
-  tool: ToolCallRequest;
+export type ToolCallItems = SequenceIdTagged<{
+  type: "tool-calls";
+  tools: Array<ToolCallRequest | MalformedRequest>;
 }>;
 
 export type ToolOutputItem = SequenceIdTagged<{
   type: "tool-output";
   result: ToolResult;
-  toolCallId: string;
+  toolCall: ToolCallRequest;
 }>;
 
 export type ToolMalformedItem = SequenceIdTagged<{
   type: "tool-malformed";
-  error: string;
-  original: Partial<{
-    id: string;
-    function: Partial<{
-      name: string;
-      arguments: string;
-    }>;
-  }>;
-  toolCallId: string;
+  malformedRequest: MalformedRequest;
 }>;
 
 export type ToolFailedItem = SequenceIdTagged<{
   type: "tool-failed";
   error: string;
-  toolCallId: string;
-  toolName: string;
+  toolCall: ToolCallRequest;
 }>;
 
 export type ToolRejectItem = SequenceIdTagged<{
   type: "tool-reject";
-  toolCallId: string;
+  toolCall: ToolCallRequest;
+}>;
+
+export type ToolSkipItem = SequenceIdTagged<{
+  type: "tool-skip";
+  toolCall: ToolCallRequest;
+  reason: string;
 }>;
 
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated";
-  toolCallId: string;
+  toolCall: ToolCallRequest;
   error: string;
 }>;
 
 export type FileUnreadableItem = SequenceIdTagged<{
   type: "file-unreadable";
   path: string;
-  toolCallId: string;
+  toolCall: ToolCallRequest;
   error: string;
 }>;
 
@@ -95,11 +92,12 @@ export type CompactionCheckpointItem = SequenceIdTagged<{
 export type HistoryItem =
   | UserItem
   | AssistantItem
-  | ToolCallItem
+  | ToolCallItems
   | ToolOutputItem
   | ToolFailedItem
   | ToolMalformedItem
   | ToolRejectItem
+  | ToolSkipItem
   | FileOutdatedItem
   | FileUnreadableItem
   | RequestFailed

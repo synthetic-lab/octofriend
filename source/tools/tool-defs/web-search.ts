@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { attempt, defineTool } from "../common.ts";
+import { attempt, defineTool, autoparse } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -29,7 +29,7 @@ const SearchResultsSchema = t.subtype({
   ),
 });
 
-export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
+export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
   const searchConf = await readSearchConfig(config);
   if (searchConf == null) return null;
 
@@ -37,8 +37,9 @@ export default defineTool<t.GetType<typeof Schema>>(async (_1, _2, config) => {
     Schema,
     ArgumentsSchema,
     validate,
+    ...autoparse(ArgumentsSchema),
     async run(abortSignal, _, call) {
-      const query = call.arguments.query;
+      const query = call.parsed.arguments.query;
       return attempt(`Web search failed: ${query}`, async () => {
         const response = await fetch(searchConf.url, {
           headers: {

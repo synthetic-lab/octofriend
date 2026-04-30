@@ -6,6 +6,7 @@ import {
   AssistantMessage as AssistantIR,
   AgentResult,
   ToolCallRequest,
+  MalformedRequest,
 } from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
@@ -20,6 +21,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 type Content =
   | string
@@ -111,16 +113,14 @@ async function toLlmMessages(
 
   irs.reverse();
   const seenPaths = new Set<string>();
-  let prev: LlmIR | null = null;
   for (const ir of irs) {
     if (ir.role === "file-read") {
       let seen = seenPaths.has(ir.path);
       seenPaths.add(ir.path);
-      output.push(llmFromIr(ir, prev, seen, modalities));
+      output.push(llmFromIr(ir, seen, modalities));
     } else {
-      output.push(llmFromIr(ir, prev, false, modalities));
+      output.push(llmFromIr(ir, false, modalities));
     }
-    prev = ir;
   }
 
   output.reverse();
@@ -135,18 +135,13 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(
-  ir: LlmIR,
-  prev: LlmIR | null,
-  seenPath: boolean,
-  modalities?: MultimodalConfig,
-): LlmMessage {
+function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig): LlmMessage {
   if (ir.role === "assistant") {
-    const { toolCall } = ir;
+    const { toolCalls } = ir;
     const reasoning: { reasoning_content?: string } = {};
     if (ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
 
-    if (toolCall == null || prev?.role === "tool-malformed") {
+    if (toolCalls == null || toolCalls.length === 0) {
       return {
         ...reasoning,
         role: "assistant",
@@ -157,18 +152,18 @@ function llmFromIr(
       ...reasoning,
       role: "assistant",
       content: ir.content,
-      tool_calls: [
-        {
-          type: "function",
+      tool_calls: toolCalls.map(tc => {
+        return {
+          type: "function" as const,
           function: {
-            name: toolCall.function.name,
-            arguments: toolCall.function.arguments
-              ? JSON.stringify(toolCall.function.arguments)
+            name: tc.call.original.name,
+            arguments: tc.call.original.arguments
+              ? JSON.stringify(tc.call.original.arguments)
               : "{}",
           },
-          id: toolCall.toolCallId,
-        },
-      ],
+          id: tc.toolCallId,
+        };
+      }),
     };
   }
   if (ir.role === "user") {
@@ -238,17 +233,26 @@ function llmFromIr(
     };
   }
 
+  if (ir.role === "tool-skip") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason)),
+    };
+  }
+
   if (ir.role === "tool-malformed") {
     return {
-      role: "user",
-      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+      role: "tool",
+      tool_call_id: ir.malformedRequest.toolCallId,
+      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
     };
   }
 
   if (ir.role === "tool-error") {
     return {
       role: "tool",
-      tool_call_id: ir.toolCallId,
+      tool_call_id: ir.toolCall.toolCallId,
       content: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
     };
   }
@@ -329,6 +333,7 @@ export const runAgent: Compiler = async ({
   onTokens,
   onQuotaUpdated,
   abortSignal,
+  transport,
   systemPrompt,
   autofixJson,
   tools,
@@ -368,7 +373,7 @@ export const runAgent: Compiler = async ({
     messages,
     ...toolsParam,
   });
-  return await handleKnownErrors(curl, async () => {
+  return await handleKnownErrors(curl, async (): Promise<AgentResult> => {
     const client = getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey });
 
     let reasoning: {
@@ -429,13 +434,11 @@ export const runAgent: Compiler = async ({
       },
     });
 
-    let currTool: Partial<ResponseToolCall> | null = null;
-    let doneParsingTools = false;
+    let toolCallMap = new Map<number, Partial<ResponseToolCall>>();
 
     try {
       for await (const chunk of res) {
         if (abortSignal.aborted) break;
-        if (doneParsingTools) break;
         if (chunk.usage) {
           usage.input = chunk.usage.prompt_tokens;
           usage.output = chunk.usage.completion_tokens;
@@ -449,7 +452,7 @@ export const runAgent: Compiler = async ({
               reasoning_content: string;
             }
           | {
-              tool_calls: Array<ResponseToolCall>;
+              tool_calls: Array<ResponseToolCall & { index?: number }>;
             }
           | {
               reasoning: string;
@@ -474,26 +477,26 @@ export const runAgent: Compiler = async ({
           delta.tool_calls.length > 0
         ) {
           for (const deltaCall of delta.tool_calls) {
+            const index = deltaCall.index ?? 0;
             onTokens(
               (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
               "tool",
             );
-            if (currTool == null) {
-              currTool = {
+            if (deltaCall.id) {
+              toolCallMap.set(index, {
                 id: deltaCall.id,
                 function: {
                   name: deltaCall.function.name || "",
                   arguments: deltaCall.function.arguments || "",
                 },
-              };
+              });
             } else {
-              if (deltaCall.id && deltaCall.id !== currTool.id) {
-                doneParsingTools = true;
-                break;
+              const curr = toolCallMap.get(index);
+              if (curr) {
+                if (deltaCall.function.name) curr.function!.name = deltaCall.function.name;
+                if (deltaCall.function.arguments)
+                  curr.function!.arguments += deltaCall.function.arguments;
               }
-              if (deltaCall.function.name) currTool.function!.name = deltaCall.function.name;
-              if (deltaCall.function.arguments)
-                currTool.function!.arguments += deltaCall.function.arguments;
             }
           }
         }
@@ -530,53 +533,66 @@ export const runAgent: Compiler = async ({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return { success: true, output: [assistantIr], curl };
+    if (abortSignal.aborted) return { success: true, output: assistantIr, curl };
 
-    // If no tool call, we're done
-    if (currTool == null) return { success: true, output: [assistantIr], curl };
+    // If no tool calls, we're done
+    if (toolCallMap.size === 0) return { success: true, output: assistantIr, curl };
 
-    // Got this far? Parse out the tool call
-    const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
-    if (validatedTool instanceof t.Err) {
-      const toolCallId = currTool["id"];
-      if (toolCallId == null) throw new Error("Impossible tool call: no id given");
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantIr,
-          {
-            role: "tool-malformed",
-            error: validatedTool.message,
-            toolCallId,
-            toolName: currTool.function?.name,
-            arguments: currTool.function?.arguments,
+    // Sort tool calls by their streaming index to preserve ordering
+    const currTools = Array.from(toolCallMap.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([_, v]) => v);
+
+    const toolCalls: Array<MalformedRequest | ToolCallRequest> = [];
+
+    for (const currTool of currTools) {
+      const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
+      if (validatedTool instanceof t.Err) {
+        const toolCallId = currTool["id"];
+        if (toolCallId == null) throw new Error("Impossible tool call: no id given");
+        toolCalls.push({
+          type: "malformed-request",
+          error: validatedTool.message,
+          call: {
+            original: {
+              name: currTool.function?.name || "unknown",
+              arguments: currTool.function?.arguments || "",
+            },
           },
-        ],
-      };
+          toolCallId,
+        });
+        continue;
+      }
+
+      const parseResult = await parseTool(
+        validatedTool,
+        toolDefs,
+        autofixJson,
+        abortSignal,
+        transport,
+      );
+
+      if (parseResult.status === "error") {
+        toolCalls.push({
+          type: "malformed-request",
+          error: parseResult.message,
+          call: {
+            original: {
+              name: validatedTool.function.name,
+              arguments: validatedTool.function.arguments,
+            },
+          },
+          toolCallId: validatedTool.id,
+        });
+        continue;
+      }
+
+      toolCalls.push(parseResult.tool);
     }
 
-    const parseResult = await parseTool(validatedTool, toolDefs, autofixJson, abortSignal);
+    if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantIr,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: validatedTool.function.name,
-            arguments: validatedTool.function.arguments,
-            toolCallId: validatedTool.id,
-          },
-        ],
-      };
-    }
-
-    assistantIr.toolCall = parseResult.tool;
-    return { success: true, output: [assistantIr], curl };
+    return { success: true, output: assistantIr, curl };
   });
 };
 
@@ -592,9 +608,10 @@ type ParseToolResult =
 
 async function parseTool(
   toolCall: ResponseToolCall,
-  toolDefs: Record<string, ToolDef<any>>,
+  toolDefs: Record<string, ToolDef<any, any, any>>,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
+  transport: Transport,
 ): Promise<ParseToolResult> {
   const name = toolCall.function.name;
   const toolDef = toolDefs[name];
@@ -651,18 +668,24 @@ Please try calling a valid tool.
   }
 
   try {
-    const parsed = toolSchema.slice({
+    const sliced = toolSchema.slice({
       name: toolCall.function.name,
       arguments: args,
     });
-
+    const parsed = await toolDef.parse(abortSignal, transport, sliced);
+    if (parsed.success) {
+      return {
+        status: "success",
+        tool: {
+          type: "tool-request",
+          call: parsed.data,
+          toolCallId: toolCall.id,
+        },
+      };
+    }
     return {
-      status: "success",
-      tool: {
-        type: "function",
-        function: parsed,
-        toolCallId: toolCall.id,
-      },
+      status: "error",
+      message: parsed.error,
     };
   } catch (e: unknown) {
     logger.error("verbose", e);

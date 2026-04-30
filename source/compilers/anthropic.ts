@@ -2,7 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { AssistantMessage, LlmIR, ToolCallRequest, AnthropicAssistantData } from "../ir/llm-ir.ts";
+import {
+  AssistantMessage,
+  LlmIR,
+  ToolCallRequest,
+  MalformedRequest,
+  AnthropicAssistantData,
+} from "../ir/llm-ir.ts";
+import { ToolDef } from "../tools/common.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -11,6 +18,7 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -50,7 +58,7 @@ function modelMessageFromIr(
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || [];
     return {
       role: "assistant",
       content: [
@@ -60,8 +68,8 @@ function modelMessageFromIr(
           return {
             type: "tool_use" as const,
             id: t.toolCallId,
-            name: t.function.name,
-            input: t.function.arguments || {},
+            name: t.call.original.name,
+            input: t.call.original.arguments || {},
           };
         }),
       ],
@@ -167,15 +175,43 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "tool-error" || ir.role === "tool-malformed") {
+  if (ir.role === "tool-skip") {
     return {
       role: "user",
       content: [
         {
           type: "tool_result",
-          tool_use_id: ir.toolCallId,
+          tool_use_id: ir.toolCall.toolCallId,
+          is_error: true,
+          content: irPrompts.toolSkip(ir.reason),
+        },
+      ],
+    };
+  }
+
+  if (ir.role === "tool-error") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
           is_error: true,
           content: `Error: ${ir.error}`,
+        },
+      ],
+    };
+  }
+
+  if (ir.role === "tool-malformed") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.malformedRequest.toolCallId,
+          is_error: true,
+          content: `Error: ${ir.malformedRequest.error}`,
         },
       ],
     };
@@ -233,7 +269,7 @@ function generateCurlFrom(params: {
     tools,
     tool_choice: {
       type: "auto",
-      disable_parallel_tool_use: true,
+      disable_parallel_tool_use: false,
     },
     max_tokens: maxTokens,
     stream: true,
@@ -258,6 +294,7 @@ export const runAnthropicAgent: Compiler = async ({
   irs,
   onTokens,
   abortSignal,
+  transport,
   systemPrompt,
   autofixJson,
   tools,
@@ -327,7 +364,7 @@ export const runAnthropicAgent: Compiler = async ({
       ...toolParams,
       tool_choice: {
         type: "auto",
-        disable_parallel_tool_use: true,
+        disable_parallel_tool_use: false,
       },
       max_tokens: maxTokens,
       ...thinking,
@@ -352,14 +389,15 @@ export const runAnthropicAgent: Compiler = async ({
           data: string;
         }
     > = [];
-    let inProgressTool:
-      | {
-          id: string;
-          index: number;
-          name: string;
-          partialJson: string;
-        }
-      | undefined = undefined;
+    let inProgressTools = new Map<
+      number,
+      {
+        id: string;
+        index: number;
+        name: string;
+        partialJson: string;
+      }
+    >();
 
     // Handle streaming chunks
     for await (const chunk of result) {
@@ -416,9 +454,12 @@ export const runAnthropicAgent: Compiler = async ({
               }
               break;
             case "input_json_delta":
-              if (inProgressTool != null && inProgressTool.index === chunk.index) {
-                onTokens(chunk.delta.partial_json, "tool");
-                inProgressTool.partialJson += chunk.delta.partial_json;
+              {
+                const tool = inProgressTools.get(chunk.index);
+                if (tool != null) {
+                  onTokens(chunk.delta.partial_json, "tool");
+                  tool.partialJson += chunk.delta.partial_json;
+                }
               }
               break;
           }
@@ -427,14 +468,12 @@ export const runAnthropicAgent: Compiler = async ({
           switch (chunk.content_block.type) {
             case "tool_use":
               onTokens(chunk.content_block.name, "tool");
-              if (inProgressTool == null) {
-                inProgressTool = {
-                  id: chunk.content_block.id,
-                  index: chunk.index,
-                  name: chunk.content_block.name,
-                  partialJson: "",
-                };
-              }
+              inProgressTools.set(chunk.index, {
+                id: chunk.content_block.id,
+                index: chunk.index,
+                name: chunk.content_block.name,
+                partialJson: "",
+              });
               break;
             case "redacted_thinking":
               thinkingBlocks.push({
@@ -499,41 +538,56 @@ export const runAnthropicAgent: Compiler = async ({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: [assistantMessage], curl };
+      return { success: true, output: assistantMessage, curl };
     }
 
     // No tools? Return
-    if (inProgressTool == null) {
-      return { success: true, output: [assistantMessage], curl };
+    if (inProgressTools.size === 0) {
+      return { success: true, output: assistantMessage, curl };
     }
 
-    // Get tool calls
-    const chatToolCall = {
-      toolCallId: inProgressTool.id,
-      toolName: inProgressTool.name,
-      args: inProgressTool.partialJson,
-    };
-    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
+    // Sort tool calls by their content block index to preserve ordering
+    const sortedTools = Array.from(inProgressTools.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([_, v]) => v);
 
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantMessage,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: inProgressTool.name,
-            arguments: inProgressTool.partialJson,
-            toolCallId: inProgressTool.id,
-          },
-        ],
+    const toolCalls: Array<ToolCallRequest | MalformedRequest> = [];
+
+    for (const inProgressTool of sortedTools) {
+      const chatToolCall = {
+        toolCallId: inProgressTool.id,
+        toolName: inProgressTool.name,
+        args: inProgressTool.partialJson,
       };
+      const parseResult = await parseTool(
+        chatToolCall,
+        toolDefs,
+        autofixJson,
+        abortSignal,
+        transport,
+      );
+
+      if (parseResult.status === "error") {
+        toolCalls.push({
+          type: "malformed-request",
+          error: parseResult.message,
+          toolCallId: inProgressTool.id,
+          call: {
+            original: {
+              name: inProgressTool.name,
+              arguments: inProgressTool.partialJson,
+            },
+          },
+        });
+        continue;
+      }
+
+      toolCalls.push(parseResult.tool);
     }
 
-    assistantMessage.toolCall = parseResult.tool;
-    return { success: true, output: [assistantMessage], curl };
+    if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
+
+    return { success: true, output: assistantMessage, curl };
   } catch (e) {
     return {
       success: false,
@@ -555,9 +609,10 @@ type ParseToolResult =
 
 async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
-  toolDefs: Record<string, any>,
+  toolDefs: Record<string, ToolDef<any, any, any>>,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
+  transport: Transport,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
   const toolDef = toolDefs[name];
@@ -600,18 +655,25 @@ Please try calling a valid tool.
   }
 
   try {
-    const parsed = toolSchema.slice({
+    const sliced = toolSchema.slice({
       name: toolCall.toolName,
       arguments: args,
     });
+    const parsed = await toolDef.parse(abortSignal, transport, sliced);
 
+    if (parsed.success) {
+      return {
+        status: "success",
+        tool: {
+          type: "tool-request",
+          call: parsed.data,
+          toolCallId: toolCall.toolCallId,
+        },
+      };
+    }
     return {
-      status: "success",
-      tool: {
-        type: "function",
-        function: parsed,
-        toolCallId: toolCall.toolCallId,
-      },
+      status: "error",
+      message: parsed.error,
     };
   } catch (e: unknown) {
     logger.error("verbose", e);

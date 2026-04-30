@@ -7,6 +7,7 @@ import { QuotaData } from "../utils/quota.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 export async function run({
   model,
@@ -15,6 +16,7 @@ export async function run({
   handlers,
   autofixJson,
   abortSignal,
+  transport,
   systemPrompt,
   tools,
 }: {
@@ -28,6 +30,7 @@ export async function run({
     onQuotaUpdated?: (quota: QuotaData) => void;
   };
   abortSignal: AbortSignal;
+  transport: Transport;
   systemPrompt?: () => Promise<string>;
   tools?: Partial<LoadedTools>;
 }) {
@@ -55,5 +58,6 @@ export async function run({
       return fixPromise;
     },
     tools,
+    transport,
   });
 }

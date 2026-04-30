@@ -2,8 +2,20 @@ import { ToolCall } from "../tools/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
 export type ToolCallRequest = {
-  type: "function";
-  function: ToolCall;
+  type: "tool-request";
+  call: ToolCall;
+  toolCallId: string;
+};
+
+export type MalformedRequest = {
+  type: "malformed-request";
+  error: string;
+  call: {
+    original: {
+      name: string;
+      arguments: any;
+    };
+  };
   toolCallId: string;
 };
 
@@ -30,7 +42,7 @@ export type AssistantMessage = {
     reasoningId?: string;
   };
   anthropic?: AnthropicAssistantData;
-  toolCall?: ToolCallRequest;
+  toolCalls?: Array<ToolCallRequest | MalformedRequest>;
   tokenUsage: number;
   outputTokens: number;
 };
@@ -69,17 +81,19 @@ export type ToolRejectMessage = {
 
 export type ToolErrorMessage = {
   role: "tool-error";
-  toolCallId: string;
-  toolName: string;
+  toolCall: ToolCallRequest;
   error: string;
+};
+
+export type ToolSkipMessage = {
+  role: "tool-skip";
+  toolCall: ToolCallRequest;
+  reason: string;
 };
 
 export type ToolMalformedMessage = {
   role: "tool-malformed";
-  toolCallId: string;
-  toolName?: string;
-  arguments?: string;
-  error: string;
+  malformedRequest: MalformedRequest;
 };
 
 export type FileOutdatedMessage = {
@@ -100,24 +114,26 @@ export type CompactionCheckpoint = {
   summary: string;
 };
 
-export type OutputIR = AssistantMessage | ToolMalformedMessage;
-
 export type InputIR =
   | UserMessage
   | ToolOutputMessage
+  | ToolMalformedMessage
   | FileReadMessage
   | FileMutateMethod
   | ToolRejectMessage
   | ToolErrorMessage
+  | ToolSkipMessage
   | FileOutdatedMessage
   | FileUnreadableMessage
   | CompactionCheckpoint;
 
-export type LlmIR = OutputIR | InputIR;
+export type LlmIR = AssistantMessage | InputIR;
 
 export type TrajectoryOutputIR =
-  | OutputIR
+  | AssistantMessage
+  | ToolMalformedMessage
   | ToolErrorMessage
+  | ToolSkipMessage
   | FileOutdatedMessage
   | FileUnreadableMessage
   | CompactionCheckpoint;
@@ -125,7 +141,7 @@ export type TrajectoryOutputIR =
 export type AgentResult =
   | {
       success: true;
-      output: OutputIR[];
+      output: AssistantMessage;
       curl: string;
     }
   | {

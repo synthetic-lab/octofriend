@@ -2,7 +2,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { LlmIR, ToolCallRequest, AssistantMessage } from "../ir/llm-ir.ts";
+import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
+import { ToolDef } from "../tools/common.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
@@ -13,6 +14,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
   messages: LlmIR[],
@@ -63,7 +65,7 @@ function modelMessageFromIr(
           reasoningEncryptedContent: ir.openai.encryptedReasoningContent,
         };
       }
-      const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+      const toolCalls = ir.toolCalls || [];
       return {
         role: "assistant",
         content: [
@@ -79,8 +81,8 @@ function modelMessageFromIr(
             return {
               type: "tool-call" as const,
               toolCallId: t.toolCallId,
-              toolName: t.function.name,
-              input: t.function.arguments || {},
+              toolName: t.call.original.name,
+              input: t.call.original.arguments || {},
             };
           }),
         ],
@@ -91,7 +93,7 @@ function modelMessageFromIr(
         },
       };
     }
-    const toolCalls = ir.toolCall ? [ir.toolCall] : [];
+    const toolCalls = ir.toolCalls || [];
     return {
       role: "assistant",
       content: [
@@ -100,8 +102,8 @@ function modelMessageFromIr(
           return {
             type: "tool-call" as const,
             toolCallId: t.toolCallId,
-            toolName: t.function.name,
-            input: t.function.arguments || {},
+            toolName: t.call.original.name,
+            input: t.call.original.arguments || {},
           };
         }),
       ],
@@ -155,7 +157,7 @@ function modelMessageFromIr(
       content: [
         {
           type: "tool-result" as const,
-          toolName: ir.toolCall.function.name,
+          toolName: ir.toolCall.call.original.name,
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
@@ -179,7 +181,7 @@ function modelMessageFromIr(
       content: [
         {
           type: "tool-result" as const,
-          toolName: ir.toolCall.function.name,
+          toolName: ir.toolCall.call.original.name,
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
@@ -196,7 +198,7 @@ function modelMessageFromIr(
       content: [
         {
           type: "tool-result",
-          toolName: ir.toolCall.function.name,
+          toolName: ir.toolCall.call.original.name,
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
@@ -207,17 +209,51 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "tool-error" || ir.role === "tool-malformed") {
+  if (ir.role === "tool-skip") {
     return {
       role: "tool",
       content: [
         {
           type: "tool-result",
-          toolCallId: ir.toolCallId,
-          toolName: ir.toolName || "unknown",
+          toolName: ir.toolCall.call.original.name,
+          toolCallId: ir.toolCall.toolCallId,
+          output: {
+            type: "text" as const,
+            value: irPrompts.toolSkip(ir.reason),
+          },
+        },
+      ],
+    };
+  }
+
+  if (ir.role === "tool-error") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: ir.toolCall.toolCallId,
+          toolName: ir.toolCall.call.original.name,
           output: {
             type: "text" as const,
             value: `Error: ${ir.error}`,
+          },
+        },
+      ],
+    };
+  }
+
+  if (ir.role === "tool-malformed") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: ir.malformedRequest.toolCallId,
+          toolName: ir.malformedRequest.call.original.name || "unknown",
+          output: {
+            type: "text" as const,
+            value: `Error: ${ir.malformedRequest.error}`,
           },
         },
       ],
@@ -231,7 +267,7 @@ function modelMessageFromIr(
         {
           type: "tool-result",
           toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.function.name,
+          toolName: ir.toolCall.call.original.name,
           output: {
             type: "text",
             value: ir.error,
@@ -255,7 +291,7 @@ function modelMessageFromIr(
       {
         type: "tool-result",
         toolCallId: ir.toolCall.toolCallId,
-        toolName: ir.toolCall.function.name,
+        toolName: ir.toolCall.call.original.name,
         output: {
           type: "text",
           value: ir.error,
@@ -295,6 +331,7 @@ export const runResponsesAgent: Compiler = async ({
   irs,
   onTokens,
   abortSignal,
+  transport,
   systemPrompt,
   autofixJson,
   tools,
@@ -456,42 +493,52 @@ export const runResponsesAgent: Compiler = async ({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return { success: true, output: [assistantHistoryItem], curl };
+      return { success: true, output: assistantHistoryItem, curl };
     }
 
     // Get tool calls
     const toolCalls = await result.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: [assistantHistoryItem], curl };
+      return { success: true, output: assistantHistoryItem, curl };
     }
 
-    const firstToolCall = toolCalls[0];
-    const chatToolCall = {
-      toolCallId: firstToolCall.toolCallId,
-      toolName: firstToolCall.toolName,
-      args: firstToolCall.input,
-    };
-    const parseResult = await parseTool(chatToolCall, toolDefs, autofixJson, abortSignal);
+    const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
 
-    if (parseResult.status === "error") {
-      return {
-        success: true,
-        curl,
-        output: [
-          assistantHistoryItem,
-          {
-            role: "tool-malformed",
-            error: parseResult.message,
-            toolName: firstToolCall.toolName,
-            arguments: JSON.stringify(firstToolCall.input),
-            toolCallId: firstToolCall.toolCallId,
-          },
-        ],
+    for (const toolCall of toolCalls) {
+      const chatToolCall = {
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        args: toolCall.input,
       };
+      const parseResult = await parseTool(
+        chatToolCall,
+        toolDefs,
+        autofixJson,
+        abortSignal,
+        transport,
+      );
+
+      if (parseResult.status === "error") {
+        parsedToolCalls.push({
+          type: "malformed-request",
+          error: parseResult.message,
+          call: {
+            original: {
+              name: toolCall.toolName,
+              arguments: toolCall.input,
+            },
+          },
+          toolCallId: toolCall.toolCallId,
+        });
+        continue;
+      }
+
+      parsedToolCalls.push(parseResult.tool);
     }
 
-    assistantHistoryItem.toolCall = parseResult.tool;
-    return { success: true, output: [assistantHistoryItem], curl };
+    if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
+
+    return { success: true, output: assistantHistoryItem, curl };
   } catch (e) {
     return {
       success: false,
@@ -513,9 +560,10 @@ type ParseToolResult =
 
 async function parseTool(
   toolCall: { toolCallId: string; toolName: string; args: any },
-  toolDefs: Record<string, any>,
+  toolDefs: Record<string, ToolDef<any, any, any>>,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
+  transport: Transport,
 ): Promise<ParseToolResult> {
   const name = toolCall.toolName;
   const toolDef = toolDefs[name];
@@ -558,18 +606,25 @@ Please try calling a valid tool.
   }
 
   try {
-    const parsed = toolSchema.slice({
+    const sliced = toolSchema.slice({
       name: toolCall.toolName,
       arguments: args,
     });
+    const parsed = await toolDef.parse(abortSignal, transport, sliced);
 
+    if (parsed.success) {
+      return {
+        status: "success",
+        tool: {
+          type: "tool-request",
+          call: parsed.data,
+          toolCallId: toolCall.toolCallId,
+        },
+      };
+    }
     return {
-      status: "success",
-      tool: {
-        type: "function",
-        function: parsed,
-        toolCallId: toolCall.toolCallId,
-      },
+      status: "error",
+      message: parsed.error,
     };
   } catch (e: unknown) {
     logger.error("verbose", e);

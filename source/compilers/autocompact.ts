@@ -5,6 +5,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
 import { CompactionRequestError } from "../errors.ts";
+import { Transport } from "../transports/transport-common.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
@@ -58,6 +59,7 @@ export async function generateCompactionSummary({
   autofixJson,
   handlers,
   abortSignal,
+  transport,
 }: {
   apiKey: string;
   model: ModelConfig;
@@ -68,6 +70,7 @@ export async function generateCompactionSummary({
     onAutofixJson: (done: Promise<void>) => any;
   };
   abortSignal: AbortSignal;
+  transport: Transport;
 }): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
@@ -85,6 +88,7 @@ export async function generateCompactionSummary({
     handlers,
     autofixJson,
     abortSignal,
+    transport,
     messages: summaryMessages,
   });
 
@@ -109,10 +113,7 @@ export function processCompactedHistory(
   if (!compactSummaryAgentResult.success) {
     return;
   }
-  const assistantMessage = compactSummaryAgentResult.output.find(msg => msg.role === "assistant");
-  if (!assistantMessage || assistantMessage.role !== "assistant") {
-    return;
-  }
+  const assistantMessage = compactSummaryAgentResult.output;
 
   if (assistantMessage.content) {
     return assistantMessage.content;

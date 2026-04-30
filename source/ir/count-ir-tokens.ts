@@ -17,7 +17,9 @@ function getMessageText(msg: LlmIR): string {
     case "tool-error":
       return msg.error;
     case "tool-malformed":
-      return (msg.arguments ?? "") + (msg.error ?? "");
+      return (
+        (msg.malformedRequest.call.original.arguments ?? "") + (msg.malformedRequest.error ?? "")
+      );
     case "file-outdated":
     case "file-unreadable":
       return msg.error;
@@ -25,6 +27,8 @@ function getMessageText(msg: LlmIR): string {
       return msg.summary;
     case "tool-reject":
       return "";
+    case "tool-skip":
+      return msg.reason;
   }
 }
 

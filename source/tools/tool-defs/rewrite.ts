@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool } from "../common.ts";
+import { attemptUntrackedRead, defineTool, parseOriginalFile } from "../common.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -18,17 +18,25 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool<t.GetType<typeof Schema>>(async () => ({
+const ParsedSchema = ArgumentsSchema.and(
+  t.subtype({
+    originalFileContents: t.str,
+  }),
+);
+
+export default defineTool(Schema, ParsedSchema, async () => ({
   Schema,
   ArgumentsSchema,
+  ParsedSchema,
   async validate(signal, transport, toolCall) {
     await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
     await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
     return null;
   },
+  parse: parseOriginalFile,
   async run(signal, transport, call) {
-    const { filePath } = call.arguments;
-    const edit = call.arguments;
+    const { filePath } = call.parsed.arguments;
+    const edit = call.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
     const replaced = runEdit({ edit });
     await fileTracker.write(transport, signal, filePath, replaced);
