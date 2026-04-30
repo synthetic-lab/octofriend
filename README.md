@@ -257,7 +257,7 @@ underlying error messages from APIs or tool calls, run Octo with the
 OCTO_VERBOSE=1 octofriend
 ```
 
-## Notify Finish Command
+## Desktop notifications
 
 You can configure a command to run whenever Octo finishes responding to a
 prompt or needs input like permissions. This is useful for desktop
