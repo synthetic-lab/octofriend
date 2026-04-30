@@ -37,6 +37,8 @@ export type RunArgs = {
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
   preMenuVimMode: "NORMAL" | "INSERT" | null;
+  hasNotifiedPrompt: boolean;
+  _notifyTimer: NodeJS.Timeout | null;
   modeData:
     | {
         mode: "input";
@@ -99,6 +101,8 @@ export type UiState = {
   clearNonce: number;
   lastUserPromptId: bigint | null;
   whitelist: Set<string>;
+  notifyReadyForInput: (config: Config) => void;
+  cancelNotifyReadyForInput: () => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCall: ToolCallRequest) => void;
@@ -125,6 +129,8 @@ export type UiState = {
 
 export const useAppStore = create<UiState>((set, get) => ({
   preMenuVimMode: null,
+  hasNotifiedPrompt: false,
+  _notifyTimer: null,
   modeData: {
     mode: "input" as const,
     vimMode: "INSERT" as const,
@@ -137,6 +143,28 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
   lastUserPromptId: null,
   whitelist: new Set<string>(),
+
+  notifyReadyForInput: config => {
+    const { hasNotifiedPrompt } = get();
+    // The first time Octo launches, skip notifying: no one's entered a prompt yet
+    if (!hasNotifiedPrompt) {
+      set({ hasNotifiedPrompt: true });
+      return;
+    }
+
+    const notifyTimeout = config.notifications?.notifyTimeoutMs ?? 10_000;
+    const timer = setTimeout(async () => {
+      await runNotifyCommand(config);
+    }, notifyTimeout);
+    set({ _notifyTimer: timer });
+  },
+
+  cancelNotifyReadyForInput: () => {
+    const { _notifyTimer } = get();
+    if (_notifyTimer) {
+      clearTimeout(_notifyTimer);
+    }
+  },
 
   input: async ({ config, query, transport, images }) => {
     const userMessage: UserItem = {
@@ -545,9 +573,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
         set({ modeData: { mode: "input", vimMode: "INSERT" } });
-        if (finishReason.type === "needs-response") {
-          runNotifyCommand(config).catch(() => {});
-        }
         return;
       }
 

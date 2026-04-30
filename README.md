@@ -259,22 +259,36 @@ OCTO_VERBOSE=1 octofriend
 
 ## Notify Finish Command
 
-You can configure a command to run whenever Octo finishes responding to a prompt.
-This is useful for desktop notifications, sounds, or other integrations.
+You can configure a command to run whenever Octo finishes responding to a
+prompt or needs input like permissions. This is useful for desktop
+notifications, sounds, or other integrations.
 
-This command will **not** run for tool call confirmations. It will only run when
-Octo is ready for a new prompt (eg. after responding to a prompt in unchained mode)
-
-Add a `notifyFinishCommand` to your `~/.config/octofriend/octofriend.json5`:
+Add a `notifications` block to your `~/.config/octofriend/octofriend.json5`:
 
 ```json5
-notifyFinishCommand: "notify-send Octo 'Finished responding!'",
+notifications: {
+  notifyCommand: "notify-send Octo 'Finished responding!'",
+},
 ```
 
 Or for macOS:
 
 ```json5
-notifyFinishCommand: 'osascript -e \'display notification "Octo finished!"\'',
+notifications: {
+  notifyCommand: 'osascript -e \'display notification "Octo finished!"\'',
+},
+```
+
+By default, Octo will wait 10 seconds before notifying you, and if it receives
+input during that time it'll skip the notification (so as to not spam you with
+notifications when you're actively attending to it and chatting). To change the
+wait time, set:
+
+```json5
+notification: {
+  notifyCommand: "some command",
+  notifyTimeoutMs: 20000, // Or however many milliseconds you want to wait
+},
 ```
 
 ## Opting into canary versions

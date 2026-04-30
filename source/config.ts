@@ -32,6 +32,19 @@ const MIGRATIONS: Record<number, Migration> = {
       return model;
     }),
   }),
+  2: raw => {
+    const notifyCommand = raw["notifyFinishCommand"];
+    if (notifyCommand === undefined) {
+      return raw;
+    }
+    delete raw["notifyFinishCommand"];
+    return {
+      ...raw,
+      notifications: {
+        notifyCommand,
+      },
+    };
+  },
 };
 
 function migrateConfig(raw: Record<string, any>): Record<string, any> {
@@ -130,6 +143,12 @@ const ConfigSchema = t.exact({
   skills: t.optional(
     t.exact({
       paths: t.optional(t.array(t.str)),
+    }),
+  ),
+  notifications: t.optional(
+    t.subtype({
+      notifyCommand: t.str,
+      notifyTimeoutMs: t.optional(t.num),
     }),
   ),
   notifyFinishCommand: t.optional(t.str),
