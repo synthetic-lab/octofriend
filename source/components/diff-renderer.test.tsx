@@ -33,35 +33,18 @@ describe("DiffRenderer", () => {
     expect(output).toContain("New");
   });
 
-  it("returns empty when file read throws error", () => {
-    vi.mocked(readFileSync).mockImplementation(() => {
-      throw new Error("ENOENT: no such file or directory");
-    });
-
-    const { lastFrame } = render(
-      <DiffRenderer
-        oldText=""
-        newText="function example() {\n  return 'hello';\n}"
-        filepath="/nonexistent.js"
-        fileContents={""}
-      />,
-    );
-
-    expect(lastFrame()).toBe("");
-  });
-
   it("returns empty when search string not in file content", () => {
     // This can happen if the file has been modified since the tool ran
-    vi.mocked(readFileSync).mockReturnValue("line 1\nline 2\nline 3\n");
+    const fileText = "line 1\nline 2\nline 3\n";
 
-    const oldText = "line 1\nline 2\n"; // Doesn't match the file content
+    const oldText = "line 2\nline 2\n"; // Doesn't match the file content
 
     const { lastFrame } = render(
       <DiffRenderer
         oldText={oldText}
         newText="line 1\nline 2\nline 3\n"
         filepath="/test.txt"
-        fileContents={oldText}
+        fileContents={fileText}
       />,
     );
 
