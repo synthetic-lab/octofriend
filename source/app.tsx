@@ -154,14 +154,19 @@ export default function App({
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
-  const { history, modeData, setVimMode, clearNonce } = useAppStore(
+  const { history, modeData, setVimMode, clearNonce, cancelNotifyReadyForInput } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       setVimMode: state.setVimMode,
       clearNonce: state.clearNonce,
+      cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
     })),
   );
+
+  useInput(() => {
+    cancelNotifyReadyForInput();
+  });
 
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
@@ -342,6 +347,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setVimMode,
     query,
     setQuery,
+    notifyReadyForInput,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -353,11 +359,18 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setVimMode: state.setVimMode,
       query: state.query,
       setQuery: state.setQuery,
+      notifyReadyForInput: state.notifyReadyForInput,
     })),
   );
 
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
+
+  useEffect(() => {
+    if (modeData.mode === "input") {
+      notifyReadyForInput(config);
+    }
+  }, [config, modeData.mode]);
 
   useCtrlC(() => {
     if (vimEnabled) return;
@@ -701,12 +714,13 @@ function ToolRequestRenderer({
   onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
-  const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
       isWhitelisted: state.isWhitelisted,
       addToWhitelist: state.addToWhitelist,
+      notifyReadyForInput: state.notifyReadyForInput,
     })),
   );
   const unchained = useUnchained();
@@ -833,6 +847,8 @@ function ToolRequestRenderer({
   useEffect(() => {
     if (noConfirmationNeeded) {
       runTool({ toolReq, config, transport }).then(onDone);
+    } else {
+      notifyReadyForInput(config);
     }
   }, [toolReq, noConfirmationNeeded, config, transport, onDone]);
 

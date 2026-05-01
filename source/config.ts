@@ -17,7 +17,7 @@ const KeyConfigSchema = t.dict(t.str);
 export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
 export const APP_METADATA = await readMetadata();
-export const CURRENT_CONFIG_VERSION = 1;
+export const CURRENT_CONFIG_VERSION = 2;
 
 type Migration = (raw: Record<string, any>) => Record<string, any>;
 
@@ -32,6 +32,19 @@ const MIGRATIONS: Record<number, Migration> = {
       return model;
     }),
   }),
+  2: raw => {
+    const notifyCommand = raw["notifyFinishCommand"];
+    if (notifyCommand === undefined) {
+      return raw;
+    }
+    delete raw["notifyFinishCommand"];
+    return {
+      ...raw,
+      notifications: {
+        notifyCommand,
+      },
+    };
+  },
 };
 
 function migrateConfig(raw: Record<string, any>): Record<string, any> {
@@ -132,7 +145,12 @@ const ConfigSchema = t.exact({
       paths: t.optional(t.array(t.str)),
     }),
   ),
-  notifyFinishCommand: t.optional(t.str),
+  notifications: t.optional(
+    t.subtype({
+      notifyCommand: t.str,
+      notifyTimeoutMs: t.optional(t.num),
+    }),
+  ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
@@ -146,7 +164,7 @@ const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
 
 export async function runNotifyCommand(config: Config): Promise<void> {
-  const cmd = config.notifyFinishCommand;
+  const cmd = config.notifications?.notifyCommand;
   if (!cmd || cmd.trim() === "") return;
   const shell = process.env["SHELL"] || "/bin/sh";
 
