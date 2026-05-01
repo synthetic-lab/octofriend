@@ -29,6 +29,7 @@ import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
+import grep from "./tools/tool-defs/grep.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
@@ -743,6 +744,7 @@ function ToolRequestRenderer({
       case "shell":
       case "fetch":
       case "glob":
+      case "grep":
       case "web-search":
         return `${fn.name}:*`;
     }
@@ -776,6 +778,7 @@ function ToolRequestRenderer({
       case "list":
       case "mcp":
       case "glob":
+      case "grep":
       case "web-search":
         return null;
     }
@@ -1105,6 +1108,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
       return <GlobRenderer item={item.call.parsed} />;
+    case "grep":
+      return <GrepRenderer item={item.call.parsed} />;
   }
 }
 
@@ -1119,7 +1124,21 @@ function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
     </Box>
   );
 }
-function GlobArg({ name, arg }: { name: string; arg: string | number | undefined }) {
+function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">Octo searched file contents:</Text>
+      <GlobArg name="Pattern" arg={item.arguments.search.pattern} />
+      <GlobArg name="Path" arg={item.arguments.search.path} />
+      <GlobArg name="Case insensitive" arg={item.arguments.search.caseInsensitive} />
+      <GlobArg name="Context lines" arg={item.arguments.search.context} />
+      <GlobArg name="Max results" arg={item.arguments.search.maxResults} />
+      <GlobArg name="Timeout" arg={item.arguments.search.timeout} />
+    </Box>
+  );
+}
+
+function GlobArg({ name, arg }: { name: string; arg: string | number | boolean | undefined }) {
   const color = useColor();
   if (arg == null) return null;
   return (
@@ -1319,6 +1338,8 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
   switch (fn.name) {
     case "glob":
       return <Text> local glob searches in this session.</Text>;
+    case "grep":
+      return <Text> local grep searches in this session.</Text>;
     case "shell": {
       return (
         <Text>
