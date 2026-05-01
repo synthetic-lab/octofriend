@@ -285,7 +285,7 @@ notifications when you're actively attending to it and chatting). To change the
 wait time, set:
 
 ```json5
-notification: {
+notifications: {
   notifyCommand: "some command",
   notifyTimeoutMs: 20000, // Or however many milliseconds you want to wait
 },
