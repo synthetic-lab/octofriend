@@ -29,15 +29,8 @@ import fetchTool from "./tools/tool-defs/fetch.ts";
 import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import grep from "./tools/tool-defs/grep.ts";
-=======
-import lsp from "./tools/tool-defs/lsp.ts";
->>>>>>> 24b57e7 (Add LSP tool)
-=======
 
->>>>>>> 70d781f (Separate LSP's actions into individual tools, and DRY compiler decoding)
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
@@ -76,7 +69,7 @@ import {
 } from "./hooks/use-priority-input.tsx";
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
-import { getLspActionName } from "./tools/lsp-common.ts";
+import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 
 type Props = {
   config: Config;
@@ -724,13 +717,7 @@ function ToolRequestRenderer({
   onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
-<<<<<<< HEAD
-  const toolFn = toolReq.function;
-
   const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
-=======
-  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
->>>>>>> 4ca5ad6 (Remove auto installation)
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
@@ -1139,6 +1126,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <WebSearchToolRenderer item={item.call.parsed} />;
     case "glob":
       return <GlobRenderer item={item.call.parsed} />;
+    case "grep":
+      return <GrepRenderer item={item.call.parsed} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -1148,8 +1137,6 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
       return <LspToolRenderer item={item.call.parsed} />;
-    case "grep":
-      return <GrepRenderer item={item.call.parsed} />;
   }
 }
 

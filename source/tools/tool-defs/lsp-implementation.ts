@@ -1,51 +1,55 @@
 import { t } from "structural";
-import { defineTool } from "../common.ts";
+import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import {
-  LspPositionArgumentsSchema,
   runLspPositionQuery,
   getLspExtensionsComment,
+  LineSchema,
+  CharSchema,
 } from "../lsp-common.ts";
-import { isLspGloballyDisabled, getUsableLspExtensions } from "../../lsp/detect.ts";
+import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-function createSchema(extensions: Set<string>) {
-  return t
+export default dynamicDefineTool("lsp-implementation", async function (_, transport, config) {
+  const extensions = await getUsableLspExtensions(transport.cwd, config);
+  if (extensions.size === 0) return null;
+
+  const ArgumentsSchema = t.subtype({
+    filePath: t.str.comment("Path to the file to query"),
+    line: LineSchema,
+    character: CharSchema,
+  });
+
+  const Schema = t
     .subtype({
       name: t.value("lsp-implementation"),
-      arguments: LspPositionArgumentsSchema,
+      arguments: ArgumentsSchema,
     })
     .comment(
       `Find implementation locations, jumping past interfaces and abstract classes to the code that implements them. ${getLspExtensionsComment(extensions)}`,
     );
-}
-
-export default defineTool<{
-  name: "lsp-implementation";
-  arguments: t.GetType<typeof LspPositionArgumentsSchema>;
-}>(async (_signal, transport, config) => {
-  if (isLspGloballyDisabled(config)) return null;
-
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
-  if (extensions.size === 0) return null;
-
-  const Schema = createSchema(extensions);
 
   return {
     Schema,
-    ArgumentsSchema: LspPositionArgumentsSchema,
-    validate: async () => null,
-
-    async run(abortSignal, transport, call, config, _modelOverride) {
+    ArgumentsSchema,
+    async validate() {
+      return null;
+    },
+    ...autoparse(ArgumentsSchema),
+    async run(abortSignal, _2, call) {
       return runLspPositionQuery(
         abortSignal,
         transport,
         config,
-        call.arguments,
+        call.parsed.arguments,
         "implementation",
         (client, filePath, line, character) => client.getImplementation(filePath, line, character),
         (locations, filePath, line, character) =>
           `Implementation results for ${filePath}:${line}:${character}:\n${formatLocations(locations)}`,
       );
     },
-  };
+  } satisfies ToolDef<
+    "lsp-implementation",
+    t.GetType<typeof ArgumentsSchema>,
+    t.GetType<typeof ArgumentsSchema>
+  >;
 });
