@@ -58,9 +58,13 @@ export async function findFiles(
   options: {
     cwd?: string;
     name?: string; // -name pattern (e.g. "*.js")
+    caseInsensitive?: boolean; // use -iname instead of -name
     path?: string; // -path pattern (e.g. "*/test/*")
     maxDepth?: number; // -maxdepth N
     type?: "f" | "d"; // -type f or -type d
+    excludeFilename?: string; // ! -name pattern
+    excludePath?: string; // ! -path pattern
+    maxResults?: number; // cap output count
   } = {},
 ): Promise<string[]> {
   const cwd = options.cwd || transport.cwd;
@@ -80,7 +84,8 @@ export async function findFiles(
   }
 
   if (options.name !== undefined) {
-    predicates.push(`-name ${quote([options.name])}`);
+    const nameFlag = options.caseInsensitive ? "-iname" : "-name";
+    predicates.push(`${nameFlag} ${quote([options.name])}`);
   }
 
   if (options.path !== undefined) {
@@ -89,6 +94,14 @@ export async function findFiles(
 
   if (options.type === "f" || options.type === "d") {
     predicates.push(`-type ${options.type}`);
+  }
+
+  if (options.excludeFilename !== undefined) {
+    predicates.push(`! -name ${quote([options.excludeFilename])}`);
+  }
+
+  if (options.excludePath !== undefined) {
+    predicates.push(`! -path ${quote([options.excludePath])}`);
   }
 
   // Default to -type f if no type specified
@@ -101,7 +114,7 @@ export async function findFiles(
   const output = await transport.shell(signal, findCmd, 30000);
 
   // Parse output and make paths relative to cwd
-  const results = output
+  let results = output
     .split("\n")
     .map(line => line.trim())
     .filter(line => line.length > 0)
@@ -114,6 +127,11 @@ export async function findFiles(
       }
       return fullPath;
     });
+
+  if (options.maxResults !== undefined && options.maxResults > 0) {
+    results = results.slice(0, options.maxResults);
+  }
+
   return results;
 }
 

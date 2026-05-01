@@ -10,9 +10,15 @@ const ArgumentsSchema = t.subtype({
   search: t.partial(
     t.subtype({
       name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
+      caseInsensitive: t.bool.comment(
+        "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
+      ),
       path: t.str.comment("-path pattern (e.g. */test/*)"),
       maxDepth: t.num.comment("The max depth of directories to search"),
       type: t.value("file").or(t.value("directory")),
+      excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
+      excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
+      maxResults: t.num.comment("Max number of results to return"),
     }),
   ),
 });
