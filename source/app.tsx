@@ -1133,6 +1133,7 @@ function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
       <GlobArg name="Case insensitive" arg={item.arguments.search.caseInsensitive} />
       <GlobArg name="Context lines" arg={item.arguments.search.context} />
       <GlobArg name="Max results" arg={item.arguments.search.maxResults} />
+      <GlobArg name="Timeout" arg={item.arguments.search.timeout} />
     </Box>
   );
 }

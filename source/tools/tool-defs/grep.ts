@@ -14,6 +14,7 @@ const ArgumentsSchema = t.subtype({
       caseInsensitive: t.bool.comment("Case-insensitive search"),
       context: t.num.comment("Number of context lines around each match"),
       maxResults: t.num.comment("Max number of results to return"),
+      timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
     }),
   ),
 });
@@ -49,7 +50,8 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
       args.push(quote([searchPath]));
 
       const cmd = `grep ${args.join(" ")}`;
-      const output = await transport.shell(signal, cmd, 30000);
+      const timeout = search.timeout ?? 30000;
+      const output = await transport.shell(signal, cmd, timeout);
 
       let results = output.split("\n").filter(line => line.length > 0);
 
