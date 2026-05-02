@@ -376,8 +376,8 @@ function MainMenu() {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
-    o: {
-      label: "✕ New conversation",
+    c: {
+      label: "⦿ New conversation",
       value: "clear-confirm" as const,
     },
   };
@@ -386,7 +386,7 @@ function MainMenu() {
     items = {
       ...items,
       e: {
-        label: "- Switch to Emacs mode",
+        label: "♺ Switch to Emacs mode",
         value: "vim-toggle" as const,
       },
     };
@@ -394,7 +394,7 @@ function MainMenu() {
     items = {
       ...items,
       v: {
-        label: "- Switch to Vim mode",
+        label: "♺ Switch to Vim mode",
         value: "vim-toggle" as const,
       },
     };
@@ -419,12 +419,22 @@ function MainMenu() {
     };
   }
 
+  if (config.notifications?.notifyCommand) {
+    items = {
+      ...items,
+      n: {
+        label: "🕭 Notifications",
+        value: "notifications-menu" as const,
+      },
+    };
+  }
+
   const settings = filterSettings(config);
   if (Object.values(settings).length !== 0) {
     items = {
       ...items,
       t: {
-        label: "* Settings",
+        label: "⛭ Settings",
         value: "settings-menu" as const,
       },
     };
@@ -432,10 +442,6 @@ function MainMenu() {
 
   items = {
     ...items,
-    n: {
-      label: "🔔 Notifications",
-      value: "notifications-menu" as const,
-    },
     b: {
       label: "⟵ Back to Octo",
       value: "return" as const,
@@ -546,9 +552,11 @@ function NotificationsMenu() {
 
   const alwaysNotify = config.notifications?.alwaysNotify;
   const items: Keymap<NotificationValue> = {
-    a: {
-      label: alwaysNotify ? "Stop always auto-notifying" : "Always auto-notify",
-      value: "always-notify" as const,
+    o: {
+      label: notifyOnce
+        ? "Do not notify the next time Octo needs input"
+        : "Notify the next time Octo needs input",
+      value: "notify-once" as const,
     },
     s: {
       label: sessionAutoNotify
@@ -556,11 +564,9 @@ function NotificationsMenu() {
         : "Auto-notify for the rest of this session",
       value: "session-notify" as const,
     },
-    o: {
-      label: notifyOnce
-        ? "Do not notify the next time Octo needs input"
-        : "Notify the next time Octo needs input",
-      value: "notify-once" as const,
+    a: {
+      label: alwaysNotify ? "Stop always auto-notifying" : "Always auto-notify",
+      value: "always-notify" as const,
     },
     b: {
       label: "Back",
