@@ -348,7 +348,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     setVimMode,
     query,
     setQuery,
-    notifyReadyForInput,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -360,18 +359,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setVimMode: state.setVimMode,
       query: state.query,
       setQuery: state.setQuery,
-      notifyReadyForInput: state.notifyReadyForInput,
     })),
   );
 
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
-
-  useEffect(() => {
-    if (modeData.mode === "input") {
-      notifyReadyForInput(config);
-    }
-  }, [config, modeData.mode]);
 
   useCtrlC(() => {
     if (vimEnabled) return;
