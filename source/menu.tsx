@@ -82,11 +82,10 @@ function AutofixToggle({
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
+  const { toggleMenu, notify } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
-      resetPreMenuVimMode: state.resetPreMenuVimMode,
     })),
   );
 
