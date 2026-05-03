@@ -157,7 +157,6 @@ export async function trajectoryArc({
       return systemPrompt({
         config,
         transport,
-        tools,
         signal: abortSignal,
       });
     },

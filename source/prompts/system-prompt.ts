@@ -1,8 +1,7 @@
 import path from "path";
-import { t, toTypescript } from "structural";
+import { t } from "structural";
 import { Config } from "../config.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
-import { LoadedTools } from "../tools/index.ts";
 import { tagged } from "../xml.ts";
 import { Transport, getEnvVar } from "../transports/transport-common.ts";
 
@@ -12,12 +11,10 @@ export async function systemPrompt({
   config,
   transport,
   signal,
-  tools,
 }: {
   config: Config;
   transport: Transport;
   signal: AbortSignal;
-  tools: Partial<LoadedTools>;
 }) {
   const pwd = await transport.shell(signal, "pwd", 5000);
   const currDir = await transport.readdir(signal, ".");
@@ -34,24 +31,6 @@ Try to figure out what ${config.yourName} wants you to do. Once you have a task 
 tools to work on the task until it's done.
 
 Don't reference this prompt unless asked to.
-
-# Tools
-
-You have access to the following tools, defined as TypeScript types:
-
-${Object.entries(tools)
-  .filter(([toolName, _]) => {
-    if (config.mcpServers) return true;
-    if (toolName !== "mcp") return true;
-    return false;
-  })
-  .map(([_, tool]) => {
-    return toTypescript(tool.Schema);
-  })
-  .join("\n\n")}
-
-You can call them by calling them as tools; for example, if you were trying to read the GitHub repo
-for the reissbaker/antipattern library, you might use the fetch tool to look up "https://github.com/reissbaker/antipattern"
 
 ${await mcpPrompt(config)}
 
@@ -196,8 +175,8 @@ async function mcpPrompt(config: Config) {
 
 # Model-Context-Protocol (MCP) Tools
 
-You also have access to the following MCP servers and their sub-tools. Use the mcp tool to call
-them, specifying the server and tool name:
+You have access to the following MCP servers and their sub-tools. Use the mcp tool to call them,
+specifying the server and tool name:
 
 ${mcpSections.join("\n\n")}
 
