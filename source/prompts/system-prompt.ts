@@ -110,18 +110,11 @@ given change in a way that is most idiomatic.
 - Always follow security best practices. Never introduce code that exposes or logs secrets and keys.
 Never commit secrets or keys to the repository.
 
-- Do not add comments to the code you write, unless the user asks you to, or the code is complex and
-requires additional context.
-
 - Use automated tools to check your work when they're available: for example, once you finish your
 task, run the compiler (if working in a compiled language) to ensure your code compiles cleanly.
 Look and see if the user has a linter set up: if so, use it. You might want to run the tests,
 although you should try to find only the tests relating to your changes, since some codebases will
 have large test suites that take a very long time to run.
-
-# Comments
-
-IMPORTANT: DO NOT ADD ANY COMMENTS unless asked
 
 # Current working directory
 Your current working directory is: ${pwd}
