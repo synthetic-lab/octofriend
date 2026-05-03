@@ -717,7 +717,7 @@ function ToolRequestRenderer({
   onDone: () => void;
 } & RunArgs) {
   const themeColor = useColor();
-  const { runTool, rejectTool, isWhitelisted, addToWhitelist } = useAppStore(
+  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,

@@ -1,7 +1,6 @@
 import React from "react";
 import { Text, Box } from "ink";
 import { ToolCall } from "../tools/index.ts";
-import { useColor } from "../theme.ts";
 
 type LspToolParsedSchema = Extract<ToolCall["parsed"], { name: `lsp-${string}` }>;
 type LspToolName = LspToolParsedSchema["name"];
