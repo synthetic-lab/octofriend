@@ -980,7 +980,7 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
           <Text color="red">
             {displayLog({
               verbose: `Error: ${item.error}`,
-              info: "Tool validation failed...",
+              info: "Tool failed...",
             })}
           </Text>
         </Box>
