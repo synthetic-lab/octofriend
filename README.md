@@ -259,11 +259,9 @@ OCTO_VERBOSE=1 octofriend
 
 ## Desktop notifications
 
-You can configure a command to run whenever Octo finishes responding to a
-prompt or needs input like permissions. This is useful for desktop
-notifications, sounds, or other integrations.
-
-Add a `notifications` block to your `~/.config/octofriend/octofriend.json5`:
+There's a hidden "Notifications" menu that only appears if you've configured
+desktop notifications. To configure desktop notifications, add a block like
+this to your `octofriend.json5`:
 
 ```json5
 notifications: {
@@ -279,10 +277,19 @@ notifications: {
 },
 ```
 
-By default, Octo will wait 10 seconds before notifying you, and if it receives
-input during that time it'll skip the notification (so as to not spam you with
-notifications when you're actively attending to it and chatting). To change the
-wait time, set:
+This enables the Notifications submenu in the main `ctrl-p` menu. You can set
+it to the following three settings:
+
+- Notify the next time Octo needs input
+- Notify any time Octo needs input this session
+- Always notify any time Octo needs input
+
+The last option will be persisted to your config file, if you set it.
+
+By default, for the session-level and persistent notifications, Octo will wait
+10 seconds before notifying you, and if it receives input during that time
+it'll skip the notification (so as to not spam you with notifications when
+you're actively attending to it and chatting). To change the wait time, set:
 
 ```json5
 notifications: {

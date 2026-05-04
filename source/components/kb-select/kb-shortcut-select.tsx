@@ -162,6 +162,8 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
   );
 
   useInput((input, key) => {
+    if (key.ctrl) return;
+
     if (input === "l") {
       const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
       if (hasNext) {

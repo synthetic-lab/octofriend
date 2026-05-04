@@ -149,6 +149,7 @@ const ConfigSchema = t.exact({
     t.subtype({
       notifyCommand: t.str,
       notifyTimeoutMs: t.optional(t.num),
+      alwaysNotify: t.optional(t.bool),
     }),
   ),
 });

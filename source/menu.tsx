@@ -24,7 +24,8 @@ type MenuMode =
   | "set-default-model"
   | "quit-confirm"
   | "remove-model"
-  | "clear-confirm";
+  | "clear-confirm"
+  | "notifications-menu";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -54,6 +55,7 @@ export function Menu() {
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+  if (menuMode === "notifications-menu") return <NotificationsMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -80,11 +82,10 @@ function AutofixToggle({
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
+  const { toggleMenu, notify } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
-      resetPreMenuVimMode: state.resetPreMenuVimMode,
     })),
   );
 
@@ -362,19 +363,20 @@ function MainMenu() {
     | "fix-json-toggle"
     | "diff-apply-toggle"
     | "settings-menu"
-    | "clear-confirm";
+    | "clear-confirm"
+    | "notifications-menu";
 
   let items: Keymap<Value> = {
     m: {
       label: "⤭ Switch model",
       value: "model-select" as const,
     },
-    n: {
+    a: {
       label: "+ Add a new model",
       value: "add-model" as const,
     },
-    o: {
-      label: "✕ New conversation",
+    c: {
+      label: "⦿ New conversation",
       value: "clear-confirm" as const,
     },
   };
@@ -383,7 +385,7 @@ function MainMenu() {
     items = {
       ...items,
       e: {
-        label: "- Switch to Emacs mode",
+        label: "♺ Switch to Emacs mode",
         value: "vim-toggle" as const,
       },
     };
@@ -391,7 +393,7 @@ function MainMenu() {
     items = {
       ...items,
       v: {
-        label: "- Switch to Vim mode",
+        label: "♺ Switch to Vim mode",
         value: "vim-toggle" as const,
       },
     };
@@ -416,12 +418,22 @@ function MainMenu() {
     };
   }
 
+  if (config.notifications?.notifyCommand) {
+    items = {
+      ...items,
+      n: {
+        label: "🕭 Notifications",
+        value: "notifications-menu" as const,
+      },
+    };
+  }
+
   const settings = filterSettings(config);
   if (Object.values(settings).length !== 0) {
     items = {
       ...items,
       t: {
-        label: "* Settings",
+        label: "⛭ Settings",
         value: "settings-menu" as const,
       },
     };
@@ -506,6 +518,87 @@ function SettingsMenu() {
   return (
     <KbShortcutPanel
       title="Settings Menu"
+      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      onSelect={onSelect}
+    />
+  );
+}
+
+type NotificationValue = "always-notify" | "session-notify" | "notify-once" | "back";
+
+function NotificationsMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const config = useConfig();
+  const setConfig = useSetConfig();
+  const { sessionAutoNotify, notifyOnce, toggleMenu, setNotifyOnce, setNotifySession } =
+    useAppStore(
+      useShallow(state => ({
+        sessionAutoNotify: state.sessionAutoNotify,
+        notifyOnce: state.notifyOnce,
+        toggleMenu: state.toggleMenu,
+        setNotifyOnce: state.setNotifyOnce,
+        setNotifySession: state.setNotifySession,
+      })),
+    );
+
+  useInput((_, key) => {
+    if (key.escape) setMenuMode("main-menu");
+  });
+
+  const alwaysNotify = config.notifications?.alwaysNotify;
+  const items: Keymap<NotificationValue> = {
+    o: {
+      label: notifyOnce
+        ? "Do not notify the next time Octo needs input"
+        : "Notify the next time Octo needs input",
+      value: "notify-once" as const,
+    },
+    s: {
+      label: sessionAutoNotify
+        ? "Stop auto-notifying this session"
+        : "Auto-notify for the rest of this session",
+      value: "session-notify" as const,
+    },
+    a: {
+      label: alwaysNotify ? "Stop always auto-notifying" : "Always auto-notify",
+      value: "always-notify" as const,
+    },
+    b: {
+      label: "Back",
+      value: "back" as const,
+    },
+  };
+
+  const onSelect = useCallback(
+    async (item: Item<NotificationValue>) => {
+      if (item.value === "always-notify") {
+        await setConfig({
+          ...config,
+          notifications: {
+            ...config.notifications,
+            alwaysNotify: !alwaysNotify,
+          } as Config["notifications"],
+        });
+      } else if (item.value === "session-notify") {
+        setNotifySession(!sessionAutoNotify);
+      } else if (item.value === "notify-once") {
+        setNotifyOnce(!notifyOnce);
+        setMenuMode("main-menu");
+        toggleMenu();
+      } else if (item.value === "back") {
+        setMenuMode("main-menu");
+      }
+    },
+    [config, setConfig, alwaysNotify, sessionAutoNotify, notifyOnce, toggleMenu],
+  );
+
+  return (
+    <KbShortcutPanel
+      title="Notifications"
       shortcutItems={[{ type: "key" as const, mapping: items }]}
       onSelect={onSelect}
     />

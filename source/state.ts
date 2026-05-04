@@ -36,9 +36,10 @@ export type RunArgs = {
 
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
-  preMenuVimMode: "NORMAL" | "INSERT" | null;
-  hasNotifiedPrompt: boolean;
+  preMenuModeData: UiState["modeData"] | null;
   _notifyTimer: NodeJS.Timeout | null;
+  sessionAutoNotify: boolean;
+  notifyOnce: boolean;
   modeData:
     | {
         mode: "input";
@@ -103,6 +104,8 @@ export type UiState = {
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
+  setNotifyOnce: (notifyOnce: boolean) => void;
+  setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCall: ToolCallRequest) => void;
@@ -128,9 +131,10 @@ export type UiState = {
 };
 
 export const useAppStore = create<UiState>((set, get) => ({
-  preMenuVimMode: null,
-  hasNotifiedPrompt: false,
+  preMenuModeData: null,
   _notifyTimer: null,
+  sessionAutoNotify: false,
+  notifyOnce: false,
   modeData: {
     mode: "input" as const,
     vimMode: "INSERT" as const,
@@ -144,18 +148,35 @@ export const useAppStore = create<UiState>((set, get) => ({
   lastUserPromptId: null,
   whitelist: new Set<string>(),
 
+  setNotifyOnce: notifyOnce => {
+    set({ notifyOnce });
+  },
+
+  setNotifySession: sessionAutoNotify => {
+    set({ sessionAutoNotify });
+  },
+
   notifyReadyForInput: config => {
-    const { hasNotifiedPrompt } = get();
-    // The first time Octo launches, skip notifying: no one's entered a prompt yet
-    if (!hasNotifiedPrompt) {
-      set({ hasNotifiedPrompt: true });
+    const { sessionAutoNotify, notifyOnce } = get();
+
+    if (notifyOnce) {
+      set({ notifyOnce: false });
+      // fall through to schedule notification
+    } else if (config.notifications?.alwaysNotify || sessionAutoNotify) {
+      // fall through to schedule notification
+    } else {
       return;
     }
 
-    const notifyTimeout = config.notifications?.notifyTimeoutMs ?? 10_000;
+    const notifyTimeout = (() => {
+      if (notifyOnce) return 0;
+      return config.notifications?.notifyTimeoutMs ?? 10_000;
+    })();
+
     const timer = setTimeout(async () => {
       await runNotifyCommand(config);
     }, notifyTimeout);
+
     set({ _notifyTimer: timer });
   },
 
@@ -163,6 +184,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const { _notifyTimer } = get();
     if (_notifyTimer) {
       clearTimeout(_notifyTimer);
+      set({ _notifyTimer: null });
     }
   },
 
@@ -300,29 +322,28 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (modeData.mode === "input") {
       set({
         modeData: { mode: "menu" },
-        preMenuVimMode: modeData.vimMode,
+        preMenuModeData: modeData,
       });
     } else if (modeData.mode === "menu") {
-      const { preMenuVimMode } = get();
+      const { preMenuModeData } = get();
       set({
-        modeData: { mode: "input", vimMode: preMenuVimMode ?? "INSERT" },
-        preMenuVimMode: null,
+        modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+        preMenuModeData: null,
       });
     }
   },
   closeMenu: () => {
-    const { preMenuVimMode } = get();
+    const { preMenuModeData } = get();
     set({
-      modeData: { mode: "input", vimMode: preMenuVimMode ?? "INSERT" },
-      preMenuVimMode: null,
+      modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+      preMenuModeData: null,
     });
   },
   openMenu: () => {
     const { modeData } = get();
-    const currentVimMode = modeData.mode === "input" ? modeData.vimMode : "INSERT";
     set({
       modeData: { mode: "menu" },
-      preMenuVimMode: currentVimMode,
+      preMenuModeData: modeData,
     });
   },
 
@@ -336,7 +357,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   resetPreMenuVimMode: () => {
-    set({ preMenuVimMode: "INSERT" });
+    const { preMenuModeData } = get();
+    if (preMenuModeData?.mode === "input") {
+      set({ preMenuModeData: { ...preMenuModeData, vimMode: "INSERT" } });
+    }
   },
 
   setQuery: query => {
@@ -456,7 +480,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const model = getModelFromConfig(config, get().modelOverride);
     const apiKey = await assertKeyForModel(model, config);
 
-    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(200, set);
+    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
       const finish = await trajectoryArc({
@@ -572,6 +596,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({ history: [...historyCopy] });
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
+        get().notifyReadyForInput(config);
         set({ modeData: { mode: "input", vimMode: "INSERT" } });
         return;
       }
