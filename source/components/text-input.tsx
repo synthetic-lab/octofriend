@@ -7,6 +7,7 @@ import { wrapTextWithMapping } from "../text-wrap.ts";
 import stringWidth from "string-width";
 import { ImageInfo, parseImagePaths } from "../utils/image-utils.ts";
 import { MultimodalConfig } from "../providers.ts";
+import { LINE_SPLIT_REGEX } from "../str.ts";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -54,8 +55,6 @@ function computeImageBadgeLayout(imageCount: number, isLoading: boolean, contain
 
   return { badgeRows, remainingWidthForText };
 }
-
-export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
 
 type Props = {
   readonly placeholder?: string;

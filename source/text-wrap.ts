@@ -1,5 +1,5 @@
 import stringWidth from "string-width";
-import { LINE_SPLIT_REGEX } from "./components/text-input.tsx";
+import { LINE_SPLIT_REGEX } from "./str.ts";
 
 export type WrapResult = {
   wrapped: string;

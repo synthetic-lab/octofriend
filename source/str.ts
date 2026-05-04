@@ -25,3 +25,5 @@ export function extractTrim(line: string) {
 
   return [spaceBefore, line.trim(), spaceAfter];
 }
+
+export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
