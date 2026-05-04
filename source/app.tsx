@@ -973,6 +973,18 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
       </Text>
     );
   }
+
+  if (item.type === "tool-validation-error") {
+    return (
+      <Text color="red">
+        {displayLog({
+          verbose: `Error: ${item.error}`,
+          info: "Tool call failed validation checks. Retrying...",
+        })}
+      </Text>
+    );
+  }
+
   if (item.type === "tool-failed") {
     return (
       <Box flexDirection="column">

@@ -308,7 +308,7 @@ export async function trajectoryArc({
             return abort([
               ...irs.slice(0, -1),
               {
-                role: "tool-error",
+                role: "tool-validation-error",
                 toolCall: toolCall,
                 error: e.message,
               },
@@ -357,7 +357,7 @@ export async function trajectoryArc({
       retryIrs = [
         ...retryIrs,
         {
-          role: "tool-error" as const,
+          role: "tool-validation-error" as const,
           toolCall: toolCall,
           error: e.message,
         },

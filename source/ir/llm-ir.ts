@@ -85,6 +85,12 @@ export type ToolErrorMessage = {
   error: string;
 };
 
+export type ToolValidationErrorMessage = {
+  role: "tool-validation-error";
+  toolCall: ToolCallRequest;
+  error: string;
+};
+
 export type ToolSkipMessage = {
   role: "tool-skip";
   toolCall: ToolCallRequest;
@@ -127,12 +133,12 @@ export type InputIR =
   | FileUnreadableMessage
   | CompactionCheckpoint;
 
-export type LlmIR = AssistantMessage | InputIR;
+export type LlmIR = AssistantMessage | ToolValidationErrorMessage | InputIR;
 
 export type TrajectoryOutputIR =
   | AssistantMessage
   | ToolMalformedMessage
-  | ToolErrorMessage
+  | ToolValidationErrorMessage
   | ToolSkipMessage
   | FileOutdatedMessage
   | FileUnreadableMessage

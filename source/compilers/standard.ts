@@ -249,6 +249,14 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
+  if (ir.role === "tool-validation-error") {
+    return {
+      role: "tool",
+      tool_call_id: ir.toolCall.toolCallId,
+      content: "Error from tool call validation: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+    };
+  }
+
   if (ir.role === "tool-error") {
     return {
       role: "tool",

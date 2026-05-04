@@ -4,6 +4,7 @@ import {
   ToolCallItems,
   ToolOutputItem,
   ToolMalformedItem,
+  ToolValidationErrorItem,
   ToolFailedItem,
   ToolRejectItem,
   ToolSkipItem,
@@ -22,6 +23,7 @@ type LoweredHistory =
   | ToolCallItems
   | ToolOutputItem
   | ToolMalformedItem
+  | ToolValidationErrorItem
   | ToolFailedItem
   | ToolRejectItem
   | ToolSkipItem
@@ -50,16 +52,18 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
       },
     ];
   }
-  if (output.role === "tool-error") {
+
+  if (output.role === "tool-validation-error") {
     return [
       {
-        type: "tool-failed",
+        type: "tool-validation-error",
         id: sequenceId(),
-        error: output.error,
         toolCall: output.toolCall,
+        error: output.error,
       },
     ];
   }
+
   if (output.role === "file-outdated") {
     return [
       {
@@ -195,6 +199,17 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
       {
         role: "tool-malformed",
         malformedRequest: item.malformedRequest,
+      },
+    ];
+  }
+
+  if (item.type === "tool-validation-error") {
+    return [
+      null,
+      {
+        role: "tool-validation-error",
+        toolCall: item.toolCall,
+        error: item.error,
       },
     ];
   }
