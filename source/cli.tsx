@@ -33,6 +33,7 @@ import { loadInputHistory } from "./input-history/index.ts";
 import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
+import { shutdownLspClients } from "./lsp/client.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -169,6 +170,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
       }
     }
   } finally {
+    await shutdownLspClients();
     await shutdownMcpClients();
   }
 }
