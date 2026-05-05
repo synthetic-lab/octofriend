@@ -22,6 +22,13 @@ export type ToolMalformedItem = SequenceIdTagged<{
   malformedRequest: MalformedRequest;
 }>;
 
+export type ToolValidationErrorItem = SequenceIdTagged<{
+  type: "tool-validation-error";
+  error: string;
+  toolCall: ToolCallRequest;
+  aborted: boolean;
+}>;
+
 export type ToolFailedItem = SequenceIdTagged<{
   type: "tool-failed";
   error: string;
@@ -96,6 +103,7 @@ export type HistoryItem =
   | ToolOutputItem
   | ToolFailedItem
   | ToolMalformedItem
+  | ToolValidationErrorItem
   | ToolRejectItem
   | ToolSkipItem
   | FileOutdatedItem

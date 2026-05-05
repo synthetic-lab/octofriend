@@ -217,6 +217,20 @@ function modelMessageFromIr(
     };
   }
 
+  if (ir.role === "tool-validation-error") {
+    return {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: ir.toolCall.toolCallId,
+          is_error: true,
+          content: `Error: ${ir.error}`,
+        },
+      ],
+    };
+  }
+
   if (ir.role === "file-outdated") {
     return {
       role: "user",

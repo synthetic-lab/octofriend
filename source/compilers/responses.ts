@@ -260,6 +260,23 @@ function modelMessageFromIr(
     };
   }
 
+  if (ir.role === "tool-validation-error") {
+    return {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: ir.toolCall.toolCallId,
+          toolName: ir.toolCall.call.original.name,
+          output: {
+            type: "text" as const,
+            value: `Error: ${ir.error}`,
+          },
+        },
+      ],
+    };
+  }
+
   if (ir.role === "file-outdated") {
     return {
       role: "tool",

@@ -16,6 +16,8 @@ function getMessageText(msg: LlmIR): string {
       return msg.content;
     case "tool-error":
       return msg.error;
+    case "tool-validation-error":
+      return msg.error;
     case "tool-malformed":
       return (
         (msg.malformedRequest.call.original.arguments ?? "") + (msg.malformedRequest.error ?? "")
