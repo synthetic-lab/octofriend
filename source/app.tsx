@@ -55,6 +55,7 @@ import { InputHistory } from "./input-history/index.ts";
 import { MultimediaInput } from "./components/multimedia-input.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
+import { LINE_SPLIT_REGEX } from "./str.ts";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
@@ -1038,6 +1039,8 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
 
   const _: "user" = item.type;
 
+  const contentLines = item.content.split(LINE_SPLIT_REGEX);
+
   return (
     <Box flexDirection="column" marginY={1}>
       <Box flexDirection="row">
@@ -1051,7 +1054,13 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
             </Text>
           </Box>
         )}
-        <Text>{item.content}</Text>
+        <Box flexDirection="column">
+          {contentLines.map((line, i) => (
+            <Box key={i}>
+              <Text>{line}</Text>
+            </Box>
+          ))}
+        </Box>
       </Box>
     </Box>
   );
