@@ -60,6 +60,7 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
         id: sequenceId(),
         toolCall: output.toolCall,
         error: output.error,
+        aborted: !!output.aborted,
       },
     ];
   }
@@ -210,6 +211,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         role: "tool-validation-error",
         toolCall: item.toolCall,
         error: item.error,
+        aborted: item.aborted,
       },
     ];
   }

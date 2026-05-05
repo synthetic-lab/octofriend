@@ -89,6 +89,7 @@ export type ToolValidationErrorMessage = {
   role: "tool-validation-error";
   toolCall: ToolCallRequest;
   error: string;
+  aborted?: boolean;
 };
 
 export type ToolSkipMessage = {

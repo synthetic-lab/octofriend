@@ -311,6 +311,7 @@ export async function trajectoryArc({
                 role: "tool-validation-error",
                 toolCall: toolCall,
                 error: e.message,
+                aborted: true,
               },
             ]);
           }

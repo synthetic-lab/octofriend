@@ -26,6 +26,7 @@ export type ToolValidationErrorItem = SequenceIdTagged<{
   type: "tool-validation-error";
   error: string;
   toolCall: ToolCallRequest;
+  aborted: boolean;
 }>;
 
 export type ToolFailedItem = SequenceIdTagged<{

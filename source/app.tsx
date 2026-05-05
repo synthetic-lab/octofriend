@@ -975,11 +975,16 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
   }
 
   if (item.type === "tool-validation-error") {
+    const message = (() => {
+      if (item.aborted) return "Tool call aborted.";
+      return "Tool call failed validation checks. Retrying...";
+    })();
+
     return (
       <Text color="red">
         {displayLog({
           verbose: `Error: ${item.error}`,
-          info: "Tool call failed validation checks. Retrying...",
+          info: message,
         })}
       </Text>
     );
