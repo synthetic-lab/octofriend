@@ -64,11 +64,18 @@ const McpServerConfigSchema = t.exact({
 });
 
 export const LspServerConfigSchema = t.exact({
-  serverName: t.str,
   command: t.array(t.str),
   extensions: t.array(t.str),
   rootCandidates: t.array(t.str),
 });
+export type LspServerConfig = t.GetType<typeof LspServerConfigSchema>;
+
+export const LspEntrySchema = t
+  .exact({
+    disabled: t.value(true as const),
+  })
+  .or(LspServerConfigSchema);
+export type LspEntry = t.GetType<typeof LspEntrySchema>;
 
 const AuthSchema = t
   .exact({
@@ -147,8 +154,7 @@ const ConfigSchema = t.exact({
   ),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
-  // only used for disabling LSPs globally. LSP config lives in project directory under .octofriend/lsp.json5
-  lsp: t.optional(t.value(false as const).or(t.dict(t.exact({ disabled: t.optional(t.bool) })))),
+  lsp: t.optional(t.value(false as const).or(t.dict(LspEntrySchema))),
   skills: t.optional(
     t.exact({
       paths: t.optional(t.array(t.str)),

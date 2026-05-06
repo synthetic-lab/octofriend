@@ -1,15 +1,11 @@
 import path from "path";
 import { existsSync } from "fs";
-import fs from "fs/promises";
-import json5 from "json5";
 import which from "which";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
-import { Config, LspServerConfigSchema } from "../config.ts";
-import { t } from "structural";
+import { Config } from "../config.ts";
 
-// contents of lsp.json5, might not contain executable commands
-let cachedProjectLspConfig: Record<string, InstalledLspConfig> | null = null;
+let cachedCustomLspConfig: Record<string, InstalledLspConfig> | null = null;
 
 let usableLspsPerExtension: Record<string, InstalledLspConfig> | null = null;
 
@@ -25,7 +21,8 @@ export function isLspGloballyDisabled(config: Config): boolean {
 export function isLspDisabledByUser(serverName: string, config: Config): boolean {
   if (isLspGloballyDisabled(config)) return true;
   if (!config.lsp) return false;
-  return config.lsp[serverName]?.disabled === true;
+  const entry = config.lsp[serverName];
+  return entry != null && "disabled" in entry;
 }
 
 async function ensureUsableLspsPopulated(
@@ -35,11 +32,11 @@ async function ensureUsableLspsPopulated(
   if (usableLspsPerExtension != null) return usableLspsPerExtension;
 
   const tempUsableLspsPerExtension: Record<string, InstalledLspConfig> = {};
-  if (cachedProjectLspConfig == null) {
-    cachedProjectLspConfig = await loadProjectLspConfig(cwd, config);
+  if (cachedCustomLspConfig == null) {
+    cachedCustomLspConfig = await loadCustomLspConfig(config);
   }
 
-  const projectConfigServers = Object.values(cachedProjectLspConfig);
+  const customServers = Object.values(cachedCustomLspConfig);
   const recommendedServers = RecommendedLspServers.map(
     (recommendedLsp): InstalledLspConfig => ({
       serverName: recommendedLsp.serverName,
@@ -48,8 +45,8 @@ async function ensureUsableLspsPopulated(
       rootCandidates: recommendedLsp.rootCandidates ?? [],
     }),
   );
-  // Project configured servers override Octo's recommended servers
-  const lspServers = [...recommendedServers, ...projectConfigServers];
+  // Custom configured servers override Octo's recommended servers
+  const lspServers = [...recommendedServers, ...customServers];
   for (const server of lspServers) {
     if (await isLspUsableInProject(server, config)) {
       server.extensions.forEach(extension => {
@@ -62,7 +59,7 @@ async function ensureUsableLspsPopulated(
 }
 
 /**
- * Searches lsp.json5 and recommended LSP Servers for the corresponding extension.
+ * Searches configured custom LSP servers and recommended LSP Servers for the corresponding extension.
  *
  * @returns    first installed & non-disabled LSP server
  */
@@ -83,30 +80,21 @@ export async function getUsableLspExtensions(cwd: string, config: Config): Promi
   return new Set(Object.keys(usableLsps));
 }
 
-// Parses lsp.json5 and populates cachedProjectLspConfig with non-disabled LSPs
-export async function loadProjectLspConfig(
-  cwd: string,
+export async function loadCustomLspConfig(
   appConfig: Config,
 ): Promise<Record<string, InstalledLspConfig>> {
-  cachedProjectLspConfig = {};
-  if (isLspGloballyDisabled(appConfig)) {
-    return {};
+  cachedCustomLspConfig = {};
+  if (isLspGloballyDisabled(appConfig) || !appConfig.lsp) return {};
+  for (const [name, entry] of Object.entries(appConfig.lsp)) {
+    if ("disabled" in entry) continue;
+    cachedCustomLspConfig[name] = {
+      serverName: name,
+      command: entry.command,
+      extensions: entry.extensions,
+      rootCandidates: entry.rootCandidates,
+    };
   }
-  const configPath = getProjectLspConfigPath(cwd);
-  try {
-    const raw = await fs.readFile(configPath, "utf8");
-    const parsed: Record<string, InstalledLspConfig> = ProjectLspConfigSchema.slice(
-      json5.parse(raw),
-    );
-    for (const [name, config] of Object.entries(parsed)) {
-      if (!isLspDisabledByUser(name, appConfig)) {
-        cachedProjectLspConfig[name] = config;
-      }
-    }
-  } catch {
-    // TODO: warn user about malformed JSON5
-  }
-  return cachedProjectLspConfig;
+  return cachedCustomLspConfig;
 }
 
 export type LspServerResult =
@@ -160,12 +148,6 @@ export async function detectLspServerForFile(
     return { status: "found", lspConfig: installedLsp, rootPath };
   }
   return { status: "no-server" };
-}
-
-const ProjectLspConfigSchema = t.dict(LspServerConfigSchema);
-
-function getProjectLspConfigPath(cwd: string): string {
-  return path.join(cwd, ".octofriend", "lsp.json5");
 }
 
 async function isLspUsableInProject(server: InstalledLspConfig, config: Config): Promise<Boolean> {
