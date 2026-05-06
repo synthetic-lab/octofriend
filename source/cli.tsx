@@ -153,6 +153,9 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
       />,
       {
         exitOnCtrlC: false,
+        kittyKeyboard: {
+          mode: "auto",
+        },
       },
     );
 
