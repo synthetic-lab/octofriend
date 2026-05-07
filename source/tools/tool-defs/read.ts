@@ -12,8 +12,15 @@ const Schema = t
     arguments: ArgumentsSchema,
   })
   .comment(
-    "Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual inspection. Prefer this to Unix tools like `cat`",
+    "Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual inspection. Prefer this to Unix tools like `cat`. Text output is prefixed with line numbers in the form `N: content` so you can refer to exact positions; the line-number prefix is NOT part of the file and must not be included when constructing edit/search strings.",
   );
+
+function withLineNumbers(content: string): string {
+  return content
+    .split("\n")
+    .map((line, i) => `${i + 1}: ${line}`)
+    .join("\n");
+}
 
 export default defineTool(Schema, ArgumentsSchema, async () => ({
   Schema,
@@ -40,9 +47,10 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
 
     return attempt(`No such file ${filePath}`, async () => {
       const content = await fileTracker.read(transport, abortSignal, filePath);
+      const lines = content.split("\n").length;
       return {
-        content,
-        lines: content.split("\n").length,
+        content: withLineNumbers(content),
+        lines,
       };
     });
   },
