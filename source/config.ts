@@ -63,6 +63,20 @@ const McpServerConfigSchema = t.exact({
   env: t.optional(t.dict(t.str)),
 });
 
+export const LspServerConfigSchema = t.exact({
+  command: t.array(t.str),
+  extensions: t.array(t.str),
+  rootCandidates: t.array(t.str),
+});
+export type LspServerConfig = t.GetType<typeof LspServerConfigSchema>;
+
+export const LspEntrySchema = t
+  .exact({
+    disabled: t.value(true as const),
+  })
+  .or(LspServerConfigSchema);
+export type LspEntry = t.GetType<typeof LspEntrySchema>;
+
 const AuthSchema = t
   .exact({
     type: t.value("env"),
@@ -140,6 +154,7 @@ const ConfigSchema = t.exact({
   ),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
   mcpServers: t.optional(t.dict(McpServerConfigSchema)),
+  lsp: t.optional(t.value(false as const).or(t.dict(LspEntrySchema))),
   skills: t.optional(
     t.exact({
       paths: t.optional(t.array(t.str)),
@@ -323,6 +338,15 @@ export function useSetConfig() {
     await writeConfig(c, configPath);
     set(c);
   };
+}
+
+export function withServerDisabled(serverName: string, config: Config): Config {
+  const existing = config.lsp === false ? {} : (config.lsp ?? {});
+  return { ...config, lsp: { ...existing, [serverName]: { disabled: true } } };
+}
+
+export function withAllServersDisabled(config: Config): Config {
+  return { ...config, lsp: false };
 }
 
 export function mergeEnvVar(config: Config, model: Config["models"][number], apiEnvVar: string) {

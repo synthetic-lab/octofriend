@@ -30,6 +30,7 @@ import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import grep from "./tools/tool-defs/grep.ts";
+
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { ParsedToolSchemaFrom } from "./tools/common.ts";
@@ -69,6 +70,7 @@ import {
 } from "./hooks/use-priority-input.tsx";
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
+import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 
 type Props = {
   config: Config;
@@ -718,7 +720,6 @@ function ToolRequestRenderer({
     })),
   );
   const unchained = useUnchained();
-
   const whitelistKey = (() => {
     const fn = toolReq.call.parsed;
     switch (fn.name) {
@@ -739,9 +740,18 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
+      case "lsp-definition":
+      case "lsp-references":
+      case "lsp-hover":
+      case "lsp-diagnostics":
+      case "lsp-document-symbol":
+      case "lsp-implementation":
+      case "lsp-incoming-calls":
+      case "lsp-outgoing-calls":
         return `${fn.name}:*`;
     }
   })();
+
   const prompt = (() => {
     const fn = toolReq.call.parsed;
     switch (fn.name) {
@@ -773,6 +783,14 @@ function ToolRequestRenderer({
       case "glob":
       case "grep":
       case "web-search":
+      case "lsp-definition":
+      case "lsp-references":
+      case "lsp-hover":
+      case "lsp-diagnostics":
+      case "lsp-document-symbol":
+      case "lsp-implementation":
+      case "lsp-incoming-calls":
+      case "lsp-outgoing-calls":
         return null;
     }
   })();
@@ -1128,6 +1146,15 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
       return <GlobRenderer item={item.call.parsed} />;
     case "grep":
       return <GrepRenderer item={item.call.parsed} />;
+    case "lsp-definition":
+    case "lsp-references":
+    case "lsp-hover":
+    case "lsp-diagnostics":
+    case "lsp-document-symbol":
+    case "lsp-implementation":
+    case "lsp-incoming-calls":
+    case "lsp-outgoing-calls":
+      return <LspToolRenderer item={item.call.parsed} />;
   }
 }
 
@@ -1409,8 +1436,17 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
       );
     }
     case "skill": {
-      return <Text>{fn.arguments.skillName} skill executions</Text>;
+      return <Text> {fn.arguments.skillName} skill executions</Text>;
     }
+    case "lsp-definition":
+    case "lsp-references":
+    case "lsp-hover":
+    case "lsp-diagnostics":
+    case "lsp-document-symbol":
+    case "lsp-implementation":
+    case "lsp-incoming-calls":
+    case "lsp-outgoing-calls":
+      return <Text> LSP queries during this session.</Text>;
   }
 }
 
