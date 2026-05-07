@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
@@ -24,8 +24,6 @@ interface Props {
 
 export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
-  const [currentIndex, setCurrentIndex] = useState(-1);
-  const [originalInput, setOriginalInput] = useState("");
   const [suggestionState, setSuggestionState] = useState<{
     isVisible: boolean;
     triggerPosition: number;
@@ -33,46 +31,52 @@ export const InputWithHistory = React.memo((props: Props) => {
   } | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
 
+  const currentIndexRef = useRef(-1);
+  const originalInputRef = useRef("");
+
   useInput((input, key) => {
     if (suggestionState?.isVisible) {
       return;
     }
 
     if (key.upArrow) {
-      if (currentIndex === -1) {
-        setOriginalInput(props.value);
+      if (currentIndexRef.current === -1) {
+        originalInputRef.current = props.value;
       }
 
       const history = props.inputHistory.getCurrentHistory();
       if (history.length === 0) return;
 
-      const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
-      setCurrentIndex(newIndex);
+      const newIndex =
+        currentIndexRef.current === -1
+          ? history.length - 1
+          : Math.max(0, currentIndexRef.current - 1);
+      currentIndexRef.current = newIndex;
       props.onChange(history[newIndex]);
       return;
     }
 
     if (key.downArrow) {
       const history = props.inputHistory.getCurrentHistory();
-      if (currentIndex === -1 || history.length === 0) return;
+      if (currentIndexRef.current === -1 || history.length === 0) return;
 
-      if (currentIndex < history.length - 1) {
-        const newIndex = currentIndex + 1;
-        setCurrentIndex(newIndex);
+      if (currentIndexRef.current < history.length - 1) {
+        const newIndex = currentIndexRef.current + 1;
+        currentIndexRef.current = newIndex;
         props.onChange(history[newIndex]);
       } else {
         // Reset to original input
-        setCurrentIndex(-1);
-        props.onChange(originalInput);
+        currentIndexRef.current = -1;
+        props.onChange(originalInputRef.current);
       }
       return;
     }
 
     // Reset navigation state when user types anything else
     if (input || key.return || key.escape || key.backspace || key.delete) {
-      if (currentIndex !== -1) {
-        setCurrentIndex(-1);
-        setOriginalInput("");
+      if (currentIndexRef.current !== -1) {
+        currentIndexRef.current = -1;
+        originalInputRef.current = "";
       }
     }
   });
@@ -88,16 +92,16 @@ export const InputWithHistory = React.memo((props: Props) => {
       props.inputHistory.appendToInputHistory(props.value.trim());
     }
 
-    setCurrentIndex(-1);
-    setOriginalInput("");
+    currentIndexRef.current = -1;
+    originalInputRef.current = "";
     setSelectedSuggestions(new Set());
     props.onSubmit(transformedValue);
   };
 
   const handleChange = (value: string) => {
-    if (currentIndex !== -1) {
-      setCurrentIndex(-1);
-      setOriginalInput("");
+    if (currentIndexRef.current !== -1) {
+      currentIndexRef.current = -1;
+      originalInputRef.current = "";
     }
     props.onChange(value);
 
