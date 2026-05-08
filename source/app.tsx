@@ -53,6 +53,7 @@ import {
   useCtrlCPressed,
 } from "./components/exit-on-double-ctrl-c.tsx";
 import { InputHistory } from "./input-history/index.ts";
+import { SessionStore, createSession } from "./sessions/index.ts";
 import { MultimediaInput } from "./components/multimedia-input.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
@@ -81,6 +82,7 @@ type Props = {
   unchained: boolean;
   transport: Transport;
   inputHistory: InputHistory;
+  sessionStore: SessionStore;
   bootSkills: string[];
 };
 
@@ -151,6 +153,7 @@ export default function App({
   transport,
   updates,
   inputHistory,
+  sessionStore,
   bootSkills,
 }: Props) {
   const [currConfig, setCurrConfig] = useState(config);
@@ -176,6 +179,20 @@ export default function App({
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
+
+  useEffect(() => {
+    let store = sessionStore;
+    return useAppStore.subscribe((state, prev) => {
+      if (state.clearNonce !== prev.clearNonce) {
+        store = createSession(cwd);
+        if (state.history.length > 0) store.persistHistory(state.history);
+        return;
+      }
+      if (state.history !== prev.history) {
+        store.persistHistory(state.history);
+      }
+    });
+  }, [sessionStore, cwd]);
 
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {

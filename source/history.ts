@@ -117,3 +117,7 @@ let monotonicGuid = 0n;
 export function sequenceId() {
   return monotonicGuid++;
 }
+
+export function seedSequenceId(next: bigint) {
+  if (next > monotonicGuid) monotonicGuid = next;
+}

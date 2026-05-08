@@ -34,6 +34,19 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
+import {
+  SessionStore,
+  SessionResumeError,
+  createSession,
+  findLatestSession,
+  listSessions,
+  loadSession,
+  loadSessionByMetadata,
+  resolveSessionId,
+  deleteSession,
+  countMessages,
+} from "./sessions/index.ts";
+import { useAppStore } from "./state.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -48,6 +61,8 @@ const cli = new Command()
     "--connect <target>",
     "Connect to a Docker container. For example, octo --connect docker:some-container-name",
   )
+  .option("--resume <session-id>", "Resume a saved session by id (or unique prefix)")
+  .option("--continue", "Resume the most recent session for this directory")
   .action(async opts => {
     const transport = new LocalTransport();
     try {
@@ -60,6 +75,8 @@ const cli = new Command()
         config: opts.config,
         unchained: opts.unchained,
         transport,
+        resume: opts.resume,
+        continueLatest: opts.continue,
       });
     } finally {
       await transport.close();
@@ -72,6 +89,8 @@ docker
   .description("Sandbox Octo inside an already-running container")
   .option("--config <path>")
   .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+  .option("--resume <session-id>", "Resume a saved session by id (or unique prefix)")
+  .option("--continue", "Resume the most recent session for this directory")
   .argument("<target>", "The Docker container")
   .action(async (target, opts) => {
     const transport = await DockerTransport.create({ type: "container", container: target });
@@ -81,6 +100,8 @@ docker
         config: opts.config,
         unchained: opts.unchained,
         transport,
+        resume: opts.resume,
+        continueLatest: opts.continue,
       });
     } finally {
       await transport.close();
@@ -94,6 +115,8 @@ docker
   )
   .option("--config <path>")
   .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+  .option("--resume <session-id>", "Resume a saved session by id (or unique prefix)")
+  .option("--continue", "Resume the most recent session for this directory")
   .argument("[args...]", "The args to pass to `docker run`")
   .action(async (args, opts) => {
     const transport = await DockerTransport.create({
@@ -106,15 +129,64 @@ docker
         config: opts.config,
         unchained: opts.unchained,
         transport,
+        resume: opts.resume,
+        continueLatest: opts.continue,
       });
     } finally {
       await transport.close();
     }
   });
 
-async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
+function pickSession(opts: {
+  resume?: string;
+  continueLatest?: boolean;
+  cwd: string;
+}): SessionStore {
+  if (opts.resume && opts.continueLatest) {
+    console.error("--resume and --continue cannot be used together.");
+    process.exit(1);
+  }
+  if (opts.resume) {
+    try {
+      const store = loadSession(opts.resume);
+      console.log(`Resuming session ${store.id}${store.getTitle() ? `: ${store.getTitle()}` : ""}`);
+      return store;
+    } catch (e) {
+      if (e instanceof SessionResumeError) {
+        console.error(e.message);
+        process.exit(1);
+      }
+      throw e;
+    }
+  }
+  if (opts.continueLatest) {
+    const latest = findLatestSession(opts.cwd);
+    if (!latest) {
+      console.error(`No prior sessions found for ${opts.cwd}.`);
+      process.exit(1);
+    }
+    const store = loadSessionByMetadata(latest);
+    console.log(`Resuming session ${store.id}${store.getTitle() ? `: ${store.getTitle()}` : ""}`);
+    return store;
+  }
+  return createSession(opts.cwd);
+}
+
+async function runMain(opts: {
+  config?: string;
+  unchained?: boolean;
+  transport: Transport;
+  resume?: string;
+  continueLatest?: boolean;
+}) {
   try {
     let { config, configPath } = await loadConfig(opts.config);
+
+    const sessionStore = pickSession({
+      resume: opts.resume,
+      continueLatest: opts.continueLatest,
+      cwd: opts.transport.cwd,
+    });
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -140,6 +212,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
 
+    const initialHistory = sessionStore.getInitialHistory();
+    if (initialHistory.length > 0) {
+      useAppStore.setState({ history: initialHistory });
+    }
+
     const { waitUntilExit } = render(
       <App
         bootSkills={skills.map(s => s.name)}
@@ -151,6 +228,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         transport={opts.transport}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
+        sessionStore={sessionStore}
       />,
       {
         exitOnCtrlC: false,
@@ -171,6 +249,10 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         const output = count.output.toLocaleString();
         console.log(`${model}: ${input} input, ${output} output`);
       }
+    }
+
+    if (sessionStore.isPersisted()) {
+      console.log(`\nResume session with octo --resume ${sessionStore.id}`);
     }
   } finally {
     await shutdownLspClients();
@@ -206,6 +288,52 @@ cli
   .action(async () => {
     const { config } = await loadConfigWithoutReauth();
     console.log(config.models.map(m => m.nickname).join("\n"));
+  });
+
+const sessions = cli.command("sessions").description("Manage saved sessions");
+sessions
+  .command("list", { isDefault: true })
+  .description("List recent sessions for this directory")
+  .option("--all", "Show sessions from all directories")
+  .option("--limit <n>", "Maximum number of sessions to list", "50")
+  .action(opts => {
+    const limit = Math.max(1, parseInt(opts.limit ?? "50", 10));
+    const cwd = process.cwd();
+    const list = listSessions({ cwd: opts.all ? undefined : cwd, limit });
+    if (list.length === 0) {
+      const scope = opts.all ? "" : ` for ${cwd}`;
+      console.log(`No saved sessions${scope}.`);
+      return;
+    }
+    for (const s of list) {
+      const date = new Date(s.updatedAt).toISOString().replace("T", " ").slice(0, 16);
+      const messageCount = countMessages(s.id);
+      const cwdLabel = opts.all ? `  ${s.cwd}` : "";
+      const title = s.title ?? "(empty)";
+      console.log(`${s.id}  ${date}  ${messageCount} msgs${cwdLabel}  ${title}`);
+    }
+  });
+
+sessions
+  .command("delete")
+  .description("Delete a saved session by id (or unique prefix)")
+  .argument("<session-id>")
+  .action(id => {
+    try {
+      const meta = resolveSessionId(id);
+      if (!meta) {
+        console.error(`No session found for id "${id}".`);
+        process.exit(1);
+      }
+      deleteSession(meta.id);
+      console.log(`Deleted session ${meta.id}.`);
+    } catch (e) {
+      if (e instanceof SessionResumeError) {
+        console.error(e.message);
+        process.exit(1);
+      }
+      throw e;
+    }
   });
 
 const bench = cli.command("bench");
