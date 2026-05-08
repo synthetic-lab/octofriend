@@ -32,7 +32,7 @@ function QuotaRow({ label, entry }: QuotaRowProps) {
   );
 }
 
-export const MenuQuotaIndicator = React.memo(() => {
+export const MenuQuotaIndicator = () => {
   const config = useConfig();
   const model = useModel();
   const storeQuota = useAppStore(state => state.quotaData);
@@ -71,4 +71,4 @@ export const MenuQuotaIndicator = React.memo(() => {
       </Box>
     </Box>
   );
-});
+};

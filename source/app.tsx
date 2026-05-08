@@ -634,26 +634,24 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 }
 
-const ToolRequestItem = React.memo(
-  ({
-    isSelected = false,
-    label,
-    whitelistAllowDescription,
-  }: {
-    isSelected?: boolean;
-    label: string;
-    whitelistAllowDescription?: React.ReactNode;
-  }) => {
-    const themeColor = useColor();
+const ToolRequestItem = ({
+  isSelected = false,
+  label,
+  whitelistAllowDescription,
+}: {
+  isSelected?: boolean;
+  label: string;
+  whitelistAllowDescription?: React.ReactNode;
+}) => {
+  const themeColor = useColor();
 
-    return (
-      <Text color={isSelected ? themeColor : undefined}>
-        {label}
-        {whitelistAllowDescription}
-      </Text>
-    );
-  },
-);
+  return (
+    <Text color={isSelected ? themeColor : undefined}>
+      {label}
+      {whitelistAllowDescription}
+    </Text>
+  );
+};
 
 function ToolRequestsRenderer({
   toolReqs,
@@ -887,7 +885,7 @@ function ToolRequestRenderer({
   );
 }
 
-const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
+const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
   const themeColor = useColor();
   const model = useModel();
   const unchained = useUnchained();
@@ -932,17 +930,17 @@ const StaticItemRenderer = React.memo(({ item }: { item: StaticItem }) => {
   }
 
   return <MessageDisplay item={item.item} />;
-});
+};
 
-const MessageDisplay = React.memo(({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) => {
   return (
     <Box flexDirection="column" paddingRight={4}>
       <MessageDisplayInner item={item} />
     </Box>
   );
-});
+};
 
-const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseType }) => {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -1099,7 +1097,7 @@ const MessageDisplayInner = React.memo(({ item }: { item: HistoryItem | Inflight
       </Box>
     </Box>
   );
-});
+};
 
 function CompactionSummaryRenderer({ summary }: { summary: string }) {
   const color = useColor();

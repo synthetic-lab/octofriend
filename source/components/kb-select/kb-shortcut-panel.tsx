@@ -10,7 +10,7 @@ type KbPanelProps<V> = {
   children?: React.ReactNode;
 };
 
-export const MenuHeader = React.memo(({ title }: { title: string }) => {
+export const MenuHeader = ({ title }: { title: string }) => {
   return (
     <Box justifyContent="center" marginBottom={1}>
       <Box justifyContent="center" width={80}>
@@ -21,7 +21,7 @@ export const MenuHeader = React.memo(({ title }: { title: string }) => {
       </Box>
     </Box>
   );
-});
+};
 
 export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
   return (

@@ -21,7 +21,7 @@ interface Props {
   modalities?: MultimodalConfig;
 }
 
-export const MultimediaInput = React.memo((props: Props) => {
+export const MultimediaInput = (props: Props) => {
   const [attachedImages, setAttachedImages] = useState<ImageInfo[]>([]);
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
@@ -110,4 +110,4 @@ export const MultimediaInput = React.memo((props: Props) => {
       />
     </Box>
   );
-});
+};

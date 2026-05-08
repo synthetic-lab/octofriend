@@ -1,6 +1,6 @@
 import React from "react";
 import { Text } from "ink";
 
-export const Octo = React.memo(() => {
+export const Octo = () => {
   return <Text>🐙</Text>;
-});
+};

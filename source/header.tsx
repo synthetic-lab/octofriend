@@ -7,7 +7,7 @@ type HeaderProps = {
   unchained: boolean;
 };
 
-export const Header = React.memo(({ unchained }: HeaderProps) => {
+export const Header = ({ unchained }: HeaderProps) => {
   const font: figlet.Fonts = "Delta Corps Priest 1";
   const top = figlet.textSync("Octo", { font });
   const bottom = figlet.textSync("Friend", { font });
@@ -19,4 +19,4 @@ export const Header = React.memo(({ unchained }: HeaderProps) => {
       <Text>{bottom}</Text>
     </Box>
   );
-});
+};

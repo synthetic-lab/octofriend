@@ -22,7 +22,7 @@ interface Props {
   modalities?: MultimodalConfig;
 }
 
-export const InputWithHistory = React.memo((props: Props) => {
+export const InputWithHistory = (props: Props) => {
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
@@ -184,7 +184,7 @@ export const InputWithHistory = React.memo((props: Props) => {
       </Box>
     </Box>
   );
-});
+};
 
 function replaceSelectedMentions(input: string, selectedSuggestions: Set<string>): string {
   let output = input;

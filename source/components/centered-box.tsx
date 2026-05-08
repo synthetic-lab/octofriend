@@ -1,7 +1,7 @@
 import React from "react";
 import { Box } from "ink";
 
-export const CenteredBox = React.memo(({ children }: { children?: React.ReactNode }) => {
+export const CenteredBox = ({ children }: { children?: React.ReactNode }) => {
   return (
     <Box flexDirection="column" justifyContent="center" alignItems="center" height="100%">
       <Box flexDirection="column" width={80}>
@@ -9,9 +9,9 @@ export const CenteredBox = React.memo(({ children }: { children?: React.ReactNod
       </Box>
     </Box>
   );
-});
+};
 
-export const HeightlessCenteredBox = React.memo(({ children }: { children?: React.ReactNode }) => {
+export const HeightlessCenteredBox = ({ children }: { children?: React.ReactNode }) => {
   return (
     <Box flexDirection="column" justifyContent="center" alignItems="center">
       <Box flexDirection="column" width={80}>
@@ -19,4 +19,4 @@ export const HeightlessCenteredBox = React.memo(({ children }: { children?: Reac
       </Box>
     </Box>
   );
-});
+};

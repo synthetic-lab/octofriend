@@ -22,11 +22,7 @@ export const LONGEST_LOADING_STRING = (() => {
   return longest;
 })();
 
-export default React.memo(function Loading({
-  overrideStrings,
-}: {
-  overrideStrings?: Array<string>;
-}) {
+export default function Loading({ overrideStrings }: { overrideStrings?: Array<string> }) {
   const [idx, setIndex] = useState(0);
   const [dotCount, setDotCount] = useState(0);
   const themeColor = useColor();
@@ -59,4 +55,4 @@ export default React.memo(function Loading({
       <Text>{".".repeat(dotCount)}</Text>
     </Box>
   );
-});
+}
