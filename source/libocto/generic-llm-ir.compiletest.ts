@@ -1,7 +1,10 @@
 import { t } from "structural";
-import { BASE_IR_TOOL, withIR, defineAgent, LlmIR, AgentTrajectory } from "./generic-llm-ir.ts";
+import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
+import { tools, ToolBuilder } from "./tool-def.ts";
 
-const FILE_IR_TOOL = withIR<{
+const BUILDER = new ToolBuilder();
+
+const FILE_IR_TOOL = BUILDER.withIR<{
   role: "file-read";
   contents: string;
 }>();
@@ -44,47 +47,110 @@ const read = FILE_IR_TOOL.declare({
     },
   };
 });
-const list = BASE_IR_TOOL.declare({
-  name: "list",
-  ArgumentsSchema: t.subtype({
-    path: t.str,
-  }),
-}).define(async () => {
-  return {
-    run: async () => {
-      return {
-        success: false,
-        error: "idk",
-      };
-    },
-  };
-});
-
-const glob = BASE_IR_TOOL.declare({
-  name: "glob",
-  ArgumentsSchema: t.subtype({}),
-}).define(async () => ({
-  run: async () => {
+const list = tools
+  .declare({
+    name: "list",
+    ArgumentsSchema: t.subtype({
+      path: t.str,
+    }),
+  })
+  .define(async () => {
     return {
-      success: false,
-      error: "idk",
+      run: async () => {
+        return {
+          success: false,
+          error: "idk",
+        };
+      },
     };
-  },
-}));
+  });
 
-const write = BASE_IR_TOOL.declare({
-  name: "write",
-  ArgumentsSchema: t.subtype({}),
-}).define(async () => {
-  return {
+const glob = tools
+  .declare({
+    name: "glob",
+    ArgumentsSchema: t.subtype({}),
+  })
+  .define(async () => ({
     run: async () => {
       return {
         success: false,
         error: "idk",
       };
     },
-  };
-});
+  }));
+
+const write = tools
+  .declare({
+    name: "write",
+    ArgumentsSchema: t.subtype({}),
+  })
+  .define(async () => {
+    return {
+      run: async () => {
+        return {
+          success: false,
+          error: "idk",
+        };
+      },
+    };
+  });
+
+const DATA_TOOL = BUILDER.withData<{
+  prefix: string;
+}>()
+  .declare({
+    name: "data-tool",
+    ArgumentsSchema: t.subtype({}),
+  })
+  .define(async ({ data }) => {
+    const prefix: string = data.prefix;
+    // We expect an error here because withData controls the factory data shape
+    // @ts-expect-error
+    data.missing;
+
+    return {
+      run: async (_signal, _transport, _toolCall, data) => {
+        const runPrefix: string = data.prefix;
+        return {
+          success: true,
+          data: {
+            type: "output",
+            content: [{ type: "text", content: `${prefix}:${runPrefix}` }],
+          },
+        };
+      },
+    };
+  });
+
+const FILE_DATA_TOOL = BUILDER.withIR<{
+  role: "file-read";
+  contents: string;
+}>()
+  .withData<{
+    prefix: string;
+  }>()
+  .declare({
+    name: "file-data-tool",
+    ArgumentsSchema: t.subtype({}),
+  })
+  .define(async ({ data }) => {
+    const prefix: string = data.prefix;
+
+    return {
+      run: async () => {
+        return {
+          success: true,
+          data: {
+            type: "custom-ir",
+            data: {
+              role: "file-read",
+              contents: prefix,
+            },
+          },
+        };
+      },
+    };
+  });
 
 const dynamicRead = FILE_IR_TOOL.dynamicDefineTool(async () => {
   return FILE_IR_TOOL.declare({
