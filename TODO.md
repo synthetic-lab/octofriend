@@ -40,3 +40,8 @@ TODO:
 - [ ] Fix crash when model tries to load a non-existent file
 - [ ] If the terminal window is small, show diffs stacked on top of each other
       instead of side-by-side
+- [ ] Getting originalFileContents at parse-time is actually incorrect. With
+      parallel tool calls, there may be intermediate file writes that haven't
+      applied yet. The original file contents should probably be read at runtime
+      when the tool is doing a permissions check, and passed in as metadata to the
+      edit/rewrite tools.
