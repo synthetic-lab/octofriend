@@ -109,7 +109,7 @@ const DATA_TOOL = BUILDER.withData<{
     data.missing;
 
     return {
-      run: async (_signal, _transport, _toolCall, data) => {
+      run: async ({ data }) => {
         const runPrefix: string = data.prefix;
         return {
           success: true,

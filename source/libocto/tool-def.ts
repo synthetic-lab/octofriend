@@ -43,13 +43,7 @@ export type ToolDef<
     data: Data,
   ) => Promise<Result<null, string>>;
   run: (
-    abortSignal: AbortSignal,
-    transport: Transport,
-    t: {
-      original: Schema<Name, Arguments>;
-      parsed: Schema<Name, Parsed>;
-    },
-    data: Data,
+    args: ToolRunArgs<Data, Name, Arguments, Parsed>,
   ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
 };
 
@@ -57,6 +51,16 @@ export type ToolParseArgs<Arguments> = {
   signal: AbortSignal;
   transport: Transport;
   original: Arguments;
+};
+
+export type ToolRunArgs<Data, Name extends string, Arguments, Parsed> = {
+  signal: AbortSignal;
+  transport: Transport;
+  toolCall: {
+    original: Schema<Name, Arguments>;
+    parsed: Schema<Name, Parsed>;
+  };
+  data: Data;
 };
 
 export type ParseResult<Arguments, Parsed> = {
