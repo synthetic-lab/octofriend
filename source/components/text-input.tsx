@@ -402,7 +402,7 @@ export default function TextInput({
   const textLinesToRender = hasSharedRow ? lines.slice(1) : lines;
 
   return (
-    <Box ref={containerRef} flexGrow={1} flexDirection="column">
+    <Box ref={containerRef} flexGrow={1} flexShrink={0} flexDirection="column">
       {imageBadgeRows.map((imageBadgeItems, rowIndex) => {
         const isSharedRow = hasSharedRow && rowIndex === imageBadgeRows.length - 1;
 

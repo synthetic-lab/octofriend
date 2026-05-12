@@ -157,6 +157,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         kittyKeyboard: {
           mode: "auto",
         },
+        alternateScreen: true,
       },
     );
 

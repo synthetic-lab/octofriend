@@ -5,6 +5,8 @@ export const UNCHAINED_COLOR = "#AA0A0A";
 export const DIFF_REMOVED = "#880808";
 export const DIFF_ADDED = "#405e35";
 export const CODE_GUTTER_COLOR = "gray";
+export const WHITE = "#ffffff"; // react-ink's white isn't pure white
+export const PERMISSION_BAR_BACKGROUND = "#212121";
 
 export function color(unchained: boolean) {
   if (unchained) return UNCHAINED_COLOR;

@@ -11,33 +11,32 @@ export function useTerminalSize() {
 }
 
 export function TerminalSizeTracker({ children }: { children?: React.ReactNode }) {
-  const [size, setSize] = useState({
-    width: 80,
-    height: 20,
+  const [size, setSize] = useState(() => {
+    const width = process.stdout.columns || 80;
+    const height = process.stdout.rows || 20;
+    return { width, height };
   });
   const { stdout } = useStdout();
 
-  // Initial size measurement
   useEffect(() => {
-    const width = stdout?.columns || 80;
-    const height = stdout?.rows || 20;
+    const output = stdout ?? process.stdout;
+    const width = output.columns || 80;
+    const height = output.rows || 20;
     setSize({ width, height });
-  }, []);
+  }, [stdout]);
 
-  // Watch for resize
   useEffect(() => {
-    function handleElementSize() {
-      const width = stdout?.columns || 80;
-      const height = stdout?.rows || 20;
+    function handleResize() {
+      const output = stdout ?? process.stdout;
+      const width = output.columns || 80;
+      const height = output.rows || 20;
       setSize({ width, height });
     }
-    function handleResize() {
-      setTimeout(handleElementSize, 0);
-    }
-    process.stdout.on("resize", handleResize);
+    const output = stdout ?? process.stdout;
+    output.on("resize", handleResize);
 
     return () => {
-      process.stdout.off("resize", handleResize);
+      output.off("resize", handleResize);
     };
   }, [stdout]);
 

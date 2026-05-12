@@ -38,7 +38,7 @@ export const InputWithHistory = (props: Props) => {
       return;
     }
 
-    if (key.upArrow) {
+    if (key.shift && key.upArrow) {
       if (currentIndex === -1) {
         setOriginalInput(props.value);
       }
@@ -52,7 +52,7 @@ export const InputWithHistory = (props: Props) => {
       return;
     }
 
-    if (key.downArrow) {
+    if (key.shift && key.downArrow) {
       const history = props.inputHistory.getCurrentHistory();
       if (currentIndex === -1 || history.length === 0) return;
 
@@ -147,7 +147,7 @@ export const InputWithHistory = (props: Props) => {
   );
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexShrink={0}>
       <Box flexGrow={1} flexDirection="column-reverse" justifyContent="flex-end">
         {suggestionState?.isVisible && (
           <FileSuggestionBox

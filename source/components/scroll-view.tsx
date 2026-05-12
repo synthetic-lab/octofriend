@@ -1,74 +1,71 @@
-import { Box, DOMElement, measureElement, useStdin, Text, BoxProps } from "ink";
+import { Box, DOMElement, measureElement, Text, BoxProps, useInput } from "ink";
 import React, { useEffect, useState, useRef, useCallback, createContext } from "react";
 import { useColor } from "../theme.ts";
-
-// https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Extended-coordinates
-const MOUSE_PATTERNS = {
-  URXVT: /\x1b\[(\d+);(\d+);(\d+)M/, // 3 numbers separated by semicolons
-  SGR: /\x1b\[<(\d+);(\d+);(\d+)([Mm])/, // like URXVT but ends with m or M
-  UTF8: /\x1b\[M(.)(.)(.)/, // 3 characters
-} as const;
 
 const SCROLL_DIRECTIONS = {
   SCROLL_UP: "SCROLL_UP",
   SCROLL_DOWN: "SCROLL_DOWN",
 } as const;
+const SCROLL_LINES = 2;
 
 type ScrollDirection = (typeof SCROLL_DIRECTIONS)[keyof typeof SCROLL_DIRECTIONS];
 
-const MOUSE_BUTTONS = {
-  // https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html#mouse%20reporting escape code reference
-  SGR: {
-    [SCROLL_DIRECTIONS.SCROLL_UP]: 64,
-    [SCROLL_DIRECTIONS.SCROLL_DOWN]: 65,
-  },
-  // https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html#key%20codes 64/65 with an offset of 32
-  URXVT: {
-    [SCROLL_DIRECTIONS.SCROLL_UP]: 96,
-    [SCROLL_DIRECTIONS.SCROLL_DOWN]: 97,
-  },
-};
-
-// ASCII Escape codes reference:
-// https://manpages.ubuntu.com/manpages/jammy/man7/urxvt.7.html
-const MOUSE_TRACKING = {
-  ENABLE: "\x1b[?1000h",
-  DISABLE: "\x1b[?1000l",
+const ALTERNATE_SCROLL = {
+  ENABLE: "\x1b[?1007h",
+  DISABLE: "\x1b[?1007l",
 } as const;
 
 export interface ScrollViewProps extends React.PropsWithChildren {
   height: number;
+  onContentHeightChange?: (height: number) => void;
+  onScrollableChange?: (isScrollable: boolean) => void;
 }
 
 export const IsScrollableContext = createContext(false);
 
-export function ScrollView({ height, children }: ScrollViewProps) {
+export function ScrollView({
+  height,
+  children,
+  onContentHeightChange,
+  onScrollableChange,
+}: ScrollViewProps) {
   const [innerHeight, setInnerHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const innerRef = useRef<DOMElement>(null);
-  const { stdin, setRawMode } = useStdin();
 
   const handleElementSize = useCallback(() => {
     if (!innerRef.current) return;
     const dimensions = measureElement(innerRef.current);
     setInnerHeight(dimensions.height);
+    onContentHeightChange?.(dimensions.height);
+    const nextIsScrollable = dimensions.height > height;
+    const nextViewportHeight = Math.max(1, height - (nextIsScrollable ? 1 : 0));
+    const nextMaxScroll = Math.max(0, dimensions.height - nextViewportHeight);
     if (shouldAutoScroll) {
-      const maxScroll = Math.max(0, dimensions.height - height);
-      setScrollTop(maxScroll);
+      setScrollTop(nextMaxScroll);
+    } else {
+      setScrollTop(prev => Math.min(prev, nextMaxScroll));
     }
-  }, [shouldAutoScroll]);
+  }, [height, onContentHeightChange, shouldAutoScroll]);
 
   const isScrollable = innerHeight > height;
-  const maxScroll = Math.max(0, innerHeight - height);
-  const scrollPercentage = maxScroll > 0 ? Math.round((scrollTop / maxScroll) * 100) : 0;
+  const viewportHeight = Math.max(1, height - (isScrollable ? 1 : 0));
+  const maxScroll = Math.max(0, innerHeight - viewportHeight);
+  const scrollPercentage = maxScroll > 0 ? Math.round((scrollTop / maxScroll) * 100) : 100;
+
+  useEffect(() => {
+    onScrollableChange?.(isScrollable);
+  }, [isScrollable, onScrollableChange]);
 
   const handleScroll = useCallback(
     (direction: ScrollDirection) => {
       setScrollTop(prev => {
-        const delta = direction === SCROLL_DIRECTIONS.SCROLL_UP ? -1 : 1;
+        const delta = direction === SCROLL_DIRECTIONS.SCROLL_UP ? -SCROLL_LINES : SCROLL_LINES;
         const newScrollTop = prev + delta;
-        const maxScroll = Math.max(0, innerHeight - height);
+        const isScrollable = innerHeight > height;
+        const viewportHeight = Math.max(1, height - (isScrollable ? 1 : 0));
+        const maxScroll = Math.max(0, innerHeight - viewportHeight);
         const scrollPercentage = maxScroll > 0 ? Math.round((newScrollTop / maxScroll) * 100) : 0;
         if (scrollPercentage >= 99) setShouldAutoScroll(true);
         else setShouldAutoScroll(false);
@@ -90,58 +87,21 @@ export function ScrollView({ height, children }: ScrollViewProps) {
   }, [handleElementSize]);
 
   useEffect(() => {
-    if (!stdin || !setRawMode || !isScrollable) {
-      return;
-    }
-
-    setRawMode(true);
-    process.stdout.write(MOUSE_TRACKING.ENABLE);
-
-    const handleData = (data: Buffer) => {
-      const str = data.toString();
-
-      const urxvtMatch = str.match(MOUSE_PATTERNS.URXVT);
-      if (urxvtMatch) {
-        const button = parseInt(urxvtMatch[1], 10);
-        if (button === MOUSE_BUTTONS.URXVT.SCROLL_UP) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_UP);
-        } else if (button === MOUSE_BUTTONS.URXVT.SCROLL_DOWN) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_DOWN);
-        }
-        return;
-      }
-
-      const sgrMatch = str.match(MOUSE_PATTERNS.SGR);
-      if (sgrMatch) {
-        const button = parseInt(sgrMatch[1], 10);
-        if (button === MOUSE_BUTTONS.SGR.SCROLL_UP) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_UP);
-        } else if (button === MOUSE_BUTTONS.SGR.SCROLL_DOWN) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_DOWN);
-        }
-        return;
-      }
-
-      const utf8Match = str.match(MOUSE_PATTERNS.UTF8);
-      if (utf8Match) {
-        const button = utf8Match[1].charCodeAt(0);
-        if (button === MOUSE_BUTTONS.URXVT.SCROLL_UP) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_UP);
-        } else if (button === MOUSE_BUTTONS.URXVT.SCROLL_DOWN) {
-          handleScroll(SCROLL_DIRECTIONS.SCROLL_DOWN);
-        }
-        return;
-      }
-    };
-
-    stdin.on("data", handleData);
-
+    process.stdout.write(ALTERNATE_SCROLL.ENABLE);
     return () => {
-      process.stdout.write(MOUSE_TRACKING.DISABLE);
-      stdin.off("data", handleData);
-      setRawMode(false);
+      process.stdout.write(ALTERNATE_SCROLL.DISABLE);
     };
-  }, [stdin, setRawMode, isScrollable, handleScroll]);
+  }, []);
+
+  useInput((_, key) => {
+    if (!isScrollable) return;
+    if (key.shift) return;
+    if (key.upArrow) {
+      handleScroll(SCROLL_DIRECTIONS.SCROLL_UP);
+    } else if (key.downArrow) {
+      handleScroll(SCROLL_DIRECTIONS.SCROLL_DOWN);
+    }
+  });
 
   useEffect(() => {
     const timer = setTimeout(handleElementSize, 0);
@@ -165,9 +125,9 @@ export function ScrollView({ height, children }: ScrollViewProps) {
 
   return (
     <IsScrollableContext.Provider value={isScrollable}>
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={height} flexShrink={0} overflow="hidden">
         <Box
-          height={isScrollable ? height : undefined}
+          height={viewportHeight}
           flexDirection="column"
           flexShrink={0}
           overflow="hidden"
@@ -178,7 +138,7 @@ export function ScrollView({ height, children }: ScrollViewProps) {
           </Box>
         </Box>
         {isScrollable && (
-          <Box justifyContent="flex-start">
+          <Box height={1} justifyContent="flex-start" flexShrink={0}>
             <Text color={SCROLL_UI_COLOR} dimColor>
               {scrollPercentage}% {scrollTop > 0 ? "↑" : ""}
               {scrollTop < maxScroll ? "↓" : ""}
