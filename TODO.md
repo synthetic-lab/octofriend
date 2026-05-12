@@ -44,4 +44,12 @@ TODO:
       parallel tool calls, there may be intermediate file writes that haven't
       applied yet. The original file contents should probably be read at runtime
       when the tool is doing a permissions check, and passed in as metadata to the
-      edit/rewrite tools.
+      edit/rewrite tools. Actually... I think you need something better, or
+      else your trajectory code will get complex. You probably need an async
+      `preflight` function that can return runtime data right before running a
+      tool, and running the tool requires first running the preflight. Then the
+      tool can define its own preflight data, store it, and use it. Callers get
+      notified via events of preflight data IMO. This assumes a fairly large
+      refactor where the entire agent/permissions loop is inside something else
+      and the app code simply listens to events from that (although subagents
+      require that refactor anyway).
