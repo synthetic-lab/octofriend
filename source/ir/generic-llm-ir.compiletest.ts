@@ -178,10 +178,10 @@ const successAgent = defineAgent({
 });
 
 type TestAgentIR = LlmIR<typeof successAgent>;
-type DynamicTestAgent = LlmIR<typeof dynamicSuccessAgent>;
+type DynamicTestAgentIR = LlmIR<typeof dynamicSuccessAgent>;
 
 const a: TestAgentIR = new AgentTrajectory("explore", []) as TestAgentIR;
-const dynamicA: DynamicTestAgent = {} as DynamicTestAgent;
+const dynamicA: DynamicTestAgentIR = {} as DynamicTestAgentIR;
 
 if (dynamicA.role === "tool-output") {
   if (dynamicA.toolCall.name === "dynamic-read") {
