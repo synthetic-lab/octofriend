@@ -127,6 +127,7 @@ const allTools = {
   list,
   glob,
   write,
+  dynamicRead,
 };
 const dynamicTools = {
   dynamicRead,
@@ -176,15 +177,21 @@ const successAgent = defineAgent({
   },
 });
 
-type TestAgent = LlmIR<typeof successAgent>;
+type TestAgentIR = LlmIR<typeof successAgent>;
 type DynamicTestAgent = LlmIR<typeof dynamicSuccessAgent>;
 
-const a: TestAgent = new AgentTrajectory("explore", []) as TestAgent;
+const a: TestAgentIR = new AgentTrajectory("explore", []) as TestAgentIR;
 const dynamicA: DynamicTestAgent = {} as DynamicTestAgent;
 
 if (dynamicA.role === "tool-output") {
   if (dynamicA.toolCall.name === "dynamic-read") {
     console.log(dynamicA.toolCall.parsed.originalFileContents);
+  }
+}
+
+if (a.role === "tool-output") {
+  if (a.toolCall.name === "dynamic-read") {
+    console.log(a.toolCall.parsed.originalFileContents);
   }
 }
 
