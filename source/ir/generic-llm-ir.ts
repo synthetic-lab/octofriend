@@ -37,6 +37,31 @@ export function defineAgent<A extends { tools: ToolMap<any, any>; agents: AgentD
   return a;
 }
 
+type CondHandlerMap<T extends AgentDirectory, Name extends keyof T> = {
+  [K in Name]: (self: AgentTrajectory<T, K>) => unknown;
+};
+type CondHandlerReturn<C> = C[keyof C] extends (...args: any) => infer Ret ? Ret : never;
+declare const mixedCondHandlerReturns: unique symbol;
+
+// cond(...) preserves sync handlers as sync returns and async handlers as Promise returns. A plain
+// conditional return type is not enough, because TypeScript can infer a mixed table as
+// `string | Promise<string>`. This parameter-side validation rejects handler maps where some
+// branches return PromiseLike values and others return non-Promise values.
+type CondHandlerAsyncValidation<C> =
+  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+    ? unknown
+    : Exclude<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+      ? unknown
+      : { readonly [mixedCondHandlerReturns]: never };
+
+// Once mixed sync/async tables are rejected, cond(...) can return exactly what callers expect:
+// sync tables return their handler value directly, async tables return one Promise for the awaited
+// handler value union.
+type CondReturn<C> =
+  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+    ? CondHandlerReturn<C>
+    : Promise<Awaited<CondHandlerReturn<C>>>;
+
 // An IR that defines sub-agent trajectories
 export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
   readonly role = "trajectory";
@@ -53,12 +78,15 @@ export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
     return false;
   }
 
-  async cond<RetVal>(conditions: {
-    [K in Name]: (self: AgentTrajectory<T, K>) => RetVal | Promise<RetVal>;
-  }): Promise<RetVal> {
-    for (const [k, v] of Object.entries(conditions)) {
-      //@ts-ignore
-      if (k === this.name) return Promise.resolve(v(this));
+  cond<C extends CondHandlerMap<T, Name>>(
+    conditions: C & CondHandlerAsyncValidation<C>,
+  ): CondReturn<C> {
+    for (const [k, v] of Object.entries(conditions) as Array<
+      [keyof C, (self: AgentTrajectory<T, Name>) => unknown]
+    >) {
+      if (k === this.name) {
+        return v(this) as CondReturn<C>;
+      }
     }
     throw new Error("Impossible");
   }

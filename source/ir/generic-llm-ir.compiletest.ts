@@ -189,6 +189,34 @@ if (dynamicA.role === "tool-output") {
 }
 
 if (a.role === "trajectory") {
+  const syncCondResult = a.cond({
+    explore: () => "explore",
+    review: () => "review",
+    view: () => "view",
+  });
+  const _syncCondString: string = syncCondResult;
+  // We expect an error here because all handlers are sync, so cond does not return a Promise
+  // @ts-expect-error
+  const _syncCondPromise: Promise<string> = syncCondResult;
+
+  const asyncCondResult = a.cond({
+    explore: async () => "explore",
+    review: async () => "review",
+    view: async () => "view",
+  });
+  const _asyncCondPromise: Promise<string> = asyncCondResult;
+  // We expect an error here because all handlers are async, so cond returns a Promise
+  // @ts-expect-error
+  const _asyncCondString: string = asyncCondResult;
+
+  // We expect an error here because cond handlers cannot mix sync and async returns
+  // @ts-expect-error
+  a.cond({
+    explore: async () => "explore",
+    review: () => "review",
+    view: () => "view",
+  });
+
   await a.cond({
     explore: async trajectory => {
       const first = trajectory.ir[0];
@@ -207,8 +235,8 @@ if (a.role === "trajectory") {
         });
       }
     },
-    review: _ => {},
-    view: trajectory => {
+    review: async _ => {},
+    view: async trajectory => {
       const first = trajectory.ir[0];
       first.role;
     },
