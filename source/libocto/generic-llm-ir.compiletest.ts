@@ -229,6 +229,10 @@ if (a.role === "tool-output") {
   }
 }
 
+if (a.role === "file-read") {
+  console.log(a.contents);
+}
+
 if (a.role === "trajectory") {
   const syncCondResult = a.cond({
     explore: () => "explore",
@@ -262,6 +266,10 @@ if (a.role === "trajectory") {
     explore: async trajectory => {
       const first = trajectory.ir[0];
       if (first.role === "tool-output") {
+        if (first.toolCall.name === "glob") {
+          console.log("glorb");
+        }
+
         if (first.toolCall.name === "read") {
           console.log(first.toolCall.parsed.originalFileContents);
         }
