@@ -2,7 +2,7 @@ import { t } from "structural";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { Result } from "../result.ts";
+import { Result, result } from "../result.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -55,26 +55,18 @@ export async function parseOriginalFile<
 > {
   try {
     const contents = await attemptUntrackedRead(transport, signal, original.arguments.filePath);
-    return {
-      success: true,
-      data: {
-        original,
-        parsed: {
-          name: original.name,
-          arguments: {
-            ...original.arguments,
-            originalFileContents: contents,
-          },
+    return result.ok({
+      original,
+      parsed: {
+        name: original.name,
+        arguments: {
+          ...original.arguments,
+          originalFileContents: contents,
         },
       },
-    };
+    });
   } catch (e) {
-    if (e instanceof ToolError) {
-      return {
-        success: false,
-        error: e.message,
-      };
-    }
+    if (e instanceof ToolError) return result.err(e.message);
     throw e;
   }
 }
@@ -162,7 +154,7 @@ export function autoparse<Name extends string, Args>(
   ParsedSchema: t.Type<Args>;
 } {
   return {
-    parse: async (_1, _2, input) => ({ success: true, data: { original: input, parsed: input } }),
+    parse: async (_1, _2, input) => result.ok({ original: input, parsed: input }),
     ParsedSchema: ArgSchema,
   };
 }

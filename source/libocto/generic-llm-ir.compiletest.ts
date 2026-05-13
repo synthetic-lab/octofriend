@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
 import { tools, ToolBuilder } from "./tool-def.ts";
+import { result } from "../result.ts";
 
 const BUILDER = new ToolBuilder();
 
@@ -21,29 +22,23 @@ const read = FILE_IR_TOOL.declare({
 }).define(async () => {
   return {
     parse: async ({ original }) => {
-      return {
-        success: true,
-        data: {
-          original,
-          parsed: {
-            ...original,
-            originalFileContents: "hello",
-          },
+      return result.ok({
+        original,
+        parsed: {
+          ...original,
+          originalFileContents: "hello",
         },
-      };
+      });
     },
-    validate: async () => ({ success: true, data: null }),
+    validate: async () => result.ok(null),
     run: async () => {
-      return {
-        success: true,
+      return result.ok({
+        type: "custom-ir",
         data: {
-          type: "custom-ir",
-          data: {
-            role: "file-read",
-            contents: "idk",
-          },
+          role: "file-read",
+          contents: "idk",
         },
-      };
+      });
     },
   };
 });
@@ -56,12 +51,7 @@ const list = tools
   })
   .define(async () => {
     return {
-      run: async () => {
-        return {
-          success: false,
-          error: "idk",
-        };
-      },
+      run: async () => result.err("idk"),
     };
   });
 
@@ -71,12 +61,7 @@ const glob = tools
     ArgumentsSchema: t.subtype({}),
   })
   .define(async () => ({
-    run: async () => {
-      return {
-        success: false,
-        error: "idk",
-      };
-    },
+    run: async () => result.err("idk"),
   }));
 
 const write = tools
@@ -86,12 +71,7 @@ const write = tools
   })
   .define(async () => {
     return {
-      run: async () => {
-        return {
-          success: false,
-          error: "idk",
-        };
-      },
+      run: async () => result.err("idk"),
     };
   });
 
@@ -111,13 +91,10 @@ const DATA_TOOL = BUILDER.withData<{
     return {
       run: async ({ data }) => {
         const runPrefix: string = data.prefix;
-        return {
-          success: true,
-          data: {
-            type: "output",
-            content: [{ type: "text", content: `${prefix}:${runPrefix}` }],
-          },
-        };
+        return result.ok({
+          type: "output",
+          content: [{ type: "text", content: `${prefix}:${runPrefix}` }],
+        });
       },
     };
   });
@@ -138,16 +115,13 @@ const FILE_DATA_TOOL = BUILDER.withIR<{
 
     return {
       run: async () => {
-        return {
-          success: true,
+        return result.ok({
+          type: "custom-ir",
           data: {
-            type: "custom-ir",
-            data: {
-              role: "file-read",
-              contents: prefix,
-            },
+            role: "file-read",
+            contents: prefix,
           },
-        };
+        });
       },
     };
   });
@@ -166,23 +140,17 @@ const dynamicRead = FILE_IR_TOOL.dynamicDefineTool(async () => {
   }).define(async () => {
     return {
       parse: async ({ original }) => {
-        return {
-          success: true,
-          data: {
-            original,
-            parsed: {
-              ...original,
-              originalFileContents: "hello",
-            },
+        return result.ok({
+          original,
+          parsed: {
+            ...original,
+            originalFileContents: "hello",
           },
-        };
+        });
       },
-      validate: async () => ({ success: true, data: null }),
+      validate: async () => result.ok(null),
       run: async () => {
-        return {
-          success: false,
-          error: "idk",
-        };
+        return result.err("idk");
       },
     };
   });
