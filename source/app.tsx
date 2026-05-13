@@ -1161,9 +1161,9 @@ function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
     <Box flexDirection="column">
       <Text color="gray">Octo searched for files using a glob pattern:</Text>
       <GlobArg name="CWD" arg={item.arguments.cwd} />
-      <GlobArg name="Filename pattern" arg={item.arguments.search.name} />
-      <GlobArg name="Path pattern" arg={item.arguments.search.path} />
-      <GlobArg name="Max depth" arg={item.arguments.search.maxDepth} />
+      <GlobArg name="Filename pattern" arg={item.arguments.name} />
+      <GlobArg name="Path pattern" arg={item.arguments.path} />
+      <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
     </Box>
   );
 }
@@ -1171,12 +1171,12 @@ function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
   return (
     <Box flexDirection="column">
       <Text color="gray">Octo searched file contents:</Text>
-      <GlobArg name="Pattern" arg={item.arguments.search.pattern} />
-      <GlobArg name="Path" arg={item.arguments.search.path} />
-      <GlobArg name="Case insensitive" arg={item.arguments.search.caseInsensitive} />
-      <GlobArg name="Context lines" arg={item.arguments.search.context} />
-      <GlobArg name="Max results" arg={item.arguments.search.maxResults} />
-      <GlobArg name="Timeout" arg={item.arguments.search.timeout} />
+      <GlobArg name="Pattern" arg={item.arguments.pattern} />
+      <GlobArg name="Path" arg={item.arguments.path} />
+      <GlobArg name="Case insensitive" arg={item.arguments.caseInsensitive} />
+      <GlobArg name="Context lines" arg={item.arguments.context} />
+      <GlobArg name="Max results" arg={item.arguments.maxResults} />
+      <GlobArg name="Timeout" arg={item.arguments.timeout} />
     </Box>
   );
 }

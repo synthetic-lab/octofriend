@@ -5,23 +5,21 @@ import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 
-const ArgumentsSchema = t.subtype({
-  cwd: t.optional(t.str),
-  search: t.partial(
-    t.subtype({
-      name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
-      caseInsensitive: t.bool.comment(
-        "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
-      ),
-      path: t.str.comment("-path pattern (e.g. */test/*)"),
-      maxDepth: t.num.comment("The max depth of directories to search"),
-      type: t.value("file").or(t.value("directory")),
-      excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
-      excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
-      maxResults: t.num.comment("Max number of results to return"),
-    }),
-  ),
-});
+const ArgumentsSchema = t.partial(
+  t.subtype({
+    cwd: t.str,
+    name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
+    caseInsensitive: t.bool.comment(
+      "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
+    ),
+    path: t.str.comment("-path pattern (e.g. */test/*)"),
+    maxDepth: t.num.comment("The max depth of directories to search"),
+    type: t.value("file").or(t.value("directory")),
+    excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
+    excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
+    maxResults: t.num.comment("Max number of results to return"),
+  }),
+);
 
 const Schema = t.subtype({
   name: t.value("glob"),
@@ -46,15 +44,15 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
   validate: async () => null,
   ...autoparse(ArgumentsSchema),
   async run(signal, transport, call, config, modelOverride) {
-    const { cwd, search } = call.parsed.arguments;
+    const { cwd, type, ...search } = call.parsed.arguments;
     try {
       const files = await findFiles(signal, transport, {
         cwd,
         ...search,
         type: (() => {
-          if (search.type == null) return undefined;
-          if (search.type === "file") return "f";
-          const _: "directory" = search.type;
+          if (type == null) return undefined;
+          if (type === "file") return "f";
+          const _: "directory" = type;
           return "d";
         })(),
       });
