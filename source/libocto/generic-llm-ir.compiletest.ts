@@ -348,10 +348,10 @@ const unparseableReadDeclaration = BUILDER.declare({
     originalFileContents: t.str,
   }),
 });
-// We expect an error here because parse returns the wrong format
-// @ts-expect-error
 const _unparseableRead = unparseableReadDeclaration
   .withCustomIR({ testFileIR })
+  // We expect an error here because parse returns the wrong format
+  // @ts-expect-error
   .define(async () => {
     return {
       parse: async ({ original }) => {
