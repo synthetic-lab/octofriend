@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
@@ -40,13 +40,12 @@ depend on this fact: there may be directories that it doesn't know it should ign
 terms scoped and specific.
 `);
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+export default BASE_IR.declare({
+  name: "glob",
   ArgumentsSchema,
-  validate: async () => null,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, transport, call, config, modelOverride) {
-    const { cwd, search } = call.parsed.arguments;
+}).define(async () => ({
+  async run({ signal, transport, toolCall, data }) {
+    const { cwd, search } = toolCall.parsed.arguments;
     try {
       const files = await findFiles(signal, transport, {
         cwd,
@@ -59,12 +58,12 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
         })(),
       });
       const text = files.join("\n");
-      const { context } = getModelFromConfig(config, modelOverride);
+      const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
       if (tok > context) {
         throw new ToolError(`Find content was too large: approx ${tok} tokens returned`);
       }
-      return { content: text };
+      return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
         throw new ToolError(USER_ABORTED_ERROR_MESSAGE);

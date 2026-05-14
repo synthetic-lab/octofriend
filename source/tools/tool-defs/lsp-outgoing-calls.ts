@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { BASE_IR, toolOutput } from "../common.ts";
 import { formatCallHierarchy } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,8 +9,8 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-outgoing-calls", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
   const ArgumentsSchema = t.subtype({
@@ -28,28 +28,22 @@ export default dynamicDefineTool("lsp-outgoing-calls", async function (_, transp
       `Find all callees of a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
     );
 
-  return {
-    Schema,
+  return BASE_IR.declare({
+    name: "lsp-outgoing-calls",
     ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspPositionQuery(
-        abortSignal,
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspPositionQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "outgoing calls",
         (client, filePath, line, character) => client.getOutgoingCalls(filePath, line, character),
         (calls, filePath, line, character) =>
           `Outgoing calls from symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,
       );
+      return toolOutput(output.content);
     },
-  } satisfies ToolDef<
-    "lsp-outgoing-calls",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

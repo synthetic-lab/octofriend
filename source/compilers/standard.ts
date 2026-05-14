@@ -1,14 +1,14 @@
 import { t, toJSONSchema } from "structural";
-import { Compiler } from "./compiler-interface.ts";
-import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import {
+import { contentToText } from "../libocto/content.ts";
+import type {
+  Agent,
   AssistantMessage as AssistantIR,
-  AgentResult,
-  ToolCallRequest,
-  MalformedRequest,
-} from "../ir/llm-ir.ts";
+  MalformedToolRequest,
+} from "../libocto/llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
@@ -19,6 +19,12 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
+
+type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
+type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
+  A["tools"]
+>];
+type MalformedRequest = MalformedToolRequest;
 
 type Content =
   | string
@@ -72,7 +78,7 @@ const ResponseToolCallSchema = t.subtype({
 
 type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
-const TOOL_ERROR_TAG = "tool-error";
+const TOOL_ERROR_TAG = "tool-runtime-error";
 
 function generateCurlFrom(params: {
   baseURL: string;
@@ -100,8 +106,8 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-async function toLlmMessages(
-  messages: FileOptimizedLlmIR[],
+async function toLlmMessages<A extends Agent<any, any, any>>(
+  messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<LlmMessage>> {
@@ -122,7 +128,10 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMessage {
+function llmFromIr<A extends Agent<any, any, any>>(
+  ir: CompilerIR<A>,
+  modalities?: MultimodalConfig,
+): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -139,28 +148,30 @@ function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMe
       ...reasoning,
       role: "assistant",
       content: ir.content,
-      tool_calls: toolCalls.map(tc => {
-        return {
-          type: "function" as const,
-          function: {
-            name: tc.call.original.name,
-            arguments: tc.call.original.arguments
-              ? JSON.stringify(tc.call.original.arguments)
-              : "{}",
-          },
-          id: tc.toolCallId,
-        };
-      }),
+      tool_calls: toolCalls
+        .filter((t: any) => t.type === "tool-call")
+        .map((tc: any) => {
+          return {
+            type: "function" as const,
+            function: {
+              name: tc.name,
+              arguments: tc.original ? JSON.stringify(tc.original) : "{}",
+            },
+            id: tc.toolCallId,
+          };
+        }),
     };
   }
   if (ir.role === "user") {
-    if (ir.images && ir.images.length > 0) {
+    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
+    const text = contentToText(ir.content);
+    if (images.length > 0) {
       if (modalities?.image?.enabled) {
         return {
           role: "user",
           content: [
-            { type: "text", text: ir.content },
-            ...ir.images.map(img => ({
+            { type: "text", text },
+            ...images.map((img: any) => ({
               type: "image_url" as const,
               image_url: { url: img.dataUrl },
             })),
@@ -169,29 +180,21 @@ function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMe
       }
       return {
         role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+        content: irPrompts.imageAttachmentPlaceholder(text, images),
       };
     }
-    return { role: "user", content: ir.content };
+    return { role: "user", content: text };
   }
 
   if (ir.role === "tool-output") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: ir.content,
+      content: contentToText(ir.content),
     };
   }
 
-  if (ir.role === "tool-reject") {
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolReject()),
-    };
-  }
-
-  if (ir.role === "tool-skip") {
+  if (ir.role === "tool-skip-output") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
@@ -199,7 +202,7 @@ function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMe
     };
   }
 
-  if (ir.role === "tool-malformed") {
+  if (ir.role === "tool-parse-error") {
     return {
       role: "tool",
       tool_call_id: ir.malformedRequest.toolCallId,
@@ -215,7 +218,7 @@ function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMe
     };
   }
 
-  if (ir.role === "tool-error") {
+  if (ir.role === "tool-runtime-error") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
@@ -223,15 +226,14 @@ function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMe
     };
   }
 
-  if (ir.role === "compaction-checkpoint") {
+  if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(ir.summary),
+      content: compactionCompilerExplanation(contentToText(ir.content)),
     };
   }
 
-  const _: never = ir;
-  return _;
+  throw new Error(`Unsupported IR role: ${(ir as any).role}`);
 }
 
 const PaymentErrorSchema = t.subtype({
@@ -248,10 +250,10 @@ const ERROR_SCHEMAS = [
   [RateLimitError, RateLimitErrorSchema] as const,
 ];
 
-async function handleKnownErrors(
+async function handleKnownErrors<A extends Agent<any, any, any>>(
   curl: string,
-  cb: () => Promise<AgentResult>,
-): Promise<AgentResult> {
+  cb: () => Promise<CompilerResult<A>>,
+): Promise<CompilerResult<A>> {
   try {
     return await cb();
   } catch (e) {
@@ -278,7 +280,7 @@ function parseQuotaFromHeaders(headers: Headers): QuotaData | undefined {
   }
 }
 
-export const runAgent: Compiler = async ({
+export async function runAgent<A extends Agent<any, any, any>>({
   model,
   apiKey,
   irs,
@@ -289,11 +291,12 @@ export const runAgent: Compiler = async ({
   systemPrompt,
   autofixJson,
   tools,
-}) => {
+}: CompilerParams<A>): Promise<CompilerResult<A>> {
   const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
   const toolDefs = tools || {};
-  const toolsMap = Object.entries(toolDefs).map(([name, tool]) => {
+  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+  const toolsMap = toolEntries.map(([name, tool]) => {
     const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
     // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
     // @ts-ignore
@@ -313,7 +316,7 @@ export const runAgent: Compiler = async ({
     };
   });
   const toolsParam =
-    Object.entries(toolDefs).length === 0
+    toolEntries.length === 0
       ? {}
       : {
           tools: toolsMap,
@@ -325,7 +328,7 @@ export const runAgent: Compiler = async ({
     messages,
     ...toolsParam,
   });
-  return await handleKnownErrors(curl, async (): Promise<AgentResult> => {
+  return await handleKnownErrors(curl, async (): Promise<CompilerResult<A>> => {
     const client = getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey });
 
     let reasoning: {
@@ -476,7 +479,7 @@ export const runAgent: Compiler = async ({
       }
     }
 
-    const assistantIr: AssistantIR = {
+    const assistantIr: AssistantIR<A["tools"]> = {
       role: "assistant" as const,
       content,
       reasoningContent,
@@ -495,7 +498,7 @@ export const runAgent: Compiler = async ({
       .sort(([a], [b]) => a - b)
       .map(([_, v]) => v);
 
-    const toolCalls: Array<MalformedRequest | ToolCallRequest> = [];
+    const toolCalls: Array<MalformedRequest | ToolCallRequest<A>> = [];
 
     for (const currTool of currTools) {
       const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
@@ -503,7 +506,7 @@ export const runAgent: Compiler = async ({
         const toolCallId = currTool["id"];
         if (toolCallId == null) throw new Error("Impossible tool call: no id given");
         toolCalls.push({
-          type: "malformed-request",
+          type: "malformed-tool-request",
           error: validatedTool.message,
           call: {
             original: {
@@ -516,7 +519,7 @@ export const runAgent: Compiler = async ({
         continue;
       }
 
-      const parseResult = await parseToolCall({
+      const parseResult = await parseToolCall<A["tools"]>({
         toolCall: {
           toolCallId: validatedTool.id,
           toolName: validatedTool.function.name,
@@ -530,7 +533,7 @@ export const runAgent: Compiler = async ({
 
       if (parseResult.status === "error") {
         toolCalls.push({
-          type: "malformed-request",
+          type: "malformed-tool-request",
           error: parseResult.message,
           call: {
             original: {
@@ -550,4 +553,4 @@ export const runAgent: Compiler = async ({
 
     return result.ok({ output: assistantIr, curl });
   });
-};
+}

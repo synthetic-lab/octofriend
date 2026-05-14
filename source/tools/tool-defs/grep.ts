@@ -1,6 +1,6 @@
 import { quote } from "shell-quote";
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
@@ -26,13 +26,12 @@ const Schema = t.subtype({
 Searches file contents using grep. Prefer this to shelling out to \`grep\` directly.
 `);
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+export default BASE_IR.declare({
+  name: "grep",
   ArgumentsSchema,
-  validate: async () => null,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, transport, call, config, modelOverride) {
-    const { cwd, search } = call.parsed.arguments;
+}).define(async () => ({
+  async run({ signal, transport, toolCall, data }) {
+    const { cwd, search } = toolCall.parsed.arguments;
     try {
       const args: string[] = ["-n", "-r"];
 
@@ -60,19 +59,19 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
       }
 
       const text = results.join("\n");
-      const { context } = getModelFromConfig(config, modelOverride);
+      const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
       if (tok > context) {
         throw new ToolError(`Grep content was too large: approx ${tok} tokens returned`);
       }
-      return { content: text };
+      return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
         throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
       }
       if (e instanceof CommandFailedError) {
         if (e.message.includes("exit code 1")) {
-          return { content: "" };
+          return toolOutput("");
         }
         throw new ToolError(e.message);
       }

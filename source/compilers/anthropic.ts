@@ -1,15 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
-import { Compiler } from "./compiler-interface.ts";
-import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import {
-  AssistantMessage,
-  ToolCallRequest,
-  MalformedRequest,
+import { contentToText } from "../libocto/content.ts";
+import type {
+  Agent,
   AnthropicAssistantData,
-} from "../ir/llm-ir.ts";
+  AssistantMessage,
+  MalformedToolRequest,
+} from "../libocto/llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
@@ -17,14 +18,20 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 
+type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
+type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
+  A["tools"]
+>];
+type MalformedRequest = MalformedToolRequest;
+
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
   thinking: t.str,
   signature: t.str,
 });
 
-function toModelMessage(
-  messages: FileOptimizedLlmIR[],
+function toModelMessage<A extends Agent<any, any, any>>(
+  messages: Array<CompilerIR<A>>,
   modalities?: MultimodalConfig,
 ): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
@@ -36,8 +43,8 @@ function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(
-  ir: FileOptimizedLlmIR,
+function modelMessageFromIr<A extends Agent<any, any, any>>(
+  ir: CompilerIR<A>,
   modalities?: MultimodalConfig,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
@@ -48,26 +55,30 @@ function modelMessageFromIr(
       content: [
         ...thinkingBlocks,
         { type: "text", text: ir.content || " " },
-        ...toolCalls.map(t => {
-          return {
-            type: "tool_use" as const,
-            id: t.toolCallId,
-            name: t.call.original.name,
-            input: t.call.original.arguments || {},
-          };
-        }),
+        ...toolCalls
+          .filter((t: any) => t.type === "tool-call")
+          .map((t: any) => {
+            return {
+              type: "tool_use" as const,
+              id: t.toolCallId,
+              name: t.name,
+              input: t.original || {},
+            };
+          }),
       ],
     };
   }
 
   if (ir.role === "user") {
-    if (ir.images && ir.images.length > 0) {
+    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
+    const text = contentToText(ir.content);
+    if (images.length > 0) {
       if (modalities?.image?.enabled) {
         return {
           role: "user",
           content: [
-            { type: "text", text: ir.content },
-            ...ir.images.map(img => ({
+            { type: "text", text },
+            ...images.map((img: any) => ({
               type: "image" as const,
               source: {
                 type: "base64" as const,
@@ -80,12 +91,12 @@ function modelMessageFromIr(
       }
       return {
         role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+        content: irPrompts.imageAttachmentPlaceholder(text, images),
       };
     }
     return {
       role: "user",
-      content: ir.content,
+      content: text,
     };
   }
 
@@ -96,27 +107,13 @@ function modelMessageFromIr(
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content: ir.content,
+          content: contentToText(ir.content),
         },
       ],
     };
   }
 
-  if (ir.role === "tool-reject") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: irPrompts.toolReject(),
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-skip") {
+  if (ir.role === "tool-skip-output") {
     return {
       role: "user",
       content: [
@@ -130,7 +127,7 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "tool-error") {
+  if (ir.role === "tool-runtime-error") {
     return {
       role: "user",
       content: [
@@ -144,7 +141,7 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "tool-malformed") {
+  if (ir.role === "tool-parse-error") {
     return {
       role: "user",
       content: [
@@ -172,15 +169,14 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "compaction-checkpoint") {
+  if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(ir.summary),
+      content: compactionCompilerExplanation(contentToText(ir.content)),
     };
   }
 
-  const _: never = ir;
-  return _;
+  throw new Error(`Unsupported IR role: ${(ir as any).role}`);
 }
 
 function generateCurlFrom(params: {
@@ -218,7 +214,7 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export const runAnthropicAgent: Compiler = async ({
+export async function runAnthropicAgent<A extends Agent<any, any, any>>({
   model,
   apiKey,
   irs,
@@ -228,13 +224,14 @@ export const runAnthropicAgent: Compiler = async ({
   systemPrompt,
   autofixJson,
   tools,
-}) => {
+}: CompilerParams<A>): Promise<CompilerResult<A>> {
   const messages = toModelMessage(irs, model.modalities);
   const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
   const toolDefs = tools || {};
   const toolDefinitions: Array<{ description: string; input_schema: any; name: string }> = [];
-  Object.entries(toolDefs).forEach(([name, toolDef]) => {
+  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+  toolEntries.forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
     // @ts-ignore
@@ -455,7 +452,7 @@ export const runAnthropicAgent: Compiler = async ({
       };
     }
 
-    const assistantMessage: AssistantMessage = {
+    const assistantMessage: AssistantMessage<A["tools"]> = {
       role: "assistant",
       content,
       reasoningContent,
@@ -481,7 +478,7 @@ export const runAnthropicAgent: Compiler = async ({
       .sort(([a], [b]) => a - b)
       .map(([_, v]) => v);
 
-    const toolCalls: Array<ToolCallRequest | MalformedRequest> = [];
+    const toolCalls: Array<ToolCallRequest<A> | MalformedRequest> = [];
 
     for (const inProgressTool of sortedTools) {
       const chatToolCall = {
@@ -489,7 +486,7 @@ export const runAnthropicAgent: Compiler = async ({
         toolName: inProgressTool.name,
         args: inProgressTool.partialJson,
       };
-      const parseResult = await parseToolCall({
+      const parseResult = await parseToolCall<A["tools"]>({
         toolCall: chatToolCall,
         toolDefs,
         autofixJson,
@@ -499,7 +496,7 @@ export const runAnthropicAgent: Compiler = async ({
 
       if (parseResult.status === "error") {
         toolCalls.push({
-          type: "malformed-request",
+          type: "malformed-tool-request",
           error: parseResult.message,
           toolCallId: inProgressTool.id,
           call: {
@@ -524,4 +521,4 @@ export const runAnthropicAgent: Compiler = async ({
       curl,
     });
   }
-};
+}

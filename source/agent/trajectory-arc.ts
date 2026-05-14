@@ -1,5 +1,8 @@
 import fs from "fs/promises";
-import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
+import type { OctoIR, TrajectoryOutputIR } from "../ir/octo-ir.ts";
+import { textContent } from "../libocto/content.ts";
+import type { ToolCall } from "../libocto/tool-def.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -15,6 +18,12 @@ import { loadTools } from "../tools/index.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
+type ToolCallRequest = ToolCall<typeof toolMap>;
+type FileToolCallRequest = Extract<
+  ToolCallRequest,
+  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
+>;
+
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
 type AssistantBuffer<AllowedType extends string> = {
@@ -26,7 +35,7 @@ type AssistantDelta<AllowedType extends string> = {
 };
 
 type CompactionType = {
-  checkpoint: CompactionCheckpoint;
+  checkpoint: TrajectoryOutputIR & { role: "checkpoint" };
 };
 
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
@@ -93,7 +102,7 @@ export async function trajectoryArc({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   config: Config;
   transport: Transport;
   abortSignal: AbortSignal;
@@ -198,7 +207,7 @@ export async function trajectoryArc({
   // Retry malformed tool calls
   let malformedRequests = false;
   for (const call of assistantMessage.toolCalls || []) {
-    if (call.type === "malformed-request") {
+    if (call.type === "malformed-tool-request") {
       malformedRequests = true;
       break;
     }
@@ -208,16 +217,16 @@ export async function trajectoryArc({
     // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
     // is kept in terms of input ordering vs output message ordering
     for (const call of assistantMessage.toolCalls || []) {
-      if (call.type === "tool-request") {
+      if (call.type === "tool-call") {
         irs.push({
-          role: "tool-skip",
+          role: "tool-skip-output",
           toolCall: call,
           reason: "Another tool call in this batch was malformed, so this tool call was skipped",
         });
       } else {
-        const _: "malformed-request" = call.type;
+        const _: "malformed-tool-request" = call.type;
         irs.push({
-          role: "tool-malformed",
+          role: "tool-parse-error",
           malformedRequest: call,
         });
       }
@@ -256,7 +265,7 @@ export async function trajectoryArc({
   let retryIrs: TrajectoryOutputIR[] = [];
   const wellformedToolCalls: Array<ToolCallRequest> = [];
   for (const toolCall of toolCalls) {
-    if (toolCall.type === "malformed-request") {
+    if (toolCall.type === "malformed-tool-request") {
       throw new Error(
         "Impossible tool ordering: encountered a malformed tool with no malformed response",
       );
@@ -270,18 +279,19 @@ export async function trajectoryArc({
   // handlers multiple times within a single validation step
   for (const toolCall of wellformedToolCalls) {
     try {
-      await validateTool(abortSignal, transport, tools, toolCall.call, config);
+      await validateTool(abortSignal, transport, tools, toolCall, config);
 
-      // If we got this far, the tool validated successfully. Proactively push a tool-skip IR for
+      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
       // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
       // are invalid).
       retryIrs.push({
-        role: "tool-skip",
+        role: "tool-skip-output",
         toolCall: toolCall,
         reason: SKIP_INVALID_REASON,
       });
     } catch (e) {
       if (e instanceof FileOutdatedError) {
+        if (!isFileToolCall(toolCall)) throw e;
         const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
           abortSignal,
           transport,
@@ -294,13 +304,13 @@ export async function trajectoryArc({
 
       if (!(e instanceof ToolError)) throw e;
 
-      const fn = toolCall.call.parsed;
+      const fn = toolCall;
       if (fn.name === "edit") {
         handler.autofixingDiff(null);
-        const path = fn.arguments.filePath;
+        const path = fn.parsed.filePath;
         try {
           const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
+          const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
 
           // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
           // tool call
@@ -319,33 +329,27 @@ export async function trajectoryArc({
           if (fix) {
             // Validate that the edit applies before marking as fixed
             const fixed = {
-              name: "edit",
-              arguments: {
-                ...fn.arguments,
-                ...fix,
-              },
+              ...fn.parsed,
+              ...fix,
             } as const;
 
             await validateTool(
               abortSignal,
               transport,
               tools,
-              {
-                original: fixed,
-                parsed: fixed,
-              },
+              { ...toolCall, original: fixed, parsed: fixed } as any,
               config,
             );
 
             // If we got this far, it's valid: update the state and keep going
-            fn.arguments = {
-              ...fn.arguments,
+            fn.parsed = {
+              ...fn.parsed,
               ...fix,
             };
 
             // Push a tool skip proactively
             retryIrs.push({
-              role: "tool-skip",
+              role: "tool-skip-output",
               toolCall: toolCall,
               reason: SKIP_INVALID_REASON,
             });
@@ -361,6 +365,7 @@ export async function trajectoryArc({
           role: "tool-validation-error" as const,
           toolCall: toolCall,
           error: e.message,
+          aborted: false,
         },
       ];
       continue;
@@ -370,7 +375,7 @@ export async function trajectoryArc({
   // If you have any IRs that need to be retried, retry them
   let needsRetry = false;
   for (const ir of retryIrs) {
-    if (ir.role !== "tool-skip") {
+    if (ir.role !== "tool-skip-output") {
       needsRetry = true;
       break;
     }
@@ -416,7 +421,7 @@ async function maybeAutocompact({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   abortSignal: AbortSignal;
   transport: Transport;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
@@ -455,8 +460,8 @@ async function maybeAutocompact({
 
   return {
     checkpoint: {
-      role: "compaction-checkpoint",
-      summary: checkpointSummary,
+      role: "checkpoint",
+      content: textContent(checkpointSummary),
     },
   };
 }
@@ -472,7 +477,7 @@ function abort(irs: TrajectoryOutputIR[]): Finish {
 async function tryTransformFileOutdatedError(
   abortSignal: AbortSignal,
   transport: Transport,
-  toolCall: ToolCallRequest,
+  toolCall: FileToolCallRequest,
   e: FileOutdatedError,
 ): Promise<TrajectoryOutputIR> {
   const absolutePath = await transport.resolvePath(abortSignal, e.filePath);
@@ -493,4 +498,8 @@ async function tryTransformFileOutdatedError(
       error: `File ${e.filePath} could not be read. Has it been deleted?`,
     };
   }
+}
+
+function isFileToolCall(toolCall: ToolCallRequest): toolCall is FileToolCallRequest {
+  return ["read", "edit", "create", "append", "prepend", "rewrite"].includes(toolCall.name);
 }

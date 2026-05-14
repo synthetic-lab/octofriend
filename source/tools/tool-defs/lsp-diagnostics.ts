@@ -1,11 +1,11 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { BASE_IR, toolOutput } from "../common.ts";
 import { formatDiagnostics } from "../../lsp/client.ts";
 import { runLspFileQuery, getLspExtensionsComment } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-diagnostics", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
   const ArgumentsSchema = t.subtype({
@@ -21,19 +21,16 @@ export default dynamicDefineTool("lsp-diagnostics", async function (_, transport
       `Get errors and warnings for a file from the language server. ${getLspExtensionsComment(extensions)}`,
     );
 
-  return {
-    Schema,
+  return BASE_IR.declare({
+    name: "lsp-diagnostics",
     ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspFileQuery(
-        abortSignal,
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspFileQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "diagnostics",
         async (client, filePath) => {
           const diagnosticsMinVersion = client.getDiagnosticsVersion();
@@ -42,10 +39,7 @@ export default dynamicDefineTool("lsp-diagnostics", async function (_, transport
         (diagnostics, filePath) =>
           `Diagnostics for ${filePath}:\n${formatDiagnostics(diagnostics)}`,
       );
+      return toolOutput(output.content);
     },
-  } satisfies ToolDef<
-    "lsp-diagnostics",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

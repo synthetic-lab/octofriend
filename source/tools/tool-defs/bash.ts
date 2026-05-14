@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -26,15 +26,14 @@ const Schema = t.subtype({
   Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `);
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+export default BASE_IR.declare({
+  name: "shell",
   ArgumentsSchema,
-  validate: async () => null,
-  ...autoparse(ArgumentsSchema),
-  async run(abortSignal, transport, call) {
-    const { cmd, timeout } = call.parsed.arguments;
+}).define(async () => ({
+  async run({ signal, transport, toolCall }) {
+    const { cmd, timeout } = toolCall.parsed.arguments;
     try {
-      return { content: await transport.shell(abortSignal, cmd, timeout) };
+      return toolOutput(await transport.shell(signal, cmd, timeout));
     } catch (e) {
       if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
       if (e instanceof CommandFailedError) throw new ToolError(e.message);

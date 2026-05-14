@@ -1,15 +1,19 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
-import { tools, ToolBuilder } from "./tool-def.ts";
+import { tools, ToolBuilder, ToolCall } from "./tool-def.ts";
 import { result } from "../result.ts";
 
 const BUILDER = new ToolBuilder();
 
-const FILE_IR_TOOL = BUILDER.withIR<{
-  role: "file-read";
-  contents: string;
-}>();
-const read = FILE_IR_TOOL.declare({
+function testFileIR<T extends ToolCall<any>>(toolCall: T) {
+  return (args: { contents: string }) => ({
+    role: "file-read" as const,
+    contents: args.contents,
+    toolCall,
+  });
+}
+
+const readDeclaration = BUILDER.declare({
   name: "read",
   ArgumentsSchema: t.subtype({
     path: t.str,
@@ -19,7 +23,8 @@ const read = FILE_IR_TOOL.declare({
     originalFileContents: t.str,
   }),
   subagents: ["view"],
-}).define(async () => {
+});
+const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
   return {
     parse: async ({ original }) => {
       return result.ok({
@@ -31,14 +36,8 @@ const read = FILE_IR_TOOL.declare({
       });
     },
     validate: async () => result.ok(null),
-    run: async () => {
-      return result.ok({
-        type: "custom-ir",
-        data: {
-          role: "file-read",
-          contents: "idk",
-        },
-      });
+    run: async ({ customIR }) => {
+      return customIR.testFileIR({ contents: "idk" });
     },
   };
 });
@@ -99,45 +98,35 @@ const DATA_TOOL = BUILDER.withData<{
     };
   });
 
-const FILE_DATA_TOOL = BUILDER.withIR<{
-  role: "file-read";
-  contents: string;
-}>()
-  .withData<{
-    prefix: string;
-  }>()
-  .declare({
-    name: "file-data-tool",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async ({ data }) => {
-    const prefix: string = data.prefix;
+const fileDataDeclaration = BUILDER.withData<{
+  prefix: string;
+}>().declare({
+  name: "file-data-tool",
+  ArgumentsSchema: t.subtype({}),
+});
+const FILE_DATA_TOOL = fileDataDeclaration.withCustomIR({ testFileIR }).define(async ({ data }) => {
+  const prefix: string = data.prefix;
 
-    return {
-      run: async () => {
-        return result.ok({
-          type: "custom-ir",
-          data: {
-            role: "file-read",
-            contents: prefix,
-          },
-        });
-      },
-    };
-  });
+  return {
+    run: async ({ customIR }) => {
+      return customIR.testFileIR({ contents: prefix });
+    },
+  };
+});
 
-const dynamicRead = FILE_IR_TOOL.dynamicDefineTool(async () => {
-  return FILE_IR_TOOL.declare({
-    name: "dynamic-read",
-    ArgumentsSchema: t.subtype({
-      path: t.str,
-    }),
-    ParsedSchema: t.subtype({
-      path: t.str,
-      originalFileContents: t.str,
-    }),
-    subagents: ["view"],
-  }).define(async () => {
+const dynamicReadDeclaration = BUILDER.declare({
+  name: "dynamic-read",
+  ArgumentsSchema: t.subtype({
+    path: t.str,
+  }),
+  ParsedSchema: t.subtype({
+    path: t.str,
+    originalFileContents: t.str,
+  }),
+  subagents: ["view"],
+});
+const dynamicRead = BUILDER.dynamicDefineTool(async () => {
+  return dynamicReadDeclaration.withCustomIR({ testFileIR }).define(async () => {
     return {
       parse: async ({ original }) => {
         return result.ok({
@@ -349,7 +338,7 @@ const _missingDynamicSubagent = defineAgent({
   agents: {},
 });
 
-const _unparseableRead = FILE_IR_TOOL.declare({
+const unparseableReadDeclaration = BUILDER.declare({
   name: "unparseable-read",
   ArgumentsSchema: t.subtype({
     path: t.str,
@@ -358,10 +347,12 @@ const _unparseableRead = FILE_IR_TOOL.declare({
     path: t.str,
     originalFileContents: t.str,
   }),
-}).define(
-  // We expect an error here because parse returns the wrong format
-  // @ts-expect-error
-  async () => {
+});
+// We expect an error here because parse returns the wrong format
+// @ts-expect-error
+const _unparseableRead = unparseableReadDeclaration
+  .withCustomIR({ testFileIR })
+  .define(async () => {
     return {
       parse: async ({ original }) => {
         return {
@@ -380,5 +371,4 @@ const _unparseableRead = FILE_IR_TOOL.declare({
         };
       },
     };
-  },
-);
+  });

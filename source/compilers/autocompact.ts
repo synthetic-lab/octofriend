@@ -1,4 +1,5 @@
-import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import type { AgentResult, OctoIR } from "../ir/octo-ir.ts";
+import { textContent } from "../libocto/content.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -30,18 +31,18 @@ The individual messages from earlier in this conversation are no longer availabl
 Resume your work now.`;
 };
 
-export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): number {
+export function findMostRecentCompactionCheckpointIndex(messages: OctoIR[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "compaction-checkpoint") {
+    if (messages[i].role === "checkpoint") {
       return i;
     }
   }
   return 0;
 }
 
-// checks the token length starting from a compaction-checkpoint (or the beginning if no checkpoint exists)
+// checks the token length starting from a checkpoint (or the beginning if no checkpoint exists)
 // if it exceeds AUTOCOMPACT_THRESHOLD * the model's max context window, return true
-export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]): boolean {
+export function shouldAutoCompactHistory(model: ModelConfig, messages: OctoIR[]): boolean {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
   const maxContextWindow = model.context;
@@ -51,7 +52,7 @@ export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]):
   return currentTokens >= maxAllowedTokens;
 }
 
-// only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
+// only summarize starting from the most recent checkpoint (if it exists, otherwise from the beginning)
 export async function generateCompactionSummary({
   apiKey,
   model,
@@ -63,7 +64,7 @@ export async function generateCompactionSummary({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
@@ -74,11 +75,11 @@ export async function generateCompactionSummary({
 }): Promise<string | null> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
-  const summaryMessages: LlmIR[] = [
+  const summaryMessages: OctoIR[] = [
     ...slicedMessages,
     {
       role: "user",
-      content: compactPrompt(),
+      content: textContent(compactPrompt()),
     },
   ];
 

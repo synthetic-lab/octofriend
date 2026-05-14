@@ -1,6 +1,15 @@
 import { ToolResult } from "./tools/common.ts";
-import { ToolCallRequest, AnthropicAssistantData, MalformedRequest } from "./ir/llm-ir.ts";
+import type { AnthropicAssistantData, MalformedToolRequest } from "./libocto/llm-ir.ts";
+import type { ToolCall } from "./libocto/tool-def.ts";
+import type toolMap from "./tools/tool-defs/index.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
+
+type ToolCallRequest = ToolCall<typeof toolMap>;
+type MalformedRequest = MalformedToolRequest;
+type FileToolCallRequest = Extract<
+  ToolCallRequest,
+  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
+>;
 
 export type SequenceIdTagged<T> = T & {
   id: bigint;
@@ -18,7 +27,7 @@ export type ToolOutputItem = SequenceIdTagged<{
 }>;
 
 export type ToolMalformedItem = SequenceIdTagged<{
-  type: "tool-malformed";
+  type: "tool-parse-error";
   malformedRequest: MalformedRequest;
 }>;
 
@@ -41,21 +50,21 @@ export type ToolRejectItem = SequenceIdTagged<{
 }>;
 
 export type ToolSkipItem = SequenceIdTagged<{
-  type: "tool-skip";
+  type: "tool-skip-output";
   toolCall: ToolCallRequest;
   reason: string;
 }>;
 
 export type FileOutdatedItem = SequenceIdTagged<{
   type: "file-outdated";
-  toolCall: ToolCallRequest;
+  toolCall: FileToolCallRequest;
   error: string;
 }>;
 
 export type FileUnreadableItem = SequenceIdTagged<{
   type: "file-unreadable";
   path: string;
-  toolCall: ToolCallRequest;
+  toolCall: FileToolCallRequest;
   error: string;
 }>;
 
@@ -92,7 +101,7 @@ export type Notification = SequenceIdTagged<{
 }>;
 
 export type CompactionCheckpointItem = SequenceIdTagged<{
-  type: "compaction-checkpoint";
+  type: "checkpoint";
   summary: string;
 }>;
 

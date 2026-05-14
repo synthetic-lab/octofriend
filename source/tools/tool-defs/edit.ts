@@ -1,7 +1,14 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool, parseOriginalFile } from "../common.ts";
+import {
+  ToolError,
+  attemptUntrackedRead,
+  BASE_IR,
+  fileMutateIR,
+  parseOriginalFile,
+} from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { result } from "../../result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {
@@ -33,15 +40,22 @@ export const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-export default defineTool(Schema, ParsedSchema, async () => ({
-  Schema,
+const edit = BASE_IR.declare({
+  name: "edit",
   ArgumentsSchema,
   ParsedSchema,
-  validate,
-  parse: parseOriginalFile,
-  async run(signal, transport, call) {
-    const { filePath } = call.parsed.arguments;
-    const diff = call.parsed.arguments;
+});
+
+export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.original.arguments);
+  },
+  async parse({ signal, transport, original }) {
+    return parseOriginalFile(signal, transport, original);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath } = toolCall.parsed.arguments;
+    const diff = toolCall.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
@@ -51,20 +65,19 @@ export default defineTool(Schema, ParsedSchema, async () => ({
       diff,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
-    return {
-      content: "",
-    };
+    return customIR.fileMutateIR({ content: "" });
   },
 }));
 
 async function validate(
   signal: AbortSignal,
   transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
+  args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-  const file = await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-  return validateDiff({ file, diff: toolCall.arguments, path: toolCall.arguments.filePath });
+  await fileTracker.assertCanEdit(transport, signal, args.filePath);
+  const file = await attemptUntrackedRead(transport, signal, args.filePath);
+  validateDiff({ file, diff: args, path: args.filePath });
+  return result.ok(null);
 }
 
 function runEdit({

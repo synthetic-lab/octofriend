@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
@@ -25,13 +25,12 @@ const Schema = t
   })
   .comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+export default BASE_IR.declare({
+  name: "fetch",
   ArgumentsSchema,
-  validate: async () => null,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, _, call, config, modelOverride) {
-    const { url, includeMarkup } = call.parsed.arguments;
+}).define(async () => ({
+  async run({ signal, toolCall, data }) {
+    const { url, includeMarkup } = toolCall.parsed.arguments;
     try {
       const response = await fetch(url, { signal });
       const full = await response.text();
@@ -46,12 +45,12 @@ export default defineTool(Schema, ArgumentsSchema, async () => ({
         throw new ToolError(`Request failed: ${text}`);
       }
 
-      const { context } = getModelFromConfig(config, modelOverride);
+      const { context } = getModelFromConfig(data, null);
       if (text.length > context) {
         throw new ToolError(`Web content too large: ${text.length} bytes (max: ${context} bytes)`);
       }
 
-      return { content: text };
+      return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
         throw new ToolError(USER_ABORTED_ERROR_MESSAGE);

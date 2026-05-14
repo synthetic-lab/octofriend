@@ -1,6 +1,7 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool, parseOriginalFile } from "../common.ts";
+import { attemptUntrackedRead, BASE_IR, fileMutateIR, parseOriginalFile } from "../common.ts";
+import { result } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -24,25 +25,28 @@ const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-export default defineTool(Schema, ParsedSchema, async () => ({
-  Schema,
+const rewrite = BASE_IR.declare({
+  name: "rewrite",
   ArgumentsSchema,
   ParsedSchema,
+});
+
+export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-    await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-    return null;
+    await fileTracker.assertCanEdit(transport, signal, toolCall.original.arguments.filePath);
+    await attemptUntrackedRead(transport, signal, toolCall.original.arguments.filePath);
+    return result.ok(null);
   },
-  parse: parseOriginalFile,
-  async run(signal, transport, call) {
-    const { filePath } = call.parsed.arguments;
-    const edit = call.parsed.arguments;
+  async parse({ signal, transport, original }) {
+    return parseOriginalFile(signal, transport, original);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath } = toolCall.parsed.arguments;
+    const edit = toolCall.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
     const replaced = runEdit({ edit });
     await fileTracker.write(transport, signal, filePath, replaced);
-    return {
-      content: "",
-    };
+    return customIR.fileMutateIR({ content: "" });
   },
 }));
 

@@ -1,15 +1,14 @@
 import { toTypescript } from "structural";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { ToolCallRequest } from "../ir/llm-ir.ts";
-import { ToolDef } from "../tools/common.ts";
+import type { LoadedTools, ToolCall, ToolMap } from "../libocto/tool-def.ts";
 import { Transport } from "../transports/transport-common.ts";
 import * as logger from "../logger.ts";
 import { tryexpr } from "../tryexpr.ts";
 
-export type ParsedToolCallResult =
+export type ParsedToolCallResult<T extends ToolMap<any, any>> =
   | {
       status: "success";
-      tool: ToolCallRequest;
+      tool: ToolCall<T>;
     }
   | {
       status: "error";
@@ -22,7 +21,7 @@ export type ToolCallToParse = {
   args: unknown;
 };
 
-export async function parseToolCall({
+export async function parseToolCall<T extends ToolMap<any, any>>({
   toolCall,
   toolDefs,
   autofixJson,
@@ -30,13 +29,14 @@ export async function parseToolCall({
   transport,
 }: {
   toolCall: ToolCallToParse;
-  toolDefs: Partial<Record<string, ToolDef<any, any, any>>>;
+  toolDefs: Partial<LoadedTools<T>>;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   abortSignal: AbortSignal;
   transport: Transport;
-}): Promise<ParsedToolCallResult> {
+}): Promise<ParsedToolCallResult<T>> {
   const name = toolCall.toolName;
-  const toolDef = toolDefs[name];
+  const toolDefsByName = toolDefs as Partial<Record<string, LoadedTools<T>[keyof LoadedTools<T>]>>;
+  const toolDef = toolDefsByName[name];
 
   if (!toolDef) {
     return {
@@ -51,7 +51,7 @@ Please try calling a valid tool.
     };
   }
 
-  const toolSchema = toolDef.Schema;
+  const toolSchema = toolDef.ArgumentsSchema;
   let args = toolCall.args;
 
   if (typeof args === "string") {
@@ -61,20 +61,19 @@ Please try calling a valid tool.
   }
 
   try {
-    const sliced = toolSchema.slice({
-      name,
-      arguments: args,
-    });
-    const parsed = await toolDef.parse(abortSignal, transport, sliced);
+    const original = toolSchema.slice(args);
+    const parsed = await toolDef.parse({ signal: abortSignal, transport, original });
 
     if (parsed.success) {
       return {
         status: "success",
         tool: {
-          type: "tool-request",
-          call: parsed.data,
+          type: "tool-call",
+          name,
+          original: parsed.data.original,
+          parsed: parsed.data.parsed,
           toolCallId: toolCall.toolCallId,
-        },
+        } as ToolCall<T>,
       };
     }
     return {

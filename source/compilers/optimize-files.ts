@@ -1,23 +1,18 @@
-import type {
-  FileMutateMethod,
-  FileOutdatedMessage,
-  FileReadMessage,
-  FileUnreadableMessage,
-  LlmIR,
-} from "../ir/llm-ir.ts";
+import type { octoAgent, OctoIR } from "../ir/octo-ir.ts";
+import type { LoweredIRWithTrajectories } from "../libocto/llm-ir.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
 
-type FileIR = FileReadMessage | FileMutateMethod | FileOutdatedMessage | FileUnreadableMessage;
-
-export type FileOptimizedLlmIR = Exclude<LlmIR, FileIR>;
+function textContent(content: string) {
+  return [{ type: "text" as const, content }];
+}
 
 export function optimizeFiles(
-  messages: LlmIR[],
+  messages: OctoIR[],
   modalities?: MultimodalConfig,
-): FileOptimizedLlmIR[] {
-  const output: FileOptimizedLlmIR[] = [];
+): Array<LoweredIRWithTrajectories<typeof octoAgent>> {
+  const output: Array<LoweredIRWithTrajectories<typeof octoAgent>> = [];
   const seenPaths = new Set<string>();
 
   for (const ir of [...messages].reverse()) {
@@ -28,10 +23,10 @@ export function optimizeFiles(
 }
 
 function optimizeFileIR(
-  ir: LlmIR,
+  ir: OctoIR,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): FileOptimizedLlmIR {
+): LoweredIRWithTrajectories<typeof octoAgent> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);
@@ -40,15 +35,20 @@ function optimizeFileIR(
     if (ir.image && imageCheck?.ok) {
       return {
         role: "user",
-        content: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}`,
-        images: [ir.image],
+        content: [
+          {
+            type: "text",
+            content: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}`,
+          },
+          { type: "image", image: ir.image },
+        ],
       };
     }
 
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
+      content: textContent(irPrompts.fileRead(ir.content, seenPath, imageCheck)),
     };
   }
 
@@ -56,13 +56,13 @@ function optimizeFileIR(
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: irPrompts.fileMutation(ir.path),
+      content: textContent(irPrompts.fileMutation(ir.path)),
     };
   }
 
   if (ir.role === "file-outdated" || ir.role === "file-unreadable") {
     return {
-      role: "tool-error",
+      role: "tool-runtime-error",
       toolCall: ir.toolCall,
       error: ir.error,
     };

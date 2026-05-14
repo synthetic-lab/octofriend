@@ -1,8 +1,8 @@
-import { t } from "structural";
-import { Config } from "../config.ts";
+import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 import { Result, result } from "../result.ts";
+import { tools as BASE_IR_TOOL, ToolCall, ToolMap } from "../libocto/tool-def.ts";
 
 export class ToolError extends Error {
   constructor(message: string) {
@@ -43,26 +43,20 @@ export async function attemptUntrackedRead(
 }
 
 // Used by some edit tools to add the original file contents to the parsed data for diff tracking
-export async function parseOriginalFile<
-  Name extends string,
-  Arguments extends { filePath: string },
->(
+export async function parseOriginalFile<Arguments extends { filePath: string }>(
   signal: AbortSignal,
   transport: Transport,
-  original: Schema<Name, Arguments>,
+  original: Arguments,
 ): Promise<
-  Result<ParseResult<Name, Arguments, Arguments & { originalFileContents: string }>, string>
+  Result<{ original: Arguments; parsed: Arguments & { originalFileContents: string } }, string>
 > {
   try {
-    const contents = await attemptUntrackedRead(transport, signal, original.arguments.filePath);
+    const contents = await attemptUntrackedRead(transport, signal, original.filePath);
     return result.ok({
       original,
       parsed: {
-        name: original.name,
-        arguments: {
-          ...original.arguments,
-          originalFileContents: contents,
-        },
+        ...original,
+        originalFileContents: contents,
       },
     });
   } catch (e) {
@@ -80,81 +74,72 @@ export type ToolResult = {
   image?: ImageInfo;
 };
 
-type Schema<Name extends string, Arguments> = {
-  name: Name;
-  arguments: Arguments;
+export type FileReadIR<T extends ToolCall<any>> = {
+  role: "file-read";
+  content: string;
+  toolCall: T;
+  path: string;
+  image?: ImageInfo;
 };
 
-export type ParseResult<Name extends string, Arguments, Parsed> = {
-  original: Schema<Name, Arguments>;
-  parsed: Schema<Name, Parsed>;
+export type FileMutateIR<T extends ToolCall<any>> = {
+  role: "file-mutate";
+  content: string;
+  toolCall: T;
+  path: string;
 };
 
-export type ToolDef<Name extends string, Arguments, Parsed> = {
-  ArgumentsSchema: t.Type<Arguments>;
-  ParsedSchema: t.Type<Parsed>;
-  Schema: t.Type<Schema<Name, Arguments>>;
-  parse: (
-    abortSignal: AbortSignal,
-    transport: Transport,
-    original: Schema<Name, Arguments>,
-  ) => Promise<Result<ParseResult<Name, Arguments, Parsed>, string>>;
-  validate: (
-    abortSignal: AbortSignal,
-    transport: Transport,
-    t: Schema<Name, Arguments>,
-    cfg: Config,
-  ) => Promise<null>;
-  run: (
-    abortSignal: AbortSignal,
-    transport: Transport,
-    t: {
-      original: Schema<Name, Arguments>;
-      parsed: Schema<Name, Parsed>;
-    },
-    cfg: Config,
-    modelOverride: string | null,
-  ) => Promise<ToolResult>;
+export type FileOutdatedIR<T extends ToolCall<any>> = {
+  role: "file-outdated";
+  toolCall: T;
+  error: string;
 };
 
-export type ToolFactory<S extends Schema<any, any>, Parsed> = (
-  signal: AbortSignal,
-  transport: Transport,
-  config: Config,
-) => Promise<ToolDef<S["name"], S["arguments"], Parsed> | null>;
+export type FileUnreadableIR<T extends ToolCall<any>> = {
+  role: "file-unreadable";
+  path: string;
+  toolCall: T;
+  error: string;
+};
 
-export function defineTool<T extends Schema<any, any>, Parsed>(
-  _1: t.Type<T>,
-  _2: t.Type<Parsed>,
-  factory: ToolFactory<T, Parsed>,
-): ToolFactory<T, Parsed> {
-  return factory;
+export type FileIR<T extends ToolCall<any>> =
+  | FileReadIR<T>
+  | FileMutateIR<T>
+  | FileOutdatedIR<T>
+  | FileUnreadableIR<T>;
+
+export const BASE_IR = BASE_IR_TOOL.withData<Config>();
+
+export function toolOutput(content: string, options: { lines?: number; image?: ImageInfo } = {}) {
+  return result.ok({
+    type: "output" as const,
+    content: [
+      { type: "text" as const, content },
+      ...(options.image ? [{ type: "image" as const, image: options.image }] : []),
+    ],
+    lines: options.lines,
+  });
 }
 
-// An uglier way to define tools, since you need to specify the actual types somewhere
-// Useful for dynamically-shaped tools, where the schemas change based on runtime code
-export function dynamicDefineTool<Name extends string, T extends Schema<Name, any>, Parsed>(
-  _: Name,
-  factory: ToolFactory<T, Parsed>,
-): ToolFactory<T, Parsed> {
-  return factory;
+export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
+  toolCall: T,
+) {
+  return (args: { content: string; image?: ImageInfo }): FileReadIR<T> => ({
+    role: "file-read",
+    content: args.content,
+    toolCall,
+    path: toolCall.parsed.filePath,
+    image: args.image,
+  });
 }
 
-export type ParsedToolSchemaFrom<T extends ToolFactory<any, any>> =
-  T extends ToolFactory<infer S, infer P> ? Schema<S["name"], P> : never;
-
-export function autoparse<Name extends string, Args>(
-  ArgSchema: t.Type<Args>,
-): {
-  parse: (
-    abortSignal: AbortSignal,
-    transport: Transport,
-    args: Schema<Name, Args>,
-  ) => Promise<Result<ParseResult<Name, Args, Args>, string>>;
-  ParsedSchema: t.Type<Args>;
-} {
-  return {
-    parse: async (_1, _2, input) => result.ok({ original: input, parsed: input }),
-    ParsedSchema: ArgSchema,
-  };
+export function fileMutateIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
+  toolCall: T,
+) {
+  return (args: { content: string }): FileMutateIR<T> => ({
+    role: "file-mutate",
+    content: args.content,
+    toolCall,
+    path: toolCall.parsed.filePath,
+  });
 }
