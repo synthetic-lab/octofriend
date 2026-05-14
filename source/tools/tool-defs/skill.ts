@@ -1,10 +1,10 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { dynamicDefineTool, ToolDef, autoparse } from "../common.ts";
+import { BASE_IR, toolOutput } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 
-export default dynamicDefineTool("skill", async function (signal, transport, config) {
-  const skills = await discoverSkills(transport, signal, config);
+export default BASE_IR.dynamicDefineTool(async function ({ signal, transport, data }) {
+  const skills = await discoverSkills(transport, signal, data);
   if (skills.length === 0) return null;
 
   const skillDescriptions = JSON.stringify(
@@ -25,24 +25,21 @@ export default dynamicDefineTool("skill", async function (signal, transport, con
       `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`,
     );
 
-  return {
-    Schema,
+  return BASE_IR.declare({
+    name: "skill",
     ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(_1, _2, call) {
-      const { skillName } = call.parsed.arguments;
+  }).define(async () => ({
+    async run({ toolCall }) {
+      const { skillName } = toolCall.parsed.arguments;
       const skill = skills.find(s => s.name === skillName)!;
 
-      return {
-        content: `
+      return toolOutput(
+        `
 Skill name: ${skill.name}
 Skill directory: ${skill.path}
 Description: ${skill.description}
 
-${config.yourName} has set up a skill for you to use. Skills are:
+${data.yourName} has set up a skill for you to use. Skills are:
 
 1. A SKILL.md file containing instructions for you, in a directory.
 2. Optional scripts or assets stored in subdirectories of the skill's directory.
@@ -55,11 +52,7 @@ Here are the contents of the SKILL.md file stored at ${skill.skillFilePath}:
 ---
 ${skill.instructions}
 `.trim(),
-      };
+      );
     },
-  } satisfies ToolDef<
-    "skill",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

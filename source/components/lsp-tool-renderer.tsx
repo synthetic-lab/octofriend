@@ -1,8 +1,9 @@
 import React from "react";
 import { Text, Box } from "ink";
-import { ToolCall } from "../tools/index.ts";
-
-type LspToolParsedSchema = Extract<ToolCall["parsed"], { name: `lsp-${string}` }>;
+type LspToolParsedSchema = {
+  name: `lsp-${string}`;
+  arguments: any;
+};
 type LspToolName = LspToolParsedSchema["name"];
 
 const LSP_TOOL_ACTION_NAMES: Record<LspToolName, string> = {
@@ -17,7 +18,7 @@ const LSP_TOOL_ACTION_NAMES: Record<LspToolName, string> = {
 };
 
 function getLspActionName(toolName: LspToolName): string {
-  return LSP_TOOL_ACTION_NAMES[toolName];
+  return LSP_TOOL_ACTION_NAMES[toolName] ?? "query";
 }
 
 export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
@@ -49,4 +50,5 @@ export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
       );
     }
   }
+  return null;
 }

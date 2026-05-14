@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ToolError, defineTool, USER_ABORTED_ERROR_MESSAGE, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 
@@ -128,38 +128,37 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
-  const hasMcp = config.mcpServers != null && Object.keys(config.mcpServers).length > 0;
+export default BASE_IR.dynamicDefineTool(async ({ data }) => {
+  const hasMcp = data.mcpServers != null && Object.keys(data.mcpServers).length > 0;
   if (!hasMcp) return null;
 
-  return {
-    Schema,
+  return BASE_IR.declare({
+    name: "mcp",
     ArgumentsSchema,
-    validate: async () => null,
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _, call, config, modelOverride) {
+  }).define(async () => ({
+    async run({ signal, toolCall, data }) {
       const {
         server: serverName,
         tool: toolName,
         arguments: toolArgs = {},
-      } = call.parsed.arguments;
+      } = toolCall.parsed.arguments;
 
       // Helper to race any promise against the abort signal
       const withAbort = async <T>(p: Promise<T>): Promise<T> => {
-        if (abortSignal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+        if (signal.aborted) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
         return await new Promise<T>((resolve, reject) => {
           const onAbort = () => {
-            abortSignal.removeEventListener("abort", onAbort);
+            signal.removeEventListener("abort", onAbort);
             reject(new ToolError(USER_ABORTED_ERROR_MESSAGE));
           };
-          abortSignal.addEventListener("abort", onAbort);
+          signal.addEventListener("abort", onAbort);
           p.then(
             v => {
-              abortSignal.removeEventListener("abort", onAbort);
+              signal.removeEventListener("abort", onAbort);
               resolve(v);
             },
             e => {
-              abortSignal.removeEventListener("abort", onAbort);
+              signal.removeEventListener("abort", onAbort);
               reject(e);
             },
           );
@@ -167,7 +166,7 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
       };
 
       try {
-        const client = await withAbort(getMcpClient(serverName, config));
+        const client = await withAbort(getMcpClient(serverName, data));
 
         // List available tools to check if the requested tool exists
         const tools = await withAbort(client.listTools());
@@ -190,7 +189,7 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
 
         // Worst case, the response sizes will be one token per byte. Cap responses to the context
         // length
-        const model = getModelFromConfig(config, modelOverride);
+        const model = getModelFromConfig(data, null);
         const MAX_SIZE = model.context;
 
         for (const content of result.content) {
@@ -235,7 +234,7 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
           }
         }
 
-        return { content: output.trim() };
+        return toolOutput(output.trim());
       } catch (error) {
         if (error instanceof ToolError) {
           throw error;
@@ -243,5 +242,5 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
         throw new ToolError(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
       }
     },
-  };
+  }));
 });

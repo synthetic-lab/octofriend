@@ -1,10 +1,11 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
-import { Compiler } from "./compiler-interface.ts";
-import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
+import { contentToText } from "../libocto/content.ts";
+import type { Agent, AssistantMessage, MalformedToolRequest } from "../libocto/llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { result } from "../result.ts";
@@ -14,8 +15,14 @@ import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
 
-async function toModelMessage(
-  messages: FileOptimizedLlmIR[],
+type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
+type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
+  A["tools"]
+>];
+type MalformedRequest = MalformedToolRequest;
+
+async function toModelMessage<A extends Agent<any, any, any>>(
+  messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<ModelMessage>> {
@@ -37,7 +44,10 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): ModelMessage {
+function modelMessageFromIr<A extends Agent<any, any, any>>(
+  ir: CompilerIR<A>,
+  modalities?: MultimodalConfig,
+): ModelMessage {
   if (ir.role === "assistant") {
     if (ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -59,14 +69,16 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
             },
           },
           { type: "text", text: ir.content || " " },
-          ...toolCalls.map(t => {
-            return {
-              type: "tool-call" as const,
-              toolCallId: t.toolCallId,
-              toolName: t.call.original.name,
-              input: t.call.original.arguments || {},
-            };
-          }),
+          ...toolCalls
+            .filter((t: any) => t.type === "tool-call")
+            .map((t: any) => {
+              return {
+                type: "tool-call" as const,
+                toolCallId: t.toolCallId,
+                toolName: t.name,
+                input: t.original || {},
+              };
+            }),
         ],
         providerOptions: {
           openai: {
@@ -80,14 +92,16 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
       role: "assistant",
       content: [
         { type: "text", text: ir.content || " " },
-        ...toolCalls.map(t => {
-          return {
-            type: "tool-call" as const,
-            toolCallId: t.toolCallId,
-            toolName: t.call.original.name,
-            input: t.call.original.arguments || {},
-          };
-        }),
+        ...toolCalls
+          .filter((t: any) => t.type === "tool-call")
+          .map((t: any) => {
+            return {
+              type: "tool-call" as const,
+              toolCallId: t.toolCallId,
+              toolName: t.name,
+              input: t.original || {},
+            };
+          }),
       ],
       providerOptions: {
         openai: {},
@@ -96,13 +110,15 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
   }
 
   if (ir.role === "user") {
-    if (ir.images && ir.images.length > 0) {
+    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
+    const text = contentToText(ir.content);
+    if (images.length > 0) {
       if (modalities?.image?.enabled) {
         return {
           role: "user",
           content: [
-            { type: "text", text: ir.content },
-            ...ir.images.map(img => ({
+            { type: "text", text },
+            ...images.map((img: any) => ({
               type: "image" as const,
               image: img.dataUrl,
             })),
@@ -111,12 +127,12 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
       }
       return {
         role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(ir.content, ir.images),
+        content: irPrompts.imageAttachmentPlaceholder(text, images),
       };
     }
     return {
       role: "user",
-      content: ir.content,
+      content: text,
     };
   }
 
@@ -126,41 +142,24 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
       content: [
         {
           type: "tool-result" as const,
-          toolName: ir.toolCall.call.original.name,
+          toolName: ir.toolCall.name,
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: ir.content,
+            value: contentToText(ir.content),
           },
         },
       ],
     };
   }
 
-  if (ir.role === "tool-reject") {
+  if (ir.role === "tool-skip-output") {
     return {
       role: "tool",
       content: [
         {
           type: "tool-result",
-          toolName: ir.toolCall.call.original.name,
-          toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: irPrompts.toolReject(),
-          },
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-skip") {
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolName: ir.toolCall.call.original.name,
+          toolName: ir.toolCall.name,
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
@@ -171,14 +170,14 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
     };
   }
 
-  if (ir.role === "tool-error") {
+  if (ir.role === "tool-runtime-error") {
     return {
       role: "tool",
       content: [
         {
           type: "tool-result",
           toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.call.original.name,
+          toolName: ir.toolCall.name,
           output: {
             type: "text" as const,
             value: `Error: ${ir.error}`,
@@ -188,7 +187,7 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
     };
   }
 
-  if (ir.role === "tool-malformed") {
+  if (ir.role === "tool-parse-error") {
     return {
       role: "tool",
       content: [
@@ -212,7 +211,7 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
         {
           type: "tool-result",
           toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.call.original.name,
+          toolName: ir.toolCall.name,
           output: {
             type: "text" as const,
             value: `Error: ${ir.error}`,
@@ -222,15 +221,14 @@ function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfi
     };
   }
 
-  if (ir.role === "compaction-checkpoint") {
+  if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(ir.summary),
+      content: compactionCompilerExplanation(contentToText(ir.content)),
     };
   }
 
-  const _: never = ir;
-  return _;
+  throw new Error(`Unsupported IR role: ${(ir as any).role}`);
 }
 
 function generateCurlFrom(params: {
@@ -257,7 +255,7 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export const runResponsesAgent: Compiler = async ({
+export async function runResponsesAgent<A extends Agent<any, any, any>>({
   model,
   apiKey,
   irs,
@@ -267,13 +265,14 @@ export const runResponsesAgent: Compiler = async ({
   systemPrompt,
   autofixJson,
   tools,
-}) => {
+}: CompilerParams<A>): Promise<CompilerResult<A>> {
   const messages = await toModelMessage(irs, systemPrompt, model.modalities);
 
   // Convert tools to AI SDK format
   const toolDefs = tools || {};
   const toolsSdk: Record<string, any> = {};
-  Object.entries(toolDefs).forEach(([name, toolDef]) => {
+  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+  toolEntries.forEach(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
     // Delete JSON schema fields unused by AI SDK
     // @ts-ignore
@@ -288,7 +287,7 @@ export const runResponsesAgent: Compiler = async ({
     });
   });
   const toolParams =
-    Object.entries(toolDefs).length === 0
+    toolEntries.length === 0
       ? {}
       : {
           tools: toolsSdk,
@@ -414,7 +413,7 @@ export const runResponsesAgent: Compiler = async ({
     if (reasoningId || encryptedReasoningContent) {
       openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
     }
-    const assistantHistoryItem: AssistantMessage = {
+    const assistantHistoryItem: AssistantMessage<A["tools"]> = {
       role: "assistant",
       content,
       reasoningContent,
@@ -434,7 +433,7 @@ export const runResponsesAgent: Compiler = async ({
       return result.ok({ output: assistantHistoryItem, curl });
     }
 
-    const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
+    const parsedToolCalls: Array<ToolCallRequest<A> | MalformedRequest> = [];
 
     for (const toolCall of toolCalls) {
       const chatToolCall = {
@@ -442,7 +441,7 @@ export const runResponsesAgent: Compiler = async ({
         toolName: toolCall.toolName,
         args: toolCall.input,
       };
-      const parseResult = await parseToolCall({
+      const parseResult = await parseToolCall<A["tools"]>({
         toolCall: chatToolCall,
         toolDefs,
         autofixJson,
@@ -452,7 +451,7 @@ export const runResponsesAgent: Compiler = async ({
 
       if (parseResult.status === "error") {
         parsedToolCalls.push({
-          type: "malformed-request",
+          type: "malformed-tool-request",
           error: parseResult.message,
           call: {
             original: {
@@ -477,4 +476,4 @@ export const runResponsesAgent: Compiler = async ({
       curl,
     });
   }
-};
+}

@@ -1,6 +1,7 @@
 import { t } from "structural";
-import { ToolError, attempt, defineTool, autoparse } from "../common.ts";
+import { BASE_IR, ToolError, attempt, toolOutput } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { result } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
@@ -17,25 +18,27 @@ const Schema = t
 async function validate(
   signal: AbortSignal,
   transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
+  args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  const dirpath = toolCall?.arguments?.dirPath || ".";
+  const dirpath = args.dirPath || ".";
   const isDir = await transport.isDirectory(signal, dirpath);
   if (!isDir) throw new ToolError(`${dirpath} is not a directory`);
-  return null;
+  return result.ok(null);
 }
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+export default BASE_IR.declare({
+  name: "list",
   ArgumentsSchema,
-  validate,
-  ...autoparse(ArgumentsSchema),
-  async run(abortSignal, transport, call) {
-    const dirpath = call.parsed.arguments.dirPath || transport.cwd;
-    await validate(abortSignal, transport, call.original);
+}).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.original.arguments);
+  },
+  async run({ signal, transport, toolCall }) {
+    const dirpath = toolCall.parsed.arguments.dirPath || transport.cwd;
+    await validate(signal, transport, toolCall.original.arguments);
     return attempt(`No such directory: ${dirpath}`, async () => {
-      const entries = await transport.readdir(abortSignal, dirpath);
-      return { content: entries.map(entry => JSON.stringify(entry)).join("\n") };
+      const entries = await transport.readdir(signal, dirpath);
+      return toolOutput(entries.map(entry => JSON.stringify(entry)).join("\n"));
     });
   },
 }));

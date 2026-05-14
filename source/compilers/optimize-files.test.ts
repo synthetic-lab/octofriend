@@ -1,24 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { LlmIR, ToolCallRequest } from "../ir/llm-ir.ts";
+import type { OctoIR } from "../ir/octo-ir.ts";
+import type { ToolCall } from "../libocto/tool-def.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 
-function toolCall(id: string): ToolCallRequest {
+type FileToolCallRequest = Extract<
+  ToolCall<typeof toolMap>,
+  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
+>;
+
+function toolCall(id: string): Extract<FileToolCallRequest, { name: "read" }> {
   return {
-    type: "tool-request",
+    type: "tool-call",
     toolCallId: id,
-    call: {
-      original: {
-        name: "read",
-        arguments: {},
-      },
-    },
-  } as ToolCallRequest;
+    name: "read",
+    original: { filePath: "/tmp/a.txt" },
+    parsed: { filePath: "/tmp/a.txt" },
+  };
+}
+
+function mutateToolCall(id: string): Extract<FileToolCallRequest, { name: "append" }> {
+  return {
+    type: "tool-call",
+    toolCallId: id,
+    name: "append",
+    original: { filePath: "/tmp/a.txt", text: "" },
+    parsed: { filePath: "/tmp/a.txt", text: "" },
+  };
 }
 
 describe("optimizeFiles", () => {
   it("keeps the newest read for a path and strips older reads", () => {
-    const messages: LlmIR[] = [
+    const messages: OctoIR[] = [
       {
         role: "file-read",
         path: "/tmp/a.txt",
@@ -37,12 +51,12 @@ describe("optimizeFiles", () => {
       {
         role: "tool-output",
         toolCall: toolCall("old"),
-        content: "File was successfully read.",
+        content: [{ type: "text", content: "File was successfully read." }],
       },
       {
         role: "tool-output",
         toolCall: toolCall("new"),
-        content: "new contents",
+        content: [{ type: "text", content: "new contents" }],
       },
     ]);
   });
@@ -78,8 +92,10 @@ describe("optimizeFiles", () => {
     ).toEqual([
       {
         role: "user",
-        content: "[Tool result for call image-read]: image contents",
-        images: [image],
+        content: [
+          { type: "text", content: "[Tool result for call image-read]: image contents" },
+          { type: "image", image },
+        ],
       },
     ]);
   });
@@ -91,7 +107,7 @@ describe("optimizeFiles", () => {
           role: "file-mutate",
           path: "/tmp/a.txt",
           content: "raw mutate output",
-          toolCall: toolCall("mutate"),
+          toolCall: mutateToolCall("mutate"),
         },
         {
           role: "file-unreadable",
@@ -103,11 +119,11 @@ describe("optimizeFiles", () => {
     ).toEqual([
       {
         role: "tool-output",
-        toolCall: toolCall("mutate"),
-        content: "/tmp/a.txt was updated successfully.",
+        toolCall: mutateToolCall("mutate"),
+        content: [{ type: "text", content: "/tmp/a.txt was updated successfully." }],
       },
       {
-        role: "tool-error",
+        role: "tool-runtime-error",
         toolCall: toolCall("unreadable"),
         error: "could not read file",
       },

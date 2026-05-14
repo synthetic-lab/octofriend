@@ -1,6 +1,6 @@
 import { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
-import type { Result } from "../result.ts";
+import { Result, result } from "../result.ts";
 import type { Content } from "./llm-ir.ts";
 
 /*
@@ -57,10 +57,21 @@ export type ToolRunArgs<Data, Name extends string, Arguments, Parsed> = {
   signal: AbortSignal;
   transport: Transport;
   toolCall: {
+    toolCallId: string;
     original: Schema<Name, Arguments>;
     parsed: Schema<Name, Parsed>;
   };
   data: Data;
+};
+
+type ToolImplementationRunArgs<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  CustomIR,
+> = ToolRunArgs<Data, Name, Arguments, Parsed> & {
+  customIR: CustomIR;
 };
 
 export type ParseResult<Arguments, Parsed> = {
@@ -117,16 +128,16 @@ type SimpleRawToolFactory<
   Parsed,
   SubagentNames extends string,
   Extra,
-> = (args: {
-  signal: AbortSignal;
-  transport: Transport;
-  data: Data;
-}) => Promise<
+  CustomIR,
+> = (args: { signal: AbortSignal; transport: Transport; data: Data }) => Promise<
   | (Omit<
       ToolDef<Data, S["name"], S["arguments"], Parsed, SubagentNames, Extra>,
-      "ArgumentsSchema" | "ParsedSchema" | "name" | "validate"
-    > &
-      Partial<
+      "ArgumentsSchema" | "ParsedSchema" | "name" | "validate" | "run"
+    > & {
+      run: (
+        args: ToolImplementationRunArgs<Data, S["name"], S["arguments"], Parsed, CustomIR>,
+      ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
+    } & Partial<
         Pick<ToolDef<Data, S["name"], S["arguments"], Parsed, SubagentNames, Extra>, "validate">
       >)
   | null
@@ -137,16 +148,16 @@ type SimpleAutoParsedRawToolFactory<
   S extends Schema<any, any>,
   SubagentNames extends string,
   Extra,
-> = (args: {
-  signal: AbortSignal;
-  transport: Transport;
-  data: Data;
-}) => Promise<
+  CustomIR,
+> = (args: { signal: AbortSignal; transport: Transport; data: Data }) => Promise<
   | (Omit<
       ToolDef<Data, S["name"], S["arguments"], S["arguments"], SubagentNames, Extra>,
-      "ArgumentsSchema" | "ParsedSchema" | "name" | "parse" | "validate"
-    > &
-      Partial<
+      "ArgumentsSchema" | "ParsedSchema" | "name" | "parse" | "validate" | "run"
+    > & {
+      run: (
+        args: ToolImplementationRunArgs<Data, S["name"], S["arguments"], S["arguments"], CustomIR>,
+      ) => Promise<Result<ToolReturn<SubagentNames, Extra>, string>>;
+    } & Partial<
         Pick<
           ToolDef<Data, S["name"], S["arguments"], S["arguments"], SubagentNames, Extra>,
           "validate"
@@ -168,12 +179,18 @@ type DynamicToolFactoryReturn<T extends (...args: any) => any> = ReturnType<
 type DynamicToolFactorySubagents<T extends (...args: any) => any> = ToolSubagentNames<
   Exclude<Awaited<ReturnType<T>>, null>
 >;
+type DynamicToolFactoryExtra<T extends (...args: any) => any> = ToolFactoryExtra<
+  Exclude<Awaited<ReturnType<T>>, null>
+>;
 
 type RuntimeToolDefinition<Extra> = Omit<
   ToolDef<unknown, string, unknown, unknown, string, Extra>,
-  "ArgumentsSchema" | "ParsedSchema" | "name" | "parse" | "validate"
-> &
-  Partial<Pick<ToolDef<unknown, string, unknown, unknown, string, Extra>, "parse" | "validate">>;
+  "ArgumentsSchema" | "ParsedSchema" | "name" | "parse" | "validate" | "run"
+> & {
+  run: (
+    args: ToolImplementationRunArgs<unknown, string, unknown, unknown, any>,
+  ) => Promise<Result<ToolReturn<string, Extra>, string>>;
+} & Partial<Pick<ToolDef<unknown, string, unknown, unknown, string, Extra>, "parse" | "validate">>;
 
 // Public tool factories are the precise raw factory type plus the capability brand. Keeping the raw
 // factory in the intersection preserves literal tool names and parsed argument types.
@@ -186,24 +203,16 @@ export type ToolFactory<
 > = RawToolFactory<Data, S, Parsed, SubagentNames, Extra> &
   ToolFactoryRequirements<SubagentNames, Extra>;
 
-export class ToolBuilder<Extra = never, Data = unknown> {
-  withIR<NewExtra>(): ToolBuilder<NewExtra, Data> {
-    return new ToolBuilder<NewExtra, Data>();
-  }
-
-  withData<NewData>(): ToolBuilder<Extra, NewData> {
-    return new ToolBuilder<Extra, NewData>();
+export class ToolBuilder<Data = unknown> {
+  withData<NewData>(): ToolBuilder<NewData> {
+    return new ToolBuilder<NewData>();
   }
 
   /*
-   * Caller-facing static tool builder, explicit parse form.
+   * Caller-facing tool declaration, explicit parse form.
    *
-   * Use this when the LLM's raw arguments are not the shape the tool wants to run with. The caller
-   * supplies both schemas up front, then define(...) must supply parse({ original, ... }) to produce ParsedSchema.
-   * Example: read({ path }) parses into { path, originalFileContents }.
-   *
-   * The return type is intentionally precise: the resulting tool remembers its name, raw args,
-   * parsed args, subagent dependencies, and this builder's Extra IR type.
+   * Use this overload when the LLM's raw arguments are not the shape the tool wants to run with.
+   * define(...) must then supply parse({ original, ... }) to produce ParsedSchema.
    */
   declare<
     Name extends string,
@@ -215,92 +224,29 @@ export class ToolBuilder<Extra = never, Data = unknown> {
     ArgumentsSchema: t.Type<Arguments>;
     ParsedSchema: t.Type<Parsed>;
     subagents?: readonly SubagentNames[];
-  }): {
-    define: <
-      T extends SimpleRawToolFactory<Data, Schema<Name, Arguments>, Parsed, SubagentNames, Extra>,
-    >(
-      factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
-    ) => RawToolFactory<Data, Schema<Name, Arguments>, Parsed, SubagentNames, Extra> &
-      ToolFactoryRequirements<SubagentNames, Extra>;
-  };
+  }): DeclaredTool<Data, Name, Arguments, Parsed, SubagentNames, never, true, {}>;
 
   /*
-   * Caller-facing static tool builder, auto-parse form.
+   * Caller-facing tool declaration, auto-parse form.
    *
    * Use this for the common case where the LLM's raw arguments are already the shape the tool runs
    * with. The caller omits ParsedSchema and parse(...). The resulting tool behaves as if
    * ParsedSchema === ArgumentsSchema and parse(...) returned { original: x, parsed: x }.
-   *
-   * Subagent inference still works here: subagents: ["view"] records "view"; omitting subagents
-   * records never.
    */
   declare<Name extends string, Arguments, const SubagentNames extends string = never>(partial: {
     name: Name;
     ArgumentsSchema: t.Type<Arguments>;
     ParsedSchema?: undefined;
     subagents?: readonly SubagentNames[];
-  }): {
-    define: <
-      T extends SimpleAutoParsedRawToolFactory<Data, Schema<Name, Arguments>, SubagentNames, Extra>,
-    >(
-      factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
-    ) => RawToolFactory<Data, Schema<Name, Arguments>, Arguments, SubagentNames, Extra> &
-      ToolFactoryRequirements<SubagentNames, Extra>;
-  };
+  }): DeclaredTool<Data, Name, Arguments, Arguments, SubagentNames, never, false, {}>;
 
-  /*
-   * Implementation shared by both static builder forms.
-   *
-   * From the caller's perspective, declare(...).define(...) returns a load-time factory. At runtime we
-   * call the caller's factory, then attach the metadata owned by declare(...): the public name, the raw
-   * schema, the parsed schema, and the generated parser when no custom parser was supplied.
-   *
-   * The overload signatures above provide the precise API. This body deliberately works with a
-   * looser runtime shape, then casts once at the boundary to attach the compile-time-only brand.
-   */
   declare(partial: {
     name: string;
     ArgumentsSchema: t.Type<any>;
     ParsedSchema?: t.Type<any>;
     subagents?: readonly string[];
   }): any {
-    return {
-      define: (
-        factory: (args: ToolFactoryArgs<Data>) => Promise<RuntimeToolDefinition<Extra> | null>,
-      ) => {
-        const wrapped = async (args: ToolFactoryArgs<Data>) => {
-          const def = await factory(args);
-          if (def === null) return null;
-
-          return {
-            ...def,
-            name: partial.name,
-            ArgumentsSchema: partial.ArgumentsSchema,
-            ParsedSchema: partial.ParsedSchema ?? partial.ArgumentsSchema,
-            parse:
-              def.parse ??
-              (async ({ original }) => ({
-                success: true as const,
-                data: {
-                  original,
-                  parsed: original,
-                },
-              })),
-            validate: def.validate ?? (async () => ({ success: true, data: null })),
-          };
-        };
-
-        // The brand has no runtime representation; it only makes defineIR reject tools whose custom
-        // IR output is not included in the target IR universe.
-        return wrapped as unknown as ToolFactory<
-          Data,
-          Schema<string, unknown>,
-          unknown,
-          string,
-          Extra
-        >;
-      },
-    };
+    return new DeclaredTool(partial);
   }
 
   /*
@@ -317,11 +263,11 @@ export class ToolBuilder<Extra = never, Data = unknown> {
   dynamicDefineTool<
     T extends (
       args: ToolFactoryArgs<Data>,
-    ) => Promise<ToolFactory<Data, any, any, any, Extra> | null>,
+    ) => Promise<ToolFactory<Data, any, any, any, any> | null>,
   >(
     factory: T,
   ): ((args: ToolFactoryArgs<Data>) => DynamicToolFactoryReturn<T>) &
-    ToolFactoryRequirements<DynamicToolFactorySubagents<T>, Extra> {
+    ToolFactoryRequirements<DynamicToolFactorySubagents<T>, DynamicToolFactoryExtra<T>> {
     const selectTool = factory as unknown as (args: ToolFactoryArgs<Data>) => ReturnType<T>;
 
     const wrapped = async (args: ToolFactoryArgs<Data>) => {
@@ -335,10 +281,116 @@ export class ToolBuilder<Extra = never, Data = unknown> {
       return runSelectedTool?.(args) ?? null;
     };
 
-    // The brand has no runtime representation; it only makes defineIR reject tools whose custom
+    // The brand has no runtime representation; it only makes defineAgent reject tools whose custom
     // IR output is not included in the target IR universe.
     return wrapped as unknown as ((args: ToolFactoryArgs<Data>) => DynamicToolFactoryReturn<T>) &
-      ToolFactoryRequirements<DynamicToolFactorySubagents<T>, Extra>;
+      ToolFactoryRequirements<DynamicToolFactorySubagents<T>, DynamicToolFactoryExtra<T>>;
+  }
+}
+
+export class DeclaredTool<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  SubagentNames extends string,
+  Extra,
+  RequiresParse extends boolean,
+  CustomIR,
+> {
+  constructor(
+    private readonly partial: {
+      name: Name;
+      ArgumentsSchema: t.Type<Arguments>;
+      ParsedSchema?: t.Type<Parsed>;
+      subagents?: readonly SubagentNames[];
+    },
+    private readonly customIRBuilders: CustomIRBuilderMap | null = null,
+  ) {}
+
+  withCustomIR<Builders extends CustomIRBuilderMap>(
+    builders: Builders,
+  ): DeclaredTool<
+    Data,
+    Name,
+    Arguments,
+    Parsed,
+    SubagentNames,
+    CustomIRDataForTool<Data, Name, Arguments, Parsed, SubagentNames, Builders>,
+    RequiresParse,
+    BoundCustomIRForTool<Data, Name, Arguments, Parsed, SubagentNames, Builders>
+  > {
+    return new DeclaredTool(this.partial, builders);
+  }
+
+  define<
+    T extends SimpleRawToolFactory<
+      Data,
+      Schema<Name, Arguments>,
+      Parsed,
+      SubagentNames,
+      Extra,
+      CustomIR
+    >,
+  >(
+    this: DeclaredTool<Data, Name, Arguments, Parsed, SubagentNames, Extra, true, CustomIR>,
+    factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
+  ): ToolFactory<Data, Schema<Name, Arguments>, Parsed, SubagentNames, Extra>;
+
+  define<
+    T extends SimpleAutoParsedRawToolFactory<
+      Data,
+      Schema<Name, Arguments>,
+      SubagentNames,
+      Extra,
+      CustomIR
+    >,
+  >(
+    this: DeclaredTool<Data, Name, Arguments, Arguments, SubagentNames, Extra, false, CustomIR>,
+    factory: (args: Parameters<T>[0]) => Promise<Awaited<ReturnType<T>>>,
+  ): ToolFactory<Data, Schema<Name, Arguments>, Arguments, SubagentNames, Extra>;
+
+  define(
+    factory: (args: ToolFactoryArgs<Data>) => Promise<RuntimeToolDefinition<Extra> | null>,
+  ): any {
+    const partial = this.partial;
+    const customIRBuilders = this.customIRBuilders;
+    const wrapped = async (args: ToolFactoryArgs<Data>) => {
+      const def = await factory(args);
+      if (def === null) return null;
+
+      return {
+        ...def,
+        name: partial.name,
+        ArgumentsSchema: partial.ArgumentsSchema,
+        ParsedSchema: partial.ParsedSchema ?? partial.ArgumentsSchema,
+        parse:
+          def.parse ??
+          (async ({ original }) => ({
+            success: true as const,
+            data: {
+              original,
+              parsed: original,
+            },
+          })),
+        validate: def.validate ?? (async () => ({ success: true, data: null })),
+        run: async (runArgs: ToolRunArgs<Data, Name, Arguments, Parsed>) =>
+          def.run({
+            ...runArgs,
+            customIR: bindCustomIR(customIRBuilders, flattenToolCall(runArgs.toolCall)),
+          }),
+      };
+    };
+
+    // The brand has no runtime representation; it only makes defineAgent reject tools whose custom
+    // IR output is not included in the target IR universe.
+    return wrapped as unknown as ToolFactory<
+      Data,
+      Schema<Name, Arguments>,
+      Parsed,
+      SubagentNames,
+      Extra
+    >;
   }
 }
 
@@ -348,6 +400,58 @@ export const tools = new ToolBuilder();
 export type ToolMap<SubagentNames extends string, Extra> = {
   [key: string]: ToolFactory<any, any, any, SubagentNames, Extra>;
 };
+
+type CustomIRBuilderMap = Record<string, (toolCall: any) => (args: any) => any>;
+
+type DeclaredToolMap<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  SubagentNames extends string,
+  Extra,
+> = {
+  [K in Name]: ToolFactory<Data, { name: K; arguments: Arguments }, Parsed, SubagentNames, Extra>;
+};
+
+type DeclaredToolCall<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  SubagentNames extends string,
+> = ToolCall<DeclaredToolMap<Data, Name, Arguments, Parsed, SubagentNames, never>>;
+
+type CustomIRData<Builders extends CustomIRBuilderMap, Call> = {
+  [K in keyof Builders]: Builders[K] extends (toolCall: Call) => (args: any) => infer IR
+    ? IR
+    : never;
+}[keyof Builders];
+
+type CustomIRDataForTool<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  SubagentNames extends string,
+  Builders extends CustomIRBuilderMap,
+> = CustomIRData<Builders, DeclaredToolCall<Data, Name, Arguments, Parsed, SubagentNames>>;
+
+type BoundCustomIR<Builders extends CustomIRBuilderMap, Call> = {
+  [K in keyof Builders]: Builders[K] extends (toolCall: Call) => (args: infer Args) => infer IR
+    ? (args: Args) => Result<{ type: "custom-ir"; data: IR }, string>
+    : never;
+};
+
+type BoundCustomIRForTool<
+  Data,
+  Name extends string,
+  Arguments,
+  Parsed,
+  SubagentNames extends string,
+  Builders extends CustomIRBuilderMap,
+> = BoundCustomIR<Builders, DeclaredToolCall<Data, Name, Arguments, Parsed, SubagentNames>>;
+
 export type LoadedTools<T extends ToolMap<any, any>> = {
   [K in keyof T]: Exclude<Awaited<ReturnType<T[K]>>, null>;
 };
@@ -361,6 +465,32 @@ export type ToolCall<T extends ToolMap<any, any>> = {
   };
 }[keyof LoadedTools<T>];
 
+function flattenToolCall<Name extends string, Arguments, Parsed>(toolCall: {
+  toolCallId: string;
+  original: Schema<Name, Arguments>;
+  parsed: Schema<Name, Parsed>;
+}) {
+  return {
+    type: "tool-call" as const,
+    name: toolCall.parsed.name,
+    toolCallId: toolCall.toolCallId,
+    original: toolCall.original.arguments,
+    parsed: toolCall.parsed.arguments,
+  };
+}
+
+function bindCustomIR(builders: CustomIRBuilderMap | null, toolCall: unknown) {
+  const bound: Record<
+    string,
+    (args: unknown) => Result<{ type: "custom-ir"; data: unknown }, string>
+  > = {};
+  for (const [name, builder] of Object.entries(builders ?? {})) {
+    const build = builder(toolCall);
+    bound[name] = args => result.ok({ type: "custom-ir", data: build(args) });
+  }
+  return bound;
+}
+
 /*
  * ALERT ALERT
  *
@@ -370,7 +500,7 @@ export type ToolCall<T extends ToolMap<any, any>> = {
 
 // Tool factories are structurally just functions, so TypeScript can otherwise forget which IR
 // extension set they were created for if the implementation does not currently return custom IR.
-// These unique-symbol fields are a compile-time-only brand attached by defineTool.
+// These unique-symbol fields are a compile-time-only brand attached by declare(...).define(...).
 declare const toolFactoryExtra: unique symbol;
 declare const toolFactorySubagents: unique symbol;
 
@@ -384,6 +514,8 @@ export type ToolFactoryRequirements<SubagentNames extends string, Extra> = {
   readonly [toolFactoryExtra]: Covariant<Extra>;
   readonly [toolFactorySubagents]: Covariant<SubagentNames>;
 };
+
+type ToolFactoryExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
 
 export type ToolSubagentNames<T> =
   T extends ToolFactoryRequirements<infer SubagentNames, any> ? SubagentNames : never;

@@ -1,26 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { t } from "structural";
 import { result } from "../result.ts";
-import { ToolDef } from "../tools/common.ts";
+import { toolOutput } from "../tools/common.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
 const ArgumentsSchema = t.subtype({
   query: t.str,
 });
 
-const Schema = t.subtype({
-  name: t.value("search"),
-  arguments: ArgumentsSchema,
-});
-
-function searchTool(): ToolDef<"search", { query: string }, { query: string }> {
+function searchTool() {
   return {
+    name: "search",
     ArgumentsSchema,
     ParsedSchema: ArgumentsSchema,
-    Schema,
-    parse: async (_signal, _transport, original) => result.ok({ original, parsed: original }),
-    validate: async () => null,
-    run: async () => ({ content: "" }),
+    parse: async ({ original }: { original: { query: string } }) =>
+      result.ok({ original, parsed: original }),
+    validate: async () => result.ok(null),
+    run: async () => toolOutput(""),
   };
 }
 
@@ -41,18 +37,11 @@ describe("parseToolCall", () => {
     expect(parsed).toEqual({
       status: "success",
       tool: {
-        type: "tool-request",
+        type: "tool-call",
+        name: "search",
+        original: { query: "needle" },
+        parsed: { query: "needle" },
         toolCallId: "call-1",
-        call: {
-          original: {
-            name: "search",
-            arguments: { query: "needle" },
-          },
-          parsed: {
-            name: "search",
-            arguments: { query: "needle" },
-          },
-        },
       },
     });
   });
@@ -72,7 +61,7 @@ describe("parseToolCall", () => {
 
     expect(parsed.status).toBe("success");
     if (parsed.status === "success") {
-      expect(parsed.tool.call.original.arguments).toEqual({ query: "fixed" });
+      expect(parsed.tool.original).toEqual({ query: "fixed" });
     }
   });
 

@@ -1,7 +1,8 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool, autoparse } from "../common.ts";
+import { attemptUntrackedRead, BASE_IR, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { result } from "../../result.ts";
 
 const ArgumentsSchema = t
   .subtype({
@@ -15,35 +16,37 @@ const Schema = t.subtype({
   arguments: ArgumentsSchema,
 });
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+const append = BASE_IR.declare({
+  name: "append",
   ArgumentsSchema,
-  validate,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, transport, call) {
-    const { filePath } = call.parsed.arguments;
+});
+
+export default append.withCustomIR({ fileMutateIR }).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.original.arguments);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath } = toolCall.parsed.arguments;
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
     const replaced = runEdit({
       file,
-      edit: call.parsed.arguments,
+      edit: toolCall.parsed.arguments,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
-    return {
-      content: "",
-    };
+    return customIR.fileMutateIR({ content: "" });
   },
 }));
 
 async function validate(
   signal: AbortSignal,
   transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
+  args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-  await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-  return null;
+  await fileTracker.assertCanEdit(transport, signal, args.filePath);
+  await attemptUntrackedRead(transport, signal, args.filePath);
+  return result.ok(null);
 }
 
 function runEdit({

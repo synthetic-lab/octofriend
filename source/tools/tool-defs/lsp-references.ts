@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { BASE_IR, toolOutput } from "../common.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,8 +9,8 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-references", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
   const ArgumentsSchema = t.subtype({
@@ -28,28 +28,22 @@ export default dynamicDefineTool("lsp-references", async function (_, transport,
       `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
     );
 
-  return {
-    Schema,
+  return BASE_IR.declare({
+    name: "lsp-references",
     ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspPositionQuery(
-        abortSignal,
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspPositionQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "references",
         (client, filePath, line, character) => client.getReferences(filePath, line, character),
         (refs, filePath, line, character) =>
           `References for symbol at ${filePath}:${line}:${character}:\n${formatLocations(refs)}`,
       );
+      return toolOutput(output.content);
     },
-  } satisfies ToolDef<
-    "lsp-references",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

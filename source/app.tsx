@@ -33,7 +33,6 @@ import grep from "./tools/tool-defs/grep.ts";
 
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
-import { ParsedToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -61,7 +60,8 @@ import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
-import { ToolCallRequest } from "./ir/llm-ir.ts";
+import type { ToolCall } from "./libocto/tool-def.ts";
+import type toolMap from "./tools/tool-defs/index.ts";
 import { ToolResult } from "./tools/common.ts";
 import {
   InputPriorityProvider,
@@ -71,6 +71,13 @@ import {
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
+
+type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
+type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
+  name: LoadedToolFrom<T>["name"];
+  arguments: t.GetType<LoadedToolFrom<T>["ParsedSchema"]>;
+};
+type ToolCallRequest = ToolCall<typeof toolMap>;
 
 type Props = {
   config: Config;
@@ -452,7 +459,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
 
-  if (modeData.mode === "tool-request") {
+  if (modeData.mode === "tool-call") {
     return (
       <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
     );
@@ -719,7 +726,7 @@ function ToolRequestRenderer({
   );
   const unchained = useUnchained();
   const whitelistKey = (() => {
-    const fn = toolReq.call.parsed;
+    const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "read":
       case "list":
@@ -748,10 +755,11 @@ function ToolRequestRenderer({
       case "lsp-outgoing-calls":
         return `${fn.name}:*`;
     }
+    return `${fn.name}:*`;
   })();
 
   const prompt = (() => {
-    const fn = toolReq.call.parsed;
+    const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "create":
         return (
@@ -791,9 +799,10 @@ function ToolRequestRenderer({
       case "lsp-outgoing-calls":
         return null;
     }
+    return null;
   })();
 
-  const toolName = toolReq.call.parsed.name;
+  const toolName = toolReq.name;
 
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
 
@@ -849,12 +858,10 @@ function ToolRequestRenderer({
 
   const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
   const isRunning =
-    modeData.mode === "tool-request" && modeData.runningToolCallId === toolReq.toolCallId;
+    modeData.mode === "tool-call" && modeData.runningToolCallId === toolReq.toolCallId;
 
   const noConfirmationNeeded =
-    unchained ||
-    SKIP_CONFIRMATION_TOOLS.includes(toolReq.call.parsed.name) ||
-    isToolWhitelisted === true;
+    unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
 
   useEffect(() => {
     if (noConfirmationNeeded) {
@@ -980,7 +987,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "tool-malformed") {
+  if (item.type === "tool-parse-error") {
     return (
       <Text color="red">
         {displayLog({
@@ -1033,7 +1040,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
   }
 
   // Tool skips are tracked internally for explaining to LLMs, but are not shown to users
-  if (item.type === "tool-skip") {
+  if (item.type === "tool-skip-output") {
     return null;
   }
 
@@ -1066,7 +1073,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     return <Text color="red">Compaction failed.</Text>;
   }
 
-  if (item.type === "compaction-checkpoint") {
+  if (item.type === "checkpoint") {
     return <CompactionSummaryRenderer summary={item.summary} />;
   }
 
@@ -1112,38 +1119,38 @@ function CompactionSummaryRenderer({ summary }: { summary: string }) {
 }
 
 function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] }) {
-  if (item.type === "malformed-request") {
+  if (item.type === "malformed-tool-request") {
     return null;
   }
-  switch (item.call.parsed.name) {
+  switch (item.name) {
     case "read":
-      return <ReadToolRenderer item={item.call.parsed} />;
+      return <ReadToolRenderer item={parsedToolSchema(item)} />;
     case "list":
-      return <ListToolRenderer item={item.call.parsed} />;
+      return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
-      return <ShellToolRenderer item={item.call.parsed} />;
+      return <ShellToolRenderer item={parsedToolSchema(item)} />;
     case "edit":
-      return <EditToolRenderer item={item.call.parsed} />;
+      return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
-      return <CreateToolRenderer item={item.call.parsed} />;
+      return <CreateToolRenderer item={parsedToolSchema(item)} />;
     case "mcp":
-      return <McpToolRenderer item={item.call.parsed} />;
+      return <McpToolRenderer item={parsedToolSchema(item)} />;
     case "fetch":
-      return <FetchToolRenderer item={item.call.parsed} />;
+      return <FetchToolRenderer item={parsedToolSchema(item)} />;
     case "append":
-      return <AppendToolRenderer item={item.call.parsed} />;
+      return <AppendToolRenderer item={parsedToolSchema(item)} />;
     case "prepend":
-      return <PrependToolRenderer item={item.call.parsed} />;
+      return <PrependToolRenderer item={parsedToolSchema(item)} />;
     case "rewrite":
-      return <RewriteToolRenderer item={item.call.parsed} />;
+      return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
-      return <SkillToolRenderer item={item.call.parsed} />;
+      return <SkillToolRenderer item={parsedToolSchema(item)} />;
     case "web-search":
-      return <WebSearchToolRenderer item={item.call.parsed} />;
+      return <WebSearchToolRenderer item={parsedToolSchema(item)} />;
     case "glob":
-      return <GlobRenderer item={item.call.parsed} />;
+      return <GlobRenderer item={parsedToolSchema(item)} />;
     case "grep":
-      return <GrepRenderer item={item.call.parsed} />;
+      return <GrepRenderer item={parsedToolSchema(item)} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -1152,8 +1159,16 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <LspToolRenderer item={item.call.parsed} />;
+      return <LspToolRenderer item={parsedToolSchema(item)} />;
   }
+  return null;
+}
+
+function parsedToolSchema(toolCall: ToolCallRequest): any {
+  return {
+    name: toolCall.name,
+    arguments: toolCall.parsed,
+  };
 }
 
 function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
@@ -1376,7 +1391,7 @@ function ToolOutputContentRenderer({ result }: { result: ToolResult }) {
 }
 
 function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
-  const fn = toolCallRequest.call.parsed;
+  const fn = parsedToolSchema(toolCallRequest);
   const cwd = useCwd();
   switch (fn.name) {
     case "glob":
@@ -1446,6 +1461,7 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "lsp-outgoing-calls":
       return <Text> LSP queries during this session.</Text>;
   }
+  return <Text> this tool in this session.</Text>;
 }
 
 const OCTO_MARGIN = 1;

@@ -1,22 +1,19 @@
-import { t } from "structural";
 import toolMap from "./tool-defs/index.ts";
-import { ToolDef, ToolResult, ToolError } from "./common.ts";
+import { ToolError } from "./common.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
+import {
+  LoadedTools as GenericLoadedTools,
+  ToolCall as GenericToolCall,
+  ToolFactoryRequirements,
+  ToolReturn,
+} from "../libocto/tool-def.ts";
 export { ToolError } from "./common.ts";
 
-export type LoadedTools = {
-  [K in keyof typeof toolMap]: Exclude<Awaited<ReturnType<(typeof toolMap)[K]>>, null>;
-};
-export type ToolCall = {
-  [K in keyof LoadedTools]: {
-    parsed: {
-      name: t.GetType<LoadedTools[K]["Schema"]>["name"];
-      arguments: t.GetType<LoadedTools[K]["ParsedSchema"]>;
-    };
-    original: t.GetType<LoadedTools[K]["Schema"]>;
-  };
-}[keyof LoadedTools];
+export type LoadedTools = GenericLoadedTools<typeof toolMap>;
+export type ToolCall = GenericToolCall<typeof toolMap>;
+type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
+export type ToolRunResult = ToolReturn<never, ToolExtra<(typeof toolMap)[keyof typeof toolMap]>>;
 
 export async function loadTools(
   transport: Transport,
@@ -27,8 +24,9 @@ export async function loadTools(
 
   await Promise.all(
     (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => {
-      const toolDef = await toolMap[key](signal, transport, config);
+      const toolDef = await toolMap[key]({ signal, transport, data: config });
       if (toolDef) {
+        (toolDef as any).name = key;
         // @ts-ignore
         loaded[key] = toolDef;
       }
@@ -63,10 +61,20 @@ export async function runTool(
   loaded: Partial<LoadedTools>,
   call: ToolCall,
   config: Config,
-  modelOverride: string | null,
-): Promise<ToolResult> {
+): Promise<ToolRunResult> {
   const def = lookup(loaded, call);
-  return await def.run(abortSignal, transport, call, config, modelOverride);
+  const output = await (def as any).run({
+    signal: abortSignal,
+    transport,
+    toolCall: {
+      toolCallId: call.toolCallId,
+      original: { name: call.name, arguments: call.original },
+      parsed: { name: call.name, arguments: call.parsed },
+    },
+    data: config,
+  });
+  if (!output.success) throw new ToolError(output.error);
+  return output.data;
 }
 
 export async function validateTool(
@@ -77,14 +85,21 @@ export async function validateTool(
   config: Config,
 ): Promise<null> {
   const toolDef = lookup(loaded, tool);
-  return await toolDef.validate(abortSignal, transport, tool.original, config);
+  const validation = await (toolDef as any).validate(
+    abortSignal,
+    transport,
+    {
+      original: { name: tool.name, arguments: tool.original },
+      parsed: { name: tool.name, arguments: tool.parsed },
+    },
+    config,
+  );
+  if (!validation.success) throw new ToolError(validation.error);
+  return null;
 }
 
-function lookup<T extends ToolCall>(
-  loaded: Partial<LoadedTools>,
-  t: T,
-): ToolDef<any, T["original"]["arguments"], any> {
-  const def = loaded[t.original.name];
-  if (def == null) throw new ToolError(`No tool named ${t.original.name}`);
-  return def as ToolDef<any, T["original"]["arguments"], any>;
+function lookup<T extends ToolCall>(loaded: Partial<LoadedTools>, t: T): any {
+  const def = (loaded as any)[(t as any).name];
+  if (def == null) throw new ToolError(`No tool named ${t.name}`);
+  return def;
 }

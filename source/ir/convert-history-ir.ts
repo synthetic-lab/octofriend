@@ -16,7 +16,12 @@ import {
   sequenceId,
 } from "../history.ts";
 
-import { AssistantMessage, LlmIR, TrajectoryOutputIR } from "./llm-ir.ts";
+import { contentToText, textContent } from "../libocto/content.ts";
+import type { OctoIR, TrajectoryOutputIR } from "./octo-ir.ts";
+import type { AssistantMessage } from "../libocto/llm-ir.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
+
+type OctoAssistantMessage = AssistantMessage<typeof toolMap>;
 
 // Filter out only relevant history items to the LLM IR
 type LoweredHistory =
@@ -43,10 +48,10 @@ export function outputToHistory(output: TrajectoryOutputIR[]): HistoryItem[] {
 }
 
 function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
-  if (output.role === "tool-malformed") {
+  if (output.role === "tool-parse-error") {
     return [
       {
-        type: "tool-malformed",
+        type: "tool-parse-error",
         id: sequenceId(),
         malformedRequest: output.malformedRequest,
       },
@@ -86,21 +91,48 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
       },
     ];
   }
-  if (output.role === "compaction-checkpoint") {
+  if (output.role === "checkpoint") {
     return [
       {
-        type: "compaction-checkpoint",
+        type: "checkpoint",
         id: sequenceId(),
-        summary: output.summary,
+        summary: contentToText(output.content),
       },
     ];
   }
 
-  if (output.role === "tool-skip") {
+  if (output.role === "file-read") {
+    return [
+      {
+        type: "tool-output",
+        id: sequenceId(),
+        result: {
+          content: output.content,
+          image: output.image,
+        },
+        toolCall: output.toolCall,
+      },
+    ];
+  }
+
+  if (output.role === "file-mutate") {
+    return [
+      {
+        type: "tool-output",
+        id: sequenceId(),
+        result: {
+          content: output.content,
+        },
+        toolCall: output.toolCall,
+      },
+    ];
+  }
+
+  if (output.role === "tool-skip-output") {
     return [
       {
         id: sequenceId(),
-        type: "tool-skip",
+        type: "tool-skip-output",
         toolCall: output.toolCall,
         reason: output.reason,
       },
@@ -133,8 +165,8 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
   return history;
 }
 
-export function toLlmIR(history: HistoryItem[]): Array<LlmIR> {
-  const output: LlmIR[] = [];
+export function toLlmIR(history: HistoryItem[]): Array<OctoIR> {
+  const output: OctoIR[] = [];
   const lowered: LoweredHistory[] = [];
 
   // Filter out irrelevant high-level history items, keeping only the LLM-relevant ones
@@ -175,7 +207,7 @@ function lowerItem(item: HistoryItem): LoweredHistory | null {
 // position if you don't intend to overwrite anything. However, the transformed history-to-LLM
 // message must be a new object: do not simply return the history item, or it could be modified by
 // future calls.
-function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, LlmIR | null] {
+function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null, OctoIR | null] {
   if (item.type === "tool-calls") {
     return assertPrevAssistant("tool-calls", item, prev, prev => {
       // Collapse the tool call into the previous assistant message
@@ -194,11 +226,11 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
       ];
     });
   }
-  if (item.type === "tool-malformed") {
+  if (item.type === "tool-parse-error") {
     return [
       null,
       {
-        role: "tool-malformed",
+        role: "tool-parse-error",
         malformedRequest: item.malformedRequest,
       },
     ];
@@ -220,8 +252,9 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     return [
       null,
       {
-        role: "tool-reject",
+        role: "tool-skip-output",
         toolCall: item.toolCall,
+        reason: "Tool call rejected by user.",
       },
     ];
   }
@@ -230,18 +263,18 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     return [
       null,
       {
-        role: "tool-error",
+        role: "tool-runtime-error",
         error: item.error,
         toolCall: item.toolCall,
       },
     ];
   }
 
-  if (item.type === "tool-skip") {
+  if (item.type === "tool-skip-output") {
     return [
       null,
       {
-        role: "tool-skip",
+        role: "tool-skip-output",
         toolCall: item.toolCall,
         reason: item.reason,
       },
@@ -249,11 +282,47 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
   }
 
   if (item.type === "tool-output") {
-    switch (item.toolCall.call.parsed.name) {
+    switch (item.toolCall.name) {
       case "append":
+        return [
+          null,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: item.toolCall,
+            path: path.resolve(item.toolCall.parsed.filePath),
+          },
+        ];
       case "prepend":
+        return [
+          null,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: item.toolCall,
+            path: path.resolve(item.toolCall.parsed.filePath),
+          },
+        ];
       case "edit":
+        return [
+          null,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: item.toolCall,
+            path: path.resolve(item.toolCall.parsed.filePath),
+          },
+        ];
       case "rewrite":
+        return [
+          null,
+          {
+            role: "file-mutate",
+            content: item.result.content,
+            toolCall: item.toolCall,
+            path: path.resolve(item.toolCall.parsed.filePath),
+          },
+        ];
       case "create":
         return [
           null,
@@ -261,7 +330,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             role: "file-mutate",
             content: item.result.content,
             toolCall: item.toolCall,
-            path: path.resolve(item.toolCall.call.parsed.arguments.filePath),
+            path: path.resolve(item.toolCall.parsed.filePath),
           },
         ];
       case "read":
@@ -271,7 +340,7 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
             role: "file-read",
             content: item.result.content,
             toolCall: item.toolCall,
-            path: path.resolve(item.toolCall.call.parsed.arguments.filePath),
+            path: path.resolve(item.toolCall.parsed.filePath),
             image: item.result.image,
           },
         ];
@@ -295,11 +364,19 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
           null,
           {
             role: "tool-output",
-            content: item.result.content,
+            content: textContent(item.result.content),
             toolCall: item.toolCall,
           },
         ];
     }
+    return [
+      null,
+      {
+        role: "tool-output",
+        content: textContent(item.result.content),
+        toolCall: item.toolCall,
+      },
+    ];
   }
 
   if (item.type === "file-outdated") {
@@ -325,12 +402,12 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     ];
   }
 
-  if (item.type === "compaction-checkpoint") {
+  if (item.type === "checkpoint") {
     return [
       prev,
       {
-        role: "compaction-checkpoint",
-        summary: item.summary,
+        role: "checkpoint",
+        content: textContent(item.summary),
       },
     ];
   }
@@ -357,8 +434,10 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
     prev,
     {
       role: "user",
-      content: item.content,
-      images: item.images,
+      content: [
+        ...textContent(item.content),
+        ...(item.images ?? []).map(image => ({ type: "image" as const, image })),
+      ],
     },
   ];
 }
@@ -366,9 +445,9 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
 function assertPrevAssistant<T extends HistoryItem["type"]>(
   type: T,
   _: HistoryItem & { type: T },
-  prev: LlmIR | null,
-  callback: (prev: AssistantMessage) => [LlmIR | null, LlmIR | null],
-): [LlmIR | null, LlmIR | null] {
+  prev: OctoIR | null,
+  callback: (prev: OctoAssistantMessage) => [OctoIR | null, OctoIR | null],
+): [OctoIR | null, OctoIR | null] {
   if (prev == null) return [null, null];
   if (prev.role === "assistant") return callback(prev);
   throw new Error(
