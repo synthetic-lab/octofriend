@@ -2,42 +2,28 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
-import { ToolDef } from "../tools/common.ts";
-import { tryexpr } from "../tryexpr.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import { parseToolCall } from "./parse-tool-call.ts";
+import { ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import * as logger from "../logger.ts";
+import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
-import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
-  const irs = [...messages];
-  irs.reverse();
-  const seenPaths = new Set<string>();
-
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen, modalities));
-    } else {
-      output.push(modelMessageFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(modelMessageFromIr(ir, modalities));
   }
-
-  output.reverse();
 
   if (systemPrompt) {
     const prompt = await systemPrompt();
@@ -51,11 +37,7 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
-  modalities?: MultimodalConfig,
-): ModelMessage {
+function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): ModelMessage {
   if (ir.role === "assistant") {
     if (ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -138,20 +120,7 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
-          {
-            type: "image" as const,
-            image: ir.image.dataUrl,
-          },
-        ],
-      };
-    }
+  if (ir.role === "tool-output") {
     return {
       role: "tool",
       content: [
@@ -161,31 +130,7 @@ function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-          },
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-output" || ir.role === "file-mutate") {
-    let content: string;
-    if (ir.role === "file-mutate") {
-      content = irPrompts.fileMutation(ir.path);
-    } else {
-      content = ir.content;
-    }
-
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result" as const,
-          toolName: ir.toolCall.call.original.name,
-          toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: content,
+            value: ir.content,
           },
         },
       ],
@@ -277,23 +222,6 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.call.original.name,
-          output: {
-            type: "text",
-            value: ir.error,
-          },
-        },
-      ],
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -301,21 +229,8 @@ function modelMessageFromIr(
     };
   }
 
-  const _: "file-unreadable" = ir.role;
-  return {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: ir.toolCall.toolCallId,
-        toolName: ir.toolCall.call.original.name,
-        output: {
-          type: "text",
-          value: ir.error,
-        },
-      },
-    ],
-  };
+  const _: never = ir;
+  return _;
 }
 
 function generateCurlFrom(params: {
@@ -404,7 +319,7 @@ export const runResponsesAgent: Compiler = async ({
       },
     });
 
-    const result = streamText({
+    const stream = streamText({
       model: openai.responses(model.model),
       messages,
       ...toolParams,
@@ -429,7 +344,7 @@ export const runResponsesAgent: Compiler = async ({
     let encryptedReasoningContent: string | undefined = undefined;
 
     // Handle streaming chunks
-    for await (const chunk of result.fullStream) {
+    for await (const chunk of stream.fullStream) {
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
@@ -510,13 +425,13 @@ export const runResponsesAgent: Compiler = async ({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return result.ok({ output: assistantHistoryItem, curl });
     }
 
     // Get tool calls
-    const toolCalls = await result.toolCalls;
+    const toolCalls = await stream.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return result.ok({ output: assistantHistoryItem, curl });
     }
 
     const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
@@ -527,13 +442,13 @@ export const runResponsesAgent: Compiler = async ({
         toolName: toolCall.toolName,
         args: toolCall.input,
       };
-      const parseResult = await parseTool(
-        chatToolCall,
+      const parseResult = await parseToolCall({
+        toolCall: chatToolCall,
         toolDefs,
         autofixJson,
         abortSignal,
         transport,
-      );
+      });
 
       if (parseResult.status === "error") {
         parsedToolCalls.push({
@@ -555,103 +470,11 @@ export const runResponsesAgent: Compiler = async ({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return { success: true, output: assistantHistoryItem, curl };
+    return result.ok({ output: assistantHistoryItem, curl });
   } catch (e) {
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 };
-
-type ParseToolResult =
-  | {
-      status: "success";
-      tool: ToolCallRequest;
-    }
-  | {
-      status: "error";
-      message: string;
-    };
-
-async function parseTool(
-  toolCall: { toolCallId: string; toolName: string; args: any },
-  toolDefs: Record<string, ToolDef<any, any, any>>,
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
-  abortSignal: AbortSignal,
-  transport: Transport,
-): Promise<ParseToolResult> {
-  const name = toolCall.toolName;
-  const toolDef = toolDefs[name];
-
-  if (!toolDef) {
-    return {
-      status: "error",
-      message: `
-Unknown tool ${name}. The only valid tool names are:
-
-- ${Object.keys(toolDefs).join("\n- ")}
-
-Please try calling a valid tool.
-      `.trim(),
-    };
-  }
-
-  const toolSchema = toolDef.Schema;
-  let args = toolCall.args;
-
-  // If args is a string, try to parse as JSON
-  if (typeof args === "string") {
-    let [err, parsedArgs] = tryexpr(() => {
-      return JSON.parse(args);
-    });
-
-    if (err) {
-      const fixPromise = autofixJson(args, abortSignal);
-      const fixResponse = await fixPromise;
-      if (!fixResponse.success) {
-        return {
-          status: "error",
-          message: "Syntax error: invalid JSON in tool call arguments",
-        };
-      }
-      args = fixResponse.fixed;
-    } else {
-      args = parsedArgs;
-    }
-  }
-
-  try {
-    const sliced = toolSchema.slice({
-      name: toolCall.toolName,
-      arguments: args,
-    });
-    const parsed = await toolDef.parse(abortSignal, transport, sliced);
-
-    if (parsed.success) {
-      return {
-        status: "success",
-        tool: {
-          type: "tool-request",
-          call: parsed.data,
-          toolCallId: toolCall.toolCallId,
-        },
-      };
-    }
-    return {
-      status: "error",
-      message: parsed.error,
-    };
-  } catch (e: unknown) {
-    logger.error("verbose", e);
-    logger.error("verbose", toolCall);
-    const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
-    return {
-      status: "error",
-      message: `
-Failed to parse tool call: ${error}. Make sure your arguments are valid and match the expected format.
-      `.trim(),
-    };
-  }
-}

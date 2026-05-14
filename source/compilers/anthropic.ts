@@ -1,24 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import { parseToolCall } from "./parse-tool-call.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import {
   AssistantMessage,
-  LlmIR,
   ToolCallRequest,
   MalformedRequest,
   AnthropicAssistantData,
 } from "../ir/llm-ir.ts";
-import { ToolDef } from "../tools/common.ts";
-import * as logger from "../logger.ts";
-import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
+import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
-import { Transport } from "../transports/transport-common.ts";
+import type { MultimodalConfig } from "../providers.ts";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -27,33 +24,20 @@ const ThinkingBlockSchema = t.subtype({
 });
 
 function toModelMessage(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   modalities?: MultimodalConfig,
 ): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
-  const irs = [...messages];
-  irs.reverse();
-  const seenPaths = new Set<string>();
-
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen, modalities));
-    } else {
-      output.push(modelMessageFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(modelMessageFromIr(ir, modalities));
   }
-
-  output.reverse();
 
   return output;
 }
 
 function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
+  ir: FileOptimizedLlmIR,
   modalities?: MultimodalConfig,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
@@ -105,57 +89,14 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: ir.toolCall.toolCallId,
-            content: [
-              { type: "text", text: ir.content },
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: ir.image.mimeType,
-                  data: ir.image.base64Data,
-                },
-              },
-            ],
-          },
-        ],
-      };
-    }
+  if (ir.role === "tool-output") {
     return {
       role: "user",
       content: [
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-output" || ir.role === "file-mutate") {
-    let content: string;
-    if (ir.role === "file-mutate") {
-      content = irPrompts.fileMutation(ir.path);
-    } else {
-      content = ir.content;
-    }
-
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          content,
+          content: ir.content,
         },
       ],
     };
@@ -231,20 +172,6 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: ir.error,
-        },
-      ],
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -252,19 +179,8 @@ function modelMessageFromIr(
     };
   }
 
-  // file-unreadable case
-  const _: "file-unreadable" = ir.role;
-  return {
-    role: "user",
-    content: [
-      {
-        type: "tool_result",
-        tool_use_id: ir.toolCall.toolCallId,
-        is_error: true,
-        content: ir.error,
-      },
-    ],
-  };
+  const _: never = ir;
+  return _;
 }
 
 function generateCurlFrom(params: {
@@ -371,7 +287,7 @@ export const runAnthropicAgent: Compiler = async ({
 
   try {
     const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const result = await client.messages.create({
+    const stream = await client.messages.create({
       ...system,
       model: model.model,
       messages,
@@ -414,7 +330,7 @@ export const runAnthropicAgent: Compiler = async ({
     >();
 
     // Handle streaming chunks
-    for await (const chunk of result) {
+    for await (const chunk of stream) {
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
@@ -552,12 +468,12 @@ export const runAnthropicAgent: Compiler = async ({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: assistantMessage, curl };
+      return result.ok({ output: assistantMessage, curl });
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return { success: true, output: assistantMessage, curl };
+      return result.ok({ output: assistantMessage, curl });
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -573,13 +489,13 @@ export const runAnthropicAgent: Compiler = async ({
         toolName: inProgressTool.name,
         args: inProgressTool.partialJson,
       };
-      const parseResult = await parseTool(
-        chatToolCall,
+      const parseResult = await parseToolCall({
+        toolCall: chatToolCall,
         toolDefs,
         autofixJson,
         abortSignal,
         transport,
-      );
+      });
 
       if (parseResult.status === "error") {
         toolCalls.push({
@@ -601,103 +517,11 @@ export const runAnthropicAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return { success: true, output: assistantMessage, curl };
+    return result.ok({ output: assistantMessage, curl });
   } catch (e) {
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 };
-
-type ParseToolResult =
-  | {
-      status: "success";
-      tool: ToolCallRequest;
-    }
-  | {
-      status: "error";
-      message: string;
-    };
-
-async function parseTool(
-  toolCall: { toolCallId: string; toolName: string; args: any },
-  toolDefs: Record<string, ToolDef<any, any, any>>,
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
-  abortSignal: AbortSignal,
-  transport: Transport,
-): Promise<ParseToolResult> {
-  const name = toolCall.toolName;
-  const toolDef = toolDefs[name];
-
-  if (!toolDef) {
-    return {
-      status: "error",
-      message: `
-Unknown tool ${name}. The only valid tool names are:
-
-- ${Object.keys(toolDefs).join("\n- ")}
-
-Please try calling a valid tool.
-      `.trim(),
-    };
-  }
-
-  const toolSchema = toolDef.Schema;
-  let args = toolCall.args;
-
-  // If args is a string, try to parse as JSON
-  if (typeof args === "string") {
-    let [err, parsedArgs] = tryexpr(() => {
-      return JSON.parse(args);
-    });
-
-    if (err) {
-      const fixPromise = autofixJson(args, abortSignal);
-      const fixResponse = await fixPromise;
-      if (!fixResponse.success) {
-        return {
-          status: "error",
-          message: "Syntax error: invalid JSON in tool call arguments",
-        };
-      }
-      args = fixResponse.fixed;
-    } else {
-      args = parsedArgs;
-    }
-  }
-
-  try {
-    const sliced = toolSchema.slice({
-      name: toolCall.toolName,
-      arguments: args,
-    });
-    const parsed = await toolDef.parse(abortSignal, transport, sliced);
-
-    if (parsed.success) {
-      return {
-        status: "success",
-        tool: {
-          type: "tool-request",
-          call: parsed.data,
-          toolCallId: toolCall.toolCallId,
-        },
-      };
-    }
-    return {
-      status: "error",
-      message: parsed.error,
-    };
-  } catch (e: unknown) {
-    logger.error("verbose", e);
-    logger.error("verbose", toolCall);
-    const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
-    return {
-      status: "error",
-      message: `
-Failed to parse tool call: ${error}. Make sure your arguments are valid and match the expected format.
-      `.trim(),
-    };
-  }
-}

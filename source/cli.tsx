@@ -295,7 +295,7 @@ bench
       if (!result.success) {
         return {
           success: false,
-          error: result.requestError,
+          error: result.error.requestError,
         };
       }
 
@@ -311,7 +311,7 @@ bench
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
 
-      const tokens = result.output.outputTokens;
+      const tokens = result.data.output.outputTokens;
 
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {
@@ -487,8 +487,8 @@ cli
       transport,
     });
     if (!result.success) {
-      console.error(result.requestError);
-      console.error(`cURL: ${result.curl}`);
+      console.error(result.error.requestError);
+      console.error(`cURL: ${result.error.curl}`);
       process.exit(1);
     }
 

@@ -186,13 +186,13 @@ export async function trajectoryArc({
       irs: maybeBufferedMessage(),
       reason: {
         type: "request-error",
-        requestError: result.requestError,
-        curl: result.curl,
+        requestError: result.error.requestError,
+        curl: result.error.curl,
       },
     };
   }
 
-  let assistantMessage = result.output;
+  let assistantMessage = result.data.output;
   irs = [...irs, assistantMessage];
 
   // Retry malformed tool calls
