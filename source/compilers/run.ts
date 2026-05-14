@@ -8,6 +8,7 @@ import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { optimizeFiles } from "./optimize-files.ts";
 
 export async function run({
   model,
@@ -43,13 +44,14 @@ export async function run({
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
+  const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
 
   return await runInternal({
     model,
     apiKey,
     abortSignal,
     systemPrompt,
-    irs: slicedMessages,
+    irs: optimizedMessages,
     onTokens: handlers.onTokens,
     onQuotaUpdated: handlers.onQuotaUpdated,
     autofixJson: (badJson: string, signal: AbortSignal) => {

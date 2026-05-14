@@ -1,8 +1,8 @@
 import { t, toJSONSchema, toTypescript } from "structural";
 import { Compiler } from "./compiler-interface.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import {
-  LlmIR,
   AssistantMessage as AssistantIR,
   AgentResult,
   ToolCallRequest,
@@ -19,7 +19,7 @@ import { compactionCompilerExplanation } from "./autocompact.ts";
 import { ToolDef } from "../tools/common.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 import { Transport } from "../transports/transport-common.ts";
 
@@ -104,26 +104,16 @@ JSON`;
 }
 
 async function toLlmMessages(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
-  const irs = [...messages];
 
-  irs.reverse();
-  const seenPaths = new Set<string>();
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(llmFromIr(ir, seen, modalities));
-    } else {
-      output.push(llmFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(llmFromIr(ir, modalities));
   }
 
-  output.reverse();
   if (systemPrompt) {
     const prompt = await systemPrompt();
     output.unshift({
@@ -135,7 +125,7 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig): LlmMessage {
+function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -196,35 +186,6 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
-          {
-            type: "image_url",
-            image_url: { url: ir.image.dataUrl },
-          },
-        ],
-      };
-    }
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-    };
-  }
-
-  if (ir.role === "file-mutate") {
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: irPrompts.fileMutation(ir.path),
-    };
-  }
-
   if (ir.role === "tool-reject") {
     return {
       role: "tool",
@@ -265,14 +226,6 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: `\n${tagged(TOOL_ERROR_TAG, {}, ir.error)}`,
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -280,13 +233,8 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  const _: "file-unreadable" = ir.role;
-
-  return {
-    role: "tool",
-    tool_call_id: ir.toolCall.toolCallId,
-    content: tagged(TOOL_ERROR_TAG, {}, ir.error),
-  };
+  const _: never = ir;
+  return _;
 }
 
 const PaymentErrorSchema = t.subtype({

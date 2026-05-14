@@ -2,15 +2,15 @@ import { ModelConfig } from "../config.ts";
 import { AgentResult } from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { LlmIR } from "../ir/llm-ir.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
 
 export type Compiler = (params: {
   systemPrompt?: () => Promise<string>;
   model: ModelConfig;
   apiKey: string;
-  irs: LlmIR[];
+  irs: FileOptimizedLlmIR[];
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
   onQuotaUpdated?: (quota: QuotaData) => void;
   abortSignal: AbortSignal;

@@ -1,10 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import {
   AssistantMessage,
-  LlmIR,
   ToolCallRequest,
   MalformedRequest,
   AnthropicAssistantData,
@@ -17,7 +17,7 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../providers.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 const ThinkingBlockSchema = t.subtype({
@@ -27,33 +27,20 @@ const ThinkingBlockSchema = t.subtype({
 });
 
 function toModelMessage(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   modalities?: MultimodalConfig,
 ): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
-  const irs = [...messages];
-  irs.reverse();
-  const seenPaths = new Set<string>();
-
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen, modalities));
-    } else {
-      output.push(modelMessageFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(modelMessageFromIr(ir, modalities));
   }
-
-  output.reverse();
 
   return output;
 }
 
 function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
+  ir: FileOptimizedLlmIR,
   modalities?: MultimodalConfig,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
@@ -105,57 +92,14 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: ir.toolCall.toolCallId,
-            content: [
-              { type: "text", text: ir.content },
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: ir.image.mimeType,
-                  data: ir.image.base64Data,
-                },
-              },
-            ],
-          },
-        ],
-      };
-    }
+  if (ir.role === "tool-output") {
     return {
       role: "user",
       content: [
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-output" || ir.role === "file-mutate") {
-    let content: string;
-    if (ir.role === "file-mutate") {
-      content = irPrompts.fileMutation(ir.path);
-    } else {
-      content = ir.content;
-    }
-
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          content,
+          content: ir.content,
         },
       ],
     };
@@ -231,20 +175,6 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          tool_use_id: ir.toolCall.toolCallId,
-          is_error: true,
-          content: ir.error,
-        },
-      ],
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -252,19 +182,8 @@ function modelMessageFromIr(
     };
   }
 
-  // file-unreadable case
-  const _: "file-unreadable" = ir.role;
-  return {
-    role: "user",
-    content: [
-      {
-        type: "tool_result",
-        tool_use_id: ir.toolCall.toolCallId,
-        is_error: true,
-        content: ir.error,
-      },
-    ],
-  };
+  const _: never = ir;
+  return _;
 }
 
 function generateCurlFrom(params: {
