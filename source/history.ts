@@ -5,7 +5,6 @@ import type toolMap from "./tools/tool-defs/index.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
-type MalformedRequest = MalformedToolRequest;
 type FileToolCallRequest = Extract<
   ToolCallRequest,
   { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
@@ -17,7 +16,7 @@ export type SequenceIdTagged<T> = T & {
 
 export type ToolCallItems = SequenceIdTagged<{
   type: "tool-calls";
-  tools: Array<ToolCallRequest | MalformedRequest>;
+  tools: Array<ToolCallRequest | MalformedToolRequest>;
 }>;
 
 export type ToolOutputItem = SequenceIdTagged<{
@@ -28,7 +27,7 @@ export type ToolOutputItem = SequenceIdTagged<{
 
 export type ToolMalformedItem = SequenceIdTagged<{
   type: "tool-parse-error";
-  malformedRequest: MalformedRequest;
+  malformedRequest: MalformedToolRequest;
 }>;
 
 export type ToolValidationErrorItem = SequenceIdTagged<{

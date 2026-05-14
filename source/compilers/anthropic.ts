@@ -3,18 +3,18 @@ import { t, toJSONSchema } from "structural";
 import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { contentToText } from "../libocto/content.ts";
 import type {
   Agent,
   AnthropicAssistantData,
   AssistantMessage,
+  Content as IRContent,
   MalformedToolRequest,
 } from "../libocto/llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
-import { compactionCompilerExplanation } from "./autocompact.ts";
+import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 
@@ -22,13 +22,53 @@ type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
-type MalformedRequest = MalformedToolRequest;
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
   thinking: t.str,
   signature: t.str,
 });
+
+function imagePlaceholderContent(): string {
+  return irPrompts.imageAttachmentPlaceholderText();
+}
+
+function anthropicContentParts(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
+  const output: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      output.push({ type: "text", text: part.content });
+      continue;
+    }
+    if (modalities?.image?.enabled) {
+      output.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: part.image.mimeType,
+          data: part.image.base64Data,
+        },
+      });
+    } else {
+      output.push({ type: "text", text: imagePlaceholderContent() });
+    }
+  }
+  return output;
+}
+
+function checkpointContent(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
+  return [
+    { type: "text", text: COMPACTION_COMPILER_PREFIX },
+    ...anthropicContentParts(content, modalities),
+    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
+  ];
+}
 
 function toModelMessage<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
@@ -70,33 +110,9 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   }
 
   if (ir.role === "user") {
-    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
-    const text = contentToText(ir.content);
-    if (images.length > 0) {
-      if (modalities?.image?.enabled) {
-        return {
-          role: "user",
-          content: [
-            { type: "text", text },
-            ...images.map((img: any) => ({
-              type: "image" as const,
-              source: {
-                type: "base64" as const,
-                media_type: img.mimeType,
-                data: img.base64Data,
-              },
-            })),
-          ],
-        };
-      }
-      return {
-        role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(text, images),
-      };
-    }
     return {
       role: "user",
-      content: text,
+      content: anthropicContentParts(ir.content, modalities),
     };
   }
 
@@ -107,7 +123,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
         {
           type: "tool_result",
           tool_use_id: ir.toolCall.toolCallId,
-          content: contentToText(ir.content),
+          content: anthropicContentParts(ir.content, modalities),
         },
       ],
     };
@@ -172,7 +188,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(contentToText(ir.content)),
+      content: checkpointContent(ir.content, modalities),
     };
   }
 
@@ -478,7 +494,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
       .sort(([a], [b]) => a - b)
       .map(([_, v]) => v);
 
-    const toolCalls: Array<ToolCallRequest<A> | MalformedRequest> = [];
+    const toolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
 
     for (const inProgressTool of sortedTools) {
       const chatToolCall = {

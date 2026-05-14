@@ -1,5 +1,5 @@
 import type { AgentResult, OctoIR } from "../ir/octo-ir.ts";
-import { textContent } from "../libocto/content.ts";
+import { textContent } from "../ir/content.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -10,12 +10,13 @@ import { Transport } from "../transports/transport-common.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
-export const compactionCompilerExplanation = (summary: string) => {
-  return `# Conversation History Summary
+export const COMPACTION_COMPILER_PREFIX = `# Conversation History Summary
 
 The following text is a condensed summary of all previous messages in this conversation:
 
-${summary}
+`;
+
+export const COMPACTION_COMPILER_SUFFIX = `
 
 ---
 
@@ -29,6 +30,9 @@ The individual messages from earlier in this conversation are no longer availabl
 3. Continue working on your current task exactly where you left off
 
 Resume your work now.`;
+
+export const compactionCompilerExplanation = (summary: string) => {
+  return `${COMPACTION_COMPILER_PREFIX}${summary}${COMPACTION_COMPILER_SUFFIX}`;
 };
 
 export function findMostRecentCompactionCheckpointIndex(messages: OctoIR[]): number {

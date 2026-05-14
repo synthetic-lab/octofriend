@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import type { OctoIR, TrajectoryOutputIR } from "../ir/octo-ir.ts";
-import { textContent } from "../libocto/content.ts";
+import { textContent } from "../ir/content.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
