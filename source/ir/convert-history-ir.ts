@@ -16,7 +16,7 @@ import {
   sequenceId,
 } from "../history.ts";
 
-import { contentToText, textContent } from "./content.ts";
+import { contentToText } from "./content.ts";
 import type { OctoIR, TrajectoryOutputIR } from "./octo-ir.ts";
 import type { AssistantMessage } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
@@ -364,7 +364,7 @@ function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null
           null,
           {
             role: "tool-output",
-            content: textContent(item.result.content),
+            content: [{ type: "text", content: item.result.content }],
             toolCall: item.toolCall,
           },
         ];
@@ -373,7 +373,7 @@ function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null
       null,
       {
         role: "tool-output",
-        content: textContent(item.result.content),
+        content: [{ type: "text", content: item.result.content }],
         toolCall: item.toolCall,
       },
     ];
@@ -407,7 +407,7 @@ function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null
       prev,
       {
         role: "checkpoint",
-        content: textContent(item.summary),
+        content: [{ type: "text", content: item.summary }],
       },
     ];
   }
@@ -435,7 +435,7 @@ function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null
     {
       role: "user",
       content: [
-        ...textContent(item.content),
+        { type: "text", content: item.content },
         ...(item.images ?? []).map(image => ({ type: "image" as const, image })),
       ],
     },
