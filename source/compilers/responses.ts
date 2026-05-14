@@ -3,19 +3,15 @@ import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
 import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import { parseToolCall } from "./parse-tool-call.ts";
 import { ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
-import { ToolDef } from "../tools/common.ts";
-import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import * as logger from "../logger.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
-import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
   messages: FileOptimizedLlmIR[],
@@ -445,13 +441,13 @@ export const runResponsesAgent: Compiler = async ({
         toolName: toolCall.toolName,
         args: toolCall.input,
       };
-      const parseResult = await parseTool(
-        chatToolCall,
+      const parseResult = await parseToolCall({
+        toolCall: chatToolCall,
         toolDefs,
         autofixJson,
         abortSignal,
         transport,
-      );
+      });
 
       if (parseResult.status === "error") {
         parsedToolCalls.push({
@@ -482,94 +478,3 @@ export const runResponsesAgent: Compiler = async ({
     };
   }
 };
-
-type ParseToolResult =
-  | {
-      status: "success";
-      tool: ToolCallRequest;
-    }
-  | {
-      status: "error";
-      message: string;
-    };
-
-async function parseTool(
-  toolCall: { toolCallId: string; toolName: string; args: any },
-  toolDefs: Record<string, ToolDef<any, any, any>>,
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
-  abortSignal: AbortSignal,
-  transport: Transport,
-): Promise<ParseToolResult> {
-  const name = toolCall.toolName;
-  const toolDef = toolDefs[name];
-
-  if (!toolDef) {
-    return {
-      status: "error",
-      message: `
-Unknown tool ${name}. The only valid tool names are:
-
-- ${Object.keys(toolDefs).join("\n- ")}
-
-Please try calling a valid tool.
-      `.trim(),
-    };
-  }
-
-  const toolSchema = toolDef.Schema;
-  let args = toolCall.args;
-
-  // If args is a string, try to parse as JSON
-  if (typeof args === "string") {
-    let [err, parsedArgs] = tryexpr(() => {
-      return JSON.parse(args);
-    });
-
-    if (err) {
-      const fixPromise = autofixJson(args, abortSignal);
-      const fixResponse = await fixPromise;
-      if (!fixResponse.success) {
-        return {
-          status: "error",
-          message: "Syntax error: invalid JSON in tool call arguments",
-        };
-      }
-      args = fixResponse.fixed;
-    } else {
-      args = parsedArgs;
-    }
-  }
-
-  try {
-    const sliced = toolSchema.slice({
-      name: toolCall.toolName,
-      arguments: args,
-    });
-    const parsed = await toolDef.parse(abortSignal, transport, sliced);
-
-    if (parsed.success) {
-      return {
-        status: "success",
-        tool: {
-          type: "tool-request",
-          call: parsed.data,
-          toolCallId: toolCall.toolCallId,
-        },
-      };
-    }
-    return {
-      status: "error",
-      message: parsed.error,
-    };
-  } catch (e: unknown) {
-    logger.error("verbose", e);
-    logger.error("verbose", toolCall);
-    const error = e instanceof Error ? e.message : "Invalid arguments in tool call";
-    return {
-      status: "error",
-      message: `
-Failed to parse tool call: ${error}. Make sure your arguments are valid and match the expected format.
-      `.trim(),
-    };
-  }
-}
