@@ -2,7 +2,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import { ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -12,32 +13,20 @@ import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 async function toModelMessage(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<ModelMessage>> {
   const output: ModelMessage[] = [];
 
-  const irs = [...messages];
-  irs.reverse();
-  const seenPaths = new Set<string>();
-
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(modelMessageFromIr(ir, seen, modalities));
-    } else {
-      output.push(modelMessageFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(modelMessageFromIr(ir, modalities));
   }
-
-  output.reverse();
 
   if (systemPrompt) {
     const prompt = await systemPrompt();
@@ -51,11 +40,7 @@ async function toModelMessage(
   return output;
 }
 
-function modelMessageFromIr(
-  ir: LlmIR,
-  seenPath: boolean,
-  modalities?: MultimodalConfig,
-): ModelMessage {
+function modelMessageFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): ModelMessage {
   if (ir.role === "assistant") {
     if (ir.reasoningContent || ir.openai) {
       let openai = {};
@@ -138,20 +123,7 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
-          {
-            type: "image" as const,
-            image: ir.image.dataUrl,
-          },
-        ],
-      };
-    }
+  if (ir.role === "tool-output") {
     return {
       role: "tool",
       content: [
@@ -161,31 +133,7 @@ function modelMessageFromIr(
           toolCallId: ir.toolCall.toolCallId,
           output: {
             type: "text" as const,
-            value: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-          },
-        },
-      ],
-    };
-  }
-
-  if (ir.role === "tool-output" || ir.role === "file-mutate") {
-    let content: string;
-    if (ir.role === "file-mutate") {
-      content = irPrompts.fileMutation(ir.path);
-    } else {
-      content = ir.content;
-    }
-
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result" as const,
-          toolName: ir.toolCall.call.original.name,
-          toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: content,
+            value: ir.content,
           },
         },
       ],
@@ -277,23 +225,6 @@ function modelMessageFromIr(
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "tool",
-      content: [
-        {
-          type: "tool-result",
-          toolCallId: ir.toolCall.toolCallId,
-          toolName: ir.toolCall.call.original.name,
-          output: {
-            type: "text",
-            value: ir.error,
-          },
-        },
-      ],
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -301,21 +232,8 @@ function modelMessageFromIr(
     };
   }
 
-  const _: "file-unreadable" = ir.role;
-  return {
-    role: "tool",
-    content: [
-      {
-        type: "tool-result",
-        toolCallId: ir.toolCall.toolCallId,
-        toolName: ir.toolCall.call.original.name,
-        output: {
-          type: "text",
-          value: ir.error,
-        },
-      },
-    ],
-  };
+  const _: never = ir;
+  return _;
 }
 
 function generateCurlFrom(params: {
