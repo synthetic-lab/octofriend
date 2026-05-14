@@ -35,12 +35,12 @@ type UserContent = Array<
       };
     }
 >;
-export type UserMessage = {
+type UserMessage = {
   role: "user";
   content: UserContent;
 };
 
-export type AssistantMessage = {
+type AssistantMessage = {
   role: "assistant";
   content: string;
   tool_calls?: Array<{
@@ -53,18 +53,18 @@ export type AssistantMessage = {
   }>;
 };
 
-export type ToolMessage = {
+type ToolMessage = {
   role: "tool";
   content: UserContent;
   tool_call_id: string;
 };
 
-export type SystemPrompt = {
+type SystemPrompt = {
   role: "system";
   content: string;
 };
 
-export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage | ToolMessage;
+type LlmMessage = SystemPrompt | UserMessage | AssistantMessage | ToolMessage;
 
 type ChatCompletionCompatibleMessage =
   | Exclude<ChatCompletionMessageParam, { role: "tool" }>

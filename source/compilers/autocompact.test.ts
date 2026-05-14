@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { contentToText, textContent } from "../ir/content.ts";
+import { contentToText } from "../ir/content.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import { Metadata } from "../config.ts";
 
@@ -15,7 +15,7 @@ vi.mock("../config.ts", () => {
 function userMessage(content: string): OctoIR {
   return {
     role: "user",
-    content: textContent(content),
+    content: [{ type: "text", content }],
   };
 }
 
@@ -31,7 +31,7 @@ function assistantMessage(content: string, tokenUsage: number = 10): OctoIR {
 function checkpointMessage(summary: string): OctoIR {
   return {
     role: "checkpoint",
-    content: textContent(summary),
+    content: [{ type: "text", content: summary }],
   };
 }
 

@@ -4,10 +4,6 @@ import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
 
-function textContent(content: string) {
-  return [{ type: "text" as const, content }];
-}
-
 export function optimizeFiles(
   messages: OctoIR[],
   modalities?: MultimodalConfig,
@@ -48,7 +44,7 @@ function optimizeFileIR(
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: textContent(irPrompts.fileRead(ir.content, seenPath, imageCheck)),
+      content: [{ type: "text", content: irPrompts.fileRead(ir.content, seenPath, imageCheck) }],
     };
   }
 
@@ -56,7 +52,7 @@ function optimizeFileIR(
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: textContent(irPrompts.fileMutation(ir.path)),
+      content: [{ type: "text", content: irPrompts.fileMutation(ir.path) }],
     };
   }
 

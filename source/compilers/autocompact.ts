@@ -1,5 +1,4 @@
 import type { AgentResult, OctoIR } from "../ir/octo-ir.ts";
-import { textContent } from "../ir/content.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -83,7 +82,7 @@ export async function generateCompactionSummary({
     ...slicedMessages,
     {
       role: "user",
-      content: textContent(compactPrompt()),
+      content: [{ type: "text", content: compactPrompt() }],
     },
   ];
 
