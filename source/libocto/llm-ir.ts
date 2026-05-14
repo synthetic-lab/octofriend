@@ -17,9 +17,6 @@ import type { ToolCall, ToolFactoryRequirements, ToolMap, ToolSubagentNames } fr
  * IRs are all defined in terms of agents. Agents specify what tools they use, what subagents they
  * have, and what extended IRs they use.
  */
-export type AgentDirectory = {
-  [name: string]: Agent<any, any, any>;
-};
 export type Agent<
   Extra,
   SubagentDirectory extends AgentDirectory,
@@ -29,36 +26,18 @@ export type Agent<
   agents: SubagentDirectory;
 };
 
+// A named directory of agents
+export type AgentDirectory = {
+  [name: string]: Agent<any, any, any>;
+};
+
+// Helper function to define agents with compile-time safety guarantees. It's an identity function
+// that runs compile-time validation on the passed-in agent and assigns the correct type + branding.
 export function defineAgent<A extends { tools: ToolMap<any, any>; agents: AgentDirectory }>(
   a: A & ValidateAgentSubagents<A>,
 ): A {
   return a;
 }
-
-type CondHandlerMap<T extends AgentDirectory, Name extends keyof T> = {
-  [K in Name]: (self: AgentTrajectory<T, K>) => unknown;
-};
-type CondHandlerReturn<C> = C[keyof C] extends (...args: any) => infer Ret ? Ret : never;
-declare const mixedCondHandlerReturns: unique symbol;
-
-// cond(...) preserves sync handlers as sync returns and async handlers as Promise returns. A plain
-// conditional return type is not enough, because TypeScript can infer a mixed table as
-// `string | Promise<string>`. This parameter-side validation rejects handler maps where some
-// branches return PromiseLike values and others return non-Promise values.
-type CondHandlerAsyncValidation<C> =
-  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
-    ? unknown
-    : Exclude<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
-      ? unknown
-      : { readonly [mixedCondHandlerReturns]: never };
-
-// Once mixed sync/async tables are rejected, cond(...) can return exactly what callers expect:
-// sync tables return their handler value directly, async tables return one Promise for the awaited
-// handler value union.
-type CondReturn<C> =
-  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
-    ? CondHandlerReturn<C>
-    : Promise<Awaited<CondHandlerReturn<C>>>;
 
 // An IR that defines sub-agent trajectories
 export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
@@ -127,6 +106,30 @@ export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
     throw new Error("Impossible");
   }
 }
+type CondHandlerMap<T extends AgentDirectory, Name extends keyof T> = {
+  [K in Name]: (self: AgentTrajectory<T, K>) => unknown;
+};
+type CondHandlerReturn<C> = C[keyof C] extends (...args: any) => infer Ret ? Ret : never;
+declare const mixedCondHandlerReturns: unique symbol;
+
+// cond(...) preserves sync handlers as sync returns and async handlers as Promise returns. A plain
+// conditional return type is not enough, because TypeScript can infer a mixed table as
+// `string | Promise<string>`. This parameter-side validation rejects handler maps where some
+// branches return PromiseLike values and others return non-Promise values.
+type CondHandlerAsyncValidation<C> =
+  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+    ? unknown
+    : Exclude<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+      ? unknown
+      : { readonly [mixedCondHandlerReturns]: never };
+
+// Once mixed sync/async tables are rejected, cond(...) can return exactly what callers expect:
+// sync tables return their handler value directly, async tables return one Promise for the awaited
+// handler value union.
+type CondReturn<C> =
+  Extract<CondHandlerReturn<C>, PromiseLike<unknown>> extends never
+    ? CondHandlerReturn<C>
+    : Promise<Awaited<CondHandlerReturn<C>>>;
 
 export type MalformedToolRequest = {
   type: "malformed-tool-request";
@@ -267,12 +270,23 @@ export type LlmIR<A extends Agent<any, any, any>> =
   | LoweredLinearIR<A["tools"]>
   | AgentExtra<A>;
 
+/*
+ * Agent dependency compile-time validation/branding
+ * -------------------------------------------------------------------------------------------------
+ *
+ * Checks that for a given agent with subagents, all tools that declare subagent dependencies have
+ * those dependencies satisfied. For example, if a `research` tool expects to be able to invoke a
+ * `research` subagent, and you use the research tool but don't define a research subagent, you'll
+ * get a compile error.
+ */
 declare const missingToolSubagents: unique symbol;
 
 type RequiredToolSubagentNames<Tools> = ToolSubagentNames<Tools[keyof Tools]>;
 
 // Type used to validate that the given agent's tools have all of their subagent dependencies
-// fulfilled.
+// fulfilled. Recursively narrows the given type until it's either {} (all dependencies are
+// satisfied), or an impossible-to-construct type via the non-existent missingToolSubagents unique
+// symbol, which will cause a useful compile error.
 type ValidateAgentSubagents<A> = A extends { tools: infer Tools; agents: infer SubagentDirectory }
   ? Exclude<
       RequiredToolSubagentNames<Tools>,
