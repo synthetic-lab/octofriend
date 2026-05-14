@@ -1,5 +1,6 @@
 import { ToolCall } from "../tools/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import type { Result } from "../result.ts";
 
 export type ToolCallRequest = {
   type: "tool-request";
@@ -145,14 +146,13 @@ export type TrajectoryOutputIR =
   | FileUnreadableMessage
   | CompactionCheckpoint;
 
-export type AgentResult =
-  | {
-      success: true;
-      output: AssistantMessage;
-      curl: string;
-    }
-  | {
-      success: false;
-      requestError: string;
-      curl: string;
-    };
+export type AgentResult = Result<
+  {
+    output: AssistantMessage;
+    curl: string;
+  },
+  {
+    requestError: string;
+    curl: string;
+  }
+>;

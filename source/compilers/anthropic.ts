@@ -11,6 +11,7 @@ import {
   AnthropicAssistantData,
 } from "../ir/llm-ir.ts";
 import { trackTokens } from "../token-tracker.ts";
+import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
@@ -286,7 +287,7 @@ export const runAnthropicAgent: Compiler = async ({
 
   try {
     const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const result = await client.messages.create({
+    const stream = await client.messages.create({
       ...system,
       model: model.model,
       messages,
@@ -329,7 +330,7 @@ export const runAnthropicAgent: Compiler = async ({
     >();
 
     // Handle streaming chunks
-    for await (const chunk of result) {
+    for await (const chunk of stream) {
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
@@ -467,12 +468,12 @@ export const runAnthropicAgent: Compiler = async ({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: assistantMessage, curl };
+      return result.ok({ output: assistantMessage, curl });
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return { success: true, output: assistantMessage, curl };
+      return result.ok({ output: assistantMessage, curl });
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -516,12 +517,11 @@ export const runAnthropicAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return { success: true, output: assistantMessage, curl };
+    return result.ok({ output: assistantMessage, curl });
   } catch (e) {
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 };

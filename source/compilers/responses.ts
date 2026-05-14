@@ -7,6 +7,7 @@ import { parseToolCall } from "./parse-tool-call.ts";
 import { ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
+import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
@@ -318,7 +319,7 @@ export const runResponsesAgent: Compiler = async ({
       },
     });
 
-    const result = streamText({
+    const stream = streamText({
       model: openai.responses(model.model),
       messages,
       ...toolParams,
@@ -343,7 +344,7 @@ export const runResponsesAgent: Compiler = async ({
     let encryptedReasoningContent: string | undefined = undefined;
 
     // Handle streaming chunks
-    for await (const chunk of result.fullStream) {
+    for await (const chunk of stream.fullStream) {
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
@@ -424,13 +425,13 @@ export const runResponsesAgent: Compiler = async ({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return result.ok({ output: assistantHistoryItem, curl });
     }
 
     // Get tool calls
-    const toolCalls = await result.toolCalls;
+    const toolCalls = await stream.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return result.ok({ output: assistantHistoryItem, curl });
     }
 
     const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
@@ -469,12 +470,11 @@ export const runResponsesAgent: Compiler = async ({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return { success: true, output: assistantHistoryItem, curl };
+    return result.ok({ output: assistantHistoryItem, curl });
   } catch (e) {
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 };
