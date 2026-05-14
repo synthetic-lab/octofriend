@@ -71,11 +71,49 @@ export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
     this.ir = ir;
   }
 
+  // A type guard to check whether an AgentTrajectory belongs to a specific named subagent. This is
+  // useful since different subagents may have different tools, so you can narrow which tools an
+  // if-statement needs to check for by first checking which subagent you're dealing with.
+  // For example:
+  //
+  // if(agentIr.isNamed("research")) {
+  //   // Only tools and subagents that the research subagent has access to are accessible here
+  // }
   isNamed<N extends Name>(name: N): this is AgentTrajectory<T, N> {
     if (this.name === name) return true;
     return false;
   }
 
+  // A helpful function for checking *all* possible subagent names, and narrowing each one down in a
+  // callback. For example, if you had "explore" and "research" subagents, you might call:
+  //
+  // ir.cond({
+  //   explore: exploreIr => {
+  //     // exploreIr is guaranteed to be an explore subagent trajectory
+  //     // any tools and subagents are narrowed to only what's accessible to the explore subagent
+  //   },
+  //   research: researchIr => {
+  //     // researchIr is guaranteed to be a research subagent trajectory
+  //     // any tools and subagents are narrowed to only what's accessible to the research subagent
+  //   },
+  // });
+  //
+  // Like Lisp-like `cond` expressions, `cond` returns whatever the cond arms return. It can take
+  // either synchronous handlers, or async handlers. If it takes sync handlers, it returns a
+  // non-promise; if it takes async handlers, it returns a promise that you can await.
+  //
+  // For example:
+  //
+  // const output = await ir.cond({
+  //   explore: async (exploreIr) => {
+  //     return someOutput;
+  //   },
+  //   research: async (researchIr) => {
+  //     return someOtherOutput;
+  //   },
+  // });
+  //
+  // Note that the handlers must be all-async, or all-sync; you can't mix sync and async.
   cond<C extends CondHandlerMap<T, Name>>(
     conditions: C & CondHandlerAsyncValidation<C>,
   ): CondReturn<C> {
