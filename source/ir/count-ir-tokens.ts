@@ -1,4 +1,4 @@
-import { contentToText } from "../libocto/content.ts";
+import { contentToText } from "./content.ts";
 import type { OctoIR } from "./octo-ir.ts";
 
 // ~4 characters per token for English text: https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them

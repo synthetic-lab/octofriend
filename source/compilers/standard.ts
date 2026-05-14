@@ -1,11 +1,12 @@
 import { t, toJSONSchema } from "structural";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
-import { contentToText } from "../libocto/content.ts";
 import type {
   Agent,
   AssistantMessage as AssistantIR,
+  Content as IRContent,
   MalformedToolRequest,
 } from "../libocto/llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
@@ -15,7 +16,7 @@ import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { result } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
-import { compactionCompilerExplanation } from "./autocompact.ts";
+import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
@@ -24,22 +25,19 @@ type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
-type MalformedRequest = MalformedToolRequest;
 
-type Content =
-  | string
-  | Array<
-      | { type: "text"; text: string }
-      | {
-          type: "image_url";
-          image_url: {
-            url: string;
-          };
-        }
-    >;
+type UserContent = Array<
+  | { type: "text"; text: string }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+      };
+    }
+>;
 export type UserMessage = {
   role: "user";
-  content: Content;
+  content: UserContent;
 };
 
 export type AssistantMessage = {
@@ -57,7 +55,7 @@ export type AssistantMessage = {
 
 export type ToolMessage = {
   role: "tool";
-  content: string;
+  content: UserContent;
   tool_call_id: string;
 };
 
@@ -67,6 +65,12 @@ export type SystemPrompt = {
 };
 
 export type LlmMessage = SystemPrompt | UserMessage | AssistantMessage | ToolMessage;
+
+type ChatCompletionCompatibleMessage =
+  | Exclude<ChatCompletionMessageParam, { role: "tool" }>
+  | (Omit<Extract<ChatCompletionMessageParam, { role: "tool" }>, "content"> & {
+      content: UserContent;
+    });
 
 const ResponseToolCallSchema = t.subtype({
   id: t.str,
@@ -80,10 +84,51 @@ type ResponseToolCall = t.GetType<typeof ResponseToolCallSchema>;
 
 const TOOL_ERROR_TAG = "tool-runtime-error";
 
+function imagePlaceholderContent(): string {
+  return irPrompts.imageAttachmentPlaceholderText();
+}
+
+function openaiContentParts(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): UserContent {
+  const output: UserContent = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      output.push({ type: "text", text: part.content });
+      continue;
+    }
+    if (modalities?.image?.enabled) {
+      output.push({
+        type: "image_url",
+        image_url: { url: part.image.dataUrl },
+      });
+    } else {
+      output.push({ type: "text", text: imagePlaceholderContent() });
+    }
+  }
+  return output;
+}
+
+function textOnlyContent(text: string): UserContent {
+  return [{ type: "text", text }];
+}
+
+function checkpointContent(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): UserContent {
+  return [
+    { type: "text", text: COMPACTION_COMPILER_PREFIX },
+    ...openaiContentParts(content, modalities),
+    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
+  ];
+}
+
 function generateCurlFrom(params: {
   baseURL: string;
   model: string;
-  messages: LlmMessage[];
+  messages: ChatCompletionMessageParam[];
   tools?: any[];
 }): string {
   const { baseURL, model, messages, tools } = params;
@@ -110,7 +155,7 @@ async function toLlmMessages<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
-): Promise<Array<LlmMessage>> {
+): Promise<Array<ChatCompletionMessageParam>> {
   const output: LlmMessage[] = [];
 
   for (const ir of messages) {
@@ -125,7 +170,7 @@ async function toLlmMessages<A extends Agent<any, any, any>>(
     });
   }
 
-  return output;
+  return output as ChatCompletionCompatibleMessage[] as ChatCompletionMessageParam[];
 }
 
 function llmFromIr<A extends Agent<any, any, any>>(
@@ -163,34 +208,14 @@ function llmFromIr<A extends Agent<any, any, any>>(
     };
   }
   if (ir.role === "user") {
-    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
-    const text = contentToText(ir.content);
-    if (images.length > 0) {
-      if (modalities?.image?.enabled) {
-        return {
-          role: "user",
-          content: [
-            { type: "text", text },
-            ...images.map((img: any) => ({
-              type: "image_url" as const,
-              image_url: { url: img.dataUrl },
-            })),
-          ],
-        };
-      }
-      return {
-        role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(text, images),
-      };
-    }
-    return { role: "user", content: text };
+    return { role: "user", content: openaiContentParts(ir.content, modalities) };
   }
 
   if (ir.role === "tool-output") {
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: contentToText(ir.content),
+      content: openaiContentParts(ir.content, modalities),
     };
   }
 
@@ -198,7 +223,7 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason)),
+      content: textOnlyContent(tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason))),
     };
   }
 
@@ -206,7 +231,9 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.malformedRequest.toolCallId,
-      content: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
+      content: textOnlyContent(
+        "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
+      ),
     };
   }
 
@@ -214,7 +241,9 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: "Error from tool call validation: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+      content: textOnlyContent(
+        "Error from tool call validation: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+      ),
     };
   }
 
@@ -222,14 +251,14 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+      content: textOnlyContent("Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error)),
     };
   }
 
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(contentToText(ir.content)),
+      content: checkpointContent(ir.content, modalities),
     };
   }
 
@@ -341,7 +370,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
         {
           ...reasoning,
           model: model.model,
-          messages: messages,
+          messages,
           ...toolsParam,
           stream: true,
           stream_options: {
@@ -498,7 +527,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
       .sort(([a], [b]) => a - b)
       .map(([_, v]) => v);
 
-    const toolCalls: Array<MalformedRequest | ToolCallRequest<A>> = [];
+    const toolCalls: Array<MalformedToolRequest | ToolCallRequest<A>> = [];
 
     for (const currTool of currTools) {
       const validatedTool = ResponseToolCallSchema.sliceResult(currTool);

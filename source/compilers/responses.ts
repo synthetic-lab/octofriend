@@ -1,16 +1,20 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, tool, ModelMessage, jsonSchema } from "ai";
+import { streamText, tool, ModelMessage, jsonSchema, UserContent } from "ai";
 import { t, toJSONSchema } from "structural";
 import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { contentToText } from "../libocto/content.ts";
-import type { Agent, AssistantMessage, MalformedToolRequest } from "../libocto/llm-ir.ts";
+import type {
+  Agent,
+  AssistantMessage,
+  Content as IRContent,
+  MalformedToolRequest,
+} from "../libocto/llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
-import { compactionCompilerExplanation } from "./autocompact.ts";
+import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
@@ -19,7 +23,68 @@ type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
-type MalformedRequest = MalformedToolRequest;
+type ModelContentParts = Exclude<UserContent, string>;
+type ToolContentOutputPart =
+  | { type: "text"; text: string }
+  | { type: "media"; data: string; mediaType: string };
+
+function imagePlaceholderContent(): string {
+  return irPrompts.imageAttachmentPlaceholderText();
+}
+
+function modelContentParts(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): ModelContentParts {
+  const output: ModelContentParts = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      output.push({ type: "text", text: part.content });
+      continue;
+    }
+    if (modalities?.image?.enabled) {
+      output.push({ type: "image", image: part.image.dataUrl });
+    } else {
+      output.push({ type: "text", text: imagePlaceholderContent() });
+    }
+  }
+  return output;
+}
+
+function toolContentOutput(content: IRContent["content"], modalities?: MultimodalConfig) {
+  const value: ToolContentOutputPart[] = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      value.push({ type: "text", text: part.content });
+      continue;
+    }
+    if (modalities?.image?.enabled) {
+      value.push({
+        type: "media",
+        data: part.image.base64Data,
+        mediaType: part.image.mimeType,
+      });
+    } else {
+      value.push({ type: "text", text: imagePlaceholderContent() });
+    }
+  }
+
+  return {
+    type: "content" as const,
+    value,
+  };
+}
+
+function checkpointContent(
+  content: IRContent["content"],
+  modalities?: MultimodalConfig,
+): ModelContentParts {
+  return [
+    { type: "text", text: COMPACTION_COMPILER_PREFIX },
+    ...modelContentParts(content, modalities),
+    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
+  ];
+}
 
 async function toModelMessage<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
@@ -110,29 +175,9 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   }
 
   if (ir.role === "user") {
-    const images = ir.content.flatMap((part: any) => (part.type === "image" ? [part.image] : []));
-    const text = contentToText(ir.content);
-    if (images.length > 0) {
-      if (modalities?.image?.enabled) {
-        return {
-          role: "user",
-          content: [
-            { type: "text", text },
-            ...images.map((img: any) => ({
-              type: "image" as const,
-              image: img.dataUrl,
-            })),
-          ],
-        };
-      }
-      return {
-        role: "user",
-        content: irPrompts.imageAttachmentPlaceholder(text, images),
-      };
-    }
     return {
       role: "user",
-      content: text,
+      content: modelContentParts(ir.content, modalities),
     };
   }
 
@@ -144,10 +189,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
           type: "tool-result" as const,
           toolName: ir.toolCall.name,
           toolCallId: ir.toolCall.toolCallId,
-          output: {
-            type: "text" as const,
-            value: contentToText(ir.content),
-          },
+          output: toolContentOutput(ir.content, modalities),
         },
       ],
     };
@@ -224,7 +266,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: compactionCompilerExplanation(contentToText(ir.content)),
+      content: checkpointContent(ir.content, modalities),
     };
   }
 
@@ -433,7 +475,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
       return result.ok({ output: assistantHistoryItem, curl });
     }
 
-    const parsedToolCalls: Array<ToolCallRequest<A> | MalformedRequest> = [];
+    const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
 
     for (const toolCall of toolCalls) {
       const chatToolCall = {

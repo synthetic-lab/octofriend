@@ -21,7 +21,7 @@ import {
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import type { OctoIR } from "./ir/octo-ir.ts";
-import { textContent } from "./libocto/content.ts";
+import { textContent } from "./ir/content.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { Transport } from "./transports/transport-common.ts";

@@ -10,7 +10,6 @@ import {
 import type { LlmIR } from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type { FileOutdatedIR, FileUnreadableIR } from "../tools/common.ts";
-export { contentToText, textContent } from "../libocto/content.ts";
 
 export const octoAgent = defineAgent({
   tools: toolMap,

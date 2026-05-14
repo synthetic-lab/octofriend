@@ -16,7 +16,7 @@ import {
   sequenceId,
 } from "../history.ts";
 
-import { contentToText, textContent } from "../libocto/content.ts";
+import { contentToText, textContent } from "./content.ts";
 import type { OctoIR, TrajectoryOutputIR } from "./octo-ir.ts";
 import type { AssistantMessage } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";

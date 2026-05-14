@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { contentToText, textContent } from "../libocto/content.ts";
+import { contentToText, textContent } from "../ir/content.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import { Metadata } from "../config.ts";
 

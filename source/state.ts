@@ -26,7 +26,7 @@ import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
-import { contentToText } from "./libocto/content.ts";
+import { contentToText } from "./ir/content.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
