@@ -12,6 +12,7 @@ import {
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
+import { result } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
@@ -255,15 +256,14 @@ async function handleKnownErrors(
     return await cb();
   } catch (e) {
     for (const [ErrorClass, schema] of ERROR_SCHEMAS) {
-      const result = schema.sliceResult(e);
-      if (!(result instanceof t.Err)) throw new ErrorClass(result.error);
+      const schemaResult = schema.sliceResult(e);
+      if (!(schemaResult instanceof t.Err)) throw new ErrorClass(schemaResult.error);
     }
     // If schema is not found, generate request error with associated curl
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 }
 
@@ -485,10 +485,10 @@ export const runAgent: Compiler = async ({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return { success: true, output: assistantIr, curl };
+    if (abortSignal.aborted) return result.ok({ output: assistantIr, curl });
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return { success: true, output: assistantIr, curl };
+    if (toolCallMap.size === 0) return result.ok({ output: assistantIr, curl });
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -548,6 +548,6 @@ export const runAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return { success: true, output: assistantIr, curl };
+    return result.ok({ output: assistantIr, curl });
   });
 };
