@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export default BASE_IR.declare({
   name: "shell",
@@ -30,8 +30,8 @@ Often interactive commands provide flags to run them non-interactively. Prefer t
     try {
       return toolOutput(await transport.shell(signal, cmd, timeout));
     } catch (e) {
-      if (e instanceof AbortError) return result.err(USER_ABORTED_ERROR_MESSAGE);
-      if (e instanceof CommandFailedError) return result.err(e.message);
+      if (e instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
+      if (e instanceof CommandFailedError) return err(e.message);
       throw e;
     }
   },

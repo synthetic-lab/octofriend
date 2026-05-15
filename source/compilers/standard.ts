@@ -13,7 +13,7 @@ import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { result } from "../result.ts";
+import { ok, err } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
@@ -281,7 +281,7 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
       if (!(schemaResult instanceof t.Err)) throw new ErrorClass(schemaResult.error);
     }
     // If schema is not found, generate request error with associated curl
-    return result.err({
+    return err({
       requestError: errorToString(e),
       curl,
     });
@@ -507,10 +507,10 @@ export async function runAgent<A extends Agent<any, any, any>>({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return result.ok({ output: assistantIr, curl });
+    if (abortSignal.aborted) return ok({ output: assistantIr, curl });
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return result.ok({ output: assistantIr, curl });
+    if (toolCallMap.size === 0) return ok({ output: assistantIr, curl });
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -570,6 +570,6 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return result.ok({ output: assistantIr, curl });
+    return ok({ output: assistantIr, curl });
   });
 }

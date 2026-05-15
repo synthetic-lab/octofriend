@@ -8,7 +8,7 @@ import {
   parseOriginalFile,
 } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -58,10 +58,10 @@ async function validate(
   args: t.GetType<typeof ArgumentsSchema>,
 ) {
   const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
-  if (!canEdit) return result.err(FILE_OUTDATED_ERROR_MESSAGE);
+  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
   const file = await attemptUntrackedRead(transport, signal, args.filePath);
   if (!file.success) return file;
-  return result.ok(null);
+  return ok(null);
 }
 
 function runEdit({ edit }: { edit: t.GetType<typeof ArgumentsSchema> }): string {

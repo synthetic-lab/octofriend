@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { t } from "structural";
-import { result } from "../result.ts";
+import { ok, err } from "../result.ts";
 import { toolOutput } from "../tools/common.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
@@ -15,8 +15,8 @@ function searchTool() {
     ArgumentsSchema,
     ParsedSchema: ArgumentsSchema,
     parse: async ({ original }: { original: { query: string } }) =>
-      result.ok({ original, parsed: original }),
-    validate: async () => result.ok(null),
+      ok({ original, parsed: original }),
+    validate: async () => ok(null),
     run: async () => toolOutput(""),
   };
 }

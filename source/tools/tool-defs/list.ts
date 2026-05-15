@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { BASE_IR, attempt, toolOutput } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
@@ -14,8 +14,8 @@ async function validate(
 ) {
   const dirpath = args.dirPath || ".";
   const isDir = await transport.isDirectory(signal, dirpath);
-  if (!isDir) return result.err(`${dirpath} is not a directory`);
-  return result.ok(null);
+  if (!isDir) return err(`${dirpath} is not a directory`);
+  return ok(null);
 }
 
 export default BASE_IR.declare({

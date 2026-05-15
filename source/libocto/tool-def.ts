@@ -1,6 +1,6 @@
 import { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
-import { Result, result } from "../result.ts";
+import { Result, ok, err } from "../result.ts";
 import type { Content } from "./llm-ir.ts";
 
 /*
@@ -493,7 +493,7 @@ function bindCustomIR(builders: CustomIRBuilderMap | null, toolCall: unknown) {
   > = {};
   for (const [name, builder] of Object.entries(builders ?? {})) {
     const build = builder(toolCall);
-    bound[name] = args => result.ok({ type: "custom-ir", data: build(args) });
+    bound[name] = args => ok({ type: "custom-ir", data: build(args) });
   }
   return bound;
 }

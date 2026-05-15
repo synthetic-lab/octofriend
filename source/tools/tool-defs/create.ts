@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
 import { attempt, BASE_IR, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),
@@ -13,10 +13,10 @@ async function validate(signal: AbortSignal, transport: Transport, filePath: str
   try {
     await fileTracker.assertCanCreate(transport, signal, filePath);
   } catch (e) {
-    if (e instanceof FileExistsError) return result.err(e.message);
+    if (e instanceof FileExistsError) return err(e.message);
     throw e;
   }
-  return result.ok(null);
+  return ok(null);
 }
 
 const create = BASE_IR.declare({
