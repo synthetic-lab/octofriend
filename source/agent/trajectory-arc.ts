@@ -7,8 +7,8 @@ import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import {
-  compactionCheckpointContent,
-  generateCompactionSummary,
+  CompactionError,
+  generateCompactionCheckpointContent,
   shouldAutoCompactHistory,
 } from "../compilers/autocompact.ts";
 import { validateTool } from "../tools/index.ts";
@@ -18,6 +18,7 @@ import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
+import { Result, result } from "../result.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -87,6 +88,11 @@ type Finish = {
         type: "request-error";
         requestError: string;
         curl: string;
+      }
+    | {
+        type: "compaction-error";
+        requestError: string;
+        curl: string | null;
       };
 };
 
@@ -132,11 +138,22 @@ export async function trajectoryArc({
       compactionProgress: stream => handler.compactionProgress(stream),
     },
   });
+  if (!parsedCompaction.success) {
+    return {
+      type: "finish",
+      irs,
+      reason: {
+        type: "compaction-error",
+        requestError: parsedCompaction.error.requestError,
+        curl: parsedCompaction.error.curl,
+      },
+    };
+  }
 
-  if (parsedCompaction) {
-    handler.compactionParsed(parsedCompaction);
-    messagesCopy.push(parsedCompaction.checkpoint);
-    irs.push(parsedCompaction.checkpoint);
+  if (parsedCompaction.data) {
+    handler.compactionParsed(parsedCompaction.data);
+    messagesCopy.push(parsedCompaction.data.checkpoint);
+    irs.push(parsedCompaction.data.checkpoint);
   }
   if (abortSignal.aborted) return abort([]);
 
@@ -432,13 +449,13 @@ async function maybeAutocompact({
     startCompaction: () => void;
     compactionProgress: (stream: AutocompactionStream) => void;
   };
-}): Promise<CompactionType | null> {
-  if (!shouldAutoCompactHistory(model, messages)) return null;
+}): Promise<Result<CompactionType | null, CompactionError>> {
+  if (!shouldAutoCompactHistory(model, messages)) return result.ok(null);
 
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
-  const checkpointSummary = await generateCompactionSummary({
+  const checkpointContent = await generateCompactionCheckpointContent({
     apiKey,
     model,
     messages,
@@ -459,14 +476,15 @@ async function maybeAutocompact({
     },
   });
 
-  if (checkpointSummary == null) return null;
+  if (!checkpointContent.success) return checkpointContent;
+  if (checkpointContent.data == null) return result.ok(null);
 
-  return {
+  return result.ok({
     checkpoint: {
       role: "checkpoint",
-      content: compactionCheckpointContent(checkpointSummary),
+      content: checkpointContent.data,
     },
-  };
+  });
 }
 
 function abort(irs: TrajectoryOutputIR[]): Finish {
