@@ -96,17 +96,6 @@ export type FileMutateIR<T extends ToolCall<any>> = {
 
 export const TOOL = TOOL_BUILDER.withData<Config>();
 
-export function toolOutput(content: string, options: { lines?: number; image?: ImageInfo } = {}) {
-  return ok({
-    type: "output" as const,
-    content: [
-      { type: "text" as const, content },
-      ...(options.image ? [{ type: "image" as const, image: options.image }] : []),
-    ],
-    lines: options.lines,
-  });
-}
-
 export function fileReadIR<T extends ToolCall<any> & { parsed: { filePath: string } }>(
   toolCall: T,
 ) {

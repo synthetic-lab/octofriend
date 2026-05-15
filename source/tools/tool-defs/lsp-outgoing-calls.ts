@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { TOOL, toolOutput } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import { formatCallHierarchy } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -36,7 +37,10 @@ export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
           `Outgoing calls from symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,
       );
       if (!output.success) return output;
-      return toolOutput(output.data.content);
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
   }));
 });

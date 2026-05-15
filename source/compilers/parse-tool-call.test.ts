@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { t } from "structural";
 import { ok } from "../result.ts";
-import { toolOutput } from "../tools/common.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -17,7 +16,11 @@ function searchTool() {
     parse: async ({ original }: { original: { query: string } }) =>
       ok({ original, parsed: original }),
     validate: async () => ok(null),
-    run: async () => toolOutput(""),
+    run: async () =>
+      ok({
+        type: "output" as const,
+        content: [{ type: "text" as const, content: "" }],
+      }),
   };
 }
 

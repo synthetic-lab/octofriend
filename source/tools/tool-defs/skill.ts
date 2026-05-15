@@ -1,7 +1,8 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { TOOL, toolOutput } from "../common.ts";
+import { TOOL } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
+import { ok } from "../../result.ts";
 
 export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
   const skills = await discoverSkills(transport, signal, data);
@@ -25,8 +26,12 @@ export default TOOL.dynamicDefineTool(async function ({ signal, transport, data 
       const { skillName } = toolCall.parsed.arguments;
       const skill = skills.find(s => s.name === skillName)!;
 
-      return toolOutput(
-        `
+      return ok({
+        type: "output",
+        content: [
+          {
+            type: "text",
+            content: `
 Skill name: ${skill.name}
 Skill directory: ${skill.path}
 Description: ${skill.description}
@@ -44,7 +49,9 @@ Here are the contents of the SKILL.md file stored at ${skill.skillFilePath}:
 ---
 ${skill.instructions}
 `.trim(),
-      );
+          },
+        ],
+      });
     },
   }));
 });

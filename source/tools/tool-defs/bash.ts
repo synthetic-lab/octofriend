@@ -1,7 +1,7 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { err } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export default TOOL.declare({
   name: "shell",
@@ -28,7 +28,10 @@ Often interactive commands provide flags to run them non-interactively. Prefer t
   async run({ signal, transport, toolCall }) {
     const { cmd, timeout } = toolCall.parsed.arguments;
     try {
-      return toolOutput(await transport.shell(signal, cmd, timeout));
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: await transport.shell(signal, cmd, timeout) }],
+      });
     } catch (e) {
       if (e instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
       if (e instanceof CommandFailedError) return err(e.message);

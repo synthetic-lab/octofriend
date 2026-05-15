@@ -1,6 +1,7 @@
 import { t } from "structural";
-import { TOOL, attempt, toolOutput } from "../common.ts";
+import { TOOL, attempt } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
+import { ok } from "../../result.ts";
 
 const SearchResultsSchema = t.subtype({
   results: t.array(
@@ -42,7 +43,15 @@ or to find data that was created after your training knowledge date cutoff.
         });
         const json = await response.json();
         const results = SearchResultsSchema.slice(json);
-        return toolOutput(results.results.map(entry => JSON.stringify(entry)).join("\n"));
+        return ok({
+          type: "output",
+          content: [
+            {
+              type: "text",
+              content: results.results.map(entry => JSON.stringify(entry)).join("\n"),
+            },
+          ],
+        });
       });
     },
   };

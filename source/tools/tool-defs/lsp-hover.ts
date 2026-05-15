@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { TOOL, toolOutput } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import {
   runLspPositionQuery,
   getLspExtensionsComment,
@@ -35,7 +36,10 @@ export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
           `Hover info for ${filePath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
       );
       if (!output.success) return output;
-      return toolOutput(output.data.content);
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
   }));
 });

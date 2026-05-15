@@ -1,10 +1,10 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { err } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export default TOOL.declare({
   name: "glob",
@@ -53,7 +53,10 @@ terms scoped and specific.
       if (tok > context) {
         return err(`Find content was too large: approx ${tok} tokens returned`);
       }
-      return toolOutput(text);
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: text }],
+      });
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
         return err(USER_ABORTED_ERROR_MESSAGE);

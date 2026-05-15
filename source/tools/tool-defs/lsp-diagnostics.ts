@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { TOOL, toolOutput } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import { formatDiagnostics } from "../../lsp/client.ts";
 import { runLspFileQuery, getLspExtensionsComment } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
@@ -32,7 +33,10 @@ export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
           `Diagnostics for ${filePath}:\n${formatDiagnostics(diagnostics)}`,
       );
       if (!output.success) return output;
-      return toolOutput(output.data.content);
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
   }));
 });
