@@ -1,7 +1,7 @@
 import toolMap from "./tool-defs/index.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { Result, result } from "../result.ts";
+import { Result, ok, err } from "../result.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,
@@ -98,6 +98,6 @@ export async function validateTool(
 
 function lookup<T extends ToolCall>(loaded: Partial<LoadedTools>, t: T): Result<any, string> {
   const def = (loaded as any)[(t as any).name];
-  if (def == null) return result.err(`No tool named ${t.name}`);
-  return result.ok(def);
+  if (def == null) return err(`No tool named ${t.name}`);
+  return ok(def);
 }

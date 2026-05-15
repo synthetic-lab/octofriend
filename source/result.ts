@@ -2,14 +2,13 @@ export type Result<T, E> = Ok<T> | Err<E>;
 export type OkType<R extends Result<any, any>> = R extends Result<infer T, any> ? T : never;
 export type ErrType<R extends Result<any, any>> = R extends Result<any, infer E> ? E : never;
 
-export const result = {
-  ok<T>(t: T) {
-    return new Ok<T>(t);
-  },
-  err<E>(e: E) {
-    return new Err<E>(e);
-  },
-};
+export function ok<T>(t: T) {
+  return new Ok<T>(t);
+}
+
+export function err<E>(e: E) {
+  return new Err<E>(e);
+}
 
 type UnwrapPromise<T, E> =
   | Ok<T extends Promise<infer InnerT> ? InnerT : T>

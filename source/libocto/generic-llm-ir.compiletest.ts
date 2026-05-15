@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
 import { tools, ToolBuilder, ToolCall } from "./tool-def.ts";
-import { result } from "../result.ts";
+import { ok, err } from "../result.ts";
 
 const BUILDER = new ToolBuilder();
 
@@ -28,7 +28,7 @@ const readDeclaration = BUILDER.declare({
 const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
   return {
     parse: async ({ original }) => {
-      return result.ok({
+      return ok({
         original,
         parsed: {
           ...original,
@@ -36,7 +36,7 @@ const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
         },
       });
     },
-    validate: async () => result.ok(null),
+    validate: async () => ok(null),
     run: async ({ customIR }) => {
       return customIR.testFileIR({ contents: "idk" });
     },
@@ -52,7 +52,7 @@ const list = tools
   })
   .define(async () => {
     return {
-      run: async () => result.err("idk"),
+      run: async () => err("idk"),
     };
   });
 
@@ -63,7 +63,7 @@ const glob = tools
     ArgumentsSchema: t.subtype({}),
   })
   .define(async () => ({
-    run: async () => result.err("idk"),
+    run: async () => err("idk"),
   }));
 
 const write = tools
@@ -74,7 +74,7 @@ const write = tools
   })
   .define(async () => {
     return {
-      run: async () => result.err("idk"),
+      run: async () => err("idk"),
     };
   });
 
@@ -95,7 +95,7 @@ const DATA_TOOL = BUILDER.withData<{
     return {
       run: async ({ data }) => {
         const runPrefix: string = data.prefix;
-        return result.ok({
+        return ok({
           type: "output",
           content: [{ type: "text", content: `${prefix}:${runPrefix}` }],
         });
@@ -136,7 +136,7 @@ const dynamicRead = BUILDER.dynamicDefineTool(async () => {
   return dynamicReadDeclaration.withCustomIR({ testFileIR }).define(async () => {
     return {
       parse: async ({ original }) => {
-        return result.ok({
+        return ok({
           original,
           parsed: {
             ...original,
@@ -144,9 +144,9 @@ const dynamicRead = BUILDER.dynamicDefineTool(async () => {
           },
         });
       },
-      validate: async () => result.ok(null),
+      validate: async () => ok(null),
       run: async () => {
-        return result.err("idk");
+        return err("idk");
       },
     };
   });

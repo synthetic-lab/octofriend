@@ -12,7 +12,7 @@ import type {
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { result } from "../result.ts";
+import { ok, err } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
@@ -454,13 +454,13 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return result.ok({ output: assistantHistoryItem, curl });
+      return ok({ output: assistantHistoryItem, curl });
     }
 
     // Get tool calls
     const toolCalls = await stream.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return result.ok({ output: assistantHistoryItem, curl });
+      return ok({ output: assistantHistoryItem, curl });
     }
 
     const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
@@ -499,9 +499,9 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return result.ok({ output: assistantHistoryItem, curl });
+    return ok({ output: assistantHistoryItem, curl });
   } catch (e) {
-    return result.err({
+    return err({
       requestError: errorToString(e),
       curl,
     });

@@ -8,7 +8,7 @@ import {
   parseOriginalFile,
 } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {
@@ -72,7 +72,7 @@ async function validate(
   args: t.GetType<typeof ArgumentsSchema>,
 ) {
   const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
-  if (!canEdit) return result.err(FILE_OUTDATED_ERROR_MESSAGE);
+  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
   const file = await attemptUntrackedRead(transport, signal, args.filePath);
   if (!file.success) return file;
   return validateDiff({ file: file.data, diff: args, path: args.filePath });
@@ -89,7 +89,7 @@ function runEdit({
 }) {
   const validation = validateDiff({ path, file, diff });
   if (!validation.success) return validation;
-  return result.ok(file.replace(diff.search, diff.replace));
+  return ok(file.replace(diff.search, diff.replace));
 }
 
 function validateDiff({
@@ -102,7 +102,7 @@ function validateDiff({
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
   if (!file.includes(diff.search)) {
-    return result.err(
+    return err(
       `
 Could not find search string in file ${path}: ${diff.search}
 This is likely an error in your formatting. The search string must EXACTLY match, including
@@ -110,5 +110,5 @@ whitespace and punctuation.
 `.trim(),
     );
   }
-  return result.ok(null);
+  return ok(null);
 }

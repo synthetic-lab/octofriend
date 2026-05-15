@@ -12,7 +12,7 @@ import type {
 } from "../libocto/llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { result } from "../result.ts";
+import { ok, err } from "../result.ts";
 import { errorToString } from "../errors.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
@@ -469,12 +469,12 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return result.ok({ output: assistantMessage, curl });
+      return ok({ output: assistantMessage, curl });
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return result.ok({ output: assistantMessage, curl });
+      return ok({ output: assistantMessage, curl });
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -518,9 +518,9 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return result.ok({ output: assistantMessage, curl });
+    return ok({ output: assistantMessage, curl });
   } catch (e) {
-    return result.err({
+    return err({
       requestError: errorToString(e),
       curl,
     });

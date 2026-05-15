@@ -4,7 +4,7 @@ import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export default BASE_IR.declare({
   name: "grep",
@@ -55,18 +55,18 @@ export default BASE_IR.declare({
       const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
       if (tok > context) {
-        return result.err(`Grep content was too large: approx ${tok} tokens returned`);
+        return err(`Grep content was too large: approx ${tok} tokens returned`);
       }
       return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
-        return result.err(USER_ABORTED_ERROR_MESSAGE);
+        return err(USER_ABORTED_ERROR_MESSAGE);
       }
       if (e instanceof CommandFailedError) {
         if (e.message.includes("exit code 1")) {
           return toolOutput("");
         }
-        return result.err(e.message);
+        return err(e.message);
       }
       throw e;
     }

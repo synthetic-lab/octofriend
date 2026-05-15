@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
-import { Result, result } from "../../result.ts";
+import { Result, ok, err } from "../../result.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
@@ -142,7 +142,7 @@ tools that can be called with specific arguments.
 
       // Helper to race any promise against the abort signal
       const withAbort = async <T>(p: Promise<T>): Promise<Result<T, string>> => {
-        if (signal.aborted) return result.err(USER_ABORTED_ERROR_MESSAGE);
+        if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
         try {
           const value = await new Promise<T>((resolve, reject) => {
             const onAbort = () => {
@@ -161,10 +161,10 @@ tools that can be called with specific arguments.
               },
             );
           });
-          return result.ok(value);
+          return ok(value);
         } catch (error) {
-          if (signal.aborted) return result.err(USER_ABORTED_ERROR_MESSAGE);
-          return result.err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
+          if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
+          return err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
         }
       };
 
@@ -178,7 +178,7 @@ tools that can be called with specific arguments.
 
       if (!tool) {
         const availableTools = tools.data.tools.map(t => t.name).join(", ");
-        return result.err(
+        return err(
           `Tool "${toolName}" not found in MCP server "${serverName}". Available tools: ${availableTools}`,
         );
       }
@@ -199,13 +199,13 @@ tools that can be called with specific arguments.
 
       for (const content of mcpResult.data.content) {
         if (content.type === "text" && content.text.length > MAX_SIZE) {
-          return result.err(
+          return err(
             `Text content too large: ${content.text.length} bytes (max: ${MAX_SIZE} bytes)`,
           );
         }
         if (content.type === "resource") {
           if ("text" in content.resource && content.resource.text.length > MAX_SIZE) {
-            return result.err(
+            return err(
               `Resource text content too large: ${content.resource.text.length} bytes (max: ${MAX_SIZE} bytes)`,
             );
           }

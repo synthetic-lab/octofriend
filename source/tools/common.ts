@@ -1,7 +1,7 @@
 import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { Err, Ok, Result, result } from "../result.ts";
+import { Err, Ok, Result, ok, err } from "../result.ts";
 import { tools as BASE_IR_TOOL, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
@@ -23,9 +23,9 @@ export async function attempt<T, E>(
   try {
     const value = await callback();
     if (value instanceof Ok || value instanceof Err) return value;
-    return result.ok(value);
+    return ok(value);
   } catch {
-    return result.err(errMessage);
+    return err(errMessage);
   }
 }
 
@@ -61,7 +61,7 @@ export async function parseOriginalFile<Arguments extends { filePath: string }>(
 > {
   const contents = await attemptUntrackedRead(transport, signal, original.filePath);
   if (!contents.success) return contents;
-  return result.ok({
+  return ok({
     original,
     parsed: {
       ...original,
@@ -97,7 +97,7 @@ export type FileMutateIR<T extends ToolCall<any>> = {
 export const BASE_IR = BASE_IR_TOOL.withData<Config>();
 
 export function toolOutput(content: string, options: { lines?: number; image?: ImageInfo } = {}) {
-  return result.ok({
+  return ok({
     type: "output" as const,
     content: [
       { type: "text" as const, content },

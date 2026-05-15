@@ -6,7 +6,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { Result, result } from "../result.ts";
+import { Result, ok, err } from "../result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
@@ -98,10 +98,10 @@ export async function generateCompactionCheckpointContent({
     messages: summaryMessages,
   });
 
-  if (abortSignal.aborted) return result.ok(null);
+  if (abortSignal.aborted) return ok(null);
 
   if (!compactRunResult.success) {
-    return result.err({
+    return err({
       requestError: compactRunResult.error.requestError,
       curl: compactRunResult.error.curl,
     });
@@ -109,12 +109,12 @@ export async function generateCompactionCheckpointContent({
 
   const summary = processCompactedHistory(compactRunResult);
   if (summary == null || summary === "") {
-    return result.err({
+    return err({
       requestError: "Compaction result was empty, continuing without compacting messages.",
       curl: null,
     });
   }
-  return result.ok([
+  return ok([
     { type: "text", content: COMPACTION_CHECKPOINT_PREFIX },
     { type: "text", content: summary },
     { type: "text", content: COMPACTION_CHECKPOINT_SUFFIX },

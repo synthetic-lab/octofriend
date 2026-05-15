@@ -17,7 +17,7 @@ import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
-import { Result, result } from "../result.ts";
+import { Result, ok, err } from "../result.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -431,7 +431,7 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
-  if (!shouldAutoCompactHistory(model, messages)) return result.ok(null);
+  if (!shouldAutoCompactHistory(model, messages)) return ok(null);
 
   handler.startCompaction();
 
@@ -458,9 +458,9 @@ async function maybeAutocompact({
   });
 
   if (!checkpointContent.success) return checkpointContent;
-  if (checkpointContent.data == null) return result.ok(null);
+  if (checkpointContent.data == null) return ok(null);
 
-  return result.ok({
+  return ok({
     checkpoint: {
       role: "checkpoint",
       content: checkpointContent.data,

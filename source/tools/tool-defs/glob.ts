@@ -4,7 +4,7 @@ import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { result } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 export default BASE_IR.declare({
   name: "glob",
@@ -56,12 +56,12 @@ terms scoped and specific.
       const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
       if (tok > context) {
-        return result.err(`Find content was too large: approx ${tok} tokens returned`);
+        return err(`Find content was too large: approx ${tok} tokens returned`);
       }
       return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
-        return result.err(USER_ABORTED_ERROR_MESSAGE);
+        return err(USER_ABORTED_ERROR_MESSAGE);
       }
       throw e;
     }
