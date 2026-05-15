@@ -10,7 +10,6 @@ import {
   UserItem,
   AssistantItem,
   CompactionCheckpointItem,
-  ToolOutputItem,
   ToolCallItems,
   sequenceId,
 } from "./history.ts";
@@ -19,8 +18,6 @@ import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import type { ToolResult } from "./tools/common.ts";
 import { create } from "zustand";
-import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
-import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { PaymentError, RateLimitError } from "./errors.ts";
@@ -39,10 +36,6 @@ export type RunArgs = {
 };
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
-type FileToolCallRequest = Extract<
-  ToolCallRequest,
-  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
->;
 
 export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
 export type UiState = {
@@ -445,36 +438,31 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const tools = await loadTools(transport, abortController.signal, config);
 
-    try {
-      const result = await runTool(abortController.signal, transport, tools, toolReq, config);
-      if (!result.success) {
-        set({
-          history: [
-            ...get().history,
-            {
-              type: "tool-failed",
-              id: sequenceId(),
-              error: result.error,
-              toolCall: toolReq,
-            },
-          ],
-        });
-      } else {
-        const toolHistoryItem: ToolOutputItem = {
-          type: "tool-output",
-          id: sequenceId(),
-          result: toolRunResultToHistoryResult(result.data),
-          toolCall: toolReq,
-        };
-
-        set({ history: [...get().history, toolHistoryItem] });
-      }
-    } catch (e) {
-      const history = [
-        ...get().history,
-        await tryTransformUnexpectedToolException(abortController.signal, transport, toolReq, e),
-      ];
-      set({ history });
+    const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    if (!result.success) {
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "tool-failed",
+            id: sequenceId(),
+            error: result.error,
+            toolCall: toolReq,
+          },
+        ],
+      });
+    } else {
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "tool-output",
+            id: sequenceId(),
+            result: toolRunResultToHistoryResult(result.data),
+            toolCall: toolReq,
+          },
+        ],
+      });
     }
 
     if (get()._maybeHandleAbort(abortController.signal)) {
@@ -672,41 +660,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 }));
-
-async function tryTransformUnexpectedToolException(
-  signal: AbortSignal,
-  transport: Transport,
-  toolReq: ToolCallRequest,
-  e: unknown,
-): Promise<HistoryItem> {
-  if (e instanceof FileOutdatedError) {
-    if (!isFileToolCall(toolReq)) throw e;
-    const absolutePath = path.resolve(e.filePath);
-    try {
-      await fileTracker.readUntracked(transport, signal, absolutePath);
-      return {
-        type: "file-outdated",
-        id: sequenceId(),
-        toolCall: toolReq,
-        error:
-          "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
-      };
-    } catch {
-      return {
-        type: "file-unreadable",
-        path: e.filePath,
-        id: sequenceId(),
-        toolCall: toolReq,
-        error: `File ${e.filePath} could not be read. Has it been deleted?`,
-      };
-    }
-  }
-  throw e;
-}
-
-function isFileToolCall(toolCall: ToolCallRequest): toolCall is FileToolCallRequest {
-  return ["read", "edit", "create", "append", "prepend", "rewrite"].includes(toolCall.name);
-}
 
 function toolRunResultToHistoryResult(result: ToolRunResult): ToolResult {
   if (result.type === "custom-ir") {

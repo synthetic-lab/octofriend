@@ -1,6 +1,13 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, BASE_IR, fileMutateIR, parseOriginalFile } from "../common.ts";
+import {
+  attemptUntrackedRead,
+  BASE_IR,
+  FILE_OUTDATED_ERROR_MESSAGE,
+  fileMutateIR,
+  parseOriginalFile,
+} from "../common.ts";
+import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -29,14 +36,7 @@ can't leave anything out by saying e.g. "[The rest of the file stays the same]"
 
 export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    await fileTracker.assertCanEdit(transport, signal, toolCall.original.arguments.filePath);
-    const file = await attemptUntrackedRead(
-      transport,
-      signal,
-      toolCall.original.arguments.filePath,
-    );
-    if (!file.success) return file;
-    return result.ok(null);
+    return validate(signal, transport, toolCall.original.arguments);
   },
   async parse({ signal, transport, original }) {
     return parseOriginalFile(signal, transport, original);
@@ -44,12 +44,25 @@ export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath } = toolCall.parsed.arguments;
     const edit = toolCall.parsed.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
+    const validation = await validate(signal, transport, edit);
+    if (!validation.success) return validation;
     const replaced = runEdit({ edit });
     await fileTracker.write(transport, signal, filePath, replaced);
     return customIR.fileMutateIR({ content: "" });
   },
 }));
+
+async function validate(
+  signal: AbortSignal,
+  transport: Transport,
+  args: t.GetType<typeof ArgumentsSchema>,
+) {
+  const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
+  if (!canEdit) return result.err(FILE_OUTDATED_ERROR_MESSAGE);
+  const file = await attemptUntrackedRead(transport, signal, args.filePath);
+  if (!file.success) return file;
+  return result.ok(null);
+}
 
 function runEdit({ edit }: { edit: t.GetType<typeof ArgumentsSchema> }): string {
   return edit.text;

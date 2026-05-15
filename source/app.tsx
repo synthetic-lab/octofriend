@@ -1044,27 +1044,6 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     return null;
   }
 
-  if (item.type === "file-outdated") {
-    return (
-      <Box flexDirection="column">
-        <ToolMessageRenderer item={item.toolCall} />
-        <Box marginLeft={2}>
-          <Text>File was modified since it was last read; re-reading...</Text>
-        </Box>
-      </Box>
-    );
-  }
-  if (item.type === "file-unreadable") {
-    return (
-      <Box flexDirection="column">
-        <ToolMessageRenderer item={item.toolCall} />
-        <Box marginLeft={2}>
-          <Text>File could not be read — has it been deleted?</Text>
-        </Box>
-      </Box>
-    );
-  }
-
   if (item.type === "request-failed") {
     return <Text color="red">Request failed.</Text>;
   }
