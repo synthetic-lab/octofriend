@@ -36,7 +36,7 @@ can't leave anything out by saying e.g. "[The rest of the file stays the same]"
 
 export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.original.arguments);
+    return validate(signal, transport, toolCall.parsed.arguments);
   },
   async parse({ signal, transport, original }) {
     return parseOriginalFile(signal, transport, original);

@@ -42,7 +42,7 @@ Applies a search/replace edit to a file. This should be your default tool to edi
 
 export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.original.arguments);
+    return validate(signal, transport, toolCall.parsed.arguments);
   },
   async parse({ signal, transport, original }) {
     return parseOriginalFile(signal, transport, original);

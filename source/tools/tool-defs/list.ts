@@ -25,11 +25,11 @@ export default TOOL.declare({
   ArgumentsSchema,
 }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.original.arguments);
+    return validate(signal, transport, toolCall.parsed.arguments);
   },
   async run({ signal, transport, toolCall }) {
     const dirpath = toolCall.parsed.arguments.dirPath || transport.cwd;
-    const validation = await validate(signal, transport, toolCall.original.arguments);
+    const validation = await validate(signal, transport, toolCall.parsed.arguments);
     if (!validation.success) return validation;
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(signal, dirpath);

@@ -22,7 +22,7 @@ const append = TOOL.declare({
 
 export default append.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.original.arguments);
+    return validate(signal, transport, toolCall.parsed.arguments);
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath } = toolCall.parsed.arguments;
