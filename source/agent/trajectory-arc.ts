@@ -12,7 +12,6 @@ import {
   shouldAutoCompactHistory,
 } from "../compilers/autocompact.ts";
 import { validateTool } from "../tools/index.ts";
-import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
@@ -23,10 +22,6 @@ import { Result, result } from "../result.ts";
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
-type FileToolCallRequest = Extract<
-  ToolCallRequest,
-  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
->;
 
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
@@ -298,98 +293,84 @@ export async function trajectoryArc({
   // sequentially (i.e. we only autofix one tool at a time), but this would imply we could call the
   // handlers multiple times within a single validation step
   for (const toolCall of wellformedToolCalls) {
-    try {
-      const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
+    const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
 
-      if (validation.success) {
-        // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
-        // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
-        // are invalid).
-        retryIrs.push({
-          role: "tool-skip-output",
-          toolCall: toolCall,
-          reason: SKIP_INVALID_REASON,
-        });
-        continue;
-      }
-
-      const validationError = validation.error;
-      const fn = toolCall;
-      if (fn.name === "edit") {
-        handler.autofixingDiff(null);
-        const path = fn.parsed.filePath;
-        const file = await fs.readFile(path, "utf8");
-        const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
-
-        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-        // tool call
-        if (abortSignal.aborted) {
-          return abort([
-            ...irs.slice(0, -1),
-            {
-              role: "tool-validation-error",
-              toolCall: toolCall,
-              error: validationError,
-              aborted: true,
-            },
-          ]);
-        }
-
-        if (fix) {
-          // Validate that the edit applies before marking as fixed
-          const fixed = {
-            ...fn.parsed,
-            ...fix,
-          } as const;
-
-          const fixedValidation = await validateTool(
-            abortSignal,
-            transport,
-            tools,
-            { ...fn, parsed: fixed },
-            config,
-          );
-          if (fixedValidation.success) {
-            // If we got this far, it's valid: update the state and keep going
-            fn.parsed = {
-              ...fn.parsed,
-              ...fix,
-            };
-
-            // Push a tool skip proactively
-            retryIrs.push({
-              role: "tool-skip-output",
-              toolCall: toolCall,
-              reason: SKIP_INVALID_REASON,
-            });
-
-            continue;
-          }
-        }
-      }
-
-      retryIrs = [
-        ...retryIrs,
-        {
-          role: "tool-validation-error" as const,
-          toolCall: toolCall,
-          error: validationError,
-          aborted: false,
-        },
-      ];
-      continue;
-    } catch (e) {
-      if (!(e instanceof FileOutdatedError)) throw e;
-      if (!isFileToolCall(toolCall)) throw e;
-      const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
-        abortSignal,
-        transport,
-        toolCall,
-        e,
-      );
-      retryIrs = [...retryIrs, errorIr];
+    if (validation.success) {
+      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
+      // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
+      // are invalid).
+      retryIrs.push({
+        role: "tool-skip-output",
+        toolCall: toolCall,
+        reason: SKIP_INVALID_REASON,
+      });
       continue;
     }
+
+    const validationError = validation.error;
+    const fn = toolCall;
+    if (fn.name === "edit") {
+      handler.autofixingDiff(null);
+      const path = fn.parsed.filePath;
+      const file = await fs.readFile(path, "utf8");
+      const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
+
+      // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+      // tool call
+      if (abortSignal.aborted) {
+        return abort([
+          ...irs.slice(0, -1),
+          {
+            role: "tool-validation-error",
+            toolCall: toolCall,
+            error: validationError,
+            aborted: true,
+          },
+        ]);
+      }
+
+      if (fix) {
+        // Validate that the edit applies before marking as fixed
+        const fixed = {
+          ...fn.parsed,
+          ...fix,
+        } as const;
+
+        const fixedValidation = await validateTool(
+          abortSignal,
+          transport,
+          tools,
+          { ...fn, parsed: fixed },
+          config,
+        );
+        if (fixedValidation.success) {
+          // If we got this far, it's valid: update the state and keep going
+          fn.parsed = {
+            ...fn.parsed,
+            ...fix,
+          };
+
+          // Push a tool skip proactively
+          retryIrs.push({
+            role: "tool-skip-output",
+            toolCall: toolCall,
+            reason: SKIP_INVALID_REASON,
+          });
+
+          continue;
+        }
+      }
+    }
+
+    retryIrs = [
+      ...retryIrs,
+      {
+        role: "tool-validation-error" as const,
+        toolCall: toolCall,
+        error: validationError,
+        aborted: false,
+      },
+    ];
   }
 
   // If you have any IRs that need to be retried, retry them
@@ -493,34 +474,4 @@ function abort(irs: TrajectoryOutputIR[]): Finish {
     reason: { type: "abort" },
     irs,
   };
-}
-
-async function tryTransformFileOutdatedError(
-  abortSignal: AbortSignal,
-  transport: Transport,
-  toolCall: FileToolCallRequest,
-  e: FileOutdatedError,
-): Promise<TrajectoryOutputIR> {
-  const absolutePath = await transport.resolvePath(abortSignal, e.filePath);
-
-  try {
-    await fileTracker.readUntracked(transport, abortSignal, absolutePath);
-    return {
-      role: "file-outdated",
-      toolCall,
-      error:
-        "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
-    };
-  } catch {
-    return {
-      role: "file-unreadable",
-      path: e.filePath,
-      toolCall,
-      error: `File ${e.filePath} could not be read. Has it been deleted?`,
-    };
-  }
-}
-
-function isFileToolCall(toolCall: ToolCallRequest): toolCall is FileToolCallRequest {
-  return ["read", "edit", "create", "append", "prepend", "rewrite"].includes(toolCall.name);
 }

@@ -56,13 +56,5 @@ function optimizeFileIR(
     };
   }
 
-  if (ir.role === "file-outdated" || ir.role === "file-unreadable") {
-    return {
-      role: "tool-runtime-error",
-      toolCall: ir.toolCall,
-      error: ir.error,
-    };
-  }
-
   return ir;
 }

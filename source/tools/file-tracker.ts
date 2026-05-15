@@ -1,14 +1,6 @@
 import * as path from "path";
 import { Transport } from "../transports/transport-common.ts";
 
-export class FileOutdatedError extends Error {
-  readonly filePath: string;
-  constructor(message: string, params: { path: string }) {
-    super(message);
-    this.name = this.constructor.name;
-    this.filePath = params.path;
-  }
-}
 export class FileExistsError extends Error {
   constructor(message: string) {
     super(message);
@@ -90,15 +82,6 @@ export class FileTracker {
   async assertCanCreate(transport: Transport, signal: AbortSignal, filePath: string) {
     const canCreate = await this.canCreate(transport, signal, filePath);
     if (!canCreate) throw new FileExistsError("File already exists");
-  }
-
-  async assertCanEdit(transport: Transport, signal: AbortSignal, filePath: string) {
-    const canEdit = await this.canEdit(transport, signal, filePath);
-    if (!canEdit) {
-      throw new FileOutdatedError("File was modified or never read", {
-        path: filePath,
-      });
-    }
   }
 }
 

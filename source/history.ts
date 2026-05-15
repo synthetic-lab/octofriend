@@ -5,10 +5,6 @@ import type toolMap from "./tools/tool-defs/index.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
-type FileToolCallRequest = Extract<
-  ToolCallRequest,
-  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
->;
 
 export type SequenceIdTagged<T> = T & {
   id: bigint;
@@ -52,19 +48,6 @@ export type ToolSkipItem = SequenceIdTagged<{
   type: "tool-skip-output";
   toolCall: ToolCallRequest;
   reason: string;
-}>;
-
-export type FileOutdatedItem = SequenceIdTagged<{
-  type: "file-outdated";
-  toolCall: FileToolCallRequest;
-  error: string;
-}>;
-
-export type FileUnreadableItem = SequenceIdTagged<{
-  type: "file-unreadable";
-  path: string;
-  toolCall: FileToolCallRequest;
-  error: string;
 }>;
 
 export type AssistantItem = SequenceIdTagged<{
@@ -114,8 +97,6 @@ export type HistoryItem =
   | ToolValidationErrorItem
   | ToolRejectItem
   | ToolSkipItem
-  | FileOutdatedItem
-  | FileUnreadableItem
   | RequestFailed
   | CompactionFailed
   | Notification

@@ -24,9 +24,6 @@ function getMessageText(msg: OctoIR): string {
       return (
         (msg.malformedRequest.call.original.arguments ?? "") + (msg.malformedRequest.error ?? "")
       );
-    case "file-outdated":
-    case "file-unreadable":
-      return msg.error;
     case "checkpoint":
       return contentToText(msg.content);
     case "tool-skip-output":

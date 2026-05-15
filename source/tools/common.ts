@@ -2,9 +2,11 @@ import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 import { Err, Ok, Result, result } from "../result.ts";
-import { tools as BASE_IR_TOOL, ToolCall, ToolMap } from "../libocto/tool-def.ts";
+import { tools as BASE_IR_TOOL, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
+export const FILE_OUTDATED_ERROR_MESSAGE =
+  "File could not be updated because it was modified after being last read. Please read the file again before modifying it.";
 
 export async function attempt<T, E>(
   errMessage: string,
@@ -91,25 +93,6 @@ export type FileMutateIR<T extends ToolCall<any>> = {
   toolCall: T;
   path: string;
 };
-
-export type FileOutdatedIR<T extends ToolCall<any>> = {
-  role: "file-outdated";
-  toolCall: T;
-  error: string;
-};
-
-export type FileUnreadableIR<T extends ToolCall<any>> = {
-  role: "file-unreadable";
-  path: string;
-  toolCall: T;
-  error: string;
-};
-
-export type FileIR<T extends ToolCall<any>> =
-  | FileReadIR<T>
-  | FileMutateIR<T>
-  | FileOutdatedIR<T>
-  | FileUnreadableIR<T>;
 
 export const BASE_IR = BASE_IR_TOOL.withData<Config>();
 

@@ -100,7 +100,7 @@ describe("optimizeFiles", () => {
     ]);
   });
 
-  it("rewrites file mutation and file errors to base tool messages", () => {
+  it("rewrites file mutation to a base tool message", () => {
     expect(
       optimizeFiles([
         {
@@ -109,23 +109,12 @@ describe("optimizeFiles", () => {
           content: "raw mutate output",
           toolCall: mutateToolCall("mutate"),
         },
-        {
-          role: "file-unreadable",
-          path: "/tmp/b.txt",
-          error: "could not read file",
-          toolCall: toolCall("unreadable"),
-        },
       ]),
     ).toEqual([
       {
         role: "tool-output",
         toolCall: mutateToolCall("mutate"),
         content: [{ type: "text", content: "/tmp/a.txt was updated successfully." }],
-      },
-      {
-        role: "tool-runtime-error",
-        toolCall: toolCall("unreadable"),
-        error: "could not read file",
       },
     ]);
   });

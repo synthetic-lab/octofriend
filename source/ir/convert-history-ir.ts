@@ -8,8 +8,6 @@ import {
   ToolFailedItem,
   ToolRejectItem,
   ToolSkipItem,
-  FileOutdatedItem,
-  FileUnreadableItem,
   AssistantItem,
   UserItem,
   CompactionCheckpointItem,
@@ -32,8 +30,6 @@ type LoweredHistory =
   | ToolFailedItem
   | ToolRejectItem
   | ToolSkipItem
-  | FileOutdatedItem
-  | FileUnreadableItem
   | AssistantItem
   | UserItem
   | CompactionCheckpointItem;
@@ -70,27 +66,6 @@ function singleOutputDecompile(output: TrajectoryOutputIR): HistoryItem[] {
     ];
   }
 
-  if (output.role === "file-outdated") {
-    return [
-      {
-        type: "file-outdated",
-        id: sequenceId(),
-        toolCall: output.toolCall,
-        error: output.error,
-      },
-    ];
-  }
-  if (output.role === "file-unreadable") {
-    return [
-      {
-        type: "file-unreadable",
-        path: output.path,
-        id: sequenceId(),
-        toolCall: output.toolCall,
-        error: output.error,
-      },
-    ];
-  }
   if (output.role === "checkpoint") {
     return [
       {
@@ -375,29 +350,6 @@ function collapseToIR(prev: OctoIR | null, item: LoweredHistory): [OctoIR | null
         role: "tool-output",
         content: [{ type: "text", content: item.result.content }],
         toolCall: item.toolCall,
-      },
-    ];
-  }
-
-  if (item.type === "file-outdated") {
-    return [
-      null,
-      {
-        role: "file-outdated",
-        toolCall: item.toolCall,
-        error: item.error,
-      },
-    ];
-  }
-
-  if (item.type === "file-unreadable") {
-    return [
-      null,
-      {
-        role: "file-unreadable",
-        toolCall: item.toolCall,
-        path: item.path,
-        error: item.error,
       },
     ];
   }
