@@ -43,14 +43,10 @@ or to find data that was created after your training knowledge date cutoff.
         });
         const json = await response.json();
         const results = SearchResultsSchema.slice(json);
+        const content = results.results.map(entry => JSON.stringify(entry)).join("\n");
         return ok({
           type: "output",
-          content: [
-            {
-              type: "text",
-              content: results.results.map(entry => JSON.stringify(entry)).join("\n"),
-            },
-          ],
+          content: [{ type: "text", content }],
         });
       });
     },
