@@ -312,7 +312,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
     delete argJsonSchema.title;
 
     toolsSdk[name] = tool({
-      description: `The ${name} tool`,
+      description: toolDef.description,
       inputSchema: jsonSchema(argJsonSchema),
     });
   });

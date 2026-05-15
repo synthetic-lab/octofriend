@@ -7,14 +7,6 @@ import { result } from "../../result.ts";
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to file to read"),
 });
-const Schema = t
-  .subtype({
-    name: t.value("read"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual inspection. Prefer this to Unix tools like `cat`. Text output is prefixed with line numbers in the form `N: content` so you can refer to exact positions; the line-number prefix is NOT part of the file and must not be included when constructing edit/search strings.",
-  );
 
 function withLineNumbers(content: string): string {
   return content
@@ -25,6 +17,12 @@ function withLineNumbers(content: string): string {
 
 const read = BASE_IR.declare({
   name: "read",
+  description: `
+Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual
+inspection. Prefer this to Unix tools like \`cat\`. Text output is prefixed with line numbers in
+the form \`N: content\` so you can refer to exact positions; the line-number prefix is NOT part
+of the file and must not be included when constructing edit/search strings.
+`.trim(),
   ArgumentsSchema,
 });
 

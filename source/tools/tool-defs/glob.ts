@@ -22,10 +22,9 @@ const ArgumentsSchema = t.partial(
   }),
 );
 
-const Schema = t.subtype({
-  name: t.value("glob"),
-  arguments: ArgumentsSchema,
-}).comment(`
+export default BASE_IR.declare({
+  name: "glob",
+  description: `
 Finds files on the filesystem, using a safe subset of Unix \`find\` syntax. Prefer this to shelling
 out to \`find\`.
 
@@ -37,10 +36,7 @@ like *.rb: instead, use targeted search terms for specifically what you want to 
 The glob tool automatically excludes common depedency directories such as node_modules, but do not
 depend on this fact: there may be directories that it doesn't know it should ignore. Keep your glob
 terms scoped and specific.
-`);
-
-export default BASE_IR.declare({
-  name: "glob",
+`.trim(),
   ArgumentsSchema,
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {

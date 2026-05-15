@@ -12,17 +12,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     filePath: t.str.comment("Path to the file to query"),
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-document-symbol"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `List all symbols (functions, classes, variables, etc.) in a file. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `List all symbols (functions, classes, variables, etc.) in a file. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-document-symbol",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

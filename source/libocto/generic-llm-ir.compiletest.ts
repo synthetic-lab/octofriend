@@ -15,6 +15,7 @@ function testFileIR<T extends ToolCall<any>>(toolCall: T) {
 
 const readDeclaration = BUILDER.declare({
   name: "read",
+  description: "Reads a file",
   ArgumentsSchema: t.subtype({
     path: t.str,
   }),
@@ -44,6 +45,7 @@ const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
 const list = tools
   .declare({
     name: "list",
+    description: "Lists files",
     ArgumentsSchema: t.subtype({
       path: t.str,
     }),
@@ -57,6 +59,7 @@ const list = tools
 const glob = tools
   .declare({
     name: "glob",
+    description: "Globs files",
     ArgumentsSchema: t.subtype({}),
   })
   .define(async () => ({
@@ -66,6 +69,7 @@ const glob = tools
 const write = tools
   .declare({
     name: "write",
+    description: "Writes a file",
     ArgumentsSchema: t.subtype({}),
   })
   .define(async () => {
@@ -79,6 +83,7 @@ const DATA_TOOL = BUILDER.withData<{
 }>()
   .declare({
     name: "data-tool",
+    description: "Uses builder data",
     ArgumentsSchema: t.subtype({}),
   })
   .define(async ({ data }) => {
@@ -102,6 +107,7 @@ const fileDataDeclaration = BUILDER.withData<{
   prefix: string;
 }>().declare({
   name: "file-data-tool",
+  description: "Uses builder data and emits file IR",
   ArgumentsSchema: t.subtype({}),
 });
 const FILE_DATA_TOOL = fileDataDeclaration.withCustomIR({ testFileIR }).define(async ({ data }) => {
@@ -116,6 +122,7 @@ const FILE_DATA_TOOL = fileDataDeclaration.withCustomIR({ testFileIR }).define(a
 
 const dynamicReadDeclaration = BUILDER.declare({
   name: "dynamic-read",
+  description: "Reads a file dynamically",
   ArgumentsSchema: t.subtype({
     path: t.str,
   }),
@@ -340,6 +347,7 @@ const _missingDynamicSubagent = defineAgent({
 
 const unparseableReadDeclaration = BUILDER.declare({
   name: "unparseable-read",
+  description: "Cannot parse correctly",
   ArgumentsSchema: t.subtype({
     path: t.str,
   }),

@@ -50,17 +50,6 @@ const ArgumentsSchema = t.subtype({
   arguments: t.optional(t.dict(t.str)),
 });
 
-const Schema = t.subtype({
-  name: t.value("mcp"),
-  arguments: ArgumentsSchema,
-}).comment(`
-  Interact with Model Context Protocol (MCP) servers to access external tools and resources.
-
-  MCP servers provide specialized tools like filesystem access, database queries, web scraping,
-  or integration with external services. Each server runs as a separate process and exposes
-  tools that can be called with specific arguments.
-`);
-
 // Cache for MCP clients to avoid reconnecting
 const clientCache = new Map<string, Client>();
 
@@ -131,14 +120,21 @@ export async function shutdownMcpClients(): Promise<void> {
   }
 }
 
-export default BASE_IR.dynamicDefineTool(async ({ data }) => {
+export default BASE_IR.declare({
+  name: "mcp",
+  description: `
+Interact with Model Context Protocol (MCP) servers to access external tools and resources.
+
+MCP servers provide specialized tools like filesystem access, database queries, web scraping,
+or integration with external services. Each server runs as a separate process and exposes
+tools that can be called with specific arguments.
+`.trim(),
+  ArgumentsSchema,
+}).define(async ({ data }) => {
   const hasMcp = data.mcpServers != null && Object.keys(data.mcpServers).length > 0;
   if (!hasMcp) return null;
 
-  return BASE_IR.declare({
-    name: "mcp",
-    ArgumentsSchema,
-  }).define(async () => ({
+  return {
     async run({ signal, toolCall, data }) {
       const {
         server: serverName,
@@ -247,5 +243,5 @@ export default BASE_IR.dynamicDefineTool(async ({ data }) => {
 
       return toolOutput(output.trim());
     },
-  }));
+  };
 });

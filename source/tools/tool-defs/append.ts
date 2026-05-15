@@ -4,20 +4,14 @@ import { attemptUntrackedRead, BASE_IR, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t
-  .subtype({
-    filePath: t.str.comment("The path to the file"),
-    text: t.str.comment("The text to append"),
-  })
-  .comment("Appends to a file");
-
-const Schema = t.subtype({
-  name: t.value("append"),
-  arguments: ArgumentsSchema,
+const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  text: t.str.comment("The text to append"),
 });
 
 const append = BASE_IR.declare({
   name: "append",
+  description: "Appends to a file",
   ArgumentsSchema,
 });
 

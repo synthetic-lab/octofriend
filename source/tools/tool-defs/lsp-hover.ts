@@ -18,17 +18,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     character: CharSchema,
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-hover"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-hover",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

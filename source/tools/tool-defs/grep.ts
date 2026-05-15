@@ -18,15 +18,9 @@ const ArgumentsSchema = t.partial(
   }),
 );
 
-const Schema = t.subtype({
-  name: t.value("grep"),
-  arguments: ArgumentsSchema,
-}).comment(`
-Searches file contents using grep. Prefer this to shelling out to \`grep\` directly.
-`);
-
 export default BASE_IR.declare({
   name: "grep",
+  description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
   ArgumentsSchema,
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
