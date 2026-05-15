@@ -1,8 +1,9 @@
 import { t } from "structural";
-import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
+import { result } from "../../result.ts";
 
 const converter = compile({
   wordwrap: 130,
@@ -38,22 +39,22 @@ export default BASE_IR.declare({
 
       if (!response.ok) {
         if (response.status === 403) {
-          throw new ToolError(
+          return result.err(
             `Authorization failed: status code ${403}\n${text}\nThis appears to have failed authorization, ask the user for help: they may be able to read the URL and copy/paste for you.`,
           );
         }
-        throw new ToolError(`Request failed: ${text}`);
+        return result.err(`Request failed: ${text}`);
       }
 
       const { context } = getModelFromConfig(data, null);
       if (text.length > context) {
-        throw new ToolError(`Web content too large: ${text.length} bytes (max: ${context} bytes)`);
+        return result.err(`Web content too large: ${text.length} bytes (max: ${context} bytes)`);
       }
 
       return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
-        throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+        return result.err(USER_ABORTED_ERROR_MESSAGE);
       }
       throw e;
     }

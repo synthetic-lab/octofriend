@@ -31,8 +31,9 @@ export default prepend.withCustomIR({ fileMutateIR }).define(async () => ({
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
+    if (!file.success) return file;
     const replaced = runEdit({
-      file,
+      file: file.data,
       edit,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
@@ -46,7 +47,8 @@ async function validate(
   args: t.GetType<typeof ArgumentsSchema>,
 ) {
   await fileTracker.assertCanEdit(transport, signal, args.filePath);
-  await attemptUntrackedRead(transport, signal, args.filePath);
+  const file = await attemptUntrackedRead(transport, signal, args.filePath);
+  if (!file.success) return file;
   return result.ok(null);
 }
 

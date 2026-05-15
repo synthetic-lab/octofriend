@@ -43,7 +43,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (locations, filePath, line, character) =>
           `Implementation results for ${filePath}:${line}:${character}:\n${formatLocations(locations)}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

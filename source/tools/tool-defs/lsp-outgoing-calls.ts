@@ -43,7 +43,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (calls, filePath, line, character) =>
           `Outgoing calls from symbol at ${filePath}:${line}:${character}:\n${formatCallHierarchy(calls, "outgoing")}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, ToolError, attempt, toolOutput } from "../common.ts";
+import { BASE_IR, attempt, toolOutput } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
@@ -22,7 +22,7 @@ async function validate(
 ) {
   const dirpath = args.dirPath || ".";
   const isDir = await transport.isDirectory(signal, dirpath);
-  if (!isDir) throw new ToolError(`${dirpath} is not a directory`);
+  if (!isDir) return result.err(`${dirpath} is not a directory`);
   return result.ok(null);
 }
 
@@ -35,7 +35,8 @@ export default BASE_IR.declare({
   },
   async run({ signal, transport, toolCall }) {
     const dirpath = toolCall.parsed.arguments.dirPath || transport.cwd;
-    await validate(signal, transport, toolCall.original.arguments);
+    const validation = await validate(signal, transport, toolCall.original.arguments);
+    if (!validation.success) return validation;
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(signal, dirpath);
       return toolOutput(entries.map(entry => JSON.stringify(entry)).join("\n"));

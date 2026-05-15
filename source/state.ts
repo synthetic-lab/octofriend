@@ -15,7 +15,7 @@ import {
   sequenceId,
 } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
-import { runTool, ToolError } from "./tools/index.ts";
+import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import type { ToolResult } from "./tools/common.ts";
 import { create } from "zustand";
@@ -447,19 +447,32 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     try {
       const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+      if (!result.success) {
+        set({
+          history: [
+            ...get().history,
+            {
+              type: "tool-failed",
+              id: sequenceId(),
+              error: result.error,
+              toolCall: toolReq,
+            },
+          ],
+        });
+      } else {
+        const toolHistoryItem: ToolOutputItem = {
+          type: "tool-output",
+          id: sequenceId(),
+          result: toolRunResultToHistoryResult(result.data),
+          toolCall: toolReq,
+        };
 
-      const toolHistoryItem: ToolOutputItem = {
-        type: "tool-output",
-        id: sequenceId(),
-        result: toolRunResultToHistoryResult(result),
-        toolCall: toolReq,
-      };
-
-      set({ history: [...get().history, toolHistoryItem] });
+        set({ history: [...get().history, toolHistoryItem] });
+      }
     } catch (e) {
       const history = [
         ...get().history,
-        await tryTransformToolError(abortController.signal, transport, toolReq, e),
+        await tryTransformUnexpectedToolException(abortController.signal, transport, toolReq, e),
       ];
       set({ history });
     }
@@ -659,20 +672,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 }));
 
-async function tryTransformToolError(
+async function tryTransformUnexpectedToolException(
   signal: AbortSignal,
   transport: Transport,
   toolReq: ToolCallRequest,
   e: unknown,
 ): Promise<HistoryItem> {
-  if (e instanceof ToolError) {
-    return {
-      type: "tool-failed",
-      id: sequenceId(),
-      error: e.message,
-      toolCall: toolReq,
-    };
-  }
   if (e instanceof FileOutdatedError) {
     if (!isFileToolCall(toolReq)) throw e;
     const absolutePath = path.resolve(e.filePath);

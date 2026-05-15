@@ -43,7 +43,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (refs, filePath, line, character) =>
           `References for symbol at ${filePath}:${line}:${character}:\n${formatLocations(refs)}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

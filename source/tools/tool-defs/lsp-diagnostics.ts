@@ -39,7 +39,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (diagnostics, filePath) =>
           `Diagnostics for ${filePath}:\n${formatDiagnostics(diagnostics)}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

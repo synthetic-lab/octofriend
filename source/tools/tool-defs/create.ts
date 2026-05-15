@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, BASE_IR, fileMutateIR } from "../common.ts";
+import { attempt, BASE_IR, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
@@ -20,7 +20,7 @@ async function validate(signal: AbortSignal, transport: Transport, filePath: str
   try {
     await fileTracker.assertCanCreate(transport, signal, filePath);
   } catch (e) {
-    if (e instanceof FileExistsError) throw new ToolError(e.message);
+    if (e instanceof FileExistsError) return result.err(e.message);
     throw e;
   }
   return result.ok(null);
@@ -37,7 +37,8 @@ export default create.withCustomIR({ fileMutateIR }).define(async () => ({
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath, content } = toolCall.parsed.arguments;
-    await validate(signal, transport, filePath);
+    const validation = await validate(signal, transport, filePath);
+    if (!validation.success) return validation;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
       return customIR.fileMutateIR({ content: "" });

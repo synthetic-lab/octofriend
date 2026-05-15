@@ -42,7 +42,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (hover, filePath, line, character) =>
           `Hover info for ${filePath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

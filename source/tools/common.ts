@@ -1,23 +1,29 @@
 import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { Result, result } from "../result.ts";
+import { Err, Ok, Result, result } from "../result.ts";
 import { tools as BASE_IR_TOOL, ToolCall, ToolMap } from "../libocto/tool-def.ts";
-
-export class ToolError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = this.constructor.name;
-  }
-}
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 
-export async function attempt<T>(errMessage: string, callback: () => Promise<T>): Promise<T> {
+export async function attempt<T, E>(
+  errMessage: string,
+  callback: () => Promise<Result<T, E>>,
+): Promise<Result<T, E | string>>;
+export async function attempt<T>(
+  errMessage: string,
+  callback: () => Promise<T>,
+): Promise<Result<T, string>>;
+export async function attempt<T, E>(
+  errMessage: string,
+  callback: () => Promise<T | Result<T, E>>,
+): Promise<Result<T, E | string>> {
   try {
-    return await callback();
+    const value = await callback();
+    if (value instanceof Ok || value instanceof Err) return value;
+    return result.ok(value);
   } catch {
-    throw new ToolError(errMessage);
+    return result.err(errMessage);
   }
 }
 
@@ -25,10 +31,11 @@ export async function attemptUntrackedStat(
   transport: Transport,
   signal: AbortSignal,
   path: string,
-) {
+): Promise<Result<null, string>> {
   return attempt(`Could not stat(${path}): does the file exist?`, async () => {
     const exists = await transport.pathExists(signal, path);
     if (!exists) throw new Error("Path doesn't exist");
+    return null;
   });
 }
 
@@ -36,7 +43,7 @@ export async function attemptUntrackedRead(
   transport: Transport,
   signal: AbortSignal,
   path: string,
-) {
+): Promise<Result<string, string>> {
   return await attempt(`${path} couldn't be read`, async () => {
     return transport.readFile(signal, path);
   });
@@ -50,19 +57,15 @@ export async function parseOriginalFile<Arguments extends { filePath: string }>(
 ): Promise<
   Result<{ original: Arguments; parsed: Arguments & { originalFileContents: string } }, string>
 > {
-  try {
-    const contents = await attemptUntrackedRead(transport, signal, original.filePath);
-    return result.ok({
-      original,
-      parsed: {
-        ...original,
-        originalFileContents: contents,
-      },
-    });
-  } catch (e) {
-    if (e instanceof ToolError) return result.err(e.message);
-    throw e;
-  }
+  const contents = await attemptUntrackedRead(transport, signal, original.filePath);
+  if (!contents.success) return contents;
+  return result.ok({
+    original,
+    parsed: {
+      ...original,
+      originalFileContents: contents.data,
+    },
+  });
 }
 
 export type ToolResult = {
