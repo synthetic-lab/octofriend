@@ -2,7 +2,6 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attempt, attemptUntrackedStat, BASE_IR, fileReadIR } from "../common.ts";
 import { isImagePath, loadImageFromPath } from "../../utils/image-utils.ts";
-import { ok, err } from "../../result.ts";
 
 function withLineNumbers(content: string): string {
   return content
