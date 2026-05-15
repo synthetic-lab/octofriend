@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { TOOL, attempt, toolOutput } from "../common.ts";
+import { TOOL, attempt } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { ok, err } from "../../result.ts";
 
@@ -33,7 +33,12 @@ export default TOOL.declare({
     if (!validation.success) return validation;
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(signal, dirpath);
-      return toolOutput(entries.map(entry => JSON.stringify(entry)).join("\n"));
+      return ok({
+        type: "output",
+        content: [
+          { type: "text", content: entries.map(entry => JSON.stringify(entry)).join("\n") },
+        ],
+      });
     });
   },
 }));

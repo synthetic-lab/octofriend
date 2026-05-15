@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { Result, ok, err } from "../../result.ts";
@@ -239,7 +239,10 @@ tools that can be called with specific arguments.
         }
       }
 
-      return toolOutput(output.trim());
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.trim() }],
+      });
     },
   };
 });

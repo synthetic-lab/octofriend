@@ -1,9 +1,9 @@
 import { t } from "structural";
-import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
-import { err } from "../../result.ts";
+import { ok, err } from "../../result.ts";
 
 const converter = compile({
   wordwrap: 130,
@@ -44,7 +44,10 @@ output is confusing: otherwise you may download a massive amount of data`,
         return err(`Web content too large: ${text.length} bytes (max: ${context} bytes)`);
       }
 
-      return toolOutput(text);
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: text }],
+      });
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
         return err(USER_ABORTED_ERROR_MESSAGE);
