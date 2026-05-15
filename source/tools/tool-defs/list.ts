@@ -33,11 +33,10 @@ export default TOOL.declare({
     if (!validation.success) return validation;
     return attempt(`No such directory: ${dirpath}`, async () => {
       const entries = await transport.readdir(signal, dirpath);
+      const content = entries.map(entry => JSON.stringify(entry)).join("\n");
       return ok({
         type: "output",
-        content: [
-          { type: "text", content: entries.map(entry => JSON.stringify(entry)).join("\n") },
-        ],
+        content: [{ type: "text", content }],
       });
     });
   },

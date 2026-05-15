@@ -28,9 +28,10 @@ Often interactive commands provide flags to run them non-interactively. Prefer t
   async run({ signal, transport, toolCall }) {
     const { cmd, timeout } = toolCall.parsed.arguments;
     try {
+      const content = await transport.shell(signal, cmd, timeout);
       return ok({
         type: "output",
-        content: [{ type: "text", content: await transport.shell(signal, cmd, timeout) }],
+        content: [{ type: "text", content }],
       });
     } catch (e) {
       if (e instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);

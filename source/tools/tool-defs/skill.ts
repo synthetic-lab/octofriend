@@ -26,12 +26,7 @@ export default TOOL.dynamicDefineTool(async function ({ signal, transport, data 
       const { skillName } = toolCall.parsed.arguments;
       const skill = skills.find(s => s.name === skillName)!;
 
-      return ok({
-        type: "output",
-        content: [
-          {
-            type: "text",
-            content: `
+      const content = `
 Skill name: ${skill.name}
 Skill directory: ${skill.path}
 Description: ${skill.description}
@@ -48,9 +43,11 @@ it's likely that they don't exist for this skill.
 Here are the contents of the SKILL.md file stored at ${skill.skillFilePath}:
 ---
 ${skill.instructions}
-`.trim(),
-          },
-        ],
+`.trim();
+
+      return ok({
+        type: "output",
+        content: [{ type: "text", content }],
       });
     },
   }));
