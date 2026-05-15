@@ -9,13 +9,6 @@ export const ArgumentsSchema = t.subtype({
   content: t.str.comment("Content to write to the file"),
 });
 
-const Schema = t
-  .subtype({
-    name: t.value("create"),
-    arguments: ArgumentsSchema,
-  })
-  .comment("Creates a new file with the specified content");
-
 async function validate(signal: AbortSignal, transport: Transport, filePath: string) {
   try {
     await fileTracker.assertCanCreate(transport, signal, filePath);
@@ -28,6 +21,7 @@ async function validate(signal: AbortSignal, transport: Transport, filePath: str
 
 const create = BASE_IR.declare({
   name: "create",
+  description: "Creates a new file with the specified content",
   ArgumentsSchema,
 });
 

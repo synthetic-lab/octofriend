@@ -328,7 +328,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
       type: "function" as const,
       function: {
         name: name,
-        description: `The ${name} tool`,
+        description: tool.description,
         parameters: argJsonSchema,
         strict: true,
       },

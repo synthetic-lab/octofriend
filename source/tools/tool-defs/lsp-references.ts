@@ -19,17 +19,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     character: CharSchema,
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-references"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-references",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

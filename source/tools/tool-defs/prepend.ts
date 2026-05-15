@@ -4,20 +4,14 @@ import { attemptUntrackedRead, BASE_IR, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t
-  .subtype({
-    filePath: t.str.comment("The path to the file"),
-    text: t.str.comment("The text to prepend"),
-  })
-  .comment("Prepends to a file");
-
-const Schema = t.subtype({
-  name: t.value("prepend"),
-  arguments: ArgumentsSchema,
+const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  text: t.str.comment("The text to prepend"),
 });
 
 const prepend = BASE_IR.declare({
   name: "prepend",
+  description: "Prepends to a file",
   ArgumentsSchema,
 });
 

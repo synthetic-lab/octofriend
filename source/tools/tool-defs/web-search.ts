@@ -5,14 +5,6 @@ import { readSearchConfig } from "../../config.ts";
 const ArgumentsSchema = t.subtype({
   query: t.str.comment("The search query"),
 });
-const Schema = t
-  .subtype({
-    name: t.value("web-search"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Searches the web. Use this to find information you're not sure about, to look up documentation, or to find data that was created after your training knowledge date cutoff.",
-  );
 
 const SearchResultsSchema = t.subtype({
   results: t.array(
@@ -25,14 +17,18 @@ const SearchResultsSchema = t.subtype({
   ),
 });
 
-export default BASE_IR.dynamicDefineTool(async ({ data }) => {
+export default BASE_IR.declare({
+  name: "web-search",
+  description: `
+Searches the web. Use this to find information you're not sure about, to look up documentation,
+or to find data that was created after your training knowledge date cutoff.
+`.trim(),
+  ArgumentsSchema,
+}).define(async ({ data }) => {
   const searchConf = await readSearchConfig(data);
   if (searchConf == null) return null;
 
-  return BASE_IR.declare({
-    name: "web-search",
-    ArgumentsSchema,
-  }).define(async () => ({
+  return {
     async run({ signal, toolCall }) {
       const query = toolCall.parsed.arguments.query;
       return attempt(`Web search failed: ${query}`, async () => {
@@ -51,5 +47,5 @@ export default BASE_IR.dynamicDefineTool(async ({ data }) => {
         return toolOutput(results.results.map(entry => JSON.stringify(entry)).join("\n"));
       });
     },
-  }));
+  };
 });

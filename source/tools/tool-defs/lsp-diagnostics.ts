@@ -12,17 +12,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     filePath: t.str.comment("Path to the file to query"),
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-diagnostics"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Get errors and warnings for a file from the language server. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `Get errors and warnings for a file from the language server. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-diagnostics",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

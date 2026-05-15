@@ -19,15 +19,9 @@ output is confusing: otherwise you may download a massive amount of data`,
     ),
   ),
 });
-const Schema = t
-  .subtype({
-    name: t.value("fetch"),
-    arguments: ArgumentsSchema,
-  })
-  .comment("Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget");
-
 export default BASE_IR.declare({
   name: "fetch",
+  description: "Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget",
   ArgumentsSchema,
 }).define(async () => ({
   async run({ signal, toolCall, data }) {

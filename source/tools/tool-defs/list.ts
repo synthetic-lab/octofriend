@@ -6,14 +6,6 @@ import { result } from "../../result.ts";
 const ArgumentsSchema = t.subtype({
   dirPath: t.optional(t.str.comment("Path to the directory")),
 });
-const Schema = t
-  .subtype({
-    name: t.value("list"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd",
-  );
 
 async function validate(
   signal: AbortSignal,
@@ -28,6 +20,8 @@ async function validate(
 
 export default BASE_IR.declare({
   name: "list",
+  description:
+    "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd",
   ArgumentsSchema,
 }).define(async () => ({
   async validate(signal, transport, toolCall) {

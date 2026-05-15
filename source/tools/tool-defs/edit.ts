@@ -13,20 +13,11 @@ const DiffParts = {
   `),
   replace: t.str.comment("The string you want to insert into the file"),
 };
-export const ArgumentsSchema = t
-  .subtype({
-    filePath: t.str.comment("The path to the file"),
-    ...DiffParts,
-  })
-  .comment(
-    "Applies a search/replace edit to a file. This should be your default tool to edit existing files.",
-  );
-export const DiffEditSchema = t.subtype(DiffParts);
-
-export const Schema = t.subtype({
-  name: t.value("edit"),
-  arguments: ArgumentsSchema,
+export const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  ...DiffParts,
 });
+export const DiffEditSchema = t.subtype(DiffParts);
 
 export const ParsedSchema = ArgumentsSchema.and(
   t.subtype({
@@ -36,6 +27,9 @@ export const ParsedSchema = ArgumentsSchema.and(
 
 const edit = BASE_IR.declare({
   name: "edit",
+  description: `
+Applies a search/replace edit to a file. This should be your default tool to edit existing files.
+`.trim(),
   ArgumentsSchema,
   ParsedSchema,
 });

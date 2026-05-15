@@ -19,17 +19,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     character: CharSchema,
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-outgoing-calls"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Find all callees of a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `Find all callees of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-outgoing-calls",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

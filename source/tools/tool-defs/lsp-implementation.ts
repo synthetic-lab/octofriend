@@ -19,17 +19,11 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
     character: CharSchema,
   });
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-implementation"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Find implementation locations, jumping past interfaces and abstract classes to the code that implements them. ${getLspExtensionsComment(extensions)}`,
-    );
+  const description = `Find implementation locations, jumping past interfaces and abstract classes to the code that implements them. ${getLspExtensionsComment(extensions)}`;
 
   return BASE_IR.declare({
     name: "lsp-implementation",
+    description,
     ArgumentsSchema,
   }).define(async () => ({
     async run({ signal, toolCall }) {

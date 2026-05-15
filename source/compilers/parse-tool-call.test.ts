@@ -11,6 +11,7 @@ const ArgumentsSchema = t.subtype({
 function searchTool() {
   return {
     name: "search",
+    description: "Searches",
     ArgumentsSchema,
     ParsedSchema: ArgumentsSchema,
     parse: async ({ original }: { original: { query: string } }) =>

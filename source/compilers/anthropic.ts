@@ -246,7 +246,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
 
     toolDefinitions.push({
       name,
-      description: `The ${name} tool`,
+      description: toolDef.description,
       input_schema: argJsonSchema,
     });
   });
