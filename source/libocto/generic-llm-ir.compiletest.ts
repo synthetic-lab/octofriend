@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
-import { tools, ToolBuilder, ToolCall } from "./tool-def.ts";
+import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
 import { ok, err } from "../result.ts";
 
 const BUILDER = new ToolBuilder();
@@ -42,41 +42,35 @@ const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
     },
   };
 });
-const list = tools
-  .declare({
-    name: "list",
-    description: "Lists files",
-    ArgumentsSchema: t.subtype({
-      path: t.str,
-    }),
-  })
-  .define(async () => {
-    return {
-      run: async () => err("idk"),
-    };
-  });
-
-const glob = tools
-  .declare({
-    name: "glob",
-    description: "Globs files",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async () => ({
+const list = TOOL_BUILDER.declare({
+  name: "list",
+  description: "Lists files",
+  ArgumentsSchema: t.subtype({
+    path: t.str,
+  }),
+}).define(async () => {
+  return {
     run: async () => err("idk"),
-  }));
+  };
+});
 
-const write = tools
-  .declare({
-    name: "write",
-    description: "Writes a file",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async () => {
-    return {
-      run: async () => err("idk"),
-    };
-  });
+const glob = TOOL_BUILDER.declare({
+  name: "glob",
+  description: "Globs files",
+  ArgumentsSchema: t.subtype({}),
+}).define(async () => ({
+  run: async () => err("idk"),
+}));
+
+const write = TOOL_BUILDER.declare({
+  name: "write",
+  description: "Writes a file",
+  ArgumentsSchema: t.subtype({}),
+}).define(async () => {
+  return {
+    run: async () => err("idk"),
+  };
+});
 
 const DATA_TOOL = BUILDER.withData<{
   prefix: string;

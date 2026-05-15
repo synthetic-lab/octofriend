@@ -402,7 +402,7 @@ export class DeclaredTool<
 }
 
 // A shared tool builder for callers that do not need a dedicated builder instance.
-export const tools = new ToolBuilder();
+export const TOOL_BUILDER = new ToolBuilder();
 
 export type ToolMap<SubagentNames extends string, Extra> = {
   [key: string]: ToolFactory<any, any, any, SubagentNames, Extra>;

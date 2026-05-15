@@ -1,12 +1,12 @@
 import { quote } from "shell-quote";
 import { t } from "structural";
-import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 import { err } from "../../result.ts";
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "grep",
   description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
   ArgumentsSchema: t.partial(t.subtype({

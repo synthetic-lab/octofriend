@@ -1,12 +1,12 @@
 import { t } from "structural";
-import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 import { err } from "../../result.ts";
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "glob",
   description: `
 Finds files on the filesystem, using a safe subset of Unix \`find\` syntax. Prefer this to shelling

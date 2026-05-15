@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import {
   attemptUntrackedRead,
-  BASE_IR,
+  TOOL,
   FILE_OUTDATED_ERROR_MESSAGE,
   fileMutateIR,
 } from "../common.ts";
@@ -14,7 +14,7 @@ const ArgumentsSchema = t.subtype({
   text: t.str.comment("The text to append"),
 });
 
-const append = BASE_IR.declare({
+const append = TOOL.declare({
   name: "append",
   description: "Appends to a file",
   ArgumentsSchema,

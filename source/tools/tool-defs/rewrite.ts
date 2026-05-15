@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import {
   attemptUntrackedRead,
-  BASE_IR,
+  TOOL,
   FILE_OUTDATED_ERROR_MESSAGE,
   fileMutateIR,
   parseOriginalFile,
@@ -21,7 +21,7 @@ const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-const rewrite = BASE_IR.declare({
+const rewrite = TOOL.declare({
   name: "rewrite",
   description: `
 Rewrites the entire file. If you need to rewrite large chunks of the file, or are struggling to

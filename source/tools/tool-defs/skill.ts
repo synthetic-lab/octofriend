@@ -1,9 +1,9 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { BASE_IR, toolOutput } from "../common.ts";
+import { TOOL, toolOutput } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
 
-export default BASE_IR.dynamicDefineTool(async function ({ signal, transport, data }) {
+export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
   const skills = await discoverSkills(transport, signal, data);
   if (skills.length === 0) return null;
 
@@ -14,7 +14,7 @@ export default BASE_IR.dynamicDefineTool(async function ({ signal, transport, da
   const skillNameSchemas = skills.map(s => t.value(s.name));
   const description = `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`;
 
-  return BASE_IR.declare({
+  return TOOL.declare({
     name: "skill",
     description,
     ArgumentsSchema: t.subtype({
