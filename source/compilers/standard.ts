@@ -16,7 +16,6 @@ import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { result } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
-import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
@@ -108,21 +107,6 @@ function openaiContentParts(
     }
   }
   return output;
-}
-
-function textOnlyContent(text: string): UserContent {
-  return [{ type: "text", text }];
-}
-
-function checkpointContent(
-  content: IRContent["content"],
-  modalities?: MultimodalConfig,
-): UserContent {
-  return [
-    { type: "text", text: COMPACTION_COMPILER_PREFIX },
-    ...openaiContentParts(content, modalities),
-    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
-  ];
 }
 
 function generateCurlFrom(params: {
@@ -223,7 +207,7 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: textOnlyContent(tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason))),
+      content: [{ type: "text", text: tagged(TOOL_ERROR_TAG, {}, irPrompts.toolSkip(ir.reason)) }],
     };
   }
 
@@ -231,9 +215,12 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.malformedRequest.toolCallId,
-      content: textOnlyContent(
-        "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
-      ),
+      content: [
+        {
+          type: "text",
+          text: "Malformed tool call: " + tagged(TOOL_ERROR_TAG, {}, ir.malformedRequest.error),
+        },
+      ],
     };
   }
 
@@ -241,9 +228,12 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: textOnlyContent(
-        "Error from tool call validation: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
-      ),
+      content: [
+        {
+          type: "text",
+          text: "Error from tool call validation: " + tagged(TOOL_ERROR_TAG, {}, ir.error),
+        },
+      ],
     };
   }
 
@@ -251,14 +241,14 @@ function llmFromIr<A extends Agent<any, any, any>>(
     return {
       role: "tool",
       tool_call_id: ir.toolCall.toolCallId,
-      content: textOnlyContent("Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error)),
+      content: [{ type: "text", text: "Error: " + tagged(TOOL_ERROR_TAG, {}, ir.error) }],
     };
   }
 
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: checkpointContent(ir.content, modalities),
+      content: openaiContentParts(ir.content, modalities),
     };
   }
 

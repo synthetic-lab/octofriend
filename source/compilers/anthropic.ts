@@ -14,7 +14,6 @@ import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
-import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 
@@ -57,17 +56,6 @@ function anthropicContentParts(
     }
   }
   return output;
-}
-
-function checkpointContent(
-  content: IRContent["content"],
-  modalities?: MultimodalConfig,
-): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
-  return [
-    { type: "text", text: COMPACTION_COMPILER_PREFIX },
-    ...anthropicContentParts(content, modalities),
-    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
-  ];
 }
 
 function toModelMessage<A extends Agent<any, any, any>>(
@@ -188,7 +176,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: checkpointContent(ir.content, modalities),
+      content: anthropicContentParts(ir.content, modalities),
     };
   }
 

@@ -14,7 +14,6 @@ import { trackTokens } from "../token-tracker.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { result } from "../result.ts";
 import { errorToString } from "../errors.ts";
-import { COMPACTION_COMPILER_PREFIX, COMPACTION_COMPILER_SUFFIX } from "./autocompact.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
@@ -73,17 +72,6 @@ function toolContentOutput(content: IRContent["content"], modalities?: Multimoda
     type: "content" as const,
     value,
   };
-}
-
-function checkpointContent(
-  content: IRContent["content"],
-  modalities?: MultimodalConfig,
-): ModelContentParts {
-  return [
-    { type: "text", text: COMPACTION_COMPILER_PREFIX },
-    ...modelContentParts(content, modalities),
-    { type: "text", text: COMPACTION_COMPILER_SUFFIX },
-  ];
 }
 
 async function toModelMessage<A extends Agent<any, any, any>>(
@@ -266,7 +254,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   if (ir.role === "checkpoint") {
     return {
       role: "user",
-      content: checkpointContent(ir.content, modalities),
+      content: modelContentParts(ir.content, modalities),
     };
   }
 
