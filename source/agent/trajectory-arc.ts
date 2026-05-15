@@ -6,7 +6,11 @@ import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
-import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
+import {
+  compactionCheckpointContent,
+  generateCompactionSummary,
+  shouldAutoCompactHistory,
+} from "../compilers/autocompact.ts";
 import { validateTool, ToolError } from "../tools/index.ts";
 import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
@@ -460,7 +464,7 @@ async function maybeAutocompact({
   return {
     checkpoint: {
       role: "checkpoint",
-      content: [{ type: "text", content: checkpointSummary }],
+      content: compactionCheckpointContent(checkpointSummary),
     },
   };
 }
