@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
@@ -9,7 +9,7 @@ const converter = compile({
   wordwrap: 130,
 });
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "fetch",
   description: "Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget",
   ArgumentsSchema: t.subtype({

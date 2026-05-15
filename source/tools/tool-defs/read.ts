@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attempt, attemptUntrackedStat, BASE_IR, fileReadIR } from "../common.ts";
+import { attempt, attemptUntrackedStat, TOOL, fileReadIR } from "../common.ts";
 import { isImagePath, loadImageFromPath } from "../../utils/image-utils.ts";
 
 function withLineNumbers(content: string): string {
@@ -10,7 +10,7 @@ function withLineNumbers(content: string): string {
     .join("\n");
 }
 
-const read = BASE_IR.declare({
+const read = TOOL.declare({
   name: "read",
   description: `
 Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual

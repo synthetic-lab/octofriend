@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, attempt, toolOutput } from "../common.ts";
+import { TOOL, attempt, toolOutput } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { ok, err } from "../../result.ts";
 
@@ -18,7 +18,7 @@ async function validate(
   return ok(null);
 }
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "list",
   description:
     "Lists directories. Prefer this to Unix tools like `ls`. If no dirPath is provided, lists the cwd",

@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, toolOutput } from "../common.ts";
+import { TOOL, toolOutput } from "../common.ts";
 import { formatCallHierarchy } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,13 +9,13 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
+export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
   const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
   const description = `Find all callers of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
-  return BASE_IR.declare({
+  return TOOL.declare({
     name: "lsp-incoming-calls",
     description,
     ArgumentsSchema: t.subtype({

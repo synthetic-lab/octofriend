@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, attempt, toolOutput } from "../common.ts";
+import { TOOL, attempt, toolOutput } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
 
 const SearchResultsSchema = t.subtype({
@@ -13,7 +13,7 @@ const SearchResultsSchema = t.subtype({
   ),
 });
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "web-search",
   description: `
 Searches the web. Use this to find information you're not sure about, to look up documentation,

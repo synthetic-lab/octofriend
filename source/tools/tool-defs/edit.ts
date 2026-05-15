@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import {
   attemptUntrackedRead,
-  BASE_IR,
+  TOOL,
   FILE_OUTDATED_ERROR_MESSAGE,
   fileMutateIR,
   parseOriginalFile,
@@ -31,7 +31,7 @@ export const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-const edit = BASE_IR.declare({
+const edit = TOOL.declare({
   name: "edit",
   description: `
 Applies a search/replace edit to a file. This should be your default tool to edit existing files.

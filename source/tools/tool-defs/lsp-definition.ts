@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { BASE_IR, toolOutput } from "../common.ts";
+import { TOOL, toolOutput } from "../common.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,13 +9,13 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
+export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
   const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
   const description = `Find the definition location of a symbol at the given position. Use this when you need to see where a symbol was originally defined. ${getLspExtensionsComment(extensions)}`;
 
-  return BASE_IR.declare({
+  return TOOL.declare({
     name: "lsp-definition",
     description,
     ArgumentsSchema: t.subtype({

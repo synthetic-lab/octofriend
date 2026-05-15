@@ -1,9 +1,9 @@
 import { t } from "structural";
-import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { err } from "../../result.ts";
 
-export default BASE_IR.declare({
+export default TOOL.declare({
   name: "shell",
   description: `
 Runs a shell command in the cwd. This tool uses /bin/sh. Do NOT use bash-isms; they won't work.

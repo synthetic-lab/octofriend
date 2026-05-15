@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { attempt, BASE_IR, fileMutateIR } from "../common.ts";
+import { attempt, TOOL, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { ok, err } from "../../result.ts";
 
@@ -19,7 +19,7 @@ async function validate(signal: AbortSignal, transport: Transport, filePath: str
   return ok(null);
 }
 
-const create = BASE_IR.declare({
+const create = TOOL.declare({
   name: "create",
   description: "Creates a new file with the specified content",
   ArgumentsSchema,

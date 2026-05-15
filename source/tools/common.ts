@@ -2,7 +2,7 @@ import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 import { Err, Ok, Result, ok, err } from "../result.ts";
-import { tools as BASE_IR_TOOL, ToolCall } from "../libocto/tool-def.ts";
+import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =
@@ -94,7 +94,7 @@ export type FileMutateIR<T extends ToolCall<any>> = {
   path: string;
 };
 
-export const BASE_IR = BASE_IR_TOOL.withData<Config>();
+export const TOOL = TOOL_BUILDER.withData<Config>();
 
 export function toolOutput(content: string, options: { lines?: number; image?: ImageInfo } = {}) {
   return ok({
