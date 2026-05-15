@@ -9,20 +9,19 @@ const converter = compile({
   wordwrap: 130,
 });
 
-const ArgumentsSchema = t.subtype({
-  url: t.str.comment("Full url to fetch, e.g. https://..."),
-  includeMarkup: t.optional(
-    t.bool.comment(
-      `Include the HTML markup? Defaults to false. By default or when set to false, markup will be
-stripped and converted to plain text. Prefer markup stripping, and only set this to true if the
-output is confusing: otherwise you may download a massive amount of data`,
-    ),
-  ),
-});
 export default BASE_IR.declare({
   name: "fetch",
   description: "Fetches web resources via HTTP/HTTPS. Prefer this to bash-isms like curl/wget",
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    url: t.str.comment("Full url to fetch, e.g. https://..."),
+    includeMarkup: t.optional(
+      t.bool.comment(
+        `Include the HTML markup? Defaults to false. By default or when set to false, markup will be
+stripped and converted to plain text. Prefer markup stripping, and only set this to true if the
+output is confusing: otherwise you may download a massive amount of data`,
+      ),
+    ),
+  }),
 }).define(async () => ({
   async run({ signal, toolCall, data }) {
     const { url, includeMarkup } = toolCall.parsed.arguments;

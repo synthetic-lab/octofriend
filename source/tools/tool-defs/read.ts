@@ -4,10 +4,6 @@ import { attempt, attemptUntrackedStat, BASE_IR, fileReadIR } from "../common.ts
 import { isImagePath, loadImageFromPath } from "../../utils/image-utils.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t.subtype({
-  filePath: t.str.comment("Path to file to read"),
-});
-
 function withLineNumbers(content: string): string {
   return content
     .split("\n")
@@ -23,7 +19,9 @@ inspection. Prefer this to Unix tools like \`cat\`. Text output is prefixed with
 the form \`N: content\` so you can refer to exact positions; the line-number prefix is NOT part
 of the file and must not be included when constructing edit/search strings.
 `.trim(),
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    filePath: t.str.comment("Path to file to read"),
+  }),
 });
 
 export default read.withCustomIR({ fileReadIR }).define(async () => ({

@@ -44,12 +44,6 @@ type MCPResult = {
   >;
 };
 
-const ArgumentsSchema = t.subtype({
-  server: t.str.comment("Name of the MCP server to use"),
-  tool: t.str.comment("Name of the tool to call"),
-  arguments: t.optional(t.dict(t.str)),
-});
-
 // Cache for MCP clients to avoid reconnecting
 const clientCache = new Map<string, Client>();
 
@@ -129,7 +123,11 @@ MCP servers provide specialized tools like filesystem access, database queries, 
 or integration with external services. Each server runs as a separate process and exposes
 tools that can be called with specific arguments.
 `.trim(),
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    server: t.str.comment("Name of the MCP server to use"),
+    tool: t.str.comment("Name of the tool to call"),
+    arguments: t.optional(t.dict(t.str)),
+  }),
 }).define(async ({ data }) => {
   const hasMcp = data.mcpServers != null && Object.keys(data.mcpServers).length > 0;
   if (!hasMcp) return null;

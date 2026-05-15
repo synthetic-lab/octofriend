@@ -6,22 +6,6 @@ import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t.partial(
-  t.subtype({
-    cwd: t.str,
-    name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
-    caseInsensitive: t.bool.comment(
-      "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
-    ),
-    path: t.str.comment("-path pattern (e.g. */test/*)"),
-    maxDepth: t.num.comment("The max depth of directories to search"),
-    type: t.value("file").or(t.value("directory")),
-    excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
-    excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
-    maxResults: t.num.comment("Max number of results to return"),
-  }),
-);
-
 export default BASE_IR.declare({
   name: "glob",
   description: `
@@ -37,7 +21,19 @@ The glob tool automatically excludes common depedency directories such as node_m
 depend on this fact: there may be directories that it doesn't know it should ignore. Keep your glob
 terms scoped and specific.
 `.trim(),
-  ArgumentsSchema,
+  ArgumentsSchema: t.partial(t.subtype({
+    cwd: t.str,
+    name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
+    caseInsensitive: t.bool.comment(
+      "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
+    ),
+    path: t.str.comment("-path pattern (e.g. */test/*)"),
+    maxDepth: t.num.comment("The max depth of directories to search"),
+    type: t.value("file").or(t.value("directory")),
+    excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
+    excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
+    maxResults: t.num.comment("Max number of results to return"),
+  })),
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;

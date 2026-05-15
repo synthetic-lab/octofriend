@@ -3,13 +3,6 @@ import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t.subtype({
-  timeout: t.num.comment(
-    "A timeout for the command, in milliseconds. Be generous. You MUST specify this.",
-  ),
-  cmd: t.str.comment("The command to run"),
-});
-
 export default BASE_IR.declare({
   name: "shell",
   description: `
@@ -25,7 +18,12 @@ can ask the user to run the command, explaining that it's interactive.
 
 Often interactive commands provide flags to run them non-interactively. Prefer those flags.
 `.trim(),
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    timeout: t.num.comment(
+      "A timeout for the command, in milliseconds. Be generous. You MUST specify this.",
+    ),
+    cmd: t.str.comment("The command to run"),
+  }),
 }).define(async () => ({
   async run({ signal, transport, toolCall }) {
     const { cmd, timeout } = toolCall.parsed.arguments;
