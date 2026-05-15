@@ -23,7 +23,7 @@ import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
 import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
-import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
+import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import { contentToText } from "./ir/content.ts";
@@ -627,21 +627,12 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
-      set({
-        modeData: {
-          mode: "tool-call",
-          toolReqs: finishReason.toolCalls,
-          runningToolCallId: null,
-          abortController: new AbortController(),
-        },
-      });
-    } catch (e) {
-      if (e instanceof CompactionRequestError) {
+      if (finishReason.type === "compaction-error") {
         set({
           modeData: {
             mode: "compaction-error",
-            error: e.requestError,
-            curlCommand: e.curl,
+            error: finishReason.requestError,
+            curlCommand: finishReason.curl,
           },
           history: [
             ...get().history,
@@ -653,6 +644,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         });
         return;
       }
+
+      set({
+        modeData: {
+          mode: "tool-call",
+          toolReqs: finishReason.toolCalls,
+          runningToolCallId: null,
+          abortController: new AbortController(),
+        },
+      });
+    } catch (e) {
       if (get()._maybeHandleAbort(abortController.signal)) {
         return;
       }

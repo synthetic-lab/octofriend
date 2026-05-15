@@ -5,10 +5,15 @@ import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
-import { CompactionRequestError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { Result, result } from "../result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
+
+export type CompactionError = {
+  requestError: string;
+  curl: string | null;
+};
 
 const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
@@ -30,14 +35,6 @@ The individual messages from earlier in this conversation are no longer availabl
 3. Continue working on your current task exactly where you left off
 
 Resume your work now.`;
-
-export const compactionCheckpointContent = (summary: string): Content["content"] => {
-  return [
-    { type: "text", content: COMPACTION_CHECKPOINT_PREFIX },
-    { type: "text", content: summary },
-    { type: "text", content: COMPACTION_CHECKPOINT_SUFFIX },
-  ];
-};
 
 export function findMostRecentCompactionCheckpointIndex(messages: OctoIR[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -61,7 +58,7 @@ export function shouldAutoCompactHistory(model: ModelConfig, messages: OctoIR[])
 }
 
 // only summarize starting from the most recent checkpoint (if it exists, otherwise from the beginning)
-export async function generateCompactionSummary({
+export async function generateCompactionCheckpointContent({
   apiKey,
   model,
   messages,
@@ -80,7 +77,7 @@ export async function generateCompactionSummary({
   };
   abortSignal: AbortSignal;
   transport: Transport;
-}): Promise<string | null> {
+}): Promise<Result<Content["content"] | null, CompactionError>> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
   const summaryMessages: OctoIR[] = [
@@ -91,7 +88,7 @@ export async function generateCompactionSummary({
     },
   ];
 
-  const result = await run({
+  const compactRunResult = await run({
     apiKey,
     model,
     handlers,
@@ -101,19 +98,27 @@ export async function generateCompactionSummary({
     messages: summaryMessages,
   });
 
-  if (abortSignal.aborted) return null;
+  if (abortSignal.aborted) return result.ok(null);
 
-  if (!result.success) {
-    throw new CompactionRequestError(result.error.requestError, result.error.curl);
+  if (!compactRunResult.success) {
+    return result.err({
+      requestError: compactRunResult.error.requestError,
+      curl: compactRunResult.error.curl,
+    });
   }
 
-  const summary = processCompactedHistory(result);
+  const summary = processCompactedHistory(compactRunResult);
   if (summary == null || summary === "") {
-    throw new CompactionRequestError(
-      "Compaction result was empty, continuing without compacting messages.",
-    );
+    return result.err({
+      requestError: "Compaction result was empty, continuing without compacting messages.",
+      curl: null,
+    });
   }
-  return summary;
+  return result.ok([
+    { type: "text", content: COMPACTION_CHECKPOINT_PREFIX },
+    { type: "text", content: summary },
+    { type: "text", content: COMPACTION_CHECKPOINT_SUFFIX },
+  ]);
 }
 
 export function processCompactedHistory(
