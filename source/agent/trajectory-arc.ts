@@ -1,5 +1,11 @@
 import fs from "fs/promises";
-import type { OctoIR, TrajectoryOutputIR } from "../ir/octo-ir.ts";
+import type { OctoIR } from "../ir/octo-ir.ts";
+import type {
+  Content,
+  MalformedToolRequest,
+  AssistantMessage,
+  ToolValidationErrorMessage,
+} from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
@@ -22,6 +28,24 @@ import { Result, ok } from "../result.ts";
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
+
+export type TrajectoryOutputIR =
+  | AssistantMessage<typeof toolMap>
+  | {
+      role: "tool-parse-error";
+      malformedRequest: MalformedToolRequest;
+    }
+  | ToolValidationErrorMessage<typeof toolMap>
+  | {
+      role: "tool-skip-output";
+      toolCall: ToolCallRequest;
+      reason: string;
+    }
+  | Extract<OctoIR, { role: "file-read" | "file-mutate" }>
+  | {
+      role: "checkpoint";
+      content: Content["content"];
+    };
 
 type AllTokenTypes = "reasoning" | "content" | "tool";
 

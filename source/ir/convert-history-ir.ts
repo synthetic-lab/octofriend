@@ -15,7 +15,8 @@ import {
 } from "../history.ts";
 
 import { contentToText } from "./content.ts";
-import type { OctoIR, TrajectoryOutputIR } from "./octo-ir.ts";
+import type { OctoIR } from "./octo-ir.ts";
+import type { TrajectoryOutputIR } from "../agent/trajectory-arc.ts";
 import type { AssistantMessage } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 

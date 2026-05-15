@@ -1,5 +1,6 @@
-import type { AgentResult, OctoIR } from "../ir/octo-ir.ts";
+import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import type { Content } from "../libocto/llm-ir.ts";
+import type { CompilerResult } from "./compiler-interface.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -122,12 +123,12 @@ export async function generateCompactionCheckpointContent({
 }
 
 export function processCompactedHistory(
-  compactSummaryAgentResult: AgentResult,
+  compactSummaryResult: CompilerResult<typeof octoAgent>,
 ): string | undefined {
-  if (!compactSummaryAgentResult.success) {
+  if (!compactSummaryResult.success) {
     return;
   }
-  const assistantMessage = compactSummaryAgentResult.data.output;
+  const assistantMessage = compactSummaryResult.data.output;
 
   if (assistantMessage.content) {
     return assistantMessage.content;
