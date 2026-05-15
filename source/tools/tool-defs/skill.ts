@@ -12,16 +12,14 @@ export default BASE_IR.dynamicDefineTool(async function ({ signal, transport, da
   );
 
   const skillNameSchemas = skills.map(s => t.value(s.name));
-  const ArgumentsSchema = t.subtype({
-    skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
-  });
-
   const description = `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`;
 
   return BASE_IR.declare({
     name: "skill",
     description,
-    ArgumentsSchema,
+    ArgumentsSchema: t.subtype({
+      skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
+    }),
   }).define(async () => ({
     async run({ toolCall }) {
       const { skillName } = toolCall.parsed.arguments;

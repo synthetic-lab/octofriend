@@ -2,10 +2,6 @@ import { t } from "structural";
 import { BASE_IR, attempt, toolOutput } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
 
-const ArgumentsSchema = t.subtype({
-  query: t.str.comment("The search query"),
-});
-
 const SearchResultsSchema = t.subtype({
   results: t.array(
     t.subtype({
@@ -23,7 +19,9 @@ export default BASE_IR.declare({
 Searches the web. Use this to find information you're not sure about, to look up documentation,
 or to find data that was created after your training knowledge date cutoff.
 `.trim(),
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    query: t.str.comment("The search query"),
+  }),
 }).define(async ({ data }) => {
   const searchConf = await readSearchConfig(data);
   if (searchConf == null) return null;

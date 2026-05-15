@@ -6,24 +6,22 @@ import { AbortError, CommandFailedError } from "../../transports/transport-commo
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
 import { result } from "../../result.ts";
 
-const ArgumentsSchema = t.subtype({
-  cwd: t.optional(t.str),
-  search: t.partial(
-    t.subtype({
-      pattern: t.str.comment("The search pattern"),
-      path: t.str.comment("Directory or file to search (defaults to cwd)"),
-      caseInsensitive: t.bool.comment("Case-insensitive search"),
-      context: t.num.comment("Number of context lines around each match"),
-      maxResults: t.num.comment("Max number of results to return"),
-      timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
-    }),
-  ),
-});
-
 export default BASE_IR.declare({
   name: "grep",
   description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
-  ArgumentsSchema,
+  ArgumentsSchema: t.subtype({
+    cwd: t.optional(t.str),
+    search: t.partial(
+      t.subtype({
+        pattern: t.str.comment("The search pattern"),
+        path: t.str.comment("Directory or file to search (defaults to cwd)"),
+        caseInsensitive: t.bool.comment("Case-insensitive search"),
+        context: t.num.comment("Number of context lines around each match"),
+        maxResults: t.num.comment("Max number of results to return"),
+        timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
+      }),
+    ),
+  }),
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const { cwd, search } = toolCall.parsed.arguments;
