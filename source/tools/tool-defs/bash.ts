@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { ok, err } from "../../result.ts";
+import { err } from "../../result.ts";
 
 export default BASE_IR.declare({
   name: "shell",

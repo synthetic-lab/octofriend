@@ -4,7 +4,7 @@ import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err } from "../../result.ts";
+import { err } from "../../result.ts";
 
 export default BASE_IR.declare({
   name: "grep",

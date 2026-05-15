@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { t } from "structural";
-import { ok, err } from "../result.ts";
+import { ok } from "../result.ts";
 import { toolOutput } from "../tools/common.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
