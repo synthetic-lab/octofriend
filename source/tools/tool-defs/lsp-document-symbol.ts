@@ -35,7 +35,8 @@ export default BASE_IR.dynamicDefineTool(async function ({ transport, data }) {
         (client, filePath) => client.getDocumentSymbols(filePath),
         (symbols, filePath) => `Symbols in ${filePath}:\n${formatDocumentSymbols(symbols)}`,
       );
-      return toolOutput(output.content);
+      if (!output.success) return output;
+      return toolOutput(output.data.content);
     },
   }));
 });

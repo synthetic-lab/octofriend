@@ -34,7 +34,12 @@ const rewrite = BASE_IR.declare({
 export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
     await fileTracker.assertCanEdit(transport, signal, toolCall.original.arguments.filePath);
-    await attemptUntrackedRead(transport, signal, toolCall.original.arguments.filePath);
+    const file = await attemptUntrackedRead(
+      transport,
+      signal,
+      toolCall.original.arguments.filePath,
+    );
+    if (!file.success) return file;
     return result.ok(null);
   },
   async parse({ signal, transport, original }) {

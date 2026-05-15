@@ -1,14 +1,13 @@
 import toolMap from "./tool-defs/index.ts";
-import { ToolError } from "./common.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { Result, result } from "../result.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,
   ToolFactoryRequirements,
   ToolReturn,
 } from "../libocto/tool-def.ts";
-export { ToolError } from "./common.ts";
 
 export type LoadedTools = GenericLoadedTools<typeof toolMap>;
 export type ToolCall = GenericToolCall<typeof toolMap>;
@@ -61,9 +60,10 @@ export async function runTool(
   loaded: Partial<LoadedTools>,
   call: ToolCall,
   config: Config,
-): Promise<ToolRunResult> {
+): Promise<Result<ToolRunResult, string>> {
   const def = lookup(loaded, call);
-  const output = await (def as any).run({
+  if (!def.success) return def;
+  const output = await (def.data as any).run({
     signal: abortSignal,
     transport,
     toolCall: {
@@ -73,8 +73,7 @@ export async function runTool(
     },
     data: config,
   });
-  if (!output.success) throw new ToolError(output.error);
-  return output.data;
+  return output;
 }
 
 export async function validateTool(
@@ -83,9 +82,10 @@ export async function validateTool(
   loaded: Partial<LoadedTools>,
   tool: ToolCall,
   config: Config,
-): Promise<null> {
+): Promise<Result<null, string>> {
   const toolDef = lookup(loaded, tool);
-  const validation = await (toolDef as any).validate(
+  if (!toolDef.success) return toolDef;
+  return await (toolDef.data as any).validate(
     abortSignal,
     transport,
     {
@@ -94,12 +94,10 @@ export async function validateTool(
     },
     config,
   );
-  if (!validation.success) throw new ToolError(validation.error);
-  return null;
 }
 
-function lookup<T extends ToolCall>(loaded: Partial<LoadedTools>, t: T): any {
+function lookup<T extends ToolCall>(loaded: Partial<LoadedTools>, t: T): Result<any, string> {
   const def = (loaded as any)[(t as any).name];
-  if (def == null) throw new ToolError(`No tool named ${t.name}`);
-  return def;
+  if (def == null) return result.err(`No tool named ${t.name}`);
+  return result.ok(def);
 }

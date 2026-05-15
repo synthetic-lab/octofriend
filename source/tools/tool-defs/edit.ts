@@ -1,12 +1,6 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import {
-  ToolError,
-  attemptUntrackedRead,
-  BASE_IR,
-  fileMutateIR,
-  parseOriginalFile,
-} from "../common.ts";
+import { attemptUntrackedRead, BASE_IR, fileMutateIR, parseOriginalFile } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
 import { result } from "../../result.ts";
 
@@ -59,12 +53,14 @@ export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
     await fileTracker.assertCanEdit(transport, signal, filePath);
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
+    if (!file.success) return file;
     const replaced = runEdit({
       path: filePath,
-      file,
+      file: file.data,
       diff,
     });
-    await fileTracker.write(transport, signal, filePath, replaced);
+    if (!replaced.success) return replaced;
+    await fileTracker.write(transport, signal, filePath, replaced.data);
     return customIR.fileMutateIR({ content: "" });
   },
 }));
@@ -76,8 +72,8 @@ async function validate(
 ) {
   await fileTracker.assertCanEdit(transport, signal, args.filePath);
   const file = await attemptUntrackedRead(transport, signal, args.filePath);
-  validateDiff({ file, diff: args, path: args.filePath });
-  return result.ok(null);
+  if (!file.success) return file;
+  return validateDiff({ file: file.data, diff: args, path: args.filePath });
 }
 
 function runEdit({
@@ -88,9 +84,10 @@ function runEdit({
   path: string;
   file: string;
   diff: t.GetType<typeof ArgumentsSchema>;
-}): string {
-  validateDiff({ path, file, diff });
-  return file.replace(diff.search, diff.replace);
+}) {
+  const validation = validateDiff({ path, file, diff });
+  if (!validation.success) return validation;
+  return result.ok(file.replace(diff.search, diff.replace));
 }
 
 function validateDiff({
@@ -103,7 +100,7 @@ function validateDiff({
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
   if (!file.includes(diff.search)) {
-    throw new ToolError(
+    return result.err(
       `
 Could not find search string in file ${path}: ${diff.search}
 This is likely an error in your formatting. The search string must EXACTLY match, including
@@ -111,5 +108,5 @@ whitespace and punctuation.
 `.trim(),
     );
   }
-  return null;
+  return result.ok(null);
 }

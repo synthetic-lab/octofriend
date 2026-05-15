@@ -30,8 +30,7 @@ const read = BASE_IR.declare({
 
 export default read.withCustomIR({ fileReadIR }).define(async () => ({
   async validate(abortSignal, transport, toolCall) {
-    await attemptUntrackedStat(transport, abortSignal, toolCall.original.arguments.filePath);
-    return result.ok(null);
+    return await attemptUntrackedStat(transport, abortSignal, toolCall.original.arguments.filePath);
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath } = toolCall.parsed.arguments;

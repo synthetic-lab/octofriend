@@ -11,7 +11,7 @@ import {
   generateCompactionSummary,
   shouldAutoCompactHistory,
 } from "../compilers/autocompact.ts";
-import { validateTool, ToolError } from "../tools/index.ts";
+import { validateTool } from "../tools/index.ts";
 import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
@@ -282,68 +282,57 @@ export async function trajectoryArc({
   // handlers multiple times within a single validation step
   for (const toolCall of wellformedToolCalls) {
     try {
-      await validateTool(abortSignal, transport, tools, toolCall, config);
+      const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
 
-      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
-      // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
-      // are invalid).
-      retryIrs.push({
-        role: "tool-skip-output",
-        toolCall: toolCall,
-        reason: SKIP_INVALID_REASON,
-      });
-    } catch (e) {
-      if (e instanceof FileOutdatedError) {
-        if (!isFileToolCall(toolCall)) throw e;
-        const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
-          abortSignal,
-          transport,
-          toolCall,
-          e,
-        );
-        retryIrs = [...retryIrs, errorIr];
+      if (validation.success) {
+        // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
+        // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
+        // are invalid).
+        retryIrs.push({
+          role: "tool-skip-output",
+          toolCall: toolCall,
+          reason: SKIP_INVALID_REASON,
+        });
         continue;
       }
 
-      if (!(e instanceof ToolError)) throw e;
-
+      const validationError = validation.error;
       const fn = toolCall;
       if (fn.name === "edit") {
         handler.autofixingDiff(null);
         const path = fn.parsed.filePath;
-        try {
-          const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
+        const file = await fs.readFile(path, "utf8");
+        const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
 
-          // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-          // tool call
-          if (abortSignal.aborted) {
-            return abort([
-              ...irs.slice(0, -1),
-              {
-                role: "tool-validation-error",
-                toolCall: toolCall,
-                error: e.message,
-                aborted: true,
-              },
-            ]);
-          }
+        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+        // tool call
+        if (abortSignal.aborted) {
+          return abort([
+            ...irs.slice(0, -1),
+            {
+              role: "tool-validation-error",
+              toolCall: toolCall,
+              error: validationError,
+              aborted: true,
+            },
+          ]);
+        }
 
-          if (fix) {
-            // Validate that the edit applies before marking as fixed
-            const fixed = {
-              ...fn.parsed,
-              ...fix,
-            } as const;
+        if (fix) {
+          // Validate that the edit applies before marking as fixed
+          const fixed = {
+            ...fn.parsed,
+            ...fix,
+          } as const;
 
-            await validateTool(
-              abortSignal,
-              transport,
-              tools,
-              { ...toolCall, original: fixed, parsed: fixed } as any,
-              config,
-            );
-
+          const fixedValidation = await validateTool(
+            abortSignal,
+            transport,
+            tools,
+            { ...fn, parsed: fixed },
+            config,
+          );
+          if (fixedValidation.success) {
             // If we got this far, it's valid: update the state and keep going
             fn.parsed = {
               ...fn.parsed,
@@ -359,7 +348,7 @@ export async function trajectoryArc({
 
             continue;
           }
-        } catch {}
+        }
       }
 
       retryIrs = [
@@ -367,10 +356,21 @@ export async function trajectoryArc({
         {
           role: "tool-validation-error" as const,
           toolCall: toolCall,
-          error: e.message,
+          error: validationError,
           aborted: false,
         },
       ];
+      continue;
+    } catch (e) {
+      if (!(e instanceof FileOutdatedError)) throw e;
+      if (!isFileToolCall(toolCall)) throw e;
+      const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
+        abortSignal,
+        transport,
+        toolCall,
+        e,
+      );
+      retryIrs = [...retryIrs, errorIr];
       continue;
     }
   }

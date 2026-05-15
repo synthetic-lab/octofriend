@@ -1,6 +1,7 @@
 import { t } from "structural";
-import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
+import { result } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   timeout: t.num.comment(
@@ -35,8 +36,8 @@ export default BASE_IR.declare({
     try {
       return toolOutput(await transport.shell(signal, cmd, timeout));
     } catch (e) {
-      if (e instanceof AbortError) throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
-      if (e instanceof CommandFailedError) throw new ToolError(e.message);
+      if (e instanceof AbortError) return result.err(USER_ABORTED_ERROR_MESSAGE);
+      if (e instanceof CommandFailedError) return result.err(e.message);
       throw e;
     }
   },

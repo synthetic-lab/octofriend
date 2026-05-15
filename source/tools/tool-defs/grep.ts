@@ -1,9 +1,10 @@
 import { quote } from "shell-quote";
 import { t } from "structural";
-import { BASE_IR, ToolError, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
+import { BASE_IR, USER_ABORTED_ERROR_MESSAGE, toolOutput } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
+import { result } from "../../result.ts";
 
 const ArgumentsSchema = t.subtype({
   cwd: t.optional(t.str),
@@ -62,18 +63,18 @@ export default BASE_IR.declare({
       const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
       if (tok > context) {
-        throw new ToolError(`Grep content was too large: approx ${tok} tokens returned`);
+        return result.err(`Grep content was too large: approx ${tok} tokens returned`);
       }
       return toolOutput(text);
     } catch (e) {
       if (e instanceof AbortError || signal.aborted) {
-        throw new ToolError(USER_ABORTED_ERROR_MESSAGE);
+        return result.err(USER_ABORTED_ERROR_MESSAGE);
       }
       if (e instanceof CommandFailedError) {
         if (e.message.includes("exit code 1")) {
           return toolOutput("");
         }
-        throw new ToolError(e.message);
+        return result.err(e.message);
       }
       throw e;
     }
