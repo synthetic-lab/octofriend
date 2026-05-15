@@ -27,7 +27,7 @@ const create = TOOL.declare({
 
 export default create.withCustomIR({ fileMutateIR }).define(async () => ({
   async validate(signal, transport, toolCall) {
-    return validate(signal, transport, toolCall.original.arguments.filePath);
+    return validate(signal, transport, toolCall.parsed.arguments.filePath);
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath, content } = toolCall.parsed.arguments;

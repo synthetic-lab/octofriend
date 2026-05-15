@@ -25,7 +25,7 @@ of the file and must not be included when constructing edit/search strings.
 
 export default read.withCustomIR({ fileReadIR }).define(async () => ({
   async validate(abortSignal, transport, toolCall) {
-    return await attemptUntrackedStat(transport, abortSignal, toolCall.original.arguments.filePath);
+    return await attemptUntrackedStat(transport, abortSignal, toolCall.parsed.arguments.filePath);
   },
   async run({ signal, transport, toolCall, customIR }) {
     const { filePath } = toolCall.parsed.arguments;
