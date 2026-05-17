@@ -66,7 +66,15 @@ const clientCache = new Map<string, Client>();
 export async function getMcpClient(serverName: string, config: Config): Promise<Client> {
   // Check cache first
   if (clientCache.has(serverName)) {
-    return clientCache.get(serverName)!;
+    const cachedClient = clientCache.get(serverName)!;
+    // Try a lightweight operation to verify connection is still alive
+    try {
+      await cachedClient.listTools();
+      return cachedClient;
+    } catch {
+      // Connection lost, remove from cache and reconnect
+      clientCache.delete(serverName);
+    }
   }
 
   const client = await connectMcpServer(serverName, config);
