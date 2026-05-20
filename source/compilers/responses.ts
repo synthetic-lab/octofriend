@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, ModelMessage, jsonSchema } from "ai";
 import { t, toJSONSchema } from "structural";
+import { performance } from "node:perf_hooks";
 import { Compiler } from "./compiler-interface.ts";
 import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
@@ -478,6 +479,9 @@ export const runResponsesAgent: Compiler = async ({
           break;
       }
     }
+
+    // Clear performance measures to prevent memory leak from accumulating entries
+    performance.clearMeasures();
 
     // Track usage
     if (usage.input !== 0 || usage.output !== 0) {
