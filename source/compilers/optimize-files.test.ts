@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { OctoIR } from "../ir/octo-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
@@ -32,7 +31,7 @@ function mutateToolCall(id: string): Extract<FileToolCallRequest, { name: "appen
 
 describe("optimizeFiles", () => {
   it("keeps the newest read for a path and strips older reads", () => {
-    const messages: OctoIR[] = [
+    const messages: Parameters<typeof optimizeFiles>[0] = [
       {
         role: "file-read",
         path: "/tmp/a.txt",

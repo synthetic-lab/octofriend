@@ -11,6 +11,7 @@ import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
 import { optimizeFiles } from "./optimize-files.ts";
+import type { FileOptimizerInputIR } from "./optimize-files.ts";
 
 export async function run({
   model,
@@ -45,7 +46,7 @@ export async function run({
   })();
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = messages.slice(checkpointIndex);
+  const slicedMessages = lowerToolRejects(messages.slice(checkpointIndex));
   const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
   const loweredMessages = lowerTrajectories<typeof octoAgent>(optimizedMessages);
 
@@ -64,5 +65,19 @@ export async function run({
     },
     tools,
     transport,
+  });
+}
+
+function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {
+  return messages.map(ir => {
+    if (ir.role === "tool-reject") {
+      return {
+        role: "tool-skip-output",
+        toolCall: ir.toolCall,
+        reason: "Tool call rejected by user.",
+      };
+    }
+
+    return ir;
   });
 }

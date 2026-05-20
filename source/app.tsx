@@ -10,7 +10,7 @@ import {
   SetConfigContext,
   useConfig,
 } from "./config.ts";
-import { HistoryItem, ToolCallItems } from "./history.ts";
+import { HistoryItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -62,7 +62,8 @@ import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
-import { ToolResult } from "./tools/common.ts";
+import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
+import type { OctoIR } from "./ir/octo-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -78,6 +79,10 @@ type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   arguments: t.GetType<LoadedToolFrom<T>["ParsedSchema"]>;
 };
 type ToolCallRequest = ToolCall<typeof toolMap>;
+type AssistantDisplayItem = {
+  content: string;
+  reasoningContent?: string | null;
+};
 
 type Props = {
   config: Config;
@@ -954,6 +959,10 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     })),
   );
 
+  if (item.type === "inflight-response") {
+    return renderInflightResponse(item, modeData.mode === "compacting");
+  }
+
   if (item.type === "notification") {
     return (
       <Box marginLeft={1}>
@@ -961,8 +970,41 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "assistant") {
-    if (modeData.mode === "compacting") {
+
+  if (item.type === "llm-ir") {
+    return renderLlmIR(item.ir, modeData.mode === "compacting");
+  }
+
+  if (item.type === "request-failed") {
+    return <Text color="red">Request failed.</Text>;
+  }
+
+  if (item.type === "compaction-failed") {
+    return <Text color="red">Compaction failed.</Text>;
+  }
+
+  const _: never = item;
+  return null;
+};
+
+function renderInflightResponse(item: InflightResponseType, isCompacting: boolean) {
+  if (isCompacting) {
+    return (
+      <Box marginBottom={1}>
+        <CompactionRenderer item={item} />
+      </Box>
+    );
+  }
+  return (
+    <Box marginBottom={1}>
+      <AssistantMessageRenderer item={item} />
+    </Box>
+  );
+}
+
+function renderLlmIR(item: OctoIR, isCompacting: boolean) {
+  if (item.role === "assistant") {
+    if (isCompacting) {
       return (
         <Box marginBottom={1}>
           <CompactionRenderer item={item} />
@@ -975,19 +1017,8 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "tool-calls") {
-    // Tool calls don't need to be rendered: the tool output will handle rendering
-    return null;
-  }
-  if (item.type === "tool-output") {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <ToolMessageRenderer item={item.toolCall} />
-        <ToolOutputContentRenderer result={item.result} />
-      </Box>
-    );
-  }
-  if (item.type === "tool-parse-error") {
+
+  if (item.role === "tool-parse-error") {
     return (
       <Text color="red">
         {displayLog({
@@ -998,7 +1029,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     );
   }
 
-  if (item.type === "tool-validation-error") {
+  if (item.role === "tool-validation-error") {
     const message = (() => {
       if (item.aborted) return "Tool call aborted.";
       return "Tool call failed validation checks. Retrying...";
@@ -1014,7 +1045,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     );
   }
 
-  if (item.type === "tool-failed") {
+  if (item.role === "tool-runtime-error") {
     return (
       <Box flexDirection="column">
         <Box marginLeft={2}>
@@ -1028,7 +1059,8 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "tool-reject") {
+
+  if (item.role === "tool-reject") {
     return (
       <Box flexDirection="column">
         <ToolMessageRenderer item={item.toolCall} />
@@ -1040,25 +1072,57 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
   }
 
   // Tool skips are tracked internally for explaining to LLMs, but are not shown to users
-  if (item.type === "tool-skip-output") {
+  if (item.role === "tool-skip-output") {
     return null;
   }
 
-  if (item.type === "request-failed") {
-    return <Text color="red">Request failed.</Text>;
+  if (item.role === "checkpoint") {
+    return <CompactionSummaryRenderer content={item.content} />;
   }
 
-  if (item.type === "compaction-failed") {
-    return <Text color="red">Compaction failed.</Text>;
+  if (item.role === "tool-output") {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer content={item.content} />
+      </Box>
+    );
   }
 
-  if (item.type === "checkpoint") {
-    return <CompactionSummaryRenderer summary={item.summary} />;
+  if (item.role === "file-read") {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer
+          content={[
+            { type: "text", content: item.content },
+            ...(item.image ? [{ type: "image" as const, image: item.image }] : []),
+          ]}
+        />
+      </Box>
+    );
   }
 
-  const _: "user" = item.type;
+  if (item.role === "file-mutate") {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer content={[{ type: "text", content: item.content }]} />
+      </Box>
+    );
+  }
 
-  const contentLines = item.content.split(LINE_SPLIT_REGEX);
+  if (item.role === "trajectory") {
+    return null;
+  }
+
+  const _: "user" = item.role;
+  const textParts = item.content.filter((part: Content["content"][number]) => part.type === "text");
+  const imageParts = item.content.filter(
+    (part: Content["content"][number]) => part.type === "image",
+  );
+
+  const contentLines = textParts.flatMap(part => part.content.split(LINE_SPLIT_REGEX));
 
   return (
     <Box flexDirection="column" marginY={1}>
@@ -1066,10 +1130,10 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
         <Box marginRight={1}>
           <Text color="white">▶</Text>
         </Box>
-        {item.images && item.images.length > 0 && (
+        {imageParts.length > 0 && (
           <Box marginRight={1}>
             <Text inverse>
-              ⟦ 📎 {item.images.length} image{item.images.length > 1 ? "s" : ""} attached ⟧
+              ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
             </Text>
           </Box>
         )}
@@ -1083,21 +1147,28 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     </Box>
   );
-};
+}
 
-function CompactionSummaryRenderer({ summary }: { summary: string }) {
+function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
   const color = useColor();
-  const innerSummary = summary.replace(/^<summary>/, "").replace(/<\/summary>$/, "");
+  const displayContent = content.map(part => {
+    if (part.type === "image") return part;
+    return {
+      ...part,
+      content: part.content.replace(/^<summary>/, "").replace(/<\/summary>$/, ""),
+    };
+  });
+
   return (
     <Box flexDirection="column" marginY={1}>
       <Text color="gray">History compacted! Summary: </Text>
-      <Text color="gray">{innerSummary}</Text>
+      <ContentRenderer content={displayContent} textColor="gray" />
       <Text color={color}>Summary complete!</Text>
     </Box>
   );
 }
 
-function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] }) {
+function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
   if (item.type === "malformed-tool-request") {
     return null;
   }
@@ -1140,7 +1211,6 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
     case "lsp-outgoing-calls":
       return <LspToolRenderer item={parsedToolSchema(item)} />;
   }
-  return null;
 }
 
 function parsedToolSchema(toolCall: ToolCallRequest): any {
@@ -1358,14 +1428,55 @@ function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
   );
 }
 
-function ToolOutputContentRenderer({ result }: { result: ToolResult }) {
-  const lines = result.lines ?? result.content.split("\n").length;
+function ToolOutputContentRenderer({ content }: { content: Content["content"] }) {
+  const textParts = content.filter(part => part.type === "text");
+  const imageParts = content.filter(part => part.type === "image");
+  const lines = textParts.reduce(
+    (count, part) => count + part.content.split(LINE_SPLIT_REGEX).length,
+    0,
+  );
+
   return (
-    <Box marginLeft={2}>
+    <Box marginLeft={2} flexDirection="column">
       <Text color="gray">
         Got <Text>{lines}</Text> lines of output
       </Text>
+      {imageParts.map((part, i) => (
+        <ImageContentRenderer key={i} image={part.image} />
+      ))}
     </Box>
+  );
+}
+
+function ContentRenderer({
+  content,
+  textColor,
+}: {
+  content: Content["content"];
+  textColor?: string;
+}) {
+  return (
+    <Box flexDirection="column">
+      {content.map((part, i) => {
+        if (part.type === "image") {
+          return <ImageContentRenderer key={i} image={part.image} />;
+        }
+
+        return part.content.split(LINE_SPLIT_REGEX).map((line, lineIndex) => (
+          <Text key={`${i}-${lineIndex}`} color={textColor}>
+            {line}
+          </Text>
+        ));
+      })}
+    </Box>
+  );
+}
+
+function ImageContentRenderer({ image }: { image: ImageInfo }) {
+  return (
+    <Text inverse>
+      ⟦ 📎 {image.filePath} ({Math.ceil(image.sizeBytes / 1024)} KB) ⟧
+    </Text>
   );
 }
 
@@ -1456,7 +1567,7 @@ function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
   );
 }
 
-function CompactionRenderer({ item }: { item: InflightResponseType }) {
+function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
   const terminalSize = useTerminalSize();
   const scrollHeight = Math.max(1, Math.min(10, terminalSize.height - 10));
   return (
@@ -1468,7 +1579,7 @@ function CompactionRenderer({ item }: { item: InflightResponseType }) {
   );
 }
 
-function AssistantMessageRenderer({ item }: { item: InflightResponseType }) {
+function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
   const terminalSize = useTerminalSize();
   let thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
   let content = item.content.trim();
