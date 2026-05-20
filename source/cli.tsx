@@ -20,7 +20,6 @@ import {
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
-import type { OctoIR } from "./ir/octo-ir.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -451,11 +450,12 @@ cli
     }
     const apiKey = keyResult.key;
 
-    const messages: OctoIR[] = [];
-    messages.push({
-      role: "user",
-      content: [{ type: "text", content: prompt }],
-    });
+    const messages = [
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, content: prompt }],
+      },
+    ];
 
     let systemPrompt: undefined | (() => Promise<string>) = undefined;
     if (opts.system) {

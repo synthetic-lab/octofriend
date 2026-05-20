@@ -70,15 +70,6 @@ export async function parseOriginalFile<Arguments extends { filePath: string }>(
   });
 }
 
-export type ToolResult = {
-  content: string;
-
-  // The line count to show in the UI, if it's not just the number of lines in the content
-  lines?: number;
-
-  image?: ImageInfo;
-};
-
 export type FileReadIR<T extends ToolCall<any>> = {
   role: "file-read";
   content: string;
