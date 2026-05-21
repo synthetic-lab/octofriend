@@ -2,6 +2,8 @@ import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } 
 import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
 import clipboardy from "clipboardy";
 import { t } from "structural";
+import fs from "fs/promises";
+import path from "path";
 import {
   Config,
   Metadata,
@@ -9,6 +11,7 @@ import {
   ConfigPathContext,
   SetConfigContext,
   useConfig,
+  DEFAULT_ERROR_LOG_PATH,
 } from "./config.ts";
 import { HistoryItem, ToolCallItems } from "./history.ts";
 import Loading from "./components/loading.tsx";
@@ -504,8 +507,13 @@ function RequestErrorScreen({
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const [savedError, setSavedError] = useState(false);
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
 
-  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">> = {};
+  const mapping: Record<
+    string,
+    Item<"view" | "copy-curl" | "save-error" | "retry" | "edit-retry" | "quit">
+  > = {};
 
   if (!viewError) {
     mapping["v"] = {
@@ -520,6 +528,11 @@ function RequestErrorScreen({
       value: "copy-curl",
     };
   }
+
+  mapping["s"] = {
+    label: savedError ? "Saved error to file!" : "Save error to file",
+    value: "save-error",
+  };
 
   mapping["r"] = {
     label: "Retry",
@@ -536,7 +549,9 @@ function RequestErrorScreen({
     value: "quit",
   };
 
-  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "edit-retry" | "quit"> = [
+  const shortcutItems: ShortcutArray<
+    "view" | "copy-curl" | "save-error" | "retry" | "edit-retry" | "quit"
+  > = [
     {
       type: "key" as const,
       mapping,
@@ -544,7 +559,7 @@ function RequestErrorScreen({
   ];
 
   const onSelect = useCallback(
-    (item: Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">) => {
+    async (item: Item<"view" | "copy-curl" | "save-error" | "retry" | "edit-retry" | "quit">) => {
       if (item.value === "view") {
         setViewError(true);
       } else if (item.value === "copy-curl") {
@@ -553,6 +568,23 @@ function RequestErrorScreen({
           setCopiedCurl(true);
         } catch (error) {
           setClipboardError(error instanceof Error ? error.message : "Failed to copy to clipboard");
+        }
+      } else if (item.value === "save-error") {
+        const logPath = config.errorLogFilePath ?? DEFAULT_ERROR_LOG_PATH;
+        try {
+          await fs.mkdir(path.dirname(logPath), { recursive: true });
+          const entry =
+            JSON.stringify({
+              timestamp: new Date().toISOString(),
+              mode,
+              error,
+              curlCommand,
+            }) + "\n";
+          await fs.appendFile(logPath, entry);
+          setSavedError(true);
+          setSaveErrorMessage(null);
+        } catch (e) {
+          setSaveErrorMessage(e instanceof Error ? e.message : "Failed to save error to file");
         }
       } else if (item.value === "retry") {
         retryFrom(mode, { config, transport });
@@ -582,6 +614,18 @@ function RequestErrorScreen({
       {clipboardError && (
         <Box marginY={1}>
           <Text color="red">{clipboardError}</Text>
+        </Box>
+      )}
+      {savedError && (
+        <Box marginY={1}>
+          <Text color="green">
+            Error saved to {config.errorLogFilePath ?? DEFAULT_ERROR_LOG_PATH}
+          </Text>
+        </Box>
+      )}
+      {saveErrorMessage && (
+        <Box marginY={1}>
+          <Text color="red">{saveErrorMessage}</Text>
         </Box>
       )}
     </KbShortcutPanel>

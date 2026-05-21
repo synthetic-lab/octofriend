@@ -8,7 +8,8 @@ import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { SetApiKey } from "./components/set-api-key.tsx";
-import { readKeyForModel } from "./config.ts";
+import { SetErrorLogPath } from "./components/set-error-log-path.tsx";
+import { readKeyForModel, DEFAULT_ERROR_LOG_PATH } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER, providerForBaseUrl } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -25,7 +26,8 @@ type MenuMode =
   | "quit-confirm"
   | "remove-model"
   | "clear-confirm"
-  | "notifications-menu";
+  | "notifications-menu"
+  | "set-error-log-path";
 
 type MenuState = {
   menuMode: MenuMode;
@@ -56,6 +58,7 @@ export function Menu() {
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
   if (menuMode === "notifications-menu") return <NotificationsMenu />;
+  if (menuMode === "set-error-log-path") return <SetErrorLogPathMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -285,7 +288,8 @@ type SettingsValues =
   | "set-default-model"
   | "remove-model"
   | "disable-diff-apply"
-  | "disable-fix-json";
+  | "disable-fix-json"
+  | "set-error-log-path";
 const SETTINGS_ITEMS = {
   c: {
     label: "Change the default model",
@@ -302,6 +306,10 @@ const SETTINGS_ITEMS = {
   t: {
     label: "Disable auto-fixing JSON tool calls",
     value: "disable-fix-json",
+  },
+  p: {
+    label: "Set error log file path",
+    value: "set-error-log-path",
   },
 } satisfies Keymap<SettingsValues>;
 function filterSettings(config: Config) {
@@ -325,6 +333,11 @@ function filterSettings(config: Config) {
       t: SETTINGS_ITEMS.t,
     };
   }
+
+  items = {
+    ...items,
+    p: SETTINGS_ITEMS.p,
+  };
 
   return items;
 }
@@ -793,6 +806,34 @@ function RemoveModelMenu() {
       title="Which model do you want to remove?"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
+    />
+  );
+}
+
+function SetErrorLogPathMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const config = useConfig();
+  const setConfig = useSetConfig();
+
+  const currentPath = config.errorLogFilePath ?? DEFAULT_ERROR_LOG_PATH;
+
+  return (
+    <SetErrorLogPath
+      currentPath={currentPath}
+      onComplete={async (newPath: string) => {
+        await setConfig({
+          ...config,
+          errorLogFilePath: newPath,
+        });
+        setMenuMode("settings-menu");
+      }}
+      onCancel={() => {
+        setMenuMode("settings-menu");
+      }}
     />
   );
 }

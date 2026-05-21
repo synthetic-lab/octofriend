@@ -167,9 +167,12 @@ const ConfigSchema = t.exact({
       alwaysNotify: t.optional(t.bool),
     }),
   ),
+  errorLogFilePath: t.optional(t.str),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
+
+export const DEFAULT_ERROR_LOG_PATH = path.join(os.homedir(), ".config/octofriend/errors.jsonl");
 
 // In-memory cache for command-based auth (keyed by command joined with null byte)
 const authCommandCache = new Map<string, string>();
