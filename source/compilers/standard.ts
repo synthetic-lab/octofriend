@@ -1,8 +1,9 @@
-import { t, toJSONSchema, toTypescript } from "structural";
+import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
+import type { FileOptimizedLlmIR } from "./optimize-files.ts";
+import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import {
-  LlmIR,
   AssistantMessage as AssistantIR,
   AgentResult,
   ToolCallRequest,
@@ -11,17 +12,13 @@ import {
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { tryexpr } from "../tryexpr.ts";
+import { result } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
-import * as logger from "../logger.ts";
 import { errorToString, PaymentError, RateLimitError } from "../errors.ts";
 import { compactionCompilerExplanation } from "./autocompact.ts";
-import { ToolDef } from "../tools/common.ts";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import { canDisplayImage, MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../providers.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
-import { Transport } from "../transports/transport-common.ts";
 
 type Content =
   | string
@@ -104,26 +101,16 @@ JSON`;
 }
 
 async function toLlmMessages(
-  messages: LlmIR[],
+  messages: FileOptimizedLlmIR[],
   systemPrompt?: () => Promise<string>,
   modalities?: MultimodalConfig,
 ): Promise<Array<LlmMessage>> {
   const output: LlmMessage[] = [];
-  const irs = [...messages];
 
-  irs.reverse();
-  const seenPaths = new Set<string>();
-  for (const ir of irs) {
-    if (ir.role === "file-read") {
-      let seen = seenPaths.has(ir.path);
-      seenPaths.add(ir.path);
-      output.push(llmFromIr(ir, seen, modalities));
-    } else {
-      output.push(llmFromIr(ir, false, modalities));
-    }
+  for (const ir of messages) {
+    output.push(llmFromIr(ir, modalities));
   }
 
-  output.reverse();
   if (systemPrompt) {
     const prompt = await systemPrompt();
     output.unshift({
@@ -135,7 +122,7 @@ async function toLlmMessages(
   return output;
 }
 
-function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig): LlmMessage {
+function llmFromIr(ir: FileOptimizedLlmIR, modalities?: MultimodalConfig): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
     const reasoning: { reasoning_content?: string } = {};
@@ -196,35 +183,6 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  if (ir.role === "file-read") {
-    const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
-    if (ir.image && imageCheck?.ok) {
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}` },
-          {
-            type: "image_url",
-            image_url: { url: ir.image.dataUrl },
-          },
-        ],
-      };
-    }
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
-    };
-  }
-
-  if (ir.role === "file-mutate") {
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: irPrompts.fileMutation(ir.path),
-    };
-  }
-
   if (ir.role === "tool-reject") {
     return {
       role: "tool",
@@ -265,14 +223,6 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  if (ir.role === "file-outdated") {
-    return {
-      role: "tool",
-      tool_call_id: ir.toolCall.toolCallId,
-      content: `\n${tagged(TOOL_ERROR_TAG, {}, ir.error)}`,
-    };
-  }
-
   if (ir.role === "compaction-checkpoint") {
     return {
       role: "user",
@@ -280,13 +230,8 @@ function llmFromIr(ir: LlmIR, seenPath: boolean, modalities?: MultimodalConfig):
     };
   }
 
-  const _: "file-unreadable" = ir.role;
-
-  return {
-    role: "tool",
-    tool_call_id: ir.toolCall.toolCallId,
-    content: tagged(TOOL_ERROR_TAG, {}, ir.error),
-  };
+  const _: never = ir;
+  return _;
 }
 
 const PaymentErrorSchema = t.subtype({
@@ -311,15 +256,14 @@ async function handleKnownErrors(
     return await cb();
   } catch (e) {
     for (const [ErrorClass, schema] of ERROR_SCHEMAS) {
-      const result = schema.sliceResult(e);
-      if (!(result instanceof t.Err)) throw new ErrorClass(result.error);
+      const schemaResult = schema.sliceResult(e);
+      if (!(schemaResult instanceof t.Err)) throw new ErrorClass(schemaResult.error);
     }
     // If schema is not found, generate request error with associated curl
-    return {
-      success: false,
+    return result.err({
       requestError: errorToString(e),
       curl,
-    };
+    });
   }
 }
 
@@ -541,10 +485,10 @@ export const runAgent: Compiler = async ({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return { success: true, output: assistantIr, curl };
+    if (abortSignal.aborted) return result.ok({ output: assistantIr, curl });
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return { success: true, output: assistantIr, curl };
+    if (toolCallMap.size === 0) return result.ok({ output: assistantIr, curl });
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -572,13 +516,17 @@ export const runAgent: Compiler = async ({
         continue;
       }
 
-      const parseResult = await parseTool(
-        validatedTool,
+      const parseResult = await parseToolCall({
+        toolCall: {
+          toolCallId: validatedTool.id,
+          toolName: validatedTool.function.name,
+          args: validatedTool.function.arguments,
+        },
         toolDefs,
         autofixJson,
         abortSignal,
         transport,
-      );
+      });
 
       if (parseResult.status === "error") {
         toolCalls.push({
@@ -600,117 +548,6 @@ export const runAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return { success: true, output: assistantIr, curl };
+    return result.ok({ output: assistantIr, curl });
   });
 };
-
-type ParseToolResult =
-  | {
-      status: "success";
-      tool: ToolCallRequest;
-    }
-  | {
-      status: "error";
-      message: string;
-    };
-
-async function parseTool(
-  toolCall: ResponseToolCall,
-  toolDefs: Record<string, ToolDef<any, any, any>>,
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
-  abortSignal: AbortSignal,
-  transport: Transport,
-): Promise<ParseToolResult> {
-  const name = toolCall.function.name;
-  const toolDef = toolDefs[name];
-
-  if (!toolDef) {
-    return {
-      status: "error",
-      message: `
-Unknown tool ${name}. The only valid tool names are:
-
-- ${Object.keys(toolDefs).join("\n- ")}
-
-Please try calling a valid tool.
-      `.trim(),
-    };
-  }
-
-  const toolSchema = toolDef.Schema;
-  let [err, args] = tryexpr(() => {
-    return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-  });
-
-  if (err) {
-    const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-    const fixResponse = await fixPromise;
-    if (!fixResponse.success) {
-      return {
-        status: "error",
-        message: "Syntax error: invalid JSON in tool call arguments",
-      };
-    }
-    args = fixResponse.fixed;
-  }
-
-  // Handle double-encoded arguments, which models sometimes produce
-  if (typeof args === "string") {
-    let [err, argsParsed] = tryexpr(() => {
-      return toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-    });
-
-    if (err) {
-      const fixPromise = autofixJson(toolCall.function.arguments, abortSignal);
-      const fixResponse = await fixPromise;
-      if (!fixResponse.success) {
-        return {
-          status: "error",
-          message: "Syntax error: invalid JSON in tool call arguments",
-        };
-      }
-      args = fixResponse.fixed;
-    } else {
-      args = argsParsed;
-    }
-  }
-
-  try {
-    const sliced = toolSchema.slice({
-      name: toolCall.function.name,
-      arguments: args,
-    });
-    const parsed = await toolDef.parse(abortSignal, transport, sliced);
-    if (parsed.success) {
-      return {
-        status: "success",
-        tool: {
-          type: "tool-request",
-          call: parsed.data,
-          toolCallId: toolCall.id,
-        },
-      };
-    }
-    return {
-      status: "error",
-      message: parsed.error,
-    };
-  } catch (e: unknown) {
-    logger.error("verbose", e);
-    logger.error("verbose", toolCall);
-    const error = e instanceof Error ? e.message : "Invalid JSON in tool call";
-    return {
-      status: "error",
-      message: `
-Failed to parse tool call: ${error}. Make sure your JSON is valid and matches the expected format.
-Your JSON was:
-${JSON.stringify(toolCall.function)}
-Expected:
-${toTypescript(toolSchema)}
-
-This is an error in your JSON formatting. You MUST try again, correcting this error. Think about
-what the error is and fix it.
-      `.trim(),
-    };
-  }
-}
