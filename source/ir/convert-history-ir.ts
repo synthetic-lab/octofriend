@@ -266,18 +266,24 @@ function collapseToIR(prev: LlmIR | null, item: LoweredHistory): [LlmIR | null, 
         ];
       case "read": {
         const args = item.toolCall.call.parsed.arguments;
-        const resolvedPath = path.resolve(args.filePath);
-        const contextPath =
-          args.offset === undefined && args.limit === undefined
-            ? resolvedPath
-            : `${resolvedPath}#lines=${args.offset ?? 1}:${args.limit ?? "end"}`;
+        if (args.offset !== undefined || args.limit !== undefined) {
+          return [
+            null,
+            {
+              role: "tool-output",
+              content: item.result.content,
+              toolCall: item.toolCall,
+            },
+          ];
+        }
+
         return [
           null,
           {
             role: "file-read",
             content: item.result.content,
             toolCall: item.toolCall,
-            path: contextPath,
+            path: path.resolve(args.filePath),
             image: item.result.image,
           },
         ];
