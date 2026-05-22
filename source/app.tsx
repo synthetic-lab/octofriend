@@ -64,7 +64,7 @@ import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
-import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { ToolCallRequest, RequestDetails } from "./ir/llm-ir.ts";
 import { ToolResult } from "./tools/common.ts";
 import {
   InputPriorityProvider,
@@ -74,6 +74,7 @@ import {
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
+import { generateCurlForRequest } from "./curl-generator.ts";
 
 type Props = {
   config: Config;
@@ -440,7 +441,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         mode="request-error"
         contextualMessage="It looks like you've hit a request error!"
         error={modeData.error}
-        curlCommand={modeData.curlCommand}
+        request={modeData.request}
       />
     );
   }
@@ -450,7 +451,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         mode="compaction-error"
         contextualMessage="History compaction failed due to a request error!"
         error={modeData.error}
-        curlCommand={modeData.curlCommand}
+        request={modeData.request}
       />
     );
   }
@@ -487,12 +488,12 @@ function RequestErrorScreen({
   mode,
   contextualMessage,
   error,
-  curlCommand,
+  request,
 }: {
   mode: "request-error" | "compaction-error";
   contextualMessage: string;
   error: string;
-  curlCommand: string | null;
+  request: RequestDetails | null;
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
@@ -503,6 +504,8 @@ function RequestErrorScreen({
     })),
   );
   const { exit } = useApp();
+
+  const curlCommand = request ? generateCurlForRequest(request) : null;
 
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
@@ -578,7 +581,7 @@ function RequestErrorScreen({
               timestamp: new Date().toISOString(),
               mode,
               error,
-              curlCommand,
+              request,
             }) + "\n";
           await fs.appendFile(logPath, entry);
           setSavedError(true);
@@ -595,7 +598,7 @@ function RequestErrorScreen({
         exit();
       }
     },
-    [curlCommand, mode, config, transport],
+    [curlCommand, mode, config, transport, request],
   );
 
   return (

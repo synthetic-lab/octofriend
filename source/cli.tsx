@@ -488,7 +488,7 @@ cli
     });
     if (!result.success) {
       console.error(result.requestError);
-      console.error(`cURL: ${result.curl}`);
+      console.error(`cURL command could not be generated for this request type`);
       process.exit(1);
     }
 

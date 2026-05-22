@@ -95,7 +95,7 @@ export async function generateCompactionSummary({
   if (abortSignal.aborted) return null;
 
   if (!result.success) {
-    throw new CompactionRequestError(result.requestError, result.curl);
+    throw new CompactionRequestError(result.requestError, result.requestDetails);
   }
 
   const summary = processCompactedHistory(result);

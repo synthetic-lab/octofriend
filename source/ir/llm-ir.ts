@@ -1,5 +1,8 @@
+import { ChatCompletionCreateParams } from "openai/resources";
 import { ToolCall } from "../tools/index.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { ResponseStreamParams } from "openai/lib/responses/ResponseStream.mjs";
+import { MessageCreateParams } from "@anthropic-ai/sdk/resources";
 
 export type ToolCallRequest = {
   type: "tool-request";
@@ -145,14 +148,37 @@ export type TrajectoryOutputIR =
   | FileUnreadableMessage
   | CompactionCheckpoint;
 
+export type StandardRequestDetails = {
+  type: "standard";
+  baseUrl: string;
+  body: ChatCompletionCreateParams;
+};
+
+export type ResponsesRequestDetails = {
+  type: "responses";
+  baseUrl: string;
+  body: ResponseStreamParams;
+};
+
+export type AnthropicRequestDetails = {
+  type: "anthropic";
+  baseUrl: string;
+  body: MessageCreateParams;
+};
+
+export type RequestDetails =
+  | StandardRequestDetails
+  | ResponsesRequestDetails
+  | AnthropicRequestDetails;
+
 export type AgentResult =
   | {
       success: true;
       output: AssistantMessage;
-      curl: string;
+      requestDetails: RequestDetails;
     }
   | {
       success: false;
       requestError: string;
-      curl: string;
+      requestDetails: RequestDetails;
     };

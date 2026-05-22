@@ -1,5 +1,11 @@
 import fs from "fs/promises";
-import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
+import {
+  LlmIR,
+  TrajectoryOutputIR,
+  CompactionCheckpoint,
+  ToolCallRequest,
+  AgentResult,
+} from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -74,7 +80,7 @@ type Finish = {
     | {
         type: "request-error";
         requestError: string;
-        curl: string;
+        request: AgentResult["requestDetails"];
       };
 };
 
@@ -187,7 +193,7 @@ export async function trajectoryArc({
       reason: {
         type: "request-error",
         requestError: result.requestError,
-        curl: result.curl,
+        request: result.requestDetails,
       },
     };
   }

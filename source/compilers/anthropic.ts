@@ -8,6 +8,7 @@ import {
   ToolCallRequest,
   MalformedRequest,
   AnthropicAssistantData,
+  AnthropicRequestDetails,
 } from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
 import * as logger from "../logger.ts";
@@ -19,6 +20,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { MessageCreateParams } from "@anthropic-ai/sdk/resources";
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -267,41 +269,6 @@ function modelMessageFromIr(
   };
 }
 
-function generateCurlFrom(params: {
-  baseURL: string;
-  model: string;
-  system: string;
-  messages: Array<Anthropic.MessageParam>;
-  tools?: Array<{ description: string; input_schema: any; name: string }>;
-  maxTokens: number;
-}): string {
-  const { baseURL, model, system, messages, tools, maxTokens } = params;
-  const requestBody = {
-    model,
-    system,
-    messages,
-    tools,
-    tool_choice: {
-      type: "auto",
-      disable_parallel_tool_use: false,
-    },
-    max_tokens: maxTokens,
-    stream: true,
-  };
-
-  // Curl requests need an API Version
-  // Currently hardcoded in Anthropic SDK
-  const ANTHROPIC_API_VERSION = "2023-06-01";
-
-  return `curl -X POST "${baseURL}/v1/messages" \\
-  -H "Content-Type: application/json" \\
-  -H "x-api-key: [REDACTED_API_KEY]" \\
-  -H "anthropic-version: ${ANTHROPIC_API_VERSION}" \\
-  -d @- <<'JSON'
-${JSON.stringify(requestBody)}
-JSON`;
-}
-
 export const runAnthropicAgent: Compiler = async ({
   model,
   apiKey,
@@ -360,30 +327,28 @@ export const runAnthropicAgent: Compiler = async ({
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
   const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), model.context);
 
-  const curl = generateCurlFrom({
-    baseURL: model.baseUrl,
+  const system = sysPrompt == null ? {} : { system: sysPrompt };
+  const requestBody: MessageCreateParams = {
+    ...system,
     model: model.model,
-    system: sysPrompt,
     messages,
     ...toolParams,
-    maxTokens,
-  });
+    tool_choice: {
+      type: "auto",
+      disable_parallel_tool_use: false,
+    },
+    max_tokens: maxTokens,
+    ...thinking,
+    stream: true,
+  };
+  const requestDetails: AnthropicRequestDetails = {
+    type: "anthropic",
+    baseUrl: model.baseUrl,
+    body: requestBody,
+  };
 
   try {
-    const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const result = await client.messages.create({
-      ...system,
-      model: model.model,
-      messages,
-      ...toolParams,
-      tool_choice: {
-        type: "auto",
-        disable_parallel_tool_use: false,
-      },
-      max_tokens: maxTokens,
-      ...thinking,
-      stream: true,
-    });
+    const result = await client.messages.create(requestBody);
 
     let content = "";
     let reasoningContent: string | undefined = undefined;
@@ -552,12 +517,12 @@ export const runAnthropicAgent: Compiler = async ({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return { success: true, output: assistantMessage, curl };
+      return { success: true, output: assistantMessage, requestDetails };
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return { success: true, output: assistantMessage, curl };
+      return { success: true, output: assistantMessage, requestDetails };
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -601,12 +566,12 @@ export const runAnthropicAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return { success: true, output: assistantMessage, curl };
+    return { success: true, output: assistantMessage, requestDetails };
   } catch (e) {
     return {
       success: false,
       requestError: errorToString(e),
-      curl,
+      requestDetails,
     };
   }
 };

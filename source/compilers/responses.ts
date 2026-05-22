@@ -1,8 +1,20 @@
-import { createOpenAI } from "@ai-sdk/openai";
-import { streamText, tool, ModelMessage, jsonSchema } from "ai";
+import OpenAI from "openai";
+import type {
+  ResponseCreateParamsStreaming,
+  ResponseInput,
+  ResponseInputItem,
+  ResponseStreamEvent,
+  Tool,
+} from "openai/resources/responses/responses";
 import { t, toJSONSchema } from "structural";
 import { Compiler } from "./compiler-interface.ts";
-import { LlmIR, ToolCallRequest, MalformedRequest, AssistantMessage } from "../ir/llm-ir.ts";
+import {
+  LlmIR,
+  ToolCallRequest,
+  MalformedRequest,
+  AssistantMessage,
+  ResponsesRequestDetails,
+} from "../ir/llm-ir.ts";
 import { ToolDef } from "../tools/common.ts";
 import { tryexpr } from "../tryexpr.ts";
 import { trackTokens } from "../token-tracker.ts";
@@ -15,6 +27,61 @@ import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage, MultimodalConfig } from "../providers.ts";
 import { APP_METADATA } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
+
+type OpenAIProviderOptions = {
+  itemId?: string;
+  reasoningEncryptedContent?: string | null;
+};
+
+type TextContent = {
+  type: "text";
+  text: string;
+};
+
+type ImageContent = {
+  type: "image";
+  image: string;
+};
+
+type ReasoningContent = {
+  type: "reasoning";
+  text: string;
+  providerOptions?: {
+    openai?: OpenAIProviderOptions;
+  };
+};
+
+type ToolCallContent = {
+  type: "tool-call";
+  toolCallId: string;
+  toolName: string;
+  input: unknown;
+};
+
+type ToolResultContent = {
+  type: "tool-result";
+  toolName: string;
+  toolCallId: string;
+  output: {
+    type: "text";
+    value: string;
+  };
+};
+
+type ModelMessageContent =
+  | TextContent
+  | ImageContent
+  | ReasoningContent
+  | ToolCallContent
+  | ToolResultContent;
+
+type ModelMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | ModelMessageContent[];
+  providerOptions?: {
+    openai?: OpenAIProviderOptions;
+  };
+};
 
 async function toModelMessage(
   messages: LlmIR[],
@@ -320,26 +387,96 @@ function modelMessageFromIr(
 
 function generateCurlFrom(params: {
   baseURL: string;
-  model: string;
-  messages: Array<ModelMessage>;
-  tools?: Record<string, any>;
-}): string {
-  const { baseURL, model, messages } = params;
+  responseParams: ResponseCreateParamsStreaming;
+}): { type: "responses"; baseUrl: string; body: ResponseCreateParamsStreaming } {
+  return { type: "responses", baseUrl: params.baseURL, body: params.responseParams };
+}
 
-  const requestBody = {
-    model,
-    input: messages,
-    stream: true,
-    store: false,
-    include: ["reasoning.encrypted_content"],
-  };
+function toResponseInput(messages: Array<ModelMessage>): Array<ResponseInputItem> {
+  const inputs: Array<ResponseInputItem> = [];
 
-  return `curl -X POST '${baseURL}/responses' \\
-  -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer [REDACTED_API_KEY]' \\
-  -d @- <<'JSON'
-${JSON.stringify(requestBody)}
-JSON`;
+  for (const message of messages) {
+    if (message.role === "tool") {
+      const content = Array.isArray(message.content) ? message.content : [];
+      for (const part of content.filter(
+        (part): part is ToolResultContent => part.type === "tool-result",
+      )) {
+        inputs.push({
+          type: "function_call_output",
+          call_id: part.toolCallId,
+          output: part.output.value,
+        });
+      }
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      if (!Array.isArray(message.content)) {
+        inputs.push({ role: "assistant", content: message.content });
+        continue;
+      }
+
+      const items: ResponseInputItem[] = [];
+      const text = message.content
+        .filter((part): part is TextContent => part.type === "text")
+        .map(part => part.text)
+        .join("");
+
+      const reasoning = message.content.find(
+        (part): part is ReasoningContent => part.type === "reasoning",
+      );
+      const openai = reasoning?.providerOptions?.openai || message.providerOptions?.openai;
+      if (openai?.itemId) {
+        items.push({
+          type: "reasoning",
+          id: openai.itemId,
+          summary: [],
+          encrypted_content: openai.reasoningEncryptedContent,
+        });
+      }
+
+      if (text) items.push({ role: "assistant", content: text });
+
+      for (const part of message.content.filter(
+        (part): part is ToolCallContent => part.type === "tool-call",
+      )) {
+        items.push({
+          type: "function_call",
+          call_id: part.toolCallId,
+          name: part.toolName,
+          arguments: typeof part.input === "string" ? part.input : JSON.stringify(part.input ?? {}),
+          status: "completed",
+        });
+      }
+
+      inputs.push(...items);
+      continue;
+    }
+
+    if (Array.isArray(message.content)) {
+      inputs.push({
+        role: message.role,
+        content: message.content.map(part => {
+          if (part.type === "image") {
+            return {
+              type: "input_image",
+              image_url: part.image,
+              detail: "auto",
+            };
+          }
+          return {
+            type: "input_text",
+            text: part.type === "text" ? part.text : "",
+          };
+        }),
+      });
+      continue;
+    }
+
+    inputs.push({ role: message.role, content: message.content });
+  }
+
+  return inputs;
 }
 
 export const runResponsesAgent: Compiler = async ({
@@ -354,69 +491,66 @@ export const runResponsesAgent: Compiler = async ({
   tools,
 }) => {
   const messages = await toModelMessage(irs, systemPrompt, model.modalities);
+  const input = toResponseInput(messages);
 
-  // Convert tools to AI SDK format
+  // Convert tools to OpenAI Responses API format
   const toolDefs = tools || {};
-  const toolsSdk: Record<string, any> = {};
-  Object.entries(toolDefs).forEach(([name, toolDef]) => {
+  const openaiTools: Tool[] = Object.entries(toolDefs).map(([name, toolDef]) => {
     const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
-    // Delete JSON schema fields unused by AI SDK
+    // Delete JSON schema fields unused by OpenAI function tools
     // @ts-ignore
     delete argJsonSchema.$schema;
     delete argJsonSchema.description;
     // @ts-ignore
     delete argJsonSchema.title;
 
-    toolsSdk[name] = tool({
+    return {
+      type: "function" as const,
+      name,
       description: `The ${name} tool`,
-      inputSchema: jsonSchema(argJsonSchema),
-    });
+      parameters: argJsonSchema,
+      strict: null,
+    };
   });
-  const toolParams =
-    Object.entries(toolDefs).length === 0
-      ? {}
-      : {
-          tools: toolsSdk,
-        };
 
-  let reasoningConfig: {
-    reasoningEffort?: "low" | "medium" | "high";
-    reasoningSummary?: "auto";
-  } = {};
+  const responseParams: ResponseCreateParamsStreaming = {
+    model: model.model,
+    input,
+    stream: true,
+    store: false,
+    include: ["reasoning.encrypted_content"],
+  };
+  if (openaiTools.length > 0) {
+    responseParams.tools = openaiTools;
+  }
   if (model.reasoning) {
-    reasoningConfig.reasoningEffort = model.reasoning;
-    reasoningConfig.reasoningSummary = "auto";
+    responseParams.reasoning = {
+      effort: model.reasoning,
+      summary: "auto",
+    };
   }
 
-  const curl = generateCurlFrom({
-    baseURL: model.baseUrl,
-    model: model.model,
-    messages,
-    ...toolParams,
-  });
+  const requestDetails: ResponsesRequestDetails = {
+    type: "responses",
+    baseUrl: model.baseUrl,
+    body: responseParams,
+  };
 
   try {
-    const openai = createOpenAI({
+    const client = new OpenAI({
       baseURL: model.baseUrl,
       apiKey,
-      headers: {
+      defaultHeaders: {
         "User-Agent": `octofriend/${APP_METADATA.version}`,
       },
     });
 
-    const result = streamText({
-      model: openai.responses(model.model),
-      messages,
-      ...toolParams,
-      abortSignal,
-      providerOptions: {
-        openai: {
-          ...reasoningConfig,
-          store: false,
-          include: ["reasoning.encrypted_content"],
-        },
+    const result: AsyncIterable<ResponseStreamEvent> = await client.responses.create(
+      responseParams,
+      {
+        signal: abortSignal,
       },
-    });
+    );
 
     let content = "";
     let reasoningId: string | undefined = undefined;
@@ -427,53 +561,55 @@ export const runResponsesAgent: Compiler = async ({
       reasoning: 0,
     };
     let encryptedReasoningContent: string | undefined = undefined;
+    const toolCalls: Array<{ toolCallId: string; toolName: string; input: string }> = [];
 
     // Handle streaming chunks
-    for await (const chunk of result.fullStream) {
+    for await (const chunk of result) {
       if (abortSignal.aborted) break;
 
       switch (chunk.type) {
-        case "text-delta":
-          if (chunk.text) {
-            content += chunk.text;
-            onTokens(chunk.text, "content");
+        case "response.output_text.delta":
+          if (chunk.delta) {
+            content += chunk.delta;
+            onTokens(chunk.delta, "content");
           }
           break;
 
-        case "reasoning-start":
-          break;
-
-        case "reasoning-delta":
-          if (chunk.text) {
+        case "response.reasoning_text.delta":
+        case "response.reasoning_summary_text.delta":
+          if (chunk.delta) {
             if (reasoningContent == null) reasoningContent = "";
-            reasoningContent += chunk.text;
-            onTokens(chunk.text, "reasoning");
+            reasoningContent += chunk.delta;
+            onTokens(chunk.delta, "reasoning");
           }
           break;
 
-        case "reasoning-end":
-          const openai = chunk.providerMetadata ? chunk.providerMetadata["openai"] : {};
-          const encrypted = openai["reasoningEncryptedContent"];
-          if (encrypted && typeof encrypted === "string") {
-            encryptedReasoningContent = encrypted;
-          }
-          const itemId = openai["itemId"];
-          if (itemId && typeof itemId === "string") {
-            reasoningId = itemId;
+        case "response.reasoning_text.done":
+        case "response.reasoning_summary_text.done":
+          if (!reasoningContent && chunk.text) {
+            reasoningContent = chunk.text;
           }
           break;
 
-        case "tool-call":
-          // Tool call will be handled after streaming is complete; just let callers know the chunk
-          // came through
-          onTokens(`${chunk.input}`, "tool");
+        case "response.output_item.done":
+          if (chunk.item.type === "reasoning") {
+            reasoningId = chunk.item.id;
+            encryptedReasoningContent = chunk.item.encrypted_content || undefined;
+          } else if (chunk.item.type === "function_call") {
+            toolCalls.push({
+              toolCallId: chunk.item.call_id,
+              toolName: chunk.item.name,
+              input: chunk.item.arguments,
+            });
+            onTokens(chunk.item.arguments, "tool");
+          }
           break;
 
-        case "finish":
-          if (chunk.totalUsage) {
-            usage.input = chunk.totalUsage.inputTokens || 0;
-            usage.output = chunk.totalUsage.outputTokens || 0;
-            usage.reasoning = chunk.totalUsage.reasoningTokens || 0;
+        case "response.completed":
+          if (chunk.response.usage) {
+            usage.input = chunk.response.usage.input_tokens || 0;
+            usage.output = chunk.response.usage.output_tokens || 0;
+            usage.reasoning = chunk.response.usage.output_tokens_details?.reasoning_tokens || 0;
           }
           break;
       }
@@ -510,13 +646,11 @@ export const runResponsesAgent: Compiler = async ({
 
     // If aborted, don't try to parse tool calls
     if (abortSignal.aborted) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return { success: true, output: assistantHistoryItem, requestDetails };
     }
 
-    // Get tool calls
-    const toolCalls = await result.toolCalls;
     if (toolCalls == null || toolCalls.length === 0) {
-      return { success: true, output: assistantHistoryItem, curl };
+      return { success: true, output: assistantHistoryItem, requestDetails };
     }
 
     const parsedToolCalls: Array<ToolCallRequest | MalformedRequest> = [];
@@ -555,12 +689,12 @@ export const runResponsesAgent: Compiler = async ({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return { success: true, output: assistantHistoryItem, curl };
+    return { success: true, output: assistantHistoryItem, requestDetails };
   } catch (e) {
     return {
       success: false,
       requestError: errorToString(e),
-      curl,
+      requestDetails,
     };
   }
 };
@@ -576,7 +710,7 @@ type ParseToolResult =
     };
 
 async function parseTool(
-  toolCall: { toolCallId: string; toolName: string; args: any },
+  toolCall: { toolCallId: string; toolName: string; args: unknown },
   toolDefs: Record<string, ToolDef<any, any, any>>,
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
   abortSignal: AbortSignal,
@@ -603,12 +737,13 @@ Please try calling a valid tool.
 
   // If args is a string, try to parse as JSON
   if (typeof args === "string") {
+    const rawArgs = args;
     let [err, parsedArgs] = tryexpr(() => {
-      return JSON.parse(args);
+      return JSON.parse(rawArgs);
     });
 
     if (err) {
-      const fixPromise = autofixJson(args, abortSignal);
+      const fixPromise = autofixJson(rawArgs, abortSignal);
       const fixResponse = await fixPromise;
       if (!fixResponse.success) {
         return {

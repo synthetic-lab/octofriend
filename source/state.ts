@@ -24,7 +24,7 @@ import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
-import { ToolCallRequest } from "./ir/llm-ir.ts";
+import { ToolCallRequest, RequestDetails } from "./ir/llm-ir.ts";
 import { QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
@@ -70,12 +70,12 @@ export type UiState = {
     | {
         mode: "request-error";
         error: string;
-        curlCommand: string | null;
+        request: RequestDetails | null;
       }
     | {
         mode: "compaction-error";
         error: string;
-        curlCommand: string | null;
+        request: RequestDetails | null;
       }
     | {
         mode: "diff-apply";
@@ -606,7 +606,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           modeData: {
             mode: "request-error",
             error: finishReason.requestError,
-            curlCommand: finishReason.curl,
+            request: finishReason.request,
           },
         });
         return;
@@ -626,7 +626,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           modeData: {
             mode: "compaction-error",
             error: e.requestError,
-            curlCommand: e.curl,
+            request: e.request,
           },
           history: [
             ...get().history,

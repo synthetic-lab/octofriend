@@ -7,6 +7,7 @@ import {
   AgentResult,
   ToolCallRequest,
   MalformedRequest,
+  StandardRequestDetails,
 } from "../ir/llm-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
@@ -82,7 +83,7 @@ function generateCurlFrom(params: {
   model: string;
   messages: LlmMessage[];
   tools?: any[];
-}): string {
+}): { url: string; body: any } {
   const { baseURL, model, messages, tools } = params;
 
   const requestBody = {
@@ -95,12 +96,7 @@ function generateCurlFrom(params: {
     },
   };
 
-  return `curl -X POST '${baseURL}/chat/completions' \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer [REDACTED_API_KEY]" \\
-  -d @- <<'JSON'
-${JSON.stringify(requestBody)}
-JSON`;
+  return { url: baseURL, body: requestBody };
 }
 
 async function toLlmMessages(
@@ -304,7 +300,7 @@ const ERROR_SCHEMAS = [
 ];
 
 async function handleKnownErrors(
-  curl: string,
+  requestDetails: StandardRequestDetails,
   cb: () => Promise<AgentResult>,
 ): Promise<AgentResult> {
   try {
@@ -314,11 +310,10 @@ async function handleKnownErrors(
       const result = schema.sliceResult(e);
       if (!(result instanceof t.Err)) throw new ErrorClass(result.error);
     }
-    // If schema is not found, generate request error with associated curl
     return {
       success: false,
       requestError: errorToString(e),
-      curl,
+      requestDetails,
     };
   }
 }
@@ -375,13 +370,21 @@ export const runAgent: Compiler = async ({
           tools: toolsMap,
         };
 
-  const curl = generateCurlFrom({
-    baseURL: model.baseUrl,
-    model: model.model,
-    messages,
-    ...toolsParam,
-  });
-  return await handleKnownErrors(curl, async (): Promise<AgentResult> => {
+  const requestDetails: StandardRequestDetails = {
+    type: "standard",
+    baseUrl: model.baseUrl,
+    body: {
+      model: model.model,
+      messages,
+      ...toolsParam,
+      stream: true,
+      stream_options: {
+        include_usage: true,
+      },
+    },
+  };
+
+  return await handleKnownErrors(requestDetails, async (): Promise<AgentResult> => {
     const client = getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey });
 
     let reasoning: {
@@ -541,10 +544,10 @@ export const runAgent: Compiler = async ({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return { success: true, output: assistantIr, curl };
+    if (abortSignal.aborted) return { success: true, output: assistantIr, requestDetails };
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return { success: true, output: assistantIr, curl };
+    if (toolCallMap.size === 0) return { success: true, output: assistantIr, requestDetails };
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -600,7 +603,7 @@ export const runAgent: Compiler = async ({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return { success: true, output: assistantIr, curl };
+    return { success: true, output: assistantIr, requestDetails };
   });
 };
 

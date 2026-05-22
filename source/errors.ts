@@ -11,13 +11,15 @@ export class RateLimitError extends Error {
   }
 }
 
+import { RequestDetails } from "./ir/llm-ir.ts";
+
 export class CompactionRequestError extends Error {
   requestError: string;
-  curl: string | null;
-  constructor(requestError: string, curl?: string | null) {
+  request: RequestDetails | null;
+  constructor(requestError: string, request?: RequestDetails | null) {
     super(requestError);
     this.requestError = requestError;
-    this.curl = curl || null;
+    this.request = request || null;
     this.name = this.constructor.name;
   }
 }
