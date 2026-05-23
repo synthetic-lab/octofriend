@@ -25,7 +25,7 @@ export async function loadTools(
     (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => {
       const toolDef = await toolMap[key]({ signal, transport, data: config });
       if (toolDef) {
-        (toolDef as any).name = key;
+        toolDef.name = key;
         // @ts-ignore
         loaded[key] = toolDef;
       }
@@ -85,7 +85,7 @@ export async function validateTool(
 ): Promise<Result<null, string>> {
   const toolDef = lookup(loaded, tool);
   if (!toolDef.success) return toolDef;
-  return await (toolDef.data as any).validate(
+  return await toolDef.data.validate(
     abortSignal,
     transport,
     {
