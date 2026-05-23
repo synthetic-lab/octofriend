@@ -3,7 +3,7 @@ import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
-import { ok, err } from "../../result.ts";
+import { ok, err, toErrString } from "../../result.ts";
 
 const converter = compile({
   wordwrap: 130,
@@ -52,7 +52,7 @@ output is confusing: otherwise you may download a massive amount of data`,
       if (e instanceof AbortError || signal.aborted) {
         return err(USER_ABORTED_ERROR_MESSAGE);
       }
-      throw e;
+      return toErrString(e);
     }
   },
 }));

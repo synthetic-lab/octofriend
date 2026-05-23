@@ -1,11 +1,10 @@
 import { t } from "structural";
-import { attempt } from "./common.ts";
 import { fileTracker } from "./file-tracker.ts";
 import { LspClient } from "../lsp/client.ts";
 import type { Config } from "../config.ts";
 import type { Transport } from "../transports/transport-common.ts";
 import { getLspClientForFile } from "../lsp/detect.ts";
-import { Result, ok, err } from "../result.ts";
+import { Result, ok, err, attempt } from "../result.ts";
 
 export type LspFileOnlyArgs = t.GetType<typeof LspFileOnlyArgumentsSchema>;
 export const LspFileOnlyArgumentsSchema = t.subtype({

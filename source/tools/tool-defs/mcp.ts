@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
-import { Result, ok, err } from "../../result.ts";
+import { Result, ok, err, flatten } from "../../result.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
@@ -47,27 +47,33 @@ type MCPResult = {
 // Cache for MCP clients to avoid reconnecting
 const clientCache = new Map<string, Client>();
 
-export async function getMcpClient(serverName: string, config: Config): Promise<Client> {
+export async function getMcpClient(
+  serverName: string,
+  config: Config,
+): Promise<Result<Client, string>> {
   // Check cache first
   if (clientCache.has(serverName)) {
-    return clientCache.get(serverName)!;
+    return ok(clientCache.get(serverName)!);
   }
 
-  const client = await connectMcpServer(serverName, config);
+  const result = await connectMcpServer(serverName, config);
+  if (!result.success) return result;
+
+  const client = result.data;
   clientCache.set(serverName, client);
 
-  return client;
+  return ok(client);
 }
 
 export async function connectMcpServer(
   serverName: string,
   config: Config,
   log: boolean = false,
-): Promise<Client> {
+): Promise<Result<Client, string>> {
   const serverConfig = config.mcpServers?.[serverName];
 
   if (!serverConfig) {
-    throw new Error(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
+    return err(`MCP server "${serverName}" not found in config. Please add it to mcpServers.`);
   }
 
   const client = new Client({
@@ -94,9 +100,9 @@ export async function connectMcpServer(
 
   try {
     await client.connect(transport);
-    return client;
+    return ok(client);
   } catch (error) {
-    throw new Error(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
+    return err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -144,7 +150,7 @@ tools that can be called with specific arguments.
       const withAbort = async <T>(p: Promise<T>): Promise<Result<T, string>> => {
         if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
         try {
-          const value = await new Promise<T>((resolve, reject) => {
+          const value = await new Promise<Result<T, string>>((resolve, reject) => {
             const onAbort = () => {
               signal.removeEventListener("abort", onAbort);
               reject(new Error(USER_ABORTED_ERROR_MESSAGE));
@@ -153,7 +159,7 @@ tools that can be called with specific arguments.
             p.then(
               v => {
                 signal.removeEventListener("abort", onAbort);
-                resolve(v);
+                resolve(ok(v));
               },
               e => {
                 signal.removeEventListener("abort", onAbort);
@@ -161,14 +167,14 @@ tools that can be called with specific arguments.
               },
             );
           });
-          return ok(value);
+          return value;
         } catch (error) {
           if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
           return err(`MCP error: ${error instanceof Error ? error.message : String(error)}`);
         }
       };
 
-      const client = await withAbort(getMcpClient(serverName, data));
+      const client = flatten(await withAbort(getMcpClient(serverName, data)));
       if (!client.success) return client;
 
       // List available tools to check if the requested tool exists

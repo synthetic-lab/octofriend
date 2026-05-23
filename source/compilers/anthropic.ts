@@ -12,8 +12,7 @@ import type {
 } from "../libocto/llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { ok, err } from "../result.ts";
-import { errorToString } from "../errors.ts";
+import { errorToString, ok, err } from "../result.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { MultimodalConfig } from "../providers.ts";
 

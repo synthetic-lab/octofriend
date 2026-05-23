@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { ok, err } from "../../result.ts";
+import { ok, err, toErrString } from "../../result.ts";
 
 export default TOOL.declare({
   name: "shell",
@@ -36,7 +36,7 @@ Often interactive commands provide flags to run them non-interactively. Prefer t
     } catch (e) {
       if (e instanceof AbortError) return err(USER_ABORTED_ERROR_MESSAGE);
       if (e instanceof CommandFailedError) return err(e.message);
-      throw e;
+      return toErrString(e);
     }
   },
 }));

@@ -4,20 +4,22 @@ import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err } from "../../result.ts";
+import { ok, err, toErrString } from "../../result.ts";
 
 export default TOOL.declare({
   name: "grep",
   description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
-  ArgumentsSchema: t.partial(t.subtype({
-    cwd: t.str,
-    pattern: t.str.comment("The search pattern"),
-    path: t.str.comment("Directory or file to search (defaults to cwd)"),
-    caseInsensitive: t.bool.comment("Case-insensitive search"),
-    context: t.num.comment("Number of context lines around each match"),
-    maxResults: t.num.comment("Max number of results to return"),
-    timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
-  })),
+  ArgumentsSchema: t.partial(
+    t.subtype({
+      cwd: t.str,
+      pattern: t.str.comment("The search pattern"),
+      path: t.str.comment("Directory or file to search (defaults to cwd)"),
+      caseInsensitive: t.bool.comment("Case-insensitive search"),
+      context: t.num.comment("Number of context lines around each match"),
+      maxResults: t.num.comment("Max number of results to return"),
+      timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
+    }),
+  ),
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
@@ -69,7 +71,7 @@ export default TOOL.declare({
         }
         return err(e.message);
       }
-      throw e;
+      return toErrString(e);
     }
   },
 }));

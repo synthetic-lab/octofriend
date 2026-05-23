@@ -122,9 +122,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
           console.log("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
           const client = await connectMcpServer(server, config, true);
-          await client.close();
+          if (!client.success) throw new Error(client.error);
+          await client.data.close();
           // Then run the cache setup codepath, so future results use a cached client with logging off
-          await getMcpClient(server, config);
+          const cachedClient = await getMcpClient(server, config);
+          if (!cachedClient.success) throw new Error(cachedClient.error);
           console.log("Connected to", server, "MCP server");
         } catch (error) {
           console.warn(

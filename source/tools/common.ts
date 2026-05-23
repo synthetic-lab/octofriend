@@ -1,33 +1,12 @@
 import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { Err, Ok, Result, ok, err } from "../result.ts";
+import { attempt, Result, ok } from "../result.ts";
 import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";
 export const FILE_OUTDATED_ERROR_MESSAGE =
   "File could not be updated because it was modified after being last read. Please read the file again before modifying it.";
-
-export async function attempt<T, E>(
-  errMessage: string,
-  callback: () => Promise<Result<T, E>>,
-): Promise<Result<T, E | string>>;
-export async function attempt<T>(
-  errMessage: string,
-  callback: () => Promise<T>,
-): Promise<Result<T, string>>;
-export async function attempt<T, E>(
-  errMessage: string,
-  callback: () => Promise<T | Result<T, E>>,
-): Promise<Result<T, E | string>> {
-  try {
-    const value = await callback();
-    if (value instanceof Ok || value instanceof Err) return value;
-    return ok(value);
-  } catch {
-    return err(errMessage);
-  }
-}
 
 export async function attemptUntrackedStat(
   transport: Transport,
