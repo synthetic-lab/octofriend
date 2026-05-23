@@ -70,6 +70,7 @@ interface IResult<T, E> {
   mapErr<New>(fn: (e: E) => New): Ok<T> | Err<New>;
   andThen<R extends Result<any, any>>(fn: (t: T) => R): Ok<OkType<R>> | Err<E | ErrType<R>>;
   orElse<R extends Result<any, any>>(fn: (e: E) => R): Ok<T | OkType<R>> | Err<E>;
+  flatten(): Flattened<Result<T, E>>;
   promise(): Promise<UnwrapPromise<T, E>>;
 }
 
@@ -111,6 +112,9 @@ export class Ok<T> implements IResult<T, any> {
   orElse<R extends Result<any, any>>(_: (e: any) => R) {
     return this;
   }
+  flatten() {
+    return flatten(this);
+  }
   async promise() {
     const resolved = await Promise.resolve(this.data);
     return new Ok(resolved) as UnwrapPromise<T, any>;
@@ -132,6 +136,9 @@ export class Err<E> implements IResult<any, E> {
   }
   orElse<R extends Result<any, any>>(fn: (e: E) => R) {
     return fn(this.error);
+  }
+  flatten() {
+    return flatten(this);
   }
   async promise() {
     const resolved = await Promise.resolve(this.error);

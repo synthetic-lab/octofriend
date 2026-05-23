@@ -11,6 +11,9 @@ const deepOk: DeepResult = ok(ok(ok(1)));
 const flattened = flatten(deepOk);
 expectType<Result<number, "inner" | "middle" | "outer">>(flattened);
 
+const methodFlattened = deepOk.flatten();
+expectType<Result<number, "inner" | "middle" | "outer">>(methodFlattened);
+
 if (flattened.success) {
   expectType<number>(flattened.data);
 } else {
@@ -33,3 +36,6 @@ expectType<Result<string, "inner" | "middle" | "outer">>(flattened);
 
 // @ts-expect-error flatten should preserve every nested Err type.
 expectType<Result<number, "inner">>(flattened);
+
+// @ts-expect-error .flatten() should use the same inference as flatten(...).
+expectType<Result<string, "inner" | "middle" | "outer">>(methodFlattened);

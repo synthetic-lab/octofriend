@@ -16,6 +16,13 @@ describe("flatten", () => {
     if (result.success) expect(result.data).toBe(1);
   });
 
+  it("flattens nested ok results through the method form", () => {
+    const result = ok(ok(ok(1))).flatten();
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBe(1);
+  });
+
   it("returns the first inner error reached through ok values", () => {
     const result = flatten(ok(ok(err("inner"))));
 

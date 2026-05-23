@@ -4,7 +4,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
-import { Result, ok, err, flatten } from "../../result.ts";
+import { Result, ok, err } from "../../result.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
@@ -174,7 +174,7 @@ tools that can be called with specific arguments.
         }
       };
 
-      const client = flatten(await withAbort(getMcpClient(serverName, data)));
+      const client = (await withAbort(getMcpClient(serverName, data))).flatten();
       if (!client.success) return client;
 
       // List available tools to check if the requested tool exists
