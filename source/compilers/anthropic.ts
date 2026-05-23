@@ -179,6 +179,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
     };
   }
 
+  const _: never = ir;
   throw new Error(`Unsupported IR role: ${(ir as any).role}`);
 }
 
