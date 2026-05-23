@@ -114,7 +114,7 @@ export type ToolReturn<SubagentName extends string, Extra> =
 
 type RawToolFactory<
   Data,
-  S extends Schema<any, any>,
+  S extends AnyToolSchema,
   Parsed,
   SubagentNames extends string,
   Extra,
@@ -126,7 +126,7 @@ type RawToolFactory<
 
 type SimpleRawToolFactory<
   Data,
-  S extends Schema<any, any>,
+  S extends AnyToolSchema,
   Parsed,
   SubagentNames extends string,
   Extra,
@@ -147,7 +147,7 @@ type SimpleRawToolFactory<
 
 type SimpleAutoParsedRawToolFactory<
   Data,
-  S extends Schema<any, any>,
+  S extends AnyToolSchema,
   SubagentNames extends string,
   Extra,
   CustomIR,
@@ -194,11 +194,17 @@ type RuntimeToolDefinition<Extra> = Omit<
   ) => Promise<Result<ToolReturn<string, Extra>, string>>;
 } & Partial<Pick<ToolDef<unknown, string, unknown, unknown, string, Extra>, "parse" | "validate">>;
 
+type AnyToolSchema = Schema<any, any>;
+type AnyParsedArguments = any;
+type AnySubagentNames = any;
+type AnyCustomIR = any;
+type AnyToolData = any;
+
 // Public tool factories are the precise raw factory type plus the capability brand. Keeping the raw
 // factory in the intersection preserves literal tool names and parsed argument types.
 export type ToolFactory<
   Data,
-  S extends Schema<any, any>,
+  S extends AnyToolSchema,
   Parsed,
   SubagentNames extends string,
   Extra,
@@ -268,7 +274,13 @@ export class ToolBuilder<Data = unknown> {
   dynamicDefineTool<
     T extends (
       args: ToolFactoryArgs<Data>,
-    ) => Promise<ToolFactory<Data, any, any, any, any> | null>,
+    ) => Promise<ToolFactory<
+      Data,
+      AnyToolSchema,
+      AnyParsedArguments,
+      AnySubagentNames,
+      AnyCustomIR
+    > | null>,
   >(
     factory: T,
   ): ((args: ToolFactoryArgs<Data>) => DynamicToolFactoryReturn<T>) &
@@ -405,7 +417,7 @@ export class DeclaredTool<
 export const TOOL_BUILDER = new ToolBuilder();
 
 export type ToolMap<SubagentNames extends string, Extra> = {
-  [key: string]: ToolFactory<any, any, any, SubagentNames, Extra>;
+  [key: string]: ToolFactory<AnyToolData, AnyToolSchema, AnyParsedArguments, SubagentNames, Extra>;
 };
 
 type CustomIRBuilderMap = Record<string, (toolCall: any) => (args: any) => any>;
