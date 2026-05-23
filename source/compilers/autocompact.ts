@@ -1,20 +1,28 @@
-import { LlmIR, AgentResult } from "../ir/llm-ir.ts";
+import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
+import type { Content } from "../libocto/llm-ir.ts";
+import type { CompilerResult } from "./compiler-interface.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
-import { CompactionRequestError } from "../errors.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { Result, ok, err } from "../result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
-export const compactionCompilerExplanation = (summary: string) => {
-  return `# Conversation History Summary
+export type CompactionError = {
+  requestError: string;
+  curl: string | null;
+};
+
+const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
 The following text is a condensed summary of all previous messages in this conversation:
 
-${summary}
+`;
+
+const COMPACTION_CHECKPOINT_SUFFIX = `
 
 ---
 
@@ -28,20 +36,19 @@ The individual messages from earlier in this conversation are no longer availabl
 3. Continue working on your current task exactly where you left off
 
 Resume your work now.`;
-};
 
-export function findMostRecentCompactionCheckpointIndex(messages: LlmIR[]): number {
+export function findMostRecentCompactionCheckpointIndex(messages: OctoIR[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "compaction-checkpoint") {
+    if (messages[i].role === "checkpoint") {
       return i;
     }
   }
   return 0;
 }
 
-// checks the token length starting from a compaction-checkpoint (or the beginning if no checkpoint exists)
+// checks the token length starting from a checkpoint (or the beginning if no checkpoint exists)
 // if it exceeds AUTOCOMPACT_THRESHOLD * the model's max context window, return true
-export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]): boolean {
+export function shouldAutoCompactHistory(model: ModelConfig, messages: OctoIR[]): boolean {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
   const maxContextWindow = model.context;
@@ -51,8 +58,8 @@ export function shouldAutoCompactHistory(model: ModelConfig, messages: LlmIR[]):
   return currentTokens >= maxAllowedTokens;
 }
 
-// only summarize starting from the most recent compaction-checkpoint (if it exists, otherwise from the beginning)
-export async function generateCompactionSummary({
+// only summarize starting from the most recent checkpoint (if it exists, otherwise from the beginning)
+export async function generateCompactionCheckpointContent({
   apiKey,
   model,
   messages,
@@ -63,7 +70,7 @@ export async function generateCompactionSummary({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
@@ -71,18 +78,18 @@ export async function generateCompactionSummary({
   };
   abortSignal: AbortSignal;
   transport: Transport;
-}): Promise<string | null> {
+}): Promise<Result<Content["content"] | null, CompactionError>> {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = messages.slice(checkpointIndex);
-  const summaryMessages: LlmIR[] = [
+  const summaryMessages: OctoIR[] = [
     ...slicedMessages,
     {
       role: "user",
-      content: compactPrompt(),
+      content: [{ type: "text", content: compactPrompt() }],
     },
   ];
 
-  const result = await run({
+  const compactRunResult = await run({
     apiKey,
     model,
     handlers,
@@ -92,28 +99,36 @@ export async function generateCompactionSummary({
     messages: summaryMessages,
   });
 
-  if (abortSignal.aborted) return null;
+  if (abortSignal.aborted) return ok(null);
 
-  if (!result.success) {
-    throw new CompactionRequestError(result.requestError, result.curl);
+  if (!compactRunResult.success) {
+    return err({
+      requestError: compactRunResult.error.requestError,
+      curl: compactRunResult.error.curl,
+    });
   }
 
-  const summary = processCompactedHistory(result);
+  const summary = processCompactedHistory(compactRunResult);
   if (summary == null || summary === "") {
-    throw new CompactionRequestError(
-      "Compaction result was empty, continuing without compacting messages.",
-    );
+    return err({
+      requestError: "Compaction result was empty, continuing without compacting messages.",
+      curl: null,
+    });
   }
-  return summary;
+  return ok([
+    { type: "text", content: COMPACTION_CHECKPOINT_PREFIX },
+    { type: "text", content: summary },
+    { type: "text", content: COMPACTION_CHECKPOINT_SUFFIX },
+  ]);
 }
 
 export function processCompactedHistory(
-  compactSummaryAgentResult: AgentResult,
+  compactSummaryResult: CompilerResult<typeof octoAgent>,
 ): string | undefined {
-  if (!compactSummaryAgentResult.success) {
+  if (!compactSummaryResult.success) {
     return;
   }
-  const assistantMessage = compactSummaryAgentResult.output;
+  const assistantMessage = compactSummaryResult.data.output;
 
   if (assistantMessage.content) {
     return assistantMessage.content;

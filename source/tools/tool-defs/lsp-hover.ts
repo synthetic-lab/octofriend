@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import {
   runLspPositionQuery,
   getLspExtensionsComment,
@@ -8,47 +9,37 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-hover", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
-  const ArgumentsSchema = t.subtype({
-    filePath: t.str.comment("Path to the file to query"),
-    line: LineSchema,
-    character: CharSchema,
-  });
+  const description = `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`;
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-hover"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`,
-    );
-
-  return {
-    Schema,
-    ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspPositionQuery(
-        abortSignal,
+  return TOOL.declare({
+    name: "lsp-hover",
+    description,
+    ArgumentsSchema: t.subtype({
+      filePath: t.str.comment("Path to the file to query"),
+      line: LineSchema,
+      character: CharSchema,
+    }),
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspPositionQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "hover",
         (client, filePath, line, character) => client.getHover(filePath, line, character),
         (hover, filePath, line, character) =>
           `Hover info for ${filePath}:${line}:${character}:\n${hover ?? "No hover information available."}`,
       );
+      if (!output.success) return output;
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
-  } satisfies ToolDef<
-    "lsp-hover",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

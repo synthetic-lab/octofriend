@@ -1,16 +1,21 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
-import { tools, ToolBuilder } from "./tool-def.ts";
-import { result } from "../result.ts";
+import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
+import { ok, err } from "../result.ts";
 
 const BUILDER = new ToolBuilder();
 
-const FILE_IR_TOOL = BUILDER.withIR<{
-  role: "file-read";
-  contents: string;
-}>();
-const read = FILE_IR_TOOL.declare({
+function testFileIR<T extends ToolCall<any>>(toolCall: T) {
+  return (args: { contents: string }) => ({
+    role: "file-read" as const,
+    contents: args.contents,
+    toolCall,
+  });
+}
+
+const readDeclaration = BUILDER.declare({
   name: "read",
+  description: "Reads a file",
   ArgumentsSchema: t.subtype({
     path: t.str,
   }),
@@ -19,10 +24,11 @@ const read = FILE_IR_TOOL.declare({
     originalFileContents: t.str,
   }),
   subagents: ["view"],
-}).define(async () => {
+});
+const read = readDeclaration.withCustomIR({ testFileIR }).define(async () => {
   return {
     parse: async ({ original }) => {
-      return result.ok({
+      return ok({
         original,
         parsed: {
           ...original,
@@ -30,56 +36,48 @@ const read = FILE_IR_TOOL.declare({
         },
       });
     },
-    validate: async () => result.ok(null),
-    run: async () => {
-      return result.ok({
-        type: "custom-ir",
-        data: {
-          role: "file-read",
-          contents: "idk",
-        },
-      });
+    validate: async () => ok(null),
+    run: async ({ customIR }) => {
+      return customIR.testFileIR({ contents: "idk" });
     },
   };
 });
-const list = tools
-  .declare({
-    name: "list",
-    ArgumentsSchema: t.subtype({
-      path: t.str,
-    }),
-  })
-  .define(async () => {
-    return {
-      run: async () => result.err("idk"),
-    };
-  });
+const list = TOOL_BUILDER.declare({
+  name: "list",
+  description: "Lists files",
+  ArgumentsSchema: t.subtype({
+    path: t.str,
+  }),
+}).define(async () => {
+  return {
+    run: async () => err("idk"),
+  };
+});
 
-const glob = tools
-  .declare({
-    name: "glob",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async () => ({
-    run: async () => result.err("idk"),
-  }));
+const glob = TOOL_BUILDER.declare({
+  name: "glob",
+  description: "Globs files",
+  ArgumentsSchema: t.subtype({}),
+}).define(async () => ({
+  run: async () => err("idk"),
+}));
 
-const write = tools
-  .declare({
-    name: "write",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async () => {
-    return {
-      run: async () => result.err("idk"),
-    };
-  });
+const write = TOOL_BUILDER.declare({
+  name: "write",
+  description: "Writes a file",
+  ArgumentsSchema: t.subtype({}),
+}).define(async () => {
+  return {
+    run: async () => err("idk"),
+  };
+});
 
 const DATA_TOOL = BUILDER.withData<{
   prefix: string;
 }>()
   .declare({
     name: "data-tool",
+    description: "Uses builder data",
     ArgumentsSchema: t.subtype({}),
   })
   .define(async ({ data }) => {
@@ -91,7 +89,7 @@ const DATA_TOOL = BUILDER.withData<{
     return {
       run: async ({ data }) => {
         const runPrefix: string = data.prefix;
-        return result.ok({
+        return ok({
           type: "output",
           content: [{ type: "text", content: `${prefix}:${runPrefix}` }],
         });
@@ -99,48 +97,40 @@ const DATA_TOOL = BUILDER.withData<{
     };
   });
 
-const FILE_DATA_TOOL = BUILDER.withIR<{
-  role: "file-read";
-  contents: string;
-}>()
-  .withData<{
-    prefix: string;
-  }>()
-  .declare({
-    name: "file-data-tool",
-    ArgumentsSchema: t.subtype({}),
-  })
-  .define(async ({ data }) => {
-    const prefix: string = data.prefix;
+const fileDataDeclaration = BUILDER.withData<{
+  prefix: string;
+}>().declare({
+  name: "file-data-tool",
+  description: "Uses builder data and emits file IR",
+  ArgumentsSchema: t.subtype({}),
+});
+const FILE_DATA_TOOL = fileDataDeclaration.withCustomIR({ testFileIR }).define(async ({ data }) => {
+  const prefix: string = data.prefix;
 
-    return {
-      run: async () => {
-        return result.ok({
-          type: "custom-ir",
-          data: {
-            role: "file-read",
-            contents: prefix,
-          },
-        });
-      },
-    };
-  });
+  return {
+    run: async ({ customIR }) => {
+      return customIR.testFileIR({ contents: prefix });
+    },
+  };
+});
 
-const dynamicRead = FILE_IR_TOOL.dynamicDefineTool(async () => {
-  return FILE_IR_TOOL.declare({
-    name: "dynamic-read",
-    ArgumentsSchema: t.subtype({
-      path: t.str,
-    }),
-    ParsedSchema: t.subtype({
-      path: t.str,
-      originalFileContents: t.str,
-    }),
-    subagents: ["view"],
-  }).define(async () => {
+const dynamicReadDeclaration = BUILDER.declare({
+  name: "dynamic-read",
+  description: "Reads a file dynamically",
+  ArgumentsSchema: t.subtype({
+    path: t.str,
+  }),
+  ParsedSchema: t.subtype({
+    path: t.str,
+    originalFileContents: t.str,
+  }),
+  subagents: ["view"],
+});
+const dynamicRead = BUILDER.dynamicDefineTool(async () => {
+  return dynamicReadDeclaration.withCustomIR({ testFileIR }).define(async () => {
     return {
       parse: async ({ original }) => {
-        return result.ok({
+        return ok({
           original,
           parsed: {
             ...original,
@@ -148,9 +138,9 @@ const dynamicRead = FILE_IR_TOOL.dynamicDefineTool(async () => {
           },
         });
       },
-      validate: async () => result.ok(null),
+      validate: async () => ok(null),
       run: async () => {
-        return result.err("idk");
+        return err("idk");
       },
     };
   });
@@ -349,8 +339,9 @@ const _missingDynamicSubagent = defineAgent({
   agents: {},
 });
 
-const _unparseableRead = FILE_IR_TOOL.declare({
+const unparseableReadDeclaration = BUILDER.declare({
   name: "unparseable-read",
+  description: "Cannot parse correctly",
   ArgumentsSchema: t.subtype({
     path: t.str,
   }),
@@ -358,10 +349,12 @@ const _unparseableRead = FILE_IR_TOOL.declare({
     path: t.str,
     originalFileContents: t.str,
   }),
-}).define(
+});
+const _unparseableRead = unparseableReadDeclaration
+  .withCustomIR({ testFileIR })
   // We expect an error here because parse returns the wrong format
   // @ts-expect-error
-  async () => {
+  .define(async () => {
     return {
       parse: async ({ original }) => {
         return {
@@ -380,5 +373,4 @@ const _unparseableRead = FILE_IR_TOOL.declare({
         };
       },
     };
-  },
-);
+  });

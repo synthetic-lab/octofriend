@@ -1,7 +1,14 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { ToolError, attemptUntrackedRead, defineTool, parseOriginalFile } from "../common.ts";
+import {
+  attemptUntrackedRead,
+  TOOL,
+  FILE_OUTDATED_ERROR_MESSAGE,
+  fileMutateIR,
+  parseOriginalFile,
+} from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { ok, err } from "../../result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {
@@ -12,20 +19,11 @@ const DiffParts = {
   `),
   replace: t.str.comment("The string you want to insert into the file"),
 };
-export const ArgumentsSchema = t
-  .subtype({
-    filePath: t.str.comment("The path to the file"),
-    ...DiffParts,
-  })
-  .comment(
-    "Applies a search/replace edit to a file. This should be your default tool to edit existing files.",
-  );
-export const DiffEditSchema = t.subtype(DiffParts);
-
-export const Schema = t.subtype({
-  name: t.value("edit"),
-  arguments: ArgumentsSchema,
+export const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  ...DiffParts,
 });
+export const DiffEditSchema = t.subtype(DiffParts);
 
 export const ParsedSchema = ArgumentsSchema.and(
   t.subtype({
@@ -33,38 +31,51 @@ export const ParsedSchema = ArgumentsSchema.and(
   }),
 );
 
-export default defineTool(Schema, ParsedSchema, async () => ({
-  Schema,
+const edit = TOOL.declare({
+  name: "edit",
+  description: `
+Applies a search/replace edit to a file. This should be your default tool to edit existing files.
+`.trim(),
   ArgumentsSchema,
   ParsedSchema,
-  validate,
-  parse: parseOriginalFile,
-  async run(signal, transport, call) {
-    const { filePath } = call.parsed.arguments;
-    const diff = call.parsed.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
+});
+
+export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.parsed.arguments);
+  },
+  async parse({ signal, transport, original }) {
+    return parseOriginalFile(signal, transport, original);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath } = toolCall.parsed.arguments;
+    const diff = toolCall.parsed.arguments;
+    const validation = await validate(signal, transport, diff);
+    if (!validation.success) return validation;
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
+    if (!file.success) return file;
     const replaced = runEdit({
       path: filePath,
-      file,
+      file: file.data,
       diff,
     });
-    await fileTracker.write(transport, signal, filePath, replaced);
-    return {
-      content: "",
-    };
+    if (!replaced.success) return replaced;
+    await fileTracker.write(transport, signal, filePath, replaced.data);
+    return customIR.fileMutateIR({ content: "" });
   },
 }));
 
 async function validate(
   signal: AbortSignal,
   transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
+  args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-  const file = await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-  return validateDiff({ file, diff: toolCall.arguments, path: toolCall.arguments.filePath });
+  const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
+  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
+  const file = await attemptUntrackedRead(transport, signal, args.filePath);
+  if (!file.success) return file;
+  return validateDiff({ file: file.data, diff: args, path: args.filePath });
 }
 
 function runEdit({
@@ -75,9 +86,10 @@ function runEdit({
   path: string;
   file: string;
   diff: t.GetType<typeof ArgumentsSchema>;
-}): string {
-  validateDiff({ path, file, diff });
-  return file.replace(diff.search, diff.replace);
+}) {
+  const validation = validateDiff({ path, file, diff });
+  if (!validation.success) return validation;
+  return ok(file.replace(diff.search, diff.replace));
 }
 
 function validateDiff({
@@ -90,7 +102,7 @@ function validateDiff({
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
   if (!file.includes(diff.search)) {
-    throw new ToolError(
+    return err(
       `
 Could not find search string in file ${path}: ${diff.search}
 This is likely an error in your formatting. The search string must EXACTLY match, including
@@ -98,5 +110,5 @@ whitespace and punctuation.
 `.trim(),
     );
   }
-  return null;
+  return ok(null);
 }

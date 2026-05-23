@@ -1,19 +1,51 @@
 import fs from "fs/promises";
-import { LlmIR, TrajectoryOutputIR, CompactionCheckpoint, ToolCallRequest } from "../ir/llm-ir.ts";
+import type { OctoIR } from "../ir/octo-ir.ts";
+import type {
+  Content,
+  MalformedToolRequest,
+  AssistantMessage,
+  ToolValidationErrorMessage,
+} from "../libocto/llm-ir.ts";
+import type { ToolCall } from "../libocto/tool-def.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
-import { generateCompactionSummary, shouldAutoCompactHistory } from "../compilers/autocompact.ts";
-import { validateTool, ToolError } from "../tools/index.ts";
-import { FileOutdatedError, fileTracker } from "../tools/file-tracker.ts";
+import {
+  CompactionError,
+  generateCompactionCheckpointContent,
+  shouldAutoCompactHistory,
+} from "../compilers/autocompact.ts";
+import { validateTool } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
+import { Result, ok } from "../result.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
+
+type ToolCallRequest = ToolCall<typeof toolMap>;
+
+export type TrajectoryOutputIR =
+  | AssistantMessage<typeof toolMap>
+  | {
+      role: "tool-parse-error";
+      malformedRequest: MalformedToolRequest;
+    }
+  | ToolValidationErrorMessage<typeof toolMap>
+  | {
+      role: "tool-skip-output";
+      toolCall: ToolCallRequest;
+      reason: string;
+    }
+  | Extract<OctoIR, { role: "file-read" | "file-mutate" }>
+  | {
+      role: "checkpoint";
+      content: Content["content"];
+    };
 
 type AllTokenTypes = "reasoning" | "content" | "tool";
 
@@ -26,7 +58,7 @@ type AssistantDelta<AllowedType extends string> = {
 };
 
 type CompactionType = {
-  checkpoint: CompactionCheckpoint;
+  checkpoint: TrajectoryOutputIR & { role: "checkpoint" };
 };
 
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
@@ -75,6 +107,11 @@ type Finish = {
         type: "request-error";
         requestError: string;
         curl: string;
+      }
+    | {
+        type: "compaction-error";
+        requestError: string;
+        curl: string | null;
       };
 };
 
@@ -93,7 +130,7 @@ export async function trajectoryArc({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   config: Config;
   transport: Transport;
   abortSignal: AbortSignal;
@@ -120,11 +157,22 @@ export async function trajectoryArc({
       compactionProgress: stream => handler.compactionProgress(stream),
     },
   });
+  if (!parsedCompaction.success) {
+    return {
+      type: "finish",
+      irs,
+      reason: {
+        type: "compaction-error",
+        requestError: parsedCompaction.error.requestError,
+        curl: parsedCompaction.error.curl,
+      },
+    };
+  }
 
-  if (parsedCompaction) {
-    handler.compactionParsed(parsedCompaction);
-    messagesCopy.push(parsedCompaction.checkpoint);
-    irs.push(parsedCompaction.checkpoint);
+  if (parsedCompaction.data) {
+    handler.compactionParsed(parsedCompaction.data);
+    messagesCopy.push(parsedCompaction.data.checkpoint);
+    irs.push(parsedCompaction.data.checkpoint);
   }
   if (abortSignal.aborted) return abort([]);
 
@@ -186,19 +234,19 @@ export async function trajectoryArc({
       irs: maybeBufferedMessage(),
       reason: {
         type: "request-error",
-        requestError: result.requestError,
-        curl: result.curl,
+        requestError: result.error.requestError,
+        curl: result.error.curl,
       },
     };
   }
 
-  let assistantMessage = result.output;
+  let assistantMessage = result.data.output;
   irs = [...irs, assistantMessage];
 
   // Retry malformed tool calls
   let malformedRequests = false;
   for (const call of assistantMessage.toolCalls || []) {
-    if (call.type === "malformed-request") {
+    if (call.type === "malformed-tool-request") {
       malformedRequests = true;
       break;
     }
@@ -208,16 +256,16 @@ export async function trajectoryArc({
     // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
     // is kept in terms of input ordering vs output message ordering
     for (const call of assistantMessage.toolCalls || []) {
-      if (call.type === "tool-request") {
+      if (call.type === "tool-call") {
         irs.push({
-          role: "tool-skip",
+          role: "tool-skip-output",
           toolCall: call,
           reason: "Another tool call in this batch was malformed, so this tool call was skipped",
         });
       } else {
-        const _: "malformed-request" = call.type;
+        const _: "malformed-tool-request" = call.type;
         irs.push({
-          role: "tool-malformed",
+          role: "tool-parse-error",
           malformedRequest: call,
         });
       }
@@ -256,7 +304,7 @@ export async function trajectoryArc({
   let retryIrs: TrajectoryOutputIR[] = [];
   const wellformedToolCalls: Array<ToolCallRequest> = [];
   for (const toolCall of toolCalls) {
-    if (toolCall.type === "malformed-request") {
+    if (toolCall.type === "malformed-tool-request") {
       throw new Error(
         "Impossible tool ordering: encountered a malformed tool with no malformed response",
       );
@@ -269,108 +317,90 @@ export async function trajectoryArc({
   // sequentially (i.e. we only autofix one tool at a time), but this would imply we could call the
   // handlers multiple times within a single validation step
   for (const toolCall of wellformedToolCalls) {
-    try {
-      await validateTool(abortSignal, transport, tools, toolCall.call, config);
+    const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
 
-      // If we got this far, the tool validated successfully. Proactively push a tool-skip IR for
+    if (validation.success) {
+      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
       // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
       // are invalid).
       retryIrs.push({
-        role: "tool-skip",
+        role: "tool-skip-output",
         toolCall: toolCall,
         reason: SKIP_INVALID_REASON,
       });
-    } catch (e) {
-      if (e instanceof FileOutdatedError) {
-        const errorIr: TrajectoryOutputIR = await tryTransformFileOutdatedError(
-          abortSignal,
-          transport,
-          toolCall,
-          e,
-        );
-        retryIrs = [...retryIrs, errorIr];
-        continue;
-      }
-
-      if (!(e instanceof ToolError)) throw e;
-
-      const fn = toolCall.call.parsed;
-      if (fn.name === "edit") {
-        handler.autofixingDiff(null);
-        const path = fn.arguments.filePath;
-        try {
-          const file = await fs.readFile(path, "utf8");
-          const fix = await autofixEdit(config, file, fn.arguments, abortSignal);
-
-          // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-          // tool call
-          if (abortSignal.aborted) {
-            return abort([
-              ...irs.slice(0, -1),
-              {
-                role: "tool-validation-error",
-                toolCall: toolCall,
-                error: e.message,
-                aborted: true,
-              },
-            ]);
-          }
-
-          if (fix) {
-            // Validate that the edit applies before marking as fixed
-            const fixed = {
-              name: "edit",
-              arguments: {
-                ...fn.arguments,
-                ...fix,
-              },
-            } as const;
-
-            await validateTool(
-              abortSignal,
-              transport,
-              tools,
-              {
-                original: fixed,
-                parsed: fixed,
-              },
-              config,
-            );
-
-            // If we got this far, it's valid: update the state and keep going
-            fn.arguments = {
-              ...fn.arguments,
-              ...fix,
-            };
-
-            // Push a tool skip proactively
-            retryIrs.push({
-              role: "tool-skip",
-              toolCall: toolCall,
-              reason: SKIP_INVALID_REASON,
-            });
-
-            continue;
-          }
-        } catch {}
-      }
-
-      retryIrs = [
-        ...retryIrs,
-        {
-          role: "tool-validation-error" as const,
-          toolCall: toolCall,
-          error: e.message,
-        },
-      ];
       continue;
     }
+
+    const validationError = validation.error;
+    const fn = toolCall;
+    if (fn.name === "edit") {
+      handler.autofixingDiff(null);
+      const path = fn.parsed.filePath;
+      const file = await fs.readFile(path, "utf8");
+      const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
+
+      // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+      // tool call
+      if (abortSignal.aborted) {
+        return abort([
+          ...irs.slice(0, -1),
+          {
+            role: "tool-validation-error",
+            toolCall: toolCall,
+            error: validationError,
+            aborted: true,
+          },
+        ]);
+      }
+
+      if (fix) {
+        // Validate that the edit applies before marking as fixed
+        const fixed = {
+          ...fn.parsed,
+          ...fix,
+        } as const;
+
+        const fixedValidation = await validateTool(
+          abortSignal,
+          transport,
+          tools,
+          { ...fn, parsed: fixed },
+          config,
+        );
+        if (fixedValidation.success) {
+          // If we got this far, it's valid: update the state and keep going
+          fn.parsed = {
+            ...fn.parsed,
+            ...fix,
+          };
+
+          // Push a tool skip proactively
+          retryIrs.push({
+            role: "tool-skip-output",
+            toolCall: toolCall,
+            reason: SKIP_INVALID_REASON,
+          });
+
+          continue;
+        }
+      }
+    }
+
+    retryIrs = [
+      ...retryIrs,
+      {
+        role: "tool-validation-error" as const,
+        toolCall: toolCall,
+        error: validationError,
+        aborted: false,
+      },
+    ];
   }
 
   // If you have any IRs that need to be retried, retry them
   let needsRetry = false;
   for (const ir of retryIrs) {
-    if (ir.role !== "tool-skip") {
+    if (ir.role !== "tool-skip-output") {
       needsRetry = true;
       break;
     }
@@ -416,7 +446,7 @@ async function maybeAutocompact({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   abortSignal: AbortSignal;
   transport: Transport;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
@@ -424,13 +454,13 @@ async function maybeAutocompact({
     startCompaction: () => void;
     compactionProgress: (stream: AutocompactionStream) => void;
   };
-}): Promise<CompactionType | null> {
-  if (!shouldAutoCompactHistory(model, messages)) return null;
+}): Promise<Result<CompactionType | null, CompactionError>> {
+  if (!shouldAutoCompactHistory(model, messages)) return ok(null);
 
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
-  const checkpointSummary = await generateCompactionSummary({
+  const checkpointContent = await generateCompactionCheckpointContent({
     apiKey,
     model,
     messages,
@@ -451,14 +481,15 @@ async function maybeAutocompact({
     },
   });
 
-  if (checkpointSummary == null) return null;
+  if (!checkpointContent.success) return checkpointContent;
+  if (checkpointContent.data == null) return ok(null);
 
-  return {
+  return ok({
     checkpoint: {
-      role: "compaction-checkpoint",
-      summary: checkpointSummary,
+      role: "checkpoint",
+      content: checkpointContent.data,
     },
-  };
+  });
 }
 
 function abort(irs: TrajectoryOutputIR[]): Finish {
@@ -467,30 +498,4 @@ function abort(irs: TrajectoryOutputIR[]): Finish {
     reason: { type: "abort" },
     irs,
   };
-}
-
-async function tryTransformFileOutdatedError(
-  abortSignal: AbortSignal,
-  transport: Transport,
-  toolCall: ToolCallRequest,
-  e: FileOutdatedError,
-): Promise<TrajectoryOutputIR> {
-  const absolutePath = await transport.resolvePath(abortSignal, e.filePath);
-
-  try {
-    await fileTracker.readUntracked(transport, abortSignal, absolutePath);
-    return {
-      role: "file-outdated",
-      toolCall,
-      error:
-        "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
-    };
-  } catch {
-    return {
-      role: "file-unreadable",
-      path: e.filePath,
-      toolCall,
-      error: `File ${e.filePath} could not be read. Has it been deleted?`,
-    };
-  }
 }

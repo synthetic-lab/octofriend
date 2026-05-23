@@ -1,48 +1,41 @@
 import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
-import { ToolError, attempt, defineTool, autoparse } from "../common.ts";
+import { TOOL, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { ok, err, attempt, toErrString } from "../../result.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),
   content: t.str.comment("Content to write to the file"),
 });
 
-const Schema = t
-  .subtype({
-    name: t.value("create"),
-    arguments: ArgumentsSchema,
-  })
-  .comment("Creates a new file with the specified content");
-
-async function validate(
-  signal: AbortSignal,
-  transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
-) {
+async function validate(signal: AbortSignal, transport: Transport, filePath: string) {
   try {
-    await fileTracker.assertCanCreate(transport, signal, toolCall.arguments.filePath);
+    await fileTracker.assertCanCreate(transport, signal, filePath);
   } catch (e) {
-    if (e instanceof FileExistsError) throw new ToolError(e.message);
-    throw e;
+    if (e instanceof FileExistsError) return err(e.message);
+    return toErrString(e);
   }
-  return null;
+  return ok(null);
 }
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+const create = TOOL.declare({
+  name: "create",
+  description: "Creates a new file with the specified content",
   ArgumentsSchema,
-  validate,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, transport, call) {
-    await validate(signal, transport, call.original);
-    const { filePath, content } = call.parsed.arguments;
+});
+
+export default create.withCustomIR({ fileMutateIR }).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.parsed.arguments.filePath);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath, content } = toolCall.parsed.arguments;
+    const validation = await validate(signal, transport, filePath);
+    if (!validation.success) return validation;
     return attempt(`Failed to create file ${filePath}`, async () => {
       await fileTracker.write(transport, signal, filePath, content);
-      return {
-        content: "",
-        lines: content.split("\n").length,
-      };
+      return customIR.fileMutateIR({ content: "" });
     });
   },
 }));

@@ -2,12 +2,16 @@ import { runAnthropicAgent } from "./anthropic.ts";
 import { runResponsesAgent } from "./responses.ts";
 import { runAgent } from "./standard.ts";
 import { ModelConfig } from "../config.ts";
-import { LlmIR } from "../ir/llm-ir.ts";
+import { octoAgent } from "../ir/octo-ir.ts";
+import type { OctoIR } from "../ir/octo-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
+import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
+import { optimizeFiles } from "./optimize-files.ts";
+import type { FileOptimizerInputIR } from "./optimize-files.ts";
 
 export async function run({
   model,
@@ -22,7 +26,7 @@ export async function run({
 }: {
   apiKey: string;
   model: ModelConfig;
-  messages: LlmIR[];
+  messages: OctoIR[];
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
@@ -42,14 +46,16 @@ export async function run({
   })();
 
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = messages.slice(checkpointIndex);
+  const slicedMessages = lowerToolRejects(messages.slice(checkpointIndex));
+  const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
+  const loweredMessages = lowerTrajectories<typeof octoAgent>(optimizedMessages);
 
-  return await runInternal({
+  return await runInternal<typeof octoAgent>({
     model,
     apiKey,
     abortSignal,
     systemPrompt,
-    irs: slicedMessages,
+    irs: loweredMessages,
     onTokens: handlers.onTokens,
     onQuotaUpdated: handlers.onQuotaUpdated,
     autofixJson: (badJson: string, signal: AbortSignal) => {
@@ -59,5 +65,19 @@ export async function run({
     },
     tools,
     transport,
+  });
+}
+
+function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {
+  return messages.map(ir => {
+    if (ir.role === "tool-reject") {
+      return {
+        role: "tool-skip-output",
+        toolCall: ir.toolCall,
+        reason: "Tool call rejected by user.",
+      };
+    }
+
+    return ir;
   });
 }

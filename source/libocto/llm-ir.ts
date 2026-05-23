@@ -230,31 +230,30 @@ export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends
 };
 
 /*
- * All base IR types except subagent trajectories.
+ * All base IR types, with no extension IR types and no subagent trajectories.
+ *
+ * This is the IR intended for compiler use. Extra, extensible IRs and subagent trajectories need
+ * to be converted into lowered IRs before hitting compilers.
  */
-type LoweredLinearIR<T extends ToolMap<any, any>> =
+export type LoweredIR<T extends ToolMap<any, any>> =
   | AssistantMessage<T>
   | UserMessage
   | ToolOutputMessage<T>
   | ToolRuntimeErrorMessage<T>
   | ToolValidationErrorMessage<T>
   | ToolParseErrorMessage
-  | ToolSkipOutputMessage<T>;
+  | ToolSkipOutputMessage<T>
+  | Checkpoint;
 
 /*
- * All base IR types including agent trajectories, with no extension IR types.
+ * Compiler-ready IR plus subagent trajectories.
  *
- * This is the IR intended for compiler use. Extra, extensible IRs need to be converted into lowered
- * IRs before hitting compilers.
- *
- * Forms a tree containing two node types:
- * - Linear lowered IRs, which are leaf nodes
- * - Agent Trajectories, which are non-leaf nodes containing a list of linear lowered IRs
+ * This is the shape callers should produce after lowering their custom IR extensions, but before
+ * deciding how to represent nested subagent trajectories for a concrete compiler.
  */
-export type LoweredIR<
-  AD extends AgentDirectory,
-  T extends ToolMap<Extract<keyof AD, string>, any>,
-> = LoweredLinearIR<T> | AgentTrajectory<AD, keyof AD>;
+export type LoweredIRWithTrajectories<A extends Agent<any, any, any>> =
+  | LoweredIR<A["tools"]>
+  | AgentTrajectory<A["agents"], keyof A["agents"]>;
 
 /*
  * All IR types including extensions.
@@ -265,10 +264,7 @@ export type LoweredIR<
 type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
 type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["tools"]]>;
 
-export type LlmIR<A extends Agent<any, any, any>> =
-  | AgentTrajectory<A["agents"], keyof A["agents"]>
-  | LoweredLinearIR<A["tools"]>
-  | AgentExtra<A>;
+export type LlmIR<A extends Agent<any, any, any>> = LoweredIRWithTrajectories<A> | AgentExtra<A>;
 
 /*
  * Agent dependency compile-time validation/branding

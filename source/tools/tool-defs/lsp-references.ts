@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,47 +10,37 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-references", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
-  const ArgumentsSchema = t.subtype({
-    filePath: t.str.comment("Path to the file to query"),
-    line: LineSchema,
-    character: CharSchema,
-  });
+  const description = `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`;
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-references"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Find all references to a symbol at the given position. ${getLspExtensionsComment(extensions)}`,
-    );
-
-  return {
-    Schema,
-    ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspPositionQuery(
-        abortSignal,
+  return TOOL.declare({
+    name: "lsp-references",
+    description,
+    ArgumentsSchema: t.subtype({
+      filePath: t.str.comment("Path to the file to query"),
+      line: LineSchema,
+      character: CharSchema,
+    }),
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspPositionQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "references",
         (client, filePath, line, character) => client.getReferences(filePath, line, character),
         (refs, filePath, line, character) =>
           `References for symbol at ${filePath}:${line}:${character}:\n${formatLocations(refs)}`,
       );
+      if (!output.success) return output;
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
-  } satisfies ToolDef<
-    "lsp-references",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

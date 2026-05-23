@@ -20,7 +20,6 @@ import {
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
-import { LlmIR } from "./ir/llm-ir.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
 import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
 import { Transport } from "./transports/transport-common.ts";
@@ -123,9 +122,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
           console.log("Connecting to", server, "MCP server...");
           // Run the basic connection setup with logging enabled, so that first-time setup gets logged
           const client = await connectMcpServer(server, config, true);
-          await client.close();
+          if (!client.success) throw new Error(client.error);
+          await client.data.close();
           // Then run the cache setup codepath, so future results use a cached client with logging off
-          await getMcpClient(server, config);
+          const cachedClient = await getMcpClient(server, config);
+          if (!cachedClient.success) throw new Error(cachedClient.error);
           console.log("Connected to", server, "MCP server");
         } catch (error) {
           console.warn(
@@ -275,9 +276,14 @@ bench
         messages: [
           {
             role: "user",
-            content:
-              opts.prompt ??
-              "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+            content: [
+              {
+                type: "text",
+                content:
+                  opts.prompt ??
+                  "Write me a short story about a frog going to the moon. Do not use ANY tools.",
+              },
+            ],
           },
         ],
         handlers: {
@@ -295,7 +301,7 @@ bench
       if (!result.success) {
         return {
           success: false,
-          error: result.requestError,
+          error: result.error.requestError,
         };
       }
 
@@ -311,7 +317,7 @@ bench
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
 
-      const tokens = result.output.outputTokens;
+      const tokens = result.data.output.outputTokens;
 
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {
@@ -446,11 +452,12 @@ cli
     }
     const apiKey = keyResult.key;
 
-    const messages: LlmIR[] = [];
-    messages.push({
-      role: "user",
-      content: prompt,
-    });
+    const messages = [
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, content: prompt }],
+      },
+    ];
 
     let systemPrompt: undefined | (() => Promise<string>) = undefined;
     if (opts.system) {
@@ -487,8 +494,8 @@ cli
       transport,
     });
     if (!result.success) {
-      console.error(result.requestError);
-      console.error(`cURL: ${result.curl}`);
+      console.error(result.error.requestError);
+      console.error(`cURL: ${result.error.curl}`);
       process.exit(1);
     }
 

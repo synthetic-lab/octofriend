@@ -1,49 +1,55 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import { attemptUntrackedRead, defineTool, autoparse } from "../common.ts";
+import {
+  attemptUntrackedRead,
+  TOOL,
+  FILE_OUTDATED_ERROR_MESSAGE,
+  fileMutateIR,
+} from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
+import { ok, err } from "../../result.ts";
 
-const ArgumentsSchema = t
-  .subtype({
-    filePath: t.str.comment("The path to the file"),
-    text: t.str.comment("The text to append"),
-  })
-  .comment("Appends to a file");
-
-const Schema = t.subtype({
-  name: t.value("append"),
-  arguments: ArgumentsSchema,
+const ArgumentsSchema = t.subtype({
+  filePath: t.str.comment("The path to the file"),
+  text: t.str.comment("The text to append"),
 });
 
-export default defineTool(Schema, ArgumentsSchema, async () => ({
-  Schema,
+const append = TOOL.declare({
+  name: "append",
+  description: "Appends to a file",
   ArgumentsSchema,
-  validate,
-  ...autoparse(ArgumentsSchema),
-  async run(signal, transport, call) {
-    const { filePath } = call.parsed.arguments;
-    await fileTracker.assertCanEdit(transport, signal, filePath);
+});
+
+export default append.withCustomIR({ fileMutateIR }).define(async () => ({
+  async validate(signal, transport, toolCall) {
+    return validate(signal, transport, toolCall.parsed.arguments);
+  },
+  async run({ signal, transport, toolCall, customIR }) {
+    const { filePath } = toolCall.parsed.arguments;
+    const validation = await validate(signal, transport, toolCall.parsed.arguments);
+    if (!validation.success) return validation;
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
+    if (!file.success) return file;
     const replaced = runEdit({
-      file,
-      edit: call.parsed.arguments,
+      file: file.data,
+      edit: toolCall.parsed.arguments,
     });
     await fileTracker.write(transport, signal, filePath, replaced);
-    return {
-      content: "",
-    };
+    return customIR.fileMutateIR({ content: "" });
   },
 }));
 
 async function validate(
   signal: AbortSignal,
   transport: Transport,
-  toolCall: t.GetType<typeof Schema>,
+  args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  await fileTracker.assertCanEdit(transport, signal, toolCall.arguments.filePath);
-  await attemptUntrackedRead(transport, signal, toolCall.arguments.filePath);
-  return null;
+  const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
+  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
+  const file = await attemptUntrackedRead(transport, signal, args.filePath);
+  if (!file.success) return file;
+  return ok(null);
 }
 
 function runEdit({
