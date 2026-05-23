@@ -10,7 +10,7 @@ import {
   SetConfigContext,
   useConfig,
 } from "./config.ts";
-import { HistoryItem, ToolCallItems } from "./history.ts";
+import { HistoryItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -33,7 +33,6 @@ import grep from "./tools/tool-defs/grep.ts";
 
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
-import { ParsedToolSchemaFrom } from "./tools/common.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -61,8 +60,10 @@ import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
 import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
-import { ToolCallRequest } from "./ir/llm-ir.ts";
-import { ToolResult } from "./tools/common.ts";
+import type { ToolCall } from "./libocto/tool-def.ts";
+import type toolMap from "./tools/tool-defs/index.ts";
+import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
+import type { OctoIR } from "./ir/octo-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -71,6 +72,17 @@ import {
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
+
+type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
+type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
+  name: LoadedToolFrom<T>["name"];
+  arguments: t.GetType<LoadedToolFrom<T>["ParsedSchema"]>;
+};
+type ToolCallRequest = ToolCall<typeof toolMap>;
+type AssistantDisplayItem = {
+  content: string;
+  reasoningContent?: string | null;
+};
 
 type Props = {
   config: Config;
@@ -452,7 +464,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
 
-  if (modeData.mode === "tool-request") {
+  if (modeData.mode === "tool-call") {
     return (
       <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
     );
@@ -719,7 +731,7 @@ function ToolRequestRenderer({
   );
   const unchained = useUnchained();
   const whitelistKey = (() => {
-    const fn = toolReq.call.parsed;
+    const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "read":
       case "list":
@@ -748,10 +760,11 @@ function ToolRequestRenderer({
       case "lsp-outgoing-calls":
         return `${fn.name}:*`;
     }
+    return `${fn.name}:*`;
   })();
 
   const prompt = (() => {
-    const fn = toolReq.call.parsed;
+    const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "create":
         return (
@@ -791,9 +804,10 @@ function ToolRequestRenderer({
       case "lsp-outgoing-calls":
         return null;
     }
+    return null;
   })();
 
-  const toolName = toolReq.call.parsed.name;
+  const toolName = toolReq.name;
 
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
 
@@ -849,12 +863,10 @@ function ToolRequestRenderer({
 
   const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
   const isRunning =
-    modeData.mode === "tool-request" && modeData.runningToolCallId === toolReq.toolCallId;
+    modeData.mode === "tool-call" && modeData.runningToolCallId === toolReq.toolCallId;
 
   const noConfirmationNeeded =
-    unchained ||
-    SKIP_CONFIRMATION_TOOLS.includes(toolReq.call.parsed.name) ||
-    isToolWhitelisted === true;
+    unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
 
   useEffect(() => {
     if (noConfirmationNeeded) {
@@ -947,6 +959,10 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     })),
   );
 
+  if (item.type === "inflight-response") {
+    return renderInflightResponse(item, modeData.mode === "compacting");
+  }
+
   if (item.type === "notification") {
     return (
       <Box marginLeft={1}>
@@ -954,8 +970,41 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "assistant") {
-    if (modeData.mode === "compacting") {
+
+  if (item.type === "llm-ir") {
+    return renderLlmIR(item.ir, modeData.mode === "compacting");
+  }
+
+  if (item.type === "request-failed") {
+    return <Text color="red">Request failed.</Text>;
+  }
+
+  if (item.type === "compaction-failed") {
+    return <Text color="red">Compaction failed.</Text>;
+  }
+
+  const _: never = item;
+  return null;
+};
+
+function renderInflightResponse(item: InflightResponseType, isCompacting: boolean) {
+  if (isCompacting) {
+    return (
+      <Box marginBottom={1}>
+        <CompactionRenderer item={item} />
+      </Box>
+    );
+  }
+  return (
+    <Box marginBottom={1}>
+      <AssistantMessageRenderer item={item} />
+    </Box>
+  );
+}
+
+function renderLlmIR(item: OctoIR, isCompacting: boolean) {
+  if (item.role === "assistant") {
+    if (isCompacting) {
       return (
         <Box marginBottom={1}>
           <CompactionRenderer item={item} />
@@ -968,19 +1017,8 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "tool-calls") {
-    // Tool calls don't need to be rendered: the tool output will handle rendering
-    return null;
-  }
-  if (item.type === "tool-output") {
-    return (
-      <Box flexDirection="column" marginBottom={1}>
-        <ToolMessageRenderer item={item.toolCall} />
-        <ToolOutputContentRenderer result={item.result} />
-      </Box>
-    );
-  }
-  if (item.type === "tool-malformed") {
+
+  if (item.role === "tool-parse-error") {
     return (
       <Text color="red">
         {displayLog({
@@ -991,7 +1029,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     );
   }
 
-  if (item.type === "tool-validation-error") {
+  if (item.role === "tool-validation-error") {
     const message = (() => {
       if (item.aborted) return "Tool call aborted.";
       return "Tool call failed validation checks. Retrying...";
@@ -1007,7 +1045,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
     );
   }
 
-  if (item.type === "tool-failed") {
+  if (item.role === "tool-runtime-error") {
     return (
       <Box flexDirection="column">
         <Box marginLeft={2}>
@@ -1021,7 +1059,8 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     );
   }
-  if (item.type === "tool-reject") {
+
+  if (item.role === "tool-reject") {
     return (
       <Box flexDirection="column">
         <ToolMessageRenderer item={item.toolCall} />
@@ -1033,46 +1072,57 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
   }
 
   // Tool skips are tracked internally for explaining to LLMs, but are not shown to users
-  if (item.type === "tool-skip") {
+  if (item.role === "tool-skip-output") {
     return null;
   }
 
-  if (item.type === "file-outdated") {
-    return (
-      <Box flexDirection="column">
-        <ToolMessageRenderer item={item.toolCall} />
-        <Box marginLeft={2}>
-          <Text>File was modified since it was last read; re-reading...</Text>
-        </Box>
-      </Box>
-    );
+  if (item.role === "checkpoint") {
+    return <CompactionSummaryRenderer content={item.content} />;
   }
-  if (item.type === "file-unreadable") {
+
+  if (item.role === "tool-output") {
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" marginBottom={1}>
         <ToolMessageRenderer item={item.toolCall} />
-        <Box marginLeft={2}>
-          <Text>File could not be read — has it been deleted?</Text>
-        </Box>
+        <ToolOutputContentRenderer content={item.content} />
       </Box>
     );
   }
 
-  if (item.type === "request-failed") {
-    return <Text color="red">Request failed.</Text>;
+  if (item.role === "file-read") {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer
+          content={[
+            { type: "text", content: item.content },
+            ...(item.image ? [{ type: "image" as const, image: item.image }] : []),
+          ]}
+        />
+      </Box>
+    );
   }
 
-  if (item.type === "compaction-failed") {
-    return <Text color="red">Compaction failed.</Text>;
+  if (item.role === "file-mutate") {
+    return (
+      <Box flexDirection="column" marginBottom={1}>
+        <ToolMessageRenderer item={item.toolCall} />
+        <ToolOutputContentRenderer content={[{ type: "text", content: item.content }]} />
+      </Box>
+    );
   }
 
-  if (item.type === "compaction-checkpoint") {
-    return <CompactionSummaryRenderer summary={item.summary} />;
+  if (item.role === "trajectory") {
+    return null;
   }
 
-  const _: "user" = item.type;
+  const _: "user" = item.role;
+  const textParts = item.content.filter((part: Content["content"][number]) => part.type === "text");
+  const imageParts = item.content.filter(
+    (part: Content["content"][number]) => part.type === "image",
+  );
 
-  const contentLines = item.content.split(LINE_SPLIT_REGEX);
+  const contentLines = textParts.flatMap(part => part.content.split(LINE_SPLIT_REGEX));
 
   return (
     <Box flexDirection="column" marginY={1}>
@@ -1080,10 +1130,10 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
         <Box marginRight={1}>
           <Text color="white">▶</Text>
         </Box>
-        {item.images && item.images.length > 0 && (
+        {imageParts.length > 0 && (
           <Box marginRight={1}>
             <Text inverse>
-              ⟦ 📎 {item.images.length} image{item.images.length > 1 ? "s" : ""} attached ⟧
+              ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
             </Text>
           </Box>
         )}
@@ -1097,53 +1147,60 @@ const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseTyp
       </Box>
     </Box>
   );
-};
+}
 
-function CompactionSummaryRenderer({ summary }: { summary: string }) {
+function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
   const color = useColor();
-  const innerSummary = summary.replace(/^<summary>/, "").replace(/<\/summary>$/, "");
+  const displayContent = content.map(part => {
+    if (part.type === "image") return part;
+    return {
+      ...part,
+      content: part.content.replace(/^<summary>/, "").replace(/<\/summary>$/, ""),
+    };
+  });
+
   return (
     <Box flexDirection="column" marginY={1}>
       <Text color="gray">History compacted! Summary: </Text>
-      <Text color="gray">{innerSummary}</Text>
+      <ContentRenderer content={displayContent} textColor="gray" />
       <Text color={color}>Summary complete!</Text>
     </Box>
   );
 }
 
-function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] }) {
-  if (item.type === "malformed-request") {
+function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
+  if (item.type === "malformed-tool-request") {
     return null;
   }
-  switch (item.call.parsed.name) {
+  switch (item.name) {
     case "read":
-      return <ReadToolRenderer item={item.call.parsed} />;
+      return <ReadToolRenderer item={parsedToolSchema(item)} />;
     case "list":
-      return <ListToolRenderer item={item.call.parsed} />;
+      return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
-      return <ShellToolRenderer item={item.call.parsed} />;
+      return <ShellToolRenderer item={parsedToolSchema(item)} />;
     case "edit":
-      return <EditToolRenderer item={item.call.parsed} />;
+      return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
-      return <CreateToolRenderer item={item.call.parsed} />;
+      return <CreateToolRenderer item={parsedToolSchema(item)} />;
     case "mcp":
-      return <McpToolRenderer item={item.call.parsed} />;
+      return <McpToolRenderer item={parsedToolSchema(item)} />;
     case "fetch":
-      return <FetchToolRenderer item={item.call.parsed} />;
+      return <FetchToolRenderer item={parsedToolSchema(item)} />;
     case "append":
-      return <AppendToolRenderer item={item.call.parsed} />;
+      return <AppendToolRenderer item={parsedToolSchema(item)} />;
     case "prepend":
-      return <PrependToolRenderer item={item.call.parsed} />;
+      return <PrependToolRenderer item={parsedToolSchema(item)} />;
     case "rewrite":
-      return <RewriteToolRenderer item={item.call.parsed} />;
+      return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
-      return <SkillToolRenderer item={item.call.parsed} />;
+      return <SkillToolRenderer item={parsedToolSchema(item)} />;
     case "web-search":
-      return <WebSearchToolRenderer item={item.call.parsed} />;
+      return <WebSearchToolRenderer item={parsedToolSchema(item)} />;
     case "glob":
-      return <GlobRenderer item={item.call.parsed} />;
+      return <GlobRenderer item={parsedToolSchema(item)} />;
     case "grep":
-      return <GrepRenderer item={item.call.parsed} />;
+      return <GrepRenderer item={parsedToolSchema(item)} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -1152,8 +1209,15 @@ function ToolMessageRenderer({ item }: { item: ToolCallItems["tools"][number] })
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <LspToolRenderer item={item.call.parsed} />;
+      return <LspToolRenderer item={parsedToolSchema(item)} />;
   }
+}
+
+function parsedToolSchema(toolCall: ToolCallRequest): any {
+  return {
+    name: toolCall.name,
+    arguments: toolCall.parsed,
+  };
 }
 
 function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
@@ -1364,19 +1428,60 @@ function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
   );
 }
 
-function ToolOutputContentRenderer({ result }: { result: ToolResult }) {
-  const lines = result.lines ?? result.content.split("\n").length;
+function ToolOutputContentRenderer({ content }: { content: Content["content"] }) {
+  const textParts = content.filter(part => part.type === "text");
+  const imageParts = content.filter(part => part.type === "image");
+  const lines = textParts.reduce(
+    (count, part) => count + part.content.split(LINE_SPLIT_REGEX).length,
+    0,
+  );
+
   return (
-    <Box marginLeft={2}>
+    <Box marginLeft={2} flexDirection="column">
       <Text color="gray">
         Got <Text>{lines}</Text> lines of output
       </Text>
+      {imageParts.map((part, i) => (
+        <ImageContentRenderer key={i} image={part.image} />
+      ))}
     </Box>
   );
 }
 
+function ContentRenderer({
+  content,
+  textColor,
+}: {
+  content: Content["content"];
+  textColor?: string;
+}) {
+  return (
+    <Box flexDirection="column">
+      {content.map((part, i) => {
+        if (part.type === "image") {
+          return <ImageContentRenderer key={i} image={part.image} />;
+        }
+
+        return part.content.split(LINE_SPLIT_REGEX).map((line, lineIndex) => (
+          <Text key={`${i}-${lineIndex}`} color={textColor}>
+            {line}
+          </Text>
+        ));
+      })}
+    </Box>
+  );
+}
+
+function ImageContentRenderer({ image }: { image: ImageInfo }) {
+  return (
+    <Text inverse>
+      ⟦ 📎 {image.filePath} ({Math.ceil(image.sizeBytes / 1024)} KB) ⟧
+    </Text>
+  );
+}
+
 function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
-  const fn = toolCallRequest.call.parsed;
+  const fn = parsedToolSchema(toolCallRequest);
   const cwd = useCwd();
   switch (fn.name) {
     case "glob":
@@ -1446,6 +1551,7 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "lsp-outgoing-calls":
       return <Text> LSP queries during this session.</Text>;
   }
+  return <Text> this tool in this session.</Text>;
 }
 
 const OCTO_MARGIN = 1;
@@ -1461,7 +1567,7 @@ function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
   );
 }
 
-function CompactionRenderer({ item }: { item: InflightResponseType }) {
+function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
   const terminalSize = useTerminalSize();
   const scrollHeight = Math.max(1, Math.min(10, terminalSize.height - 10));
   return (
@@ -1473,7 +1579,7 @@ function CompactionRenderer({ item }: { item: InflightResponseType }) {
   );
 }
 
-function AssistantMessageRenderer({ item }: { item: InflightResponseType }) {
+function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
   const terminalSize = useTerminalSize();
   let thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
   let content = item.content.trim();

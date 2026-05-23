@@ -5,36 +5,35 @@ import {
   assertKeyForModel,
   runNotifyCommand,
 } from "./config.ts";
-import {
-  HistoryItem,
-  UserItem,
-  AssistantItem,
-  CompactionCheckpointItem,
-  ToolOutputItem,
-  ToolCallItems,
-  sequenceId,
-} from "./history.ts";
+import { HistoryItem } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
-import { runTool, ToolError } from "./tools/index.ts";
+import { runTool } from "./tools/index.ts";
+import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
-import { FileOutdatedError, fileTracker } from "./tools/file-tracker.ts";
-import * as path from "path";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
-import { PaymentError, RateLimitError, CompactionRequestError } from "./errors.ts";
+import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
-import { ToolCallRequest } from "./ir/llm-ir.ts";
+import type { ToolCall } from "./libocto/tool-def.ts";
+import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
+import type { OctoIR } from "./ir/octo-ir.ts";
 
 export type RunArgs = {
   config: Config;
   transport: Transport;
 };
 
-export type InflightResponseType = Omit<AssistantItem, "id" | "tokenUsage" | "outputTokens">;
+type ToolCallRequest = ToolCall<typeof toolMap>;
+
+export type InflightResponseType = {
+  type: "inflight-response";
+  content: string;
+  reasoningContent?: string | null;
+};
 export type UiState = {
   preMenuModeData: UiState["modeData"] | null;
   _notifyTimer: NodeJS.Timeout | null;
@@ -51,7 +50,7 @@ export type UiState = {
         abortController: AbortController;
       }
     | {
-        mode: "tool-request";
+        mode: "tool-call";
         toolReqs: ToolCallRequest[];
         runningToolCallId: string | null;
         abortController: AbortController;
@@ -100,7 +99,7 @@ export type UiState = {
   query: string;
   history: Array<HistoryItem>;
   clearNonce: number;
-  lastUserPromptId: bigint | null;
+  lastUserPromptIndex: number | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -145,7 +144,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
-  lastUserPromptId: null,
+  lastUserPromptIndex: null,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -189,15 +188,19 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   input: async ({ config, query, transport, images }) => {
-    const userMessage: UserItem = {
-      type: "user",
-      id: sequenceId(),
-      content: query,
-      images: images && images.length > 0 ? images : undefined,
+    const userMessage: HistoryItem = {
+      type: "llm-ir",
+      ir: {
+        role: "user",
+        content: [
+          { type: "text", content: query },
+          ...(images ?? []).map(image => ({ type: "image" as const, image })),
+        ],
+      },
     };
 
     let history = [...get().history, userMessage];
-    set({ history, lastUserPromptId: userMessage.id });
+    set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport });
   },
 
@@ -212,9 +215,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       return;
     }
 
-    const { history, lastUserPromptId } = get();
+    const { history, lastUserPromptIndex } = get();
 
-    if (lastUserPromptId === null) {
+    if (lastUserPromptIndex === null) {
       set({
         query: "",
         byteCount: 0,
@@ -223,8 +226,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       return;
     }
 
-    const lastUserItem = history.find(item => item.id === lastUserPromptId);
-    if (!lastUserItem || lastUserItem.type !== "user") {
+    const lastUserItem = history[lastUserPromptIndex];
+    if (!lastUserItem || lastUserItem.type !== "llm-ir" || lastUserItem.ir.role !== "user") {
       set({
         query: "",
         byteCount: 0,
@@ -233,10 +236,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       return;
     }
 
-    const filteredHistory = history.filter(item => item.id < lastUserPromptId);
+    const filteredHistory = history.slice(0, lastUserPromptIndex);
+    const textPart = lastUserItem.ir.content.find(part => part.type === "text");
     set(state => ({
       history: filteredHistory,
-      query: lastUserItem.content,
+      query: textPart?.content ?? "",
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       modeData: { mode: "input", vimMode: "INSERT" },
@@ -254,27 +258,28 @@ export const useAppStore = create<UiState>((set, get) => ({
     let lastToolCallIndex = history.length - 1;
     for (lastToolCallIndex; lastToolCallIndex >= 0; lastToolCallIndex--) {
       const item = history[lastToolCallIndex];
-      if (item.type === "tool-calls") break;
+      if (item.type === "llm-ir" && item.ir.role === "assistant" && item.ir.toolCalls) break;
     }
     const skippedCalls: HistoryItem[] = [];
 
     if (lastToolCallIndex >= 0) {
-      const originatingToolCalls = history[lastToolCallIndex] as ToolCallItems;
-      for (
-        let toolCallIndex = 0;
-        toolCallIndex < originatingToolCalls.tools.length;
-        toolCallIndex++
-      ) {
-        const call = originatingToolCalls.tools[toolCallIndex];
-        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-request") {
-          const skippedCount = originatingToolCalls.tools.length - toolCallIndex - 1;
-          if (skippedCount > 0) {
-            for (let i = 0; i < skippedCount; i++) {
+      const originatingToolCalls = history[lastToolCallIndex];
+      const toolCalls =
+        originatingToolCalls.type === "llm-ir" && originatingToolCalls.ir.role === "assistant"
+          ? (originatingToolCalls.ir.toolCalls ?? [])
+          : [];
+      for (let toolCallIndex = 0; toolCallIndex < toolCalls.length; toolCallIndex++) {
+        const call = toolCalls[toolCallIndex];
+        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-call") {
+          for (const skippedCall of toolCalls.slice(toolCallIndex + 1)) {
+            if (skippedCall.type === "tool-call") {
               skippedCalls.push({
-                id: sequenceId(),
-                type: "tool-skip",
-                toolCall: call,
-                reason: "A previous tool call was rejected, so this tool was skipped",
+                type: "llm-ir",
+                ir: {
+                  role: "tool-skip-output",
+                  toolCall: skippedCall,
+                  reason: "A previous tool call was rejected, so this tool was skipped",
+                },
               });
             }
           }
@@ -286,9 +291,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [
         ...get().history,
         {
-          type: "tool-reject",
-          id: sequenceId(),
-          toolCall,
+          type: "llm-ir",
+          ir: {
+            role: "tool-reject",
+            toolCall,
+          },
         },
         ...skippedCalls,
       ],
@@ -374,7 +381,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         ...get().history,
         {
           type: "notification",
-          id: sequenceId(),
           content: `Model: ${model}`,
         },
       ],
@@ -387,7 +393,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         ...get().history,
         {
           type: "notification",
-          id: sequenceId(),
           content: notif,
         },
       ],
@@ -401,6 +406,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     set(state => ({
       history: [],
+      lastUserPromptIndex: null,
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
     }));
@@ -419,7 +425,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ config, toolReq, transport }) => {
     let { modeData } = get();
-    if (modeData.mode !== "tool-request") {
+    if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
     if (modeData.runningToolCallId != null) {
@@ -433,33 +439,33 @@ export const useAppStore = create<UiState>((set, get) => ({
     const abortController = modeData.abortController;
     set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
 
-    const modelOverride = get().modelOverride;
     const tools = await loadTools(transport, abortController.signal, config);
 
-    try {
-      const result = await runTool(
-        abortController.signal,
-        transport,
-        tools,
-        toolReq.call,
-        config,
-        modelOverride,
-      );
-
-      const toolHistoryItem: ToolOutputItem = {
-        type: "tool-output",
-        id: sequenceId(),
-        result,
-        toolCall: toolReq,
-      };
-
-      set({ history: [...get().history, toolHistoryItem] });
-    } catch (e) {
-      const history = [
-        ...get().history,
-        await tryTransformToolError(abortController.signal, transport, toolReq, e),
-      ];
-      set({ history });
+    const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    if (!result.success) {
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "llm-ir",
+            ir: {
+              role: "tool-runtime-error",
+              error: result.error,
+              toolCall: toolReq,
+            },
+          },
+        ],
+      });
+    } else {
+      set({
+        history: [
+          ...get().history,
+          {
+            type: "llm-ir",
+            ir: toolRunResultToIR(result.data, toolReq),
+          },
+        ],
+      });
     }
 
     if (get()._maybeHandleAbort(abortController.signal)) {
@@ -467,7 +473,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     ({ modeData } = get());
-    if (modeData.mode === "tool-request") {
+    if (modeData.mode === "tool-call") {
       set({ modeData: { ...modeData, runningToolCallId: null } });
     }
   },
@@ -497,7 +503,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               modeData: {
                 mode: "responding",
                 inflightResponse: {
-                  type: "assistant",
+                  type: "inflight-response",
                   content: "",
                 },
                 abortController,
@@ -512,7 +518,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               modeData: {
                 mode: "responding",
                 inflightResponse: {
-                  type: "assistant",
+                  type: "inflight-response",
                   reasoningContent: event.buffer.reasoning,
                   content: event.buffer.content || "",
                 },
@@ -528,7 +534,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               modeData: {
                 mode: "compacting",
                 inflightResponse: {
-                  type: "assistant",
+                  type: "inflight-response",
                   content: "",
                 },
                 abortController,
@@ -543,7 +549,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               modeData: {
                 mode: "compacting",
                 inflightResponse: {
-                  type: "assistant",
+                  type: "inflight-response",
                   reasoningContent: event.buffer.reasoning,
                   content: event.buffer.content || "",
                 },
@@ -555,10 +561,9 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           compactionParsed: event => {
             throttle.flush();
-            const checkpointItem: CompactionCheckpointItem = {
-              type: "compaction-checkpoint",
-              id: sequenceId(),
-              summary: event.checkpoint.summary,
+            const checkpointItem: HistoryItem = {
+              type: "llm-ir",
+              ir: event.checkpoint,
             };
             set({ history: [...historyCopy, checkpointItem] });
           },
@@ -612,32 +617,32 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
+      if (finishReason.type === "compaction-error") {
+        set({
+          modeData: {
+            mode: "compaction-error",
+            error: finishReason.requestError,
+            curlCommand: finishReason.curl,
+          },
+          history: [
+            ...get().history,
+            {
+              type: "compaction-failed",
+            },
+          ],
+        });
+        return;
+      }
+
       set({
         modeData: {
-          mode: "tool-request",
+          mode: "tool-call",
           toolReqs: finishReason.toolCalls,
           runningToolCallId: null,
           abortController: new AbortController(),
         },
       });
     } catch (e) {
-      if (e instanceof CompactionRequestError) {
-        set({
-          modeData: {
-            mode: "compaction-error",
-            error: e.requestError,
-            curlCommand: e.curl,
-          },
-          history: [
-            ...get().history,
-            {
-              type: "compaction-failed",
-              id: sequenceId(),
-            },
-          ],
-        });
-        return;
-      }
       if (get()._maybeHandleAbort(abortController.signal)) {
         return;
       }
@@ -657,42 +662,20 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 }));
 
-async function tryTransformToolError(
-  signal: AbortSignal,
-  transport: Transport,
-  toolReq: ToolCallRequest,
-  e: unknown,
-): Promise<HistoryItem> {
-  if (e instanceof ToolError) {
-    return {
-      type: "tool-failed",
-      id: sequenceId(),
-      error: e.message,
-      toolCall: toolReq,
-    };
+function toolRunResultToIR(result: ToolRunResult, toolCall: ToolCallRequest): OctoIR {
+  if (result.type === "custom-ir") {
+    return result.data;
   }
-  if (e instanceof FileOutdatedError) {
-    const absolutePath = path.resolve(e.filePath);
-    try {
-      await fileTracker.readUntracked(transport, signal, absolutePath);
-      return {
-        type: "file-outdated",
-        id: sequenceId(),
-        toolCall: toolReq,
-        error:
-          "File could not be updated because it was modified after being last read. Please read the file again before modifying it.",
-      };
-    } catch {
-      return {
-        type: "file-unreadable",
-        path: e.filePath,
-        id: sequenceId(),
-        toolCall: toolReq,
-        error: `File ${e.filePath} could not be read. Has it been deleted?`,
-      };
-    }
+
+  if (result.type === "invoke-subagent") {
+    throw new Error(`Subagent invocation is not supported in Octo tools: ${result.name}`);
   }
-  throw e;
+
+  return {
+    role: "tool-output",
+    toolCall,
+    content: result.content,
+  };
 }
 
 export function useModel() {

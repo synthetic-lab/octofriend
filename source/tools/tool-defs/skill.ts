@@ -1,10 +1,11 @@
 import { t } from "structural";
 import { unionAll } from "../../types.ts";
-import { dynamicDefineTool, ToolDef, autoparse } from "../common.ts";
+import { TOOL } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
+import { ok } from "../../result.ts";
 
-export default dynamicDefineTool("skill", async function (signal, transport, config) {
-  const skills = await discoverSkills(transport, signal, config);
+export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
+  const skills = await discoverSkills(transport, signal, data);
   if (skills.length === 0) return null;
 
   const skillDescriptions = JSON.stringify(
@@ -12,37 +13,25 @@ export default dynamicDefineTool("skill", async function (signal, transport, con
   );
 
   const skillNameSchemas = skills.map(s => t.value(s.name));
-  const ArgumentsSchema = t.subtype({
-    skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
-  });
+  const description = `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`;
 
-  const Schema = t
-    .subtype({
-      name: t.value("skill"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Loads and displays the instructions for a skill. Available skills: ${skillDescriptions}`,
-    );
-
-  return {
-    Schema,
-    ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(_1, _2, call) {
-      const { skillName } = call.parsed.arguments;
+  return TOOL.declare({
+    name: "skill",
+    description,
+    ArgumentsSchema: t.subtype({
+      skillName: skillNameSchemas.length === 0 ? t.never : unionAll(skillNameSchemas),
+    }),
+  }).define(async () => ({
+    async run({ toolCall }) {
+      const { skillName } = toolCall.parsed.arguments;
       const skill = skills.find(s => s.name === skillName)!;
 
-      return {
-        content: `
+      const content = `
 Skill name: ${skill.name}
 Skill directory: ${skill.path}
 Description: ${skill.description}
 
-${config.yourName} has set up a skill for you to use. Skills are:
+${data.yourName} has set up a skill for you to use. Skills are:
 
 1. A SKILL.md file containing instructions for you, in a directory.
 2. Optional scripts or assets stored in subdirectories of the skill's directory.
@@ -54,12 +43,12 @@ it's likely that they don't exist for this skill.
 Here are the contents of the SKILL.md file stored at ${skill.skillFilePath}:
 ---
 ${skill.instructions}
-`.trim(),
-      };
+`.trim();
+
+      return ok({
+        type: "output",
+        content: [{ type: "text", content }],
+      });
     },
-  } satisfies ToolDef<
-    "skill",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

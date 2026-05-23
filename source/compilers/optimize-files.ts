@@ -1,23 +1,21 @@
-import type {
-  FileMutateMethod,
-  FileOutdatedMessage,
-  FileReadMessage,
-  FileUnreadableMessage,
-  LlmIR,
-} from "../ir/llm-ir.ts";
+import type { octoAgent } from "../ir/octo-ir.ts";
+import type { LoweredIRWithTrajectories } from "../libocto/llm-ir.ts";
+import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
+import type { FileMutateIR, FileReadIR } from "../tools/common.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 
-type FileIR = FileReadMessage | FileMutateMethod | FileOutdatedMessage | FileUnreadableMessage;
+type FileIR = FileReadIR<ToolCall<typeof toolMap>> | FileMutateIR<ToolCall<typeof toolMap>>;
 
-export type FileOptimizedLlmIR = Exclude<LlmIR, FileIR>;
+export type FileOptimizerInputIR = LoweredIRWithTrajectories<typeof octoAgent> | FileIR;
 
 export function optimizeFiles(
-  messages: LlmIR[],
+  messages: FileOptimizerInputIR[],
   modalities?: MultimodalConfig,
-): FileOptimizedLlmIR[] {
-  const output: FileOptimizedLlmIR[] = [];
+): Array<LoweredIRWithTrajectories<typeof octoAgent>> {
+  const output: Array<LoweredIRWithTrajectories<typeof octoAgent>> = [];
   const seenPaths = new Set<string>();
 
   for (const ir of [...messages].reverse()) {
@@ -28,10 +26,10 @@ export function optimizeFiles(
 }
 
 function optimizeFileIR(
-  ir: LlmIR,
+  ir: FileOptimizerInputIR,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): FileOptimizedLlmIR {
+): LoweredIRWithTrajectories<typeof octoAgent> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);
@@ -40,15 +38,20 @@ function optimizeFileIR(
     if (ir.image && imageCheck?.ok) {
       return {
         role: "user",
-        content: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}`,
-        images: [ir.image],
+        content: [
+          {
+            type: "text",
+            content: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}`,
+          },
+          { type: "image", image: ir.image },
+        ],
       };
     }
 
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: irPrompts.fileRead(ir.content, seenPath, imageCheck),
+      content: [{ type: "text", content: irPrompts.fileRead(ir.content, seenPath, imageCheck) }],
     };
   }
 
@@ -56,15 +59,7 @@ function optimizeFileIR(
     return {
       role: "tool-output",
       toolCall: ir.toolCall,
-      content: irPrompts.fileMutation(ir.path),
-    };
-  }
-
-  if (ir.role === "file-outdated" || ir.role === "file-unreadable") {
-    return {
-      role: "tool-error",
-      toolCall: ir.toolCall,
-      error: ir.error,
+      content: [{ type: "text", content: irPrompts.fileMutation(ir.path) }],
     };
   }
 

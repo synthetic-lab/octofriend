@@ -31,10 +31,11 @@ export function fileRead(
 }
 
 export function imageAttachmentPlaceholder(content: string, images: ImageInfo[]) {
-  const placeholder =
-    "[An image was attached here. Since images are not supported by your model, the source to the image is omitted. There might be future context that allows you to make a guess about what the image was, so keep that in mind as you process the rest of the messages.]";
-
   if (images.length === 0) return content;
-  const imageBlurbs = images.map(() => placeholder).join("\n");
+  const imageBlurbs = images.map(() => imageAttachmentPlaceholderText()).join("\n");
   return `${imageBlurbs}\n\n${content}`;
+}
+
+export function imageAttachmentPlaceholderText() {
+  return "[An image was attached here. Since images are not supported by your model, the source to the image is omitted. There might be future context that allows you to make a guess about what the image was, so keep that in mind as you process the rest of the messages.]";
 }

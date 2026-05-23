@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { LlmIR } from "../ir/llm-ir.ts";
+import { contentToText } from "../ir/content.ts";
+import type { OctoIR } from "../ir/octo-ir.ts";
 import { Metadata } from "../config.ts";
 
 vi.mock("../config.ts", () => {
@@ -11,14 +12,14 @@ vi.mock("../config.ts", () => {
   return { APP_METADATA };
 });
 
-function userMessage(content: string): LlmIR {
+function userMessage(content: string): OctoIR {
   return {
     role: "user",
-    content,
+    content: [{ type: "text", content }],
   };
 }
 
-function assistantMessage(content: string, tokenUsage: number = 10): LlmIR {
+function assistantMessage(content: string, tokenUsage: number = 10): OctoIR {
   return {
     role: "assistant",
     content,
@@ -27,17 +28,27 @@ function assistantMessage(content: string, tokenUsage: number = 10): LlmIR {
   };
 }
 
-function checkpointMessage(summary: string): LlmIR {
+function checkpointMessage(summary: string): OctoIR {
   return {
-    role: "compaction-checkpoint",
-    summary,
+    role: "checkpoint",
+    content: [{ type: "text", content: summary }],
   };
+}
+
+function checkpointSummary(message: OctoIR): string {
+  if (message.role !== "checkpoint") throw new Error("Expected checkpoint");
+  return contentToText(message.content);
+}
+
+function userText(message: OctoIR): string {
+  if (message.role !== "user") throw new Error("Expected user message");
+  return contentToText(message.content);
 }
 
 describe("autocompact.ts", () => {
   describe("findMostRecentCompactionCheckpointIndex", () => {
     describe("when there are no checkpoints", () => {
-      const messages: LlmIR[] = [
+      const messages: OctoIR[] = [
         userMessage("Hello"),
         assistantMessage("Hi there"),
         userMessage("How are you?"),
@@ -56,7 +67,7 @@ describe("autocompact.ts", () => {
     });
 
     describe("when there is one checkpoint", () => {
-      const messages: LlmIR[] = [userMessage("Hello"), assistantMessage("Hi there")];
+      const messages: OctoIR[] = [userMessage("Hello"), assistantMessage("Hi there")];
       const CHECKPOINT_INDEX = messages.length;
       messages.splice(
         CHECKPOINT_INDEX,
@@ -79,18 +90,18 @@ describe("autocompact.ts", () => {
       });
 
       it("sliced messages should include exactly one checkpoint", () => {
-        const checkpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
+        const checkpoints = slicedMessages.filter(m => m.role === "checkpoint");
         expect(checkpoints.length).toBe(1);
       });
 
       it("checkpoint should have the correct summary", () => {
-        const checkpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
-        expect(checkpoints[0].summary).toBe("Summary of early conversation");
+        const checkpoints = slicedMessages.filter(m => m.role === "checkpoint");
+        expect(checkpointSummary(checkpoints[0])).toBe("Summary of early conversation");
       });
     });
 
     describe("when there are multiple checkpoints", () => {
-      const messages: LlmIR[] = [
+      const messages: OctoIR[] = [
         userMessage("Message 1"),
         assistantMessage("Response 1", 5),
         checkpointMessage("First checkpoint"),
@@ -124,28 +135,28 @@ describe("autocompact.ts", () => {
       });
 
       it("sliced messages should include at most one checkpoint", () => {
-        const checkpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
+        const checkpoints = slicedMessages.filter(m => m.role === "checkpoint");
         expect(checkpoints.length).toBe(1);
       });
 
       it("checkpoint should be the most recent one", () => {
-        const checkpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
-        expect(checkpoints[0].summary).toBe("Third checkpoint");
+        const checkpoints = slicedMessages.filter(m => m.role === "checkpoint");
+        expect(checkpointSummary(checkpoints[0])).toBe("Third checkpoint");
       });
 
       it("should not include first checkpoint", () => {
-        const allCheckpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
-        expect(allCheckpoints.every(c => c.summary !== "First checkpoint")).toBe(true);
+        const allCheckpoints = slicedMessages.filter(m => m.role === "checkpoint");
+        expect(allCheckpoints.every(c => checkpointSummary(c) !== "First checkpoint")).toBe(true);
       });
 
       it("should not include second checkpoint", () => {
-        const allCheckpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
-        expect(allCheckpoints.every(c => c.summary !== "Second checkpoint")).toBe(true);
+        const allCheckpoints = slicedMessages.filter(m => m.role === "checkpoint");
+        expect(allCheckpoints.every(c => checkpointSummary(c) !== "Second checkpoint")).toBe(true);
       });
     });
 
     describe("when filtering old messages", () => {
-      const messages: LlmIR[] = [
+      const messages: OctoIR[] = [
         userMessage("Old message 1"),
         assistantMessage("Old response 1", 5),
       ];
@@ -181,12 +192,12 @@ describe("autocompact.ts", () => {
 
       it("all user messages should be new messages", () => {
         const userMessages = slicedMessages.filter(m => m.role === "user");
-        expect(userMessages.every(m => m.content.includes("New"))).toBe(true);
+        expect(userMessages.every(m => userText(m).includes("New"))).toBe(true);
       });
     });
 
     describe("when checkpoint is at the end", () => {
-      const messages: LlmIR[] = [
+      const messages: OctoIR[] = [
         userMessage("Message 1"),
         assistantMessage("Response 1", 5),
         userMessage("Message 2"),
@@ -208,8 +219,8 @@ describe("autocompact.ts", () => {
       });
 
       it("checkpoint should have the correct summary", () => {
-        const checkpoints = slicedMessages.filter(m => m.role === "compaction-checkpoint");
-        expect(checkpoints[0].summary).toBe("Latest checkpoint");
+        const checkpoints = slicedMessages.filter(m => m.role === "checkpoint");
+        expect(checkpointSummary(checkpoints[0])).toBe("Latest checkpoint");
       });
     });
   });

@@ -1,5 +1,6 @@
 import { t } from "structural";
-import { autoparse, dynamicDefineTool, ToolDef } from "../common.ts";
+import { TOOL } from "../common.ts";
+import { ok } from "../../result.ts";
 import { formatLocations } from "../../lsp/client.ts";
 import {
   runLspPositionQuery,
@@ -9,47 +10,37 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default dynamicDefineTool("lsp-definition", async function (_, transport, config) {
-  const extensions = await getUsableLspExtensions(transport.cwd, config);
+export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
+  const extensions = await getUsableLspExtensions(transport.cwd, data);
   if (extensions.size === 0) return null;
 
-  const ArgumentsSchema = t.subtype({
-    filePath: t.str.comment("Path to the file to query"),
-    line: LineSchema,
-    character: CharSchema,
-  });
+  const description = `Find the definition location of a symbol at the given position. Use this when you need to see where a symbol was originally defined. ${getLspExtensionsComment(extensions)}`;
 
-  const Schema = t
-    .subtype({
-      name: t.value("lsp-definition"),
-      arguments: ArgumentsSchema,
-    })
-    .comment(
-      `Find the definition location of a symbol at the given position. Use this when you need to see where a symbol was originally defined. ${getLspExtensionsComment(extensions)}`,
-    );
-
-  return {
-    Schema,
-    ArgumentsSchema,
-    async validate() {
-      return null;
-    },
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _2, call) {
-      return runLspPositionQuery(
-        abortSignal,
+  return TOOL.declare({
+    name: "lsp-definition",
+    description,
+    ArgumentsSchema: t.subtype({
+      filePath: t.str.comment("Path to the file to query"),
+      line: LineSchema,
+      character: CharSchema,
+    }),
+  }).define(async () => ({
+    async run({ signal, toolCall }) {
+      const output = await runLspPositionQuery(
+        signal,
         transport,
-        config,
-        call.parsed.arguments,
+        data,
+        toolCall.parsed.arguments,
         "definition",
         (client, filePath, line, character) => client.getDefinition(filePath, line, character),
         (locations, filePath, line, character) =>
           `Definition results for ${filePath}:${line}:${character}:\n${formatLocations(locations)}`,
       );
+      if (!output.success) return output;
+      return ok({
+        type: "output",
+        content: [{ type: "text", content: output.data.content }],
+      });
     },
-  } satisfies ToolDef<
-    "lsp-definition",
-    t.GetType<typeof ArgumentsSchema>,
-    t.GetType<typeof ArgumentsSchema>
-  >;
+  }));
 });

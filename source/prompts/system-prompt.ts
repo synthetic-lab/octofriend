@@ -148,7 +148,8 @@ async function mcpPrompt(config: Config) {
 
   for (const [serverName, _] of Object.entries(config.mcpServers)) {
     const client = await getMcpClient(serverName, config);
-    const listed = await client.listTools();
+    if (!client.success) continue;
+    const listed = await client.data.listTools();
 
     const tools = listed.tools.map((t: { name: string; description?: string }) => ({
       name: t.name,

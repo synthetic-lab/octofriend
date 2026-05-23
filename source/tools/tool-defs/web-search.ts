@@ -1,22 +1,7 @@
 import { t } from "structural";
-import { attempt, defineTool, autoparse } from "../common.ts";
+import { TOOL } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
-
-const ArgumentsSchema = t.subtype({
-  query: t.str.comment("The search query"),
-});
-const Schema = t
-  .subtype({
-    name: t.value("web-search"),
-    arguments: ArgumentsSchema,
-  })
-  .comment(
-    "Searches the web. Use this to find information you're not sure about, to look up documentation, or to find data that was created after your training knowledge date cutoff.",
-  );
-
-async function validate() {
-  return null;
-}
+import { ok, attempt } from "../../result.ts";
 
 const SearchResultsSchema = t.subtype({
   results: t.array(
@@ -29,17 +14,22 @@ const SearchResultsSchema = t.subtype({
   ),
 });
 
-export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
-  const searchConf = await readSearchConfig(config);
+export default TOOL.declare({
+  name: "web-search",
+  description: `
+Searches the web. Use this to find information you're not sure about, to look up documentation,
+or to find data that was created after your training knowledge date cutoff.
+`.trim(),
+  ArgumentsSchema: t.subtype({
+    query: t.str.comment("The search query"),
+  }),
+}).define(async ({ data }) => {
+  const searchConf = await readSearchConfig(data);
   if (searchConf == null) return null;
 
   return {
-    Schema,
-    ArgumentsSchema,
-    validate,
-    ...autoparse(ArgumentsSchema),
-    async run(abortSignal, _, call) {
-      const query = call.parsed.arguments.query;
+    async run({ signal, toolCall }) {
+      const query = toolCall.parsed.arguments.query;
       return attempt(`Web search failed: ${query}`, async () => {
         const response = await fetch(searchConf.url, {
           headers: {
@@ -49,11 +39,15 @@ export default defineTool(Schema, ArgumentsSchema, async (_1, _2, config) => {
           body: JSON.stringify({
             query,
           }),
-          signal: abortSignal,
+          signal,
         });
         const json = await response.json();
         const results = SearchResultsSchema.slice(json);
-        return { content: results.results.map(entry => JSON.stringify(entry)).join("\n") };
+        const content = results.results.map(entry => JSON.stringify(entry)).join("\n");
+        return ok({
+          type: "output",
+          content: [{ type: "text", content }],
+        });
       });
     },
   };
