@@ -73,8 +73,9 @@ interface IResult<T, E> {
   promise(): Promise<UnwrapPromise<T, E>>;
 }
 
-export type Flattened<R extends Result<any, any>> =
-  OkType<R> extends Result<any, any>
+export type Flattened<R extends Result<any, any>> = [OkType<R>] extends [never]
+  ? Result<never, ErrType<R>>
+  : OkType<R> extends Result<any, any>
     ? Flattened<OkType<R>> extends Result<infer InnerT, infer InnerE>
       ? Result<InnerT, ErrType<R> | InnerE>
       : never
