@@ -1,7 +1,7 @@
-import { runAnthropicAgent } from "../libocto/anthropic.ts";
-import type { AnthropicCompilerModel } from "../libocto/anthropic.ts";
-import { runResponsesAgent } from "../libocto/responses.ts";
-import { runAgent } from "../libocto/standard.ts";
+import { runAnthropicAgent } from "../libocto/compilers/anthropic.ts";
+import type { AnthropicCompilerModel } from "../libocto/compilers/anthropic.ts";
+import { runResponsesAgent } from "../libocto/compilers/responses.ts";
+import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
@@ -14,11 +14,8 @@ import { Transport } from "../transports/transport-common.ts";
 import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 import type { FileOptimizerInputIR } from "./optimize-files.ts";
-import type { CompilerModalities } from "../libocto/compiler-interface.ts";
-import type {
-  ResponsesOpenAICompilerModel,
-  StandardOpenAICompilerModel,
-} from "../libocto/openai.ts";
+import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
+import type { OpenAICompilerModel } from "../libocto/compilers/openai.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 
 export async function run({
@@ -105,10 +102,7 @@ function compilerModalities(model: ModelConfig): CompilerModalities {
   return ["text", ...(model.modalities?.image?.enabled ? (["vision"] as const) : [])];
 }
 
-function standardOpenAICompilerModel(
-  model: ModelConfig,
-  apiKey: string,
-): StandardOpenAICompilerModel {
+function standardOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenAICompilerModel {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
     model: model.model,
@@ -117,10 +111,7 @@ function standardOpenAICompilerModel(
   };
 }
 
-function responsesOpenAICompilerModel(
-  model: ModelConfig,
-  apiKey: string,
-): ResponsesOpenAICompilerModel {
+function responsesOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenAICompilerModel {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
     model: model.model,

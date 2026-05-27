@@ -21,13 +21,13 @@ import type {
   AssistantMessage,
   Content as IRContent,
   MalformedToolRequest,
-} from "./llm-ir.ts";
-import type { LoadedTools, ToolCall } from "./tool-def.ts";
-import { trackTokens } from "../token-tracker.ts";
-import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { errorToString, ok, err } from "../result.ts";
-import * as irPrompts from "../prompts/ir-prompts.ts";
-import type { ResponsesOpenAICompilerModel } from "./openai.ts";
+} from "../llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../tool-def.ts";
+import { trackTokens } from "../../token-tracker.ts";
+import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
+import { errorToString, ok, err } from "../../result.ts";
+import * as irPrompts from "../../prompts/ir-prompts.ts";
+import type { OpenAICompilerModel } from "./openai.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,
   openAIStrictFunctionParameters,
@@ -241,7 +241,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
   systemPrompt,
   autofixJson,
   tools,
-}: CompilerParams<A, ResponsesOpenAICompilerModel>): Promise<CompilerResult<A>> {
+}: CompilerParams<A, OpenAICompilerModel>): Promise<CompilerResult<A>> {
   const input = await toResponseInput(irs, model.modalities);
   const instructions = systemPrompt ? await systemPrompt() : undefined;
 

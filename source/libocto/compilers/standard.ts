@@ -7,22 +7,22 @@ import type {
   CompilerResult,
 } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { StreamingXMLParser, tagged } from "../xml.ts";
+import { StreamingXMLParser, tagged } from "../../xml.ts";
 import type {
   Agent,
   AssistantMessage as AssistantIR,
   Content as IRContent,
   MalformedToolRequest,
-} from "./llm-ir.ts";
-import type { LoadedTools, ToolCall } from "./tool-def.ts";
-import { QuotaData } from "../utils/quota.ts";
-import { parseQuotaJson } from "../utils/quota.ts";
-import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
-import { errorToString, ok, err } from "../result.ts";
-import { trackTokens } from "../token-tracker.ts";
-import { PaymentError, RateLimitError } from "../errors.ts";
-import * as irPrompts from "../prompts/ir-prompts.ts";
-import type { StandardOpenAICompilerModel } from "./openai.ts";
+} from "../llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../tool-def.ts";
+import { QuotaData } from "../../utils/quota.ts";
+import { parseQuotaJson } from "../../utils/quota.ts";
+import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
+import { errorToString, ok, err } from "../../result.ts";
+import { trackTokens } from "../../token-tracker.ts";
+import { PaymentError, RateLimitError } from "../../errors.ts";
+import * as irPrompts from "../../prompts/ir-prompts.ts";
+import type { OpenAICompilerModel } from "./openai.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -315,7 +315,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
   systemPrompt,
   autofixJson,
   tools,
-}: CompilerParams<A, StandardOpenAICompilerModel>): Promise<CompilerResult<A>> {
+}: CompilerParams<A, OpenAICompilerModel>): Promise<CompilerResult<A>> {
   const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
   const toolDefs = tools || {};

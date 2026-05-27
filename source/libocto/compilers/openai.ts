@@ -19,9 +19,6 @@ export type OpenAICompilerModel = {
   reasoningEffort?: "low" | "medium" | "high";
 };
 
-export type StandardOpenAICompilerModel = OpenAICompilerModel;
-export type ResponsesOpenAICompilerModel = OpenAICompilerModel;
-
 export function openAIStrictFunctionParameters(schema: JsonObject): JsonObject {
   const normalized = structuredClone(schema);
 

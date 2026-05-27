@@ -1,9 +1,9 @@
 import { toTypescript } from "structural";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import type { LoadedTools, ToolCall, ToolMap } from "./tool-def.ts";
-import { Transport } from "../transports/transport-common.ts";
-import * as logger from "../logger.ts";
-import { tryexpr } from "../tryexpr.ts";
+import { JsonFixResponse } from "../../prompts/autofix-prompts.ts";
+import type { LoadedTools, ToolCall, ToolMap } from "../tool-def.ts";
+import { Transport } from "../../transports/transport-common.ts";
+import * as logger from "../../logger.ts";
+import { tryexpr } from "../../tryexpr.ts";
 
 export type ParsedToolCallResult<T extends ToolMap<any, any>> =
   | {

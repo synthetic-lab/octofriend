@@ -7,18 +7,18 @@ import type {
   CompilerResult,
 } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
+import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import type {
   Agent,
   AnthropicAssistantData,
   AssistantMessage,
   Content as IRContent,
   MalformedToolRequest,
-} from "./llm-ir.ts";
-import type { LoadedTools, ToolCall } from "./tool-def.ts";
-import { trackTokens } from "../token-tracker.ts";
-import { errorToString, ok, err } from "../result.ts";
-import * as irPrompts from "../prompts/ir-prompts.ts";
+} from "../llm-ir.ts";
+import type { LoadedTools, ToolCall } from "../tool-def.ts";
+import { trackTokens } from "../../token-tracker.ts";
+import { errorToString, ok, err } from "../../result.ts";
+import * as irPrompts from "../../prompts/ir-prompts.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
