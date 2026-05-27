@@ -15,7 +15,7 @@ import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 import type { FileOptimizerInputIR } from "./optimize-files.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
-import type { OpenAICompilerModel } from "../libocto/compilers/openai.ts";
+import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 
 export async function run({

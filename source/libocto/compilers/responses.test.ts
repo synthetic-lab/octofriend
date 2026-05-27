@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeOpenAIStrictFunctionArguments,
   openAIStrictFunctionParameters,
-} from "./openai.ts";
+} from "./responses.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {

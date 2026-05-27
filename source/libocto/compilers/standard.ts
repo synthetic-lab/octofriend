@@ -22,7 +22,7 @@ import { errorToString, ok, err } from "../../result.ts";
 import { trackTokens } from "../../token-tracker.ts";
 import { PaymentError, RateLimitError } from "../../errors.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
-import type { OpenAICompilerModel } from "./openai.ts";
+import type { OpenAICompilerModel } from "./openai-shared.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
