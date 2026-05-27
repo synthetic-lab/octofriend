@@ -1,6 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
-import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
+import type {
+  CompilerIR,
+  CompilerModalities,
+  CompilerParams,
+  CompilerResult,
+} from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import type {
@@ -9,17 +14,27 @@ import type {
   AssistantMessage,
   Content as IRContent,
   MalformedToolRequest,
-} from "../libocto/llm-ir.ts";
-import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
+} from "./llm-ir.ts";
+import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { errorToString, ok, err } from "../result.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import type { MultimodalConfig } from "../providers.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
   A["tools"]
 >];
+
+export type AnthropicCompilerModel = {
+  client: Anthropic;
+  model: string;
+  maxTokens: number;
+  modalities?: CompilerModalities;
+  thinking?: {
+    type: "enabled";
+    budget_tokens: number;
+  };
+};
 
 const ThinkingBlockSchema = t.subtype({
   type: t.value("thinking"),
@@ -33,7 +48,7 @@ function imagePlaceholderContent(): string {
 
 function anthropicContentParts(
   content: IRContent["content"],
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
   const output: Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> = [];
   for (const part of content) {
@@ -41,7 +56,7 @@ function anthropicContentParts(
       output.push({ type: "text", text: part.content });
       continue;
     }
-    if (modalities?.image?.enabled) {
+    if (modalities?.includes("vision")) {
       output.push({
         type: "image",
         source: {
@@ -59,7 +74,7 @@ function anthropicContentParts(
 
 function toModelMessage<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): Array<Anthropic.MessageParam> {
   const output: Anthropic.MessageParam[] = [];
 
@@ -72,7 +87,7 @@ function toModelMessage<A extends Agent<any, any, any>>(
 
 function modelMessageFromIr<A extends Agent<any, any, any>>(
   ir: CompilerIR<A>,
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
     let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
@@ -220,7 +235,6 @@ JSON`;
 
 export async function runAnthropicAgent<A extends Agent<any, any, any>>({
   model,
-  apiKey,
   irs,
   onTokens,
   abortSignal,
@@ -228,7 +242,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
   systemPrompt,
   autofixJson,
   tools,
-}: CompilerParams<A>): Promise<CompilerResult<A>> {
+}: CompilerParams<A, AnthropicCompilerModel>): Promise<CompilerResult<A>> {
   const messages = toModelMessage(irs, model.modalities);
   const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
@@ -257,38 +271,20 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
           tools: toolDefinitions,
         };
 
-  const client = new Anthropic({
-    baseURL: model.baseUrl,
-    apiKey,
-  });
-
-  const thinking: { thinking?: { type: "enabled"; budget_tokens: number } } = {};
-  if (model.reasoning) {
-    thinking.thinking = {
-      type: "enabled",
-      budget_tokens: (() => {
-        if (model.reasoning === "high") return 8192;
-        if (model.reasoning === "medium") return 4096;
-        return 2048;
-      })(),
-    };
-  }
-
-  // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max
-  const maxTokens = Math.min(32 * 1000 - (thinking.thinking?.budget_tokens || 0), model.context);
+  const thinking = model.thinking ? { thinking: model.thinking } : {};
 
   const curl = generateCurlFrom({
-    baseURL: model.baseUrl,
+    baseURL: model.client.baseURL,
     model: model.model,
     system: sysPrompt,
     messages,
     ...toolParams,
-    maxTokens,
+    maxTokens: model.maxTokens,
   });
 
   try {
     const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const stream = await client.messages.create({
+    const stream = await model.client.messages.create({
       ...system,
       model: model.model,
       messages,
@@ -297,7 +293,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
         type: "auto",
         disable_parallel_tool_use: false,
       },
-      max_tokens: maxTokens,
+      max_tokens: model.maxTokens,
       ...thinking,
       stream: true,
     });

@@ -1,6 +1,6 @@
 import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import type { Content } from "../libocto/llm-ir.ts";
-import type { CompilerResult } from "./compiler-interface.ts";
+import type { CompilerResult } from "../libocto/compiler-interface.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";

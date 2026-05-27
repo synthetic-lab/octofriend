@@ -1,12 +1,14 @@
-import { ModelConfig } from "../config.ts";
 import type { Result } from "../result.ts";
-import type { Agent, AssistantMessage, LoweredIR } from "../libocto/llm-ir.ts";
-import type { LoadedTools } from "../libocto/tool-def.ts";
+import type { Agent, AssistantMessage, LoweredIR } from "./llm-ir.ts";
+import type { LoadedTools } from "./tool-def.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { Transport } from "../transports/transport-common.ts";
 
 export type CompilerIR<A extends Agent<any, any, any>> = LoweredIR<A["tools"]>;
+
+export type CompilerModality = "text" | "vision";
+export type CompilerModalities = readonly CompilerModality[];
 
 export type CompilerResult<A extends Agent<any, any, any>> = Result<
   {
@@ -19,10 +21,9 @@ export type CompilerResult<A extends Agent<any, any, any>> = Result<
   }
 >;
 
-export type CompilerParams<A extends Agent<any, any, any>> = {
+export type CompilerParams<A extends Agent<any, any, any>, Model> = {
   systemPrompt?: () => Promise<string>;
-  model: ModelConfig;
-  apiKey: string;
+  model: Model;
   irs: Array<CompilerIR<A>>;
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
   onQuotaUpdated?: (quota: QuotaData) => void;
@@ -32,6 +33,6 @@ export type CompilerParams<A extends Agent<any, any, any>> = {
   tools?: Partial<LoadedTools<A["tools"]>>;
 };
 
-export type Compiler = <A extends Agent<any, any, any>>(
-  params: CompilerParams<A>,
+export type Compiler<Model> = <A extends Agent<any, any, any>>(
+  params: CompilerParams<A, Model>,
 ) => Promise<CompilerResult<A>>;

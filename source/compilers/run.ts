@@ -1,7 +1,9 @@
-import { runAnthropicAgent } from "./anthropic.ts";
-import { runResponsesAgent } from "./responses.ts";
-import { runAgent } from "./standard.ts";
-import { ModelConfig } from "../config.ts";
+import { runAnthropicAgent } from "../libocto/anthropic.ts";
+import type { AnthropicCompilerModel } from "../libocto/anthropic.ts";
+import { runResponsesAgent } from "../libocto/responses.ts";
+import { runAgent } from "../libocto/standard.ts";
+import Anthropic from "@anthropic-ai/sdk";
+import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import { QuotaData } from "../utils/quota.ts";
@@ -12,6 +14,12 @@ import { Transport } from "../transports/transport-common.ts";
 import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 import type { FileOptimizerInputIR } from "./optimize-files.ts";
+import type { CompilerModalities } from "../libocto/compiler-interface.ts";
+import type {
+  ResponsesOpenAICompilerModel,
+  StandardOpenAICompilerModel,
+} from "../libocto/openai.ts";
+import { getDefaultOpenaiClient } from "./openai.ts";
 
 export async function run({
   model,
@@ -38,21 +46,12 @@ export async function run({
   systemPrompt?: () => Promise<string>;
   tools?: Partial<LoadedTools>;
 }) {
-  const runInternal = (() => {
-    if (model.type == null || model.type === "standard") return runAgent;
-    if (model.type === "openai-responses") return runResponsesAgent;
-    const _: "anthropic" = model.type;
-    return runAnthropicAgent;
-  })();
-
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
   const slicedMessages = lowerToolRejects(messages.slice(checkpointIndex));
   const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
   const loweredMessages = lowerTrajectories<typeof octoAgent>(optimizedMessages);
 
-  return await runInternal<typeof octoAgent>({
-    model,
-    apiKey,
+  const params = {
     abortSignal,
     systemPrompt,
     irs: loweredMessages,
@@ -65,6 +64,26 @@ export async function run({
     },
     tools,
     transport,
+  };
+
+  if (model.type == null || model.type === "standard") {
+    return await runAgent<typeof octoAgent>({
+      ...params,
+      model: standardOpenAICompilerModel(model, apiKey),
+    });
+  }
+
+  if (model.type === "openai-responses") {
+    return await runResponsesAgent<typeof octoAgent>({
+      ...params,
+      model: responsesOpenAICompilerModel(model, apiKey),
+    });
+  }
+
+  const _: "anthropic" = model.type;
+  return await runAnthropicAgent<typeof octoAgent>({
+    ...params,
+    model: anthropicCompilerModel(model, apiKey),
   });
 }
 
@@ -80,4 +99,60 @@ function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {
 
     return ir;
   });
+}
+
+function compilerModalities(model: ModelConfig): CompilerModalities {
+  return ["text", ...(model.modalities?.image?.enabled ? (["vision"] as const) : [])];
+}
+
+function standardOpenAICompilerModel(
+  model: ModelConfig,
+  apiKey: string,
+): StandardOpenAICompilerModel {
+  return {
+    client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
+    model: model.model,
+    reasoningEffort: model.reasoning,
+    modalities: compilerModalities(model),
+  };
+}
+
+function responsesOpenAICompilerModel(
+  model: ModelConfig,
+  apiKey: string,
+): ResponsesOpenAICompilerModel {
+  return {
+    client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
+    model: model.model,
+    reasoningEffort: model.reasoning,
+    modalities: compilerModalities(model),
+  };
+}
+
+function anthropicCompilerModel(model: ModelConfig, apiKey: string): AnthropicCompilerModel {
+  const thinking = anthropicThinking(model.reasoning);
+  // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max.
+  const maxTokens = Math.min(32 * 1000 - (thinking?.budget_tokens || 0), model.context);
+  return {
+    client: new Anthropic({
+      baseURL: model.baseUrl,
+      apiKey,
+      defaultHeaders: {
+        "User-Agent": `octofriend/${APP_METADATA.version}`,
+      },
+    }),
+    model: model.model,
+    maxTokens,
+    thinking,
+    modalities: compilerModalities(model),
+  };
+}
+
+function anthropicThinking(
+  reasoning: ModelConfig["reasoning"],
+): AnthropicCompilerModel["thinking"] {
+  if (reasoning == null) return undefined;
+  if (reasoning === "high") return { type: "enabled", budget_tokens: 8192 };
+  if (reasoning === "medium") return { type: "enabled", budget_tokens: 4096 };
+  return { type: "enabled", budget_tokens: 2048 };
 }

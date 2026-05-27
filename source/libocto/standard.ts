@@ -1,6 +1,11 @@
 import { t, toJSONSchema } from "structural";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import type { CompilerIR, CompilerParams, CompilerResult } from "./compiler-interface.ts";
+import type {
+  CompilerIR,
+  CompilerModalities,
+  CompilerParams,
+  CompilerResult,
+} from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../xml.ts";
 import type {
@@ -8,8 +13,8 @@ import type {
   AssistantMessage as AssistantIR,
   Content as IRContent,
   MalformedToolRequest,
-} from "../libocto/llm-ir.ts";
-import type { LoadedTools, ToolCall } from "../libocto/tool-def.ts";
+} from "./llm-ir.ts";
+import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
@@ -17,8 +22,7 @@ import { errorToString, ok, err } from "../result.ts";
 import { trackTokens } from "../token-tracker.ts";
 import { PaymentError, RateLimitError } from "../errors.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
-import type { MultimodalConfig } from "../providers.ts";
-import { getDefaultOpenaiClient } from "./openai.ts";
+import type { StandardOpenAICompilerModel } from "./openai.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -89,7 +93,7 @@ function imagePlaceholderContent(): string {
 
 function openaiContentParts(
   content: IRContent["content"],
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): UserContent {
   const output: UserContent = [];
   for (const part of content) {
@@ -97,7 +101,7 @@ function openaiContentParts(
       output.push({ type: "text", text: part.content });
       continue;
     }
-    if (modalities?.image?.enabled) {
+    if (modalities?.includes("vision")) {
       output.push({
         type: "image_url",
         image_url: { url: part.image.dataUrl },
@@ -138,7 +142,7 @@ JSON`;
 async function toLlmMessages<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): Promise<Array<ChatCompletionMessageParam>> {
   const output: LlmMessage[] = [];
 
@@ -159,7 +163,7 @@ async function toLlmMessages<A extends Agent<any, any, any>>(
 
 function llmFromIr<A extends Agent<any, any, any>>(
   ir: CompilerIR<A>,
-  modalities?: MultimodalConfig,
+  modalities?: CompilerModalities,
 ): LlmMessage {
   if (ir.role === "assistant") {
     const { toolCalls } = ir;
@@ -303,7 +307,6 @@ function parseQuotaFromHeaders(headers: Headers): QuotaData | undefined {
 
 export async function runAgent<A extends Agent<any, any, any>>({
   model,
-  apiKey,
   irs,
   onTokens,
   onQuotaUpdated,
@@ -312,7 +315,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
   systemPrompt,
   autofixJson,
   tools,
-}: CompilerParams<A>): Promise<CompilerResult<A>> {
+}: CompilerParams<A, StandardOpenAICompilerModel>): Promise<CompilerResult<A>> {
   const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
   const toolDefs = tools || {};
@@ -344,20 +347,18 @@ export async function runAgent<A extends Agent<any, any, any>>({
         };
 
   const curl = generateCurlFrom({
-    baseURL: model.baseUrl,
+    baseURL: model.client.baseURL,
     model: model.model,
     messages,
     ...toolsParam,
   });
   return await handleKnownErrors(curl, async (): Promise<CompilerResult<A>> => {
-    const client = getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey });
-
     let reasoning: {
       reasoning_effort?: "low" | "medium" | "high";
     } = {};
-    if (model.reasoning) reasoning.reasoning_effort = model.reasoning;
+    if (model.reasoningEffort) reasoning.reasoning_effort = model.reasoningEffort;
 
-    const { data: res, response } = await client.chat.completions
+    const { data: res, response } = await model.client.chat.completions
       .create(
         {
           ...reasoning,
