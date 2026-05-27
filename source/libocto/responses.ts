@@ -28,7 +28,11 @@ import { sumAssistantTokens } from "../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../result.ts";
 import * as irPrompts from "../prompts/ir-prompts.ts";
 import type { ResponsesOpenAICompilerModel } from "./openai.ts";
-import { openAIStrictFunctionParameters } from "./openai.ts";
+import {
+  normalizeOpenAIStrictFunctionArguments,
+  openAIStrictFunctionParameters,
+} from "./openai.ts";
+import type { JsonObject, JsonValue } from "./openai.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -244,9 +248,8 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
   const toolDefs = tools || {};
   const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
   const toolDefinitions = toolEntries.map(([name, toolDef]) => {
-    const argJsonSchema = openAIStrictFunctionParameters(
-      toJSONSchema("ignore", toolDef.ArgumentsSchema),
-    );
+    const structuralJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject;
+    const argJsonSchema = openAIStrictFunctionParameters(structuralJsonSchema);
 
     return {
       type: "function" as const,
@@ -409,10 +412,16 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
     const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
 
     for (const toolCall of responseToolCalls.values()) {
+      const toolDef = (toolDefs as Partial<Record<string, LoadedTool<A>>>)[toolCall.name];
+      const schema = toolDef
+        ? (toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject)
+        : null;
       const chatToolCall = {
         toolCallId: toolCall.call_id,
         toolName: toolCall.name,
-        args: toolCall.arguments,
+        args: schema
+          ? normalizeResponseToolArguments(schema, toolCall.arguments)
+          : toolCall.arguments,
       };
       const parseResult = await parseToolCall<A["tools"]>({
         toolCall: chatToolCall,
@@ -448,5 +457,15 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
       requestError: errorToString(e),
       curl,
     });
+  }
+}
+
+function normalizeResponseToolArguments(schema: JsonObject, rawArguments: string): string {
+  try {
+    return JSON.stringify(
+      normalizeOpenAIStrictFunctionArguments(schema, JSON.parse(rawArguments) as JsonValue),
+    );
+  } catch {
+    return rawArguments;
   }
 }
