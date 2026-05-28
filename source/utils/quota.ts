@@ -1,41 +1,69 @@
 import { t } from "structural";
 
-export type QuotaEntry = {
-  used: number;
-  limit: number;
-  renewsAt: Date;
+const QuotaEntryRawSchema = t.subtype({
+  remaining: t.num,
+  max: t.num,
+  nextTickAt: t.str,
+  tickPercent: t.num,
+});
+
+const WeeklyEntryRawSchema = t.subtype({
+  nextRegenAt: t.str,
+  percentRemaining: t.num,
+  maxCredits: t.str,
+  remainingCredits: t.str,
+  nextRegenCredits: t.str,
+});
+
+type WithDateFields<T extends {}, K extends keyof T> = Omit<T, K> & {
+  [P in K]: Date;
 };
+
+export type QuotaEntry = WithDateFields<t.GetType<typeof QuotaEntryRawSchema>, "nextTickAt">;
+export type WeeklyEntry = WithDateFields<t.GetType<typeof WeeklyEntryRawSchema>, "nextRegenAt">;
 
 export type QuotaData = {
-  subscription: QuotaEntry;
-  freeToolCalls?: QuotaEntry;
+  rollingFiveHourLimit?: QuotaEntry;
+  weeklyTokenLimit?: WeeklyEntry;
 };
 
-const QuotaEntryRawSchema = t.subtype({
-  limit: t.num,
-  requests: t.num,
-  renewsAt: t.str,
-});
+function parseOptionalQuotaEntry(raw: unknown): QuotaEntry | undefined {
+  if (raw == null) return undefined;
+  const result = QuotaEntryRawSchema.sliceResult(raw);
+  if (result instanceof t.Err) return undefined;
+  const nextTickAt = new Date(result.nextTickAt);
+  if (isNaN(nextTickAt.getTime())) return undefined;
+  return {
+    ...result,
+    nextTickAt,
+  };
+}
 
-const QuotaDataRawSchema = t.subtype({
-  subscription: QuotaEntryRawSchema,
-  freeToolCalls: t.optional(QuotaEntryRawSchema),
-});
-
-function parseQuotaEntry(raw: t.GetType<typeof QuotaEntryRawSchema>): QuotaEntry | undefined {
-  const renewsAt = new Date(raw.renewsAt);
-  if (isNaN(renewsAt.getTime())) return undefined;
-  return { limit: raw.limit, used: raw.requests, renewsAt };
+function parseOptionalWeeklyEntry(raw: unknown): WeeklyEntry | undefined {
+  if (raw == null) return undefined;
+  const result = WeeklyEntryRawSchema.sliceResult(raw);
+  if (result instanceof t.Err) return undefined;
+  const nextRegenAt = new Date(result.nextRegenAt);
+  if (isNaN(nextRegenAt.getTime())) return undefined;
+  return {
+    ...result,
+    nextRegenAt,
+  };
 }
 
 export function parseQuotaJson(data: string): QuotaData | undefined {
   try {
-    const result = QuotaDataRawSchema.sliceResult(JSON.parse(data));
-    if (result instanceof t.Err) return undefined;
-    const subscription = parseQuotaEntry(result.subscription);
-    if (!subscription) return undefined;
-    const freeToolCalls = result.freeToolCalls ? parseQuotaEntry(result.freeToolCalls) : undefined;
-    return { subscription, freeToolCalls };
+    const raw = JSON.parse(data);
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+
+    const rollingFiveHourLimit = parseOptionalQuotaEntry(raw["rollingFiveHourLimit"]);
+    const weeklyTokenLimit = parseOptionalWeeklyEntry(raw["weeklyTokenLimit"]);
+    if (!rollingFiveHourLimit && !weeklyTokenLimit) return undefined;
+
+    return {
+      ...(rollingFiveHourLimit ? { rollingFiveHourLimit } : {}),
+      ...(weeklyTokenLimit ? { weeklyTokenLimit } : {}),
+    };
   } catch {
     /* ignore errors, they're out-of-place in the menu */
     return undefined;

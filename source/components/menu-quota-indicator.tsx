@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
 import { assertKeyForModel, useConfig } from "../config.ts";
 import { useModel, useAppStore } from "../state.ts";
-import { QuotaData, QuotaEntry } from "../utils/quota.ts";
+import type { QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntil } from "../time.ts";
 
@@ -23,11 +23,41 @@ type QuotaRowProps = {
   entry: QuotaEntry;
 };
 
+function formatQuotaNumber(value: number): string {
+  if (Number.isInteger(value)) return value.toString();
+  return Math.floor(value * 10) / 10 + "";
+}
+
 function QuotaRow({ label, entry }: QuotaRowProps) {
+  const tickPercent = formatQuotaNumber(entry.tickPercent * 100);
+  const showNextRegen = entry.remaining < entry.max;
+
   return (
-    <Box flexDirection="row" flexWrap="wrap">
-      <Text>{`${label}: ${entry.used} / ${entry.limit}`}</Text>
-      <Text color="gray">{` · refreshes ${formatTimeUntil(entry.renewsAt)}`}</Text>
+    <Box flexDirection="column">
+      <Text>{`${label}: ${formatQuotaNumber(entry.remaining)} / ${formatQuotaNumber(entry.max)} remaining`}</Text>
+      {showNextRegen ? (
+        <Text color="gray">{`Next regen: ${tickPercent}% ${formatTimeUntil(entry.nextTickAt)}`}</Text>
+      ) : null}
+    </Box>
+  );
+}
+
+type WeeklyQuotaRowProps = {
+  label: string;
+  entry: WeeklyEntry;
+};
+
+function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
+  const showNextRegen = entry.remainingCredits !== entry.maxCredits;
+
+  return (
+    <Box flexDirection="column">
+      <Text>{`${label}: ${entry.remainingCredits} / ${entry.maxCredits} remaining`}</Text>
+      {showNextRegen ? (
+        <Text color="gray">
+          {`Next regen: ${entry.nextRegenCredits} ${formatTimeUntil(entry.nextRegenAt)}`}
+        </Text>
+      ) : null}
     </Box>
   );
 }
@@ -59,15 +89,18 @@ export const MenuQuotaIndicator = () => {
   const quota = storeQuota ?? fetchedQuota;
 
   if (!quota) return null;
+  if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) return null;
 
   return (
     <Box flexDirection="column" alignItems="center">
-      <Text bold>Synthetic Subscription</Text>
+      <Text bold>Synthetic Quota</Text>
       <Box flexDirection="column">
-        <QuotaRow label="Requests" entry={quota.subscription} />
-        {quota.freeToolCalls && quota.freeToolCalls.limit > 0 && (
-          <QuotaRow label="Free Tool Calls" entry={quota.freeToolCalls} />
-        )}
+        {quota.weeklyTokenLimit ? (
+          <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
+        ) : null}
+        {quota.rollingFiveHourLimit ? (
+          <QuotaRow label="Rolling 5h" entry={quota.rollingFiveHourLimit} />
+        ) : null}
       </Box>
     </Box>
   );
