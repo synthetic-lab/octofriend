@@ -99,7 +99,7 @@ export const MenuQuotaIndicator = () => {
           <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
         ) : null}
         {quota.rollingFiveHourLimit ? (
-          <QuotaRow label="Rolling 5h" entry={quota.rollingFiveHourLimit} />
+          <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
         ) : null}
       </Box>
     </Box>
