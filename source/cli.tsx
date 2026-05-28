@@ -7,6 +7,8 @@ import path from "path";
 import os from "os";
 import fs from "fs/promises";
 import { render } from "ink";
+import chalk from "chalk";
+import { quote } from "shell-quote";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
@@ -33,62 +35,105 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
+import { color, THEME_COLOR } from "./theme.ts";
+import { formatRelativeTime } from "./time.ts";
+import {
+  createSessionContext,
+  loadSessionState,
+  createSessionSaveManager,
+  listSessions,
+  type SessionContext,
+  type SessionSaveManager,
+  ActiveSession,
+} from "./session-history/index.ts";
+import { UiState, useAppStore } from "./state.ts";
+import type { HistoryItem } from "./history.ts";
+import {
+  replaceOctoFlags,
+  ParsedCliArgs,
+  replaceDockerRunArgs,
+  withLaunchOptions,
+  DockerConnectCommand,
+  DockerRunCommand,
+  LocalCommand,
+} from "./session-history/cli-args.ts";
 
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
 
-const cli = new Command()
-  .description("If run with no subcommands, runs Octo interactively.")
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-  .action(async opts => {
-    const transport = new LocalTransport();
+const cli = withLaunchOptions(
+  new Command().description("If run with no subcommands, runs Octo interactively."),
+)
+  .option("--resume <session-id>", "Resume a previous Octo session")
+  .argument("[docker-run-args...]", "Optional replacement args for `docker run` when resuming")
+  .action(async (dockerRunArgs, opts) => {
+    const resumeSessionId = opts.resume ?? null;
+    if (resumeSessionId == null && dockerRunArgs.length > 0) {
+      console.error("Use octo docker run <args> to start a new session with Docker.");
+      process.exitCode = 1;
+      return;
+    }
+
+    let runConfig = null;
+    if (resumeSessionId != null) {
+      runConfig = await buildSessionContext(resumeSessionId, {
+        config: opts.config,
+        unchained: opts.unchained,
+        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
+      });
+      if (runConfig == null) return;
+    } else {
+      runConfig = {
+        resumeSessionId: null,
+        transport: new LocalTransport(),
+        parsedCliArgs: {
+          kind: "local",
+          config: opts.config,
+          unchained: opts.unchained,
+        } as LocalCommand,
+      };
+    }
+
     try {
       // Set terminal title for tmux
       process.title = "\\_o_O.//";
       // Set terminal title for xterm-compatible term emulators
       process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
-
-      await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
-        transport,
-      });
+      await runMain(runConfig);
     } finally {
-      await transport.close();
+      await runConfig.transport.close();
     }
   });
 
 const docker = cli.command("docker").description("Sandbox Octo inside Docker");
-docker
-  .command("connect")
+withLaunchOptions(docker.command("connect"))
   .description("Sandbox Octo inside an already-running container")
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("<target>", "The Docker container")
   .action(async (target, opts) => {
     const transport = await DockerTransport.create({ type: "container", container: target });
 
     try {
       await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
         transport,
+        resumeSessionId: null,
+        parsedCliArgs: {
+          kind: "docker-connect",
+          target,
+          config: opts.config,
+          unchained: opts.unchained,
+        } as DockerConnectCommand,
       });
     } finally {
       await transport.close();
     }
   });
 
-docker
-  .command("run")
+withLaunchOptions(docker.command("run"))
   .description(
     "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
   )
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("[args...]", "The args to pass to `docker run`")
   .action(async (args, opts) => {
     const transport = await DockerTransport.create({
@@ -98,18 +143,139 @@ docker
 
     try {
       await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
         transport,
+        resumeSessionId: null,
+        parsedCliArgs: {
+          kind: "docker-run",
+          dockerRunArgs: args,
+          config: opts.config,
+          unchained: opts.unchained,
+        } as DockerRunCommand,
       });
     } finally {
       await transport.close();
     }
   });
 
-async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
+async function resumeExistingSession(opts: {
+  resumeSessionId: string;
+  transport: Transport;
+  cwd: string;
+}): Promise<ActiveSession> {
+  const sessionState = await loadSessionState(opts.resumeSessionId);
+  if (sessionState == null) {
+    console.error(`No session found with id ${opts.resumeSessionId}`);
+    process.exitCode = 1;
+    return { context: null, isResumable: true, initialHistoryLength: 0 };
+  }
+
+  if (sessionState.transportKind !== opts.transport.transportKind) {
+    if (opts.transport.transportKind === "local" && sessionState.transportKind === "docker") {
+      console.error(
+        `Session ${sessionState.id} is a Docker session. Resume it with: octo --resume ${sessionState.id}`,
+      );
+    } else if (
+      opts.transport.transportKind === "docker" &&
+      sessionState.transportKind === "local"
+    ) {
+      console.error(
+        `Session ${sessionState.id} is a local session. Resume it with: octo --resume ${sessionState.id}`,
+      );
+    } else {
+      console.error(
+        `Session ${sessionState.id} was created with transport kind "${sessionState.transportKind}", but this command is using transport kind "${opts.transport.transportKind}".`,
+      );
+    }
+    process.exitCode = 1;
+    return { context: null, isResumable: true, initialHistoryLength: 0 };
+  }
+
+  if (sessionState.transportKind === "local" && sessionState.cwd !== opts.cwd) {
+    console.error(
+      `Session ${sessionState.id} was created in ${sessionState.cwd}, but resumed in ${opts.cwd}.`,
+    );
+    process.exitCode = 1;
+    return { context: null, isResumable: true, initialHistoryLength: 0 };
+  }
+
+  const context: SessionContext = {
+    id: sessionState.id,
+    cwd: sessionState.cwd,
+    transportKind: sessionState.transportKind,
+    cliArgs: sessionState.cliArgs,
+  };
+  useAppStore.setState({
+    history: sessionState.history,
+    lastUserPromptIndex: lastUserPromptIndex(sessionState.history),
+  });
+
+  return {
+    context,
+    isResumable: true,
+    initialHistoryLength: sessionState.history.length,
+  };
+}
+
+function onHistoryVersionChange(opts: {
+  state: UiState;
+  previousState: UiState;
+  activeSession: ActiveSession;
+  cwd: string;
+  transportKind: "local" | "docker";
+  parsedCliArgs: ParsedCliArgs;
+  sessionSaveCoordinator: SessionSaveManager;
+}) {
+  const { state, previousState, activeSession } = opts;
+
+  if (state.conversationAction === "edit-retry") {
+    opts.sessionSaveCoordinator.replace(state.history);
+  } else {
+    const nextSessionContext = createSessionContext(
+      opts.cwd,
+      opts.transportKind,
+      opts.parsedCliArgs,
+    );
+    opts.sessionSaveCoordinator.switchSession(nextSessionContext, previousState.history);
+    activeSession.context = nextSessionContext;
+    activeSession.isResumable = false;
+  }
+
+  useAppStore.setState({ conversationAction: null });
+}
+
+function onHistoryChange(opts: {
+  state: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[0];
+  previousState: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[1];
+  activeSession: ActiveSession;
+  sessionSaveCoordinator: SessionSaveManager;
+}) {
+  const { state, previousState, activeSession, sessionSaveCoordinator } = opts;
+
+  const savingSessionId = activeSession.context!.id;
+  const useAppend =
+    state.history.length > previousState.history.length &&
+    state.history
+      .slice(0, previousState.history.length)
+      .every((item, i) => item === previousState.history[i]);
+  const saveOp = useAppend
+    ? sessionSaveCoordinator.append(state.history)
+    : sessionSaveCoordinator.replace(state.history);
+  saveOp.then(saved => {
+    if (saved && activeSession.context?.id === savingSessionId) {
+      activeSession.isResumable = true;
+    }
+  });
+}
+
+async function runMain(opts: {
+  transport: Transport;
+  resumeSessionId: string | null;
+  parsedCliArgs: ParsedCliArgs;
+}) {
+  let unsubscribeStoreListener: (() => void) | null = null;
+
   try {
-    let { config, configPath } = await loadConfig(opts.config);
+    let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -137,6 +303,51 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
 
+    const activeSession: ActiveSession =
+      opts.resumeSessionId != null
+        ? await resumeExistingSession({
+            resumeSessionId: opts.resumeSessionId,
+            transport: opts.transport,
+            cwd,
+          })
+        : (() => {
+            const context = createSessionContext(
+              cwd,
+              opts.transport.transportKind,
+              opts.parsedCliArgs,
+            );
+            return {
+              context,
+              isResumable: false,
+              initialHistoryLength: 0,
+            };
+          })();
+
+    if (activeSession.context == null) return;
+    const sessionSaveCoordinator = createSessionSaveManager(
+      activeSession.context,
+      activeSession.initialHistoryLength,
+    );
+
+    unsubscribeStoreListener = useAppStore.subscribe((state, previousState) => {
+      if (state.historyVersion !== previousState.historyVersion) {
+        onHistoryVersionChange({
+          state,
+          previousState,
+          activeSession,
+          cwd,
+          transportKind: opts.transport.transportKind,
+          parsedCliArgs: opts.parsedCliArgs,
+          sessionSaveCoordinator,
+        });
+        return;
+      }
+
+      if (state.history !== previousState.history && activeSession.context != null) {
+        onHistoryChange({ state, previousState, activeSession, sessionSaveCoordinator });
+      }
+    });
+
     const { waitUntilExit } = render(
       <App
         bootSkills={skills.map(s => s.name)}
@@ -144,7 +355,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         configPath={configPath}
         cwd={cwd}
         metadata={APP_METADATA}
-        unchained={!!opts.unchained}
+        unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
@@ -158,6 +369,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     );
 
     await waitUntilExit();
+    if (activeSession.context != null) {
+      const savedOnExit = await sessionSaveCoordinator.append(useAppStore.getState().history);
+      await sessionSaveCoordinator.flush();
+      activeSession.isResumable = savedOnExit || activeSession.isResumable;
+    }
 
     console.log("\nApprox. tokens used:");
     if (Object.keys(tokenCounts()).length === 0) {
@@ -169,11 +385,137 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         console.log(`${model}: ${input} input, ${output} output`);
       }
     }
+    if (activeSession.context != null && activeSession.isResumable) {
+      const resumeCommand = formatResumeCommand(activeSession.context);
+      console.log(
+        `\nTo continue this session, run ${chalk.hex(color(!!opts.parsedCliArgs.unchained))(resumeCommand)}`,
+      );
+    }
   } finally {
+    unsubscribeStoreListener?.();
     await shutdownLspClients();
     await shutdownMcpClients();
   }
 }
+
+function lastUserPromptIndex(history: HistoryItem[]): number | null {
+  for (let index = history.length - 1; index >= 0; index--) {
+    const item = history[index];
+    if (item.type === "llm-ir" && item.ir.role === "user") return index;
+  }
+  return null;
+}
+
+type ResolvedResumeLaunch = {
+  resumeSessionId: string;
+  transport: Transport;
+  parsedCliArgs: ParsedCliArgs;
+};
+
+async function buildSessionContext(
+  resumeSessionId: string,
+  overrides: { config?: string; unchained?: boolean; dockerRunArgs?: string[] },
+): Promise<ResolvedResumeLaunch | null> {
+  const sessionState = await loadSessionState(resumeSessionId);
+  if (sessionState == null) {
+    console.error(`No session found with id ${resumeSessionId}`);
+    process.exitCode = 1;
+    return null;
+  }
+
+  const cliArgs = sessionState.cliArgs;
+  if (sessionState.transportKind === "local" && cliArgs.kind !== "local") {
+    console.error(
+      `Cannot resume session ${resumeSessionId}: it is marked as local but its stored launch arguments use Docker.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+  if (sessionState.transportKind === "docker" && cliArgs.kind === "local") {
+    console.error(
+      `Cannot resume session ${resumeSessionId}: it is marked as Docker but its stored launch arguments are local.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+
+  const currentCwd = process.cwd();
+  if (cliArgs.kind === "local" && sessionState.cwd !== currentCwd) {
+    console.error(
+      `Session ${sessionState.id} was created in ${sessionState.cwd}, but resumed in ${currentCwd}.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+
+  let effectiveCliArgs = replaceOctoFlags(cliArgs, overrides);
+
+  if (overrides.dockerRunArgs != null) {
+    if (effectiveCliArgs.kind !== "docker-run") {
+      console.error(
+        `Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.`,
+      );
+      process.exitCode = 1;
+      return null;
+    } else {
+      effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
+    }
+  }
+
+  const shared = {
+    resumeSessionId,
+    parsedCliArgs: effectiveCliArgs,
+  };
+  switch (effectiveCliArgs.kind) {
+    case "local":
+      return {
+        ...shared,
+        transport: new LocalTransport(),
+      };
+    case "docker-connect":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "container",
+          container: effectiveCliArgs.target,
+        }),
+      };
+    case "docker-run":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "image",
+          image: await manageContainer(effectiveCliArgs.dockerRunArgs),
+        }),
+      };
+  }
+}
+
+function formatResumeCommand(sessionContext: SessionContext): string {
+  return quote(["octo", "--resume", sessionContext.id]);
+}
+
+cli
+  .command("sessions")
+  .description("List sessions for the current directory")
+  .option("--all", "List sessions from all directories")
+  .action(async opts => {
+    const cwd = opts.all ? undefined : process.cwd();
+    const sessions = await listSessions(cwd);
+    if (sessions.length === 0) {
+      console.log(opts.all ? "No sessions found." : "No sessions found in this directory.");
+      return;
+    }
+
+    for (const session of sessions) {
+      const updated = new Date(session.updatedAt).toLocaleString();
+      const relativeTime = formatRelativeTime(session.updatedAt);
+      const cwdSuffix = opts.all ? `  ${chalk.dim(session.cwd)}` : "";
+      console.log(
+        `${chalk.hex(THEME_COLOR)(session.id)}  ${updated}  ${chalk.dim(relativeTime)}${cwdSuffix}`,
+      );
+    }
+  });
 
 cli
   .command("version")

@@ -1,7 +1,10 @@
 import { quote } from "shell-quote";
 
+export type TransportKind = "local" | "docker";
+
 export interface Transport {
   readonly cwd: string;
+  readonly transportKind: TransportKind;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
   readFile: (signal: AbortSignal, file: string) => Promise<string>;
   pathExists: (signal: AbortSignal, file: string) => Promise<boolean>;

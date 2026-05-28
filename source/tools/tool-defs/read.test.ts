@@ -10,6 +10,7 @@ function createTransport(files: Record<string, string>): Transport {
 
   return {
     cwd: "/repo",
+    transportKind: "local",
     async writeFile(_signal, file, contents) {
       const resolved = resolve(file);
       files[resolved] = contents;

@@ -97,7 +97,8 @@ export type UiState = {
   byteCount: number;
   query: string;
   history: Array<HistoryItem>;
-  clearNonce: number;
+  historyVersion: number;
+  conversationAction: "clear" | "edit-retry" | null;
   lastUserPromptIndex: number | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
@@ -142,7 +143,8 @@ export const useAppStore = create<UiState>((set, get) => ({
   quotaData: null,
   byteCount: 0,
   query: "",
-  clearNonce: 0,
+  historyVersion: 0,
+  conversationAction: null,
   lastUserPromptIndex: null,
   whitelist: new Set<string>(),
 
@@ -241,7 +243,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: filteredHistory,
       query: textPart?.content ?? "",
       byteCount: 0,
-      clearNonce: state.clearNonce + 1,
+      historyVersion: state.historyVersion + 1,
+      conversationAction: "edit-retry",
       modeData: { mode: "input", vimMode: "INSERT" },
     }));
   },
@@ -407,7 +410,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [],
       lastUserPromptIndex: null,
       byteCount: 0,
-      clearNonce: state.clearNonce + 1,
+      historyVersion: state.historyVersion + 1,
+      conversationAction: "clear",
     }));
   },
 
@@ -423,6 +427,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport }) => {
+    const startHistoryVersion = get().historyVersion;
     let { modeData } = get();
     if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
@@ -439,8 +444,11 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
 
     const tools = await loadTools(transport, abortController.signal, config);
+    if (get().historyVersion !== startHistoryVersion) return;
 
     const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    if (get().historyVersion !== startHistoryVersion) return;
+
     if (!result.success) {
       set({
         history: [
@@ -467,6 +475,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     }
 
+    if (get().historyVersion !== startHistoryVersion) return;
     if (get()._maybeHandleAbort(abortController.signal)) {
       return;
     }
@@ -479,6 +488,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runAgent: async ({ config, transport }) => {
     const historyCopy = [...get().history];
+    const startHistoryVersion = get().historyVersion;
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -560,6 +570,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           compactionParsed: event => {
             throttle.flush();
+            if (get().historyVersion !== startHistoryVersion) return;
             const checkpointItem: HistoryItem = {
               type: "llm-ir",
               ir: event.checkpoint,
@@ -591,11 +602,13 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           retryTool: event => {
             throttle.flush();
+            if (get().historyVersion !== startHistoryVersion) return;
             set({ history: [...historyCopy, ...outputToHistory(event.irs)] });
           },
         },
       });
       throttle.flush();
+      if (get().historyVersion !== startHistoryVersion) return;
       historyCopy.push(...outputToHistory(finish.irs));
       set({ history: [...historyCopy] });
       const finishReason = finish.reason;
@@ -627,6 +640,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
 
       if (finishReason.type === "compaction-error") {
+        if (get().historyVersion !== startHistoryVersion) return;
         set({
           modeData: {
             mode: "compaction-error",
@@ -634,7 +648,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             curlCommand: finishReason.curl,
           },
           history: [
-            ...get().history,
+            ...historyCopy,
             {
               type: "compaction-failed",
             },

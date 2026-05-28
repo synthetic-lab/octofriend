@@ -1,5 +1,11 @@
 import { spawn } from "child_process";
-import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
+import {
+  Transport,
+  TransportKind,
+  AbortError,
+  CommandFailedError,
+  TransportError,
+} from "./transport-common.ts";
 
 export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
@@ -48,7 +54,6 @@ async function runDockerCommand(
   signal: AbortSignal,
 ): Promise<string> {
   const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
-
   return new Promise<string>((resolve, reject) => {
     const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
       timeout,
@@ -135,6 +140,7 @@ type DockerTarget =
     };
 
 export class DockerTransport implements Transport {
+  readonly transportKind: TransportKind = "docker";
   private readonly _container: string;
   cwd: string;
 

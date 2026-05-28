@@ -642,6 +642,8 @@ function ClearConversationConfirm() {
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
+      title="Start a new conversation?"
+      subtitle="Your old conversation will still be accessible through session history"
       onConfirm={() => {
         clearHistory();
         setMenuMode("main-menu");

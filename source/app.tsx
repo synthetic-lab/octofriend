@@ -37,7 +37,7 @@ import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
-import { Octo } from "./components/octo.tsx";
+import OctoRow, { OCTO_AVATAR_MARGIN, OCTO_AVATAR_WIDTH } from "./components/octo-row.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
@@ -170,12 +170,12 @@ export default function App({
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
-  const { history, modeData, setVimMode, clearNonce, cancelNotifyReadyForInput } = useAppStore(
+  const { history, modeData, setVimMode, historyVersion, cancelNotifyReadyForInput } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
       setVimMode: state.setVimMode,
-      clearNonce: state.clearNonce,
+      historyVersion: state.historyVersion,
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
     })),
   );
@@ -224,7 +224,7 @@ export default function App({
                   <ExitOnDoubleCtrlC>
                     <TerminalSizeTracker>
                       <Box flexDirection="column" width="100%" height="100%">
-                        <Static items={staticItems} key={clearNonce}>
+                        <Static items={staticItems} key={historyVersion}>
                           {(item, index) => (
                             <StaticItemRenderer item={item} key={`static-${index}`} />
                           )}
@@ -1554,28 +1554,15 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
   return <Text> this tool in this session.</Text>;
 }
 
-const OCTO_MARGIN = 1;
-const OCTO_PADDING = 2;
-function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
-  return (
-    <Box>
-      <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}>
-        <Octo />
-      </Box>
-      {children}
-    </Box>
-  );
-}
-
 function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
   const terminalSize = useTerminalSize();
   const scrollHeight = Math.max(1, Math.min(10, terminalSize.height - 10));
   return (
-    <OctoMessageRenderer>
+    <OctoRow>
       <MaybeScrollView height={scrollHeight}>
         <Text color="gray">{item.content}</Text>
       </MaybeScrollView>
-    </OctoMessageRenderer>
+    </OctoRow>
   );
 }
 
@@ -1591,12 +1578,12 @@ function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
   // Reserve space for the borders of the thoughtbox
   if (showThoughts) reservedSpace += 2;
   return (
-    <OctoMessageRenderer>
+    <OctoRow>
       <MaybeScrollView height={scrollViewHeight}>
         {showThoughts && <ThoughtBox thoughts={thoughts} />}
         <Markdown markdown={content} />
       </MaybeScrollView>
-    </OctoMessageRenderer>
+    </OctoRow>
   );
 }
 
@@ -1636,7 +1623,7 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
   }, [thoughts]);
 
   const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
-  const octoSpace = OCTO_MARGIN + OCTO_PADDING + 1;
+  const octoSpace = OCTO_AVATAR_MARGIN + OCTO_AVATAR_WIDTH + 1;
   const scrollBorderWidth = 2;
   const contentMaxWidth = terminalSize.width - THOUGHTBOX_MARGIN - octoSpace - scrollBorderWidth;
   const maxWidth = Math.min(contentMaxWidth, MAX_THOUGHTBOX_WIDTH);

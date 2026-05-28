@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { Box } from "ink";
 import { KbShortcutSelect, Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
+import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 
 export function ConfirmDialog({
   confirmLabel,
@@ -8,12 +9,16 @@ export function ConfirmDialog({
   onConfirm,
   onReject,
   rejectFirst = false,
+  title,
+  subtitle,
 }: {
   confirmLabel: string;
   rejectLabel: string;
   onConfirm: () => any;
   onReject: () => any;
   rejectFirst?: boolean;
+  title?: string;
+  subtitle?: string;
 }) {
   const items = [
     {
@@ -48,8 +53,6 @@ export function ConfirmDialog({
   }, []);
 
   return (
-    <Box justifyContent="center">
-      <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
-    </Box>
+    <KbShortcutPanel title={title} subtitle={subtitle} shortcutItems={items} onSelect={onSelect} />
   );
 }

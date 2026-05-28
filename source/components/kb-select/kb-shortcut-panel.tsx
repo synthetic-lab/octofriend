@@ -1,32 +1,26 @@
 import React from "react";
-import { Box, Text } from "ink";
-import { Octo } from "../octo.tsx";
+import { Box } from "ink";
+import { MenuHeader } from "../menu-panel.tsx";
 import { Item, KbShortcutSelect, ShortcutArray } from "./kb-shortcut-select.tsx";
 
 type KbPanelProps<V> = {
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
-  title: string;
+  title?: string;
+  subtitle?: string;
   children?: React.ReactNode;
 };
 
-export const MenuHeader = ({ title }: { title: string }) => {
-  return (
-    <Box justifyContent="center" marginBottom={1}>
-      <Box justifyContent="center" width={80}>
-        <Octo />
-        <Box marginLeft={1}>
-          <Text>{title}</Text>
-        </Box>
-      </Box>
-    </Box>
-  );
-};
-
-export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
+export function KbShortcutPanel<V>({
+  shortcutItems,
+  onSelect,
+  title,
+  subtitle,
+  children,
+}: KbPanelProps<V>) {
   return (
     <Box flexDirection="column">
-      <MenuHeader title={title} />
+      {title ? <MenuHeader title={title} subtitle={subtitle} /> : null}
       {children && (
         <Box justifyContent="center" alignItems="center" marginBottom={1}>
           <Box flexDirection="column" width={80}>

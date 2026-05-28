@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import SelectInput from "./ink/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
-import { Octo } from "./octo.tsx";
+import OctoRow from "./octo-row.tsx";
 
 type Item<V> = {
   label: string;
@@ -15,14 +15,16 @@ type MenuPanelProps<V> = {
   children?: React.ReactNode;
 };
 
-export const MenuHeader = ({ title }: { title: string }) => {
+export const MenuHeader = ({ title, subtitle }: { title: string; subtitle?: string }) => {
   return (
     <Box justifyContent="center" marginBottom={1}>
       <Box justifyContent="center" width={80}>
-        <Octo />
-        <Box marginLeft={1}>
-          <Text>{title}</Text>
-        </Box>
+        <OctoRow>
+          <Box flexDirection="column">
+            <Text>{title}</Text>
+            {subtitle ? <Text dimColor>{subtitle}</Text> : null}
+          </Box>
+        </OctoRow>
       </Box>
     </Box>
   );

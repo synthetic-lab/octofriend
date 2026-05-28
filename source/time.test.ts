@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatTimeUntil } from "./time.ts";
+import { formatRelativeTime, formatTimeUntil } from "./time.ts";
 
 describe("formatTimeUntil", () => {
   const now = new Date("2026-03-02T12:00:00Z");
@@ -107,5 +107,37 @@ describe("formatTimeUntil", () => {
   it("should handle negative days as 0 minutes", () => {
     const expiresAt = new Date("2026-02-28T12:00:00Z");
     expect(formatTimeUntil(expiresAt, now)).toBe("in 0 minutes");
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = new Date("2026-03-02T12:00:00Z");
+
+  it("formats recent timestamps as just now", () => {
+    expect(formatRelativeTime(now.getTime() - 59_000, now)).toBe("just now");
+  });
+
+  it("formats minutes ago", () => {
+    expect(formatRelativeTime(now.getTime() - 12 * 60_000, now)).toBe("12m ago");
+  });
+
+  it("formats hours ago", () => {
+    expect(formatRelativeTime(now.getTime() - 3 * 60 * 60_000, now)).toBe("3h ago");
+  });
+
+  it("formats days ago", () => {
+    expect(formatRelativeTime(now.getTime() - 5 * 24 * 60 * 60_000, now)).toBe("5d ago");
+  });
+
+  it("formats months ago", () => {
+    expect(formatRelativeTime(now.getTime() - 45 * 24 * 60 * 60_000, now)).toBe("1mo ago");
+  });
+
+  it("formats 12 months ago as months", () => {
+    expect(formatRelativeTime(now.getTime() - 365 * 24 * 60 * 60_000, now)).toBe("12mo ago");
+  });
+
+  it("formats years ago", () => {
+    expect(formatRelativeTime(now.getTime() - 800 * 24 * 60 * 60_000, now)).toBe("2y ago");
   });
 });

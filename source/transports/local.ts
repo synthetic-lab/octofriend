@@ -1,10 +1,17 @@
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
+import {
+  Transport,
+  TransportKind,
+  AbortError,
+  CommandFailedError,
+  TransportError,
+} from "./transport-common.ts";
 
 export class LocalTransport implements Transport {
-  cwd = process.cwd();
+  readonly transportKind: TransportKind = "local";
+  readonly cwd = process.cwd();
 
   async close() {}
 
@@ -78,7 +85,7 @@ export class LocalTransport implements Transport {
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
     return new Promise<string>((resolve, reject) => {
       const child = spawn(cmd, {
-        cwd: process.cwd(),
+        cwd: this.cwd,
         shell: "bash",
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
