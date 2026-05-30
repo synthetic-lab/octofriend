@@ -43,10 +43,6 @@ const cli = new Command()
   .description("If run with no subcommands, runs Octo interactively.")
   .option("--config <path>")
   .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-  .option(
-    "--connect <target>",
-    "Connect to a Docker container. For example, octo --connect docker:some-container-name",
-  )
   .action(async opts => {
     const transport = new LocalTransport();
     try {
