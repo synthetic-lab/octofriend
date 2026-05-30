@@ -17,6 +17,7 @@ import {
   assertKeyForModel,
   AUTOFIX_KEYS,
   APP_METADATA,
+  Config,
 } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
@@ -112,9 +113,26 @@ docker
   });
 
 async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
-  try {
-    let { config, configPath } = await loadConfig(opts.config);
+  let config: Config;
+  let configPath: string;
 
+  try {
+    const loaded = await loadConfig(opts.config);
+    config = loaded.config;
+    configPath = loaded.configPath;
+  } catch (error) {
+    // Handle config loading errors gracefully
+    console.error("\n❌ Failed to load configuration\n");
+    if (error instanceof Error) {
+      console.error(error.message);
+    } else {
+      console.error(String(error));
+    }
+    console.error("\nRun 'octofriend init' to create a fresh configuration.\n");
+    process.exit(1);
+  }
+
+  try {
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
       for (const server of Object.keys(config.mcpServers)) {
