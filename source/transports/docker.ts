@@ -106,6 +106,7 @@ output: ${output}`,
             new CommandFailedError(
               `Command exited with code: ${code}
 output: ${output}`,
+              code,
             ),
           );
         }

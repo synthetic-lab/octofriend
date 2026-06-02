@@ -56,18 +56,18 @@ export async function findFiles(
   signal: AbortSignal,
   transport: Transport,
   options: {
-    cwd?: string;
-    name?: string; // -name pattern (e.g. "*.js")
-    caseInsensitive?: boolean; // use -iname instead of -name
-    path?: string; // -path pattern (e.g. "*/test/*")
-    maxDepth?: number; // -maxdepth N
-    type?: "f" | "d"; // -type f or -type d
-    excludeFilename?: string; // ! -name pattern
+    path?: string; // The directory to search from (defaults to transport.cwd)
+    includeName?: string; // -name pattern (e.g. "*.js")
+    includePath?: string; // -path pattern (e.g. "*/test/*")
+    excludeName?: string; // ! -name pattern
     excludePath?: string; // ! -path pattern
+    caseInsensitive?: boolean; // use -iname instead of -name
+    type?: "f" | "d"; // -type f or -type d
+    maxDepth?: number; // -maxdepth N
     maxResults?: number; // cap output count
   } = {},
 ): Promise<string[]> {
-  const cwd = options.cwd || transport.cwd;
+  const cwd = options.path || transport.cwd;
 
   // Build find command with directory pruning
   const pruneArgs = EXCLUDED_DIRS.map(d => `-name ${quote([d])} -prune`).join(" -o ");
@@ -83,29 +83,27 @@ export async function findFiles(
     predicates.push(`-maxdepth ${options.maxDepth}`);
   }
 
-  if (options.name !== undefined) {
+  if (options.includeName !== undefined) {
     const nameFlag = options.caseInsensitive ? "-iname" : "-name";
-    predicates.push(`${nameFlag} ${quote([options.name])}`);
+    predicates.push(`${nameFlag} ${quote([options.includeName])}`);
   }
 
-  if (options.path !== undefined) {
-    predicates.push(`-path ${quote([options.path])}`);
+  if (options.includePath !== undefined) {
+    predicates.push(`-path ${quote([options.includePath])}`);
   }
 
-  if (options.type === "f" || options.type === "d") {
-    predicates.push(`-type ${options.type}`);
-  }
-
-  if (options.excludeFilename !== undefined) {
-    predicates.push(`! -name ${quote([options.excludeFilename])}`);
+  if (options.excludeName !== undefined) {
+    predicates.push(`! -name ${quote([options.excludeName])}`);
   }
 
   if (options.excludePath !== undefined) {
     predicates.push(`! -path ${quote([options.excludePath])}`);
   }
 
-  // Default to -type f if no type specified
-  if (predicates.length === 0) {
+  if (options.type === "f" || options.type === "d") {
+    predicates.push(`-type ${options.type}`);
+  } else {
+    // Default to -type f if no type specified
     predicates.push("-type f");
   }
 
@@ -141,7 +139,13 @@ export class TransportError extends Error {
     this.name = this.constructor.name;
   }
 }
-export class CommandFailedError extends TransportError {}
+export class CommandFailedError extends TransportError {
+  exitCode?: number;
+  constructor(msg: string, exitCode?: number) {
+    super(msg);
+    this.exitCode = exitCode;
+  }
+}
 export class AbortError extends TransportError {
   constructor() {
     super("Aborted");
