@@ -1224,9 +1224,9 @@ function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
   return (
     <Box flexDirection="column">
       <Text color="gray">Octo searched for files using a glob pattern:</Text>
-      <GlobArg name="CWD" arg={item.arguments.cwd} />
-      <GlobArg name="Filename pattern" arg={item.arguments.name} />
-      <GlobArg name="Path pattern" arg={item.arguments.path} />
+      <GlobArg name="Path" arg={item.arguments.path} />
+      <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
+      <GlobArg name="Path pattern" arg={item.arguments.includePath} />
       <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
     </Box>
   );

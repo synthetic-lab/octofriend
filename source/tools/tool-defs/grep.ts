@@ -11,9 +11,12 @@ export default TOOL.declare({
   description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
   ArgumentsSchema: t.partial(
     t.subtype({
-      cwd: t.str,
-      pattern: t.str.comment("The search pattern"),
-      path: t.str.comment("Directory or file to search (defaults to cwd)"),
+      pattern: t.str.comment(
+        "The search pattern. Internally uses grep with the -E flag (extended regex).",
+      ),
+      path: t.str.comment(
+        "Directory or file to search in. Defaults to the current working directory.",
+      ),
       caseInsensitive: t.bool.comment("Case-insensitive search"),
       context: t.num.comment("Number of context lines around each match"),
       maxResults: t.num.comment("Max number of results to return"),
@@ -24,7 +27,7 @@ export default TOOL.declare({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
     try {
-      const args: string[] = ["-n", "-r"];
+      const args: string[] = ["-n", "-r", "-E"];
 
       if (search.caseInsensitive) {
         args.push("-i");
@@ -36,7 +39,7 @@ export default TOOL.declare({
 
       args.push("--", quote([search.pattern ?? ""]));
 
-      const searchPath = search.path ?? search.cwd ?? transport.cwd;
+      const searchPath = search.path ?? transport.cwd;
       args.push(quote([searchPath]));
 
       const cmd = `grep ${args.join(" ")}`;
@@ -63,7 +66,7 @@ export default TOOL.declare({
         return err(USER_ABORTED_ERROR_MESSAGE);
       }
       if (e instanceof CommandFailedError) {
-        if (e.message.includes("exit code 1")) {
+        if (e.exitCode === 1) {
           return ok({
             type: "output",
             content: [{ type: "text", content: "" }],

@@ -17,22 +17,31 @@ deeply-nested directories with large amounts of files). Do NOT search for overly
 like *.rb: instead, use targeted search terms for specifically what you want to find, like
 *user-data*.rb if you're searching for a file for user data for example.
 
-The glob tool automatically excludes common depedency directories such as node_modules, but do not
+The glob tool automatically excludes common dependency directories such as node_modules, but do not
 depend on this fact: there may be directories that it doesn't know it should ignore. Keep your glob
 terms scoped and specific.
 `.trim(),
   ArgumentsSchema: t.partial(
     t.subtype({
-      cwd: t.str,
-      name: t.str.comment("-name pattern (e.g. *file-pattern*.js)"),
-      caseInsensitive: t.bool.comment(
-        "Use case-insensitive matching for the name pattern (uses -iname instead of -name)",
+      path: t.str.comment(
+        "The directory to search from. Finds files recursively within this directory. Defaults to the current working directory.",
       ),
-      path: t.str.comment("-path pattern (e.g. */test/*)"),
+      includeName: t.str.comment(
+        "Filename (basename) glob pattern for files to include (e.g. *file-pattern*.js). Path segments should not be part of this pattern.",
+      ),
+      excludeName: t.str.comment(
+        "Filename (basename) glob pattern for files to exclude (e.g. *.d.ts). Path segments should not be part of this pattern.",
+      ),
+      includePath: t.str.comment(
+        "File path glob pattern for files to include (e.g. */src/* for files inside src directories).",
+      ),
+      excludePath: t.str.comment(
+        "File path glob pattern for files to exclude (e.g. */test/* for files inside test directories).",
+      ),
+      caseInsensitive: t.bool.comment(
+        "Use case-insensitive matching for the filename glob pattern. Exclusion patterns are not affected by this flag and are always case-sensitive.",
+      ),
       maxDepth: t.num.comment("The max depth of directories to search"),
-      type: t.value("file").or(t.value("directory")),
-      excludeFilename: t.str.comment("Exclude files matching this -name pattern (e.g. *.d.ts)"),
-      excludePath: t.str.comment("Exclude paths matching this -path pattern (e.g. */test/*)"),
       maxResults: t.num.comment("Max number of results to return"),
     }),
   ),
@@ -40,15 +49,7 @@ terms scoped and specific.
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
     try {
-      const files = await findFiles(signal, transport, {
-        ...search,
-        type: (() => {
-          if (search.type == null) return undefined;
-          if (search.type === "file") return "f";
-          const _: "directory" = search.type;
-          return "d";
-        })(),
-      });
+      const files = await findFiles(signal, transport, { ...search });
       const text = files.join("\n");
       const { context } = getModelFromConfig(data, null);
       const tok = estimateTokens(text);
