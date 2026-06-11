@@ -23,8 +23,14 @@ function assistantMessage(content: string, tokenUsage: number = 10): OctoIR {
   return {
     role: "assistant",
     content,
-    tokenUsage,
-    outputTokens: tokenUsage,
+    usage: {
+      input: {
+        cached: 0,
+        uncached: tokenUsage,
+        total: tokenUsage,
+      },
+      output: 0,
+    },
   };
 }
 

@@ -6,9 +6,8 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
-import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
+import { compilerUsage } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import type {
   Agent,
   AnthropicAssistantData,
@@ -438,13 +437,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
       }
     }
 
-    // Calculate token usage delta
-    let tokenDelta = 0;
     const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
-    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
-      const previousTokens = sumAssistantTokens(irs);
-      tokenDelta = usage.input + usage.output - previousTokens;
-    }
 
     let anthropic: { anthropic?: AnthropicAssistantData } = {};
     if (thinkingBlocks.length > 0) {
@@ -465,8 +458,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
       content,
       reasoningContent,
       ...anthropic,
-      tokenUsage: tokenDelta,
-      outputTokens: usage.output,
+      usage: compilerTokens,
     };
 
     // If aborted, don't try to parse tool calls

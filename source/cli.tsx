@@ -313,7 +313,7 @@ bench
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
 
-      const tokens = result.data.output.outputTokens;
+      const tokens = result.data.usage.output;
 
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {

@@ -32,17 +32,11 @@ function getMessageText(msg: OctoIR): string {
   return "";
 }
 
-export function sumAssistantTokens(ir: Array<{ role: string; tokenUsage?: number }>): number {
-  let totalTokens = 0;
-  for (const item of ir) {
-    if (item.role === "assistant") totalTokens += item.tokenUsage ?? 0;
-  }
-  return totalTokens;
-}
-
 export function approximateIRTokens(ir: OctoIR[]): number {
-  // An assistant message contains exact token counts for all inputs/outputs before and including itself
-  // up until the assistant message before it (if one exists)
+  // Provider usage is a raw total for the request that produced the assistant response. Treat the
+  // most recent assistant usage as a checkpoint, then estimate only the messages appended after it.
+  // Do not sum assistant usages: engines may retokenize, drop hidden reasoning, or otherwise change
+  // how prior messages count from one request to the next.
   let mostRecentAssistantIndex = -1;
   for (let i = ir.length - 1; i >= 0; i--) {
     if (ir[i].role === "assistant") {
@@ -51,7 +45,14 @@ export function approximateIRTokens(ir: OctoIR[]): number {
     }
   }
 
-  const assistantMessagesTokenCount = sumAssistantTokens(ir);
+  const checkpointTokenCount =
+    mostRecentAssistantIndex === -1
+      ? 0
+      : (() => {
+          const assistant = ir[mostRecentAssistantIndex];
+          if (assistant.role !== "assistant") return 0;
+          return assistant.usage.input.total + assistant.usage.output;
+        })();
 
   let trailingTokenCount = 0;
   for (let i = mostRecentAssistantIndex + 1; i < ir.length; i++) {
@@ -59,5 +60,5 @@ export function approximateIRTokens(ir: OctoIR[]): number {
     trailingTokenCount += estimateTokens(text);
   }
 
-  return assistantMessagesTokenCount + trailingTokenCount;
+  return checkpointTokenCount + trailingTokenCount;
 }

@@ -15,7 +15,7 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
-import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
+import { compilerUsage } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
   Agent,
@@ -24,7 +24,6 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
@@ -418,12 +417,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
       }
     }
 
-    let tokenDelta = 0;
     const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
-    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
-      const previousTokens = sumAssistantTokens(irs);
-      tokenDelta = usage.input + usage.output - previousTokens;
-    }
 
     let openaiSpecific = {};
     if (reasoningId || encryptedReasoningContent) {
@@ -434,8 +428,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
       content,
       reasoningContent,
       ...openaiSpecific,
-      tokenUsage: tokenDelta,
-      outputTokens: usage.output,
+      usage: compilerTokens,
     };
 
     if (abortSignal.aborted) {

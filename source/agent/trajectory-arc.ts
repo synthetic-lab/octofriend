@@ -14,6 +14,7 @@ import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
+import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import {
   CompactionError,
   generateCompactionCheckpointContent,
@@ -233,8 +234,7 @@ export async function trajectoryArc({
           role: "assistant",
           content: buffer.content || "",
           reasoningContent: buffer.reasoning,
-          tokenUsage: 0,
-          outputTokens: 0,
+          usage: compilerUsage(0, 0),
         },
       ];
     }

@@ -6,7 +6,7 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
-import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
+import { compilerUsage } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../../xml.ts";
 import type {
@@ -16,7 +16,6 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
@@ -458,20 +457,13 @@ export async function runAgent<A extends Agent<any, any, any>>({
     // Make sure to close the parser to flush any remaining data
     xmlParser.close();
 
-    // Calculate token usage delta from the previous total
-    let tokenDelta = 0;
     const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
-    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
-      const previousTokens = sumAssistantTokens(irs);
-      tokenDelta = usage.input + usage.output - previousTokens;
-    }
 
     const assistantIr: AssistantIR<A["tools"]> = {
       role: "assistant" as const,
       content,
       reasoningContent,
-      tokenUsage: tokenDelta,
-      outputTokens: usage.output,
+      usage: compilerTokens,
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response

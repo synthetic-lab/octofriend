@@ -1,4 +1,5 @@
 import { ImageInfo } from "../utils/image-utils.ts";
+import type { CompilerUsage } from "./compilers/compiler-interface.ts";
 import type { ToolCall, ToolFactoryRequirements, ToolMap, ToolSubagentNames } from "./tool-def.ts";
 
 /*
@@ -184,8 +185,7 @@ export type AssistantMessage<T extends ToolMap<any, any>> = {
   };
   anthropic?: AnthropicAssistantData;
   toolCalls?: Array<ToolCall<T> | MalformedToolRequest>;
-  tokenUsage: number;
-  outputTokens: number;
+  usage: CompilerUsage;
 };
 
 export type UserMessage = Content & {
