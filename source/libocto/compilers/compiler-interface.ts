@@ -28,7 +28,7 @@ export type CompilerParams<A extends Agent<any, any, any>, Model> = {
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
   abortSignal: AbortSignal;
   transport: Transport;
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  autofixJson?: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   tools?: Partial<LoadedTools<A["tools"]>>;
 };
 
