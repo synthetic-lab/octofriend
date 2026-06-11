@@ -1,6 +1,6 @@
 import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import type { Content } from "../libocto/llm-ir.ts";
-import type { CompilerResult } from "../libocto/compilers/compiler-interface.ts";
+import type { CompilerError, CompilerResult } from "../libocto/compilers/compiler-interface.ts";
 import { compactPrompt } from "../prompts/compact-prompt.ts";
 import { ModelConfig } from "../config.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
@@ -11,10 +11,13 @@ import { Result, ok, err } from "../result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 
-export type CompactionError = {
-  requestError: string;
-  curl: string | null;
-};
+export type CompactionError =
+  | {
+      type: "compaction-error";
+      requestError: string;
+      curl: string | null;
+    }
+  | Extract<CompilerError, { type: "payment-error" | "rate-limit-error" }>;
 
 const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
@@ -102,7 +105,10 @@ export async function generateCompactionCheckpointContent({
   if (abortSignal.aborted) return ok(null);
 
   if (!compactRunResult.success) {
+    if (isRecoverableRequestError(compactRunResult.error)) return err(compactRunResult.error);
+
     return err({
+      type: "compaction-error",
       requestError: compactRunResult.error.requestError,
       curl: compactRunResult.error.curl,
     });
@@ -111,6 +117,7 @@ export async function generateCompactionCheckpointContent({
   const summary = processCompactedHistory(compactRunResult);
   if (summary == null || summary === "") {
     return err({
+      type: "compaction-error",
       requestError: "Compaction result was empty, continuing without compacting messages.",
       curl: null,
     });
@@ -120,6 +127,12 @@ export async function generateCompactionCheckpointContent({
     { type: "text", content: summary },
     { type: "text", content: COMPACTION_CHECKPOINT_SUFFIX },
   ]);
+}
+
+function isRecoverableRequestError(
+  error: CompilerError,
+): error is Extract<CompilerError, { type: "payment-error" | "rate-limit-error" }> {
+  return error.type === "payment-error" || error.type === "rate-limit-error";
 }
 
 export function processCompactedHistory(

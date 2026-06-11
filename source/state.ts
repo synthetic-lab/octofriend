@@ -12,7 +12,6 @@ import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
-import { PaymentError, RateLimitError } from "./errors.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
@@ -617,6 +616,16 @@ export const useAppStore = create<UiState>((set, get) => ({
         return;
       }
 
+      if (finishReason.type === "payment-error") {
+        set({ modeData: { mode: "payment-error", error: finishReason.requestError } });
+        return;
+      }
+
+      if (finishReason.type === "rate-limit-error") {
+        set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
+        return;
+      }
+
       if (finishReason.type === "compaction-error") {
         set({
           modeData: {
@@ -644,14 +653,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     } catch (e) {
       if (get()._maybeHandleAbort(abortController.signal)) {
-        return;
-      }
-
-      if (e instanceof PaymentError) {
-        set({ modeData: { mode: "payment-error", error: e.message } });
-        return;
-      } else if (e instanceof RateLimitError) {
-        set({ modeData: { mode: "rate-limit-error", error: e.message } });
         return;
       }
 

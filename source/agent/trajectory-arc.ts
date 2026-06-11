@@ -13,6 +13,7 @@ import { parseQuotaJson } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
+import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
 import {
   CompactionError,
   generateCompactionCheckpointContent,
@@ -62,6 +63,11 @@ type CompactionType = {
   checkpoint: TrajectoryOutputIR & { role: "checkpoint" };
 };
 
+type RecoverableRequestError = Extract<
+  CompilerError,
+  { type: "payment-error" | "rate-limit-error" }
+>;
+
 // TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
 // tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
 // requires typesystem shenanigans.)
@@ -109,6 +115,7 @@ type Finish = {
         requestError: string;
         curl: string;
       }
+    | RecoverableRequestError
     | {
         type: "compaction-error";
         requestError: string;
@@ -159,6 +166,14 @@ export async function trajectoryArc({
     },
   });
   if (!parsedCompaction.success) {
+    if (isRecoverableRequestError(parsedCompaction.error)) {
+      return {
+        type: "finish",
+        irs,
+        reason: parsedCompaction.error,
+      };
+    }
+
     return {
       type: "finish",
       irs,
@@ -232,11 +247,7 @@ export async function trajectoryArc({
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
-      reason: {
-        type: "request-error",
-        requestError: result.error.requestError,
-        curl: result.error.curl,
-      },
+      reason: compilerErrorToFinishReason(result.error),
     };
   }
 
@@ -442,6 +453,19 @@ function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefi
   const raw = headers?.get("x-synthetic-quotas");
   if (!raw) return undefined;
   return parseQuotaJson(raw);
+}
+
+function compilerErrorToFinishReason(error: CompilerError): Finish["reason"] {
+  if (isRecoverableRequestError(error)) return error;
+  return {
+    type: "request-error",
+    requestError: error.requestError,
+    curl: error.curl,
+  };
+}
+
+function isRecoverableRequestError(error: { type: string }): error is RecoverableRequestError {
+  return error.type === "payment-error" || error.type === "rate-limit-error";
 }
 
 async function maybeAutocompact({

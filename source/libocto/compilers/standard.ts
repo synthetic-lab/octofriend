@@ -18,7 +18,6 @@ import type {
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
 import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
-import { PaymentError, RateLimitError } from "../../errors.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
 
@@ -269,8 +268,8 @@ const RateLimitErrorSchema = t.subtype({
 });
 
 const ERROR_SCHEMAS = [
-  [PaymentError, PaymentErrorSchema] as const,
-  [RateLimitError, RateLimitErrorSchema] as const,
+  ["payment-error", PaymentErrorSchema] as const,
+  ["rate-limit-error", RateLimitErrorSchema] as const,
 ];
 
 async function handleKnownErrors<A extends Agent<any, any, any>>(
@@ -280,9 +279,15 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
   try {
     return await cb();
   } catch (e) {
-    for (const [ErrorClass, schema] of ERROR_SCHEMAS) {
+    for (const [type, schema] of ERROR_SCHEMAS) {
       const schemaResult = schema.sliceResult(e);
-      if (!(schemaResult instanceof t.Err)) throw new ErrorClass(schemaResult.error);
+      if (!(schemaResult instanceof t.Err)) {
+        return err({
+          type,
+          requestError: schemaResult.error,
+          curl,
+        });
+      }
     }
     // If schema is not found, generate request error with associated curl
     return err({

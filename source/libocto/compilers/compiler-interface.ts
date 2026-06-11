@@ -48,6 +48,16 @@ export type CompilerError =
       requestError: string;
       curl: string;
       usage: CompilerUsage;
+    }
+  | {
+      type: "payment-error";
+      requestError: string;
+      curl: string;
+    }
+  | {
+      type: "rate-limit-error";
+      requestError: string;
+      curl: string;
     };
 
 export type CompilerResult<A extends Agent<any, any, any>> = Result<
