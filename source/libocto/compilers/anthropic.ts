@@ -16,8 +16,8 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { errorToString, ok, err } from "../../result.ts";
-import * as irPrompts from "../../prompts/ir-prompts.ts";
+import { errorToString, ok, err } from "../result.ts";
+import * as irPrompts from "./ir-prompts.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<

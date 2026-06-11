@@ -1,4 +1,4 @@
-import type { Result } from "../../result.ts";
+import type { Result } from "../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools } from "../tool-def.ts";
 import { JsonFixResponse } from "../../prompts/autofix-prompts.ts";

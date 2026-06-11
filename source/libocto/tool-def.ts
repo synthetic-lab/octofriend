@@ -1,6 +1,6 @@
 import { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
-import { Result, ok } from "../result.ts";
+import { Result, ok } from "./result.ts";
 import type { Content } from "./llm-ir.ts";
 
 /*

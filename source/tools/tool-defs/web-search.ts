@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
 import { readSearchConfig } from "../../config.ts";
-import { ok, attempt } from "../../result.ts";
+import { ok, attempt } from "../../libocto/result.ts";
 
 const SearchResultsSchema = t.subtype({
   results: t.array(

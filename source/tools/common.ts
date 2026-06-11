@@ -1,7 +1,7 @@
 import type { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import { attempt, Result, ok } from "../result.ts";
+import { attempt, Result, ok } from "../libocto/result.ts";
 import { TOOL_BUILDER, ToolCall } from "../libocto/tool-def.ts";
 
 export const USER_ABORTED_ERROR_MESSAGE = "Aborted by user";

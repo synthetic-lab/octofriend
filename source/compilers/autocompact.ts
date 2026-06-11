@@ -7,7 +7,7 @@ import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { run } from "./run.ts";
 import { approximateIRTokens } from "../ir/count-ir-tokens.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { Result, ok, err } from "../result.ts";
+import { Result, ok, err } from "../libocto/result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
 

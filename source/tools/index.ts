@@ -1,7 +1,7 @@
 import toolMap from "./tool-defs/index.ts";
 import { Config } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { Result, ok, err } from "../result.ts";
+import { Result, ok, err } from "../libocto/result.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,

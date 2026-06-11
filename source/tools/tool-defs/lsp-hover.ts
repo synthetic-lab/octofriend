@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
-import { ok } from "../../result.ts";
+import { ok } from "../../libocto/result.ts";
 import {
   runLspPositionQuery,
   getLspExtensionsComment,

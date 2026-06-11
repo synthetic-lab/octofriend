@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker, FileExistsError } from "../file-tracker.ts";
 import { TOOL, fileMutateIR } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err, attempt, toErrString } from "../../result.ts";
+import { ok, err, attempt, toErrString } from "../../libocto/result.ts";
 
 export const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path where the file should be created"),

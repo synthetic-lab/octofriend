@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import readToolFactory from "./read.ts";
 import { fileTracker } from "../file-tracker.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import type { Result } from "../../result.ts";
+import type { Result } from "../../libocto/result.ts";
 
 function createTransport(files: Record<string, string>): Transport {
   const resolve = (file: string) => (file.startsWith("/") ? file : `/repo/${file}`);

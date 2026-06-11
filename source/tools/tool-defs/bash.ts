@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { AbortError, CommandFailedError } from "../../transports/transport-common.ts";
-import { ok, err, toErrString } from "../../result.ts";
+import { ok, err, toErrString } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "shell",

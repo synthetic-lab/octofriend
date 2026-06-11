@@ -16,8 +16,8 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { errorToString, ok, err } from "../../result.ts";
-import * as irPrompts from "../../prompts/ir-prompts.ts";
+import { errorToString, ok, err } from "../result.ts";
+import * as irPrompts from "./ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
 

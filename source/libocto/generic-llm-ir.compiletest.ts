@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
 import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
-import { ok, err } from "../result.ts";
+import { ok, err } from "./result.ts";
 
 const BUILDER = new ToolBuilder();
 

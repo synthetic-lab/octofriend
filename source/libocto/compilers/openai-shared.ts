@@ -1,7 +1,7 @@
 import { t } from "structural";
 import type OpenAI from "openai";
 import type { CompilerError, CompilerModalities } from "./compiler-interface.ts";
-import { errorToString } from "../../result.ts";
+import { errorToString } from "../result.ts";
 
 export type OpenAICompilerModel = {
   client: OpenAI;

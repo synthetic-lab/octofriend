@@ -8,7 +8,7 @@ import {
   parseOriginalFile,
 } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err } from "../../result.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {
