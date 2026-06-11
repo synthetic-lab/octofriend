@@ -20,6 +20,7 @@ import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
+import { openAIRequestError } from "./openai-shared.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -258,20 +259,6 @@ function llmFromIr<A extends Agent<any, any, any>>(
   throw new Error(`Unsupported IR role: ${(ir as any).role}`);
 }
 
-const PaymentErrorSchema = t.subtype({
-  status: t.value(402),
-  error: t.str,
-});
-const RateLimitErrorSchema = t.subtype({
-  status: t.value(429),
-  error: t.str,
-});
-
-const ERROR_SCHEMAS = [
-  ["payment-error", PaymentErrorSchema] as const,
-  ["rate-limit-error", RateLimitErrorSchema] as const,
-];
-
 async function handleKnownErrors<A extends Agent<any, any, any>>(
   curl: string,
   cb: () => Promise<CompilerResult<A>>,
@@ -279,22 +266,7 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
   try {
     return await cb();
   } catch (e) {
-    for (const [type, schema] of ERROR_SCHEMAS) {
-      const schemaResult = schema.sliceResult(e);
-      if (!(schemaResult instanceof t.Err)) {
-        return err({
-          type,
-          requestError: schemaResult.error,
-          curl,
-        });
-      }
-    }
-    // If schema is not found, generate request error with associated curl
-    return err({
-      type: "request-error",
-      requestError: errorToString(e),
-      curl,
-    });
+    return err(openAIRequestError(curl, e));
   }
 }
 

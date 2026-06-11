@@ -28,6 +28,7 @@ import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
+import { openAIRequestError } from "./openai-shared.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -504,11 +505,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
       usage: compilerTokens,
     });
   } catch (e) {
-    return err({
-      type: "request-error",
-      requestError: errorToString(e),
-      curl,
-    });
+    return err(openAIRequestError(curl, e));
   }
 }
 
