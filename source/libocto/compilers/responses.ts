@@ -15,6 +15,7 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
+import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
   Agent,
@@ -23,7 +24,6 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { trackTokens } from "../../token-tracker.ts";
 import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
@@ -332,6 +332,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
     let encryptedReasoningContent: string | undefined = undefined;
     let usage = {
       input: 0,
+      cachedInput: 0,
       output: 0,
       reasoning: 0,
     };
@@ -382,6 +383,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
             for (const item of event.response.output) captureOutputItem(item);
             if (event.response.usage) {
               usage.input = event.response.usage.input_tokens;
+              usage.cachedInput = event.response.usage.input_tokens_details.cached_tokens;
               usage.output = event.response.usage.output_tokens;
               usage.reasoning = event.response.usage.output_tokens_details.reasoning_tokens;
             }
@@ -389,37 +391,37 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
 
           case "response.failed":
             return err({
+              type: "stream-error",
               requestError: event.response.error?.message || "OpenAI Responses request failed",
               curl,
+              usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
             });
 
           case "error":
             return err({
+              type: "stream-error",
               requestError: event.message,
               curl,
+              usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
             });
         }
       }
     } catch (e) {
       if (!abortSignal.aborted) {
         return err({
+          type: "stream-error",
           requestError: errorToString(e),
           curl,
+          usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
         });
       }
     }
 
-    if (usage.input !== 0 || usage.output !== 0) {
-      trackTokens(model.model, "input", usage.input);
-      trackTokens(model.model, "output", usage.output);
-    }
-
     let tokenDelta = 0;
-    if (usage.input !== 0 || usage.output !== 0) {
-      if (!abortSignal.aborted) {
-        const previousTokens = sumAssistantTokens(irs);
-        tokenDelta = usage.input + usage.output - previousTokens;
-      }
+    const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
+      const previousTokens = sumAssistantTokens(irs);
+      tokenDelta = usage.input + usage.output - previousTokens;
     }
 
     let openaiSpecific = {};
@@ -436,11 +438,21 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
     };
 
     if (abortSignal.aborted) {
-      return ok({ output: assistantHistoryItem, curl, headers: response.headers });
+      return ok({
+        output: assistantHistoryItem,
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+      });
     }
 
     if (responseToolCalls.size === 0) {
-      return ok({ output: assistantHistoryItem, curl, headers: response.headers });
+      return ok({
+        output: assistantHistoryItem,
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+      });
     }
 
     const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
@@ -485,9 +497,15 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return ok({ output: assistantHistoryItem, curl, headers: response.headers });
+    return ok({
+      output: assistantHistoryItem,
+      curl,
+      headers: response.headers,
+      usage: compilerTokens,
+    });
   } catch (e) {
     return err({
+      type: "request-error",
       requestError: errorToString(e),
       curl,
     });

@@ -6,6 +6,7 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
+import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import type {
@@ -16,7 +17,6 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { trackTokens } from "../../token-tracker.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 
@@ -304,6 +304,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
     let reasoningContent: string | undefined = undefined;
     let usage = {
       input: 0,
+      cachedInput: 0,
       output: 0,
     };
     const thinkingBlocks: Array<
@@ -328,116 +329,121 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
       }
     >();
 
-    // Handle streaming chunks
-    for await (const chunk of stream) {
-      if (abortSignal.aborted) break;
+    try {
+      for await (const chunk of stream) {
+        if (abortSignal.aborted) break;
 
-      switch (chunk.type) {
-        case "content_block_delta":
-          switch (chunk.delta.type) {
-            case "text_delta":
-              content += chunk.delta.text;
-              onTokens(chunk.delta.text, "content");
-              break;
-            case "thinking_delta":
-              if (reasoningContent == null) reasoningContent = "";
-              reasoningContent += chunk.delta.thinking;
-              onTokens(chunk.delta.thinking, "reasoning");
-              if (thinkingBlocks.length === 0) {
-                thinkingBlocks.push({
-                  type: "thinking",
-                  thinking: chunk.delta.thinking,
-                  index: chunk.index,
-                });
-              } else {
-                const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
-                  lastBlock.thinking += chunk.delta.thinking;
-                } else {
+        switch (chunk.type) {
+          case "content_block_delta":
+            switch (chunk.delta.type) {
+              case "text_delta":
+                content += chunk.delta.text;
+                onTokens(chunk.delta.text, "content");
+                break;
+              case "thinking_delta":
+                if (reasoningContent == null) reasoningContent = "";
+                reasoningContent += chunk.delta.thinking;
+                onTokens(chunk.delta.thinking, "reasoning");
+                if (thinkingBlocks.length === 0) {
                   thinkingBlocks.push({
                     type: "thinking",
                     thinking: chunk.delta.thinking,
                     index: chunk.index,
                   });
-                }
-              }
-              break;
-            case "signature_delta":
-              if (thinkingBlocks.length === 0) {
-                thinkingBlocks.push({
-                  type: "thinking",
-                  signature: chunk.delta.signature,
-                  index: chunk.index,
-                });
-              } else {
-                const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
-                  lastBlock.signature = chunk.delta.signature;
                 } else {
+                  const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+                  if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                    lastBlock.thinking += chunk.delta.thinking;
+                  } else {
+                    thinkingBlocks.push({
+                      type: "thinking",
+                      thinking: chunk.delta.thinking,
+                      index: chunk.index,
+                    });
+                  }
+                }
+                break;
+              case "signature_delta":
+                if (thinkingBlocks.length === 0) {
                   thinkingBlocks.push({
                     type: "thinking",
                     signature: chunk.delta.signature,
                     index: chunk.index,
                   });
+                } else {
+                  const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+                  if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                    lastBlock.signature = chunk.delta.signature;
+                  } else {
+                    thinkingBlocks.push({
+                      type: "thinking",
+                      signature: chunk.delta.signature,
+                      index: chunk.index,
+                    });
+                  }
                 }
-              }
-              break;
-            case "input_json_delta":
-              {
-                const tool = inProgressTools.get(chunk.index);
-                if (tool != null) {
-                  onTokens(chunk.delta.partial_json, "tool");
-                  tool.partialJson += chunk.delta.partial_json;
+                break;
+              case "input_json_delta":
+                {
+                  const tool = inProgressTools.get(chunk.index);
+                  if (tool != null) {
+                    onTokens(chunk.delta.partial_json, "tool");
+                    tool.partialJson += chunk.delta.partial_json;
+                  }
                 }
-              }
-              break;
-          }
-          break;
-        case "content_block_start":
-          switch (chunk.content_block.type) {
-            case "tool_use":
-              onTokens(chunk.content_block.name, "tool");
-              inProgressTools.set(chunk.index, {
-                id: chunk.content_block.id,
-                index: chunk.index,
-                name: chunk.content_block.name,
-                partialJson: "",
-              });
-              break;
-            case "redacted_thinking":
-              thinkingBlocks.push({
-                type: "redacted_thinking",
-                data: chunk.content_block.data,
-              });
-              break;
-          }
-          break;
+                break;
+            }
+            break;
+          case "content_block_start":
+            switch (chunk.content_block.type) {
+              case "tool_use":
+                onTokens(chunk.content_block.name, "tool");
+                inProgressTools.set(chunk.index, {
+                  id: chunk.content_block.id,
+                  index: chunk.index,
+                  name: chunk.content_block.name,
+                  partialJson: "",
+                });
+                break;
+              case "redacted_thinking":
+                thinkingBlocks.push({
+                  type: "redacted_thinking",
+                  data: chunk.content_block.data,
+                });
+                break;
+            }
+            break;
 
-        case "message_delta":
-          usage.output = chunk.usage.output_tokens;
-          if (chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
-            usage.input = chunk.usage.input_tokens;
-          }
-          break;
-        case "message_start":
-          usage.input = chunk.message.usage.input_tokens;
-          break;
+          case "message_delta":
+            usage.output = chunk.usage.output_tokens;
+            if (chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
+              usage.input = chunk.usage.input_tokens;
+            }
+            usage.cachedInput = chunk.usage.cache_read_input_tokens ?? usage.cachedInput;
+            break;
+          case "message_start":
+            usage.input = chunk.message.usage.input_tokens;
+            usage.cachedInput = chunk.message.usage.cache_read_input_tokens ?? 0;
+            break;
+        }
       }
-    }
-
-    // Track usage
-    if (usage.input !== 0 || usage.output !== 0) {
-      trackTokens(model.model, "input", usage.input);
-      trackTokens(model.model, "output", usage.output);
+    } catch (e) {
+      if (!abortSignal.aborted) {
+        return err({
+          type: "stream-error",
+          requestError: errorToString(e),
+          curl,
+          usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+        });
+      }
     }
 
     // Calculate token usage delta
     let tokenDelta = 0;
-    if (usage.input !== 0 || usage.output !== 0) {
-      if (!abortSignal.aborted) {
-        const previousTokens = sumAssistantTokens(irs);
-        tokenDelta = usage.input + usage.output - previousTokens;
-      }
+    const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
+      const previousTokens = sumAssistantTokens(irs);
+      tokenDelta = usage.input + usage.output - previousTokens;
     }
 
     let anthropic: { anthropic?: AnthropicAssistantData } = {};
@@ -467,12 +473,22 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return ok({ output: assistantMessage, curl, headers: response.headers });
+      return ok({
+        output: assistantMessage,
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+      });
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return ok({ output: assistantMessage, curl, headers: response.headers });
+      return ok({
+        output: assistantMessage,
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+      });
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -516,9 +532,15 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return ok({ output: assistantMessage, curl, headers: response.headers });
+    return ok({
+      output: assistantMessage,
+      curl,
+      headers: response.headers,
+      usage: compilerTokens,
+    });
   } catch (e) {
     return err({
+      type: "request-error",
       requestError: errorToString(e),
       curl,
     });

@@ -14,8 +14,11 @@ import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 import type { FileOptimizerInputIR } from "./optimize-files.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
+import type { CompilerResult, CompilerUsage } from "../libocto/compilers/compiler-interface.ts";
+import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
+import { trackTokens } from "../token-tracker.ts";
 
 export async function run({
   model,
@@ -61,24 +64,43 @@ export async function run({
   };
 
   if (model.type == null || model.type === "standard") {
-    return await runAgent<typeof octoAgent>({
+    const result = await runAgent<typeof octoAgent>({
       ...params,
       model: standardOpenAICompilerModel(model, apiKey),
     });
+    trackCompilerResultUsage(model.model, result);
+    return result;
   }
 
   if (model.type === "openai-responses") {
-    return await runResponsesAgent<typeof octoAgent>({
+    const result = await runResponsesAgent<typeof octoAgent>({
       ...params,
       model: responsesOpenAICompilerModel(model, apiKey),
     });
+    trackCompilerResultUsage(model.model, result);
+    return result;
   }
 
   const _: "anthropic" = model.type;
-  return await runAnthropicAgent<typeof octoAgent>({
+  const result = await runAnthropicAgent<typeof octoAgent>({
     ...params,
     model: anthropicCompilerModel(model, apiKey),
   });
+  trackCompilerResultUsage(model.model, result);
+  return result;
+}
+
+function trackCompilerResultUsage(model: string, result: CompilerResult<typeof octoAgent>): void {
+  const usage = compilerResultUsage(result);
+  if (!usage || !compilerUsageHasTokens(usage)) return;
+  trackTokens(model, "input", usage.input.total);
+  trackTokens(model, "output", usage.output);
+}
+
+function compilerResultUsage(result: CompilerResult<typeof octoAgent>): CompilerUsage | undefined {
+  if (result.success) return result.data.usage;
+  if ("usage" in result.error) return result.error.usage;
+  return undefined;
 }
 
 function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {

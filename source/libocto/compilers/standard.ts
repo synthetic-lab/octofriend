@@ -6,6 +6,7 @@ import type {
   CompilerParams,
   CompilerResult,
 } from "./compiler-interface.ts";
+import { compilerUsage, compilerUsageHasTokens } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import { StreamingXMLParser, tagged } from "../../xml.ts";
 import type {
@@ -17,7 +18,6 @@ import type {
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
 import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
-import { trackTokens } from "../../token-tracker.ts";
 import { PaymentError, RateLimitError } from "../../errors.ts";
 import * as irPrompts from "../../prompts/ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
@@ -286,6 +286,7 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
     }
     // If schema is not found, generate request error with associated curl
     return err({
+      type: "request-error",
       requestError: errorToString(e),
       curl,
     });
@@ -367,6 +368,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
     let inThinkTag = false;
     let usage = {
       input: 0,
+      cachedInput: 0,
       output: 0,
     };
 
@@ -401,6 +403,7 @@ export async function runAgent<A extends Agent<any, any, any>>({
         if (abortSignal.aborted) break;
         if (chunk.usage) {
           usage.input = chunk.usage.prompt_tokens;
+          usage.cachedInput = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
           usage.output = chunk.usage.completion_tokens;
         }
 
@@ -466,7 +469,12 @@ export async function runAgent<A extends Agent<any, any, any>>({
       if (abortSignal.aborted) {
         // Fall through to return abbreviated response
       } else {
-        throw e;
+        return err({
+          type: "stream-error",
+          requestError: errorToString(e),
+          curl,
+          usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+        });
       }
     }
 
@@ -475,13 +483,10 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
     // Calculate token usage delta from the previous total
     let tokenDelta = 0;
-    if (usage.input !== 0 || usage.output !== 0) {
-      trackTokens(model.model, "input", usage.input);
-      trackTokens(model.model, "output", usage.output);
-      if (!abortSignal.aborted) {
-        const previousTokens = sumAssistantTokens(irs);
-        tokenDelta = usage.input + usage.output - previousTokens;
-      }
+    const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+    if (compilerUsageHasTokens(compilerTokens) && !abortSignal.aborted) {
+      const previousTokens = sumAssistantTokens(irs);
+      tokenDelta = usage.input + usage.output - previousTokens;
     }
 
     const assistantIr: AssistantIR<A["tools"]> = {
@@ -493,10 +498,14 @@ export async function runAgent<A extends Agent<any, any, any>>({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return ok({ output: assistantIr, curl, headers: response.headers });
+    if (abortSignal.aborted) {
+      return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
+    }
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return ok({ output: assistantIr, curl, headers: response.headers });
+    if (toolCallMap.size === 0) {
+      return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
+    }
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -556,6 +565,6 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return ok({ output: assistantIr, curl, headers: response.headers });
+    return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
   });
 }

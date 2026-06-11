@@ -9,16 +9,55 @@ export type CompilerIR<A extends Agent<any, any, any>> = LoweredIR<A["tools"]>;
 export type CompilerModality = "text" | "vision";
 export type CompilerModalities = readonly CompilerModality[];
 
+export type CompilerUsage = {
+  input: {
+    cached: number;
+    uncached: number;
+    total: number;
+  };
+  output: number;
+};
+
+export function compilerUsage(
+  inputTotal: number,
+  output: number,
+  cached: number = 0,
+): CompilerUsage {
+  return {
+    input: {
+      cached,
+      uncached: Math.max(0, inputTotal - cached),
+      total: inputTotal,
+    },
+    output,
+  };
+}
+
+export function compilerUsageHasTokens(usage: CompilerUsage): boolean {
+  return usage.input.total !== 0 || usage.output !== 0;
+}
+
+export type CompilerError =
+  | {
+      type: "request-error";
+      requestError: string;
+      curl: string;
+    }
+  | {
+      type: "stream-error";
+      requestError: string;
+      curl: string;
+      usage: CompilerUsage;
+    };
+
 export type CompilerResult<A extends Agent<any, any, any>> = Result<
   {
     output: AssistantMessage<A["tools"]>;
     curl: string;
     headers?: Headers;
+    usage: CompilerUsage;
   },
-  {
-    requestError: string;
-    curl: string;
-  }
+  CompilerError
 >;
 
 export type CompilerParams<A extends Agent<any, any, any>, Model> = {
