@@ -6,7 +6,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
-import { QuotaData } from "../utils/quota.ts";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
@@ -36,7 +35,6 @@ export async function run({
   handlers: {
     onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
     onAutofixJson: (done: Promise<void>) => any;
-    onQuotaUpdated?: (quota: QuotaData) => void;
   };
   abortSignal: AbortSignal;
   transport: Transport;
@@ -53,7 +51,6 @@ export async function run({
     systemPrompt,
     irs: loweredMessages,
     onTokens: handlers.onTokens,
-    onQuotaUpdated: handlers.onQuotaUpdated,
     autofixJson: (badJson: string, signal: AbortSignal) => {
       const fixPromise = autofixJson(badJson, signal);
       handlers.onAutofixJson(fixPromise.then(() => {}));

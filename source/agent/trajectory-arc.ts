@@ -9,6 +9,7 @@ import type {
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
+import { parseQuotaJson } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
@@ -199,7 +200,6 @@ export async function trajectoryArc({
       onAutofixJson: () => {
         handler.autofixingJson(null);
       },
-      onQuotaUpdated: quota => handler.onQuotaUpdated(quota),
     },
     systemPrompt: async () => {
       return systemPrompt({
@@ -239,6 +239,9 @@ export async function trajectoryArc({
       },
     };
   }
+
+  const quota = parseQuotaFromHeaders(result.data.headers);
+  if (quota) handler.onQuotaUpdated(quota);
 
   let assistantMessage = result.data.output;
   irs = [...irs, assistantMessage];
@@ -433,6 +436,12 @@ export async function trajectoryArc({
     },
     irs,
   };
+}
+
+function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefined {
+  const raw = headers?.get("x-synthetic-quotas");
+  if (!raw) return undefined;
+  return parseQuotaJson(raw);
 }
 
 async function maybeAutocompact({

@@ -284,19 +284,21 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
 
   try {
     const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const stream = await model.client.messages.create({
-      ...system,
-      model: model.model,
-      messages,
-      ...toolParams,
-      tool_choice: {
-        type: "auto",
-        disable_parallel_tool_use: false,
-      },
-      max_tokens: model.maxTokens,
-      ...thinking,
-      stream: true,
-    });
+    const { data: stream, response } = await model.client.messages
+      .create({
+        ...system,
+        model: model.model,
+        messages,
+        ...toolParams,
+        tool_choice: {
+          type: "auto",
+          disable_parallel_tool_use: false,
+        },
+        max_tokens: model.maxTokens,
+        ...thinking,
+        stream: true,
+      })
+      .withResponse();
 
     let content = "";
     let reasoningContent: string | undefined = undefined;
@@ -465,12 +467,12 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
     if (abortSignal.aborted) {
       // Success is only false when the request fails,
       // therefore success value is true here
-      return ok({ output: assistantMessage, curl });
+      return ok({ output: assistantMessage, curl, headers: response.headers });
     }
 
     // No tools? Return
     if (inProgressTools.size === 0) {
-      return ok({ output: assistantMessage, curl });
+      return ok({ output: assistantMessage, curl, headers: response.headers });
     }
 
     // Sort tool calls by their content block index to preserve ordering
@@ -514,7 +516,7 @@ export async function runAnthropicAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
 
-    return ok({ output: assistantMessage, curl });
+    return ok({ output: assistantMessage, curl, headers: response.headers });
   } catch (e) {
     return err({
       requestError: errorToString(e),

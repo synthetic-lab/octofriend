@@ -15,8 +15,6 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { QuotaData } from "../../utils/quota.ts";
-import { parseQuotaJson } from "../../utils/quota.ts";
 import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import { errorToString, ok, err } from "../../result.ts";
 import { trackTokens } from "../../token-tracker.ts";
@@ -294,22 +292,10 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
   }
 }
 
-function parseQuotaFromHeaders(headers: Headers): QuotaData | undefined {
-  const raw = headers.get("x-synthetic-quotas");
-  if (!raw) return undefined;
-  try {
-    return parseQuotaJson(raw);
-  } catch {
-    /* ignore errors, they're out-of-place in the menu */
-    return undefined;
-  }
-}
-
 export async function runAgent<A extends Agent<any, any, any>>({
   model,
   irs,
   onTokens,
-  onQuotaUpdated,
   abortSignal,
   transport,
   systemPrompt,
@@ -375,9 +361,6 @@ export async function runAgent<A extends Agent<any, any, any>>({
         },
       )
       .withResponse();
-
-    const quota = parseQuotaFromHeaders(response.headers);
-    if (quota) onQuotaUpdated?.(quota);
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
@@ -510,10 +493,10 @@ export async function runAgent<A extends Agent<any, any, any>>({
     };
 
     // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) return ok({ output: assistantIr, curl });
+    if (abortSignal.aborted) return ok({ output: assistantIr, curl, headers: response.headers });
 
     // If no tool calls, we're done
-    if (toolCallMap.size === 0) return ok({ output: assistantIr, curl });
+    if (toolCallMap.size === 0) return ok({ output: assistantIr, curl, headers: response.headers });
 
     // Sort tool calls by their streaming index to preserve ordering
     const currTools = Array.from(toolCallMap.entries())
@@ -573,6 +556,6 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
     if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    return ok({ output: assistantIr, curl });
+    return ok({ output: assistantIr, curl, headers: response.headers });
   });
 }

@@ -322,7 +322,9 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
   });
 
   try {
-    const stream = await model.client.responses.create(request, { signal: abortSignal });
+    const { data: stream, response } = await model.client.responses
+      .create(request, { signal: abortSignal })
+      .withResponse();
 
     let content = "";
     let reasoningId: string | undefined = undefined;
@@ -434,11 +436,11 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
     };
 
     if (abortSignal.aborted) {
-      return ok({ output: assistantHistoryItem, curl });
+      return ok({ output: assistantHistoryItem, curl, headers: response.headers });
     }
 
     if (responseToolCalls.size === 0) {
-      return ok({ output: assistantHistoryItem, curl });
+      return ok({ output: assistantHistoryItem, curl, headers: response.headers });
     }
 
     const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
@@ -483,7 +485,7 @@ export async function runResponsesAgent<A extends Agent<any, any, any>>({
 
     if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
 
-    return ok({ output: assistantHistoryItem, curl });
+    return ok({ output: assistantHistoryItem, curl, headers: response.headers });
   } catch (e) {
     return err({
       requestError: errorToString(e),

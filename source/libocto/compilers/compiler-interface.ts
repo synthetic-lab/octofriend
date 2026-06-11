@@ -1,7 +1,6 @@
 import type { Result } from "../../result.ts";
 import type { Agent, AssistantMessage, LoweredIR } from "../llm-ir.ts";
 import type { LoadedTools } from "../tool-def.ts";
-import { QuotaData } from "../../utils/quota.ts";
 import { JsonFixResponse } from "../../prompts/autofix-prompts.ts";
 import { Transport } from "../../transports/transport-common.ts";
 
@@ -14,6 +13,7 @@ export type CompilerResult<A extends Agent<any, any, any>> = Result<
   {
     output: AssistantMessage<A["tools"]>;
     curl: string;
+    headers?: Headers;
   },
   {
     requestError: string;
@@ -26,7 +26,6 @@ export type CompilerParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
   irs: Array<CompilerIR<A>>;
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
-  onQuotaUpdated?: (quota: QuotaData) => void;
   abortSignal: AbortSignal;
   transport: Transport;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
