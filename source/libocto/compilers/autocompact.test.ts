@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
-import { contentToText } from "../ir/content.ts";
-import type { OctoIR } from "../ir/octo-ir.ts";
-import { Metadata } from "../config.ts";
+import type { Content, LoweredIR } from "../llm-ir.ts";
+import type toolMap from "../../tools/tool-defs/index.ts";
+import { Metadata } from "../../config.ts";
 
-vi.mock("../config.ts", () => {
+vi.mock("../../config.ts", () => {
   const APP_METADATA: Metadata = {
     version: "0.0.42",
   };
@@ -12,14 +12,16 @@ vi.mock("../config.ts", () => {
   return { APP_METADATA };
 });
 
-function userMessage(content: string): OctoIR {
+type TestIR = LoweredIR<typeof toolMap>;
+
+function userMessage(content: string): TestIR {
   return {
     role: "user",
     content: [{ type: "text", content }],
   };
 }
 
-function assistantMessage(content: string, tokenUsage: number = 10): OctoIR {
+function assistantMessage(content: string, tokenUsage: number = 10): TestIR {
   return {
     role: "assistant",
     content,
@@ -34,27 +36,36 @@ function assistantMessage(content: string, tokenUsage: number = 10): OctoIR {
   };
 }
 
-function checkpointMessage(summary: string): OctoIR {
+function checkpointMessage(summary: string): TestIR {
   return {
     role: "checkpoint",
     content: [{ type: "text", content: summary }],
   };
 }
 
-function checkpointSummary(message: OctoIR): string {
+function checkpointSummary(message: TestIR): string {
   if (message.role !== "checkpoint") throw new Error("Expected checkpoint");
   return contentToText(message.content);
 }
 
-function userText(message: OctoIR): string {
+function userText(message: TestIR): string {
   if (message.role !== "user") throw new Error("Expected user message");
   return contentToText(message.content);
+}
+
+function contentToText(content: Content["content"]): string {
+  return content
+    .map(part => {
+      if (part.type === "text") return part.content;
+      return `Image file: ${part.image.filePath}`;
+    })
+    .join("\n");
 }
 
 describe("autocompact.ts", () => {
   describe("findMostRecentCompactionCheckpointIndex", () => {
     describe("when there are no checkpoints", () => {
-      const messages: OctoIR[] = [
+      const messages: TestIR[] = [
         userMessage("Hello"),
         assistantMessage("Hi there"),
         userMessage("How are you?"),
@@ -73,7 +84,7 @@ describe("autocompact.ts", () => {
     });
 
     describe("when there is one checkpoint", () => {
-      const messages: OctoIR[] = [userMessage("Hello"), assistantMessage("Hi there")];
+      const messages: TestIR[] = [userMessage("Hello"), assistantMessage("Hi there")];
       const CHECKPOINT_INDEX = messages.length;
       messages.splice(
         CHECKPOINT_INDEX,
@@ -107,7 +118,7 @@ describe("autocompact.ts", () => {
     });
 
     describe("when there are multiple checkpoints", () => {
-      const messages: OctoIR[] = [
+      const messages: TestIR[] = [
         userMessage("Message 1"),
         assistantMessage("Response 1", 5),
         checkpointMessage("First checkpoint"),
@@ -162,7 +173,7 @@ describe("autocompact.ts", () => {
     });
 
     describe("when filtering old messages", () => {
-      const messages: OctoIR[] = [
+      const messages: TestIR[] = [
         userMessage("Old message 1"),
         assistantMessage("Old response 1", 5),
       ];
@@ -203,7 +214,7 @@ describe("autocompact.ts", () => {
     });
 
     describe("when checkpoint is at the end", () => {
-      const messages: OctoIR[] = [
+      const messages: TestIR[] = [
         userMessage("Message 1"),
         assistantMessage("Response 1", 5),
         userMessage("Message 2"),

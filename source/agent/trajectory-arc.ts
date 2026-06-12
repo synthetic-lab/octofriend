@@ -12,14 +12,15 @@ import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { run } from "../compilers/run.ts";
+import { run, runLowered } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import {
   CompactionError,
   generateCompactionCheckpointContent,
   shouldAutoCompactHistory,
-} from "../compilers/autocompact.ts";
+  findMostRecentCompactionCheckpointIndex,
+} from "../libocto/compilers/autocompact.ts";
 import { validateTool } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
@@ -27,6 +28,7 @@ import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
 import { Result, ok } from "../libocto/result.ts";
+import { lower } from "../compilers/lower.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -488,30 +490,36 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
-  if (!shouldAutoCompactHistory(model, messages)) return ok(null);
+  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
+  const loweredMessages = lower(messages.slice(checkpointIndex), model.modalities);
+  if (!shouldAutoCompactHistory(model.context, loweredMessages)) return ok(null);
 
   handler.startCompaction();
 
   const buffer: AssistantBuffer<AllTokenTypes> = {};
   const checkpointContent = await generateCompactionCheckpointContent({
-    apiKey,
-    model,
-    messages,
-    abortSignal,
-    transport,
-    autofixJson,
-    handlers: {
-      onTokens: (tokens, type) => {
-        if (!buffer[type]) buffer[type] = "";
-        buffer[type] += tokens;
-        handler.compactionProgress({
-          type: "autocompaction-stream",
-          buffer,
-          delta: { value: tokens, type },
-        });
-      },
-      onAutofixJson: () => {},
-    },
+    messages: loweredMessages,
+    run: messages =>
+      runLowered({
+        apiKey,
+        model,
+        messages,
+        abortSignal,
+        transport,
+        autofixJson,
+        handlers: {
+          onTokens: (tokens, type) => {
+            if (!buffer[type]) buffer[type] = "";
+            buffer[type] += tokens;
+            handler.compactionProgress({
+              type: "autocompaction-stream",
+              buffer,
+              delta: { value: tokens, type },
+            });
+          },
+          onAutofixJson: () => {},
+        },
+      }),
   });
 
   if (!checkpointContent.success) return checkpointContent;

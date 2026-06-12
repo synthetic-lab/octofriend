@@ -6,19 +6,19 @@ import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
-import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
+import { findMostRecentCompactionCheckpointIndex } from "../libocto/compilers/autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
-import { optimizeFiles } from "./optimize-files.ts";
-import type { FileOptimizerInputIR } from "./optimize-files.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
 import type { CompilerResult, CompilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
+import { lower } from "./lower.ts";
+import type { LoweredIR } from "../libocto/llm-ir.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 
 export async function run({
   model,
@@ -45,14 +45,49 @@ export async function run({
   tools?: Partial<LoadedTools>;
 }) {
   const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = lowerToolRejects(messages.slice(checkpointIndex));
-  const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
-  const loweredMessages = lowerTrajectories<typeof octoAgent>(optimizedMessages);
+  const loweredMessages = lower(messages.slice(checkpointIndex), model.modalities);
 
+  return runLowered({
+    apiKey,
+    model,
+    messages: loweredMessages,
+    handlers,
+    autofixJson,
+    abortSignal,
+    transport,
+    systemPrompt,
+    tools,
+  });
+}
+
+export async function runLowered({
+  model,
+  apiKey,
+  messages,
+  handlers,
+  autofixJson,
+  abortSignal,
+  transport,
+  systemPrompt,
+  tools,
+}: {
+  apiKey: string;
+  model: ModelConfig;
+  messages: Array<LoweredIR<typeof toolMap>>;
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  handlers: {
+    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
+    onAutofixJson: (done: Promise<void>) => any;
+  };
+  abortSignal: AbortSignal;
+  transport: Transport;
+  systemPrompt?: () => Promise<string>;
+  tools?: Partial<LoadedTools>;
+}) {
   const params = {
     abortSignal,
     systemPrompt,
-    irs: loweredMessages,
+    irs: messages,
     onTokens: handlers.onTokens,
     autofixJson: (badJson: string, signal: AbortSignal) => {
       const fixPromise = autofixJson(badJson, signal);
@@ -101,20 +136,6 @@ function compilerResultUsage(result: CompilerResult<typeof octoAgent>): Compiler
   if (result.success) return result.data.usage;
   if ("usage" in result.error) return result.error.usage;
   return undefined;
-}
-
-function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {
-  return messages.map(ir => {
-    if (ir.role === "tool-reject") {
-      return {
-        role: "tool-skip-output",
-        toolCall: ir.toolCall,
-        reason: "Tool call rejected by user.",
-      };
-    }
-
-    return ir;
-  });
 }
 
 function compilerModalities(model: ModelConfig): CompilerModalities {
