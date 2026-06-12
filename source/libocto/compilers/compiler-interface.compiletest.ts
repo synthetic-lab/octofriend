@@ -1,13 +1,12 @@
-import { ok } from "../result.ts";
 import type { Agent } from "../llm-ir.ts";
 import type { Transport } from "../../transports/transport-common.ts";
 import type {
   Compiler,
-  CompilerParamsImplementation,
+  CompilerImplementationParams,
   CompilerResult,
   CompilerResultWithoutToolCalls,
 } from "./compiler-interface.ts";
-import { compilerParamsHaveTools, compilerUsage, defineCompiler } from "./compiler-interface.ts";
+import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 
 type ScratchModel = {
   model: string;
@@ -16,24 +15,23 @@ type ScratchModel = {
 type ScratchAgent = Agent<never, {}, {}>;
 
 const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
-  async <A extends Agent<any, any, any>>(params: CompilerParamsImplementation<A, ScratchModel>) => {
+  async <A extends Agent<any, any, any>>(params: CompilerImplementationParams<A, ScratchModel>) => {
     params.onTokens("hello", "content");
+    params.onTokens("{}", "tool");
 
-    if (compilerParamsHaveTools(params)) {
-      params.onTokens("{}", "tool");
-    } else {
-      // @ts-expect-error Tool tokens are only legal after narrowing to the with-tools params.
-      params.onTokens("{}", "tool");
-    }
-
-    return ok({
-      output: {
+    return params.finish({
+      curl: "",
+      usage: compilerUsage(0, 0),
+      abortedOutput: {
         role: "assistant",
         content: "hello",
         usage: compilerUsage(0, 0),
       },
-      curl: "",
-      usage: compilerUsage(0, 0),
+      parsedOutput: () => ({
+        role: "assistant",
+        content: "hello",
+        usage: compilerUsage(0, 0),
+      }),
     });
   },
 );

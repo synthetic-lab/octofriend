@@ -152,20 +152,38 @@ export type CompilerParamsImplementation<A extends Agent<any, any, any>, Model> 
   | CompilerParamsWithoutTools<A, Model>
   | CompilerParamsWithTools<A, Model>;
 
-export type CompilerImplementationResult<A extends Agent<any, any, any>> = Result<
-  CompilerSuccessData<A>,
+const compilerFinished = Symbol("compilerFinished");
+type CompilerFinishedData<A extends Agent<any, any, any>> = CompilerSuccessData<A> & {
+  readonly [compilerFinished]: true;
+};
+type CompilerImplementationResult<A extends Agent<any, any, any>> = Result<
+  CompilerFinishedData<A>,
   CompilerError
 >;
-
-export type CompilerImplementation<Model> = <A extends Agent<any, any, any>>(
-  params: CompilerParamsImplementation<A, Model>,
-) => Promise<CompilerImplementationResult<A>>;
 
 export function compilerParamsHaveTools<A extends Agent<any, any, any>, Model>(
   params: CompilerParamsImplementation<A, Model>,
 ): params is CompilerParamsWithTools<A, Model> {
   return params.tools !== undefined;
 }
+
+export type CompilerImplementationParams<A extends Agent<any, any, any>, Model> = Omit<
+  CompilerParamsImplementation<A, Model>,
+  "onTokens"
+> & {
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
+  finish: (args: {
+    curl: string;
+    headers?: Headers;
+    usage: CompilerUsage;
+    abortedOutput: AssistantMessage<A["tools"]>;
+    parsedOutput: () => AssistantMessage<A["tools"]> | Promise<AssistantMessage<A["tools"]>>;
+  }) => Promise<CompilerImplementationResult<A>>;
+};
+
+type CompilerImplementation<Model> = <A extends Agent<any, any, any>>(
+  params: CompilerImplementationParams<A, Model>,
+) => Promise<CompilerImplementationResult<A>>;
 
 function compilerSuccess<A extends Agent<any, any, any>, Model>(
   params: CompilerParamsImplementation<A, Model>,
@@ -197,15 +215,14 @@ export type Compiler<Model> = <
   params: CompilerParams<A, Model, Tools>,
 ) => Promise<CompilerResult<A, Tools>>;
 
-// Compiler implementations are easiest to write against the concrete implementation union:
-// either tools are present and tool tokens may be emitted, or tools are absent and they may not.
-// Callers want a more precise API than that union, though: if they omit tools, the result should
-// not expose `toolCalls`, and their token callback should never receive `"tool"`.
-//
-// defineCompiler keeps that split local to libocto. Compiler authors return ordinary
-// tool-capable success data, and this wrapper adapts it to the public conditional Compiler type.
-// If an SDK reports a tool call even though the caller supplied no tools, we surface the existing
-// unexpected-tool-call error instead of returning an impossible no-tools assistant message.
+// defineCompiler keeps the "were tools offered?" bookkeeping local to libocto. Concrete compiler
+// implementations get a broad token callback that they can call with any provider event, plus a
+// finish(...) callback that wraps final assistant construction. If a provider emits tool tokens when
+// the caller did not supply tools, finish(...) returns an unexpected-tool-call error before running
+// the parsedOutput callback, so compiler implementations do not need to duplicate that guard around
+// every tool parsing path. finish(...) also skips the parsedOutput callback after aborts, because
+// compiler parsedOutput callbacks are where expensive or invalid-on-abort tool parsing usually
+// happens.
 export function defineCompiler<Model>(
   implementation: CompilerImplementation<Model>,
 ): Compiler<Model> {
@@ -218,7 +235,44 @@ export function defineCompiler<Model>(
   async function compiler<A extends Agent<any, any, any>>(
     params: CompilerParamsImplementation<A, Model>,
   ): Promise<CompilerResult<A, undefined> | CompilerResult<A>> {
-    const compiled = await implementation(params);
+    let unexpectedToolCall = false;
+    const onTokens: CompilerImplementationParams<A, Model>["onTokens"] = (tokens, type) => {
+      if (type === "tool") {
+        if (!compilerParamsHaveTools(params)) {
+          unexpectedToolCall = true;
+          return;
+        }
+        if (tokens === "") return;
+        params.onTokens(tokens, type);
+        return;
+      }
+
+      params.onTokens(tokens, type);
+    };
+
+    const finish: CompilerImplementationParams<A, Model>["finish"] = async ({
+      curl,
+      headers,
+      usage,
+      abortedOutput,
+      parsedOutput,
+    }) => {
+      if (unexpectedToolCall) return err(unexpectedToolCallError(curl, usage));
+      const assistantMessage = params.abortSignal.aborted ? abortedOutput : await parsedOutput();
+      return ok({
+        output: assistantMessage,
+        curl,
+        headers,
+        usage,
+        [compilerFinished]: true,
+      });
+    };
+
+    const compiled = await implementation({
+      ...params,
+      onTokens,
+      finish,
+    });
     if (!compiled.success) return compiled;
     return compilerSuccess(params, compiled.data);
   }

@@ -2,17 +2,11 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import type {
   Compiler,
-  CompilerImplementationResult,
+  CompilerImplementationParams,
   CompilerIR,
   CompilerModalities,
-  CompilerParamsImplementation,
 } from "./compiler-interface.ts";
-import {
-  compilerParamsHaveTools,
-  compilerUsage,
-  defineCompiler,
-  unexpectedToolCallError,
-} from "./compiler-interface.ts";
+import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
   Agent,
@@ -22,7 +16,7 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { errorToString, ok, err } from "../result.ts";
+import { errorToString, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
@@ -240,8 +234,8 @@ JSON`;
 
 export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompiler(
   async <A extends Agent<any, any, any>>(
-    params: CompilerParamsImplementation<A, AnthropicCompilerModel>,
-  ): Promise<CompilerImplementationResult<A>> => {
+    params: CompilerImplementationParams<A, AnthropicCompilerModel>,
+  ) => {
     const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
     const messages = toModelMessage(irs, model.modalities);
     const sysPrompt = systemPrompt ? await systemPrompt() : "";
@@ -328,8 +322,6 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
           partialJson: string;
         }
       >();
-      let unexpectedToolCall = false;
-
       try {
         for await (const chunk of stream) {
           if (abortSignal.aborted) break;
@@ -386,10 +378,6 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
                   break;
                 case "input_json_delta":
                   {
-                    if (!compilerParamsHaveTools(params)) {
-                      unexpectedToolCall = true;
-                      break;
-                    }
                     const tool = inProgressTools.get(chunk.index);
                     if (tool != null) {
                       params.onTokens(chunk.delta.partial_json, "tool");
@@ -402,10 +390,6 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             case "content_block_start":
               switch (chunk.content_block.type) {
                 case "tool_use":
-                  if (!compilerParamsHaveTools(params)) {
-                    unexpectedToolCall = true;
-                    break;
-                  }
                   params.onTokens(chunk.content_block.name, "tool");
                   inProgressTools.set(chunk.index, {
                     id: chunk.content_block.id,
@@ -471,78 +455,56 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
         usage: compilerTokens,
       };
 
-      // If aborted, don't try to parse tool calls
-      if (abortSignal.aborted) {
-        // Success is only false when the request fails,
-        // therefore success value is true here
-        return ok({
-          output: assistantMessage,
-          curl,
-          headers: response.headers,
-          usage: compilerTokens,
-        });
-      }
-
-      if (unexpectedToolCall) {
-        return err(unexpectedToolCallError(curl, compilerTokens));
-      }
-
-      // No tools? Return
-      if (inProgressTools.size === 0) {
-        return ok({
-          output: assistantMessage,
-          curl,
-          headers: response.headers,
-          usage: compilerTokens,
-        });
-      }
-
-      // Sort tool calls by their content block index to preserve ordering
-      const sortedTools = Array.from(inProgressTools.entries())
-        .sort(([a], [b]) => a - b)
-        .map(([_, v]) => v);
-
-      const toolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
-
-      for (const inProgressTool of sortedTools) {
-        const chatToolCall = {
-          toolCallId: inProgressTool.id,
-          toolName: inProgressTool.name,
-          args: inProgressTool.partialJson,
-        };
-        const parseResult = await parseToolCall<A["tools"]>({
-          toolCall: chatToolCall,
-          toolDefs,
-          autofixJson,
-          abortSignal,
-          transport,
-        });
-
-        if (parseResult.status === "error") {
-          toolCalls.push({
-            type: "malformed-tool-request",
-            error: parseResult.message,
-            toolCallId: inProgressTool.id,
-            call: {
-              original: {
-                name: inProgressTool.name,
-                arguments: inProgressTool.partialJson,
-              },
-            },
-          });
-          continue;
-        }
-
-        toolCalls.push(parseResult.tool);
-      }
-
-      if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
-
-      return ok({
-        output: assistantMessage,
+      return params.finish({
         curl,
         headers: response.headers,
         usage: compilerTokens,
+        abortedOutput: assistantMessage,
+        parsedOutput: async () => {
+          if (inProgressTools.size === 0) return assistantMessage;
+
+          // Sort tool calls by their content block index to preserve ordering
+          const sortedTools = Array.from(inProgressTools.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([_, v]) => v);
+
+          const toolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
+
+          for (const inProgressTool of sortedTools) {
+            const chatToolCall = {
+              toolCallId: inProgressTool.id,
+              toolName: inProgressTool.name,
+              args: inProgressTool.partialJson,
+            };
+            const parseResult = await parseToolCall<A["tools"]>({
+              toolCall: chatToolCall,
+              toolDefs,
+              autofixJson,
+              abortSignal,
+              transport,
+            });
+
+            if (parseResult.status === "error") {
+              toolCalls.push({
+                type: "malformed-tool-request",
+                error: parseResult.message,
+                toolCallId: inProgressTool.id,
+                call: {
+                  original: {
+                    name: inProgressTool.name,
+                    arguments: inProgressTool.partialJson,
+                  },
+                },
+              });
+              continue;
+            }
+
+            toolCalls.push(parseResult.tool);
+          }
+
+          if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
+          return assistantMessage;
+        },
       });
     } catch (e) {
       return err({
