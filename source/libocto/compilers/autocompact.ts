@@ -1,6 +1,10 @@
 import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
 import type { ToolMap } from "../tool-def.ts";
-import type { CompilerError, CompilerIR, CompilerResult } from "./compiler-interface.ts";
+import type {
+  CompilerError,
+  CompilerIR,
+  CompilerResultWithoutToolCalls,
+} from "./compiler-interface.ts";
 import { Result, ok, err } from "../result.ts";
 
 const AUTOCOMPACT_THRESHOLD = 0.9;
@@ -34,15 +38,6 @@ The individual messages from earlier in this conversation are no longer availabl
 
 Resume your work now.`;
 
-export function findMostRecentCompactionCheckpointIndex(messages: Array<{ role: string }>): number {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "checkpoint") {
-      return i;
-    }
-  }
-  return 0;
-}
-
 export function shouldAutoCompactHistory<T extends ToolMap<any, any>>(
   maxContextWindow: number,
   messages: Array<LoweredIR<T>>,
@@ -58,12 +53,10 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
   run,
 }: {
   messages: Array<CompilerIR<A>>;
-  run: (messages: Array<CompilerIR<A>>) => Promise<CompilerResult<A>>;
+  run: (messages: Array<CompilerIR<A>>) => Promise<CompilerResultWithoutToolCalls<A>>;
 }): Promise<Result<Content["content"] | null, CompactionError>> {
-  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = messages.slice(checkpointIndex);
   const summaryMessages: Array<CompilerIR<A>> = [
-    ...slicedMessages,
+    ...messages,
     {
       role: "user",
       content: [{ type: "text", content: compactPrompt() }],
@@ -98,7 +91,7 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
 }
 
 export function processCompactedHistory<A extends Agent<any, any, any>>(
-  compactSummaryResult: CompilerResult<A>,
+  compactSummaryResult: CompilerResultWithoutToolCalls<A>,
 ): string | undefined {
   if (!compactSummaryResult.success) {
     return;
@@ -158,7 +151,7 @@ function messageText<T extends ToolMap<any, any>>(msg: LoweredIR<T>): string {
       return (msg.content ?? "") + (msg.reasoningContent ?? "");
     case "user":
     case "tool-output":
-    case "checkpoint":
+    case "lowered-checkpoint":
       return contentText(msg.content);
     case "tool-runtime-error":
     case "tool-validation-error":

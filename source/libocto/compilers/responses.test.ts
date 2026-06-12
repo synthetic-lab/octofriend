@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import OpenAI from "openai";
+import { octoAgent } from "../../ir/octo-ir.ts";
+import type { Transport } from "../../transports/transport-common.ts";
+import { runResponsesAgent } from "./responses.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,
   openAIStrictFunctionParameters,
@@ -115,3 +119,77 @@ describe("openAIStrictFunctionParameters", () => {
     });
   });
 });
+
+describe("runResponsesAgent", () => {
+  it("returns an error if a model calls a tool when no tools were provided", async () => {
+    const client = new OpenAI({ apiKey: "test" });
+    Object.defineProperty(client, "responses", {
+      value: {
+        create: () => ({
+          withResponse: async () => ({
+            data: (async function* () {
+              yield {
+                type: "response.function_call_arguments.delta",
+                delta: "{}",
+              };
+              yield {
+                type: "response.completed",
+                response: {
+                  output: [],
+                  usage: {
+                    input_tokens: 1,
+                    input_tokens_details: { cached_tokens: 0 },
+                    output_tokens: 1,
+                    output_tokens_details: { reasoning_tokens: 0 },
+                  },
+                },
+              };
+            })(),
+            response: { headers: new Headers() },
+          }),
+        }),
+      },
+    });
+
+    const result = await runResponsesAgent<typeof octoAgent>({
+      model: {
+        client,
+        model: "test-model",
+      },
+      irs: [
+        {
+          role: "user",
+          content: [{ type: "text", content: "hello" }],
+        },
+      ],
+      onTokens: () => {},
+      abortSignal: new AbortController().signal,
+      transport: fakeTransport(),
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.type).toBe("unexpected-tool-call");
+      expect("usage" in result.error ? result.error.usage : null).toEqual({
+        input: { cached: 0, uncached: 1, total: 1 },
+        output: 1,
+      });
+    }
+  });
+});
+
+function fakeTransport(): Transport {
+  return {
+    cwd: ".",
+    writeFile: async () => {},
+    readFile: async () => "",
+    pathExists: async () => false,
+    isDirectory: async () => false,
+    mkdir: async () => {},
+    readdir: async () => [],
+    modTime: async () => 0,
+    resolvePath: async (_signal, path) => path,
+    shell: async () => "",
+    close: async () => {},
+  };
+}

@@ -1,12 +1,18 @@
 import { t, toJSONSchema } from "structural";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type {
+  Compiler,
+  CompilerImplementationResult,
   CompilerIR,
   CompilerModalities,
-  CompilerParams,
-  CompilerResult,
+  CompilerParamsImplementation,
 } from "./compiler-interface.ts";
-import { compilerUsage } from "./compiler-interface.ts";
+import {
+  compilerParamsHaveTools,
+  compilerUsage,
+  defineCompiler,
+  unexpectedToolCallError,
+} from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
   Agent,
@@ -246,7 +252,7 @@ function llmFromIr<A extends Agent<any, any, any>>(
     };
   }
 
-  if (ir.role === "checkpoint") {
+  if (ir.role === "lowered-checkpoint") {
     return {
       role: "user",
       content: openaiContentParts(ir.content, modalities),
@@ -260,8 +266,8 @@ function llmFromIr<A extends Agent<any, any, any>>(
 
 async function handleKnownErrors<A extends Agent<any, any, any>>(
   curl: string,
-  cb: () => Promise<CompilerResult<A>>,
-): Promise<CompilerResult<A>> {
+  cb: () => Promise<CompilerImplementationResult<A>>,
+): Promise<CompilerImplementationResult<A>> {
   try {
     return await cb();
   } catch (e) {
@@ -269,244 +275,249 @@ async function handleKnownErrors<A extends Agent<any, any, any>>(
   }
 }
 
-export async function runAgent<A extends Agent<any, any, any>>({
-  model,
-  irs,
-  onTokens,
-  abortSignal,
-  transport,
-  systemPrompt,
-  autofixJson,
-  tools,
-}: CompilerParams<A, OpenAICompilerModel>): Promise<CompilerResult<A>> {
-  const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
+export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
+  async <A extends Agent<any, any, any>>(
+    params: CompilerParamsImplementation<A, OpenAICompilerModel>,
+  ): Promise<CompilerImplementationResult<A>> => {
+    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const messages = await toLlmMessages(irs, systemPrompt, model.modalities);
 
-  const toolDefs = tools || {};
-  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
-  const toolsMap = toolEntries.map(([name, tool]) => {
-    const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
-    // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
-    // @ts-ignore
-    delete argJsonSchema.$schema;
-    delete argJsonSchema.description;
-    // @ts-ignore
-    delete argJsonSchema.title;
+    const toolDefs = params.tools || {};
+    const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+    const toolsMap = toolEntries.map(([name, tool]) => {
+      const argJsonSchema = toJSONSchema("ignore", tool.ArgumentsSchema);
+      // Delete JSON schema fields unused by OpenAI compatible APIs; some APIs will error if present
+      // @ts-ignore
+      delete argJsonSchema.$schema;
+      delete argJsonSchema.description;
+      // @ts-ignore
+      delete argJsonSchema.title;
 
-    return {
-      type: "function" as const,
-      function: {
-        name: name,
-        description: tool.description,
-        parameters: argJsonSchema,
-        strict: true,
-      },
-    };
-  });
-  const toolsParam =
-    toolEntries.length === 0
-      ? {}
-      : {
-          tools: toolsMap,
-        };
+      return {
+        type: "function" as const,
+        function: {
+          name: name,
+          description: tool.description,
+          parameters: argJsonSchema,
+          strict: true,
+        },
+      };
+    });
+    const toolsParam =
+      toolEntries.length === 0
+        ? {}
+        : {
+            tools: toolsMap,
+          };
 
-  const curl = generateCurlFrom({
-    baseURL: model.client.baseURL,
-    model: model.model,
-    messages,
-    ...toolsParam,
-  });
-  return await handleKnownErrors(curl, async (): Promise<CompilerResult<A>> => {
-    let reasoning: {
-      reasoning_effort?: "low" | "medium" | "high";
-    } = {};
-    if (model.reasoningEffort) reasoning.reasoning_effort = model.reasoningEffort;
+    const curl = generateCurlFrom({
+      baseURL: model.client.baseURL,
+      model: model.model,
+      messages,
+      ...toolsParam,
+    });
+    return await handleKnownErrors(curl, async () => {
+      let reasoning: {
+        reasoning_effort?: "low" | "medium" | "high";
+      } = {};
+      if (model.reasoningEffort) reasoning.reasoning_effort = model.reasoningEffort;
 
-    const { data: res, response } = await model.client.chat.completions
-      .create(
-        {
-          ...reasoning,
-          model: model.model,
-          messages,
-          ...toolsParam,
-          stream: true,
-          stream_options: {
-            include_usage: true,
+      const { data: res, response } = await model.client.chat.completions
+        .create(
+          {
+            ...reasoning,
+            model: model.model,
+            messages,
+            ...toolsParam,
+            stream: true,
+            stream_options: {
+              include_usage: true,
+            },
           },
-        },
-        {
-          signal: abortSignal,
-        },
-      )
-      .withResponse();
+          {
+            signal: abortSignal,
+          },
+        )
+        .withResponse();
 
-    let content = "";
-    let reasoningContent: undefined | string = undefined;
-    let usage = {
-      input: 0,
-      cachedInput: 0,
-      output: 0,
-    };
+      let content = "";
+      let reasoningContent: undefined | string = undefined;
+      let usage = {
+        input: 0,
+        cachedInput: 0,
+        output: 0,
+      };
 
-    let toolCallMap = new Map<number, Partial<ResponseToolCall>>();
+      let toolCallMap = new Map<number, Partial<ResponseToolCall>>();
+      let unexpectedToolCall = false;
 
-    try {
-      for await (const chunk of res) {
-        if (abortSignal.aborted) break;
-        if (chunk.usage) {
-          usage.input = chunk.usage.prompt_tokens;
-          usage.cachedInput = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
-          usage.output = chunk.usage.completion_tokens;
-        }
+      try {
+        for await (const chunk of res) {
+          if (abortSignal.aborted) break;
+          if (chunk.usage) {
+            usage.input = chunk.usage.prompt_tokens;
+            usage.cachedInput = chunk.usage.prompt_tokens_details?.cached_tokens ?? 0;
+            usage.output = chunk.usage.completion_tokens;
+          }
 
-        const delta = chunk.choices[0]?.delta as
-          | {
-              content: string;
-            }
-          | {
-              reasoning_content: string;
-            }
-          | {
-              tool_calls: Array<ResponseToolCall & { index?: number }>;
-            }
-          | {
-              reasoning: string;
-            }
-          | null;
+          const delta = chunk.choices[0]?.delta as
+            | {
+                content: string;
+              }
+            | {
+                reasoning_content: string;
+              }
+            | {
+                tool_calls: Array<ResponseToolCall & { index?: number }>;
+              }
+            | {
+                reasoning: string;
+              }
+            | null;
 
-        if (delta && "content" in delta && delta.content) {
-          const tokens = delta.content || "";
-          content += tokens;
-          onTokens(tokens, "content");
-        } else if (delta && "reasoning_content" in delta && delta.reasoning_content) {
-          if (reasoningContent == null) reasoningContent = "";
-          reasoningContent += delta.reasoning_content;
-          onTokens(delta.reasoning_content, "reasoning");
-        } else if (delta && "reasoning" in delta && delta.reasoning) {
-          if (reasoningContent == null) reasoningContent = "";
-          reasoningContent += delta.reasoning;
-          onTokens(delta.reasoning, "reasoning");
-        } else if (
-          delta &&
-          "tool_calls" in delta &&
-          delta.tool_calls &&
-          delta.tool_calls.length > 0
-        ) {
-          for (const deltaCall of delta.tool_calls) {
-            const index = deltaCall.index ?? 0;
-            onTokens(
-              (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
-              "tool",
-            );
-            if (deltaCall.id) {
-              toolCallMap.set(index, {
-                id: deltaCall.id,
-                function: {
-                  name: deltaCall.function.name || "",
-                  arguments: deltaCall.function.arguments || "",
-                },
-              });
-            } else {
-              const curr = toolCallMap.get(index);
-              if (curr) {
-                if (deltaCall.function.name) curr.function!.name = deltaCall.function.name;
-                if (deltaCall.function.arguments)
-                  curr.function!.arguments += deltaCall.function.arguments;
+          if (delta && "content" in delta && delta.content) {
+            const tokens = delta.content || "";
+            content += tokens;
+            params.onTokens(tokens, "content");
+          } else if (delta && "reasoning_content" in delta && delta.reasoning_content) {
+            if (reasoningContent == null) reasoningContent = "";
+            reasoningContent += delta.reasoning_content;
+            params.onTokens(delta.reasoning_content, "reasoning");
+          } else if (delta && "reasoning" in delta && delta.reasoning) {
+            if (reasoningContent == null) reasoningContent = "";
+            reasoningContent += delta.reasoning;
+            params.onTokens(delta.reasoning, "reasoning");
+          } else if (
+            delta &&
+            "tool_calls" in delta &&
+            delta.tool_calls &&
+            delta.tool_calls.length > 0
+          ) {
+            for (const deltaCall of delta.tool_calls) {
+              if (!compilerParamsHaveTools(params)) {
+                unexpectedToolCall = true;
+                continue;
+              }
+              const index = deltaCall.index ?? 0;
+              params.onTokens(
+                (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
+                "tool",
+              );
+              if (deltaCall.id) {
+                toolCallMap.set(index, {
+                  id: deltaCall.id,
+                  function: {
+                    name: deltaCall.function.name || "",
+                    arguments: deltaCall.function.arguments || "",
+                  },
+                });
+              } else {
+                const curr = toolCallMap.get(index);
+                if (curr) {
+                  if (deltaCall.function.name) curr.function!.name = deltaCall.function.name;
+                  if (deltaCall.function.arguments)
+                    curr.function!.arguments += deltaCall.function.arguments;
+                }
               }
             }
           }
         }
+      } catch (e) {
+        // Handle abort errors gracefully
+        if (abortSignal.aborted) {
+          // Fall through to return abbreviated response
+        } else {
+          return err({
+            type: "stream-error",
+            requestError: errorToString(e),
+            curl,
+            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+          });
+        }
       }
-    } catch (e) {
-      // Handle abort errors gracefully
+
+      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+
+      const assistantIr: AssistantIR<A["tools"]> = {
+        role: "assistant" as const,
+        content,
+        reasoningContent,
+        usage: compilerTokens,
+      };
+
+      // If aborted, don't try to parse tool calls - just return the assistant response
       if (abortSignal.aborted) {
-        // Fall through to return abbreviated response
-      } else {
-        return err({
-          type: "stream-error",
-          requestError: errorToString(e),
-          curl,
-          usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
-        });
+        return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
       }
-    }
 
-    const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+      if (unexpectedToolCall) {
+        return err(unexpectedToolCallError(curl, compilerTokens));
+      }
 
-    const assistantIr: AssistantIR<A["tools"]> = {
-      role: "assistant" as const,
-      content,
-      reasoningContent,
-      usage: compilerTokens,
-    };
+      // If no tool calls, we're done
+      if (toolCallMap.size === 0) {
+        return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
+      }
 
-    // If aborted, don't try to parse tool calls - just return the assistant response
-    if (abortSignal.aborted) {
-      return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
-    }
+      // Sort tool calls by their streaming index to preserve ordering
+      const currTools = Array.from(toolCallMap.entries())
+        .sort(([a], [b]) => a - b)
+        .map(([_, v]) => v);
 
-    // If no tool calls, we're done
-    if (toolCallMap.size === 0) {
-      return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
-    }
+      const toolCalls: Array<MalformedToolRequest | ToolCallRequest<A>> = [];
 
-    // Sort tool calls by their streaming index to preserve ordering
-    const currTools = Array.from(toolCallMap.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([_, v]) => v);
-
-    const toolCalls: Array<MalformedToolRequest | ToolCallRequest<A>> = [];
-
-    for (const currTool of currTools) {
-      const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
-      if (validatedTool instanceof t.Err) {
-        const toolCallId = currTool["id"];
-        if (toolCallId == null) throw new Error("Impossible tool call: no id given");
-        toolCalls.push({
-          type: "malformed-tool-request",
-          error: validatedTool.message,
-          call: {
-            original: {
-              name: currTool.function?.name || "unknown",
-              arguments: currTool.function?.arguments || "",
+      for (const currTool of currTools) {
+        const validatedTool = ResponseToolCallSchema.sliceResult(currTool);
+        if (validatedTool instanceof t.Err) {
+          const toolCallId = currTool["id"];
+          if (toolCallId == null) throw new Error("Impossible tool call: no id given");
+          toolCalls.push({
+            type: "malformed-tool-request",
+            error: validatedTool.message,
+            call: {
+              original: {
+                name: currTool.function?.name || "unknown",
+                arguments: currTool.function?.arguments || "",
+              },
             },
+            toolCallId,
+          });
+          continue;
+        }
+
+        const parseResult = await parseToolCall<A["tools"]>({
+          toolCall: {
+            toolCallId: validatedTool.id,
+            toolName: validatedTool.function.name,
+            args: validatedTool.function.arguments,
           },
-          toolCallId,
+          toolDefs,
+          autofixJson,
+          abortSignal,
+          transport,
         });
-        continue;
-      }
 
-      const parseResult = await parseToolCall<A["tools"]>({
-        toolCall: {
-          toolCallId: validatedTool.id,
-          toolName: validatedTool.function.name,
-          args: validatedTool.function.arguments,
-        },
-        toolDefs,
-        autofixJson,
-        abortSignal,
-        transport,
-      });
-
-      if (parseResult.status === "error") {
-        toolCalls.push({
-          type: "malformed-tool-request",
-          error: parseResult.message,
-          call: {
-            original: {
-              name: validatedTool.function.name,
-              arguments: validatedTool.function.arguments,
+        if (parseResult.status === "error") {
+          toolCalls.push({
+            type: "malformed-tool-request",
+            error: parseResult.message,
+            call: {
+              original: {
+                name: validatedTool.function.name,
+                arguments: validatedTool.function.arguments,
+              },
             },
-          },
-          toolCallId: validatedTool.id,
-        });
-        continue;
+            toolCallId: validatedTool.id,
+          });
+          continue;
+        }
+
+        toolCalls.push(parseResult.tool);
       }
 
-      toolCalls.push(parseResult.tool);
-    }
+      if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
 
-    if (toolCalls.length > 0) assistantIr.toolCalls = toolCalls;
-
-    return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
-  });
-}
+      return ok({ output: assistantIr, curl, headers: response.headers, usage: compilerTokens });
+    });
+  },
+);

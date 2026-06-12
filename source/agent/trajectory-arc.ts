@@ -19,7 +19,6 @@ import {
   CompactionError,
   generateCompactionCheckpointContent,
   shouldAutoCompactHistory,
-  findMostRecentCompactionCheckpointIndex,
 } from "../libocto/compilers/autocompact.ts";
 import { validateTool } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
@@ -28,7 +27,7 @@ import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
 import { Result, ok } from "../libocto/result.ts";
-import { lower } from "../compilers/lower.ts";
+import { lowerOcto } from "../compilers/lower-octo.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -52,7 +51,8 @@ export type TrajectoryOutputIR =
       content: Content["content"];
     };
 
-type AllTokenTypes = "reasoning" | "content" | "tool";
+type ResponseTokenTypes = "reasoning" | "content" | "tool";
+type CompactionTokenTypes = Exclude<ResponseTokenTypes, "tool">;
 
 type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
@@ -71,20 +71,17 @@ type RecoverableRequestError = Extract<
   { type: "payment-error" | "rate-limit-error" }
 >;
 
-// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
-// tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
-// requires typesystem shenanigans.)
 type AutocompactionStream = {
   type: "autocompaction-stream";
-  buffer: AssistantBuffer<AllTokenTypes>;
-  delta: AssistantDelta<AllTokenTypes>;
+  buffer: AssistantBuffer<CompactionTokenTypes>;
+  delta: AssistantDelta<CompactionTokenTypes>;
 };
 
 export type StateEvents = {
   startResponse: null;
   responseProgress: {
-    buffer: AssistantBuffer<AllTokenTypes>;
-    delta: AssistantDelta<AllTokenTypes>;
+    buffer: AssistantBuffer<ResponseTokenTypes>;
+    delta: AssistantDelta<ResponseTokenTypes>;
   };
   startCompaction: null;
   compactionProgress: AutocompactionStream;
@@ -197,7 +194,7 @@ export async function trajectoryArc({
 
   handler.startResponse(null);
 
-  let buffer: AssistantBuffer<AllTokenTypes> = {};
+  let buffer: AssistantBuffer<ResponseTokenTypes> = {};
   const result = await run({
     apiKey,
     model,
@@ -490,13 +487,12 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
-  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const loweredMessages = lower(messages.slice(checkpointIndex), model.modalities);
+  const loweredMessages = lowerOcto(messages, model.modalities);
   if (!shouldAutoCompactHistory(model.context, loweredMessages)) return ok(null);
 
   handler.startCompaction();
 
-  const buffer: AssistantBuffer<AllTokenTypes> = {};
+  const buffer: AssistantBuffer<CompactionTokenTypes> = {};
   const checkpointContent = await generateCompactionCheckpointContent({
     messages: loweredMessages,
     run: messages =>

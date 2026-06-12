@@ -6,17 +6,20 @@ import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import type { OctoIR } from "../ir/octo-ir.ts";
-import { findMostRecentCompactionCheckpointIndex } from "../libocto/compilers/autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
-import type { CompilerResult, CompilerUsage } from "../libocto/compilers/compiler-interface.ts";
+import type {
+  CompilerResult,
+  CompilerTokenType,
+  CompilerUsage,
+} from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { lower } from "./lower.ts";
+import { lowerOcto } from "./lower-octo.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 
@@ -44,8 +47,7 @@ export async function run({
   systemPrompt?: () => Promise<string>;
   tools?: Partial<LoadedTools>;
 }) {
-  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const loweredMessages = lower(messages.slice(checkpointIndex), model.modalities);
+  const loweredMessages = lowerOcto(messages, model.modalities);
 
   return runLowered({
     apiKey,
@@ -60,7 +62,22 @@ export async function run({
   });
 }
 
-export async function runLowered({
+type RunLoweredArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
+  apiKey: string;
+  model: ModelConfig;
+  messages: Array<LoweredIR<typeof toolMap>>;
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  handlers: {
+    onTokens: (t: string, type: CompilerTokenType<Tools>) => any;
+    onAutofixJson: (done: Promise<void>) => any;
+  };
+  abortSignal: AbortSignal;
+  transport: Transport;
+  systemPrompt?: () => Promise<string>;
+  tools?: Tools;
+};
+
+export async function runLowered<Tools extends Partial<LoadedTools> | undefined = undefined>({
   model,
   apiKey,
   messages,
@@ -70,20 +87,7 @@ export async function runLowered({
   transport,
   systemPrompt,
   tools,
-}: {
-  apiKey: string;
-  model: ModelConfig;
-  messages: Array<LoweredIR<typeof toolMap>>;
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
-  handlers: {
-    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
-    onAutofixJson: (done: Promise<void>) => any;
-  };
-  abortSignal: AbortSignal;
-  transport: Transport;
-  systemPrompt?: () => Promise<string>;
-  tools?: Partial<LoadedTools>;
-}) {
+}: RunLoweredArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
   const params = {
     abortSignal,
     systemPrompt,
@@ -99,7 +103,7 @@ export async function runLowered({
   };
 
   if (model.type == null || model.type === "standard") {
-    const result = await runAgent<typeof octoAgent>({
+    const result = await runAgent<typeof octoAgent, Tools>({
       ...params,
       model: standardOpenAICompilerModel(model, apiKey),
     });
@@ -108,7 +112,7 @@ export async function runLowered({
   }
 
   if (model.type === "openai-responses") {
-    const result = await runResponsesAgent<typeof octoAgent>({
+    const result = await runResponsesAgent<typeof octoAgent, Tools>({
       ...params,
       model: responsesOpenAICompilerModel(model, apiKey),
     });
@@ -117,7 +121,7 @@ export async function runLowered({
   }
 
   const _: "anthropic" = model.type;
-  const result = await runAnthropicAgent<typeof octoAgent>({
+  const result = await runAnthropicAgent<typeof octoAgent, Tools>({
     ...params,
     model: anthropicCompilerModel(model, apiKey),
   });
