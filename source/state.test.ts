@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ok } from "./result.ts";
+import { ok } from "./libocto/result.ts";
 import type { Config } from "./config.ts";
 import type { ToolCall } from "./tools/index.ts";
 import type { Transport } from "./transports/transport-common.ts";
@@ -69,8 +69,10 @@ describe("runTool", () => {
             role: "assistant",
             content: "",
             toolCalls: [toolReq],
-            tokenUsage: 0,
-            outputTokens: 0,
+            usage: {
+              input: { cached: 0, uncached: 0, total: 0 },
+              output: 0,
+            },
           },
         },
       ],

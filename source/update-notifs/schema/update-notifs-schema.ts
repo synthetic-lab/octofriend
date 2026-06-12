@@ -6,5 +6,5 @@ export const shownUpdateNotifs = sqliteTable(
     id: integer().primaryKey({ autoIncrement: true }),
     update: text().notNull(),
   },
-  table => [uniqueIndex("update_idx").on(table.update)],
+  table => [uniqueIndex("shown_update_notifs_update_unique").on(table.update)],
 );

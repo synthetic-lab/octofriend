@@ -183,6 +183,7 @@ describe("runResponsesAgent", () => {
 function fakeTransport(): Transport {
   return {
     cwd: ".",
+    transportKind: "local",
     writeFile: async () => {},
     readFile: async () => "",
     pathExists: async () => false,

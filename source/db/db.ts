@@ -15,6 +15,7 @@ export function db() {
     } else {
       sqliteDb = new Database(DB_PATH);
     }
+    sqliteDb.pragma("journal_mode = WAL");
   }
   if (client == null) {
     client = drizzle({

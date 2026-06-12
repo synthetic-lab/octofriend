@@ -1,34 +1,153 @@
-import { integer, sqliteTable, text, uniqueIndex, index } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import {
+  check,
+  foreignKey,
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
-export const historySessions = sqliteTable(
-  "history_sessions",
+export const trees = sqliteTable(
+  "trees",
   {
-    id: text().primaryKey(),
-    createdAt: integer().notNull(),
-    updatedAt: integer().notNull(),
+    id: integer().primaryKey({ autoIncrement: true }),
+    name: text().notNull().unique(),
     cwd: text().notNull(),
-    transportKind: text({ enum: ["local", "docker"] }).notNull(),
-    launchCommandArgsJson: text().notNull(),
+    updatedAt: integer().notNull(),
   },
   table => [
-    index("history_sessions_cwd_updated_at_idx").on(table.cwd, table.updatedAt),
-    index("history_sessions_updated_at_idx").on(table.updatedAt),
+    index("trees_cwd_updated_at_idx").on(table.cwd, table.updatedAt),
+    index("trees_updated_at_idx").on(table.updatedAt),
   ],
 );
+
+export const localLaunches = sqliteTable(
+  "local_launches",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    config: text(),
+    unchained: integer({ mode: "boolean" }).notNull(),
+  },
+  table => [check("local_launches_unchained_check", sql`${table.unchained} IN (0, 1)`)],
+);
+
+export const dockerLaunches = sqliteTable(
+  "docker_launches",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    kind: text({ enum: ["connect", "run"] }).notNull(),
+    target: text(),
+    dockerRunArgsJson: text(),
+    config: text(),
+    unchained: integer({ mode: "boolean" }).notNull(),
+  },
+  table => [
+    check("docker_launches_unchained_check", sql`${table.unchained} IN (0, 1)`),
+    check(
+      "docker_launches_kind_args_check",
+      sql`(${table.kind} = 'connect' AND ${table.target} IS NOT NULL AND ${table.dockerRunArgsJson} IS NULL)
+        OR (${table.kind} = 'run' AND ${table.target} IS NULL AND ${table.dockerRunArgsJson} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const launches = sqliteTable(
+  "launches",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    dockerLaunchId: integer().references(() => dockerLaunches.id, { onDelete: "restrict" }),
+    localLaunchId: integer().references(() => localLaunches.id, { onDelete: "restrict" }),
+  },
+  table => [
+    uniqueIndex("launches_docker_launch_id_unique").on(table.dockerLaunchId),
+    uniqueIndex("launches_local_launch_id_unique").on(table.localLaunchId),
+    check(
+      "launches_exactly_one_kind_check",
+      sql`(${table.dockerLaunchId} IS NOT NULL) <> (${table.localLaunchId} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const requestFailures = sqliteTable("request_failures", {
+  id: integer().primaryKey({ autoIncrement: true }),
+});
+
+export const compactionFailures = sqliteTable("compaction_failures", {
+  id: integer().primaryKey({ autoIncrement: true }),
+});
+
+export const notifications = sqliteTable("notifications", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  content: text().notNull(),
+});
+
+export const llmIrs = sqliteTable("llm_irs", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  json: text().notNull(),
+});
 
 export const historyItems = sqliteTable(
   "history_items",
   {
     id: integer().primaryKey({ autoIncrement: true }),
-    sessionId: text()
-      .notNull()
-      .references(() => historySessions.id, { onDelete: "cascade" }),
-    position: integer().notNull(),
-    type: text({
-      enum: ["llm-ir", "request-failed", "compaction-failed", "notification"],
-    }).notNull(),
-    content: text(),
-    llmIrJson: text(),
+    requestFailedId: integer().references(() => requestFailures.id, { onDelete: "restrict" }),
+    compactionFailedId: integer().references(() => compactionFailures.id, {
+      onDelete: "restrict",
+    }),
+    notificationId: integer().references(() => notifications.id, { onDelete: "restrict" }),
+    llmIrId: integer().references(() => llmIrs.id, { onDelete: "restrict" }),
   },
-  table => [uniqueIndex("history_items_session_position_idx").on(table.sessionId, table.position)],
+  table => [
+    uniqueIndex("history_items_request_failed_id_unique").on(table.requestFailedId),
+    uniqueIndex("history_items_compaction_failed_id_unique").on(table.compactionFailedId),
+    uniqueIndex("history_items_notification_id_unique").on(table.notificationId),
+    uniqueIndex("history_items_llm_ir_id_unique").on(table.llmIrId),
+    check(
+      "history_items_exactly_one_payload_check",
+      sql`(${table.requestFailedId} IS NOT NULL)
+        + (${table.compactionFailedId} IS NOT NULL)
+        + (${table.notificationId} IS NOT NULL)
+        + (${table.llmIrId} IS NOT NULL) = 1`,
+    ),
+  ],
+);
+
+export const treeNodes = sqliteTable(
+  "tree_nodes",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    historyItemId: integer()
+      .notNull()
+      .references(() => historyItems.id, { onDelete: "restrict" }),
+    treeId: integer()
+      .notNull()
+      .references(() => trees.id, { onDelete: "restrict" }),
+    parentId: integer(),
+    isLeaf: integer({ mode: "boolean" }).notNull(),
+    launchId: integer()
+      .notNull()
+      .references(() => launches.id, { onDelete: "restrict" }),
+  },
+  table => [
+    uniqueIndex("tree_nodes_history_item_id_unique").on(table.historyItemId),
+    uniqueIndex("tree_nodes_id_tree_id_unique").on(table.id, table.treeId),
+    uniqueIndex("tree_nodes_one_root_unique")
+      .on(table.treeId)
+      .where(sql`${table.parentId} IS NULL`),
+    index("tree_nodes_tree_leaf_id_idx").on(table.treeId, table.isLeaf, table.id),
+    index("tree_nodes_parent_id_idx").on(table.parentId),
+    index("tree_nodes_launch_id_idx").on(table.launchId),
+    foreignKey({
+      name: "tree_nodes_parent_tree_fk",
+      columns: [table.parentId, table.treeId],
+      foreignColumns: [table.id, table.treeId],
+    }).onDelete("no action"),
+    check(
+      "tree_nodes_not_own_parent_check",
+      sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
+    ),
+    check("tree_nodes_is_leaf_check", sql`${table.isLeaf} IN (0, 1)`),
+  ],
 );

@@ -36,15 +36,16 @@ import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
 import { color, THEME_COLOR } from "./theme.ts";
-import { formatRelativeTime } from "./time.ts";
 import {
   createSessionContext,
   loadSessionState,
+  loadSessionPath,
   createSessionSaveManager,
   listSessions,
+  isSessionResumable,
   type SessionContext,
   type SessionSaveManager,
-  ActiveSession,
+  type SessionPath,
 } from "./session-history/index.ts";
 import { UiState, useAppStore } from "./state.ts";
 import type { HistoryItem } from "./history.ts";
@@ -157,16 +158,22 @@ withLaunchOptions(docker.command("run"))
     }
   });
 
+type ResumedSession = {
+  context: SessionContext;
+  history: HistoryItem[];
+};
+
 async function resumeExistingSession(opts: {
   resumeSessionId: string;
   transport: Transport;
   cwd: string;
-}): Promise<ActiveSession> {
+  parsedCliArgs: ParsedCliArgs;
+}): Promise<ResumedSession | null> {
   const sessionState = await loadSessionState(opts.resumeSessionId);
   if (sessionState == null) {
     console.error(`No session found with id ${opts.resumeSessionId}`);
     process.exitCode = 1;
-    return { context: null, isResumable: true, initialHistoryLength: 0 };
+    return null;
   }
 
   if (sessionState.transportKind !== opts.transport.transportKind) {
@@ -187,7 +194,7 @@ async function resumeExistingSession(opts: {
       );
     }
     process.exitCode = 1;
-    return { context: null, isResumable: true, initialHistoryLength: 0 };
+    return null;
   }
 
   if (sessionState.transportKind === "local" && sessionState.cwd !== opts.cwd) {
@@ -195,37 +202,33 @@ async function resumeExistingSession(opts: {
       `Session ${sessionState.id} was created in ${sessionState.cwd}, but resumed in ${opts.cwd}.`,
     );
     process.exitCode = 1;
-    return { context: null, isResumable: true, initialHistoryLength: 0 };
+    return null;
   }
 
   const context: SessionContext = {
     id: sessionState.id,
     cwd: sessionState.cwd,
     transportKind: sessionState.transportKind,
-    cliArgs: sessionState.cliArgs,
+    cliArgs: opts.parsedCliArgs,
   };
   useAppStore.setState({
     history: sessionState.history,
     lastUserPromptIndex: lastUserPromptIndex(sessionState.history),
   });
 
-  return {
-    context,
-    isResumable: true,
-    initialHistoryLength: sessionState.history.length,
-  };
+  return { context, history: sessionState.history };
 }
 
 function onHistoryVersionChange(opts: {
   state: UiState;
   previousState: UiState;
-  activeSession: ActiveSession;
+  activeSessionRef: { current: SessionContext };
   cwd: string;
   transportKind: "local" | "docker";
   parsedCliArgs: ParsedCliArgs;
   sessionSaveCoordinator: SessionSaveManager;
 }) {
-  const { state, previousState, activeSession } = opts;
+  const { state, previousState } = opts;
 
   if (state.conversationAction === "edit-retry") {
     opts.sessionSaveCoordinator.replace(state.history);
@@ -236,8 +239,7 @@ function onHistoryVersionChange(opts: {
       opts.parsedCliArgs,
     );
     opts.sessionSaveCoordinator.switchSession(nextSessionContext, previousState.history);
-    activeSession.context = nextSessionContext;
-    activeSession.isResumable = false;
+    opts.activeSessionRef.current = nextSessionContext;
   }
 
   useAppStore.setState({ conversationAction: null });
@@ -246,12 +248,10 @@ function onHistoryVersionChange(opts: {
 function onHistoryChange(opts: {
   state: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[0];
   previousState: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[1];
-  activeSession: ActiveSession;
   sessionSaveCoordinator: SessionSaveManager;
 }) {
-  const { state, previousState, activeSession, sessionSaveCoordinator } = opts;
+  const { state, previousState, sessionSaveCoordinator } = opts;
 
-  const savingSessionId = activeSession.context!.id;
   const useAppend =
     state.history.length > previousState.history.length &&
     state.history
@@ -260,11 +260,7 @@ function onHistoryChange(opts: {
   const saveOp = useAppend
     ? sessionSaveCoordinator.append(state.history)
     : sessionSaveCoordinator.replace(state.history);
-  saveOp.then(saved => {
-    if (saved && activeSession.context?.id === savingSessionId) {
-      activeSession.isResumable = true;
-    }
-  });
+  void saveOp;
 }
 
 async function runMain(opts: {
@@ -303,30 +299,33 @@ async function runMain(opts: {
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
 
-    const activeSession: ActiveSession =
-      opts.resumeSessionId != null
-        ? await resumeExistingSession({
-            resumeSessionId: opts.resumeSessionId,
-            transport: opts.transport,
-            cwd,
-          })
-        : (() => {
-            const context = createSessionContext(
-              cwd,
-              opts.transport.transportKind,
-              opts.parsedCliArgs,
-            );
-            return {
-              context,
-              isResumable: false,
-              initialHistoryLength: 0,
-            };
-          })();
+    let activeSessionContext: SessionContext | null = null;
+    let initialSessionHistory: HistoryItem[] = [];
+    let sessionPath: SessionPath | null = null;
+    if (opts.resumeSessionId != null) {
+      const resumedSession = await resumeExistingSession({
+        resumeSessionId: opts.resumeSessionId,
+        transport: opts.transport,
+        cwd,
+        parsedCliArgs: opts.parsedCliArgs,
+      });
+      if (resumedSession == null) return;
+      activeSessionContext = resumedSession.context;
+      initialSessionHistory = resumedSession.history;
+      sessionPath = await loadSessionPath(opts.resumeSessionId);
+    } else {
+      activeSessionContext = createSessionContext(
+        cwd,
+        opts.transport.transportKind,
+        opts.parsedCliArgs,
+      );
+    }
 
-    if (activeSession.context == null) return;
+    const activeSessionRef: { current: SessionContext } = { current: activeSessionContext };
     const sessionSaveCoordinator = createSessionSaveManager(
-      activeSession.context,
-      activeSession.initialHistoryLength,
+      activeSessionRef.current,
+      initialSessionHistory,
+      sessionPath ?? undefined,
     );
 
     unsubscribeStoreListener = useAppStore.subscribe((state, previousState) => {
@@ -334,7 +333,7 @@ async function runMain(opts: {
         onHistoryVersionChange({
           state,
           previousState,
-          activeSession,
+          activeSessionRef,
           cwd,
           transportKind: opts.transport.transportKind,
           parsedCliArgs: opts.parsedCliArgs,
@@ -343,8 +342,8 @@ async function runMain(opts: {
         return;
       }
 
-      if (state.history !== previousState.history && activeSession.context != null) {
-        onHistoryChange({ state, previousState, activeSession, sessionSaveCoordinator });
+      if (state.history !== previousState.history && activeSessionRef.current != null) {
+        onHistoryChange({ state, previousState, sessionSaveCoordinator });
       }
     });
 
@@ -369,10 +368,9 @@ async function runMain(opts: {
     );
 
     await waitUntilExit();
-    if (activeSession.context != null) {
-      const savedOnExit = await sessionSaveCoordinator.append(useAppStore.getState().history);
+    if (activeSessionRef.current != null) {
+      await sessionSaveCoordinator.append(useAppStore.getState().history);
       await sessionSaveCoordinator.flush();
-      activeSession.isResumable = savedOnExit || activeSession.isResumable;
     }
 
     console.log("\nApprox. tokens used:");
@@ -385,8 +383,8 @@ async function runMain(opts: {
         console.log(`${model}: ${input} input, ${output} output`);
       }
     }
-    if (activeSession.context != null && activeSession.isResumable) {
-      const resumeCommand = formatResumeCommand(activeSession.context);
+    if (activeSessionRef.current != null && isSessionResumable(activeSessionRef.current.id)) {
+      const resumeCommand = formatResumeCommand(activeSessionRef.current);
       console.log(
         `\nTo continue this session, run ${chalk.hex(color(!!opts.parsedCliArgs.unchained))(resumeCommand)}`,
       );
@@ -508,12 +506,8 @@ cli
     }
 
     for (const session of sessions) {
-      const updated = new Date(session.updatedAt).toLocaleString();
-      const relativeTime = formatRelativeTime(session.updatedAt);
       const cwdSuffix = opts.all ? `  ${chalk.dim(session.cwd)}` : "";
-      console.log(
-        `${chalk.hex(THEME_COLOR)(session.id)}  ${updated}  ${chalk.dim(relativeTime)}${cwdSuffix}`,
-      );
+      console.log(`${chalk.hex(THEME_COLOR)(session.id)}${cwdSuffix}`);
     }
   });
 

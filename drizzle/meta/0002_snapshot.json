@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "288564bc-bb17-4e86-9402-8ac723d6c508",
+  "id": "d40fa814-e001-4618-af03-a70e5a179d90",
   "prevId": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "tables": {
     "input_history": {
@@ -28,6 +28,84 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "compaction_failures": {
+      "name": "compaction_failures",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "docker_launches": {
+      "name": "docker_launches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "docker_run_args_json": {
+          "name": "docker_run_args_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "config": {
+          "name": "config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "unchained": {
+          "name": "unchained",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "docker_launches_unchained_check": {
+          "name": "docker_launches_unchained_check",
+          "value": "\"docker_launches\".\"unchained\" IN (0, 1)"
+        },
+        "docker_launches_kind_args_check": {
+          "name": "docker_launches_kind_args_check",
+          "value": "(\"docker_launches\".\"kind\" = 'connect' AND \"docker_launches\".\"target\" IS NOT NULL AND \"docker_launches\".\"docker_run_args_json\" IS NULL)\n        OR (\"docker_launches\".\"kind\" = 'run' AND \"docker_launches\".\"target\" IS NULL AND \"docker_launches\".\"docker_run_args_json\" IS NOT NULL)"
+        }
+      }
+    },
     "history_items": {
       "name": "history_items",
       "columns": {
@@ -38,84 +116,414 @@
           "notNull": true,
           "autoincrement": true
         },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "position": {
-          "name": "position",
+        "request_failed_id": {
+          "name": "request_failed_id",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "llm_ir_json": {
-          "name": "llm_ir_json",
-          "type": "text",
+        "compaction_failed_id": {
+          "name": "compaction_failed_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "notification_id": {
+          "name": "notification_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "llm_ir_id": {
+          "name": "llm_ir_id",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         }
       },
       "indexes": {
-        "history_items_session_position_idx": {
-          "name": "history_items_session_position_idx",
-          "columns": ["session_id", "position"],
+        "history_items_request_failed_id_unique": {
+          "name": "history_items_request_failed_id_unique",
+          "columns": ["request_failed_id"],
+          "isUnique": true
+        },
+        "history_items_compaction_failed_id_unique": {
+          "name": "history_items_compaction_failed_id_unique",
+          "columns": ["compaction_failed_id"],
+          "isUnique": true
+        },
+        "history_items_notification_id_unique": {
+          "name": "history_items_notification_id_unique",
+          "columns": ["notification_id"],
+          "isUnique": true
+        },
+        "history_items_llm_ir_id_unique": {
+          "name": "history_items_llm_ir_id_unique",
+          "columns": ["llm_ir_id"],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "history_items_session_id_history_sessions_id_fk": {
-          "name": "history_items_session_id_history_sessions_id_fk",
+        "history_items_request_failed_id_request_failures_id_fk": {
+          "name": "history_items_request_failed_id_request_failures_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "history_sessions",
-          "columnsFrom": ["session_id"],
+          "tableTo": "request_failures",
+          "columnsFrom": ["request_failed_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "history_items_compaction_failed_id_compaction_failures_id_fk": {
+          "name": "history_items_compaction_failed_id_compaction_failures_id_fk",
+          "tableFrom": "history_items",
+          "tableTo": "compaction_failures",
+          "columnsFrom": ["compaction_failed_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "history_items_notification_id_notifications_id_fk": {
+          "name": "history_items_notification_id_notifications_id_fk",
+          "tableFrom": "history_items",
+          "tableTo": "notifications",
+          "columnsFrom": ["notification_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "history_items_llm_ir_id_llm_irs_id_fk": {
+          "name": "history_items_llm_ir_id_llm_irs_id_fk",
+          "tableFrom": "history_items",
+          "tableTo": "llm_irs",
+          "columnsFrom": ["llm_ir_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "history_items_exactly_one_payload_check": {
+          "name": "history_items_exactly_one_payload_check",
+          "value": "(\"history_items\".\"request_failed_id\" IS NOT NULL)\n        + (\"history_items\".\"compaction_failed_id\" IS NOT NULL)\n        + (\"history_items\".\"notification_id\" IS NOT NULL)\n        + (\"history_items\".\"llm_ir_id\" IS NOT NULL) = 1"
+        }
+      }
     },
-    "history_sessions": {
-      "name": "history_sessions",
+    "launches": {
+      "name": "launches",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "integer",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": true
+        },
+        "docker_launch_id": {
+          "name": "docker_launch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
-        "created_at": {
-          "name": "created_at",
+        "local_launch_id": {
+          "name": "local_launch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "launches_docker_launch_id_unique": {
+          "name": "launches_docker_launch_id_unique",
+          "columns": ["docker_launch_id"],
+          "isUnique": true
+        },
+        "launches_local_launch_id_unique": {
+          "name": "launches_local_launch_id_unique",
+          "columns": ["local_launch_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "launches_docker_launch_id_docker_launches_id_fk": {
+          "name": "launches_docker_launch_id_docker_launches_id_fk",
+          "tableFrom": "launches",
+          "tableTo": "docker_launches",
+          "columnsFrom": ["docker_launch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "launches_local_launch_id_local_launches_id_fk": {
+          "name": "launches_local_launch_id_local_launches_id_fk",
+          "tableFrom": "launches",
+          "tableTo": "local_launches",
+          "columnsFrom": ["local_launch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "launches_exactly_one_kind_check": {
+          "name": "launches_exactly_one_kind_check",
+          "value": "(\"launches\".\"docker_launch_id\" IS NOT NULL) <> (\"launches\".\"local_launch_id\" IS NOT NULL)"
+        }
+      }
+    },
+    "llm_irs": {
+      "name": "llm_irs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "json": {
+          "name": "json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "local_launches": {
+      "name": "local_launches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "config": {
+          "name": "config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "unchained": {
+          "name": "unchained",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "local_launches_unchained_check": {
+          "name": "local_launches_unchained_check",
+          "value": "\"local_launches\".\"unchained\" IN (0, 1)"
+        }
+      }
+    },
+    "notifications": {
+      "name": "notifications",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "request_failures": {
+      "name": "request_failures",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "tree_nodes": {
+      "name": "tree_nodes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "history_item_id": {
+          "name": "history_item_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "updated_at": {
-          "name": "updated_at",
+        "tree_id": {
+          "name": "tree_id",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_leaf": {
+          "name": "is_leaf",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "launch_id": {
+          "name": "launch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "tree_nodes_history_item_id_unique": {
+          "name": "tree_nodes_history_item_id_unique",
+          "columns": ["history_item_id"],
+          "isUnique": true
+        },
+        "tree_nodes_id_tree_id_unique": {
+          "name": "tree_nodes_id_tree_id_unique",
+          "columns": ["id", "tree_id"],
+          "isUnique": true
+        },
+        "tree_nodes_one_root_unique": {
+          "name": "tree_nodes_one_root_unique",
+          "columns": ["tree_id"],
+          "isUnique": true,
+          "where": "\"tree_nodes\".\"parent_id\" IS NULL"
+        },
+        "tree_nodes_tree_leaf_id_idx": {
+          "name": "tree_nodes_tree_leaf_id_idx",
+          "columns": ["tree_id", "is_leaf", "id"],
+          "isUnique": false
+        },
+        "tree_nodes_parent_id_idx": {
+          "name": "tree_nodes_parent_id_idx",
+          "columns": ["parent_id"],
+          "isUnique": false
+        },
+        "tree_nodes_launch_id_idx": {
+          "name": "tree_nodes_launch_id_idx",
+          "columns": ["launch_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "tree_nodes_history_item_id_history_items_id_fk": {
+          "name": "tree_nodes_history_item_id_history_items_id_fk",
+          "tableFrom": "tree_nodes",
+          "tableTo": "history_items",
+          "columnsFrom": ["history_item_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tree_nodes_tree_id_trees_id_fk": {
+          "name": "tree_nodes_tree_id_trees_id_fk",
+          "tableFrom": "tree_nodes",
+          "tableTo": "trees",
+          "columnsFrom": ["tree_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tree_nodes_launch_id_launches_id_fk": {
+          "name": "tree_nodes_launch_id_launches_id_fk",
+          "tableFrom": "tree_nodes",
+          "tableTo": "launches",
+          "columnsFrom": ["launch_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "tree_nodes_parent_tree_fk": {
+          "name": "tree_nodes_parent_tree_fk",
+          "tableFrom": "tree_nodes",
+          "tableTo": "tree_nodes",
+          "columnsFrom": ["parent_id", "tree_id"],
+          "columnsTo": ["id", "tree_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "tree_nodes_not_own_parent_check": {
+          "name": "tree_nodes_not_own_parent_check",
+          "value": "\"tree_nodes\".\"parent_id\" IS NULL OR \"tree_nodes\".\"parent_id\" <> \"tree_nodes\".\"id\""
+        },
+        "tree_nodes_is_leaf_check": {
+          "name": "tree_nodes_is_leaf_check",
+          "value": "\"tree_nodes\".\"is_leaf\" IN (0, 1)"
+        }
+      }
+    },
+    "trees": {
+      "name": "trees",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -127,29 +535,27 @@
           "notNull": true,
           "autoincrement": false
         },
-        "transport_kind": {
-          "name": "transport_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "launch_command_args_json": {
-          "name": "launch_command_args_json",
-          "type": "text",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         }
       },
       "indexes": {
-        "history_sessions_cwd_updated_at_idx": {
-          "name": "history_sessions_cwd_updated_at_idx",
+        "trees_name_unique": {
+          "name": "trees_name_unique",
+          "columns": ["name"],
+          "isUnique": true
+        },
+        "trees_cwd_updated_at_idx": {
+          "name": "trees_cwd_updated_at_idx",
           "columns": ["cwd", "updated_at"],
           "isUnique": false
         },
-        "history_sessions_updated_at_idx": {
-          "name": "history_sessions_updated_at_idx",
+        "trees_updated_at_idx": {
+          "name": "trees_updated_at_idx",
           "columns": ["updated_at"],
           "isUnique": false
         }
@@ -178,8 +584,8 @@
         }
       },
       "indexes": {
-        "update_idx": {
-          "name": "update_idx",
+        "shown_update_notifs_update_unique": {
+          "name": "shown_update_notifs_update_unique",
           "columns": ["update"],
           "isUnique": true
         }
