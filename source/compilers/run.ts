@@ -47,43 +47,42 @@ export async function run<Tools extends Partial<LoadedTools> | undefined = undef
   systemPrompt,
   tools,
 }: RunArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
-  const params = {
-    abortSignal,
-    systemPrompt,
-    irs: messages,
-    onTokens: handlers.onTokens,
-    autofixJson: (badJson: string, signal: AbortSignal) => {
-      const fixPromise = autofixJson(badJson, signal);
-      handlers.onAutofixJson(fixPromise.then(() => {}));
-      return fixPromise;
-    },
-    tools,
-    transport,
-  };
+  const result = await (async () => {
+    const params = {
+      abortSignal,
+      systemPrompt,
+      irs: messages,
+      onTokens: handlers.onTokens,
+      autofixJson: (badJson: string, signal: AbortSignal) => {
+        const fixPromise = autofixJson(badJson, signal);
+        handlers.onAutofixJson(fixPromise.then(() => {}));
+        return fixPromise;
+      },
+      tools,
+      transport,
+    };
 
-  if (model.type == null || model.type === "standard") {
-    const result = await runAgent<typeof octoAgent, Tools>({
+    if (model.type == null || model.type === "standard") {
+      return runAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: standardOpenAICompilerModel(model, apiKey),
+      });
+    }
+
+    if (model.type === "openai-responses") {
+      return runResponsesAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: responsesOpenAICompilerModel(model, apiKey),
+      });
+    }
+
+    const _: "anthropic" = model.type;
+    return runAnthropicAgent<typeof octoAgent, Tools>({
       ...params,
-      model: standardOpenAICompilerModel(model, apiKey),
+      model: anthropicCompilerModel(model, apiKey),
     });
-    trackCompilerResultUsage(model.model, result);
-    return result;
-  }
+  })();
 
-  if (model.type === "openai-responses") {
-    const result = await runResponsesAgent<typeof octoAgent, Tools>({
-      ...params,
-      model: responsesOpenAICompilerModel(model, apiKey),
-    });
-    trackCompilerResultUsage(model.model, result);
-    return result;
-  }
-
-  const _: "anthropic" = model.type;
-  const result = await runAnthropicAgent<typeof octoAgent, Tools>({
-    ...params,
-    model: anthropicCompilerModel(model, apiKey),
-  });
   trackCompilerResultUsage(model.model, result);
   return result;
 }
