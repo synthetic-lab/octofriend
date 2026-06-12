@@ -8,7 +8,6 @@ import type {
 } from "./compiler-interface.ts";
 import { compilerUsage } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { StreamingXMLParser, tagged } from "../../xml.ts";
 import type {
   Agent,
   AssistantMessage as AssistantIR,
@@ -18,6 +17,7 @@ import type {
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
 import { errorToString, ok, err } from "../result.ts";
 import * as irPrompts from "./ir-prompts.ts";
+import { tagged } from "./ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
 import { openAIRequestError } from "./openai-shared.ts";
 
@@ -341,36 +341,11 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
     let content = "";
     let reasoningContent: undefined | string = undefined;
-    let inThinkTag = false;
     let usage = {
       input: 0,
       cachedInput: 0,
       output: 0,
     };
-
-    const xmlParser = new StreamingXMLParser({
-      whitelist: ["think"],
-      handlers: {
-        onOpenTag: () => {
-          if (content === "") inThinkTag = true;
-        },
-
-        onCloseTag: () => {
-          inThinkTag = false;
-        },
-
-        onText: e => {
-          if (inThinkTag) {
-            if (reasoningContent == null) reasoningContent = "";
-            reasoningContent += e.content;
-            onTokens(e.content, "reasoning");
-          } else {
-            onTokens(e.content, "content");
-            content += e.content;
-          }
-        },
-      },
-    });
 
     let toolCallMap = new Map<number, Partial<ResponseToolCall>>();
 
@@ -400,7 +375,8 @@ export async function runAgent<A extends Agent<any, any, any>>({
 
         if (delta && "content" in delta && delta.content) {
           const tokens = delta.content || "";
-          xmlParser.write(tokens);
+          content += tokens;
+          onTokens(tokens, "content");
         } else if (delta && "reasoning_content" in delta && delta.reasoning_content) {
           if (reasoningContent == null) reasoningContent = "";
           reasoningContent += delta.reasoning_content;
@@ -453,9 +429,6 @@ export async function runAgent<A extends Agent<any, any, any>>({
         });
       }
     }
-
-    // Make sure to close the parser to flush any remaining data
-    xmlParser.close();
 
     const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
 
