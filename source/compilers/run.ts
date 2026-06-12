@@ -5,7 +5,6 @@ import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
-import type { OctoIR } from "../ir/octo-ir.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
@@ -19,50 +18,10 @@ import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
-import { lowerOcto } from "./lower-octo.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 
-export async function run({
-  model,
-  apiKey,
-  messages,
-  handlers,
-  autofixJson,
-  abortSignal,
-  transport,
-  systemPrompt,
-  tools,
-}: {
-  apiKey: string;
-  model: ModelConfig;
-  messages: OctoIR[];
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
-  handlers: {
-    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
-    onAutofixJson: (done: Promise<void>) => any;
-  };
-  abortSignal: AbortSignal;
-  transport: Transport;
-  systemPrompt?: () => Promise<string>;
-  tools?: Partial<LoadedTools>;
-}) {
-  const loweredMessages = lowerOcto(messages, model.modalities);
-
-  return runLowered({
-    apiKey,
-    model,
-    messages: loweredMessages,
-    handlers,
-    autofixJson,
-    abortSignal,
-    transport,
-    systemPrompt,
-    tools,
-  });
-}
-
-type RunLoweredArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
+type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
   apiKey: string;
   model: ModelConfig;
   messages: Array<LoweredIR<typeof toolMap>>;
@@ -77,7 +36,7 @@ type RunLoweredArgs<Tools extends Partial<LoadedTools> | undefined = undefined> 
   tools?: Tools;
 };
 
-export async function runLowered<Tools extends Partial<LoadedTools> | undefined = undefined>({
+export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>({
   model,
   apiKey,
   messages,
@@ -87,7 +46,7 @@ export async function runLowered<Tools extends Partial<LoadedTools> | undefined 
   transport,
   systemPrompt,
   tools,
-}: RunLoweredArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
+}: RunArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
   const params = {
     abortSignal,
     systemPrompt,

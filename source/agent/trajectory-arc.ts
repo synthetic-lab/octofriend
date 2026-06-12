@@ -12,7 +12,7 @@ import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { run, runLowered } from "../compilers/run.ts";
+import { run } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import {
@@ -195,6 +195,7 @@ export async function trajectoryArc({
   handler.startResponse(null);
 
   let buffer: AssistantBuffer<ResponseTokenTypes> = {};
+  const loweredMessages = lowerOcto(messagesCopy, model.modalities);
   const result = await run({
     apiKey,
     model,
@@ -202,7 +203,7 @@ export async function trajectoryArc({
     abortSignal,
     transport,
     tools,
-    messages: messagesCopy,
+    messages: loweredMessages,
     handlers: {
       onTokens: (tokens, type) => {
         if (!buffer[type]) buffer[type] = "";
@@ -496,7 +497,7 @@ async function maybeAutocompact({
   const checkpointContent = await generateCompactionCheckpointContent({
     messages: loweredMessages,
     run: messages =>
-      runLowered({
+      run({
         apiKey,
         model,
         messages,

@@ -10,7 +10,7 @@ import type { Transport } from "../transports/transport-common.ts";
 import type { LoadedTools } from "../tools/index.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
-import { runLowered } from "./run.ts";
+import { run } from "./run.ts";
 
 function expectType<T>(_: T) {}
 
@@ -22,7 +22,7 @@ declare const transport: Transport;
 declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 declare const tools: Partial<LoadedTools>;
 
-const noToolsResult = runLowered({
+const noToolsResult = run({
   apiKey,
   model,
   messages,
@@ -46,7 +46,7 @@ noToolsResult.then(result => {
   expectType<undefined>(result.data.output.toolCalls);
 });
 
-const withToolsResult = runLowered({
+const withToolsResult = run({
   apiKey,
   model,
   messages,
@@ -64,7 +64,7 @@ const withToolsResult = runLowered({
 
 expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
-runLowered({
+run({
   apiKey,
   model,
   messages,
