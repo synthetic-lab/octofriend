@@ -1,13 +1,13 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { t, toJSONSchema } from "structural";
 import type {
+  Compiler,
+  CompilerImplementationParams,
   CompilerIR,
   CompilerModalities,
-  CompilerParams,
-  CompilerResult,
 } from "./compiler-interface.ts";
+import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
-import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
 import type {
   Agent,
   AnthropicAssistantData,
@@ -16,9 +16,8 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { trackTokens } from "../../token-tracker.ts";
-import { errorToString, ok, err } from "../../result.ts";
-import * as irPrompts from "../../prompts/ir-prompts.ts";
+import { errorToString, err } from "../result.ts";
+import * as irPrompts from "./ir-prompts.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -187,7 +186,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
     };
   }
 
-  if (ir.role === "checkpoint") {
+  if (ir.role === "lowered-checkpoint") {
     return {
       role: "user",
       content: anthropicContentParts(ir.content, modalities),
@@ -233,292 +232,287 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-export async function runAnthropicAgent<A extends Agent<any, any, any>>({
-  model,
-  irs,
-  onTokens,
-  abortSignal,
-  transport,
-  systemPrompt,
-  autofixJson,
-  tools,
-}: CompilerParams<A, AnthropicCompilerModel>): Promise<CompilerResult<A>> {
-  const messages = toModelMessage(irs, model.modalities);
-  const sysPrompt = systemPrompt ? await systemPrompt() : "";
+export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompiler(
+  async <A extends Agent<any, any, any>>(
+    params: CompilerImplementationParams<A, AnthropicCompilerModel>,
+  ) => {
+    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const messages = toModelMessage(irs, model.modalities);
+    const sysPrompt = systemPrompt ? await systemPrompt() : "";
 
-  const toolDefs = tools || {};
-  const toolDefinitions: Array<{ description: string; input_schema: any; name: string }> = [];
-  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
-  toolEntries.forEach(([name, toolDef]) => {
-    const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
-    // Delete JSON schema fields unused by AI SDK
-    // @ts-ignore
-    delete argJsonSchema.$schema;
-    delete argJsonSchema.description;
-    // @ts-ignore
-    delete argJsonSchema.title;
+    const toolDefs = params.tools || {};
+    const toolDefinitions: Array<{ description: string; input_schema: any; name: string }> = [];
+    const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+    toolEntries.forEach(([name, toolDef]) => {
+      const argJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema);
+      // Delete JSON schema fields unused by AI SDK
+      // @ts-ignore
+      delete argJsonSchema.$schema;
+      delete argJsonSchema.description;
+      // @ts-ignore
+      delete argJsonSchema.title;
 
-    toolDefinitions.push({
-      name,
-      description: toolDef.description,
-      input_schema: argJsonSchema,
+      toolDefinitions.push({
+        name,
+        description: toolDef.description,
+        input_schema: argJsonSchema,
+      });
     });
-  });
-  const toolParams =
-    toolDefinitions.length === 0
-      ? {}
-      : {
-          tools: toolDefinitions,
-        };
+    const toolParams =
+      toolDefinitions.length === 0
+        ? {}
+        : {
+            tools: toolDefinitions,
+          };
 
-  const thinking = model.thinking ? { thinking: model.thinking } : {};
+    const thinking = model.thinking ? { thinking: model.thinking } : {};
 
-  const curl = generateCurlFrom({
-    baseURL: model.client.baseURL,
-    model: model.model,
-    system: sysPrompt,
-    messages,
-    ...toolParams,
-    maxTokens: model.maxTokens,
-  });
-
-  try {
-    const system = sysPrompt == null ? {} : { system: sysPrompt };
-    const stream = await model.client.messages.create({
-      ...system,
+    const curl = generateCurlFrom({
+      baseURL: model.client.baseURL,
       model: model.model,
+      system: sysPrompt,
       messages,
       ...toolParams,
-      tool_choice: {
-        type: "auto",
-        disable_parallel_tool_use: false,
-      },
-      max_tokens: model.maxTokens,
-      ...thinking,
-      stream: true,
+      maxTokens: model.maxTokens,
     });
 
-    let content = "";
-    let reasoningContent: string | undefined = undefined;
-    let usage = {
-      input: 0,
-      output: 0,
-    };
-    const thinkingBlocks: Array<
-      | {
-          type: "thinking";
-          thinking?: string;
-          signature?: string;
-          index: number;
-        }
-      | {
-          type: "redacted_thinking";
-          data: string;
-        }
-    > = [];
-    let inProgressTools = new Map<
-      number,
-      {
-        id: string;
-        index: number;
-        name: string;
-        partialJson: string;
-      }
-    >();
-
-    // Handle streaming chunks
-    for await (const chunk of stream) {
-      if (abortSignal.aborted) break;
-
-      switch (chunk.type) {
-        case "content_block_delta":
-          switch (chunk.delta.type) {
-            case "text_delta":
-              content += chunk.delta.text;
-              onTokens(chunk.delta.text, "content");
-              break;
-            case "thinking_delta":
-              if (reasoningContent == null) reasoningContent = "";
-              reasoningContent += chunk.delta.thinking;
-              onTokens(chunk.delta.thinking, "reasoning");
-              if (thinkingBlocks.length === 0) {
-                thinkingBlocks.push({
-                  type: "thinking",
-                  thinking: chunk.delta.thinking,
-                  index: chunk.index,
-                });
-              } else {
-                const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
-                  lastBlock.thinking += chunk.delta.thinking;
-                } else {
-                  thinkingBlocks.push({
-                    type: "thinking",
-                    thinking: chunk.delta.thinking,
-                    index: chunk.index,
-                  });
-                }
-              }
-              break;
-            case "signature_delta":
-              if (thinkingBlocks.length === 0) {
-                thinkingBlocks.push({
-                  type: "thinking",
-                  signature: chunk.delta.signature,
-                  index: chunk.index,
-                });
-              } else {
-                const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
-                if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
-                  lastBlock.signature = chunk.delta.signature;
-                } else {
-                  thinkingBlocks.push({
-                    type: "thinking",
-                    signature: chunk.delta.signature,
-                    index: chunk.index,
-                  });
-                }
-              }
-              break;
-            case "input_json_delta":
-              {
-                const tool = inProgressTools.get(chunk.index);
-                if (tool != null) {
-                  onTokens(chunk.delta.partial_json, "tool");
-                  tool.partialJson += chunk.delta.partial_json;
-                }
-              }
-              break;
-          }
-          break;
-        case "content_block_start":
-          switch (chunk.content_block.type) {
-            case "tool_use":
-              onTokens(chunk.content_block.name, "tool");
-              inProgressTools.set(chunk.index, {
-                id: chunk.content_block.id,
-                index: chunk.index,
-                name: chunk.content_block.name,
-                partialJson: "",
-              });
-              break;
-            case "redacted_thinking":
-              thinkingBlocks.push({
-                type: "redacted_thinking",
-                data: chunk.content_block.data,
-              });
-              break;
-          }
-          break;
-
-        case "message_delta":
-          usage.output = chunk.usage.output_tokens;
-          if (chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
-            usage.input = chunk.usage.input_tokens;
-          }
-          break;
-        case "message_start":
-          usage.input = chunk.message.usage.input_tokens;
-          break;
-      }
-    }
-
-    // Track usage
-    if (usage.input !== 0 || usage.output !== 0) {
-      trackTokens(model.model, "input", usage.input);
-      trackTokens(model.model, "output", usage.output);
-    }
-
-    // Calculate token usage delta
-    let tokenDelta = 0;
-    if (usage.input !== 0 || usage.output !== 0) {
-      if (!abortSignal.aborted) {
-        const previousTokens = sumAssistantTokens(irs);
-        tokenDelta = usage.input + usage.output - previousTokens;
-      }
-    }
-
-    let anthropic: { anthropic?: AnthropicAssistantData } = {};
-    if (thinkingBlocks.length > 0) {
-      anthropic.anthropic = {
-        thinkingBlocks: thinkingBlocks.map(b => {
-          if (b.type === "redacted_thinking") return b;
-          return ThinkingBlockSchema.slice({
-            type: "thinking",
-            signature: b.signature || "",
-            thinking: b.thinking || "",
-          });
-        }),
-      };
-    }
-
-    const assistantMessage: AssistantMessage<A["tools"]> = {
-      role: "assistant",
-      content,
-      reasoningContent,
-      ...anthropic,
-      tokenUsage: tokenDelta,
-      outputTokens: usage.output,
-    };
-
-    // If aborted, don't try to parse tool calls
-    if (abortSignal.aborted) {
-      // Success is only false when the request fails,
-      // therefore success value is true here
-      return ok({ output: assistantMessage, curl });
-    }
-
-    // No tools? Return
-    if (inProgressTools.size === 0) {
-      return ok({ output: assistantMessage, curl });
-    }
-
-    // Sort tool calls by their content block index to preserve ordering
-    const sortedTools = Array.from(inProgressTools.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([_, v]) => v);
-
-    const toolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
-
-    for (const inProgressTool of sortedTools) {
-      const chatToolCall = {
-        toolCallId: inProgressTool.id,
-        toolName: inProgressTool.name,
-        args: inProgressTool.partialJson,
-      };
-      const parseResult = await parseToolCall<A["tools"]>({
-        toolCall: chatToolCall,
-        toolDefs,
-        autofixJson,
-        abortSignal,
-        transport,
-      });
-
-      if (parseResult.status === "error") {
-        toolCalls.push({
-          type: "malformed-tool-request",
-          error: parseResult.message,
-          toolCallId: inProgressTool.id,
-          call: {
-            original: {
-              name: inProgressTool.name,
-              arguments: inProgressTool.partialJson,
-            },
+    try {
+      const system = sysPrompt == null ? {} : { system: sysPrompt };
+      const { data: stream, response } = await model.client.messages
+        .create({
+          ...system,
+          model: model.model,
+          messages,
+          ...toolParams,
+          tool_choice: {
+            type: "auto",
+            disable_parallel_tool_use: false,
           },
-        });
-        continue;
+          max_tokens: model.maxTokens,
+          ...thinking,
+          stream: true,
+        })
+        .withResponse();
+
+      let content = "";
+      let reasoningContent: string | undefined = undefined;
+      let usage = {
+        input: 0,
+        cachedInput: 0,
+        output: 0,
+      };
+      const thinkingBlocks: Array<
+        | {
+            type: "thinking";
+            thinking?: string;
+            signature?: string;
+            index: number;
+          }
+        | {
+            type: "redacted_thinking";
+            data: string;
+          }
+      > = [];
+      let inProgressTools = new Map<
+        number,
+        {
+          id: string;
+          index: number;
+          name: string;
+          partialJson: string;
+        }
+      >();
+      try {
+        for await (const chunk of stream) {
+          if (abortSignal.aborted) break;
+
+          switch (chunk.type) {
+            case "content_block_delta":
+              switch (chunk.delta.type) {
+                case "text_delta":
+                  content += chunk.delta.text;
+                  params.onTokens(chunk.delta.text, "content");
+                  break;
+                case "thinking_delta":
+                  if (reasoningContent == null) reasoningContent = "";
+                  reasoningContent += chunk.delta.thinking;
+                  params.onTokens(chunk.delta.thinking, "reasoning");
+                  if (thinkingBlocks.length === 0) {
+                    thinkingBlocks.push({
+                      type: "thinking",
+                      thinking: chunk.delta.thinking,
+                      index: chunk.index,
+                    });
+                  } else {
+                    const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+                    if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                      lastBlock.thinking += chunk.delta.thinking;
+                    } else {
+                      thinkingBlocks.push({
+                        type: "thinking",
+                        thinking: chunk.delta.thinking,
+                        index: chunk.index,
+                      });
+                    }
+                  }
+                  break;
+                case "signature_delta":
+                  if (thinkingBlocks.length === 0) {
+                    thinkingBlocks.push({
+                      type: "thinking",
+                      signature: chunk.delta.signature,
+                      index: chunk.index,
+                    });
+                  } else {
+                    const lastBlock = thinkingBlocks[thinkingBlocks.length - 1];
+                    if (lastBlock.type === "thinking" && lastBlock.index === chunk.index) {
+                      lastBlock.signature = chunk.delta.signature;
+                    } else {
+                      thinkingBlocks.push({
+                        type: "thinking",
+                        signature: chunk.delta.signature,
+                        index: chunk.index,
+                      });
+                    }
+                  }
+                  break;
+                case "input_json_delta":
+                  {
+                    const tool = inProgressTools.get(chunk.index);
+                    if (tool != null) {
+                      params.onTokens(chunk.delta.partial_json, "tool");
+                      tool.partialJson += chunk.delta.partial_json;
+                    }
+                  }
+                  break;
+              }
+              break;
+            case "content_block_start":
+              switch (chunk.content_block.type) {
+                case "tool_use":
+                  params.onTokens(chunk.content_block.name, "tool");
+                  inProgressTools.set(chunk.index, {
+                    id: chunk.content_block.id,
+                    index: chunk.index,
+                    name: chunk.content_block.name,
+                    partialJson: "",
+                  });
+                  break;
+                case "redacted_thinking":
+                  thinkingBlocks.push({
+                    type: "redacted_thinking",
+                    data: chunk.content_block.data,
+                  });
+                  break;
+              }
+              break;
+
+            case "message_delta":
+              usage.output = chunk.usage.output_tokens;
+              if (chunk.usage.input_tokens && chunk.usage.input_tokens > 0) {
+                usage.input = chunk.usage.input_tokens;
+              }
+              usage.cachedInput = chunk.usage.cache_read_input_tokens ?? usage.cachedInput;
+              break;
+            case "message_start":
+              usage.input = chunk.message.usage.input_tokens;
+              usage.cachedInput = chunk.message.usage.cache_read_input_tokens ?? 0;
+              break;
+          }
+        }
+      } catch (e) {
+        if (!abortSignal.aborted) {
+          return err({
+            type: "stream-error",
+            requestError: errorToString(e),
+            curl,
+            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            headers: response.headers,
+          });
+        }
       }
 
-      toolCalls.push(parseResult.tool);
+      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
+
+      let anthropic: { anthropic?: AnthropicAssistantData } = {};
+      if (thinkingBlocks.length > 0) {
+        anthropic.anthropic = {
+          thinkingBlocks: thinkingBlocks.map(b => {
+            if (b.type === "redacted_thinking") return b;
+            return ThinkingBlockSchema.slice({
+              type: "thinking",
+              signature: b.signature || "",
+              thinking: b.thinking || "",
+            });
+          }),
+        };
+      }
+
+      const assistantMessage: AssistantMessage<A["tools"]> = {
+        role: "assistant",
+        content,
+        reasoningContent,
+        ...anthropic,
+        usage: compilerTokens,
+      };
+
+      return params.finish({
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+        abortedOutput: assistantMessage,
+        parsedOutput: async () => {
+          if (inProgressTools.size === 0) return assistantMessage;
+
+          // Sort tool calls by their content block index to preserve ordering
+          const sortedTools = Array.from(inProgressTools.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([_, v]) => v);
+
+          const toolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
+
+          for (const inProgressTool of sortedTools) {
+            const chatToolCall = {
+              toolCallId: inProgressTool.id,
+              toolName: inProgressTool.name,
+              args: inProgressTool.partialJson,
+            };
+            const parseResult = await parseToolCall<A["tools"]>({
+              toolCall: chatToolCall,
+              toolDefs,
+              autofixJson,
+              abortSignal,
+              transport,
+            });
+
+            if (parseResult.status === "error") {
+              toolCalls.push({
+                type: "malformed-tool-request",
+                error: parseResult.message,
+                toolCallId: inProgressTool.id,
+                call: {
+                  original: {
+                    name: inProgressTool.name,
+                    arguments: inProgressTool.partialJson,
+                  },
+                },
+              });
+              continue;
+            }
+
+            toolCalls.push(parseResult.tool);
+          }
+
+          if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
+          return assistantMessage;
+        },
+      });
+    } catch (e) {
+      return err({
+        type: "request-error",
+        requestError: errorToString(e),
+        curl,
+      });
     }
-
-    if (toolCalls.length > 0) assistantMessage.toolCalls = toolCalls;
-
-    return ok({ output: assistantMessage, curl });
-  } catch (e) {
-    return err({
-      requestError: errorToString(e),
-      curl,
-    });
-  }
-}
+  },
+);

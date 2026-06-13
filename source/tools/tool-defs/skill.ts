@@ -2,7 +2,7 @@ import { t } from "structural";
 import { unionAll } from "../../types.ts";
 import { TOOL } from "../common.ts";
 import { discoverSkills } from "../../skills/skills.ts";
-import { ok } from "../../result.ts";
+import { ok } from "../../libocto/result.ts";
 
 export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
   const skills = await discoverSkills(transport, signal, data);

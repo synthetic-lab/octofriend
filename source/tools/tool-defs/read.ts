@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attemptUntrackedStat, TOOL, fileReadIR } from "../common.ts";
 import { isImagePath, loadImageFromPath } from "../../utils/image-utils.ts";
-import { attempt, err, ok } from "../../result.ts";
+import { attempt, err, ok } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("Path to file to read"),

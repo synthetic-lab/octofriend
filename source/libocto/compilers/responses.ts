@@ -10,11 +10,12 @@ import type {
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
 import type {
+  Compiler,
+  CompilerImplementationParams,
   CompilerIR,
   CompilerModalities,
-  CompilerParams,
-  CompilerResult,
 } from "./compiler-interface.ts";
+import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 import type {
   Agent,
@@ -23,11 +24,10 @@ import type {
   MalformedToolRequest,
 } from "../llm-ir.ts";
 import type { LoadedTools, ToolCall } from "../tool-def.ts";
-import { trackTokens } from "../../token-tracker.ts";
-import { sumAssistantTokens } from "../../ir/count-ir-tokens.ts";
-import { errorToString, ok, err } from "../../result.ts";
-import * as irPrompts from "../../prompts/ir-prompts.ts";
+import { errorToString, err } from "../result.ts";
+import * as irPrompts from "./ir-prompts.ts";
 import type { OpenAICompilerModel } from "./openai-shared.ts";
+import { openAIRequestError } from "./openai-shared.ts";
 
 type ToolCallRequest<A extends Agent<any, any, any>> = ToolCall<A["tools"]>;
 type LoadedTool<A extends Agent<any, any, any>> = LoadedTools<A["tools"]>[keyof LoadedTools<
@@ -222,7 +222,7 @@ function responseInputFromIr<A extends Agent<any, any, any>>(
     ];
   }
 
-  if (ir.role === "checkpoint") {
+  if (ir.role === "lowered-checkpoint") {
     return [{ role: "user", content: responseContentParts(ir.content, modalities) }];
   }
 
@@ -264,233 +264,229 @@ function reasoningTextFromItem(item: ResponseReasoningItem): string {
   return [...content, ...summary].join("\n");
 }
 
-export async function runResponsesAgent<A extends Agent<any, any, any>>({
-  model,
-  irs,
-  onTokens,
-  abortSignal,
-  transport,
-  systemPrompt,
-  autofixJson,
-  tools,
-}: CompilerParams<A, OpenAICompilerModel>): Promise<CompilerResult<A>> {
-  const input = await toResponseInput(irs, model.modalities);
-  const instructions = systemPrompt ? await systemPrompt() : undefined;
+export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
+  async <A extends Agent<any, any, any>>(
+    params: CompilerImplementationParams<A, OpenAICompilerModel>,
+  ) => {
+    const { model, irs, abortSignal, transport, systemPrompt, autofixJson } = params;
+    const input = await toResponseInput(irs, model.modalities);
+    const instructions = systemPrompt ? await systemPrompt() : undefined;
 
-  const toolDefs = tools || {};
-  const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
-  const toolDefinitions = toolEntries.map(([name, toolDef]) => {
-    const structuralJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject;
-    const argJsonSchema = openAIStrictFunctionParameters(structuralJsonSchema);
+    const toolDefs = params.tools || {};
+    const toolEntries = Object.entries(toolDefs) as Array<[string, LoadedTool<A>]>;
+    const toolDefinitions = toolEntries.map(([name, toolDef]) => {
+      const structuralJsonSchema = toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject;
+      const argJsonSchema = openAIStrictFunctionParameters(structuralJsonSchema);
 
-    return {
-      type: "function" as const,
-      name,
-      description: toolDef.description,
-      parameters: argJsonSchema,
-      strict: true,
-    };
-  });
-  const toolParams = toolDefinitions.length === 0 ? {} : { tools: toolDefinitions };
+      return {
+        type: "function" as const,
+        name,
+        description: toolDef.description,
+        parameters: argJsonSchema,
+        strict: true,
+      };
+    });
+    const toolParams = toolDefinitions.length === 0 ? {} : { tools: toolDefinitions };
 
-  const reasoningConfig = model.reasoningEffort
-    ? {
-        reasoning: {
-          effort: model.reasoningEffort,
-          summary: "auto" as const,
-        },
-      }
-    : {};
-
-  const request = {
-    model: model.model,
-    input,
-    instructions,
-    ...toolParams,
-    ...reasoningConfig,
-    stream: true,
-    store: false,
-    include: ["reasoning.encrypted_content"],
-  } satisfies ResponseCreateParamsStreaming;
-
-  const curl = generateCurlFrom({
-    baseURL: model.client.baseURL,
-    model: model.model,
-    input,
-    instructions,
-    ...toolParams,
-  });
-
-  try {
-    const stream = await model.client.responses.create(request, { signal: abortSignal });
-
-    let content = "";
-    let reasoningId: string | undefined = undefined;
-    let reasoningContent: string | undefined = undefined;
-    let encryptedReasoningContent: string | undefined = undefined;
-    let usage = {
-      input: 0,
-      output: 0,
-      reasoning: 0,
-    };
-    const responseToolCalls = new Map<string, ResponseFunctionToolCall>();
-
-    function captureOutputItem(item: ResponseOutputItem): void {
-      if (item.type === "function_call") {
-        responseToolCalls.set(item.call_id, item);
-        return;
-      }
-
-      if (item.type === "reasoning") {
-        reasoningId = item.id;
-        if (item.encrypted_content) encryptedReasoningContent = item.encrypted_content;
-        if (reasoningContent == null) {
-          const text = reasoningTextFromItem(item);
-          if (text !== "") reasoningContent = text;
+    const reasoningConfig = model.reasoningEffort
+      ? {
+          reasoning: {
+            effort: model.reasoningEffort,
+            summary: "auto" as const,
+          },
         }
-      }
-    }
+      : {};
+
+    const request = {
+      model: model.model,
+      input,
+      instructions,
+      ...toolParams,
+      ...reasoningConfig,
+      stream: true,
+      store: false,
+      include: ["reasoning.encrypted_content"],
+    } satisfies ResponseCreateParamsStreaming;
+
+    const curl = generateCurlFrom({
+      baseURL: model.client.baseURL,
+      model: model.model,
+      input,
+      instructions,
+      ...toolParams,
+    });
 
     try {
-      for await (const event of stream) {
-        if (abortSignal.aborted) break;
+      const { data: stream, response } = await model.client.responses
+        .create(request, { signal: abortSignal })
+        .withResponse();
 
-        switch (event.type) {
-          case "response.output_text.delta":
-            content += event.delta;
-            onTokens(event.delta, "content");
-            break;
+      let content = "";
+      let reasoningId: string | undefined = undefined;
+      let reasoningContent: string | undefined = undefined;
+      let encryptedReasoningContent: string | undefined = undefined;
+      let usage = {
+        input: 0,
+        cachedInput: 0,
+        output: 0,
+        reasoning: 0,
+      };
+      const responseToolCalls = new Map<string, ResponseFunctionToolCall>();
 
-          case "response.reasoning_text.delta":
-          case "response.reasoning_summary_text.delta":
-            if (reasoningContent == null) reasoningContent = "";
-            reasoningContent += event.delta;
-            onTokens(event.delta, "reasoning");
-            break;
+      function captureOutputItem(item: ResponseOutputItem): void {
+        if (item.type === "function_call") {
+          params.onTokens("", "tool");
+          responseToolCalls.set(item.call_id, item);
+          return;
+        }
 
-          case "response.function_call_arguments.delta":
-            onTokens(event.delta, "tool");
-            break;
-
-          case "response.output_item.done":
-            captureOutputItem(event.item);
-            break;
-
-          case "response.completed":
-            for (const item of event.response.output) captureOutputItem(item);
-            if (event.response.usage) {
-              usage.input = event.response.usage.input_tokens;
-              usage.output = event.response.usage.output_tokens;
-              usage.reasoning = event.response.usage.output_tokens_details.reasoning_tokens;
-            }
-            break;
-
-          case "response.failed":
-            return err({
-              requestError: event.response.error?.message || "OpenAI Responses request failed",
-              curl,
-            });
-
-          case "error":
-            return err({
-              requestError: event.message,
-              curl,
-            });
+        if (item.type === "reasoning") {
+          reasoningId = item.id;
+          if (item.encrypted_content) encryptedReasoningContent = item.encrypted_content;
+          if (reasoningContent == null) {
+            const text = reasoningTextFromItem(item);
+            if (text !== "") reasoningContent = text;
+          }
         }
       }
-    } catch (e) {
-      if (!abortSignal.aborted) {
-        return err({
-          requestError: errorToString(e),
-          curl,
-        });
+
+      try {
+        for await (const event of stream) {
+          if (abortSignal.aborted) break;
+
+          switch (event.type) {
+            case "response.output_text.delta":
+              content += event.delta;
+              params.onTokens(event.delta, "content");
+              break;
+
+            case "response.reasoning_text.delta":
+            case "response.reasoning_summary_text.delta":
+              if (reasoningContent == null) reasoningContent = "";
+              reasoningContent += event.delta;
+              params.onTokens(event.delta, "reasoning");
+              break;
+
+            case "response.function_call_arguments.delta":
+              params.onTokens(event.delta, "tool");
+              break;
+
+            case "response.output_item.done":
+              captureOutputItem(event.item);
+              break;
+
+            case "response.completed":
+              for (const item of event.response.output) captureOutputItem(item);
+              if (event.response.usage) {
+                usage.input = event.response.usage.input_tokens;
+                usage.cachedInput = event.response.usage.input_tokens_details.cached_tokens;
+                usage.output = event.response.usage.output_tokens;
+                usage.reasoning = event.response.usage.output_tokens_details.reasoning_tokens;
+              }
+              break;
+
+            case "response.failed":
+              return err({
+                type: "stream-error",
+                requestError: event.response.error?.message || "OpenAI Responses request failed",
+                curl,
+                usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                headers: response.headers,
+              });
+
+            case "error":
+              return err({
+                type: "stream-error",
+                requestError: event.message,
+                curl,
+                usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                headers: response.headers,
+              });
+          }
+        }
+      } catch (e) {
+        if (!abortSignal.aborted) {
+          return err({
+            type: "stream-error",
+            requestError: errorToString(e),
+            curl,
+            usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            headers: response.headers,
+          });
+        }
       }
-    }
 
-    if (usage.input !== 0 || usage.output !== 0) {
-      trackTokens(model.model, "input", usage.input);
-      trackTokens(model.model, "output", usage.output);
-    }
+      const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
 
-    let tokenDelta = 0;
-    if (usage.input !== 0 || usage.output !== 0) {
-      if (!abortSignal.aborted) {
-        const previousTokens = sumAssistantTokens(irs);
-        tokenDelta = usage.input + usage.output - previousTokens;
+      let openaiSpecific = {};
+      if (reasoningId || encryptedReasoningContent) {
+        openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
       }
-    }
-
-    let openaiSpecific = {};
-    if (reasoningId || encryptedReasoningContent) {
-      openaiSpecific = { openai: { reasoningId, encryptedReasoningContent } };
-    }
-    const assistantHistoryItem: AssistantMessage<A["tools"]> = {
-      role: "assistant",
-      content,
-      reasoningContent,
-      ...openaiSpecific,
-      tokenUsage: tokenDelta,
-      outputTokens: usage.output,
-    };
-
-    if (abortSignal.aborted) {
-      return ok({ output: assistantHistoryItem, curl });
-    }
-
-    if (responseToolCalls.size === 0) {
-      return ok({ output: assistantHistoryItem, curl });
-    }
-
-    const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
-
-    for (const toolCall of responseToolCalls.values()) {
-      const toolDef = (toolDefs as Partial<Record<string, LoadedTool<A>>>)[toolCall.name];
-      const schema = toolDef
-        ? (toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject)
-        : null;
-      const chatToolCall = {
-        toolCallId: toolCall.call_id,
-        toolName: toolCall.name,
-        args: schema
-          ? normalizeResponseToolArguments(schema, toolCall.arguments)
-          : toolCall.arguments,
+      const assistantHistoryItem: AssistantMessage<A["tools"]> = {
+        role: "assistant",
+        content,
+        reasoningContent,
+        ...openaiSpecific,
+        usage: compilerTokens,
       };
-      const parseResult = await parseToolCall<A["tools"]>({
-        toolCall: chatToolCall,
-        toolDefs,
-        autofixJson,
-        abortSignal,
-        transport,
+
+      return params.finish({
+        curl,
+        headers: response.headers,
+        usage: compilerTokens,
+        abortedOutput: assistantHistoryItem,
+        parsedOutput: async () => {
+          if (responseToolCalls.size === 0) return assistantHistoryItem;
+
+          const parsedToolCalls: Array<ToolCallRequest<A> | MalformedToolRequest> = [];
+
+          for (const toolCall of responseToolCalls.values()) {
+            const toolDef = (toolDefs as Partial<Record<string, LoadedTool<A>>>)[toolCall.name];
+            const schema = toolDef
+              ? (toJSONSchema("ignore", toolDef.ArgumentsSchema) as JsonObject)
+              : null;
+            const chatToolCall = {
+              toolCallId: toolCall.call_id,
+              toolName: toolCall.name,
+              args: schema
+                ? normalizeResponseToolArguments(schema, toolCall.arguments)
+                : toolCall.arguments,
+            };
+            const parseResult = await parseToolCall<A["tools"]>({
+              toolCall: chatToolCall,
+              toolDefs,
+              autofixJson,
+              abortSignal,
+              transport,
+            });
+
+            if (parseResult.status === "error") {
+              parsedToolCalls.push({
+                type: "malformed-tool-request",
+                error: parseResult.message,
+                call: {
+                  original: {
+                    name: toolCall.name,
+                    arguments: toolCall.arguments,
+                  },
+                },
+                toolCallId: toolCall.call_id,
+              });
+              continue;
+            }
+
+            parsedToolCalls.push(parseResult.tool);
+          }
+
+          if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
+          return assistantHistoryItem;
+        },
       });
-
-      if (parseResult.status === "error") {
-        parsedToolCalls.push({
-          type: "malformed-tool-request",
-          error: parseResult.message,
-          call: {
-            original: {
-              name: toolCall.name,
-              arguments: toolCall.arguments,
-            },
-          },
-          toolCallId: toolCall.call_id,
-        });
-        continue;
-      }
-
-      parsedToolCalls.push(parseResult.tool);
+    } catch (e) {
+      return err(openAIRequestError(curl, e));
     }
-
-    if (parsedToolCalls.length > 0) assistantHistoryItem.toolCalls = parsedToolCalls;
-
-    return ok({ output: assistantHistoryItem, curl });
-  } catch (e) {
-    return err({
-      requestError: errorToString(e),
-      curl,
-    });
-  }
-}
+  },
+);
 
 function normalizeResponseToolArguments(schema: JsonObject, rawArguments: string): string {
   try {

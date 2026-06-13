@@ -30,7 +30,7 @@ export async function parseToolCall<T extends ToolMap<any, any>>({
 }: {
   toolCall: ToolCallToParse;
   toolDefs: Partial<LoadedTools<T>>;
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  autofixJson?: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   abortSignal: AbortSignal;
   transport: Transport;
 }): Promise<ParsedToolCallResult<T>> {
@@ -56,7 +56,12 @@ Please try calling a valid tool.
 
   if (typeof args === "string") {
     const parsedArgs = await parseJsonArguments(args, autofixJson, abortSignal);
-    if (!parsedArgs.success) return parsedArgs;
+    if (!parsedArgs.success) {
+      return {
+        status: "error",
+        message: parsedArgs.message,
+      };
+    }
     args = parsedArgs.args;
   }
 
@@ -101,7 +106,7 @@ ${toTypescript(toolSchema)}
 
 async function parseJsonArguments(
   rawArgs: string,
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>,
+  autofixJson: ((badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>) | undefined,
   abortSignal: AbortSignal,
 ): Promise<
   { success: true; args: unknown } | { success: false; status: "error"; message: string }
@@ -110,6 +115,14 @@ async function parseJsonArguments(
   let [err, args] = tryexpr(() => JSON.parse(source));
 
   if (err) {
+    if (!autofixJson) {
+      return {
+        success: false,
+        status: "error",
+        message: "Syntax error: invalid JSON in tool call arguments",
+      };
+    }
+
     const fixResponse = await autofixJson(source, abortSignal);
     if (!fixResponse.success) {
       return {

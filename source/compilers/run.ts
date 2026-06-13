@@ -5,20 +5,38 @@ import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
-import type { OctoIR } from "../ir/octo-ir.ts";
-import { QuotaData } from "../utils/quota.ts";
-import { findMostRecentCompactionCheckpointIndex } from "./autocompact.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
-import { lowerTrajectories } from "../libocto/lower-trajectories.ts";
-import { optimizeFiles } from "./optimize-files.ts";
-import type { FileOptimizerInputIR } from "./optimize-files.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
+import type {
+  CompilerResult,
+  CompilerTokenType,
+  CompilerUsage,
+} from "../libocto/compilers/compiler-interface.ts";
+import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getDefaultOpenaiClient } from "./openai.ts";
+import { trackTokens } from "../token-tracker.ts";
+import type { LoweredIR } from "../libocto/llm-ir.ts";
+import type toolMap from "../tools/tool-defs/index.ts";
 
-export async function run({
+type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
+  apiKey: string;
+  model: ModelConfig;
+  messages: Array<LoweredIR<typeof toolMap>>;
+  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  handlers: {
+    onTokens: (t: string, type: CompilerTokenType<Tools>) => any;
+    onAutofixJson: (done: Promise<void>) => any;
+  };
+  abortSignal: AbortSignal;
+  transport: Transport;
+  systemPrompt?: () => Promise<string>;
+  tools?: Tools;
+};
+
+export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>({
   model,
   apiKey,
   messages,
@@ -28,74 +46,58 @@ export async function run({
   transport,
   systemPrompt,
   tools,
-}: {
-  apiKey: string;
-  model: ModelConfig;
-  messages: OctoIR[];
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
-  handlers: {
-    onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
-    onAutofixJson: (done: Promise<void>) => any;
-    onQuotaUpdated?: (quota: QuotaData) => void;
-  };
-  abortSignal: AbortSignal;
-  transport: Transport;
-  systemPrompt?: () => Promise<string>;
-  tools?: Partial<LoadedTools>;
-}) {
-  const checkpointIndex = findMostRecentCompactionCheckpointIndex(messages);
-  const slicedMessages = lowerToolRejects(messages.slice(checkpointIndex));
-  const optimizedMessages = optimizeFiles(slicedMessages, model.modalities);
-  const loweredMessages = lowerTrajectories<typeof octoAgent>(optimizedMessages);
+}: RunArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
+  const result = await (async () => {
+    const params = {
+      abortSignal,
+      systemPrompt,
+      irs: messages,
+      onTokens: handlers.onTokens,
+      autofixJson: (badJson: string, signal: AbortSignal) => {
+        const fixPromise = autofixJson(badJson, signal);
+        handlers.onAutofixJson(fixPromise.then(() => {}));
+        return fixPromise;
+      },
+      tools,
+      transport,
+    };
 
-  const params = {
-    abortSignal,
-    systemPrompt,
-    irs: loweredMessages,
-    onTokens: handlers.onTokens,
-    onQuotaUpdated: handlers.onQuotaUpdated,
-    autofixJson: (badJson: string, signal: AbortSignal) => {
-      const fixPromise = autofixJson(badJson, signal);
-      handlers.onAutofixJson(fixPromise.then(() => {}));
-      return fixPromise;
-    },
-    tools,
-    transport,
-  };
-
-  if (model.type == null || model.type === "standard") {
-    return await runAgent<typeof octoAgent>({
-      ...params,
-      model: standardOpenAICompilerModel(model, apiKey),
-    });
-  }
-
-  if (model.type === "openai-responses") {
-    return await runResponsesAgent<typeof octoAgent>({
-      ...params,
-      model: responsesOpenAICompilerModel(model, apiKey),
-    });
-  }
-
-  const _: "anthropic" = model.type;
-  return await runAnthropicAgent<typeof octoAgent>({
-    ...params,
-    model: anthropicCompilerModel(model, apiKey),
-  });
-}
-
-function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {
-  return messages.map(ir => {
-    if (ir.role === "tool-reject") {
-      return {
-        role: "tool-skip-output",
-        toolCall: ir.toolCall,
-        reason: "Tool call rejected by user.",
-      };
+    if (model.type == null || model.type === "standard") {
+      return runAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: standardOpenAICompilerModel(model, apiKey),
+      });
     }
 
-    return ir;
-  });
+    if (model.type === "openai-responses") {
+      return runResponsesAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: responsesOpenAICompilerModel(model, apiKey),
+      });
+    }
+
+    const _: "anthropic" = model.type;
+    return runAnthropicAgent<typeof octoAgent, Tools>({
+      ...params,
+      model: anthropicCompilerModel(model, apiKey),
+    });
+  })();
+
+  trackCompilerResultUsage(model.model, result);
+  return result;
+}
+
+function trackCompilerResultUsage(model: string, result: CompilerResult<typeof octoAgent>): void {
+  const usage = compilerResultUsage(result);
+  if (!usage || !compilerUsageHasTokens(usage)) return;
+  trackTokens(model, "input", usage.input.total);
+  trackTokens(model, "output", usage.output);
+}
+
+function compilerResultUsage(result: CompilerResult<typeof octoAgent>): CompilerUsage | undefined {
+  if (result.success) return result.data.usage;
+  if ("usage" in result.error) return result.error.usage;
+  return undefined;
 }
 
 function compilerModalities(model: ModelConfig): CompilerModalities {

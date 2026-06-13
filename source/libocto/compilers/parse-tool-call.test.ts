@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { t } from "structural";
-import { ok } from "../../result.ts";
+import { ok } from "../result.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
 
 const ArgumentsSchema = t.subtype({
@@ -67,6 +67,24 @@ describe("parseToolCall", () => {
     if (parsed.status === "success") {
       expect(parsed.tool.original).toEqual({ query: "fixed" });
     }
+  });
+
+  it("reports invalid JSON when no autofix function is provided", async () => {
+    const parsed = await parseToolCall({
+      toolCall: {
+        toolCallId: "call-1",
+        toolName: "search",
+        args: "{query:",
+      },
+      toolDefs: { search: searchTool() },
+      abortSignal: new AbortController().signal,
+      transport: {} as any,
+    });
+
+    expect(parsed).toEqual({
+      status: "error",
+      message: "Syntax error: invalid JSON in tool call arguments",
+    });
   });
 
   it("reports unknown tools before parsing arguments", async () => {

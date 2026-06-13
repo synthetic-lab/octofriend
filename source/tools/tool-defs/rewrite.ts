@@ -8,7 +8,7 @@ import {
   parseOriginalFile,
 } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err } from "../../result.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),

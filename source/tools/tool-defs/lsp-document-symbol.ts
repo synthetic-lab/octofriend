@@ -1,6 +1,6 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
-import { ok } from "../../result.ts";
+import { ok } from "../../libocto/result.ts";
 import { formatDocumentSymbols } from "../../lsp/client.ts";
 import { runLspFileQuery, getLspExtensionsComment } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";

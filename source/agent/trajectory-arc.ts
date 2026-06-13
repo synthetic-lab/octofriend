@@ -9,21 +9,25 @@ import type {
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
+import { parseQuotaJson } from "../utils/quota.ts";
 import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
+import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
+import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import {
   CompactionError,
   generateCompactionCheckpointContent,
   shouldAutoCompactHistory,
-} from "../compilers/autocompact.ts";
+} from "../libocto/compilers/autocompact.ts";
 import { validateTool } from "../tools/index.ts";
 import { autofixEdit } from "../compilers/autofix.ts";
 import { systemPrompt } from "../prompts/system-prompt.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { loadTools } from "../tools/index.ts";
-import { Result, ok } from "../result.ts";
+import { Result, ok } from "../libocto/result.ts";
+import { lowerOcto } from "../compilers/lower-octo.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -47,7 +51,8 @@ export type TrajectoryOutputIR =
       content: Content["content"];
     };
 
-type AllTokenTypes = "reasoning" | "content" | "tool";
+type ResponseTokenTypes = "reasoning" | "content" | "tool";
+type CompactionTokenTypes = Exclude<ResponseTokenTypes, "tool">;
 
 type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
@@ -61,20 +66,22 @@ type CompactionType = {
   checkpoint: TrajectoryOutputIR & { role: "checkpoint" };
 };
 
-// TODO: compaction actually shouldn't allow for tools, so run() should be modified to not emit
-// tokens of type `tool` if no tools are given. (In practice it already doesn't emit them, it just
-// requires typesystem shenanigans.)
+type RecoverableRequestError = Extract<
+  CompilerError,
+  { type: "payment-error" | "rate-limit-error" }
+>;
+
 type AutocompactionStream = {
   type: "autocompaction-stream";
-  buffer: AssistantBuffer<AllTokenTypes>;
-  delta: AssistantDelta<AllTokenTypes>;
+  buffer: AssistantBuffer<CompactionTokenTypes>;
+  delta: AssistantDelta<CompactionTokenTypes>;
 };
 
 export type StateEvents = {
   startResponse: null;
   responseProgress: {
-    buffer: AssistantBuffer<AllTokenTypes>;
-    delta: AssistantDelta<AllTokenTypes>;
+    buffer: AssistantBuffer<ResponseTokenTypes>;
+    delta: AssistantDelta<ResponseTokenTypes>;
   };
   startCompaction: null;
   compactionProgress: AutocompactionStream;
@@ -108,6 +115,7 @@ type Finish = {
         requestError: string;
         curl: string;
       }
+    | RecoverableRequestError
     | {
         type: "compaction-error";
         requestError: string;
@@ -158,6 +166,14 @@ export async function trajectoryArc({
     },
   });
   if (!parsedCompaction.success) {
+    if (isRecoverableRequestError(parsedCompaction.error)) {
+      return {
+        type: "finish",
+        irs,
+        reason: parsedCompaction.error,
+      };
+    }
+
     return {
       type: "finish",
       irs,
@@ -178,7 +194,8 @@ export async function trajectoryArc({
 
   handler.startResponse(null);
 
-  let buffer: AssistantBuffer<AllTokenTypes> = {};
+  let buffer: AssistantBuffer<ResponseTokenTypes> = {};
+  const loweredMessages = lowerOcto(messagesCopy, model.modalities);
   const result = await run({
     apiKey,
     model,
@@ -186,7 +203,7 @@ export async function trajectoryArc({
     abortSignal,
     transport,
     tools,
-    messages: messagesCopy,
+    messages: loweredMessages,
     handlers: {
       onTokens: (tokens, type) => {
         if (!buffer[type]) buffer[type] = "";
@@ -199,7 +216,6 @@ export async function trajectoryArc({
       onAutofixJson: () => {
         handler.autofixingJson(null);
       },
-      onQuotaUpdated: quota => handler.onQuotaUpdated(quota),
     },
     systemPrompt: async () => {
       return systemPrompt({
@@ -218,13 +234,16 @@ export async function trajectoryArc({
           role: "assistant",
           content: buffer.content || "",
           reasoningContent: buffer.reasoning,
-          tokenUsage: 0,
-          outputTokens: 0,
+          usage: compilerUsage(0, 0),
         },
       ];
     }
     return [];
   }
+
+  const headers = result.success ? result.data.headers : result.error.headers;
+  const quota = parseQuotaFromHeaders(headers);
+  if (quota) handler.onQuotaUpdated(quota);
 
   if (abortSignal.aborted) return abort(maybeBufferedMessage());
 
@@ -232,11 +251,7 @@ export async function trajectoryArc({
     return {
       type: "finish",
       irs: maybeBufferedMessage(),
-      reason: {
-        type: "request-error",
-        requestError: result.error.requestError,
-        curl: result.error.curl,
-      },
+      reason: compilerErrorToFinishReason(result.error),
     };
   }
 
@@ -435,6 +450,25 @@ export async function trajectoryArc({
   };
 }
 
+function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefined {
+  const raw = headers?.get("x-synthetic-quotas");
+  if (!raw) return undefined;
+  return parseQuotaJson(raw);
+}
+
+function compilerErrorToFinishReason(error: CompilerError): Finish["reason"] {
+  if (isRecoverableRequestError(error)) return error;
+  return {
+    type: "request-error",
+    requestError: error.requestError,
+    curl: error.curl,
+  };
+}
+
+function isRecoverableRequestError(error: { type: string }): error is RecoverableRequestError {
+  return error.type === "payment-error" || error.type === "rate-limit-error";
+}
+
 async function maybeAutocompact({
   apiKey,
   model,
@@ -455,30 +489,35 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
-  if (!shouldAutoCompactHistory(model, messages)) return ok(null);
+  const loweredMessages = lowerOcto(messages, model.modalities);
+  if (!shouldAutoCompactHistory(model.context, loweredMessages)) return ok(null);
 
   handler.startCompaction();
 
-  const buffer: AssistantBuffer<AllTokenTypes> = {};
+  const buffer: AssistantBuffer<CompactionTokenTypes> = {};
   const checkpointContent = await generateCompactionCheckpointContent({
-    apiKey,
-    model,
-    messages,
-    abortSignal,
-    transport,
-    autofixJson,
-    handlers: {
-      onTokens: (tokens, type) => {
-        if (!buffer[type]) buffer[type] = "";
-        buffer[type] += tokens;
-        handler.compactionProgress({
-          type: "autocompaction-stream",
-          buffer,
-          delta: { value: tokens, type },
-        });
-      },
-      onAutofixJson: () => {},
-    },
+    messages: loweredMessages,
+    run: messages =>
+      run({
+        apiKey,
+        model,
+        messages,
+        abortSignal,
+        transport,
+        autofixJson,
+        handlers: {
+          onTokens: (tokens, type) => {
+            if (!buffer[type]) buffer[type] = "";
+            buffer[type] += tokens;
+            handler.compactionProgress({
+              type: "autocompaction-stream",
+              buffer,
+              delta: { value: tokens, type },
+            });
+          },
+          onAutofixJson: () => {},
+        },
+      }),
   });
 
   if (!checkpointContent.success) return checkpointContent;

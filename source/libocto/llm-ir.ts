@@ -1,4 +1,5 @@
 import { ImageInfo } from "../utils/image-utils.ts";
+import type { CompilerUsage } from "./compilers/compiler-interface.ts";
 import type { ToolCall, ToolFactoryRequirements, ToolMap, ToolSubagentNames } from "./tool-def.ts";
 
 /*
@@ -174,6 +175,10 @@ export type Checkpoint = Content & {
   role: "checkpoint";
 };
 
+export type LoweredCheckpoint = Content & {
+  role: "lowered-checkpoint";
+};
+
 export type AssistantMessage<T extends ToolMap<any, any>> = {
   role: "assistant";
   content: string;
@@ -184,8 +189,7 @@ export type AssistantMessage<T extends ToolMap<any, any>> = {
   };
   anthropic?: AnthropicAssistantData;
   toolCalls?: Array<ToolCall<T> | MalformedToolRequest>;
-  tokenUsage: number;
-  outputTokens: number;
+  usage: CompilerUsage;
 };
 
 export type UserMessage = Content & {
@@ -230,10 +234,13 @@ export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends
 };
 
 /*
- * All base IR types, with no extension IR types and no subagent trajectories.
+ * All compiler-ready base IR types, with no extension IR types and no subagent trajectories.
  *
- * This is the IR intended for compiler use. Extra, extensible IRs and subagent trajectories need
- * to be converted into lowered IRs before hitting compilers.
+ * Raw Checkpoint IR is intentionally not part of LoweredIR. Checkpoints only make sense before the
+ * final lowering pass, because lower(...) must first discard everything before the most recent
+ * checkpoint. To make that easy to enforce at compile time, callers target CheckpointedIR with raw
+ * Checkpoints, and lower(...) converts the surviving checkpoint to LoweredCheckpoint before any
+ * compiler can see it.
  */
 export type LoweredIR<T extends ToolMap<any, any>> =
   | AssistantMessage<T>
@@ -243,6 +250,18 @@ export type LoweredIR<T extends ToolMap<any, any>> =
   | ToolValidationErrorMessage<T>
   | ToolParseErrorMessage
   | ToolSkipOutputMessage<T>
+  | LoweredCheckpoint;
+
+/*
+ * LoweredIR with pre-compiler checkpoints.
+ *
+ * This is the shape user-space lowering passes should target after converting custom extension IRs,
+ * but before calling libocto's final lower(...). It is identical to LoweredIR except that it carries
+ * raw Checkpoints instead of LoweredCheckpoints, forcing the final checkpoint slicing/conversion pass
+ * to happen before compiler use.
+ */
+export type CheckpointedIR<T extends ToolMap<any, any>> =
+  | Exclude<LoweredIR<T>, LoweredCheckpoint>
   | Checkpoint;
 
 /*
@@ -255,6 +274,10 @@ export type LoweredIRWithTrajectories<A extends Agent<any, any, any>> =
   | LoweredIR<A["tools"]>
   | AgentTrajectory<A["agents"], keyof A["agents"]>;
 
+export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any>> =
+  | CheckpointedIR<A["tools"]>
+  | AgentTrajectory<A["agents"], keyof A["agents"]>;
+
 /*
  * All IR types including extensions.
  *
@@ -264,7 +287,9 @@ export type LoweredIRWithTrajectories<A extends Agent<any, any, any>> =
 type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
 type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["tools"]]>;
 
-export type LlmIR<A extends Agent<any, any, any>> = LoweredIRWithTrajectories<A> | AgentExtra<A>;
+export type LlmIR<A extends Agent<any, any, any>> =
+  | CheckpointedIRWithTrajectories<A>
+  | AgentExtra<A>;
 
 /*
  * Agent dependency compile-time validation/branding

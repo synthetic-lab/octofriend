@@ -4,7 +4,7 @@ import { getModelFromConfig } from "../../config.ts";
 import { AbortError } from "../../transports/transport-common.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 import { estimateTokens } from "../../ir/count-ir-tokens.ts";
-import { ok, err, toErrString } from "../../result.ts";
+import { ok, err, toErrString } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "glob",

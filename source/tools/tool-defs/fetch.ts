@@ -3,7 +3,7 @@ import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { compile } from "html-to-text";
 import { AbortError } from "../../transports/transport-common.ts";
-import { ok, err, toErrString } from "../../result.ts";
+import { ok, err, toErrString } from "../../libocto/result.ts";
 
 const converter = compile({
   wordwrap: 130,
