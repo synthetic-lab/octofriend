@@ -427,6 +427,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             requestError: errorToString(e),
             curl,
             usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            headers: response.headers,
           });
         }
       }

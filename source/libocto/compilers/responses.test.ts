@@ -123,6 +123,7 @@ describe("openAIStrictFunctionParameters", () => {
 describe("runResponsesAgent", () => {
   it("returns an error if a model calls a tool when no tools were provided", async () => {
     const client = new OpenAI({ apiKey: "test" });
+    const headers = new Headers({ "x-test-header": "present" });
     Object.defineProperty(client, "responses", {
       value: {
         create: () => ({
@@ -145,7 +146,7 @@ describe("runResponsesAgent", () => {
                 },
               };
             })(),
-            response: { headers: new Headers() },
+            response: { headers },
           }),
         }),
       },
@@ -170,6 +171,7 @@ describe("runResponsesAgent", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.type).toBe("unexpected-tool-call");
+      expect(result.error.headers?.get("x-test-header")).toBe("present");
       expect("usage" in result.error ? result.error.usage : null).toEqual({
         input: { cached: 0, uncached: 1, total: 1 },
         output: 1,

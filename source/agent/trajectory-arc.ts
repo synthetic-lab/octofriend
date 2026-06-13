@@ -241,6 +241,10 @@ export async function trajectoryArc({
     return [];
   }
 
+  const headers = result.success ? result.data.headers : result.error.headers;
+  const quota = parseQuotaFromHeaders(headers);
+  if (quota) handler.onQuotaUpdated(quota);
+
   if (abortSignal.aborted) return abort(maybeBufferedMessage());
 
   if (!result.success) {
@@ -250,9 +254,6 @@ export async function trajectoryArc({
       reason: compilerErrorToFinishReason(result.error),
     };
   }
-
-  const quota = parseQuotaFromHeaders(result.data.headers);
-  if (quota) handler.onQuotaUpdated(quota);
 
   let assistantMessage = result.data.output;
   irs = [...irs, assistantMessage];

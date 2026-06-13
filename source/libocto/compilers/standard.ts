@@ -422,6 +422,7 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
             requestError: errorToString(e),
             curl,
             usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            headers: response.headers,
           });
         }
       }

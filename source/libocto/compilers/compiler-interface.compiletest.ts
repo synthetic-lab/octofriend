@@ -21,6 +21,7 @@ const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
 
     return params.finish({
       curl: "",
+      headers: new Headers(),
       usage: compilerUsage(0, 0),
       abortedOutput: {
         role: "assistant",

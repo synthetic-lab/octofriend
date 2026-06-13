@@ -12,6 +12,7 @@ export type OpenAICompilerModel = {
 
 const OpenAIStatusErrorSchema = t.subtype({
   status: t.num,
+  headers: t.optional(t.instanceOf(Headers)),
   error: t.optional(
     t.str.or(
       t.subtype({
@@ -23,7 +24,7 @@ const OpenAIStatusErrorSchema = t.subtype({
 
 export function openAIRequestError(curl: string, error: unknown): CompilerError {
   const parsed = OpenAIStatusErrorSchema.sliceResult(error);
-  if (parsed instanceof t.Err || (parsed.status !== 402 && parsed.status !== 429)) {
+  if (parsed instanceof t.Err) {
     return {
       type: "request-error",
       requestError: errorToString(error),
@@ -31,10 +32,20 @@ export function openAIRequestError(curl: string, error: unknown): CompilerError 
     };
   }
 
+  if ((parsed.status !== 402 && parsed.status !== 429) || !parsed.headers) {
+    return {
+      type: "request-error",
+      requestError: errorToString(error),
+      curl,
+      headers: parsed.headers,
+    };
+  }
+
   return {
     type: parsed.status === 402 ? "payment-error" : "rate-limit-error",
     requestError: errorMessage(parsed, error),
     curl,
+    headers: parsed.headers,
   };
 }
 

@@ -45,36 +45,46 @@ export type CompilerError =
       type: "request-error";
       requestError: string;
       curl: string;
+      headers?: Headers;
     }
   | {
       type: "stream-error";
       requestError: string;
       curl: string;
       usage: CompilerUsage;
+      headers: Headers;
     }
   | {
       type: "payment-error";
       requestError: string;
       curl: string;
+      headers: Headers;
     }
   | {
       type: "rate-limit-error";
       requestError: string;
       curl: string;
+      headers: Headers;
     }
   | {
       type: "unexpected-tool-call";
       requestError: string;
       curl: string;
       usage: CompilerUsage;
+      headers: Headers;
     };
 
-export function unexpectedToolCallError(curl: string, usage: CompilerUsage): CompilerError {
+export function unexpectedToolCallError(
+  curl: string,
+  usage: CompilerUsage,
+  headers: Headers,
+): CompilerError {
   return {
     type: "unexpected-tool-call",
     requestError: "Model returned tool calls even though no tools were provided.",
     curl,
     usage,
+    headers,
   };
 }
 
@@ -92,7 +102,7 @@ type AssistantMessageForTools<A extends Agent<any, any, any>, Tools> = [Tools] e
 export type CompilerResultData<A extends Agent<any, any, any>, Tools> = {
   output: AssistantMessageForTools<A, Tools>;
   curl: string;
-  headers?: Headers;
+  headers: Headers;
   usage: CompilerUsage;
 };
 
@@ -109,7 +119,7 @@ export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any>> = Com
 export type CompilerSuccessData<A extends Agent<any, any, any>> = {
   output: AssistantMessage<A["tools"]>;
   curl: string;
-  headers?: Headers;
+  headers: Headers;
   usage: CompilerUsage;
 };
 
@@ -174,7 +184,7 @@ export type CompilerImplementationParams<A extends Agent<any, any, any>, Model> 
   onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
   finish: (args: {
     curl: string;
-    headers?: Headers;
+    headers: Headers;
     usage: CompilerUsage;
     abortedOutput: AssistantMessage<A["tools"]>;
     parsedOutput: () => AssistantMessage<A["tools"]> | Promise<AssistantMessage<A["tools"]>>;
@@ -194,7 +204,7 @@ function compilerSuccess<A extends Agent<any, any, any>, Model>(
     data.output.toolCalls &&
     data.output.toolCalls.length > 0
   ) {
-    return err(unexpectedToolCallError(data.curl, data.usage));
+    return err(unexpectedToolCallError(data.curl, data.usage, data.headers));
   }
 
   if (!compilerParamsHaveTools(params)) {
@@ -257,7 +267,7 @@ export function defineCompiler<Model>(
       abortedOutput,
       parsedOutput,
     }) => {
-      if (unexpectedToolCall) return err(unexpectedToolCallError(curl, usage));
+      if (unexpectedToolCall) return err(unexpectedToolCallError(curl, usage, headers));
       const assistantMessage = params.abortSignal.aborted ? abortedOutput : await parsedOutput();
       return ok({
         output: assistantMessage,

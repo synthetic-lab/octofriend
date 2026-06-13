@@ -391,6 +391,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
                 requestError: event.response.error?.message || "OpenAI Responses request failed",
                 curl,
                 usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                headers: response.headers,
               });
 
             case "error":
@@ -399,6 +400,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
                 requestError: event.message,
                 curl,
                 usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+                headers: response.headers,
               });
           }
         }
@@ -409,6 +411,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
             requestError: errorToString(e),
             curl,
             usage: compilerUsage(usage.input, usage.output, usage.cachedInput),
+            headers: response.headers,
           });
         }
       }
