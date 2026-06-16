@@ -59,8 +59,8 @@ the form \`N: content\` so you can refer to exact positions; the line-number pre
 of the file and must not be included when constructing edit/search strings.
 
 Prefer full reads of files unless they're very large (5k+ lines). It's useful for you to have more
-context, and you'll waste time chunking and read small files with offsets. Avoid using offset or
-limit unless the file is huge.
+context, and you'll waste time chunking when reading small files with offsets. Avoid using offset
+or limit unless the file is huge.
 
 You MUST perform a full read of a file before editing it.
 `.trim(),
