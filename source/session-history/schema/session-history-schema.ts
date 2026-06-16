@@ -9,6 +9,21 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export type RequestFailedRow = typeof requestFailedItems.$inferSelect & {
+  type: "request-failed";
+};
+export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect & {
+  type: "compaction-failed";
+};
+export type NotificationRow = typeof notifications.$inferSelect & {
+  type: "notification";
+};
+export type LlmIrRow = typeof llmIrs.$inferSelect & {
+  type: "llm-ir";
+};
+
+export type HistoryItemRow = RequestFailedRow | CompactionFailedRow | NotificationRow | LlmIrRow;
+
 export const trees = sqliteTable(
   "trees",
   {
@@ -70,11 +85,11 @@ export const launches = sqliteTable(
   ],
 );
 
-export const requestFailures = sqliteTable("request_failures", {
+export const requestFailedItems = sqliteTable("request_failed_items", {
   id: integer().primaryKey({ autoIncrement: true }),
 });
 
-export const compactionFailures = sqliteTable("compaction_failures", {
+export const compactionFailedItems = sqliteTable("compaction_failed_items", {
   id: integer().primaryKey({ autoIncrement: true }),
 });
 
@@ -92,8 +107,8 @@ export const historyItems = sqliteTable(
   "history_items",
   {
     id: integer().primaryKey({ autoIncrement: true }),
-    requestFailedId: integer().references(() => requestFailures.id, { onDelete: "restrict" }),
-    compactionFailedId: integer().references(() => compactionFailures.id, {
+    requestFailedId: integer().references(() => requestFailedItems.id, { onDelete: "restrict" }),
+    compactionFailedId: integer().references(() => compactionFailedItems.id, {
       onDelete: "restrict",
     }),
     notificationId: integer().references(() => notifications.id, { onDelete: "restrict" }),

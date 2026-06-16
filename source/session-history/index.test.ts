@@ -34,8 +34,8 @@ describe("session history", () => {
   beforeEach(() => {
     db().delete(schema.treeNodes).run();
     db().delete(schema.historyItems).run();
-    db().delete(schema.requestFailures).run();
-    db().delete(schema.compactionFailures).run();
+    db().delete(schema.requestFailedItems).run();
+    db().delete(schema.compactionFailedItems).run();
     db().delete(schema.notifications).run();
     db().delete(schema.llmIrs).run();
     db().delete(schema.trees).run();
@@ -91,8 +91,8 @@ describe("session history", () => {
     await manager.flush();
 
     const llmRows = db().select().from(schema.llmIrs).all();
-    const requestFailedRows = db().select().from(schema.requestFailures).all();
-    const compactionFailedRows = db().select().from(schema.compactionFailures).all();
+    const requestFailedRows = db().select().from(schema.requestFailedItems).all();
+    const compactionFailedRows = db().select().from(schema.compactionFailedItems).all();
     const notificationRows = db().select().from(schema.notifications).all();
     const itemRows = db().select().from(schema.historyItems).all();
 
@@ -113,14 +113,14 @@ describe("session history", () => {
 
   it("requires each history item to reference exactly one variant table", () => {
     const requestFailedId = db()
-      .insert(schema.requestFailures)
+      .insert(schema.requestFailedItems)
       .values({})
-      .returning({ id: schema.requestFailures.id })
+      .returning({ id: schema.requestFailedItems.id })
       .get().id;
     const compactionFailedId = db()
-      .insert(schema.compactionFailures)
+      .insert(schema.compactionFailedItems)
       .values({})
-      .returning({ id: schema.compactionFailures.id })
+      .returning({ id: schema.compactionFailedItems.id })
       .get().id;
 
     expect(() => db().insert(schema.historyItems).values({}).run()).toThrow();

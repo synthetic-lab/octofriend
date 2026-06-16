@@ -44,8 +44,8 @@ CREATE TABLE `history_items` (
 	`compaction_failed_id` integer,
 	`notification_id` integer,
 	`llm_ir_id` integer,
-	FOREIGN KEY (`request_failed_id`) REFERENCES `request_failures`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`compaction_failed_id`) REFERENCES `compaction_failures`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`request_failed_id`) REFERENCES `request_failed_items`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`compaction_failed_id`) REFERENCES `compaction_failed_items`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`notification_id`) REFERENCES `notifications`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`llm_ir_id`) REFERENCES `llm_irs`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "history_items_exactly_one_payload_check" CHECK(("history_items"."request_failed_id" IS NOT NULL)
@@ -62,11 +62,11 @@ CREATE UNIQUE INDEX `history_items_notification_id_unique` ON `history_items` (`
 --> statement-breakpoint
 CREATE UNIQUE INDEX `history_items_llm_ir_id_unique` ON `history_items` (`llm_ir_id`);
 --> statement-breakpoint
-CREATE TABLE `request_failures` (
+CREATE TABLE `request_failed_items` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `compaction_failures` (
+CREATE TABLE `compaction_failed_items` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL
 );
 --> statement-breakpoint

@@ -28,8 +28,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "compaction_failures": {
-      "name": "compaction_failures",
+    "compaction_failed_items": {
+      "name": "compaction_failed_items",
       "columns": {
         "id": {
           "name": "id",
@@ -168,19 +168,19 @@
         }
       },
       "foreignKeys": {
-        "history_items_request_failed_id_request_failures_id_fk": {
-          "name": "history_items_request_failed_id_request_failures_id_fk",
+        "history_items_request_failed_id_request_failed_items_id_fk": {
+          "name": "history_items_request_failed_id_request_failed_items_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "request_failures",
+          "tableTo": "request_failed_items",
           "columnsFrom": ["request_failed_id"],
           "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
-        "history_items_compaction_failed_id_compaction_failures_id_fk": {
-          "name": "history_items_compaction_failed_id_compaction_failures_id_fk",
+        "history_items_compaction_failed_id_compaction_failed_items_id_fk": {
+          "name": "history_items_compaction_failed_id_compaction_failed_items_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "compaction_failures",
+          "tableTo": "compaction_failed_items",
           "columnsFrom": ["compaction_failed_id"],
           "columnsTo": ["id"],
           "onDelete": "restrict",
@@ -364,8 +364,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "request_failures": {
-      "name": "request_failures",
+    "request_failed_items": {
+      "name": "request_failed_items",
       "columns": {
         "id": {
           "name": "id",

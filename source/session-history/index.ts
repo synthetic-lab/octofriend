@@ -2,13 +2,21 @@ import { randomUUID } from "crypto";
 import { and, desc, eq, type ExtractTablesWithRelations } from "drizzle-orm";
 import { type BetterSQLiteTransaction } from "drizzle-orm/better-sqlite3";
 import { db, schema } from "../db/db.ts";
-import type { HistoryItem } from "../history.ts";
 import type { TransportKind } from "../transports/transport-common.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
-import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import { deserializeLlmIr, LlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import {
+  CompactionFailedRow,
+  HistoryItemRow,
+  NotificationRow,
+  RequestFailedRow,
+} from "./schema/session-history-schema.ts";
+
+export type HistoryItem = RequestFailedRow | CompactionFailedRow | NotificationRow | LlmIr;
 
 export type SessionNode = {
   nodeId: number;
+  parentId: number | null;
   historyItem: HistoryItem;
 };
 
@@ -83,11 +91,11 @@ async function loadSessionData(id: string): Promise<SessionData | null> {
   const nodePath: SessionNode[] = [];
   let nodeId: number | null = leaf.id;
   while (nodeId != null) {
-    const row = loadNode(nodeId);
-    const historyItem = dbPayloadToHistoryItem(row);
+    const node = loadNode(nodeId);
+    const historyItem = node.historyItem;
     history.push(historyItem);
-    nodePath.push({ nodeId: row.id, historyItem });
-    nodeId = row.parentId;
+    nodePath.push(node);
+    nodeId = node.parentId;
   }
   history.reverse();
   nodePath.reverse();
@@ -238,6 +246,7 @@ export function createSessionSaveManager(
           .slice(startingPosition)
           .map((historyItem, i) => ({
             nodeId: result.insertedNodeIds[i],
+            parentId: parentNodeId,
             historyItem,
           }));
         activePath = { treeId: result.treeId, nodePath: [...baseNodePath, ...newNodePath] };
@@ -440,16 +449,16 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
       break;
     case "request-failed":
       requestFailedId = tx
-        .insert(schema.requestFailures)
+        .insert(schema.requestFailedItems)
         .values({})
-        .returning({ id: schema.requestFailures.id })
+        .returning({ id: schema.requestFailedItems.id })
         .get().id;
       break;
     case "compaction-failed":
       compactionFailedId = tx
-        .insert(schema.compactionFailures)
+        .insert(schema.compactionFailedItems)
         .values({})
-        .returning({ id: schema.compactionFailures.id })
+        .returning({ id: schema.compactionFailedItems.id })
         .get().id;
       break;
   }
@@ -466,48 +475,70 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
     .get().id;
 }
 
-function loadNode(nodeId: number) {
+function loadNode(nodeId: number): SessionNode {
   const row = db()
     .select({
       id: schema.treeNodes.id,
       parentId: schema.treeNodes.parentId,
-      requestFailedId: schema.requestFailures.id,
-      compactionFailedId: schema.compactionFailures.id,
+      requestFailedId: schema.requestFailedItems.id,
+      compactionFailedId: schema.compactionFailedItems.id,
       notificationContent: schema.notifications.content,
       llmIrJson: schema.llmIrs.json,
     })
     .from(schema.treeNodes)
     .innerJoin(schema.historyItems, eq(schema.treeNodes.historyItemId, schema.historyItems.id))
     .leftJoin(
-      schema.requestFailures,
-      eq(schema.historyItems.requestFailedId, schema.requestFailures.id),
+      schema.requestFailedItems,
+      eq(schema.historyItems.requestFailedId, schema.requestFailedItems.id),
     )
     .leftJoin(
-      schema.compactionFailures,
-      eq(schema.historyItems.compactionFailedId, schema.compactionFailures.id),
+      schema.compactionFailedItems,
+      eq(schema.historyItems.compactionFailedId, schema.compactionFailedItems.id),
     )
     .leftJoin(schema.notifications, eq(schema.historyItems.notificationId, schema.notifications.id))
     .leftJoin(schema.llmIrs, eq(schema.historyItems.llmIrId, schema.llmIrs.id))
     .where(eq(schema.treeNodes.id, nodeId))
     .get();
   if (row == null) throw new Error(`History node ${nodeId} is missing`);
-  return row;
-}
-
-function dbPayloadToHistoryItem(row: ReturnType<typeof loadNode>): HistoryItem {
   if (row.llmIrJson != null) {
     return {
-      type: "llm-ir",
-      ir: deserializeLlmIr(row.llmIrJson),
-    };
+      nodeId: row.id,
+      parentId: row.parentId,
+      historyItem: {
+        type: "llm-ir",
+        ir: deserializeLlmIr(row.llmIrJson),
+      } as LlmIr,
+    } as SessionNode;
   }
-
-  if (row.requestFailedId != null) return { type: "request-failed" };
-  if (row.compactionFailedId != null) return { type: "compaction-failed" };
   if (row.notificationContent != null) {
-    return { type: "notification", content: row.notificationContent };
+    return {
+      nodeId: row.id,
+      parentId: row.parentId,
+      historyItem: {
+        type: "notification",
+        content: row.notificationContent,
+      } as NotificationRow,
+    } as SessionNode;
   }
-  throw new Error(`History node ${row.id} has no payload`);
+  if (row.requestFailedId != null) {
+    return {
+      nodeId: row.id,
+      parentId: row.parentId,
+      historyItem: {
+        type: "request-failed",
+      } as RequestFailedRow,
+    } as SessionNode;
+  }
+  if (row.compactionFailedId != null) {
+    return {
+      nodeId: row.id,
+      parentId: row.parentId,
+      historyItem: {
+        type: "compaction-failed",
+      } as CompactionFailedRow,
+    } as SessionNode;
+  }
+  throw new Error(`History node ${nodeId} has no valid history item`);
 }
 
 function loadLaunchArgs(launchId: number): ParsedCliArgs {

@@ -1,5 +1,10 @@
 import type { OctoIR } from "../ir/octo-ir.ts";
 
+export type LlmIr = {
+  type: "llm-ir";
+  ir: OctoIR;
+};
+
 export const CURRENT_LLM_IR_JSON_VERSION = "octo-llm-ir/v1" as const;
 
 type VersionedLlmIrJson = {
