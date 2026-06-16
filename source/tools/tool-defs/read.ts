@@ -52,11 +52,17 @@ const read = TOOL.declare({
   name: "read",
   description: `
 Reads file contents as UTF-8, or loads supported image files (PNG, JPEG, etc.) for visual
-inspection. Prefer this to Unix tools like \`cat\`. For large text files, use offset and limit to
-read only the relevant line range while exploring. Text output is prefixed with line numbers in
+inspection. Prefer this to Unix tools like \`cat\`.
+
+Text output is prefixed with line numbers in
 the form \`N: content\` so you can refer to exact positions; the line-number prefix is NOT part
-of the file and must not be included when constructing edit/search strings. You must perform a
-full read of a file before editing it.
+of the file and must not be included when constructing edit/search strings.
+
+Prefer full reads of files unless they're very large (5k+ lines). It's useful for you to have more
+context, and you'll waste time chunking and read small files with offsets. Avoid using offset or
+limit unless the file is huge.
+
+You MUST perform a full read of a file before editing it.
 `.trim(),
   ArgumentsSchema,
 });
