@@ -9,6 +9,7 @@ import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
+import { ensureCodexOAuthTokens } from "../codex-oauth.ts";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -71,8 +72,31 @@ export function ModelSetup({
   });
 
   const onChooseProvider = useCallback(
-    (providerKey: keyof typeof PROVIDERS) => {
-      const provider = PROVIDERS[providerKey];
+    async (providerKey: keyof typeof PROVIDERS) => {
+      const provider: ProviderConfig = PROVIDERS[providerKey];
+      if (provider.type === "codex") {
+        try {
+          await ensureCodexOAuthTokens();
+          return dispatch({
+            from: "initial",
+            to: {
+              step: "found",
+              provider,
+              overrideAuth: { type: "codex" },
+              useEnvVar: false,
+            },
+          });
+        } catch {
+          return dispatch({
+            from: "initial",
+            to: {
+              step: "missing",
+              provider,
+            },
+          });
+        }
+      }
+
       const envVar = getEnvVar(provider, config, null);
       if (process.env[envVar]) {
         return dispatch({
@@ -177,12 +201,14 @@ export function ModelSetup({
                 [keyFromName(stepData.provider.name)]: auth.name,
               });
             }
+            const overrideAuth: Auth | null =
+              auth || (stepData.provider.type === "codex" ? { type: "codex" } : null);
             dispatch({
               from: "missing",
               to: {
                 step: "found",
                 provider: stepData.provider,
-                overrideAuth: auth || null,
+                overrideAuth,
                 useEnvVar: false,
               },
             });
@@ -191,6 +217,7 @@ export function ModelSetup({
             dispatch({ from: "missing", to: { step: "initial" } });
           }}
           baseUrl={stepData.provider.baseUrl}
+          modelType={stepData.provider.type}
         />
       );
 

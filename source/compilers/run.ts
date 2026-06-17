@@ -1,9 +1,12 @@
 import { runAnthropicAgent } from "../libocto/compilers/anthropic.ts";
 import type { AnthropicCompilerModel } from "../libocto/compilers/anthropic.ts";
+import { runCodexAgent } from "../libocto/compilers/codex.ts";
+import type { CodexCompilerModel } from "../libocto/compilers/codex.ts";
 import { runResponsesAgent } from "../libocto/compilers/responses.ts";
 import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
+import { ensureCodexOAuthTokens } from "../codex-oauth.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
@@ -76,6 +79,13 @@ export async function run<Tools extends Partial<LoadedTools> | undefined = undef
       });
     }
 
+    if (model.type === "codex") {
+      return runCodexAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: codexCompilerModel(model),
+      });
+    }
+
     const _: "anthropic" = model.type;
     return runAnthropicAgent<typeof octoAgent, Tools>({
       ...params,
@@ -122,6 +132,22 @@ function responsesOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenA
   };
 }
 
+function codexCompilerModel(model: ModelConfig): CodexCompilerModel {
+  return {
+    model: model.model,
+    auth: async () => {
+      const tokens = await ensureCodexOAuthTokens();
+      return {
+        access: tokens.access,
+        accountId: tokens.accountId,
+      };
+    },
+    userAgent: `octofriend/${APP_METADATA.version}`,
+    reasoningEffort: model.reasoning,
+    modalities: compilerModalities(model),
+  };
+}
+
 function anthropicCompilerModel(model: ModelConfig, apiKey: string): AnthropicCompilerModel {
   const thinking = anthropicThinking(model.reasoning);
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max.
@@ -145,6 +171,7 @@ function anthropicThinking(
   reasoning: ModelConfig["reasoning"],
 ): AnthropicCompilerModel["thinking"] {
   if (reasoning == null) return undefined;
+  if (reasoning === "xhigh") return { type: "enabled", budget_tokens: 16384 };
   if (reasoning === "high") return { type: "enabled", budget_tokens: 8192 };
   if (reasoning === "medium") return { type: "enabled", budget_tokens: 4096 };
   return { type: "enabled", budget_tokens: 2048 };

@@ -113,6 +113,7 @@ export function PreflightModelAuth({
         <CustomAuthFlow
           config={config}
           baseUrl={model.baseUrl}
+          modelType={model.type}
           onCancel={() => {
             setExitMessage("Press CTRL-C to exit");
           }}

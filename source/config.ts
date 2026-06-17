@@ -8,6 +8,7 @@ import json5 from "json5";
 import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
+import { ensureCodexOAuthTokens } from "./codex-oauth.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,6 +85,11 @@ const AuthSchema = t
   })
   .or(
     t.exact({
+      type: t.value("codex"),
+    }),
+  )
+  .or(
+    t.exact({
       type: t.value("command"),
       command: t.array(t.str),
     }),
@@ -98,14 +104,22 @@ export type AuthError =
 export type KeyResult = { ok: true; key: string } | { ok: false; error: AuthError };
 
 const ModelConfigSchema = t.exact({
-  type: t.optional(t.value("standard").or(t.value("openai-responses")).or(t.value("anthropic"))),
+  type: t.optional(
+    t
+      .value("standard")
+      .or(t.value("openai-responses"))
+      .or(t.value("anthropic"))
+      .or(t.value("codex")),
+  ),
   nickname: t.str,
   baseUrl: t.str,
   apiEnvVar: t.optional(t.str), // deprecated: use auth instead
   auth: t.optional(AuthSchema),
   model: t.str,
   context: t.num,
-  reasoning: t.optional(t.value("low").or(t.value("medium")).or(t.value("high"))),
+  reasoning: t.optional(
+    t.value("low").or(t.value("medium")).or(t.value("high")).or(t.value("xhigh")),
+  ),
   modalities: t.optional(
     t.subtype({
       image: t.optional(
@@ -209,6 +223,15 @@ export async function runNotifyCommand(config: Config): Promise<void> {
  * For command auth, executes the command (with caching).
  */
 export async function resolveAuth(auth: Auth): Promise<KeyResult> {
+  if (auth.type === "codex") {
+    try {
+      const tokens = await ensureCodexOAuthTokens();
+      return { ok: true, key: tokens.access };
+    } catch (error) {
+      return { ok: false, error: { type: "missing", message: errorMessage(error) } };
+    }
+  }
+
   if (auth.type === "env") {
     const value = process.env[auth.name];
     if (value == null || value === "") {
@@ -304,7 +327,12 @@ export async function resolveAuth(auth: Auth): Promise<KeyResult> {
  * Converts legacy apiEnvVar to Auth, or returns existing auth.
  * Used for migration compatibility.
  */
-function getAuthForModel(model: { auth?: Auth; apiEnvVar?: string }): Auth | null {
+function getAuthForModel(model: {
+  type?: ModelConfig["type"];
+  auth?: Auth;
+  apiEnvVar?: string;
+}): Auth | null {
+  if (model.auth?.type === "codex" || model.type === "codex") return { type: "codex" };
   if (model.auth) {
     if (model.auth.type === "command") return model.auth;
     const envVar = model.auth.name;
@@ -318,6 +346,12 @@ function getAuthForModel(model: { auth?: Auth; apiEnvVar?: string }): Auth | nul
     return { type: "env", name: model.apiEnvVar };
   }
   return null;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return String(error);
 }
 
 export const ConfigContext = React.createContext<Config>({
@@ -542,6 +576,15 @@ export async function readKeyForBaseUrlResult(
   // Is it a URL for a built-in provider? Check those first
   const provider = providerForBaseUrl(baseUrl);
   if (provider) {
+    if (provider.type === "codex") {
+      try {
+        const tokens = await ensureCodexOAuthTokens();
+        return { ok: true, key: tokens.access };
+      } catch (error) {
+        return { ok: false, error: { type: "missing", message: errorMessage(error) } };
+      }
+    }
+
     const envVar = (() => {
       const key = keyFromName(provider.name);
       if (config == null) return provider.envVar;

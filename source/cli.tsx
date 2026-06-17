@@ -33,6 +33,13 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
+import {
+  CODEX_OAUTH_FILE,
+  openDefaultBrowser,
+  pollCodexDeviceAuthorization,
+  startCodexDeviceAuthorization,
+  writeCodexOAuthTokens,
+} from "./codex-oauth.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -203,6 +210,45 @@ cli
   .action(async () => {
     const { config } = await loadConfigWithoutReauth();
     console.log(config.models.map(m => m.nickname).join("\n"));
+  });
+
+const auth = cli.command("auth").description("Manage model authentication");
+auth
+  .command("codex")
+  .description("Authorize Octo with a ChatGPT Codex subscription")
+  .action(async () => {
+    const abortController = new AbortController();
+    const onSigint = () => abortController.abort();
+    process.once("SIGINT", onSigint);
+
+    try {
+      const device = await startCodexDeviceAuthorization();
+      const opened = await openDefaultBrowser(device.verificationUri);
+      console.log("Authorize Octo with your ChatGPT Codex subscription:");
+      console.log("");
+      console.log(
+        opened
+          ? "Opened your browser. If it did not appear, open this URL manually:"
+          : "Could not open your browser automatically. Open this URL manually:",
+      );
+      console.log(`  ${device.verificationUri}`);
+      console.log("");
+      console.log(`Enter code: ${device.userCode}`);
+      console.log("");
+      console.log("Waiting for authorization...");
+
+      const tokens = await pollCodexDeviceAuthorization(device, abortController.signal);
+      await writeCodexOAuthTokens(tokens);
+
+      console.log("");
+      console.log(`Codex OAuth credentials saved to ${CODEX_OAUTH_FILE}`);
+      if (tokens.accountId) console.log(`Account: ${tokens.accountId}`);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    } finally {
+      process.removeListener("SIGINT", onSigint);
+    }
   });
 
 const bench = cli.command("bench");

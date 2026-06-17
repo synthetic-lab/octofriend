@@ -9,10 +9,18 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
-import { PROVIDERS } from "../providers.ts";
+import { providerForBaseUrl } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
+import {
+  CODEX_OAUTH_FILE,
+  ensureCodexOAuthTokens,
+  openDefaultBrowser,
+  pollCodexDeviceAuthorization,
+  startCodexDeviceAuthorization,
+  writeCodexOAuthTokens,
+} from "../codex-oauth.ts";
 
 type Model = Config["models"][number];
 type ValidationResult = { valid: true } | { valid: false; error: string };
@@ -46,6 +54,9 @@ type FullFlowRouteData = {
     baseUrl: string;
   }>;
   apiKey: ModelStepRoute<{
+    baseUrl: string;
+  }>;
+  codexOAuth: ModelStepRoute<{
     baseUrl: string;
   }>;
   postAuth: ModelStepRoute<{
@@ -86,9 +97,11 @@ const errorContext = createContext<{
 });
 
 const fullFlow = router<FullFlowRouteData>();
+type AuthAskRoute = "apiKey" | "envVar" | "command";
+type AuthAskSelection = AuthAskRoute | "back";
 
 const baseUrl = fullFlow
-  .withRoutes("authAsk", "baseUrl", "postAuth")
+  .withRoutes("authAsk", "baseUrl", "postAuth", "codexOAuth")
   .build("baseUrl", to => props => {
     return (
       <Back go={props.cancel}>
@@ -98,6 +111,17 @@ const baseUrl = fullFlow
           parse={val => val}
           validate={() => ({ valid: true })}
           onSubmit={async baseUrl => {
+            const provider = providerForBaseUrl(baseUrl);
+            if (provider?.type === "codex") {
+              try {
+                await ensureCodexOAuthTokens();
+                to.postAuth({ ...props, baseUrl, auth: { type: "codex" } });
+              } catch {
+                to.codexOAuth({ ...props, baseUrl });
+              }
+              return;
+            }
+
             const hasExistingKey = await hasExistingKeyForBaseUrl(baseUrl, props.config);
             if (hasExistingKey) {
               to.postAuth({ ...props, baseUrl });
@@ -124,12 +148,10 @@ const baseUrl = fullFlow
 function AuthAsk(
   props: FullFlowRouteData["authAsk"] &
     Pick<Transitions<void>, "back"> & {
-      onSelect: (route: "apiKey" | "envVar" | "command") => void;
+      onSelect: (route: AuthAskRoute) => void;
     },
 ) {
-  const provider = Object.values(PROVIDERS).find(provider => {
-    return provider.baseUrl === props.baseUrl;
-  });
+  const provider = providerForBaseUrl(props.baseUrl);
 
   const shortcutItems = [
     {
@@ -151,10 +173,10 @@ function AuthAsk(
           label: "Back",
           value: "back",
         },
-      } as const,
+      },
     },
-  ] satisfies ShortcutArray<"apiKey" | "envVar" | "command" | "back">;
-  const onSelect = useCallback((item: Item<"apiKey" | "envVar" | "command" | "back">) => {
+  ] satisfies ShortcutArray<AuthAskSelection>;
+  const onSelect = useCallback((item: Item<AuthAskSelection>) => {
     if (item.value === "back") props.back();
     else props.onSelect(item.value);
   }, []);
@@ -176,6 +198,83 @@ function AuthAsk(
     </Back>
   );
 }
+
+const codexOAuth = fullFlow
+  .withRoutes("codexOAuth", "authAsk", "postAuth")
+  .build("codexOAuth", to => props => {
+    const [status, setStatus] = useState<
+      | { type: "starting" }
+      | { type: "waiting"; url: string; code: string; opened: boolean }
+      | { type: "error"; message: string }
+    >({ type: "starting" });
+
+    useEffect(() => {
+      const abortController = new AbortController();
+
+      async function authorize() {
+        try {
+          const device = await startCodexDeviceAuthorization();
+          const opened = await openDefaultBrowser(device.verificationUri);
+          setStatus({
+            type: "waiting",
+            url: device.verificationUri,
+            code: device.userCode,
+            opened,
+          });
+          const tokens = await pollCodexDeviceAuthorization(device, abortController.signal);
+          await writeCodexOAuthTokens(tokens);
+          to.postAuth({ ...props, auth: { type: "codex" } });
+        } catch (error) {
+          if (abortController.signal.aborted) return;
+          setStatus({
+            type: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      authorize();
+      return () => abortController.abort();
+    }, []);
+
+    return (
+      <Back go={props.cancel}>
+        <Box flexDirection="column">
+          <Box justifyContent="center" marginBottom={1}>
+            <Box flexDirection="column" width={80}>
+              <Text color="yellow" bold>
+                ChatGPT Codex authorization
+              </Text>
+              {status.type === "starting" && <Text>Requesting an authorization code...</Text>}
+              {status.type === "waiting" && (
+                <>
+                  <Text>
+                    {status.opened
+                      ? "Opened your browser. If it did not appear, open this URL manually:"
+                      : "Could not open your browser automatically. Open this URL manually:"}
+                  </Text>
+                  <Text bold>{status.url}</Text>
+                  <Text>
+                    Code: <Text bold>{status.code}</Text>
+                  </Text>
+                  <Text dimColor>Waiting for authorization. Press ESC to cancel.</Text>
+                </>
+              )}
+              {status.type === "error" && (
+                <>
+                  <Text color="red">Authorization failed: {status.message}</Text>
+                  <Text dimColor>Press ESC to go back.</Text>
+                </>
+              )}
+              {status.type !== "error" && (
+                <Text dimColor>Credentials will be saved to {CODEX_OAUTH_FILE}</Text>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      </Back>
+    );
+  });
 
 const envVar = fullFlow.withRoutes("authAsk", "envVar", "postAuth").build("envVar", to => props => {
   return (
@@ -462,6 +561,7 @@ const fullFlowRoutes = fullFlow.route({
   envVar,
   command,
   apiKey,
+  codexOAuth,
   nickname,
 
   authAsk: to => props => {
@@ -593,7 +693,7 @@ export function CustomModelFlow({
 const customAuthDoneCtx = createContext<(auth?: Auth) => any>(() => {});
 type CustomAuthFlowData = Pick<
   FullFlowRouteData,
-  "authAsk" | "envVar" | "command" | "apiKey" | "postAuth"
+  "authAsk" | "envVar" | "command" | "apiKey" | "codexOAuth" | "postAuth"
 >;
 const customAuthFlow = router<CustomAuthFlowData>();
 const customAuthRoutes = customAuthFlow.route({
@@ -603,6 +703,7 @@ const customAuthRoutes = customAuthFlow.route({
   envVar,
   command,
   apiKey,
+  codexOAuth,
   postAuth: _ => props => {
     const done = useContext(customAuthDoneCtx);
     return <PostAuth {...props} handleAuth={() => done(props.auth)} />;
@@ -613,26 +714,36 @@ export function CustomAuthFlow({
   onComplete,
   onCancel,
   baseUrl,
+  modelType,
   config,
 }: {
   onComplete: (auth?: Auth) => any;
   onCancel: () => any;
   baseUrl: string;
+  modelType?: Model["type"];
   config: Config | null;
 }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [hasCheckedExistingKey, setHasCheckedExistingKey] = useState(false);
+  const provider = providerForBaseUrl(baseUrl);
+  const codexOnly = modelType === "codex" || provider?.type === "codex";
 
   useEffect(() => {
     if (!hasCheckedExistingKey) {
-      hasExistingKeyForBaseUrl(baseUrl, config).then(hasKey => {
-        if (hasKey) {
-          onComplete();
-        }
-        setHasCheckedExistingKey(true);
-      });
+      if (codexOnly) {
+        ensureCodexOAuthTokens()
+          .then(() => onComplete({ type: "codex" }))
+          .catch(() => setHasCheckedExistingKey(true));
+      } else {
+        hasExistingKeyForBaseUrl(baseUrl, config).then(hasKey => {
+          if (hasKey) {
+            onComplete();
+          }
+          setHasCheckedExistingKey(true);
+        });
+      }
     }
-  }, [hasCheckedExistingKey, baseUrl, config, onComplete]);
+  }, [hasCheckedExistingKey, baseUrl, config, onComplete, codexOnly]);
 
   // Show nothing while checking for existing key (will auto-complete if found)
   if (!hasCheckedExistingKey) {
@@ -643,7 +754,7 @@ export function CustomAuthFlow({
     <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
       <customAuthDoneCtx.Provider value={onComplete}>
         <customAuthRoutes.Root
-          route="authAsk"
+          route={codexOnly ? "codexOAuth" : "authAsk"}
           props={{
             renderExamples: false,
             done: () => {},
@@ -664,6 +775,7 @@ type CustomAutofixFlowRouteData = Pick<
   | "envVar"
   | "command"
   | "apiKey"
+  | "codexOAuth"
   | "postAuth"
   | "model"
   | "testConnection"
@@ -675,6 +787,7 @@ const customAutofixRoutes = customAutofixFlow.route({
   envVar,
   command,
   apiKey,
+  codexOAuth,
 
   authAsk: to => props => {
     return (
