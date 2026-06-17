@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import editToolFactory from "./edit.ts";
 import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";
-import type { Result } from "../../libocto/result.ts";
+import { unwrap } from "../../libocto/result.ts";
 import type { Transport } from "../../transports/transport-common.ts";
 
 function createTransport(files: Record<string, string>): Transport {
@@ -60,14 +60,6 @@ async function createEditTool(transport: Transport) {
     throw new Error("edit tool did not load");
   }
   return tool;
-}
-
-function unwrap<T>(result: Result<T, string>): T {
-  expect(result.success).toBe(true);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-  return result.data;
 }
 
 function editToolCall(args: { filePath: string; search: string; replace: string }) {

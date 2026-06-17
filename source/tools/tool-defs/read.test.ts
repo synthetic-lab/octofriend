@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import readToolFactory from "./read.ts";
 import { fileTracker } from "../file-tracker.ts";
+import { unwrap } from "../../libocto/result.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import type { Result } from "../../libocto/result.ts";
 
 function createTransport(files: Record<string, string>): Transport {
   const resolve = (file: string) => (file.startsWith("/") ? file : `/repo/${file}`);
@@ -59,14 +59,6 @@ async function createReadTool(transport: Transport) {
     throw new Error("read tool did not load");
   }
   return tool;
-}
-
-function unwrap<T>(result: Result<T, string>): T {
-  expect(result.success).toBe(true);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-  return result.data;
 }
 
 function readToolCall(args: { filePath: string; offset?: number; limit?: number }) {
