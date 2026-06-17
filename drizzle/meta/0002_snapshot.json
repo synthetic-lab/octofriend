@@ -453,11 +453,6 @@
           "name": "tree_nodes_parent_id_idx",
           "columns": ["parent_id"],
           "isUnique": false
-        },
-        "tree_nodes_launch_id_idx": {
-          "name": "tree_nodes_launch_id_idx",
-          "columns": ["launch_id"],
-          "isUnique": false
         }
       },
       "foreignKeys": {

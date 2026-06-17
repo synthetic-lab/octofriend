@@ -8,7 +8,6 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { OctoIR } from "../../ir/octo-ir.ts";
 
 export const trees = sqliteTable(
   "trees",
@@ -139,7 +138,6 @@ export const treeNodes = sqliteTable(
       .where(sql`${table.parentId} IS NULL`),
     index("tree_nodes_tree_leaf_id_idx").on(table.treeId, table.isLeaf, table.id),
     index("tree_nodes_parent_id_idx").on(table.parentId),
-    index("tree_nodes_launch_id_idx").on(table.launchId),
     foreignKey({
       name: "tree_nodes_parent_tree_fk",
       columns: [table.parentId, table.treeId],
@@ -157,26 +155,3 @@ export type RequestFailedRow = typeof requestFailedItems.$inferSelect;
 export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type LlmIrRow = typeof llmIrs.$inferSelect;
-
-export type RequestFailedHistoryItem = {
-  type: "request-failed";
-};
-
-export type CompactionFailedHistoryItem = {
-  type: "compaction-failed";
-};
-
-export type NotificationHistoryItem = Pick<typeof notifications.$inferInsert, "content"> & {
-  type: "notification";
-};
-
-export type LlmIrHistoryItem = {
-  type: "llm-ir";
-  ir: OctoIR;
-};
-
-export type HistoryItem =
-  | RequestFailedHistoryItem
-  | CompactionFailedHistoryItem
-  | NotificationHistoryItem
-  | LlmIrHistoryItem;

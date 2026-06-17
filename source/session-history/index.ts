@@ -8,19 +8,44 @@ import type { ParsedCliArgs } from "./cli-args.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
 import {
   compactionFailedItems,
+  CompactionFailedRow,
   dockerLaunches,
   historyItems,
   launches,
+  LlmIrRow,
   llmIrs,
   localLaunches,
+  NotificationRow,
   notifications,
   requestFailedItems,
+  RequestFailedRow,
   treeNodes,
   trees,
-  type HistoryItem,
 } from "./schema/session-history-schema.ts";
+import { OctoIR } from "../ir/octo-ir.ts";
 
-export type { HistoryItem } from "./schema/session-history-schema.ts";
+export type RequestFailedHistoryItem = Omit<RequestFailedRow, "id"> & {
+  type: "request-failed";
+};
+
+export type CompactionFailedHistoryItem = Omit<CompactionFailedRow, "id"> & {
+  type: "compaction-failed";
+};
+
+export type NotificationHistoryItem = Omit<NotificationRow, "id"> & {
+  type: "notification";
+};
+
+export type LlmIrHistoryItem = Omit<LlmIrRow, "id" | "json"> & {
+  type: "llm-ir";
+  ir: OctoIR;
+};
+
+export type HistoryItem =
+  | RequestFailedHistoryItem
+  | CompactionFailedHistoryItem
+  | NotificationHistoryItem
+  | LlmIrHistoryItem;
 
 const SQLITE_BUSY_RETRY_ATTEMPTS = 4;
 const SQLITE_BUSY_RETRY_DELAY_MS = 10;

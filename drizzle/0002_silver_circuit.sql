@@ -23,8 +23,6 @@ CREATE INDEX `tree_nodes_tree_leaf_id_idx` ON `tree_nodes` (`tree_id`,`is_leaf`,
 --> statement-breakpoint
 CREATE INDEX `tree_nodes_parent_id_idx` ON `tree_nodes` (`parent_id`);
 --> statement-breakpoint
-CREATE INDEX `tree_nodes_launch_id_idx` ON `tree_nodes` (`launch_id`);
---> statement-breakpoint
 CREATE TABLE `trees` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,
