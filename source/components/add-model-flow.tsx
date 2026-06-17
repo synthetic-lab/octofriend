@@ -531,15 +531,27 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             error: "Couldn't parse your input as a number: please try again",
           };
         }}
-        onSubmit={context =>
+        onSubmit={context => {
+          if (auth?.type === "codex") {
+            done({
+              type: "codex",
+              baseUrl,
+              model,
+              nickname,
+              context,
+              auth,
+            });
+            return;
+          }
+
           done({
             baseUrl,
             model,
             nickname,
             context,
-            auth,
-          })
-        }
+            ...(auth ? { auth } : {}),
+          });
+        }}
       >
         <Box flexDirection="column">
           <Text>

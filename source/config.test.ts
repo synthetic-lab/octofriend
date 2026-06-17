@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readAuthForModel } from "./config.ts";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import { readAuthForModel, readConfig } from "./config.ts";
 
 const ENV_NAME = "OCTO_TEST_AUTH";
 let previousEnvValue: string | undefined;
@@ -52,4 +55,49 @@ describe("readAuthForModel", () => {
       },
     });
   });
+
+  it("rejects API-key auth on Codex models", async () => {
+    const configPath = await writeConfigFixture({
+      configVersion: 2,
+      yourName: "test",
+      models: [
+        {
+          type: "codex",
+          nickname: "codex",
+          baseUrl: "https://chatgpt.com/backend-api/codex",
+          model: "gpt-5.5",
+          context: 200_000,
+          auth: { type: "command", command: ["echo", "token"] },
+        },
+      ],
+    });
+
+    await expect(readConfig(configPath)).rejects.toThrow();
+  });
+
+  it("rejects Codex auth on API-key models", async () => {
+    const configPath = await writeConfigFixture({
+      configVersion: 2,
+      yourName: "test",
+      models: [
+        {
+          type: "standard",
+          nickname: "api",
+          baseUrl: "https://example.test/v1",
+          model: "test-model",
+          context: 10_000,
+          auth: { type: "codex" },
+        },
+      ],
+    });
+
+    await expect(readConfig(configPath)).rejects.toThrow();
+  });
 });
+
+async function writeConfigFixture(config: unknown): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-config-test-"));
+  const configPath = path.join(dir, "config.json5");
+  await fs.writeFile(configPath, JSON.stringify(config));
+  return configPath;
+}

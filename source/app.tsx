@@ -552,13 +552,34 @@ function AuthErrorScreen({
       }
 
       if (auth && index >= 0) {
-        if (auth.type === "env") {
-          updatedConfig = mergeEnvVar(config, updatedModel, auth.name);
-        } else {
+        if (updatedModel.type === "codex") {
+          if (auth.type !== "codex") {
+            setAuthError({
+              type: "invalid",
+              message: "Codex models can only use Codex OAuth auth.",
+            });
+            return;
+          }
           const updatedModels = [...config.models];
           updatedModel = { ...updatedModel, auth };
           updatedModels[index] = updatedModel;
           updatedConfig = { ...config, models: updatedModels };
+        } else {
+          if (auth.type === "codex") {
+            setAuthError({
+              type: "invalid",
+              message: "API-key models cannot use Codex OAuth auth.",
+            });
+            return;
+          }
+          if (auth.type === "env") {
+            updatedConfig = mergeEnvVar(config, updatedModel, auth.name);
+          } else {
+            const updatedModels = [...config.models];
+            updatedModel = { ...updatedModel, auth };
+            updatedModels[index] = updatedModel;
+            updatedConfig = { ...config, models: updatedModels };
+          }
         }
         await setConfig(updatedConfig);
       }

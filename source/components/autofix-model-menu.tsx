@@ -100,10 +100,9 @@ export function AutofixModelMenu({
         onComplete={model => {
           const val: Exclude<Config["diffApply"], undefined> = {
             baseUrl: model.baseUrl,
-            auth: model.auth,
             model: model.model,
           };
-          if (model.auth == null) delete val.auth;
+          if (model.auth?.type === "env" || model.auth?.type === "command") val.auth = model.auth;
           onComplete(val);
         }}
         onCancel={() => setStep("choose")}
@@ -124,7 +123,7 @@ export function AutofixModelMenu({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,
             });
-          } else if (auth) {
+          } else if (auth?.type === "command") {
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,

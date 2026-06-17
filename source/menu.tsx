@@ -217,9 +217,15 @@ function SwitchModelMenu() {
         onComplete={async (auth?: Auth) => {
           const index = config.models.indexOf(pendingModel);
           if (auth && index >= 0) {
-            if (auth.type === "env") {
+            if (pendingModel.type === "codex") {
+              if (auth.type === "codex") {
+                const models = [...config.models];
+                models[index] = { ...pendingModel, auth };
+                await setConfig({ ...config, models });
+              }
+            } else if (auth.type === "env") {
               await setConfig(mergeEnvVar(config, pendingModel, auth.name));
-            } else {
+            } else if (auth.type === "command") {
               const models = [...config.models];
               models[index] = { ...pendingModel, auth };
               await setConfig({ ...config, models });

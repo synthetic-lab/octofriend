@@ -121,13 +121,22 @@ export function PreflightModelAuth({
             let index = config.models.indexOf(model);
             let updatedModel = model;
             if (index >= 0 && auth) {
-              if (auth.type === "env") {
-                await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+              if (model.type === "codex") {
+                if (auth.type === "codex") {
+                  const updatedModels = [...config.models];
+                  updatedModel = { ...model, auth };
+                  updatedModels[index] = updatedModel;
+                  await writeConfig({ ...config, models: updatedModels }, configPath);
+                }
               } else {
-                const updatedModels = [...config.models];
-                updatedModel = { ...model, auth };
-                updatedModels[index] = updatedModel;
-                await writeConfig({ ...config, models: updatedModels }, configPath);
+                if (auth.type === "env") {
+                  await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+                } else if (auth.type === "command") {
+                  const updatedModels = [...config.models];
+                  updatedModel = { ...model, auth };
+                  updatedModels[index] = updatedModel;
+                  await writeConfig({ ...config, models: updatedModels }, configPath);
+                }
               }
             }
             setCurrentModel(updatedModel);
@@ -256,7 +265,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                     mergeAutofixEnvVar(config, autofixKey, model, auth.name),
                     configPath,
                   );
-                } else {
+                } else if (auth.type === "command") {
                   const merged = { ...config };
                   updatedModel = { ...model, auth };
                   merged[autofixKey] = updatedModel;

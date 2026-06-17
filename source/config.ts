@@ -78,23 +78,22 @@ export const LspEntrySchema = t
   .or(LspServerConfigSchema);
 export type LspEntry = t.GetType<typeof LspEntrySchema>;
 
-const AuthSchema = t
-  .exact({
-    type: t.value("env"),
-    name: t.str,
-  })
-  .or(
-    t.exact({
-      type: t.value("codex"),
-    }),
-  )
-  .or(
-    t.exact({
-      type: t.value("command"),
-      command: t.array(t.str),
-    }),
-  );
+const EnvAuthSchema = t.exact({
+  type: t.value("env"),
+  name: t.str,
+});
+const CommandAuthSchema = t.exact({
+  type: t.value("command"),
+  command: t.array(t.str),
+});
+const ApiKeyAuthConfigSchema = EnvAuthSchema.or(CommandAuthSchema);
+const CodexAuthConfigSchema = t.exact({
+  type: t.value("codex"),
+});
+const AuthSchema = ApiKeyAuthConfigSchema.or(CodexAuthConfigSchema);
 export type Auth = t.GetType<typeof AuthSchema>;
+export type ApiKeyAuthConfig = t.GetType<typeof ApiKeyAuthConfigSchema>;
+export type CodexAuthConfig = t.GetType<typeof CodexAuthConfigSchema>;
 
 export type AuthError =
   | { type: "missing"; message: string }
@@ -102,61 +101,71 @@ export type AuthError =
   | { type: "invalid"; message: string };
 
 export type ApiKeyAuth = { type: "apiKey"; apiKey: string };
-export type OauthKeyAuth = { type: "oauth"; oauthToken: string };
-export type LoadedAuth = ApiKeyAuth | OauthKeyAuth;
+export type OAuthLoadedAuth = { type: "oauth"; oauthToken: string };
+export type LoadedAuth = ApiKeyAuth | OAuthLoadedAuth;
 export type AuthResult = { ok: true; auth: LoadedAuth } | { ok: false; error: AuthError };
 
-const ModelConfigSchema = t.exact({
-  type: t.optional(
-    t
-      .value("standard")
-      .or(t.value("openai-responses"))
-      .or(t.value("anthropic"))
-      .or(t.value("codex")),
-  ),
-  nickname: t.str,
-  baseUrl: t.str,
-  apiEnvVar: t.optional(t.str), // deprecated: use auth instead
-  auth: t.optional(AuthSchema),
-  model: t.str,
-  context: t.num,
-  reasoning: t.optional(
-    t.value("low").or(t.value("medium")).or(t.value("high")).or(t.value("xhigh")),
-  ),
-  modalities: t.optional(
+const ModelTypeSchema = t
+  .value("standard")
+  .or(t.value("openai-responses"))
+  .or(t.value("anthropic"));
+const ReasoningSchema = t
+  .value("low")
+  .or(t.value("medium"))
+  .or(t.value("high"))
+  .or(t.value("xhigh"));
+const ModalitiesSchema = t.subtype({
+  image: t.optional(
     t.subtype({
-      image: t.optional(
-        t.subtype({
-          enabled: t.bool,
-          maxSizeMB: t.num,
-          acceptedMimeTypes: t.array(t.str),
-        }),
-      ),
+      enabled: t.bool,
+      maxSizeMB: t.num,
+      acceptedMimeTypes: t.array(t.str),
     }),
   ),
 });
+
+const ModelConfigBaseSchema = t.subtype({
+  nickname: t.str,
+  baseUrl: t.str,
+  model: t.str,
+  context: t.num,
+  reasoning: t.optional(ReasoningSchema),
+  modalities: t.optional(ModalitiesSchema),
+});
+const ApiKeyModelConfigSchema = ModelConfigBaseSchema.and(
+  t.subtype({
+    type: t.optional(ModelTypeSchema),
+    // deprecated: use auth instead
+    apiEnvVar: t.optional(t.str),
+    auth: t.optional(ApiKeyAuthConfigSchema),
+  }),
+);
+const CodexModelConfigSchema = ModelConfigBaseSchema.and(
+  t.subtype({
+    type: t.value("codex"),
+    auth: t.optional(CodexAuthConfigSchema),
+  }),
+);
+const ModelConfigSchema = ApiKeyModelConfigSchema.or(CodexModelConfigSchema);
+export type ApiKeyModelConfig = t.GetType<typeof ApiKeyModelConfigSchema>;
+export type CodexModelConfig = t.GetType<typeof CodexModelConfigSchema>;
+export type ModelConfigBase = t.GetType<typeof ModelConfigBaseSchema>;
 export type ModelConfig = t.GetType<typeof ModelConfigSchema>;
+
+const AutofixAuthSchema = ApiKeyAuthConfigSchema;
+const AutofixModelConfigSchema = t.exact({
+  baseUrl: t.str,
+  apiEnvVar: t.optional(t.str), // deprecated: use auth instead
+  auth: t.optional(AutofixAuthSchema),
+  model: t.str,
+});
 
 const ConfigSchema = t.exact({
   configVersion: t.optional(t.num),
   yourName: t.str,
   models: t.array(ModelConfigSchema),
-  diffApply: t.optional(
-    t.exact({
-      baseUrl: t.str,
-      apiEnvVar: t.optional(t.str), // deprecated: use auth instead
-      auth: t.optional(AuthSchema),
-      model: t.str,
-    }),
-  ),
-  fixJson: t.optional(
-    t.exact({
-      baseUrl: t.str,
-      apiEnvVar: t.optional(t.str), // deprecated: use auth instead
-      auth: t.optional(AuthSchema),
-      model: t.str,
-    }),
-  ),
+  diffApply: t.optional(AutofixModelConfigSchema),
+  fixJson: t.optional(AutofixModelConfigSchema),
   vimEmulation: t.optional(
     t.subtype({
       enabled: t.bool,
@@ -166,7 +175,7 @@ const ConfigSchema = t.exact({
     t.subtype({
       url: t.str,
       apiEnvVar: t.optional(t.str), // deprecated: use auth instead
-      auth: t.optional(AuthSchema),
+      auth: t.optional(ApiKeyAuthConfigSchema),
     }),
   ),
   defaultApiKeyOverrides: t.optional(t.dict(t.str)),
@@ -375,7 +384,7 @@ export function withAllServersDisabled(config: Config): Config {
   return { ...config, lsp: false };
 }
 
-export function mergeEnvVar(config: Config, model: Config["models"][number], apiEnvVar: string) {
+export function mergeEnvVar(config: Config, model: ApiKeyModelConfig, apiEnvVar: string) {
   const provider = providerForBaseUrl(model.baseUrl);
   let merged = { ...config, models: [...config.models] };
   const index = merged.models.indexOf(model);
@@ -388,7 +397,9 @@ export function mergeEnvVar(config: Config, model: Config["models"][number], api
     const overrides = merged.defaultApiKeyOverrides || {};
     overrides[key] = apiEnvVar;
     merged.defaultApiKeyOverrides = overrides;
-    delete merged.models[index].apiEnvVar;
+    const updatedModel = { ...model };
+    delete updatedModel.apiEnvVar;
+    merged.models[index] = updatedModel;
     return merged;
   }
 
@@ -450,12 +461,14 @@ function sanitizeConfig(c: Config): Config {
   const sanitized = { ...c, models: [...c.models] };
   for (let index = 0; index < sanitized.models.length; index++) {
     const model = sanitized.models[index];
+    if (model.type === "codex") continue;
     const provider = providerForBaseUrl(model.baseUrl);
     if (provider) {
       const envVar = getDefaultEnvVar(provider, c);
-      if (envVar === model.apiEnvVar) {
-        sanitized.models[index] = { ...model };
-        delete sanitized.models[index].apiEnvVar;
+      if ("apiEnvVar" in model && envVar === model.apiEnvVar) {
+        const updatedModel = { ...model };
+        delete updatedModel.apiEnvVar;
+        sanitized.models[index] = updatedModel;
       }
     }
   }

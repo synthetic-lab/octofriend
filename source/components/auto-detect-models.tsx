@@ -157,15 +157,26 @@ export function ModelSetup({
           onImport={models => {
             onComplete(
               models.map(model => {
-                let t: Partial<Config["models"][number]> = {};
-                if (stepData.provider.type) t = { type: stepData.provider.type };
+                if (stepData.provider.type === "codex") {
+                  return {
+                    ...model,
+                    type: "codex",
+                    nickname: `${model.nickname} (${stepData.provider.name})`,
+                    baseUrl: stepData.provider.baseUrl,
+                    auth: { type: "codex" },
+                  };
+                }
+
                 const base: Config["models"][number] = {
                   ...model,
+                  ...(stepData.provider.type ? { type: stepData.provider.type } : {}),
                   nickname: `${model.nickname} (${stepData.provider.name})`,
                   baseUrl: stepData.provider.baseUrl,
-                  ...t,
                 };
-                if (stepData.overrideAuth) {
+                if (
+                  stepData.overrideAuth?.type === "env" ||
+                  stepData.overrideAuth?.type === "command"
+                ) {
                   base.auth = stepData.overrideAuth;
                 } else if (stepData.useEnvVar) {
                   base.apiEnvVar = getEnvVar(stepData.provider, config, null);
@@ -226,11 +237,48 @@ export function ModelSetup({
         <CustomModelFlow
           config={config}
           onComplete={model => {
-            let modelClone = { ...model };
-            if (stepData.provider.type) {
-              modelClone.type = stepData.provider.type;
+            if (stepData.provider.type === "codex") {
+              onComplete([
+                {
+                  ...model,
+                  type: "codex",
+                  auth: { type: "codex" },
+                },
+              ]);
+              return;
             }
-            onComplete([modelClone]);
+
+            const apiModel = {
+              nickname: model.nickname,
+              baseUrl: model.baseUrl,
+              model: model.model,
+              context: model.context,
+              ...(model.reasoning ? { reasoning: model.reasoning } : {}),
+              ...(model.modalities ? { modalities: model.modalities } : {}),
+              ...(model.auth?.type === "env" || model.auth?.type === "command"
+                ? { auth: model.auth }
+                : {}),
+            };
+
+            if (
+              stepData.provider.type === "standard" ||
+              stepData.provider.type === "openai-responses" ||
+              stepData.provider.type === "anthropic"
+            ) {
+              onComplete([
+                {
+                  ...apiModel,
+                  type: stepData.provider.type,
+                },
+              ]);
+              return;
+            }
+
+            onComplete([
+              {
+                ...apiModel,
+              },
+            ]);
           }}
           onCancel={() => {
             dispatch({
