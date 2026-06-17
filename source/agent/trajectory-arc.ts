@@ -171,7 +171,10 @@ export async function trajectoryArc({
     },
   });
   if (!parsedCompaction.success) {
-    if (isRecoverableRequestError(parsedCompaction.error) || isAuthError(parsedCompaction.error)) {
+    if (
+      isRecoverableRequestError(parsedCompaction.error) ||
+      parsedCompaction.error.type === "auth-error"
+    ) {
       return {
         type: "finish",
         irs,
@@ -466,7 +469,7 @@ function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefi
 }
 
 function compilerErrorToFinishReason(error: CompilerError): Finish["reason"] {
-  if (isAuthError(error)) return error;
+  if (error.type === "auth-error") return error;
   if (isRecoverableRequestError(error)) return error;
   return {
     type: "request-error",
@@ -477,12 +480,6 @@ function compilerErrorToFinishReason(error: CompilerError): Finish["reason"] {
 
 function isRecoverableRequestError(error: { type: string }): error is RecoverableRequestError {
   return error.type === "payment-error" || error.type === "rate-limit-error";
-}
-
-function isAuthError(error: {
-  type: string;
-}): error is Extract<CompilerError, { type: "auth-error" }> {
-  return error.type === "auth-error";
 }
 
 async function maybeAutocompact({
