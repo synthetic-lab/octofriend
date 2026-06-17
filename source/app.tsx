@@ -10,7 +10,7 @@ import {
   SetConfigContext,
   useConfig,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
+import type { HistoryItem } from "./session-history/index.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";

@@ -40,15 +40,15 @@ import {
   createSessionContext,
   loadSessionState,
   loadSessionPath,
-  createSessionSaveManager,
+  createSessionHistory,
   listSessions,
   isSessionResumable,
+  type HistoryItem,
   type SessionContext,
-  type SessionSaveManager,
+  type SessionHistory,
   type SessionPath,
 } from "./session-history/index.ts";
 import { UiState, useAppStore } from "./state.ts";
-import type { HistoryItem } from "./history.ts";
 import {
   replaceOctoFlags,
   ParsedCliArgs,
@@ -226,19 +226,19 @@ function onHistoryVersionChange(opts: {
   cwd: string;
   transportKind: "local" | "docker";
   parsedCliArgs: ParsedCliArgs;
-  sessionSaveCoordinator: SessionSaveManager;
+  sessionHistory: SessionHistory;
 }) {
   const { state, previousState } = opts;
 
   if (state.conversationAction === "edit-retry") {
-    opts.sessionSaveCoordinator.replace(state.history);
+    opts.sessionHistory.replace(state.history);
   } else {
     const nextSessionContext = createSessionContext(
       opts.cwd,
       opts.transportKind,
       opts.parsedCliArgs,
     );
-    opts.sessionSaveCoordinator.switchSession(nextSessionContext, previousState.history);
+    opts.sessionHistory.switchSession(nextSessionContext, previousState.history);
     opts.activeSessionRef.current = nextSessionContext;
   }
 
@@ -248,9 +248,9 @@ function onHistoryVersionChange(opts: {
 function onHistoryChange(opts: {
   state: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[0];
   previousState: Parameters<Parameters<typeof useAppStore.subscribe>[0]>[1];
-  sessionSaveCoordinator: SessionSaveManager;
+  sessionHistory: SessionHistory;
 }) {
-  const { state, previousState, sessionSaveCoordinator } = opts;
+  const { state, previousState, sessionHistory } = opts;
 
   const useAppend =
     state.history.length > previousState.history.length &&
@@ -258,8 +258,8 @@ function onHistoryChange(opts: {
       .slice(0, previousState.history.length)
       .every((item, i) => item === previousState.history[i]);
   const saveOp = useAppend
-    ? sessionSaveCoordinator.append(state.history)
-    : sessionSaveCoordinator.replace(state.history);
+    ? sessionHistory.append(state.history)
+    : sessionHistory.replace(state.history);
   void saveOp;
 }
 
@@ -313,6 +313,11 @@ async function runMain(opts: {
       activeSessionContext = resumedSession.context;
       initialSessionHistory = resumedSession.history;
       sessionPath = await loadSessionPath(opts.resumeSessionId);
+      if (sessionPath == null) {
+        console.error(`Session ${opts.resumeSessionId} has no resumable history path.`);
+        process.exitCode = 1;
+        return;
+      }
     } else {
       activeSessionContext = createSessionContext(
         cwd,
@@ -322,7 +327,7 @@ async function runMain(opts: {
     }
 
     const activeSessionRef: { current: SessionContext } = { current: activeSessionContext };
-    const sessionSaveCoordinator = createSessionSaveManager(
+    const sessionHistory = createSessionHistory(
       activeSessionRef.current,
       initialSessionHistory,
       sessionPath ?? undefined,
@@ -337,13 +342,13 @@ async function runMain(opts: {
           cwd,
           transportKind: opts.transport.transportKind,
           parsedCliArgs: opts.parsedCliArgs,
-          sessionSaveCoordinator,
+          sessionHistory,
         });
         return;
       }
 
       if (state.history !== previousState.history && activeSessionRef.current != null) {
-        onHistoryChange({ state, previousState, sessionSaveCoordinator });
+        onHistoryChange({ state, previousState, sessionHistory });
       }
     });
 
@@ -369,8 +374,8 @@ async function runMain(opts: {
 
     await waitUntilExit();
     if (activeSessionRef.current != null) {
-      await sessionSaveCoordinator.append(useAppStore.getState().history);
-      await sessionSaveCoordinator.flush();
+      await sessionHistory.append(useAppStore.getState().history);
+      await sessionHistory.flush();
     }
 
     console.log("\nApprox. tokens used:");

@@ -1,18 +1,29 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { and, desc, eq, type ExtractTablesWithRelations } from "drizzle-orm";
 import { type BetterSQLiteTransaction } from "drizzle-orm/better-sqlite3";
 import { db, schema } from "../db/db.ts";
 import type { TransportKind } from "../transports/transport-common.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
-import { deserializeLlmIr, LlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
 import {
-  CompactionFailedRow,
-  HistoryItemRow,
-  NotificationRow,
-  RequestFailedRow,
+  compactionFailedItems,
+  dockerLaunches,
+  historyItems,
+  launches,
+  llmIrs,
+  localLaunches,
+  notifications,
+  requestFailedItems,
+  treeNodes,
+  trees,
+  type HistoryItem,
 } from "./schema/session-history-schema.ts";
 
-export type HistoryItem = RequestFailedRow | CompactionFailedRow | NotificationRow | LlmIr;
+export type { HistoryItem } from "./schema/session-history-schema.ts";
+
+const SQLITE_BUSY_RETRY_ATTEMPTS = 4;
+const SQLITE_BUSY_RETRY_DELAY_MS = 10;
 
 export type SessionNode = {
   nodeId: number;
@@ -51,13 +62,6 @@ type DbTransaction = BetterSQLiteTransaction<
   ExtractTablesWithRelations<typeof schema>
 >; // Drizzle doesn't export the transaction type directly
 
-export type SessionSaveManager = {
-  append: (history: HistoryItem[]) => Promise<boolean>;
-  replace: (history: HistoryItem[]) => Promise<boolean>;
-  switchSession: (sessionContext: SessionContext, previousHistory: HistoryItem[]) => void;
-  flush: () => Promise<void>;
-};
-
 export function createSessionContext(
   cwd: string,
   transportKind: TransportKind = "local",
@@ -66,24 +70,29 @@ export function createSessionContext(
   return { id: randomUUID(), cwd, transportKind, cliArgs };
 }
 
+type SessionRecord = {
+  context: SessionContext;
+  path: SessionPath | null;
+};
+
 type SessionData = {
   state: LoadedSessionState;
   path: SessionPath;
 };
 
 async function loadSessionData(id: string): Promise<SessionData | null> {
-  const tree = db().select().from(schema.trees).where(eq(schema.trees.name, id)).get();
+  const tree = db().select().from(trees).where(eq(trees.name, id)).get();
   if (tree == null) return null;
 
   const leaf = db()
     .select({
-      id: schema.treeNodes.id,
-      parentId: schema.treeNodes.parentId,
-      launchId: schema.treeNodes.launchId,
+      id: treeNodes.id,
+      parentId: treeNodes.parentId,
+      launchId: treeNodes.launchId,
     })
-    .from(schema.treeNodes)
-    .where(and(eq(schema.treeNodes.treeId, tree.id), eq(schema.treeNodes.isLeaf, true)))
-    .orderBy(desc(schema.treeNodes.id))
+    .from(treeNodes)
+    .where(and(eq(treeNodes.treeId, tree.id), eq(treeNodes.isLeaf, true)))
+    .orderBy(desc(treeNodes.id))
     .get();
   if (leaf == null) return null;
 
@@ -129,107 +138,132 @@ export async function loadSessionPath(id: string): Promise<SessionPath | null> {
 export async function listSessions(cwd?: string): Promise<SessionPreviewItem[]> {
   return db()
     .select({
-      id: schema.trees.name,
-      cwd: schema.trees.cwd,
-      updatedAt: schema.trees.updatedAt,
+      id: trees.name,
+      cwd: trees.cwd,
+      updatedAt: trees.updatedAt,
     })
-    .from(schema.trees)
-    .where(cwd != null ? eq(schema.trees.cwd, cwd) : undefined)
-    .orderBy(desc(schema.trees.updatedAt), desc(schema.trees.id))
+    .from(trees)
+    .where(cwd != null ? eq(trees.cwd, cwd) : undefined)
+    .orderBy(desc(trees.updatedAt), desc(trees.id))
     .all();
 }
 
 export function isSessionResumable(sessionId: string): boolean {
-  const tree = db()
-    .select({ id: schema.trees.id })
-    .from(schema.trees)
-    .where(eq(schema.trees.name, sessionId))
-    .get();
+  const tree = db().select({ id: trees.id }).from(trees).where(eq(trees.name, sessionId)).get();
   if (tree == null) return false;
   const node = db()
-    .select({ id: schema.treeNodes.id })
-    .from(schema.treeNodes)
-    .where(eq(schema.treeNodes.treeId, tree.id))
+    .select({ id: treeNodes.id })
+    .from(treeNodes)
+    .where(eq(treeNodes.treeId, tree.id))
     .get();
   return node != null;
 }
 
-export function createSessionSaveManager(
+export function createSessionHistory(
   sessionContext: SessionContext,
   initialHistory: HistoryItem[] = [],
   sessionPath?: SessionPath,
-): SessionSaveManager {
-  if (sessionPath != null && sessionPath.nodePath.length !== initialHistory.length) {
-    throw new Error("Session history does not match its persisted node path");
+): SessionHistory {
+  return new SessionHistory(sessionContext, initialHistory, sessionPath);
+}
+
+export class SessionHistory {
+  private activeSession: SessionRecord;
+  private launchId: number | null = null;
+  private pendingSave: Promise<boolean> = Promise.resolve(false);
+
+  constructor(
+    sessionContext: SessionContext,
+    initialHistory: HistoryItem[] = [],
+    sessionPath?: SessionPath,
+  ) {
+    if (sessionPath != null && sessionPath.nodePath.length !== initialHistory.length) {
+      throw new Error("Session history does not match its persisted node path");
+    }
+
+    this.activeSession = {
+      context: sessionContext,
+      path:
+        sessionPath != null
+          ? { treeId: sessionPath.treeId, nodePath: [...sessionPath.nodePath] }
+          : null,
+    };
   }
 
-  let activeContext = sessionContext;
-  let activePath: SessionPath | null = sessionPath
-    ? { treeId: sessionPath.treeId, nodePath: [...sessionPath.nodePath] }
-    : null;
-  let launchId: number | null = null;
-  let pendingSave: Promise<boolean> = Promise.resolve(false);
-
-  const snapshot = () => ({ context: activeContext, path: activePath });
-
-  function enqueue(operation: () => Promise<boolean>) {
-    pendingSave = pendingSave.then(operation, operation);
-    return pendingSave;
-  }
-
-  function append(history: HistoryItem[]): Promise<boolean> {
+  append(history: HistoryItem[]): Promise<boolean> {
     if (!hasMessages(history)) return Promise.resolve(false);
 
-    return enqueue(async () => {
-      const { context, path } = snapshot();
-      const pathLength = path?.nodePath.length ?? 0;
-      const commonLength = commonPathPrefixLength(path?.nodePath ?? [], history);
-      if (commonLength !== pathLength) {
-        return replaceState(context, path, history, true);
-      }
-      if (history.length === pathLength) return false;
-      return persistHistorySuffix(context, path, history, commonLength, true);
-    });
+    const session = this.activeSession;
+    return this.enqueue(() => this.appendToSession(session, history));
   }
 
-  async function replaceState(
-    context: SessionContext,
-    path: SessionPath | null,
-    history: HistoryItem[],
-    isCurrentSession: boolean,
-  ): Promise<boolean> {
-    const commonLength = commonPathPrefixLength(path?.nodePath ?? [], history);
+  replace(history: HistoryItem[]): Promise<boolean> {
+    const session = this.activeSession;
+    return this.enqueue(() => this.replaceState(session, history));
+  }
+
+  switchSession(nextSessionContext: SessionContext, previousHistory: HistoryItem[]): void {
+    const previousSession = this.activeSession;
+    this.activeSession = { context: nextSessionContext, path: null };
+    if (!hasMessages(previousHistory)) return;
+
+    void this.enqueue(() => this.appendToSession(previousSession, previousHistory));
+  }
+
+  async flush(): Promise<void> {
+    await this.pendingSave;
+  }
+
+  private enqueue(operation: () => Promise<boolean>): Promise<boolean> {
+    const nextSave = this.pendingSave.then(operation, operation);
+    nextSave.catch(() => undefined);
+    this.pendingSave = nextSave;
+    return nextSave;
+  }
+
+  private appendToSession(session: SessionRecord, history: HistoryItem[]): Promise<boolean> {
+    const pathLength = session.path?.nodePath.length ?? 0;
+    const commonLength = commonPathPrefixLength(session.path?.nodePath ?? [], history);
+    if (commonLength !== pathLength) {
+      return this.replaceState(session, history);
+    }
+    if (history.length === pathLength) return Promise.resolve(false);
+    return this.persistHistorySuffix(session, history, commonLength);
+  }
+
+  private async replaceState(session: SessionRecord, history: HistoryItem[]): Promise<boolean> {
+    const commonLength = commonPathPrefixLength(session.path?.nodePath ?? [], history);
     const newPath =
-      path == null ? null : { treeId: path.treeId, nodePath: path.nodePath.slice(0, commonLength) };
+      session.path == null
+        ? null
+        : { treeId: session.path.treeId, nodePath: session.path.nodePath.slice(0, commonLength) };
     if (!hasMessages(history)) {
-      if (isCurrentSession) activePath = newPath;
+      session.path = newPath;
       return false;
     }
 
     if (commonLength === history.length) {
-      if (isCurrentSession) activePath = newPath;
+      session.path = newPath;
       return true;
     }
 
-    return persistHistorySuffix(context, path, history, commonLength, isCurrentSession);
+    return this.persistHistorySuffix(session, history, commonLength);
   }
 
-  async function persistHistorySuffix(
-    context: SessionContext,
-    path: SessionPath | null,
+  private async persistHistorySuffix(
+    session: SessionRecord,
     history: HistoryItem[],
     startingPosition: number,
-    isCurrentSession: boolean,
   ): Promise<boolean> {
-    const baseNodePath = path?.nodePath.slice(0, startingPosition) ?? [];
+    const baseNodePath = session.path?.nodePath.slice(0, startingPosition) ?? [];
     const parentNodeId = baseNodePath.at(-1)?.nodeId ?? null;
 
     try {
       const result = await runWriteTransaction(tx => {
         const updatedAt = Date.now();
-        const treeId = ensureTree(tx, context, updatedAt, path?.treeId);
-        const persistedLaunchId = launchId ?? createLaunch(tx, context.cliArgs);
-        const insertedNodeIds = insertHistoryNodes(
+        const treeId = ensureTree(tx, session.context, updatedAt, session.path?.treeId);
+        const persistedLaunchId = this.launchId ?? createLaunch(tx, session.context.cliArgs);
+        const insertedNodes = insertHistoryNodes(
           tx,
           treeId,
           parentNodeId,
@@ -237,62 +271,20 @@ export function createSessionSaveManager(
           history.slice(startingPosition),
         );
         updateTreeTimestamp(tx, treeId, updatedAt);
-        return { treeId, launchId: persistedLaunchId, insertedNodeIds };
+        return { treeId, launchId: persistedLaunchId, insertedNodes };
       });
 
-      launchId = result.launchId;
-      if (isCurrentSession) {
-        const newNodePath: SessionNode[] = history
-          .slice(startingPosition)
-          .map((historyItem, i) => ({
-            nodeId: result.insertedNodeIds[i],
-            parentId: parentNodeId,
-            historyItem,
-          }));
-        activePath = { treeId: result.treeId, nodePath: [...baseNodePath, ...newNodePath] };
-      }
+      this.launchId = result.launchId;
+      session.path = {
+        treeId: result.treeId,
+        nodePath: [...baseNodePath, ...result.insertedNodes],
+      };
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (isRootNodeConflict(error, parentNodeId)) return false;
+      throw error;
     }
   }
-
-  return {
-    append,
-
-    replace: history => {
-      return enqueue(async () => {
-        const { context, path } = snapshot();
-        return replaceState(context, path, history, true);
-      });
-    },
-
-    switchSession: (nextSessionContext, previousHistory): void => {
-      const { context: previousContext, path: previousPath } = snapshot();
-      activeContext = nextSessionContext;
-      activePath = null;
-      if (!hasMessages(previousHistory)) return;
-      enqueue(async () => {
-        const pathLength = previousPath?.nodePath.length ?? 0;
-        const commonLength = commonPathPrefixLength(previousPath?.nodePath ?? [], previousHistory);
-        if (commonLength !== pathLength) {
-          return replaceState(previousContext, previousPath, previousHistory, false);
-        }
-        if (previousHistory.length === pathLength) return false;
-        return persistHistorySuffix(
-          previousContext,
-          previousPath,
-          previousHistory,
-          commonLength,
-          false,
-        );
-      });
-    },
-
-    flush: async () => {
-      await pendingSave;
-    },
-  };
 }
 
 function hasMessages(history: HistoryItem[]): boolean {
@@ -302,13 +294,24 @@ function hasMessages(history: HistoryItem[]): boolean {
 function commonPathPrefixLength(nodePath: SessionNode[], history: HistoryItem[]): number {
   const length = Math.min(nodePath.length, history.length);
   let position = 0;
-  while (
-    position < length &&
-    JSON.stringify(nodePath[position].historyItem) === JSON.stringify(history[position])
-  ) {
+  while (position < length && sameHistoryItem(nodePath[position].historyItem, history[position])) {
     position++;
   }
   return position;
+}
+
+function sameHistoryItem(left: HistoryItem, right: HistoryItem): boolean {
+  if (left.type !== right.type) return false;
+
+  switch (left.type) {
+    case "llm-ir":
+      return right.type === "llm-ir" && isDeepStrictEqual(left.ir, right.ir);
+    case "notification":
+      return right.type === "notification" && left.content === right.content;
+    case "request-failed":
+    case "compaction-failed":
+      return true;
+  }
 }
 
 function ensureTree(
@@ -317,7 +320,7 @@ function ensureTree(
   updatedAt: number,
   expectedTreeId?: number | null,
 ): number {
-  tx.insert(schema.trees)
+  tx.insert(trees)
     .values({
       name: context.id,
       cwd: context.cwd,
@@ -327,9 +330,9 @@ function ensureTree(
     .run();
 
   const tree = tx
-    .select({ id: schema.trees.id, cwd: schema.trees.cwd })
-    .from(schema.trees)
-    .where(eq(schema.trees.name, context.id))
+    .select({ id: trees.id, cwd: trees.cwd })
+    .from(trees)
+    .where(eq(trees.name, context.id))
     .get();
   if (tree == null) throw new Error("Failed to create history tree");
   if (tree.cwd !== context.cwd) {
@@ -342,7 +345,7 @@ function ensureTree(
 }
 
 function updateTreeTimestamp(tx: DbTransaction, treeId: number, updatedAt: number) {
-  tx.update(schema.trees).set({ updatedAt }).where(eq(schema.trees.id, treeId)).run();
+  tx.update(trees).set({ updatedAt }).where(eq(trees.id, treeId)).run();
 }
 
 function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
@@ -353,17 +356,17 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
   switch (cliArgs.kind) {
     case "local":
       localLaunchId = tx
-        .insert(schema.localLaunches)
+        .insert(localLaunches)
         .values({
           config,
           unchained,
         })
-        .returning({ id: schema.localLaunches.id })
+        .returning({ id: localLaunches.id })
         .get().id;
       break;
     case "docker-connect":
       dockerLaunchId = tx
-        .insert(schema.dockerLaunches)
+        .insert(dockerLaunches)
         .values({
           kind: "connect",
           target: cliArgs.target,
@@ -371,12 +374,12 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
           config,
           unchained,
         })
-        .returning({ id: schema.dockerLaunches.id })
+        .returning({ id: dockerLaunches.id })
         .get().id;
       break;
     case "docker-run":
       dockerLaunchId = tx
-        .insert(schema.dockerLaunches)
+        .insert(dockerLaunches)
         .values({
           kind: "run",
           target: null,
@@ -384,15 +387,15 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
           config,
           unchained,
         })
-        .returning({ id: schema.dockerLaunches.id })
+        .returning({ id: dockerLaunches.id })
         .get().id;
       break;
   }
 
   return tx
-    .insert(schema.launches)
+    .insert(launches)
     .values({ localLaunchId, dockerLaunchId })
-    .returning({ id: schema.launches.id })
+    .returning({ id: launches.id })
     .get().id;
 }
 
@@ -402,14 +405,14 @@ function insertHistoryNodes(
   initialParentId: number | null,
   launchId: number,
   history: HistoryItem[],
-): number[] {
-  const nodeIds: number[] = [];
+): SessionNode[] {
+  const nodes: SessionNode[] = [];
   let parentId = initialParentId;
 
-  for (const item of history) {
-    const historyItemId = insertHistoryItem(tx, item);
+  for (const historyItem of history) {
+    const historyItemId = insertHistoryItem(tx, historyItem);
     const nodeId = tx
-      .insert(schema.treeNodes)
+      .insert(treeNodes)
       .values({
         historyItemId,
         treeId,
@@ -417,13 +420,13 @@ function insertHistoryNodes(
         isLeaf: true,
         launchId,
       })
-      .returning({ id: schema.treeNodes.id })
+      .returning({ id: treeNodes.id })
       .get().id;
-    nodeIds.push(nodeId);
+    nodes.push({ nodeId, parentId, historyItem });
     parentId = nodeId;
   }
 
-  return nodeIds;
+  return nodes;
 }
 
 function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
@@ -435,69 +438,63 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
   switch (item.type) {
     case "llm-ir":
       llmIrId = tx
-        .insert(schema.llmIrs)
+        .insert(llmIrs)
         .values({ json: serializeLlmIr(item.ir) })
-        .returning({ id: schema.llmIrs.id })
+        .returning({ id: llmIrs.id })
         .get().id;
       break;
     case "notification":
       notificationId = tx
-        .insert(schema.notifications)
+        .insert(notifications)
         .values({ content: item.content })
-        .returning({ id: schema.notifications.id })
+        .returning({ id: notifications.id })
         .get().id;
       break;
     case "request-failed":
       requestFailedId = tx
-        .insert(schema.requestFailedItems)
+        .insert(requestFailedItems)
         .values({})
-        .returning({ id: schema.requestFailedItems.id })
+        .returning({ id: requestFailedItems.id })
         .get().id;
       break;
     case "compaction-failed":
       compactionFailedId = tx
-        .insert(schema.compactionFailedItems)
+        .insert(compactionFailedItems)
         .values({})
-        .returning({ id: schema.compactionFailedItems.id })
+        .returning({ id: compactionFailedItems.id })
         .get().id;
       break;
   }
 
   return tx
-    .insert(schema.historyItems)
+    .insert(historyItems)
     .values({
       requestFailedId,
       compactionFailedId,
       notificationId,
       llmIrId,
     })
-    .returning({ id: schema.historyItems.id })
+    .returning({ id: historyItems.id })
     .get().id;
 }
 
 function loadNode(nodeId: number): SessionNode {
   const row = db()
     .select({
-      id: schema.treeNodes.id,
-      parentId: schema.treeNodes.parentId,
-      requestFailedId: schema.requestFailedItems.id,
-      compactionFailedId: schema.compactionFailedItems.id,
-      notificationContent: schema.notifications.content,
-      llmIrJson: schema.llmIrs.json,
+      id: treeNodes.id,
+      parentId: treeNodes.parentId,
+      requestFailedId: requestFailedItems.id,
+      compactionFailedId: compactionFailedItems.id,
+      notificationContent: notifications.content,
+      llmIrJson: llmIrs.json,
     })
-    .from(schema.treeNodes)
-    .innerJoin(schema.historyItems, eq(schema.treeNodes.historyItemId, schema.historyItems.id))
-    .leftJoin(
-      schema.requestFailedItems,
-      eq(schema.historyItems.requestFailedId, schema.requestFailedItems.id),
-    )
-    .leftJoin(
-      schema.compactionFailedItems,
-      eq(schema.historyItems.compactionFailedId, schema.compactionFailedItems.id),
-    )
-    .leftJoin(schema.notifications, eq(schema.historyItems.notificationId, schema.notifications.id))
-    .leftJoin(schema.llmIrs, eq(schema.historyItems.llmIrId, schema.llmIrs.id))
-    .where(eq(schema.treeNodes.id, nodeId))
+    .from(treeNodes)
+    .innerJoin(historyItems, eq(treeNodes.historyItemId, historyItems.id))
+    .leftJoin(requestFailedItems, eq(historyItems.requestFailedId, requestFailedItems.id))
+    .leftJoin(compactionFailedItems, eq(historyItems.compactionFailedId, compactionFailedItems.id))
+    .leftJoin(notifications, eq(historyItems.notificationId, notifications.id))
+    .leftJoin(llmIrs, eq(historyItems.llmIrId, llmIrs.id))
+    .where(eq(treeNodes.id, nodeId))
     .get();
   if (row == null) throw new Error(`History node ${nodeId} is missing`);
   if (row.llmIrJson != null) {
@@ -507,8 +504,8 @@ function loadNode(nodeId: number): SessionNode {
       historyItem: {
         type: "llm-ir",
         ir: deserializeLlmIr(row.llmIrJson),
-      } as LlmIr,
-    } as SessionNode;
+      },
+    };
   }
   if (row.notificationContent != null) {
     return {
@@ -517,8 +514,8 @@ function loadNode(nodeId: number): SessionNode {
       historyItem: {
         type: "notification",
         content: row.notificationContent,
-      } as NotificationRow,
-    } as SessionNode;
+      },
+    };
   }
   if (row.requestFailedId != null) {
     return {
@@ -526,8 +523,8 @@ function loadNode(nodeId: number): SessionNode {
       parentId: row.parentId,
       historyItem: {
         type: "request-failed",
-      } as RequestFailedRow,
-    } as SessionNode;
+      },
+    };
   }
   if (row.compactionFailedId != null) {
     return {
@@ -535,8 +532,8 @@ function loadNode(nodeId: number): SessionNode {
       parentId: row.parentId,
       historyItem: {
         type: "compaction-failed",
-      } as CompactionFailedRow,
-    } as SessionNode;
+      },
+    };
   }
   throw new Error(`History node ${nodeId} has no valid history item`);
 }
@@ -544,20 +541,20 @@ function loadNode(nodeId: number): SessionNode {
 function loadLaunchArgs(launchId: number): ParsedCliArgs {
   const row = db()
     .select({
-      localLaunchId: schema.launches.localLaunchId,
-      localConfig: schema.localLaunches.config,
-      localUnchained: schema.localLaunches.unchained,
-      dockerLaunchId: schema.launches.dockerLaunchId,
-      dockerKind: schema.dockerLaunches.kind,
-      dockerTarget: schema.dockerLaunches.target,
-      dockerRunArgsJson: schema.dockerLaunches.dockerRunArgsJson,
-      dockerConfig: schema.dockerLaunches.config,
-      dockerUnchained: schema.dockerLaunches.unchained,
+      localLaunchId: launches.localLaunchId,
+      localConfig: localLaunches.config,
+      localUnchained: localLaunches.unchained,
+      dockerLaunchId: launches.dockerLaunchId,
+      dockerKind: dockerLaunches.kind,
+      dockerTarget: dockerLaunches.target,
+      dockerRunArgsJson: dockerLaunches.dockerRunArgsJson,
+      dockerConfig: dockerLaunches.config,
+      dockerUnchained: dockerLaunches.unchained,
     })
-    .from(schema.launches)
-    .leftJoin(schema.localLaunches, eq(schema.launches.localLaunchId, schema.localLaunches.id))
-    .leftJoin(schema.dockerLaunches, eq(schema.launches.dockerLaunchId, schema.dockerLaunches.id))
-    .where(eq(schema.launches.id, launchId))
+    .from(launches)
+    .leftJoin(localLaunches, eq(launches.localLaunchId, localLaunches.id))
+    .leftJoin(dockerLaunches, eq(launches.dockerLaunchId, dockerLaunches.id))
+    .where(eq(launches.id, launchId))
     .get();
   if (row == null) throw new Error(`Launch ${launchId} is missing`);
 
@@ -604,19 +601,35 @@ function parseStringArray(json: string): string[] {
 }
 
 async function runWriteTransaction<T>(operation: (tx: DbTransaction) => T): Promise<T> {
-  const maxAttempts = 4;
   for (let attempt = 0; ; attempt++) {
     try {
       return db().transaction(operation);
     } catch (error) {
-      if (!isSqliteBusy(error) || attempt === maxAttempts - 1) throw error;
-      await new Promise(resolve => setTimeout(resolve, 10 * 2 ** attempt));
+      if (!isSqliteBusy(error) || attempt === SQLITE_BUSY_RETRY_ATTEMPTS - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, SQLITE_BUSY_RETRY_DELAY_MS * 2 ** attempt));
     }
   }
 }
 
+function isRootNodeConflict(error: unknown, parentNodeId: number | null): boolean {
+  if (parentNodeId != null || !isSqliteConstraint(error)) return false;
+  const message = String(error);
+  return (
+    message.includes("tree_nodes_one_root_unique") ||
+    (message.includes("tree_nodes") && message.includes("tree_id"))
+  );
+}
+
 function isSqliteBusy(error: unknown): boolean {
-  if (typeof error !== "object" || error == null || !("code" in error)) return false;
-  const code = String(error.code);
+  const code = sqliteErrorCode(error);
   return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
+}
+
+function isSqliteConstraint(error: unknown): boolean {
+  return sqliteErrorCode(error).startsWith("SQLITE_CONSTRAINT");
+}
+
+function sqliteErrorCode(error: unknown): string {
+  if (typeof error !== "object" || error == null || !("code" in error)) return "";
+  return String(error.code);
 }

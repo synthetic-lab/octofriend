@@ -1,4 +1,4 @@
-import type { HistoryItem } from "../history.ts";
+import type { HistoryItem } from "../session-history/index.ts";
 import type { OctoIR } from "./octo-ir.ts";
 import type { TrajectoryOutputIR } from "../agent/trajectory-arc.ts";
 

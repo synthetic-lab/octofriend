@@ -1,13 +1,13 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, schema } from "../db/db.ts";
-import type { HistoryItem } from "../history.ts";
 import {
   createSessionContext,
-  createSessionSaveManager,
+  createSessionHistory,
   listSessions,
   loadSessionState,
   loadSessionPath,
+  type HistoryItem,
 } from "./index.ts";
 import { CURRENT_LLM_IR_JSON_VERSION } from "./llm-ir-json.ts";
 
@@ -53,7 +53,7 @@ describe("session history", () => {
       { type: "compaction-failed" },
     ];
 
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     await manager.append(history);
     await manager.flush();
 
@@ -66,12 +66,16 @@ describe("session history", () => {
       history,
     });
     const path = await loadSessionPath(session.id);
-    expect(path?.nodePath).toHaveLength(history.length);
+    if (path == null) throw new Error("Expected session path");
+    expect(path.nodePath).toHaveLength(history.length);
+    const parentIds = path.nodePath.map(node => node.parentId);
+    const nodeIds = path.nodePath.map(node => node.nodeId);
+    expect(parentIds).toEqual([null, nodeIds[0], nodeIds[1], nodeIds[2]]);
   });
 
   it("does not persist trees with no LLM messages", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
 
     expect(await manager.append([])).toBe(false);
     expect(await manager.append([{ type: "notification", content: "note" }])).toBe(false);
@@ -81,7 +85,7 @@ describe("session history", () => {
 
   it("stores each history item variant in its own payload table", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     await manager.append([
       llmIr("user", "hello"),
       { type: "notification", content: "note" },
@@ -131,7 +135,7 @@ describe("session history", () => {
 
   it("branches edit-retry history without deleting the previous path", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     const original = [llmIr("user", "first"), llmIr("assistant", "resp"), llmIr("user", "retry")];
     await manager.append(original);
 
@@ -150,7 +154,7 @@ describe("session history", () => {
 
   it("keeps persisted history when an edit moves the cursor to an empty prefix", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     const history = [llmIr("user", "hello")];
     await manager.append(history);
 
@@ -161,7 +165,7 @@ describe("session history", () => {
 
   it("serializes queued operations within one manager", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     const original = [llmIr("user", "first"), llmIr("assistant", "resp"), llmIr("user", "retry")];
     const prefix = original.slice(0, 2);
     const continued = [...prefix, llmIr("user", "edited retry")];
@@ -179,19 +183,19 @@ describe("session history", () => {
   it("allows concurrent resumes to create sibling branches", async () => {
     const session = createSessionContext("/repo");
     const initial = [llmIr("user", "root")];
-    const initialManager = createSessionSaveManager(session);
+    const initialManager = createSessionHistory(session);
     await initialManager.append(initial);
     await initialManager.flush();
 
     const persisted = await loadSessionState(session.id);
     if (persisted == null) throw new Error("Expected persisted session");
     const persistedPath = await loadSessionPath(session.id);
-    const firstManager = createSessionSaveManager(
+    const firstManager = createSessionHistory(
       persisted,
       persisted.history,
       persistedPath ?? undefined,
     );
-    const secondManager = createSessionSaveManager(
+    const secondManager = createSessionHistory(
       persisted,
       persisted.history,
       persistedPath ?? undefined,
@@ -214,8 +218,8 @@ describe("session history", () => {
 
   it("allows only one root node per tree", async () => {
     const session = createSessionContext("/repo");
-    const firstManager = createSessionSaveManager({ ...session });
-    const secondManager = createSessionSaveManager({ ...session });
+    const firstManager = createSessionHistory({ ...session });
+    const secondManager = createSessionHistory({ ...session });
 
     expect(await firstManager.append([llmIr("user", "first root")])).toBe(true);
     expect(await secondManager.append([llmIr("user", "second root")])).toBe(false);
@@ -227,7 +231,7 @@ describe("session history", () => {
 
   it("protects parent nodes and referenced payloads from deletion", async () => {
     const session = createSessionContext("/repo");
-    const manager = createSessionSaveManager(session);
+    const manager = createSessionHistory(session);
     await manager.append([llmIr("user", "root"), llmIr("assistant", "child")]);
     await manager.flush();
 
@@ -253,8 +257,8 @@ describe("session history", () => {
       config: "./docker.json5",
     });
 
-    await createSessionSaveManager(local).append([llmIr("user", "local")]);
-    await createSessionSaveManager(docker).append([llmIr("user", "docker")]);
+    await createSessionHistory(local).append([llmIr("user", "local")]);
+    await createSessionHistory(docker).append([llmIr("user", "docker")]);
 
     expect((await loadSessionState(local.id))?.cliArgs).toEqual(local.cliArgs);
     expect((await loadSessionState(docker.id))?.cliArgs).toEqual(docker.cliArgs);
@@ -266,7 +270,7 @@ describe("session history", () => {
   it("switchSession saves the old tree and starts a new tree in the same launch", async () => {
     const first = createSessionContext("/repo");
     const second = createSessionContext("/repo");
-    const manager = createSessionSaveManager(first);
+    const manager = createSessionHistory(first);
 
     await manager.append([llmIr("user", "a")]);
     manager.switchSession(second, [llmIr("user", "a"), llmIr("assistant", "b")]);
@@ -281,12 +285,31 @@ describe("session history", () => {
     expect(db().select().from(schema.launches).all()).toHaveLength(1);
   });
 
+  it("keeps queued saves attached to the session that was active when requested", async () => {
+    const first = createSessionContext("/repo");
+    const second = createSessionContext("/repo");
+    const manager = createSessionHistory(first);
+
+    const firstPrefix = [llmIr("user", "a")];
+    const firstSave = manager.append(firstPrefix);
+    manager.switchSession(second, [...firstPrefix, llmIr("assistant", "b")]);
+    const secondSave = manager.append([llmIr("user", "c")]);
+    await Promise.all([firstSave, secondSave]);
+    await manager.flush();
+
+    expect((await loadSessionState(first.id))?.history).toEqual([
+      llmIr("user", "a"),
+      llmIr("assistant", "b"),
+    ]);
+    expect((await loadSessionState(second.id))?.history).toEqual([llmIr("user", "c")]);
+  });
+
   it("listSessions orders trees by their most recent persisted update", async () => {
     const now = vi.spyOn(Date, "now");
     const a = createSessionContext("/repo");
     const b = createSessionContext("/other");
-    const managerA = createSessionSaveManager(a);
-    const managerB = createSessionSaveManager(b);
+    const managerA = createSessionHistory(a);
+    const managerB = createSessionHistory(b);
 
     now.mockReturnValue(1_000);
     await managerA.append([llmIr("user", "a")]);

@@ -5,7 +5,7 @@ import {
   assertKeyForModel,
   runNotifyCommand,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
+import type { HistoryItem } from "./session-history/index.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";

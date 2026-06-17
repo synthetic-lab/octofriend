@@ -8,21 +8,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-
-export type RequestFailedRow = typeof requestFailedItems.$inferSelect & {
-  type: "request-failed";
-};
-export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect & {
-  type: "compaction-failed";
-};
-export type NotificationRow = typeof notifications.$inferSelect & {
-  type: "notification";
-};
-export type LlmIrRow = typeof llmIrs.$inferSelect & {
-  type: "llm-ir";
-};
-
-export type HistoryItemRow = RequestFailedRow | CompactionFailedRow | NotificationRow | LlmIrRow;
+import type { OctoIR } from "../../ir/octo-ir.ts";
 
 export const trees = sqliteTable(
   "trees",
@@ -166,3 +152,31 @@ export const treeNodes = sqliteTable(
     check("tree_nodes_is_leaf_check", sql`${table.isLeaf} IN (0, 1)`),
   ],
 );
+
+export type RequestFailedRow = typeof requestFailedItems.$inferSelect;
+export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect;
+export type NotificationRow = typeof notifications.$inferSelect;
+export type LlmIrRow = typeof llmIrs.$inferSelect;
+
+export type RequestFailedHistoryItem = {
+  type: "request-failed";
+};
+
+export type CompactionFailedHistoryItem = {
+  type: "compaction-failed";
+};
+
+export type NotificationHistoryItem = Pick<typeof notifications.$inferInsert, "content"> & {
+  type: "notification";
+};
+
+export type LlmIrHistoryItem = {
+  type: "llm-ir";
+  ir: OctoIR;
+};
+
+export type HistoryItem =
+  | RequestFailedHistoryItem
+  | CompactionFailedHistoryItem
+  | NotificationHistoryItem
+  | LlmIrHistoryItem;
