@@ -55,14 +55,14 @@ export class FileTracker {
     return absolutePath;
   }
 
-  async canEdit(transport: Transport, signal: AbortSignal, filePath: string): Promise<boolean> {
+  async isOutdated(transport: Transport, signal: AbortSignal, filePath: string): Promise<boolean> {
     const absolutePath = await transport.resolvePath(signal, filePath);
     if (!this.readTimestamps.has(absolutePath)) return false;
 
     const lastReadTime = this.readTimestamps.get(absolutePath)!;
     try {
       const currentModified = await transport.modTime(signal, absolutePath);
-      return currentModified <= lastReadTime;
+      return currentModified > lastReadTime;
     } catch {
       // File was deleted or is otherwise inaccessible
       return false;
