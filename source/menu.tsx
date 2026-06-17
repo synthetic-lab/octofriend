@@ -3,16 +3,16 @@ import { create } from "zustand";
 import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useModel } from "./state.ts";
-import { useConfig, useSetConfig, Config } from "./config.ts";
+import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
-import { SetApiKey } from "./components/set-api-key.tsx";
-import { readKeyForModel } from "./config.ts";
+import { readAuthForModel } from "./config.ts";
 import { keyFromName, SYNTHETIC_PROVIDER, providerForBaseUrl } from "./providers.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 import { MenuQuotaIndicator } from "./components/menu-quota-indicator.tsx";
+import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 
 type MenuMode =
   | "main-menu"
@@ -201,6 +201,7 @@ function SwitchModelMenu() {
   );
 
   const config = useConfig();
+  const setConfig = useSetConfig();
   const [pendingModel, setPendingModel] = React.useState<null | Config["models"][number]>(null);
 
   useInput((_, key) => {
@@ -209,9 +210,21 @@ function SwitchModelMenu() {
 
   if (pendingModel) {
     return (
-      <SetApiKey
+      <CustomAuthFlow
+        config={config}
         baseUrl={pendingModel.baseUrl}
-        onComplete={() => {
+        modelType={pendingModel.type}
+        onComplete={async (auth?: Auth) => {
+          const index = config.models.indexOf(pendingModel);
+          if (auth && index >= 0) {
+            if (auth.type === "env") {
+              await setConfig(mergeEnvVar(config, pendingModel, auth.name));
+            } else {
+              const models = [...config.models];
+              models[index] = { ...pendingModel, auth };
+              await setConfig({ ...config, models });
+            }
+          }
           setModelOverride(pendingModel.nickname);
           setPendingModel(null);
           setMenuMode("main-menu");
@@ -257,12 +270,10 @@ function SwitchModelMenu() {
       const target = item.value.replace("model-", "");
       const model = config.models.find(m => m.nickname === target)!;
 
-      if (!model.apiEnvVar) {
-        const key = await readKeyForModel(model, config);
-        if (key == null) {
-          setPendingModel(model);
-          return;
-        }
+      const auth = await readAuthForModel(model, config);
+      if (!auth.ok) {
+        setPendingModel(model);
+        return;
       }
 
       setModelOverride(target);

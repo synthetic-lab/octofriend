@@ -13,14 +13,10 @@ import { fetchDeps } from "../../fetch.ts";
 
 export const CODEX_API_BASE_URL = "https://chatgpt.com/backend-api/codex";
 
-export type CodexCompilerAuth = {
-  access: string;
-  accountId?: string;
-};
-
 export type CodexCompilerModel = {
   model: string;
-  auth: () => Promise<CodexCompilerAuth>;
+  oauthToken: string;
+  accountId?: string;
   baseURL?: string;
   modalities?: CompilerModalities;
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
@@ -59,11 +55,10 @@ export function createCodexOpenAIClient(model: CodexCompilerModel): OpenAI {
       ...(model.userAgent ? { "User-Agent": model.userAgent } : {}),
       ...(model.sessionId ? { "session-id": model.sessionId } : {}),
     },
-    fetch: async (input, init) => {
-      const auth = await model.auth();
+    fetch: (input, init) => {
       const headers = new Headers(init?.headers);
-      headers.set("Authorization", `Bearer ${auth.access}`);
-      if (auth.accountId) headers.set("ChatGPT-Account-Id", auth.accountId);
+      headers.set("Authorization", `Bearer ${model.oauthToken}`);
+      if (model.accountId) headers.set("ChatGPT-Account-Id", model.accountId);
       return fetchDeps.fetch(input, { ...init, headers });
     },
   });

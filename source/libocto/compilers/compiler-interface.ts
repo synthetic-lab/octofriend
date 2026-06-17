@@ -42,6 +42,10 @@ export function compilerUsageHasTokens(usage: CompilerUsage): boolean {
 
 export type CompilerError =
   | {
+      type: "auth-error";
+      authError: string;
+    }
+  | {
       type: "request-error";
       requestError: string;
       curl: string;

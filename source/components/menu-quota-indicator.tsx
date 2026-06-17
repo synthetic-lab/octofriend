@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Text, Box } from "ink";
-import { assertKeyForModel, useConfig } from "../config.ts";
+import { apiKeyFromAuth, readAuthForModel, useConfig } from "../config.ts";
 import { useModel, useAppStore } from "../state.ts";
 import type { QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
@@ -73,8 +73,11 @@ export const MenuQuotaIndicator = () => {
   useEffect(() => {
     if (storeQuota) return;
     let cancelled = false;
-    assertKeyForModel(model, config)
-      .then(apiKey => fetchQuota(apiKey))
+    readAuthForModel(model, config)
+      .then(auth => {
+        if (!auth.ok || auth.auth.type !== "apiKey") return null;
+        return fetchQuota(apiKeyFromAuth(auth.auth));
+      })
       .then(data => {
         if (!cancelled) setFetchedQuota(prev => prev ?? data);
       })

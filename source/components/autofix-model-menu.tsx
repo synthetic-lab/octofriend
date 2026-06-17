@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Box, useInput } from "ink";
-import { Config, readKeyForModel } from "../config.ts";
+import { Config, readAuthForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
@@ -74,8 +74,8 @@ export function AutofixModelMenu({
             model: defaultModel,
           });
         } else {
-          const key = await readKeyForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
-          if (key !== null) {
+          const auth = await readAuthForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
+          if (auth.ok) {
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,

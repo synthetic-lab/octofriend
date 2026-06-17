@@ -101,7 +101,10 @@ export type AuthError =
   | { type: "command_failed"; message: string; exitCode?: number; stderr?: string }
   | { type: "invalid"; message: string };
 
-export type KeyResult = { ok: true; key: string } | { ok: false; error: AuthError };
+export type ApiKeyAuth = { type: "apiKey"; apiKey: string };
+export type OauthKeyAuth = { type: "oauth"; oauthToken: string };
+export type LoadedAuth = ApiKeyAuth | OauthKeyAuth;
+export type AuthResult = { ok: true; auth: LoadedAuth } | { ok: false; error: AuthError };
 
 const ModelConfigSchema = t.exact({
   type: t.optional(
@@ -217,16 +220,15 @@ export async function runNotifyCommand(config: Config): Promise<void> {
   });
 }
 
-/**
- * Resolves an Auth config to an API key.
- * For env auth, reads from process.env.
- * For command auth, executes the command (with caching).
- */
-export async function resolveAuth(auth: Auth): Promise<KeyResult> {
+export function apiKeyFromAuth(auth: ApiKeyAuth): string {
+  return auth.apiKey;
+}
+
+export async function resolveAuth(auth: Auth): Promise<AuthResult> {
   if (auth.type === "codex") {
     try {
       const tokens = await ensureCodexOAuthTokens();
-      return { ok: true, key: tokens.access };
+      return { ok: true, auth: { type: "oauth", oauthToken: tokens.access } };
     } catch (error) {
       return { ok: false, error: { type: "missing", message: errorMessage(error) } };
     }
@@ -240,14 +242,14 @@ export async function resolveAuth(auth: Auth): Promise<KeyResult> {
         error: { type: "missing", message: `Environment variable ${auth.name} is not set` },
       };
     }
-    return { ok: true, key: value };
+    return { ok: true, auth: { type: "apiKey", apiKey: value } };
   }
 
   // Command auth
   const cacheKey = auth.command.join("\0");
   const cached = authCommandCache.get(cacheKey);
   if (cached != null) {
-    return { ok: true, key: cached };
+    return { ok: true, auth: { type: "apiKey", apiKey: cached } };
   }
 
   const [cmd, ...args] = auth.command;
@@ -302,7 +304,7 @@ export async function resolveAuth(auth: Auth): Promise<KeyResult> {
         }
 
         authCommandCache.set(cacheKey, key);
-        resolve({ ok: true, key });
+        resolve({ ok: true, auth: { type: "apiKey", apiKey: key } });
       },
     );
 
@@ -333,18 +335,8 @@ function getAuthForModel(model: {
   apiEnvVar?: string;
 }): Auth | null {
   if (model.auth?.type === "codex" || model.type === "codex") return { type: "codex" };
-  if (model.auth) {
-    if (model.auth.type === "command") return model.auth;
-    const envVar = model.auth.name;
-    if (process.env[envVar])
-      return {
-        type: "env",
-        name: envVar,
-      };
-  }
-  if (model.apiEnvVar && process.env[model.apiEnvVar]) {
-    return { type: "env", name: model.apiEnvVar };
-  }
+  if (model.auth) return model.auth;
+  if (model.apiEnvVar) return { type: "env", name: model.apiEnvVar };
   return null;
 }
 
@@ -495,9 +487,11 @@ export async function readSearchConfig(config: Config | null) {
       const auth = getAuthForModel(search);
       if (auth) {
         const result = await resolveAuth(auth);
-        if (result.ok) return result.key;
+        if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
       }
-      return await readKeyForBaseUrl(url, config);
+      const result = await readAuthForBaseUrl(url, config);
+      if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
+      return null;
     })();
     if (key != null) return { url, key };
     return null;
@@ -518,37 +512,17 @@ async function findSyntheticKey(config: Config | null) {
   if (override) return process.env[override];
 
   for (const base of SYNTHETIC_BASE_URLS) {
-    const key = await readKeyForBaseUrl(base, config);
-    if (key != null) return key;
+    const result = await readAuthForBaseUrl(base, config);
+    if (result.ok && result.auth.type === "apiKey") return apiKeyFromAuth(result.auth);
   }
 
   return null;
 }
 
-export async function assertKeyForModel(
-  model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
+export async function readAuthForModel(
+  model: { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
   config: Config | null,
-): Promise<string> {
-  const result = await readKeyForModelWithDetails(model, config);
-  if (!result.ok) throw new Error(result.error.message);
-  return result.key;
-}
-
-// Use this when you only need the key and don't need detailed auth errors.
-export async function readKeyForModel(
-  model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
-  config: Config | null,
-): Promise<string | null> {
-  const result = await readKeyForModelWithDetails(model, config);
-  return result.ok ? result.key : null;
-}
-
-// Use this when you need to surface auth failures (missing env vars, command failures, invalid
-// configs) to the user.
-export async function readKeyForModelWithDetails(
-  model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
-  config: Config | null,
-): Promise<KeyResult> {
+): Promise<AuthResult> {
   const auth = getAuthForModel(model);
   if (auth) {
     const result = await resolveAuth(auth);
@@ -557,32 +531,19 @@ export async function readKeyForModelWithDetails(
     return result;
   }
 
-  // Otherwise, search for a key for this model's base URL
-  return await readKeyForBaseUrlResult(model.baseUrl, config);
+  // Otherwise, search for auth for this model's base URL.
+  return await readAuthForBaseUrl(model.baseUrl, config);
 }
 
-export async function readKeyForBaseUrl(
+export async function readAuthForBaseUrl(
   baseUrl: string,
   config: Config | null,
-): Promise<string | null> {
-  const result = await readKeyForBaseUrlResult(baseUrl, config);
-  return result.ok ? result.key : null;
-}
-
-export async function readKeyForBaseUrlResult(
-  baseUrl: string,
-  config: Config | null,
-): Promise<KeyResult> {
+): Promise<AuthResult> {
   // Is it a URL for a built-in provider? Check those first
   const provider = providerForBaseUrl(baseUrl);
   if (provider) {
     if (provider.type === "codex") {
-      try {
-        const tokens = await ensureCodexOAuthTokens();
-        return { ok: true, key: tokens.access };
-      } catch (error) {
-        return { ok: false, error: { type: "missing", message: errorMessage(error) } };
-      }
+      return await resolveAuth({ type: "codex" });
     }
 
     const envVar = (() => {
@@ -592,12 +553,13 @@ export async function readKeyForBaseUrlResult(
       if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
       return config.defaultApiKeyOverrides[key];
     })();
-    if (process.env[envVar]) return { ok: true, key: process.env[envVar] };
+    if (process.env[envVar])
+      return { ok: true, auth: { type: "apiKey", apiKey: process.env[envVar] } };
   }
 
   // Is there an entry for it in the keys file?
   const keys = await readKeys();
-  if (keys[baseUrl] != null) return { ok: true, key: keys[baseUrl] };
+  if (keys[baseUrl] != null) return { ok: true, auth: { type: "apiKey", apiKey: keys[baseUrl] } };
 
   // Does it match an existing model with auth or API env var defined?
   for (const model of config?.models || []) {
@@ -626,8 +588,8 @@ export async function readKeyForBaseUrlResult(
     }
   }
 
-  // We can't find the key for it
-  return { ok: false, error: { type: "missing", message: `No API key found for ${baseUrl}` } };
+  // We can't find auth for it.
+  return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
 }
 
 // Every API base URL Synthetic has ever used
@@ -641,21 +603,21 @@ const SYNTHETIC_BASE_URLS = [
 ];
 
 /**
- * Checks if there's an existing API key available for a given base URL.
+ * Checks if there's existing auth available for a given base URL.
  * For Synthetic, checks all known base URLs since they've changed over time.
  */
-export async function hasExistingKeyForBaseUrl(
+export async function hasExistingAuthForBaseUrl(
   baseUrl: string,
   config: Config | null,
 ): Promise<boolean> {
-  const key = await readKeyForBaseUrl(baseUrl, config);
-  if (key != null) return true;
+  const result = await readAuthForBaseUrl(baseUrl, config);
+  if (result.ok) return true;
 
   if (SYNTHETIC_BASE_URLS.includes(baseUrl)) {
     for (const url of SYNTHETIC_BASE_URLS) {
       if (url !== baseUrl) {
-        const syntheticKey = await readKeyForBaseUrl(url, config);
-        if (syntheticKey != null) return true;
+        const syntheticResult = await readAuthForBaseUrl(url, config);
+        if (syntheticResult.ok) return true;
       }
     }
   }
@@ -702,10 +664,21 @@ export type Metadata = {
 };
 
 async function readMetadata(): Promise<Metadata> {
-  const packageFile = await fs.readFile(path.join(__dir, "../../package.json"), "utf8");
+  const packagePath = await firstExistingPath([
+    path.join(__dir, "../../package.json"),
+    path.join(__dir, "../package.json"),
+  ]);
+  const packageFile = await fs.readFile(packagePath, "utf8");
   const packageJson = JSON.parse(packageFile);
 
   return {
     version: packageJson["version"],
   };
+}
+
+async function firstExistingPath(paths: string[]): Promise<string> {
+  for (const candidate of paths) {
+    if (await fileExists(candidate)) return candidate;
+  }
+  return paths[0]!;
 }

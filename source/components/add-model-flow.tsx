@@ -1,7 +1,13 @@
 import React, { useState, useCallback, useEffect, createContext, useContext } from "react";
 import { Box, Text } from "ink";
 import TextInput from "./text-input.tsx";
-import { Config, assertKeyForModel, Auth, hasExistingKeyForBaseUrl } from "../config.ts";
+import {
+  Config,
+  Auth,
+  apiKeyFromAuth,
+  hasExistingAuthForBaseUrl,
+  readAuthForModel,
+} from "../config.ts";
 import { useColor } from "../theme.ts";
 import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
@@ -122,8 +128,8 @@ const baseUrl = fullFlow
               return;
             }
 
-            const hasExistingKey = await hasExistingKeyForBaseUrl(baseUrl, props.config);
-            if (hasExistingKey) {
+            const hasExistingAuth = await hasExistingAuthForBaseUrl(baseUrl, props.config);
+            if (hasExistingAuth) {
               to.postAuth({ ...props, baseUrl });
             } else {
               to.authAsk({ ...props, baseUrl });
@@ -735,8 +741,8 @@ export function CustomAuthFlow({
           .then(() => onComplete({ type: "codex" }))
           .catch(() => setHasCheckedExistingKey(true));
       } else {
-        hasExistingKeyForBaseUrl(baseUrl, config).then(hasKey => {
-          if (hasKey) {
+        hasExistingAuthForBaseUrl(baseUrl, config).then(hasAuth => {
+          if (hasAuth) {
             onComplete();
           }
           setHasCheckedExistingKey(true);
@@ -925,7 +931,21 @@ async function testConnection({
   config,
 }: MinConnectArgs): Promise<TestConnectionResult> {
   try {
-    const apiKey = await assertKeyForModel({ baseUrl, auth }, config);
+    const provider = providerForBaseUrl(baseUrl);
+    if (provider?.type === "codex") {
+      const configuredModel = provider.models.find(candidate => candidate.model === model);
+      return {
+        valid: true,
+        metadata: {
+          name: configuredModel?.nickname ?? model,
+          contextLength: configuredModel?.context,
+        },
+      };
+    }
+
+    const authResult = await readAuthForModel({ baseUrl, auth }, config);
+    if (!authResult.ok || authResult.auth.type !== "apiKey") return { valid: false };
+    const apiKey = apiKeyFromAuth(authResult.auth);
     const client = getDefaultOpenaiClient({ baseUrl, apiKey });
 
     const testPromise = client.chat.completions.create({

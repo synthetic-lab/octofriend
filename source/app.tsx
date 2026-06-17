@@ -3,12 +3,17 @@ import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from 
 import clipboardy from "clipboardy";
 import { t } from "structural";
 import {
+  Auth,
+  AuthError,
   Config,
   Metadata,
   ConfigContext,
   ConfigPathContext,
   SetConfigContext,
+  mergeEnvVar,
+  readAuthForModel,
   useConfig,
+  useSetConfig,
 } from "./config.ts";
 import { HistoryItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
@@ -72,6 +77,7 @@ import {
 import { readFileSync } from "fs";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
+import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
@@ -443,6 +449,16 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if (modeData.mode === "rate-limit-error") {
     return <RateLimitErrorScreen error={modeData.error} />;
   }
+  if (modeData.mode === "auth-error") {
+    return (
+      <AuthErrorScreen
+        model={modeData.model}
+        error={modeData.error}
+        config={config}
+        transport={transport}
+      />
+    );
+  }
   if (modeData.mode === "request-error") {
     return (
       <RequestErrorScreen
@@ -488,6 +504,102 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         modalities={model.modalities}
       />
       <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+    </Box>
+  );
+}
+
+function AuthErrorScreen({
+  model,
+  error,
+  config,
+  transport,
+}: {
+  model: Config["models"][number];
+  error: AuthError;
+  config: Config;
+  transport: Transport;
+}) {
+  const setConfig = useSetConfig();
+  const { runAgent, clearAuthError } = useAppStore(
+    useShallow(state => ({
+      runAgent: state.runAgent,
+      clearAuthError: state.clearAuthError,
+    })),
+  );
+  const [authError, setAuthError] = useState<AuthError | null>(error);
+
+  const resolveModelIndex = useCallback(
+    (models: Config["models"]) => {
+      return models.findIndex(candidate => {
+        return (
+          candidate.nickname === model.nickname &&
+          candidate.baseUrl === model.baseUrl &&
+          candidate.model === model.model
+        );
+      });
+    },
+    [model],
+  );
+
+  const onComplete = useCallback(
+    async (auth?: Auth) => {
+      let updatedConfig = config;
+      let updatedModel = model;
+      const index = resolveModelIndex(config.models);
+
+      if (index >= 0) {
+        updatedModel = config.models[index];
+      }
+
+      if (auth && index >= 0) {
+        if (auth.type === "env") {
+          updatedConfig = mergeEnvVar(config, updatedModel, auth.name);
+        } else {
+          const updatedModels = [...config.models];
+          updatedModel = { ...updatedModel, auth };
+          updatedModels[index] = updatedModel;
+          updatedConfig = { ...config, models: updatedModels };
+        }
+        await setConfig(updatedConfig);
+      }
+
+      const updatedIndex = resolveModelIndex(updatedConfig.models);
+      if (updatedIndex >= 0) {
+        updatedModel = updatedConfig.models[updatedIndex];
+      }
+
+      const result = await readAuthForModel(updatedModel, updatedConfig);
+      if (!result.ok) {
+        setAuthError(result.error);
+        return;
+      }
+
+      await runAgent({ config: updatedConfig, transport });
+    },
+    [config, model, resolveModelIndex, runAgent, setConfig, transport],
+  );
+
+  return (
+    <Box flexDirection="column" gap={1}>
+      <CenteredBox>
+        <Box flexDirection="column" gap={1}>
+          <Box justifyContent="center">
+            <Text color="red">Auth is required for {model.nickname}</Text>
+          </Box>
+          {authError && (
+            <Box justifyContent="center">
+              <Text color="yellow">{authError.message}</Text>
+            </Box>
+          )}
+        </Box>
+      </CenteredBox>
+      <CustomAuthFlow
+        config={config}
+        baseUrl={model.baseUrl}
+        modelType={model.type}
+        onComplete={onComplete}
+        onCancel={clearAuthError}
+      />
     </Box>
   );
 }

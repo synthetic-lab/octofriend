@@ -8,7 +8,7 @@ import {
   mergeEnvVar,
   mergeAutofixEnvVar,
   AuthError,
-  readKeyForModelWithDetails,
+  readAuthForModel,
 } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
 
@@ -69,7 +69,7 @@ export function PreflightModelAuth({
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveModelFromConfig(reloadedConfig, currentModel);
     setCurrentModel(resolvedModel);
-    const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+    const result = await readAuthForModel(resolvedModel, reloadedConfig);
     if (result.ok === false) {
       setAuthError(result.error);
       setIsRetrying(false);
@@ -135,7 +135,7 @@ export function PreflightModelAuth({
             const reloadedConfig = await readConfig(configPath);
             const resolvedModel = resolveModelFromConfig(reloadedConfig, updatedModel);
             setCurrentModel(resolvedModel);
-            const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+            const result = await readAuthForModel(resolvedModel, reloadedConfig);
             if (result.ok) {
               app.exit();
             } else {
@@ -194,7 +194,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveAutofixModelFromConfig(reloadedConfig, currentModel, autofixKey);
     setCurrentModel(resolvedModel);
-    const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+    const result = await readAuthForModel(resolvedModel, reloadedConfig);
     if (result.ok === false) {
       setAuthError(result.error);
       setIsRetrying(false);
@@ -272,7 +272,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                 autofixKey,
               );
               setCurrentModel(resolvedModel);
-              const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+              const result = await readAuthForModel(resolvedModel, reloadedConfig);
               if (result.ok) {
                 app.exit();
               } else {

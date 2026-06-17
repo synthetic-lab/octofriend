@@ -1,4 +1,5 @@
 import type { ModelConfig } from "../config.ts";
+import type { LoadedAuth } from "../config.ts";
 import type {
   CompilerResult,
   CompilerResultWithoutToolCalls,
@@ -14,7 +15,7 @@ import { run } from "./run.ts";
 
 function expectType<T>(_: T) {}
 
-declare const apiKey: string;
+declare const auth: LoadedAuth;
 declare const model: ModelConfig;
 declare const messages: Array<LoweredIR<typeof toolMap>>;
 declare const signal: AbortSignal;
@@ -23,7 +24,7 @@ declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<Jso
 declare const tools: Partial<LoadedTools>;
 
 const noToolsResult = run({
-  apiKey,
+  auth,
   model,
   messages,
   abortSignal: signal,
@@ -47,7 +48,7 @@ noToolsResult.then(result => {
 });
 
 const withToolsResult = run({
-  apiKey,
+  auth,
   model,
   messages,
   abortSignal: signal,
@@ -65,7 +66,7 @@ const withToolsResult = run({
 expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
 run({
-  apiKey,
+  auth,
   model,
   messages,
   abortSignal: signal,

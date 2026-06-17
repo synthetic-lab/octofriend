@@ -1,8 +1,9 @@
 import {
+  AuthError,
   Config,
   useConfig,
   getModelFromConfig,
-  assertKeyForModel,
+  readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
 import { HistoryItem } from "./history.ts";
@@ -66,6 +67,11 @@ export type UiState = {
         error: string;
       }
     | {
+        mode: "auth-error";
+        model: Config["models"][number];
+        error: AuthError;
+      }
+    | {
         mode: "request-error";
         error: string;
         curlCommand: string | null;
@@ -119,6 +125,7 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
+  clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
@@ -207,6 +214,11 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (get().modeData.mode === mode) {
       await get().runAgent(args);
     }
+  },
+
+  clearAuthError: () => {
+    if (get().modeData.mode !== "auth-error") return;
+    set({ modeData: { mode: "input", vimMode: "INSERT" } });
   },
 
   editAndRetryFrom: (mode, _args) => {
@@ -483,13 +495,23 @@ export const useAppStore = create<UiState>((set, get) => ({
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
-    const apiKey = await assertKeyForModel(model, config);
+    const authResult = await readAuthForModel(model, config);
+    if (!authResult.ok) {
+      set({
+        modeData: {
+          mode: "auth-error",
+          model,
+          error: authResult.error,
+        },
+      });
+      return;
+    }
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
       const finish = await trajectoryArc({
-        apiKey,
+        auth: authResult.auth,
         model,
         messages: toLlmIR(historyCopy),
         config,
@@ -623,6 +645,17 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       if (finishReason.type === "rate-limit-error") {
         set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
+        return;
+      }
+
+      if (finishReason.type === "auth-error") {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: { type: "invalid", message: finishReason.authError },
+          },
+        });
         return;
       }
 

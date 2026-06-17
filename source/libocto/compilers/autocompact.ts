@@ -15,7 +15,7 @@ export type CompactionError =
       requestError: string;
       curl: string | null;
     }
-  | Extract<CompilerError, { type: "payment-error" | "rate-limit-error" }>;
+  | Extract<CompilerError, { type: "auth-error" | "payment-error" | "rate-limit-error" }>;
 
 const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
@@ -66,7 +66,8 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
   const compactRunResult = await run(summaryMessages);
 
   if (!compactRunResult.success) {
-    if (isRecoverableRequestError(compactRunResult.error)) return err(compactRunResult.error);
+    if (isRecoverableRequestError(compactRunResult.error) || isAuthError(compactRunResult.error))
+      return err(compactRunResult.error);
 
     return err({
       type: "compaction-error",
@@ -113,6 +114,12 @@ function isRecoverableRequestError(
   error: CompilerError,
 ): error is Extract<CompilerError, { type: "payment-error" | "rate-limit-error" }> {
   return error.type === "payment-error" || error.type === "rate-limit-error";
+}
+
+function isAuthError(
+  error: CompilerError,
+): error is Extract<CompilerError, { type: "auth-error" }> {
+  return error.type === "auth-error";
 }
 
 function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>>): number {

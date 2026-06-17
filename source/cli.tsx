@@ -10,14 +10,7 @@ import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "./fs-utils.ts";
 import App from "./app.tsx";
-import {
-  readConfig,
-  readKeyForModel,
-  readKeyForModelWithDetails,
-  assertKeyForModel,
-  AUTOFIX_KEYS,
-  APP_METADATA,
-} from "./config.ts";
+import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "./config.ts";
 import { tokenCounts } from "./token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
 import { FirstTimeSetup } from "./first-time-setup.tsx";
@@ -279,7 +272,12 @@ bench
     }
 
     const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
-    const apiKey = await assertKeyForModel(model, config);
+    const authResult = await readAuthForModel(model, config);
+    if (!authResult.ok) {
+      console.error(authResult.error.message);
+      process.exit(1);
+    }
+    const auth = authResult.auth;
     const autofixJson = makeAutofixJson(config);
     const modelToUse = model;
 
@@ -312,7 +310,7 @@ bench
       const tokenTimestamps: Date[] = [];
 
       const result = await run({
-        apiKey,
+        auth,
         model: modelToUse,
         autofixJson,
         messages: [
@@ -343,7 +341,8 @@ bench
       if (!result.success) {
         return {
           success: false,
-          error: result.error.requestError,
+          error:
+            result.error.type === "auth-error" ? result.error.authError : result.error.requestError,
         };
       }
 
@@ -468,10 +467,10 @@ cli
       process.exit(1);
     }
 
-    const keyResult = await readKeyForModelWithDetails(model, config);
-    if (!keyResult.ok) {
-      console.error(`${model.nickname} doesn't have an API key set up.`);
-      const error = keyResult.error;
+    const authResult = await readAuthForModel(model, config);
+    if (!authResult.ok) {
+      console.error(`${model.nickname} doesn't have auth set up.`);
+      const error = authResult.error;
 
       if (error.type === "missing") {
         console.error(`${error.message}`);
@@ -492,8 +491,6 @@ cli
 
       process.exit(1);
     }
-    const apiKey = keyResult.key;
-
     const messages = [
       {
         role: "user" as const,
@@ -513,7 +510,7 @@ cli
     let seenReasoning = false;
     let seenContent = false;
     const result = await run({
-      apiKey,
+      auth: authResult.auth,
       model,
       systemPrompt,
       messages,
@@ -536,8 +533,12 @@ cli
       transport,
     });
     if (!result.success) {
-      console.error(result.error.requestError);
-      console.error(`cURL: ${result.error.curl}`);
+      if (result.error.type === "auth-error") {
+        console.error(result.error.authError);
+      } else {
+        console.error(result.error.requestError);
+        console.error(`cURL: ${result.error.curl}`);
+      }
       process.exit(1);
     }
 
@@ -547,7 +548,7 @@ cli
 async function loadConfig(path?: string) {
   let { config, configPath } = await loadConfigWithoutReauth(path);
   let defaultModel = config.models[0];
-  if (!(await readKeyForModel(defaultModel, config))) {
+  if (!(await readAuthForModel(defaultModel, config)).ok) {
     const { waitUntilExit } = render(
       <PreflightModelAuth
         error="It looks like we need to set up auth for your default model"
@@ -561,13 +562,13 @@ async function loadConfig(path?: string) {
     config = reloaded.config;
     configPath = reloaded.configPath;
     defaultModel = config.models[0];
-    if (!(await readKeyForModel(defaultModel, config))) process.exit(1);
+    if (!(await readAuthForModel(defaultModel, config)).ok) process.exit(1);
   }
 
   for (const key of AUTOFIX_KEYS) {
     let autofixModel = config[key];
     if (autofixModel) {
-      if (!(await readKeyForModel(autofixModel, config))) {
+      if (!(await readAuthForModel(autofixModel, config)).ok) {
         const { waitUntilExit } = render(
           <PreflightAutofixAuth
             autofixKey={key}
@@ -581,7 +582,7 @@ async function loadConfig(path?: string) {
         config = reloaded.config;
         configPath = reloaded.configPath;
         autofixModel = config[key];
-        if (autofixModel && !(await readKeyForModel(autofixModel, config))) process.exit(1);
+        if (autofixModel && !(await readAuthForModel(autofixModel, config)).ok) process.exit(1);
       }
     }
   }

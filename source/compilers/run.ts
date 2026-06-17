@@ -6,13 +6,14 @@ import { runResponsesAgent } from "../libocto/compilers/responses.ts";
 import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
-import { ensureCodexOAuthTokens } from "../codex-oauth.ts";
+import type { LoadedAuth } from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
 import type {
+  CompilerError,
   CompilerResult,
   CompilerTokenType,
   CompilerUsage,
@@ -23,9 +24,10 @@ import { getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
+import { err } from "../libocto/result.ts";
 
 type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
-  apiKey: string;
+  auth: LoadedAuth;
   model: ModelConfig;
   messages: Array<LoweredIR<typeof toolMap>>;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
@@ -41,7 +43,7 @@ type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
 
 export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>({
   model,
-  apiKey,
+  auth,
   messages,
   handlers,
   autofixJson,
@@ -66,35 +68,49 @@ export async function run<Tools extends Partial<LoadedTools> | undefined = undef
     };
 
     if (model.type == null || model.type === "standard") {
+      if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
       return runAgent<typeof octoAgent, Tools>({
         ...params,
-        model: standardOpenAICompilerModel(model, apiKey),
+        model: standardOpenAICompilerModel(model, auth.apiKey),
       });
     }
 
     if (model.type === "openai-responses") {
+      if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
       return runResponsesAgent<typeof octoAgent, Tools>({
         ...params,
-        model: responsesOpenAICompilerModel(model, apiKey),
+        model: responsesOpenAICompilerModel(model, auth.apiKey),
       });
     }
 
     if (model.type === "codex") {
+      if (auth.type !== "oauth") return authMismatchError("OAuth token", auth.type);
       return runCodexAgent<typeof octoAgent, Tools>({
         ...params,
-        model: codexCompilerModel(model),
+        model: codexCompilerModel(model, auth.oauthToken),
       });
     }
 
     const _: "anthropic" = model.type;
+    if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
     return runAnthropicAgent<typeof octoAgent, Tools>({
       ...params,
-      model: anthropicCompilerModel(model, apiKey),
+      model: anthropicCompilerModel(model, auth.apiKey),
     });
   })();
 
   trackCompilerResultUsage(model.model, result);
   return result;
+}
+
+function authMismatchError(
+  expected: string,
+  actual: LoadedAuth["type"],
+): CompilerResult<typeof octoAgent> {
+  return err({
+    type: "auth-error",
+    authError: `Loaded auth mismatch: expected ${expected}, got ${actual}.`,
+  } satisfies CompilerError);
 }
 
 function trackCompilerResultUsage(model: string, result: CompilerResult<typeof octoAgent>): void {
@@ -132,16 +148,10 @@ function responsesOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenA
   };
 }
 
-function codexCompilerModel(model: ModelConfig): CodexCompilerModel {
+function codexCompilerModel(model: ModelConfig, oauthToken: string): CodexCompilerModel {
   return {
     model: model.model,
-    auth: async () => {
-      const tokens = await ensureCodexOAuthTokens();
-      return {
-        access: tokens.access,
-        accountId: tokens.accountId,
-      };
-    },
+    oauthToken,
     userAgent: `octofriend/${APP_METADATA.version}`,
     reasoningEffort: model.reasoning,
     modalities: compilerModalities(model),

@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { Config, assertKeyForModel } from "../config.ts";
+import { Config, apiKeyFromAuth, readAuthForModel } from "../config.ts";
 import { ArgumentsSchema as EditSchema } from "../tools/tool-defs/edit.ts";
 import {
   fixEditPrompt,
@@ -68,7 +68,9 @@ async function autofix(
 ): Promise<string | null> {
   if (modelConf == null) return null;
 
-  const apiKey = await assertKeyForModel({ baseUrl: modelConf.baseUrl }, config);
+  const authResult = await readAuthForModel({ baseUrl: modelConf.baseUrl }, config);
+  if (!authResult.ok || authResult.auth.type !== "apiKey") return null;
+  const apiKey = apiKeyFromAuth(authResult.auth);
   const client = getDefaultOpenaiClient({ baseUrl: modelConf.baseUrl, apiKey });
   const model = modelConf.model;
   try {

@@ -41,7 +41,8 @@ describe("runCodexAgent", () => {
       result = await runCodexAgent<typeof octoAgent>({
         model: {
           model: "gpt-5.5",
-          auth: async () => ({ access: "access-token", accountId: "account-1" }),
+          oauthToken: "access-token",
+          accountId: "account-1",
           userAgent: "octofriend-test",
           sessionId: "session-1",
         },
