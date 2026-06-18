@@ -208,6 +208,29 @@ function SwitchModelMenu() {
     if (key.escape && pendingModel == null) setMenuMode("main-menu");
   });
 
+  const onSelect = useCallback(
+    async (item: Item<`model-${string}` | "back">) => {
+      if (item.value === "back") {
+        setMenuMode("main-menu");
+        return;
+      }
+
+      const target = item.value.replace("model-", "");
+      const model = config.models.find(m => m.nickname === target)!;
+
+      const auth = await readAuthForModel(model, config);
+      if (!auth.ok) {
+        setPendingModel(model);
+        return;
+      }
+
+      setModelOverride(target);
+      setMenuMode("main-menu");
+      toggleMenu();
+    },
+    [config, setMenuMode, setModelOverride, toggleMenu],
+  );
+
   if (pendingModel) {
     return (
       <CustomAuthFlow
@@ -268,29 +291,6 @@ function SwitchModelMenu() {
       },
     },
   ];
-
-  const onSelect = useCallback(
-    async (item: Item<`model-${string}` | "back">) => {
-      if (item.value === "back") {
-        setMenuMode("main-menu");
-        return;
-      }
-
-      const target = item.value.replace("model-", "");
-      const model = config.models.find(m => m.nickname === target)!;
-
-      const auth = await readAuthForModel(model, config);
-      if (!auth.ok) {
-        setPendingModel(model);
-        return;
-      }
-
-      setModelOverride(target);
-      setMenuMode("main-menu");
-      toggleMenu();
-    },
-    [config],
-  );
 
   return (
     <KbShortcutPanel
