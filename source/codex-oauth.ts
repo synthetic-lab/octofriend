@@ -85,16 +85,22 @@ export async function writeCodexOAuthTokens(tokens: CodexOAuthTokens): Promise<v
   await writeOAuthConfig(config);
 }
 
-export async function ensureCodexOAuthTokens(): Promise<CodexOAuthTokens> {
-  const tokens = await readCodexOAuthTokens();
-  if (!tokens) {
-    throw new Error("No Codex OAuth credentials found. Run `octo auth codex` first.");
-  }
-  if (tokens.expires > Date.now() + ACCESS_TOKEN_REFRESH_MARGIN_MS) return tokens;
+export async function getCodexOAuthTokens(): Promise<CodexOAuthTokens | null> {
+  try {
+    const tokens = await readCodexOAuthTokens();
+    if (!tokens) return null;
+    if (tokens.expires > Date.now() + ACCESS_TOKEN_REFRESH_MARGIN_MS) return tokens;
 
-  const refreshed = await refreshCodexOAuthTokens(tokens);
-  await writeCodexOAuthTokens(refreshed);
-  return refreshed;
+    const refreshed = await refreshCodexOAuthTokens(tokens);
+    await writeCodexOAuthTokens(refreshed);
+    return refreshed;
+  } catch {
+    return null;
+  }
+}
+
+export async function hasCodexOAuthTokens(): Promise<boolean> {
+  return (await getCodexOAuthTokens()) != null;
 }
 
 export async function startCodexDeviceAuthorization(): Promise<CodexDeviceAuthorization> {

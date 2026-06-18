@@ -21,7 +21,7 @@ import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
 import {
   CODEX_OAUTH_FILE,
-  ensureCodexOAuthTokens,
+  hasCodexOAuthTokens,
   openDefaultBrowser,
   pollCodexDeviceAuthorization,
   startCodexDeviceAuthorization,
@@ -119,10 +119,9 @@ const baseUrl = fullFlow
           onSubmit={async baseUrl => {
             const provider = providerForBaseUrl(baseUrl);
             if (provider?.type === "codex") {
-              try {
-                await ensureCodexOAuthTokens();
+              if (await hasCodexOAuthTokens()) {
                 to.postAuth({ ...props, baseUrl, auth: { type: "codex" } });
-              } catch {
+              } else {
                 to.codexOAuth({ ...props, baseUrl });
               }
               return;
@@ -749,9 +748,10 @@ export function CustomAuthFlow({
   useEffect(() => {
     if (!hasCheckedExistingKey) {
       if (codexOnly) {
-        ensureCodexOAuthTokens()
-          .then(() => onComplete({ type: "codex" }))
-          .catch(() => setHasCheckedExistingKey(true));
+        hasCodexOAuthTokens().then(hasTokens => {
+          if (hasTokens) onComplete({ type: "codex" });
+          else setHasCheckedExistingKey(true);
+        });
       } else {
         hasExistingAuthForBaseUrl(baseUrl, config).then(hasAuth => {
           if (hasAuth) {

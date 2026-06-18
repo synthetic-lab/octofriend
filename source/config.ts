@@ -8,7 +8,7 @@ import json5 from "json5";
 import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
-import { ensureCodexOAuthTokens } from "./codex-oauth.ts";
+import { getCodexOAuthTokens } from "./codex-oauth.ts";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -240,12 +240,15 @@ export function resolveAuth(auth: ApiKeyAuthConfig): Promise<ApiKeyAuthResult>;
 export function resolveAuth(auth: Auth): Promise<AuthResult>;
 export async function resolveAuth(auth: Auth): Promise<AuthResult> {
   if (auth.type === "codex") {
-    try {
-      const tokens = await ensureCodexOAuthTokens();
-      return { ok: true, auth: { type: "oauth", oauthToken: tokens.access } };
-    } catch (error) {
-      return { ok: false, error: { type: "missing", message: errorMessage(error) } };
-    }
+    const tokens = await getCodexOAuthTokens();
+    if (tokens) return { ok: true, auth: { type: "oauth", oauthToken: tokens.access } };
+    return {
+      ok: false,
+      error: {
+        type: "missing",
+        message: "No Codex OAuth credentials found. Run `octo auth codex` first.",
+      },
+    };
   }
 
   if (auth.type === "env") {

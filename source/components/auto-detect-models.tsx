@@ -9,7 +9,7 @@ import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
-import { ensureCodexOAuthTokens } from "../codex-oauth.ts";
+import { hasCodexOAuthTokens } from "../codex-oauth.ts";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -75,8 +75,7 @@ export function ModelSetup({
     async (providerKey: keyof typeof PROVIDERS) => {
       const provider: ProviderConfig = PROVIDERS[providerKey];
       if (provider.type === "codex") {
-        try {
-          await ensureCodexOAuthTokens();
+        if (await hasCodexOAuthTokens()) {
           return dispatch({
             from: "initial",
             to: {
@@ -86,15 +85,15 @@ export function ModelSetup({
               useEnvVar: false,
             },
           });
-        } catch {
-          return dispatch({
-            from: "initial",
-            to: {
-              step: "missing",
-              provider,
-            },
-          });
         }
+
+        return dispatch({
+          from: "initial",
+          to: {
+            step: "missing",
+            provider,
+          },
+        });
       }
 
       const envVar = getEnvVar(provider, config, null);
