@@ -255,7 +255,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
       ok: false,
       error: {
         type: "missing",
-        message: "No Codex OAuth credentials found. Run `octo auth codex` first.",
+        message: "No Codex OAuth credentials found.",
       },
     };
   }
