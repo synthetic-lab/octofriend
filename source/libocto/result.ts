@@ -10,6 +10,11 @@ export function err<E>(e: E) {
   return new Err<E>(e);
 }
 
+export function unwrap<T, E>(result: Result<T, E>): T {
+  if (result.success) return result.data;
+  throw new Error(errorToString(result.error));
+}
+
 export async function attempt<T, E>(
   errMessage: string,
   callback: () => Promise<Result<T, E>>,

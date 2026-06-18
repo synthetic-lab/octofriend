@@ -55,10 +55,12 @@ export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
 
     const file = await attemptUntrackedRead(transport, signal, filePath);
     if (!file.success) return file;
-    const replaced = runEdit({
+    const replaced = await runEdit({
+      transport,
+      signal,
+      diff,
       path: filePath,
       file: file.data,
-      diff,
     });
     if (!replaced.success) return replaced;
     await fileTracker.write(transport, signal, filePath, replaced.data);
@@ -71,37 +73,51 @@ async function validate(
   transport: Transport,
   args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
-  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
   const file = await attemptUntrackedRead(transport, signal, args.filePath);
   if (!file.success) return file;
-  return validateDiff({ file: file.data, diff: args, path: args.filePath });
+  return await validateDiff({
+    transport,
+    signal,
+    file: file.data,
+    diff: args,
+    path: args.filePath,
+  });
 }
 
-function runEdit({
+async function runEdit({
+  transport,
+  signal,
   path,
   file,
   diff,
 }: {
+  transport: Transport;
+  signal: AbortSignal;
   path: string;
   file: string;
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
-  const validation = validateDiff({ path, file, diff });
+  const validation = await validateDiff({ transport, signal, path, file, diff });
   if (!validation.success) return validation;
   return ok(file.replace(diff.search, diff.replace));
 }
 
-function validateDiff({
+async function validateDiff({
+  transport,
+  signal,
   path,
   file,
   diff,
 }: {
+  transport: Transport;
+  signal: AbortSignal;
   path: string;
   file: string;
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
   if (!file.includes(diff.search)) {
+    const isOutdated = await fileTracker.isOutdated(transport, signal, path);
+    if (isOutdated) return err(FILE_OUTDATED_ERROR_MESSAGE);
     return err(
       `
 Could not find search string in file ${path}: ${diff.search}

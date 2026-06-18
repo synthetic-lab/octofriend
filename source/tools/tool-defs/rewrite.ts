@@ -1,14 +1,8 @@
 import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
-import {
-  attemptUntrackedRead,
-  TOOL,
-  FILE_OUTDATED_ERROR_MESSAGE,
-  fileMutateIR,
-  parseOriginalFile,
-} from "../common.ts";
+import { attemptUntrackedRead, TOOL, fileMutateIR, parseOriginalFile } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { ok } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -57,8 +51,6 @@ async function validate(
   transport: Transport,
   args: t.GetType<typeof ArgumentsSchema>,
 ) {
-  const canEdit = await fileTracker.canEdit(transport, signal, args.filePath);
-  if (!canEdit) return err(FILE_OUTDATED_ERROR_MESSAGE);
   const file = await attemptUntrackedRead(transport, signal, args.filePath);
   if (!file.success) return file;
   return ok(null);

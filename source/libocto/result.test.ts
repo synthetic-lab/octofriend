@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { err, flatten, ok } from "./result.ts";
+import { err, flatten, ok, unwrap } from "./result.ts";
 
 describe("flatten", () => {
   it("leaves a flat ok alone", () => {
@@ -43,5 +43,15 @@ describe("flatten", () => {
 
     expect(result.success).toBe(true);
     if (result.success) expect(result.data).toBe(payload);
+  });
+});
+
+describe("unwrap", () => {
+  it("returns ok data", () => {
+    expect(unwrap(ok(1))).toBe(1);
+  });
+
+  it("throws err messages", () => {
+    expect(() => unwrap(err("boom"))).toThrow("boom");
   });
 });

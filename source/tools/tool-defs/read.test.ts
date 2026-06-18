@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import readToolFactory from "./read.ts";
 import { fileTracker } from "../file-tracker.ts";
+import { unwrap } from "../../libocto/result.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import type { Result } from "../../libocto/result.ts";
 
 function createTransport(files: Record<string, string>): Transport {
   const resolve = (file: string) => (file.startsWith("/") ? file : `/repo/${file}`);
@@ -61,14 +61,6 @@ async function createReadTool(transport: Transport) {
   return tool;
 }
 
-function unwrap<T>(result: Result<T, string>): T {
-  expect(result.success).toBe(true);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-  return result.data;
-}
-
 function readToolCall(args: { filePath: string; offset?: number; limit?: number }) {
   return {
     toolCallId: "test-call",
@@ -112,15 +104,14 @@ describe("read tool", () => {
       "/repo/full.txt": "one\ntwo\nthree",
     });
     const tool = await createReadTool(transport);
+    const toolResult = await tool.run({
+      signal,
+      transport,
+      toolCall: readToolCall({ filePath: "full.txt" }),
+      data: {} as never,
+    });
 
-    const result = unwrap(
-      await tool.run({
-        signal,
-        transport,
-        toolCall: readToolCall({ filePath: "full.txt" }),
-        data: {} as never,
-      }),
-    );
+    const result = unwrap(toolResult);
 
     expect(result.type).toBe("custom-ir");
     if (result.type !== "custom-ir") return;
@@ -131,7 +122,7 @@ describe("read tool", () => {
     });
   });
 
-  it("does not allow edits after only a partial read", async () => {
+  it("does not mark files outdated after only a partial read", async () => {
     const signal = new AbortController().signal;
     const transport = createTransport({
       "/repo/partial-only.txt": "one\ntwo\nthree",
@@ -147,7 +138,9 @@ describe("read tool", () => {
       }),
     );
 
-    await expect(fileTracker.canEdit(transport, signal, "partial-only.txt")).resolves.toBe(false);
+    await expect(fileTracker.isOutdated(transport, signal, "partial-only.txt")).resolves.toBe(
+      false,
+    );
   });
 
   it("keeps edit permission after a later partial read", async () => {
@@ -184,6 +177,8 @@ describe("read tool", () => {
         },
       ],
     });
-    await expect(fileTracker.canEdit(transport, signal, "already-full.txt")).resolves.toBe(true);
+    await expect(fileTracker.isOutdated(transport, signal, "already-full.txt")).resolves.toBe(
+      false,
+    );
   });
 });
