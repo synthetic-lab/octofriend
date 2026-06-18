@@ -15,6 +15,7 @@ import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
+import type { RunModel } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
@@ -495,24 +496,40 @@ export const useAppStore = create<UiState>((set, get) => ({
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
-    const authResult = await readAuthForModel(model, config);
-    if (!authResult.ok) {
-      set({
-        modeData: {
-          mode: "auth-error",
-          model,
-          error: authResult.error,
-        },
-      });
-      return;
+    let modelData: RunModel;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: authResult.error,
+          },
+        });
+        return;
+      }
+      modelData = { type: "codex", auth: authResult.auth, model };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: authResult.error,
+          },
+        });
+        return;
+      }
+      modelData = { type: "api", auth: authResult.auth, model };
     }
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
       const finish = await trajectoryArc({
-        auth: authResult.auth,
-        model,
+        modelData,
         messages: toLlmIR(historyCopy),
         config,
         transport,

@@ -6,14 +6,18 @@ import { runResponsesAgent } from "../libocto/compilers/responses.ts";
 import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { APP_METADATA, ModelConfig } from "../config.ts";
-import type { LoadedAuth } from "../config.ts";
+import type {
+  ApiKeyAuth,
+  ApiKeyModelConfig,
+  CodexModelConfig,
+  OAuthLoadedAuth,
+} from "../config.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
 import { LoadedTools } from "../tools/index.ts";
 import { Transport } from "../transports/transport-common.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
 import type {
-  CompilerError,
   CompilerResult,
   CompilerTokenType,
   CompilerUsage,
@@ -24,11 +28,13 @@ import { getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
-import { err } from "../libocto/result.ts";
+
+export type RunModel =
+  | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
+  | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
 type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
-  auth: LoadedAuth;
-  model: ModelConfig;
+  modelData: RunModel;
   messages: Array<LoweredIR<typeof toolMap>>;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
@@ -41,76 +47,55 @@ type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
   tools?: Tools;
 };
 
-export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>({
-  model,
-  auth,
-  messages,
-  handlers,
-  autofixJson,
-  abortSignal,
-  transport,
-  systemPrompt,
-  tools,
-}: RunArgs<Tools>): Promise<CompilerResult<typeof octoAgent, Tools>> {
+export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>(
+  args: RunArgs<Tools>,
+): Promise<CompilerResult<typeof octoAgent, Tools>> {
   const result = await (async () => {
+    const { modelData } = args;
     const params = {
-      abortSignal,
-      systemPrompt,
-      irs: messages,
-      onTokens: handlers.onTokens,
+      abortSignal: args.abortSignal,
+      systemPrompt: args.systemPrompt,
+      irs: args.messages,
+      onTokens: args.handlers.onTokens,
       autofixJson: (badJson: string, signal: AbortSignal) => {
-        const fixPromise = autofixJson(badJson, signal);
-        handlers.onAutofixJson(fixPromise.then(() => {}));
+        const fixPromise = args.autofixJson(badJson, signal);
+        args.handlers.onAutofixJson(fixPromise.then(() => {}));
         return fixPromise;
       },
-      tools,
-      transport,
+      tools: args.tools,
+      transport: args.transport,
     };
 
-    if (model.type == null || model.type === "standard") {
-      if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
-      return runAgent<typeof octoAgent, Tools>({
-        ...params,
-        model: standardOpenAICompilerModel(model, auth.apiKey),
-      });
-    }
-
-    if (model.type === "openai-responses") {
-      if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
-      return runResponsesAgent<typeof octoAgent, Tools>({
-        ...params,
-        model: responsesOpenAICompilerModel(model, auth.apiKey),
-      });
-    }
-
-    if (model.type === "codex") {
-      if (auth.type !== "oauth") return authMismatchError("OAuth token", auth.type);
+    if (modelData.type === "codex") {
       return runCodexAgent<typeof octoAgent, Tools>({
         ...params,
-        model: codexCompilerModel(model, auth.oauthToken),
+        model: codexCompilerModel(modelData.model, modelData.auth.oauthToken),
       });
     }
 
-    const _: "anthropic" = model.type;
-    if (auth.type !== "apiKey") return authMismatchError("API key", auth.type);
+    if (modelData.model.type == null || modelData.model.type === "standard") {
+      return runAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: standardOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
+      });
+    }
+
+    if (modelData.model.type === "openai-responses") {
+      return runResponsesAgent<typeof octoAgent, Tools>({
+        ...params,
+        model: responsesOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
+      });
+    }
+
+    const _: "anthropic" = modelData.model.type;
     return runAnthropicAgent<typeof octoAgent, Tools>({
       ...params,
-      model: anthropicCompilerModel(model, auth.apiKey),
+      model: anthropicCompilerModel(modelData.model, modelData.auth.apiKey),
     });
   })();
 
-  trackCompilerResultUsage(model.model, result);
+  trackCompilerResultUsage(args.modelData.model.model, result);
   return result;
-}
-
-function authMismatchError(
-  expected: string,
-  actual: LoadedAuth["type"],
-): CompilerResult<typeof octoAgent> {
-  return err({
-    type: "auth-error",
-    authError: `Loaded auth mismatch: expected ${expected}, got ${actual}.`,
-  } satisfies CompilerError);
 }
 
 function trackCompilerResultUsage(model: string, result: CompilerResult<typeof octoAgent>): void {
@@ -130,7 +115,10 @@ function compilerModalities(model: ModelConfig): CompilerModalities {
   return ["text", ...(model.modalities?.image?.enabled ? (["vision"] as const) : [])];
 }
 
-function standardOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenAICompilerModel {
+function standardOpenAICompilerModel(
+  model: ApiKeyModelConfig,
+  apiKey: string,
+): OpenAICompilerModel {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
     model: model.model,
@@ -139,7 +127,10 @@ function standardOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenAI
   };
 }
 
-function responsesOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenAICompilerModel {
+function responsesOpenAICompilerModel(
+  model: ApiKeyModelConfig,
+  apiKey: string,
+): OpenAICompilerModel {
   return {
     client: getDefaultOpenaiClient({ baseUrl: model.baseUrl, apiKey }),
     model: model.model,
@@ -148,7 +139,7 @@ function responsesOpenAICompilerModel(model: ModelConfig, apiKey: string): OpenA
   };
 }
 
-function codexCompilerModel(model: ModelConfig, oauthToken: string): CodexCompilerModel {
+function codexCompilerModel(model: CodexModelConfig, oauthToken: string): CodexCompilerModel {
   return {
     model: model.model,
     oauthToken,
@@ -158,7 +149,7 @@ function codexCompilerModel(model: ModelConfig, oauthToken: string): CodexCompil
   };
 }
 
-function anthropicCompilerModel(model: ModelConfig, apiKey: string): AnthropicCompilerModel {
+function anthropicCompilerModel(model: ApiKeyModelConfig, apiKey: string): AnthropicCompilerModel {
   const thinking = anthropicThinking(model.reasoning);
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max.
   const maxTokens = Math.min(32 * 1000 - (thinking?.budget_tokens || 0), model.context);

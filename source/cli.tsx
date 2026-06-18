@@ -21,6 +21,7 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
+import type { RunModel } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
 import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
@@ -272,14 +273,23 @@ bench
     }
 
     const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
-    const authResult = await readAuthForModel(model, config);
-    if (!authResult.ok) {
-      console.error(authResult.error.message);
-      process.exit(1);
+    let modelData: RunModel;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        console.error(authResult.error.message);
+        process.exit(1);
+      }
+      modelData = { type: "codex", auth: authResult.auth, model };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        console.error(authResult.error.message);
+        process.exit(1);
+      }
+      modelData = { type: "api", auth: authResult.auth, model };
     }
-    const auth = authResult.auth;
     const autofixJson = makeAutofixJson(config);
-    const modelToUse = model;
 
     console.log(
       `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
@@ -310,8 +320,7 @@ bench
       const tokenTimestamps: Date[] = [];
 
       const result = await run({
-        auth,
-        model: modelToUse,
+        modelData,
         autofixJson,
         messages: [
           {
@@ -467,29 +476,56 @@ cli
       process.exit(1);
     }
 
-    const authResult = await readAuthForModel(model, config);
-    if (!authResult.ok) {
-      console.error(`${model.nickname} doesn't have auth set up.`);
-      const error = authResult.error;
+    let modelData: RunModel;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        console.error(`${model.nickname} doesn't have auth set up.`);
+        const error = authResult.error;
 
-      if (error.type === "missing") {
-        console.error(`${error.message}`);
-        if (model.auth?.type === "env") {
-          console.error(`Hint: do you need to re-source your .bash_profile or .zshrc?`);
+        if (error.type === "missing") {
+          console.error(`${error.message}`);
+        } else if (error.type === "command_failed") {
+          console.error(`Command execution failed: ${error.message}`);
+          if (error.exitCode != null) {
+            console.error(`Exit code: ${error.exitCode}`);
+          }
+          if (error.stderr) {
+            console.error(`stderr: ${error.stderr}`);
+          }
+        } else if (error.type === "invalid") {
+          console.error(`Invalid auth configuration: ${error.message}`);
         }
-      } else if (error.type === "command_failed") {
-        console.error(`Command execution failed: ${error.message}`);
-        if (error.exitCode != null) {
-          console.error(`Exit code: ${error.exitCode}`);
-        }
-        if (error.stderr) {
-          console.error(`stderr: ${error.stderr}`);
-        }
-      } else if (error.type === "invalid") {
-        console.error(`Invalid auth configuration: ${error.message}`);
+
+        process.exit(1);
       }
+      modelData = { type: "codex", auth: authResult.auth, model };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        console.error(`${model.nickname} doesn't have auth set up.`);
+        const error = authResult.error;
 
-      process.exit(1);
+        if (error.type === "missing") {
+          console.error(`${error.message}`);
+          if (model.auth?.type === "env") {
+            console.error(`Hint: do you need to re-source your .bash_profile or .zshrc?`);
+          }
+        } else if (error.type === "command_failed") {
+          console.error(`Command execution failed: ${error.message}`);
+          if (error.exitCode != null) {
+            console.error(`Exit code: ${error.exitCode}`);
+          }
+          if (error.stderr) {
+            console.error(`stderr: ${error.stderr}`);
+          }
+        } else if (error.type === "invalid") {
+          console.error(`Invalid auth configuration: ${error.message}`);
+        }
+
+        process.exit(1);
+      }
+      modelData = { type: "api", auth: authResult.auth, model };
     }
     const messages = [
       {
@@ -510,8 +546,7 @@ cli
     let seenReasoning = false;
     let seenContent = false;
     const result = await run({
-      auth: authResult.auth,
-      model,
+      modelData,
       systemPrompt,
       messages,
       autofixJson,

@@ -10,8 +10,8 @@ import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
-import { Config, ModelConfig } from "../config.ts";
-import type { LoadedAuth } from "../config.ts";
+import { Config } from "../config.ts";
+import type { RunModel } from "../compilers/run.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
@@ -133,16 +133,14 @@ type Finish = {
  * above is hit.
  */
 export async function trajectoryArc({
-  auth,
-  model,
+  modelData,
   messages,
   config,
   transport,
   abortSignal,
   handler,
 }: {
-  auth: LoadedAuth;
-  model: ModelConfig;
+  modelData: RunModel;
   messages: OctoIR[];
   config: Config;
   transport: Transport;
@@ -157,10 +155,10 @@ export async function trajectoryArc({
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
   const tools = await loadTools(transport, abortSignal, config);
+  const { model } = modelData;
 
   const parsedCompaction = await maybeAutocompact({
-    auth,
-    model,
+    modelData,
     abortSignal,
     transport,
     autofixJson,
@@ -205,8 +203,7 @@ export async function trajectoryArc({
   let buffer: AssistantBuffer<ResponseTokenTypes> = {};
   const loweredMessages = lowerOcto(messagesCopy, model.modalities);
   const result = await run({
-    auth,
-    model,
+    modelData,
     autofixJson,
     abortSignal,
     transport,
@@ -300,8 +297,7 @@ export async function trajectoryArc({
 
     handler.retryTool({ irs });
     const retried = await trajectoryArc({
-      auth,
-      model,
+      modelData,
       config,
       transport,
       abortSignal,
@@ -436,8 +432,7 @@ export async function trajectoryArc({
     const fullRetryTrajectory = [...irs, ...retryIrs];
     handler.retryTool({ irs: fullRetryTrajectory });
     const retried = await trajectoryArc({
-      auth,
-      model,
+      modelData,
       config,
       transport,
       abortSignal,
@@ -483,16 +478,14 @@ function isRecoverableRequestError(error: { type: string }): error is Recoverabl
 }
 
 async function maybeAutocompact({
-  auth,
-  model,
+  modelData,
   messages,
   abortSignal,
   transport,
   handler,
   autofixJson,
 }: {
-  auth: LoadedAuth;
-  model: ModelConfig;
+  modelData: RunModel;
   messages: OctoIR[];
   abortSignal: AbortSignal;
   transport: Transport;
@@ -502,6 +495,7 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
+  const { model } = modelData;
   const loweredMessages = lowerOcto(messages, model.modalities);
   if (!shouldAutoCompactHistory(model.context, loweredMessages)) return ok(null);
 
@@ -512,8 +506,7 @@ async function maybeAutocompact({
     messages: loweredMessages,
     run: messages =>
       run({
-        auth,
-        model,
+        modelData,
         messages,
         abortSignal,
         transport,

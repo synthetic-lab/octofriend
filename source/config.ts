@@ -104,6 +104,8 @@ export type ApiKeyAuth = { type: "apiKey"; apiKey: string };
 export type OAuthLoadedAuth = { type: "oauth"; oauthToken: string };
 export type LoadedAuth = ApiKeyAuth | OAuthLoadedAuth;
 export type AuthResult = { ok: true; auth: LoadedAuth } | { ok: false; error: AuthError };
+type ApiKeyAuthResult = { ok: true; auth: ApiKeyAuth } | { ok: false; error: AuthError };
+type CodexAuthResult = { ok: true; auth: OAuthLoadedAuth } | { ok: false; error: AuthError };
 
 const ModelTypeSchema = t
   .value("standard")
@@ -233,6 +235,9 @@ export function apiKeyFromAuth(auth: ApiKeyAuth): string {
   return auth.apiKey;
 }
 
+export function resolveAuth(auth: CodexAuthConfig): Promise<CodexAuthResult>;
+export function resolveAuth(auth: ApiKeyAuthConfig): Promise<ApiKeyAuthResult>;
+export function resolveAuth(auth: Auth): Promise<AuthResult>;
 export async function resolveAuth(auth: Auth): Promise<AuthResult> {
   if (auth.type === "codex") {
     try {
@@ -532,20 +537,38 @@ async function findSyntheticKey(config: Config | null) {
   return null;
 }
 
+export function readAuthForModel(
+  model: CodexModelConfig,
+  config: Config | null,
+): Promise<CodexAuthResult>;
+export function readAuthForModel(
+  model: ApiKeyModelConfig,
+  config: Config | null,
+): Promise<ApiKeyAuthResult>;
+export function readAuthForModel(model: ModelConfig, config: Config | null): Promise<AuthResult>;
+export function readAuthForModel(
+  model: { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
+  config: Config | null,
+): Promise<AuthResult>;
 export async function readAuthForModel(
   model: { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
   config: Config | null,
 ): Promise<AuthResult> {
-  const auth = getAuthForModel(model);
-  if (auth) {
-    const result = await resolveAuth(auth);
+  if (model.type === "codex" || model.auth?.type === "codex") {
+    return await resolveAuth({ type: "codex" });
+  }
+
+  if (model.auth) {
+    const result = await resolveAuth(model.auth);
     if (result.ok) return result;
     // If auth is configured but failed, return the error (don't fall through)
     return result;
   }
 
+  if (model.apiEnvVar) return await resolveAuth({ type: "env", name: model.apiEnvVar });
+
   // Otherwise, search for auth for this model's base URL.
-  return await readAuthForBaseUrl(model.baseUrl, config);
+  return await readApiKeyAuthForBaseUrl(model.baseUrl, config);
 }
 
 export async function readAuthForBaseUrl(
@@ -603,6 +626,64 @@ export async function readAuthForBaseUrl(
 
   // We can't find auth for it.
   return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
+}
+
+async function readApiKeyAuthForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<ApiKeyAuthResult> {
+  const provider = providerForBaseUrl(baseUrl);
+  if (provider) {
+    if (provider.type === "codex") {
+      return {
+        ok: false,
+        error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+      };
+    }
+
+    const envVar = (() => {
+      const key = keyFromName(provider.name);
+      if (config == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides == null) return provider.envVar;
+      if (config.defaultApiKeyOverrides[key] == null) return provider.envVar;
+      return config.defaultApiKeyOverrides[key];
+    })();
+    if (process.env[envVar])
+      return { ok: true, auth: { type: "apiKey", apiKey: process.env[envVar] } };
+  }
+
+  const keys = await readKeys();
+  if (keys[baseUrl] != null) return { ok: true, auth: { type: "apiKey", apiKey: keys[baseUrl] } };
+
+  for (const model of config?.models || []) {
+    if (model.baseUrl == baseUrl && model.type !== "codex") {
+      const auth = getAuthForModel(model);
+      if (auth && auth.type !== "codex") {
+        const result = await resolveAuth(auth);
+        if (result.ok) return result;
+      }
+    }
+  }
+
+  if (config?.diffApply?.baseUrl === baseUrl) {
+    const auth = getAuthForModel(config.diffApply);
+    if (auth && auth.type !== "codex") {
+      const result = await resolveAuth(auth);
+      if (result.ok) return result;
+    }
+  }
+  if (config?.fixJson?.baseUrl === baseUrl) {
+    const auth = getAuthForModel(config.fixJson);
+    if (auth && auth.type !== "codex") {
+      const result = await resolveAuth(auth);
+      if (result.ok) return result;
+    }
+  }
+
+  return {
+    ok: false,
+    error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+  };
 }
 
 // Every API base URL Synthetic has ever used
