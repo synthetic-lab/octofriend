@@ -531,6 +531,14 @@ function AuthErrorScreen({
   const resolveModelIndex = useCallback(
     (models: Config["models"]) => {
       return models.findIndex(candidate => {
+        if (model.type === "codex") {
+          return (
+            candidate.type === "codex" &&
+            candidate.nickname === model.nickname &&
+            candidate.model === model.model
+          );
+        }
+        if (candidate.type === "codex") return false;
         return (
           candidate.nickname === model.nickname &&
           candidate.baseUrl === model.baseUrl &&
@@ -616,8 +624,11 @@ function AuthErrorScreen({
       </CenteredBox>
       <CustomAuthFlow
         config={config}
-        baseUrl={model.baseUrl}
-        modelType={model.type}
+        authData={
+          model.type === "codex"
+            ? { modelType: "codex" }
+            : { modelType: model.type, baseUrl: model.baseUrl }
+        }
         onComplete={onComplete}
         onCancel={clearAuthError}
       />

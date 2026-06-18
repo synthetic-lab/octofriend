@@ -10,11 +10,11 @@ import type { LoadedTools } from "../tools/index.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
-import type { RunModel } from "./run.ts";
+import type { ModelData } from "./run.ts";
 
 function expectType<T>(_: T) {}
 
-declare const modelData: RunModel;
+declare const modelData: ModelData;
 declare const messages: Array<LoweredIR<typeof toolMap>>;
 declare const signal: AbortSignal;
 declare const transport: Transport;

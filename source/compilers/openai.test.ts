@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { withMock } from "antipattern";
-import { octoAgent } from "../../ir/octo-ir.ts";
-import type { Transport } from "../../transports/transport-common.ts";
-import { CODEX_API_BASE_URL, runCodexAgent } from "./codex.ts";
-import { fetchDeps } from "../../fetch.ts";
-import type { CompilerResultWithoutToolCalls } from "./compiler-interface.ts";
+import { runResponsesAgent } from "../libocto/compilers/responses.ts";
+import { octoAgent } from "../ir/octo-ir.ts";
+import type { Transport } from "../transports/transport-common.ts";
+import { CODEX_API_BASE_URL, getCodexOpenaiClient } from "./openai.ts";
+import { fetchDeps } from "../fetch.ts";
+import type { CompilerResultWithoutToolCalls } from "../libocto/compilers/compiler-interface.ts";
 
 function sse(...events: unknown[]): string {
   return events.map(event => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
 }
 
-describe("runCodexAgent", () => {
+describe("getCodexOpenaiClient", () => {
   it("sends Responses requests to the Codex backend with Codex auth headers", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => {
       return new Response(
@@ -38,13 +39,13 @@ describe("runCodexAgent", () => {
 
     let result: CompilerResultWithoutToolCalls<typeof octoAgent> | undefined;
     await withMock(fetchDeps, "fetch", fetch, async () => {
-      result = await runCodexAgent<typeof octoAgent>({
+      result = await runResponsesAgent<typeof octoAgent>({
         model: {
+          client: getCodexOpenaiClient({
+            oauthToken: "access-token",
+            accountId: "account-1",
+          }),
           model: "gpt-5.5",
-          oauthToken: "access-token",
-          accountId: "account-1",
-          userAgent: "octofriend-test",
-          sessionId: "session-1",
         },
         irs: [
           {
@@ -58,7 +59,7 @@ describe("runCodexAgent", () => {
       });
     });
 
-    if (!result) throw new Error("Codex compiler did not return a result");
+    if (!result) throw new Error("Responses compiler did not return a result");
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.usage).toEqual({
@@ -73,9 +74,8 @@ describe("runCodexAgent", () => {
     const headers = new Headers(init?.headers);
     expect(headers.get("Authorization")).toBe("Bearer access-token");
     expect(headers.get("ChatGPT-Account-Id")).toBe("account-1");
-    expect(headers.get("originator")).toBe("octofriend");
-    expect(headers.get("User-Agent")).toBe("octofriend-test");
-    expect(headers.get("session-id")).toBe("session-1");
+    expect(headers.get("originator")).toBeNull();
+    expect(headers.get("session-id")).toBeNull();
   });
 });
 

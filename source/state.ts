@@ -15,7 +15,7 @@ import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
-import type { RunModel } from "./compilers/run.ts";
+import type { ModelData } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
@@ -496,7 +496,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
-    let modelData: RunModel;
+    let modelData: ModelData;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {

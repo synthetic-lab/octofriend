@@ -13,6 +13,10 @@ declare const apiModel: ApiKeyModelConfig;
 declare const codexModel: CodexModelConfig;
 declare const config: Config;
 
+expectType<string>(apiModel.baseUrl);
+// @ts-expect-error Codex models use the fixed Codex backend and do not have a base URL.
+expectType<string>(codexModel.baseUrl);
+
 async function checkReadAuthForModelTypes() {
   const apiAuth = await readAuthForModel(apiModel, config);
   if (apiAuth.ok) {

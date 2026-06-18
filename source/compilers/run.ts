@@ -1,7 +1,5 @@
 import { runAnthropicAgent } from "../libocto/compilers/anthropic.ts";
 import type { AnthropicCompilerModel } from "../libocto/compilers/anthropic.ts";
-import { runCodexAgent } from "../libocto/compilers/codex.ts";
-import type { CodexCompilerModel } from "../libocto/compilers/codex.ts";
 import { runResponsesAgent } from "../libocto/compilers/responses.ts";
 import { runAgent } from "../libocto/compilers/standard.ts";
 import Anthropic from "@anthropic-ai/sdk";
@@ -24,17 +22,17 @@ import type {
 } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
-import { getDefaultOpenaiClient } from "./openai.ts";
+import { getCodexOpenaiClient, getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 
-export type RunModel =
+export type ModelData =
   | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
   | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
 type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
-  modelData: RunModel;
+  modelData: ModelData;
   messages: Array<LoweredIR<typeof toolMap>>;
   autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
   handlers: {
@@ -67,9 +65,9 @@ export async function run<Tools extends Partial<LoadedTools> | undefined = undef
     };
 
     if (modelData.type === "codex") {
-      return runCodexAgent<typeof octoAgent, Tools>({
+      return runResponsesAgent<typeof octoAgent, Tools>({
         ...params,
-        model: codexCompilerModel(modelData.model, modelData.auth.oauthToken),
+        model: codexCompilerModel(modelData.model, modelData.auth),
       });
     }
 
@@ -139,11 +137,13 @@ function responsesOpenAICompilerModel(
   };
 }
 
-function codexCompilerModel(model: CodexModelConfig, oauthToken: string): CodexCompilerModel {
+function codexCompilerModel(model: CodexModelConfig, auth: OAuthLoadedAuth): OpenAICompilerModel {
   return {
+    client: getCodexOpenaiClient({
+      oauthToken: auth.oauthToken,
+      accountId: auth.accountId,
+    }),
     model: model.model,
-    oauthToken,
-    userAgent: `octofriend/${APP_METADATA.version}`,
     reasoningEffort: model.reasoning,
     modalities: compilerModalities(model),
   };

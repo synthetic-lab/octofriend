@@ -98,6 +98,7 @@ export function AutofixModelMenu({
       <CustomAutofixFlow
         config={config}
         onComplete={model => {
+          if (model.type === "codex") return;
           const val: Exclude<Config["diffApply"], undefined> = {
             baseUrl: model.baseUrl,
             model: model.model,
@@ -114,7 +115,7 @@ export function AutofixModelMenu({
     return (
       <CustomAuthFlow
         config={config}
-        baseUrl={SYNTHETIC_PROVIDER.baseUrl}
+        authData={{ modelType: undefined, baseUrl: SYNTHETIC_PROVIDER.baseUrl }}
         onCancel={() => setStep("choose")}
         onComplete={async auth => {
           if (auth && auth.type === "env") {

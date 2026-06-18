@@ -21,7 +21,7 @@ import { DockerTransport, manageContainer } from "./transports/docker.ts";
 import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import { migrate } from "./db/migrate.ts";
 import { run } from "./compilers/run.ts";
-import type { RunModel } from "./compilers/run.ts";
+import type { ModelData } from "./compilers/run.ts";
 import { loadInputHistory } from "./input-history/index.ts";
 import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
@@ -273,7 +273,7 @@ bench
     }
 
     const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
-    let modelData: RunModel;
+    let modelData: ModelData;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
@@ -476,7 +476,7 @@ cli
       process.exit(1);
     }
 
-    let modelData: RunModel;
+    let modelData: ModelData;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {

@@ -255,6 +255,7 @@ export function recommendedModel(provider: ProviderKey): ProviderConfig["models"
 }
 
 export const SYNTHETIC_PROVIDER = PROVIDERS.synthetic;
+export const CODEX_PROVIDER = PROVIDERS.codex;
 
 export function keyFromName(name: string): keyof typeof PROVIDERS {
   for (const [key, value] of Object.entries(PROVIDERS)) {

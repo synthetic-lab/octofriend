@@ -101,7 +101,7 @@ export type AuthError =
   | { type: "invalid"; message: string };
 
 export type ApiKeyAuth = { type: "apiKey"; apiKey: string };
-export type OAuthLoadedAuth = { type: "oauth"; oauthToken: string };
+export type OAuthLoadedAuth = { type: "oauth"; oauthToken: string; accountId?: string };
 export type LoadedAuth = ApiKeyAuth | OAuthLoadedAuth;
 export type AuthResult = { ok: true; auth: LoadedAuth } | { ok: false; error: AuthError };
 type ApiKeyAuthResult = { ok: true; auth: ApiKeyAuth } | { ok: false; error: AuthError };
@@ -128,7 +128,6 @@ const ModalitiesSchema = t.subtype({
 
 const ModelConfigBaseSchema = t.subtype({
   nickname: t.str,
-  baseUrl: t.str,
   model: t.str,
   context: t.num,
   reasoning: t.optional(ReasoningSchema),
@@ -137,6 +136,7 @@ const ModelConfigBaseSchema = t.subtype({
 const ApiKeyModelConfigSchema = ModelConfigBaseSchema.and(
   t.subtype({
     type: t.optional(ModelTypeSchema),
+    baseUrl: t.str,
     // deprecated: use auth instead
     apiEnvVar: t.optional(t.str),
     auth: t.optional(ApiKeyAuthConfigSchema),
@@ -241,7 +241,16 @@ export function resolveAuth(auth: Auth): Promise<AuthResult>;
 export async function resolveAuth(auth: Auth): Promise<AuthResult> {
   if (auth.type === "codex") {
     const tokens = await getCodexOAuthTokens();
-    if (tokens) return { ok: true, auth: { type: "oauth", oauthToken: tokens.access } };
+    if (tokens) {
+      return {
+        ok: true,
+        auth: {
+          type: "oauth",
+          oauthToken: tokens.access,
+          ...(tokens.accountId ? { accountId: tokens.accountId } : {}),
+        },
+      };
+    }
     return {
       ok: false,
       error: {
@@ -469,7 +478,12 @@ function sanitizeConfig(c: Config): Config {
   const sanitized = { ...c, models: [...c.models] };
   for (let index = 0; index < sanitized.models.length; index++) {
     const model = sanitized.models[index];
-    if (model.type === "codex") continue;
+    if (model.type === "codex") {
+      const updatedModel: typeof model & { baseUrl?: string } = { ...model };
+      delete updatedModel.baseUrl;
+      sanitized.models[index] = updatedModel;
+      continue;
+    }
     const provider = providerForBaseUrl(model.baseUrl);
     if (provider) {
       const envVar = getDefaultEnvVar(provider, c);
@@ -554,7 +568,9 @@ export function readAuthForModel(
   config: Config | null,
 ): Promise<AuthResult>;
 export async function readAuthForModel(
-  model: { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
+  model:
+    | ModelConfig
+    | { type?: ModelConfig["type"]; baseUrl: string; apiEnvVar?: string; auth?: Auth },
   config: Config | null,
 ): Promise<AuthResult> {
   if (model.type === "codex" || model.auth?.type === "codex") {
@@ -569,6 +585,12 @@ export async function readAuthForModel(
   }
 
   if (model.apiEnvVar) return await resolveAuth({ type: "env", name: model.apiEnvVar });
+  if (!("baseUrl" in model)) {
+    return {
+      ok: false,
+      error: { type: "invalid", message: "API-key model auth requires a base URL." },
+    };
+  }
 
   // Otherwise, search for auth for this model's base URL.
   return await readApiKeyAuthForBaseUrl(model.baseUrl, config);
@@ -602,7 +624,7 @@ export async function readAuthForBaseUrl(
 
   // Does it match an existing model with auth or API env var defined?
   for (const model of config?.models || []) {
-    if (model.baseUrl == baseUrl) {
+    if (model.type !== "codex" && model.baseUrl == baseUrl) {
       const auth = getAuthForModel(model);
       if (auth) {
         const result = await resolveAuth(auth);
@@ -659,7 +681,7 @@ async function readApiKeyAuthForBaseUrl(
   if (keys[baseUrl] != null) return { ok: true, auth: { type: "apiKey", apiKey: keys[baseUrl] } };
 
   for (const model of config?.models || []) {
-    if (model.baseUrl == baseUrl && model.type !== "codex") {
+    if (model.type !== "codex" && model.baseUrl == baseUrl) {
       const auth = getAuthForModel(model);
       if (auth && auth.type !== "codex") {
         const result = await resolveAuth(auth);

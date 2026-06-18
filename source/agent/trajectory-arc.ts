@@ -11,7 +11,7 @@ import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { Config } from "../config.ts";
-import type { RunModel } from "../compilers/run.ts";
+import type { ModelData } from "../compilers/run.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
@@ -140,7 +140,7 @@ export async function trajectoryArc({
   abortSignal,
   handler,
 }: {
-  modelData: RunModel;
+  modelData: ModelData;
   messages: OctoIR[];
   config: Config;
   transport: Transport;
@@ -485,7 +485,7 @@ async function maybeAutocompact({
   handler,
   autofixJson,
 }: {
-  modelData: RunModel;
+  modelData: ModelData;
   messages: OctoIR[];
   abortSignal: AbortSignal;
   transport: Transport;

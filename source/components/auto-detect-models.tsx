@@ -161,7 +161,6 @@ export function ModelSetup({
                     ...model,
                     type: "codex",
                     nickname: `${model.nickname} (${stepData.provider.name})`,
-                    baseUrl: stepData.provider.baseUrl,
                     auth: { type: "codex" },
                   };
                 }
@@ -205,6 +204,11 @@ export function ModelSetup({
       return (
         <CustomAuthFlow
           config={config}
+          authData={
+            stepData.provider.type === "codex"
+              ? { modelType: "codex" }
+              : { modelType: stepData.provider.type, baseUrl: stepData.provider.baseUrl }
+          }
           onComplete={async auth => {
             if (auth && auth.type === "env") {
               await onOverrideDefaultApiKey({
@@ -226,8 +230,6 @@ export function ModelSetup({
           onCancel={() => {
             dispatch({ from: "missing", to: { step: "initial" } });
           }}
-          baseUrl={stepData.provider.baseUrl}
-          modelType={stepData.provider.type}
         />
       );
 
@@ -247,6 +249,7 @@ export function ModelSetup({
               return;
             }
 
+            if (model.type === "codex") return;
             const apiModel = {
               nickname: model.nickname,
               baseUrl: model.baseUrl,
@@ -379,7 +382,12 @@ function ImportModelsFrom({
     for (const model of provider.models) {
       let found = false;
       for (const storedModel of config.models) {
-        if (storedModel.baseUrl === provider.baseUrl && storedModel.model === model.model) {
+        if (
+          storedModel.model === model.model &&
+          (storedModel.type === "codex"
+            ? provider.type === "codex"
+            : storedModel.baseUrl === provider.baseUrl)
+        ) {
           importedModels.push(model);
           found = true;
           break;

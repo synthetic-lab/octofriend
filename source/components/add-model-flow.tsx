@@ -204,80 +204,89 @@ function AuthAsk(
   );
 }
 
+function CodexOAuthStep({ cancel, onComplete }: { cancel: () => void; onComplete: () => void }) {
+  const [status, setStatus] = useState<
+    | { type: "starting" }
+    | { type: "waiting"; url: string; code: string; opened: boolean }
+    | { type: "error"; message: string }
+  >({ type: "starting" });
+
+  useEffect(() => {
+    const abortController = new AbortController();
+
+    async function authorize() {
+      try {
+        const device = await startCodexDeviceAuthorization();
+        const opened = await openDefaultBrowser(device.verificationUri);
+        setStatus({
+          type: "waiting",
+          url: device.verificationUri,
+          code: device.userCode,
+          opened,
+        });
+        const tokens = await pollCodexDeviceAuthorization(device, abortController.signal);
+        await writeCodexOAuthTokens(tokens);
+        onComplete();
+      } catch (error) {
+        if (abortController.signal.aborted) return;
+        setStatus({
+          type: "error",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    authorize();
+    return () => abortController.abort();
+  }, [onComplete]);
+
+  return (
+    <Back go={cancel}>
+      <Box flexDirection="column">
+        <Box justifyContent="center" marginBottom={1}>
+          <Box flexDirection="column" width={80}>
+            <Text color="yellow" bold>
+              ChatGPT Codex authorization
+            </Text>
+            {status.type === "starting" && <Text>Requesting an authorization code...</Text>}
+            {status.type === "waiting" && (
+              <>
+                <Text>
+                  {status.opened
+                    ? "Opened your browser. If it did not appear, open this URL manually:"
+                    : "Could not open your browser automatically. Open this URL manually:"}
+                </Text>
+                <Text bold>{status.url}</Text>
+                <Text>
+                  Code: <Text bold>{status.code}</Text>
+                </Text>
+                <Text dimColor>Waiting for authorization. Press ESC to cancel.</Text>
+              </>
+            )}
+            {status.type === "error" && (
+              <>
+                <Text color="red">Authorization failed: {status.message}</Text>
+                <Text dimColor>Press ESC to go back.</Text>
+              </>
+            )}
+            {status.type !== "error" && (
+              <Text dimColor>Credentials will be saved to {CODEX_OAUTH_FILE}</Text>
+            )}
+          </Box>
+        </Box>
+      </Box>
+    </Back>
+  );
+}
+
 const codexOAuth = fullFlow
   .withRoutes("codexOAuth", "authAsk", "postAuth")
   .build("codexOAuth", to => props => {
-    const [status, setStatus] = useState<
-      | { type: "starting" }
-      | { type: "waiting"; url: string; code: string; opened: boolean }
-      | { type: "error"; message: string }
-    >({ type: "starting" });
-
-    useEffect(() => {
-      const abortController = new AbortController();
-
-      async function authorize() {
-        try {
-          const device = await startCodexDeviceAuthorization();
-          const opened = await openDefaultBrowser(device.verificationUri);
-          setStatus({
-            type: "waiting",
-            url: device.verificationUri,
-            code: device.userCode,
-            opened,
-          });
-          const tokens = await pollCodexDeviceAuthorization(device, abortController.signal);
-          await writeCodexOAuthTokens(tokens);
-          to.postAuth({ ...props, auth: { type: "codex" } });
-        } catch (error) {
-          if (abortController.signal.aborted) return;
-          setStatus({
-            type: "error",
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-
-      authorize();
-      return () => abortController.abort();
-    }, []);
-
     return (
-      <Back go={props.cancel}>
-        <Box flexDirection="column">
-          <Box justifyContent="center" marginBottom={1}>
-            <Box flexDirection="column" width={80}>
-              <Text color="yellow" bold>
-                ChatGPT Codex authorization
-              </Text>
-              {status.type === "starting" && <Text>Requesting an authorization code...</Text>}
-              {status.type === "waiting" && (
-                <>
-                  <Text>
-                    {status.opened
-                      ? "Opened your browser. If it did not appear, open this URL manually:"
-                      : "Could not open your browser automatically. Open this URL manually:"}
-                  </Text>
-                  <Text bold>{status.url}</Text>
-                  <Text>
-                    Code: <Text bold>{status.code}</Text>
-                  </Text>
-                  <Text dimColor>Waiting for authorization. Press ESC to cancel.</Text>
-                </>
-              )}
-              {status.type === "error" && (
-                <>
-                  <Text color="red">Authorization failed: {status.message}</Text>
-                  <Text dimColor>Press ESC to go back.</Text>
-                </>
-              )}
-              {status.type !== "error" && (
-                <Text dimColor>Credentials will be saved to {CODEX_OAUTH_FILE}</Text>
-              )}
-            </Box>
-          </Box>
-        </Box>
-      </Back>
+      <CodexOAuthStep
+        cancel={props.cancel}
+        onComplete={() => to.postAuth({ ...props, auth: { type: "codex" } })}
+      />
     );
   });
 
@@ -534,7 +543,6 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
           if (auth?.type === "codex") {
             done({
               type: "codex",
-              baseUrl,
               model,
               nickname,
               context,
@@ -708,11 +716,24 @@ export function CustomModelFlow({
 }
 
 const customAuthDoneCtx = createContext<(auth?: Auth) => any>(() => {});
-type CustomAuthFlowData = Pick<
-  FullFlowRouteData,
-  "authAsk" | "envVar" | "command" | "apiKey" | "codexOAuth" | "postAuth"
->;
+type CustomAuthFlowData = Pick<FullFlowRouteData, "authAsk" | "envVar" | "command" | "apiKey"> & {
+  codexOAuth: ModelStepRoute<{}>;
+  postAuth: ModelStepRoute<{ baseUrl?: string; auth?: Auth }>;
+};
+type CustomAuthData =
+  | { modelType: Exclude<Model["type"], "codex">; baseUrl: string }
+  | { modelType: "codex" };
 const customAuthFlow = router<CustomAuthFlowData>();
+const customCodexOAuth = customAuthFlow
+  .withRoutes("codexOAuth", "postAuth")
+  .build("codexOAuth", to => props => {
+    return (
+      <CodexOAuthStep
+        cancel={props.cancel}
+        onComplete={() => to.postAuth({ ...props, auth: { type: "codex" } })}
+      />
+    );
+  });
 const customAuthRoutes = customAuthFlow.route({
   authAsk: to => props => {
     return <AuthAsk {...props} onSelect={route => to[route](props)} back={() => props.cancel()} />;
@@ -720,40 +741,40 @@ const customAuthRoutes = customAuthFlow.route({
   envVar,
   command,
   apiKey,
-  codexOAuth,
+  codexOAuth: customCodexOAuth,
   postAuth: _ => props => {
     const done = useContext(customAuthDoneCtx);
-    return <PostAuth {...props} handleAuth={() => done(props.auth)} />;
+    useEffect(() => {
+      done(props.auth);
+    }, [done, props.auth]);
+    return <></>;
   },
 });
 
 export function CustomAuthFlow({
   onComplete,
   onCancel,
-  baseUrl,
-  modelType,
+  authData,
   config,
 }: {
   onComplete: (auth?: Auth) => any;
   onCancel: () => any;
-  baseUrl: string;
-  modelType?: Model["type"];
+  authData: CustomAuthData;
   config: Config | null;
 }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [hasCheckedExistingKey, setHasCheckedExistingKey] = useState(false);
-  const provider = providerForBaseUrl(baseUrl);
-  const codexOnly = modelType === "codex" || provider?.type === "codex";
+  const authBaseUrl = authData.modelType === "codex" ? undefined : authData.baseUrl;
 
   useEffect(() => {
     if (!hasCheckedExistingKey) {
-      if (codexOnly) {
+      if (authData.modelType === "codex") {
         hasCodexOAuthTokens().then(hasTokens => {
           if (hasTokens) onComplete({ type: "codex" });
           else setHasCheckedExistingKey(true);
         });
       } else {
-        hasExistingAuthForBaseUrl(baseUrl, config).then(hasAuth => {
+        hasExistingAuthForBaseUrl(authData.baseUrl, config).then(hasAuth => {
           if (hasAuth) {
             onComplete();
           }
@@ -761,7 +782,7 @@ export function CustomAuthFlow({
         });
       }
     }
-  }, [hasCheckedExistingKey, baseUrl, config, onComplete, codexOnly]);
+  }, [hasCheckedExistingKey, authData.modelType, authBaseUrl, config, onComplete]);
 
   // Show nothing while checking for existing key (will auto-complete if found)
   if (!hasCheckedExistingKey) {
@@ -771,16 +792,28 @@ export function CustomAuthFlow({
   return (
     <errorContext.Provider value={{ errorMessage, setErrorMessage }}>
       <customAuthDoneCtx.Provider value={onComplete}>
-        <customAuthRoutes.Root
-          route={codexOnly ? "codexOAuth" : "authAsk"}
-          props={{
-            renderExamples: false,
-            done: () => {},
-            cancel: onCancel,
-            baseUrl,
-            config,
-          }}
-        />
+        {authData.modelType === "codex" ? (
+          <customAuthRoutes.Root
+            route="codexOAuth"
+            props={{
+              renderExamples: false,
+              done: () => {},
+              cancel: onCancel,
+              config,
+            }}
+          />
+        ) : (
+          <customAuthRoutes.Root
+            route="authAsk"
+            props={{
+              renderExamples: false,
+              done: () => {},
+              cancel: onCancel,
+              baseUrl: authData.baseUrl,
+              config,
+            }}
+          />
+        )}
       </customAuthDoneCtx.Provider>
     </errorContext.Provider>
   );

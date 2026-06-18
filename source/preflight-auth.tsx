@@ -16,11 +16,24 @@ function resolveModelFromConfig(
   config: Config,
   model: Config["models"][number],
 ): Config["models"][number] {
-  const exact = config.models.find(
-    candidate => candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl,
-  );
+  const exact = config.models.find(candidate => {
+    if (model.type === "codex") {
+      return (
+        candidate.type === "codex" &&
+        candidate.nickname === model.nickname &&
+        candidate.model === model.model
+      );
+    }
+    if (candidate.type === "codex") return false;
+    return candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl;
+  });
   if (exact) return exact;
-  const fallback = config.models.find(candidate => candidate.baseUrl === model.baseUrl);
+  const fallback = config.models.find(candidate => {
+    if (model.type === "codex")
+      return candidate.type === "codex" && candidate.model === model.model;
+    if (candidate.type === "codex") return false;
+    return candidate.baseUrl === model.baseUrl;
+  });
   return fallback ?? model;
 }
 
@@ -112,8 +125,11 @@ export function PreflightModelAuth({
       {!authError && (
         <CustomAuthFlow
           config={config}
-          baseUrl={model.baseUrl}
-          modelType={model.type}
+          authData={
+            model.type === "codex"
+              ? { modelType: "codex" }
+              : { modelType: model.type, baseUrl: model.baseUrl }
+          }
           onCancel={() => {
             setExitMessage("Press CTRL-C to exit");
           }}
@@ -253,7 +269,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 
           <CustomAuthFlow
             config={config}
-            baseUrl={model.baseUrl}
+            authData={{ modelType: undefined, baseUrl: model.baseUrl }}
             onCancel={() => {
               setExitMessage("Press CTRL-C to exit");
             }}

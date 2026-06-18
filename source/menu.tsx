@@ -212,8 +212,11 @@ function SwitchModelMenu() {
     return (
       <CustomAuthFlow
         config={config}
-        baseUrl={pendingModel.baseUrl}
-        modelType={pendingModel.type}
+        authData={
+          pendingModel.type === "codex"
+            ? { modelType: "codex" }
+            : { modelType: pendingModel.type, baseUrl: pendingModel.baseUrl }
+        }
         onComplete={async (auth?: Auth) => {
           const index = config.models.indexOf(pendingModel);
           if (auth && index >= 0) {
@@ -364,7 +367,7 @@ function MainMenu() {
   const config = useConfig();
   const setConfig = useSetConfig();
   const model = useModel();
-  const provider = providerForBaseUrl(model.baseUrl);
+  const provider = model.type === "codex" ? null : providerForBaseUrl(model.baseUrl);
   const isSynthetic = provider === SYNTHETIC_PROVIDER;
 
   useInput((_, key) => {

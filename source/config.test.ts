@@ -64,7 +64,6 @@ describe("readAuthForModel", () => {
         {
           type: "codex",
           nickname: "codex",
-          baseUrl: "https://chatgpt.com/backend-api/codex",
           model: "gpt-5.5",
           context: 200_000,
           auth: { type: "command", command: ["echo", "token"] },
