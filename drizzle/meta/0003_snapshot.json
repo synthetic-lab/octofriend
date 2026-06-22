@@ -1,8 +1,8 @@
 {
+  "id": "2ea13658-f1c2-4e5c-a296-e18c4fb38c18",
+  "prevId": "b6f65524-1294-4e2a-a26a-a6396da639db",
   "version": "6",
   "dialect": "sqlite",
-  "id": "b6f65524-1294-4e2a-a26a-a6396da639db",
-  "prevId": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "tables": {
     "input_history": {
       "name": "input_history",
@@ -171,38 +171,38 @@
         "history_items_request_failed_id_request_failed_items_id_fk": {
           "name": "history_items_request_failed_id_request_failed_items_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "request_failed_items",
           "columnsFrom": ["request_failed_id"],
+          "tableTo": "request_failed_items",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "history_items_compaction_failed_id_compaction_failed_items_id_fk": {
           "name": "history_items_compaction_failed_id_compaction_failed_items_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "compaction_failed_items",
           "columnsFrom": ["compaction_failed_id"],
+          "tableTo": "compaction_failed_items",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "history_items_notification_id_notifications_id_fk": {
           "name": "history_items_notification_id_notifications_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "notifications",
           "columnsFrom": ["notification_id"],
+          "tableTo": "notifications",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "history_items_llm_ir_id_llm_irs_id_fk": {
           "name": "history_items_llm_ir_id_llm_irs_id_fk",
           "tableFrom": "history_items",
-          "tableTo": "llm_irs",
           "columnsFrom": ["llm_ir_id"],
+          "tableTo": "llm_irs",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -255,20 +255,20 @@
         "launches_docker_launch_id_docker_launches_id_fk": {
           "name": "launches_docker_launch_id_docker_launches_id_fk",
           "tableFrom": "launches",
-          "tableTo": "docker_launches",
           "columnsFrom": ["docker_launch_id"],
+          "tableTo": "docker_launches",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "launches_local_launch_id_local_launches_id_fk": {
           "name": "launches_local_launch_id_local_launches_id_fk",
           "tableFrom": "launches",
-          "tableTo": "local_launches",
           "columnsFrom": ["local_launch_id"],
+          "tableTo": "local_launches",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -441,8 +441,8 @@
         "tree_nodes_one_root_unique": {
           "name": "tree_nodes_one_root_unique",
           "columns": ["tree_id"],
-          "isUnique": true,
-          "where": "\"tree_nodes\".\"parent_id\" IS NULL"
+          "where": "\"tree_nodes\".\"parent_id\" IS NULL",
+          "isUnique": true
         },
         "tree_nodes_tree_leaf_id_idx": {
           "name": "tree_nodes_tree_leaf_id_idx",
@@ -459,38 +459,38 @@
         "tree_nodes_history_item_id_history_items_id_fk": {
           "name": "tree_nodes_history_item_id_history_items_id_fk",
           "tableFrom": "tree_nodes",
-          "tableTo": "history_items",
           "columnsFrom": ["history_item_id"],
+          "tableTo": "history_items",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "tree_nodes_tree_id_trees_id_fk": {
           "name": "tree_nodes_tree_id_trees_id_fk",
           "tableFrom": "tree_nodes",
-          "tableTo": "trees",
           "columnsFrom": ["tree_id"],
+          "tableTo": "trees",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "tree_nodes_launch_id_launches_id_fk": {
           "name": "tree_nodes_launch_id_launches_id_fk",
           "tableFrom": "tree_nodes",
-          "tableTo": "launches",
           "columnsFrom": ["launch_id"],
+          "tableTo": "launches",
           "columnsTo": ["id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         },
         "tree_nodes_parent_same_tree_fk": {
           "name": "tree_nodes_parent_same_tree_fk",
           "tableFrom": "tree_nodes",
-          "tableTo": "tree_nodes",
           "columnsFrom": ["parent_id", "tree_id"],
+          "tableTo": "tree_nodes",
           "columnsTo": ["id", "tree_id"],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "restrict"
         }
       },
       "compositePrimaryKeys": {},
@@ -594,9 +594,9 @@
   "views": {},
   "enums": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
+    "tables": {}
   },
   "internal": {
     "indexes": {}

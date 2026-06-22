@@ -19,8 +19,15 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1782165982635,
+      "when": 1782169040344,
       "tag": "0002_silver_circuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1782169044845,
+      "tag": "0003_tree_node_triggers",
       "breakpoints": true
     }
   ]

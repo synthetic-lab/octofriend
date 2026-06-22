@@ -76,7 +76,7 @@ CREATE TABLE `tree_nodes` (
 	FOREIGN KEY (`history_item_id`) REFERENCES `history_items`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`tree_id`) REFERENCES `trees`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`launch_id`) REFERENCES `launches`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "tree_nodes_not_own_parent_check" CHECK("tree_nodes"."parent_id" IS NULL OR "tree_nodes"."parent_id" <> "tree_nodes"."id"),
 	CONSTRAINT "tree_nodes_is_leaf_check" CHECK("tree_nodes"."is_leaf" IN (0, 1))
 );
@@ -95,36 +95,4 @@ CREATE TABLE `trees` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `trees_name_unique` ON `trees` (`name`);--> statement-breakpoint
 CREATE INDEX `trees_cwd_updated_at_idx` ON `trees` (`cwd`,`updated_at`);--> statement-breakpoint
-CREATE INDEX `trees_updated_at_idx` ON `trees` (`updated_at`);--> statement-breakpoint
-CREATE TRIGGER `tree_nodes_require_new_leaf`
-BEFORE INSERT ON `tree_nodes`
-WHEN NEW.`is_leaf` <> 1
-BEGIN
-	SELECT RAISE(ABORT, 'new tree nodes must be leaves');
-END;
---> statement-breakpoint
-CREATE TRIGGER `tree_nodes_mark_parent_non_leaf`
-AFTER INSERT ON `tree_nodes`
-WHEN NEW.`parent_id` IS NOT NULL
-BEGIN
-	UPDATE `tree_nodes`
-	SET `is_leaf` = 0
-	WHERE `id` = NEW.`parent_id` AND `tree_id` = NEW.`tree_id`;
-END;
---> statement-breakpoint
-CREATE TRIGGER `tree_nodes_restore_parent_leaf`
-AFTER DELETE ON `tree_nodes`
-WHEN OLD.`parent_id` IS NOT NULL
-BEGIN
-	UPDATE `tree_nodes`
-	SET `is_leaf` = NOT EXISTS (
-		SELECT 1 FROM `tree_nodes` WHERE `parent_id` = OLD.`parent_id`
-	)
-	WHERE `id` = OLD.`parent_id` AND `tree_id` = OLD.`tree_id`;
-END;
---> statement-breakpoint
-CREATE TRIGGER `tree_nodes_identity_immutable`
-BEFORE UPDATE OF `history_item_id`, `tree_id`, `parent_id`, `launch_id` ON `tree_nodes`
-BEGIN
-	SELECT RAISE(ABORT, 'tree node identity is immutable');
-END;
+CREATE INDEX `trees_updated_at_idx` ON `trees` (`updated_at`);
