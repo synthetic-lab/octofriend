@@ -125,6 +125,7 @@ export const treeNodes = sqliteTable(
       .notNull()
       .references(() => trees.id, { onDelete: "restrict" }),
     parentId: integer(),
+    isLeaf: integer({ mode: "boolean" }).notNull(),
     launchId: integer()
       .notNull()
       .references(() => launches.id, { onDelete: "restrict" }),
@@ -135,7 +136,7 @@ export const treeNodes = sqliteTable(
     uniqueIndex("tree_nodes_one_root_unique")
       .on(table.treeId)
       .where(sql`${table.parentId} IS NULL`),
-    index("tree_nodes_tree_id_idx").on(table.treeId, table.id),
+    index("tree_nodes_tree_leaf_id_idx").on(table.treeId, table.isLeaf, table.id),
     index("tree_nodes_parent_tree_idx").on(table.parentId, table.treeId),
     foreignKey({
       name: "tree_nodes_parent_tree_fk",
@@ -146,6 +147,7 @@ export const treeNodes = sqliteTable(
       "tree_nodes_not_own_parent_check",
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
     ),
+    check("tree_nodes_is_leaf_check", sql`${table.isLeaf} IN (0, 1)`),
   ],
 );
 

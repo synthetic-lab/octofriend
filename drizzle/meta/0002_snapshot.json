@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d9417abc-ebc9-4e39-ac85-29c53cb06b14",
+  "id": "f2c9dcee-02e3-4efb-acff-bee6887a1972",
   "prevId": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "tables": {
     "input_history": {
@@ -412,6 +412,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "is_leaf": {
+          "name": "is_leaf",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "launch_id": {
           "name": "launch_id",
           "type": "integer",
@@ -437,9 +444,9 @@
           "isUnique": true,
           "where": "\"tree_nodes\".\"parent_id\" IS NULL"
         },
-        "tree_nodes_tree_id_idx": {
-          "name": "tree_nodes_tree_id_idx",
-          "columns": ["tree_id", "id"],
+        "tree_nodes_tree_leaf_id_idx": {
+          "name": "tree_nodes_tree_leaf_id_idx",
+          "columns": ["tree_id", "is_leaf", "id"],
           "isUnique": false
         },
         "tree_nodes_parent_tree_idx": {
@@ -492,6 +499,10 @@
         "tree_nodes_not_own_parent_check": {
           "name": "tree_nodes_not_own_parent_check",
           "value": "\"tree_nodes\".\"parent_id\" IS NULL OR \"tree_nodes\".\"parent_id\" <> \"tree_nodes\".\"id\""
+        },
+        "tree_nodes_is_leaf_check": {
+          "name": "tree_nodes_is_leaf_check",
+          "value": "\"tree_nodes\".\"is_leaf\" IN (0, 1)"
         }
       }
     },
