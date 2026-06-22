@@ -9,7 +9,6 @@ CREATE TABLE `docker_launches` (
 	`docker_run_args_json` text,
 	`config` text,
 	`unchained` integer NOT NULL,
-	CONSTRAINT "docker_launches_unchained_check" CHECK("docker_launches"."unchained" IN (0, 1)),
 	CONSTRAINT "docker_launches_kind_args_check" CHECK(("docker_launches"."kind" = 'connect' AND "docker_launches"."container_target" IS NOT NULL AND "docker_launches"."docker_run_args_json" IS NULL)
         OR ("docker_launches"."kind" = 'run' AND "docker_launches"."container_target" IS NULL AND "docker_launches"."docker_run_args_json" IS NOT NULL))
 );
@@ -53,8 +52,7 @@ CREATE TABLE `llm_irs` (
 CREATE TABLE `local_launches` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`config` text,
-	`unchained` integer NOT NULL,
-	CONSTRAINT "local_launches_unchained_check" CHECK("local_launches"."unchained" IN (0, 1))
+	`unchained` integer NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `notifications` (
@@ -77,8 +75,7 @@ CREATE TABLE `tree_nodes` (
 	FOREIGN KEY (`tree_id`) REFERENCES `trees`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`launch_id`) REFERENCES `launches`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "tree_nodes_not_own_parent_check" CHECK("tree_nodes"."parent_id" IS NULL OR "tree_nodes"."parent_id" <> "tree_nodes"."id"),
-	CONSTRAINT "tree_nodes_is_leaf_check" CHECK("tree_nodes"."is_leaf" IN (0, 1))
+	CONSTRAINT "tree_nodes_not_own_parent_check" CHECK("tree_nodes"."parent_id" IS NULL OR "tree_nodes"."parent_id" <> "tree_nodes"."id")
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `tree_nodes_one_root_unique` ON `tree_nodes` (`tree_id`) WHERE "tree_nodes"."parent_id" IS NULL;--> statement-breakpoint

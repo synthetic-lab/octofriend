@@ -24,15 +24,11 @@ export const trees = sqliteTable(
   ],
 );
 
-export const localLaunches = sqliteTable(
-  "local_launches",
-  {
-    id: integer().primaryKey({ autoIncrement: true }),
-    config: text(),
-    unchained: integer({ mode: "boolean" }).notNull(),
-  },
-  table => [check("local_launches_unchained_check", sql`${table.unchained} IN (0, 1)`)],
-);
+export const localLaunches = sqliteTable("local_launches", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  config: text(),
+  unchained: integer({ mode: "boolean" }).notNull(),
+});
 
 export const dockerLaunches = sqliteTable(
   "docker_launches",
@@ -45,7 +41,6 @@ export const dockerLaunches = sqliteTable(
     unchained: integer({ mode: "boolean" }).notNull(),
   },
   table => [
-    check("docker_launches_unchained_check", sql`${table.unchained} IN (0, 1)`),
     check(
       "docker_launches_kind_args_check",
       sql`(${table.kind} = 'connect' AND ${table.containerTarget} IS NOT NULL AND ${table.dockerRunArgsJson} IS NULL)
@@ -148,7 +143,6 @@ export const treeNodes = sqliteTable(
       "tree_nodes_not_own_parent_check",
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
     ),
-    check("tree_nodes_is_leaf_check", sql`${table.isLeaf} IN (0, 1)`),
   ],
 );
 
