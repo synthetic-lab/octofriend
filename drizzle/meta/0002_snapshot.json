@@ -483,8 +483,8 @@
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
-        "tree_nodes_parent_tree_fk": {
-          "name": "tree_nodes_parent_tree_fk",
+        "tree_nodes_parent_same_tree_fk": {
+          "name": "tree_nodes_parent_same_tree_fk",
           "tableFrom": "tree_nodes",
           "tableTo": "tree_nodes",
           "columnsFrom": ["parent_id", "tree_id"],

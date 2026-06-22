@@ -139,10 +139,10 @@ export const treeNodes = sqliteTable(
     index("tree_nodes_tree_leaf_id_idx").on(table.treeId, table.isLeaf, table.id),
     index("tree_nodes_parent_tree_idx").on(table.parentId, table.treeId),
     foreignKey({
-      name: "tree_nodes_parent_tree_fk",
+      name: "tree_nodes_parent_same_tree_fk",
       columns: [table.parentId, table.treeId],
       foreignColumns: [table.id, table.treeId],
-    }).onDelete("no action"),
+    }).onDelete("restrict"), // onDelete restriction prevents deleting a node if it has children
     check(
       "tree_nodes_not_own_parent_check",
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,
