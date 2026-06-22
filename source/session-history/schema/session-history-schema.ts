@@ -6,6 +6,7 @@ import {
   integer,
   sqliteTable,
   text,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
@@ -61,8 +62,8 @@ export const launches = sqliteTable(
     localLaunchId: integer().references(() => localLaunches.id, { onDelete: "restrict" }),
   },
   table => [
-    uniqueIndex("launches_docker_launch_id_unique").on(table.dockerLaunchId),
-    uniqueIndex("launches_local_launch_id_unique").on(table.localLaunchId),
+    unique().on(table.dockerLaunchId),
+    unique().on(table.localLaunchId),
     check(
       "launches_exactly_one_kind_check",
       sql`(${table.dockerLaunchId} IS NOT NULL) <> (${table.localLaunchId} IS NOT NULL)`,
@@ -100,10 +101,10 @@ export const historyItems = sqliteTable(
     llmIrId: integer().references(() => llmIrs.id, { onDelete: "restrict" }),
   },
   table => [
-    uniqueIndex("history_items_request_failed_id_unique").on(table.requestFailedId),
-    uniqueIndex("history_items_compaction_failed_id_unique").on(table.compactionFailedId),
-    uniqueIndex("history_items_notification_id_unique").on(table.notificationId),
-    uniqueIndex("history_items_llm_ir_id_unique").on(table.llmIrId),
+    unique().on(table.requestFailedId),
+    unique().on(table.compactionFailedId),
+    unique().on(table.notificationId),
+    unique().on(table.llmIrId),
     check(
       "history_items_exactly_one_payload_check",
       sql`(${table.requestFailedId} IS NOT NULL)
@@ -131,8 +132,8 @@ export const treeNodes = sqliteTable(
       .references(() => launches.id, { onDelete: "restrict" }),
   },
   table => [
-    uniqueIndex("tree_nodes_history_item_id_unique").on(table.historyItemId),
-    uniqueIndex("tree_nodes_id_tree_id_unique").on(table.id, table.treeId),
+    unique().on(table.historyItemId),
+    unique().on(table.id, table.treeId),
     uniqueIndex("tree_nodes_one_root_unique")
       .on(table.treeId)
       .where(sql`${table.parentId} IS NULL`),

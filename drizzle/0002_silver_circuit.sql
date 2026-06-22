@@ -30,10 +30,10 @@ CREATE TABLE `history_items` (
         + ("history_items"."llm_ir_id" IS NOT NULL) = 1)
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `history_items_request_failed_id_unique` ON `history_items` (`request_failed_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `history_items_compaction_failed_id_unique` ON `history_items` (`compaction_failed_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `history_items_notification_id_unique` ON `history_items` (`notification_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `history_items_llm_ir_id_unique` ON `history_items` (`llm_ir_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `history_items_requestFailedId_unique` ON `history_items` (`request_failed_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `history_items_compactionFailedId_unique` ON `history_items` (`compaction_failed_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `history_items_notificationId_unique` ON `history_items` (`notification_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `history_items_llmIrId_unique` ON `history_items` (`llm_ir_id`);--> statement-breakpoint
 CREATE TABLE `launches` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`docker_launch_id` integer,
@@ -43,8 +43,8 @@ CREATE TABLE `launches` (
 	CONSTRAINT "launches_exactly_one_kind_check" CHECK(("launches"."docker_launch_id" IS NOT NULL) <> ("launches"."local_launch_id" IS NOT NULL))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `launches_docker_launch_id_unique` ON `launches` (`docker_launch_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `launches_local_launch_id_unique` ON `launches` (`local_launch_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `launches_dockerLaunchId_unique` ON `launches` (`docker_launch_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `launches_localLaunchId_unique` ON `launches` (`local_launch_id`);--> statement-breakpoint
 CREATE TABLE `llm_irs` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`json` text NOT NULL
@@ -81,11 +81,11 @@ CREATE TABLE `tree_nodes` (
 	CONSTRAINT "tree_nodes_is_leaf_check" CHECK("tree_nodes"."is_leaf" IN (0, 1))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `tree_nodes_history_item_id_unique` ON `tree_nodes` (`history_item_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `tree_nodes_id_tree_id_unique` ON `tree_nodes` (`id`,`tree_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `tree_nodes_one_root_unique` ON `tree_nodes` (`tree_id`) WHERE "tree_nodes"."parent_id" IS NULL;--> statement-breakpoint
 CREATE INDEX `tree_nodes_tree_leaf_id_idx` ON `tree_nodes` (`tree_id`,`is_leaf`,`id`);--> statement-breakpoint
 CREATE INDEX `tree_nodes_parent_tree_idx` ON `tree_nodes` (`parent_id`,`tree_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `tree_nodes_historyItemId_unique` ON `tree_nodes` (`history_item_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `tree_nodes_id_treeId_unique` ON `tree_nodes` (`id`,`tree_id`);--> statement-breakpoint
 CREATE TABLE `trees` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,
