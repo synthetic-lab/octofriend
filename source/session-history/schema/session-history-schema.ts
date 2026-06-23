@@ -53,8 +53,8 @@ export const launches = sqliteTable(
   "launches",
   {
     id: integer().primaryKey({ autoIncrement: true }),
-    dockerLaunchId: integer().references(() => dockerLaunches.id, { onDelete: "restrict" }),
-    localLaunchId: integer().references(() => localLaunches.id, { onDelete: "restrict" }),
+    dockerLaunchId: integer().references(() => dockerLaunches.id),
+    localLaunchId: integer().references(() => localLaunches.id),
   },
   table => [
     unique().on(table.dockerLaunchId),
@@ -116,15 +116,15 @@ export const treeNodes = sqliteTable(
     id: integer().primaryKey({ autoIncrement: true }),
     historyItemId: integer()
       .notNull()
-      .references(() => historyItems.id, { onDelete: "restrict" }),
+      .references(() => historyItems.id),
     treeId: integer()
       .notNull()
-      .references(() => trees.id, { onDelete: "restrict" }),
+      .references(() => trees.id, { onDelete: "cascade" }),
     parentId: integer(),
     isLeaf: integer({ mode: "boolean" }).notNull(),
     launchId: integer()
       .notNull()
-      .references(() => launches.id, { onDelete: "restrict" }),
+      .references(() => launches.id),
   },
   table => [
     unique().on(table.historyItemId),
@@ -138,7 +138,7 @@ export const treeNodes = sqliteTable(
       name: "tree_nodes_parent_same_tree_fk",
       columns: [table.parentId, table.treeId],
       foreignColumns: [table.id, table.treeId],
-    }).onDelete("restrict"), // onDelete restriction prevents deleting a node if it has children
+    }).onDelete("cascade"),
     check(
       "tree_nodes_not_own_parent_check",
       sql`${table.parentId} IS NULL OR ${table.parentId} <> ${table.id}`,

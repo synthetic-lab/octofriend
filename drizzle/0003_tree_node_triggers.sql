@@ -31,3 +31,18 @@ BEFORE UPDATE OF `history_item_id`, `tree_id`, `parent_id`, `launch_id` ON `tree
 BEGIN
 	SELECT RAISE(ABORT, 'tree node identity is immutable');
 END;
+--> statement-breakpoint
+CREATE TRIGGER `tree_nodes_delete_history_item`
+AFTER DELETE ON `tree_nodes`
+BEGIN
+	DELETE FROM `history_items` WHERE `id` = OLD.`history_item_id`;
+END;
+--> statement-breakpoint
+CREATE TRIGGER `history_items_delete_payloads`
+AFTER DELETE ON `history_items`
+BEGIN
+	DELETE FROM `request_failed_items` WHERE `id` = OLD.`request_failed_id`;
+	DELETE FROM `compaction_failed_items` WHERE `id` = OLD.`compaction_failed_id`;
+	DELETE FROM `notifications` WHERE `id` = OLD.`notification_id`;
+	DELETE FROM `llm_irs` WHERE `id` = OLD.`llm_ir_id`;
+END;

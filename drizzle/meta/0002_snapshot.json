@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cee81162-721c-482e-85d1-e7257ccd6f9f",
+  "id": "abd25807-3567-4e6b-9383-f10e88a9557e",
   "prevId": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "tables": {
     "input_history": {
@@ -462,7 +462,7 @@
           "tableTo": "trees",
           "columnsFrom": ["tree_id"],
           "columnsTo": ["id"],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "tree_nodes_launch_id_launches_id_fk": {
@@ -480,7 +480,7 @@
           "tableTo": "tree_nodes",
           "columnsFrom": ["parent_id", "tree_id"],
           "columnsTo": ["id", "tree_id"],
-          "onDelete": "restrict",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },

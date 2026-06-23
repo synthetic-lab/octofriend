@@ -72,9 +72,9 @@ CREATE TABLE `tree_nodes` (
 	`is_leaf` integer NOT NULL,
 	`launch_id` integer NOT NULL,
 	FOREIGN KEY (`history_item_id`) REFERENCES `history_items`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`tree_id`) REFERENCES `trees`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`tree_id`) REFERENCES `trees`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`launch_id`) REFERENCES `launches`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "tree_nodes_not_own_parent_check" CHECK("tree_nodes"."parent_id" IS NULL OR "tree_nodes"."parent_id" <> "tree_nodes"."id")
 );
 --> statement-breakpoint
