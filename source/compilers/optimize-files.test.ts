@@ -6,7 +6,7 @@ import { optimizeFiles } from "./optimize-files.ts";
 
 type FileToolCallRequest = Extract<
   ToolCall<typeof toolMap>,
-  { name: "read" | "edit" | "create" | "append" | "prepend" | "rewrite" }
+  { name: "read" | "edit" | "create" | "rewrite" }
 >;
 
 function toolCall(id: string): Extract<FileToolCallRequest, { name: "read" }> {
@@ -19,13 +19,13 @@ function toolCall(id: string): Extract<FileToolCallRequest, { name: "read" }> {
   };
 }
 
-function mutateToolCall(id: string): Extract<FileToolCallRequest, { name: "append" }> {
+function mutateToolCall(id: string): Extract<FileToolCallRequest, { name: "rewrite" }> {
   return {
     type: "tool-call",
     toolCallId: id,
-    name: "append",
+    name: "rewrite",
     original: { filePath: "/tmp/a.txt", text: "" },
-    parsed: { filePath: "/tmp/a.txt", text: "" },
+    parsed: { filePath: "/tmp/a.txt", text: "", originalFileContents: "idk" },
   };
 }
 
