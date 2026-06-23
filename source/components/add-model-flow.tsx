@@ -215,25 +215,47 @@ function CodexOAuthStep({ cancel, onComplete }: { cancel: () => void; onComplete
     const abortController = new AbortController();
 
     async function authorize() {
-      try {
-        const device = await startCodexDeviceAuthorization();
-        const opened = await openDefaultBrowser(device.verificationUri);
-        setStatus({
-          type: "waiting",
-          url: device.verificationUri,
-          code: device.userCode,
-          opened,
-        });
-        const tokens = await pollCodexDeviceAuthorization(device, abortController.signal);
-        await writeCodexOAuthTokens(tokens);
-        onComplete();
-      } catch (error) {
-        if (abortController.signal.aborted) return;
+      const device = await startCodexDeviceAuthorization();
+      if (abortController.signal.aborted) return;
+      if (!device.success) {
         setStatus({
           type: "error",
-          message: error instanceof Error ? error.message : String(error),
+          message: device.error,
         });
+        return;
       }
+
+      const openedResult = await openDefaultBrowser(device.data.verificationUri);
+      const opened = openedResult.success ? openedResult.data : false;
+      if (abortController.signal.aborted) return;
+      setStatus({
+        type: "waiting",
+        url: device.data.verificationUri,
+        code: device.data.userCode,
+        opened,
+      });
+
+      const tokens = await pollCodexDeviceAuthorization(device.data, abortController.signal);
+      if (abortController.signal.aborted) return;
+      if (!tokens.success) {
+        setStatus({
+          type: "error",
+          message: tokens.error,
+        });
+        return;
+      }
+
+      const written = await writeCodexOAuthTokens(tokens.data);
+      if (abortController.signal.aborted) return;
+      if (!written.success) {
+        setStatus({
+          type: "error",
+          message: written.error,
+        });
+        return;
+      }
+
+      onComplete();
     }
 
     authorize();

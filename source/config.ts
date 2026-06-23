@@ -241,13 +241,22 @@ export function resolveAuth(auth: Auth): Promise<AuthResult>;
 export async function resolveAuth(auth: Auth): Promise<AuthResult> {
   if (auth.type === "codex") {
     const tokens = await getCodexOAuthTokens();
-    if (tokens) {
+    if (!tokens.success) {
+      return {
+        ok: false,
+        error: {
+          type: "invalid",
+          message: tokens.error,
+        },
+      };
+    }
+    if (tokens.data) {
       return {
         ok: true,
         auth: {
           type: "oauth",
-          oauthToken: tokens.access,
-          ...(tokens.accountId ? { accountId: tokens.accountId } : {}),
+          oauthToken: tokens.data.access,
+          ...(tokens.data.accountId ? { accountId: tokens.data.accountId } : {}),
         },
       };
     }

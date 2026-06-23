@@ -46,12 +46,16 @@ describe("codex oauth", () => {
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
-      await expect(startCodexDeviceAuthorization()).resolves.toEqual({
-        deviceAuthId: "device-1",
-        userCode: "ABCD-EFGH",
-        verificationUri: CODEX_OAUTH_DEVICE_URL,
-        intervalMs: 2000,
-      });
+      const result = await startCodexDeviceAuthorization();
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(result.data).toEqual({
+          deviceAuthId: "device-1",
+          userCode: "ABCD-EFGH",
+          verificationUri: CODEX_OAUTH_DEVICE_URL,
+          intervalMs: 2000,
+        });
     });
 
     expect(fetch).toHaveBeenCalledOnce();
@@ -65,7 +69,11 @@ describe("codex oauth", () => {
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
-      await expect(startCodexDeviceAuthorization()).rejects.toThrow();
+      const result = await startCodexDeviceAuthorization();
+
+      expect(result.success).toBe(false);
+      if (!result.success)
+        expect(result.error).toContain("Invalid Codex device authorization response");
     });
   });
 
@@ -88,19 +96,21 @@ describe("codex oauth", () => {
       );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
-      await expect(
-        pollCodexDeviceAuthorization({
-          deviceAuthId: "device-1",
-          userCode: "ABCD-EFGH",
-          verificationUri: CODEX_OAUTH_DEVICE_URL,
-          intervalMs: 1000,
-        }),
-      ).resolves.toEqual({
-        access: "access-token",
-        refresh: "refresh-token",
-        expires: Date.parse("2026-06-17T01:00:00.000Z"),
-        accountId: "account-1",
+      const result = await pollCodexDeviceAuthorization({
+        deviceAuthId: "device-1",
+        userCode: "ABCD-EFGH",
+        verificationUri: CODEX_OAUTH_DEVICE_URL,
+        intervalMs: 1000,
       });
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(result.data).toEqual({
+          access: "access-token",
+          refresh: "refresh-token",
+          expires: Date.parse("2026-06-17T01:00:00.000Z"),
+          accountId: "account-1",
+        });
     });
 
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -120,19 +130,21 @@ describe("codex oauth", () => {
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
-      await expect(
-        refreshCodexOAuthTokens({
-          access: "old-access-token",
-          refresh: "refresh-token",
-          expires: Date.parse("2026-06-16T23:00:00.000Z"),
-          accountId: "account-1",
-        }),
-      ).resolves.toEqual({
-        access: "new-access-token",
+      const result = await refreshCodexOAuthTokens({
+        access: "old-access-token",
         refresh: "refresh-token",
-        expires: Date.parse("2026-06-17T00:30:00.000Z"),
+        expires: Date.parse("2026-06-16T23:00:00.000Z"),
         accountId: "account-1",
       });
+
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(result.data).toEqual({
+          access: "new-access-token",
+          refresh: "refresh-token",
+          expires: Date.parse("2026-06-17T00:30:00.000Z"),
+          accountId: "account-1",
+        });
     });
   });
 
@@ -140,7 +152,10 @@ describe("codex oauth", () => {
     const openBrowser = vi.fn(async () => true);
 
     await withMock(codexOAuthDeps, "openBrowser", openBrowser, async () => {
-      await expect(openDefaultBrowser(CODEX_OAUTH_DEVICE_URL)).resolves.toBe(true);
+      const result = await openDefaultBrowser(CODEX_OAUTH_DEVICE_URL);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toBe(true);
     });
 
     expect(openBrowser).toHaveBeenCalledWith(CODEX_OAUTH_DEVICE_URL);
