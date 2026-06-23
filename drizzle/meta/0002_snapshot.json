@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "abd25807-3567-4e6b-9383-f10e88a9557e",
+  "id": "1308853c-b9c7-4f4f-a509-a65ca55dfdf2",
   "prevId": "a748510b-c9cf-46f6-baab-58c39902b5b7",
   "tables": {
     "input_history": {
@@ -254,7 +254,7 @@
           "tableTo": "docker_launches",
           "columnsFrom": ["docker_launch_id"],
           "columnsTo": ["id"],
-          "onDelete": "restrict",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "launches_local_launch_id_local_launches_id_fk": {
@@ -263,7 +263,7 @@
           "tableTo": "local_launches",
           "columnsFrom": ["local_launch_id"],
           "columnsTo": ["id"],
-          "onDelete": "restrict",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
@@ -425,16 +425,6 @@
           "isUnique": true,
           "where": "\"tree_nodes\".\"parent_id\" IS NULL"
         },
-        "tree_nodes_tree_leaf_id_idx": {
-          "name": "tree_nodes_tree_leaf_id_idx",
-          "columns": ["tree_id", "is_leaf", "id"],
-          "isUnique": false
-        },
-        "tree_nodes_parent_tree_idx": {
-          "name": "tree_nodes_parent_tree_idx",
-          "columns": ["parent_id", "tree_id"],
-          "isUnique": false
-        },
         "tree_nodes_historyItemId_unique": {
           "name": "tree_nodes_historyItemId_unique",
           "columns": ["history_item_id"],
@@ -453,7 +443,7 @@
           "tableTo": "history_items",
           "columnsFrom": ["history_item_id"],
           "columnsTo": ["id"],
-          "onDelete": "restrict",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "tree_nodes_tree_id_trees_id_fk": {
@@ -471,7 +461,7 @@
           "tableTo": "launches",
           "columnsFrom": ["launch_id"],
           "columnsTo": ["id"],
-          "onDelete": "restrict",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "tree_nodes_parent_same_tree_fk": {
@@ -530,16 +520,6 @@
           "name": "trees_name_unique",
           "columns": ["name"],
           "isUnique": true
-        },
-        "trees_cwd_updated_at_idx": {
-          "name": "trees_cwd_updated_at_idx",
-          "columns": ["cwd", "updated_at"],
-          "isUnique": false
-        },
-        "trees_updated_at_idx": {
-          "name": "trees_updated_at_idx",
-          "columns": ["updated_at"],
-          "isUnique": false
         }
       },
       "foreignKeys": {},

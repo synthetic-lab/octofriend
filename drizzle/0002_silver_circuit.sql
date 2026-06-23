@@ -37,8 +37,8 @@ CREATE TABLE `launches` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`docker_launch_id` integer,
 	`local_launch_id` integer,
-	FOREIGN KEY (`docker_launch_id`) REFERENCES `docker_launches`(`id`) ON UPDATE no action ON DELETE restrict,
-	FOREIGN KEY (`local_launch_id`) REFERENCES `local_launches`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`docker_launch_id`) REFERENCES `docker_launches`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`local_launch_id`) REFERENCES `local_launches`(`id`) ON UPDATE no action ON DELETE no action,
 	CONSTRAINT "launches_exactly_one_kind_check" CHECK(("launches"."docker_launch_id" IS NOT NULL) <> ("launches"."local_launch_id" IS NOT NULL))
 );
 --> statement-breakpoint
@@ -71,16 +71,14 @@ CREATE TABLE `tree_nodes` (
 	`parent_id` integer,
 	`is_leaf` integer NOT NULL,
 	`launch_id` integer NOT NULL,
-	FOREIGN KEY (`history_item_id`) REFERENCES `history_items`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`history_item_id`) REFERENCES `history_items`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`tree_id`) REFERENCES `trees`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`launch_id`) REFERENCES `launches`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`launch_id`) REFERENCES `launches`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`parent_id`,`tree_id`) REFERENCES `tree_nodes`(`id`,`tree_id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "tree_nodes_not_own_parent_check" CHECK("tree_nodes"."parent_id" IS NULL OR "tree_nodes"."parent_id" <> "tree_nodes"."id")
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `tree_nodes_one_root_unique` ON `tree_nodes` (`tree_id`) WHERE "tree_nodes"."parent_id" IS NULL;--> statement-breakpoint
-CREATE INDEX `tree_nodes_tree_leaf_id_idx` ON `tree_nodes` (`tree_id`,`is_leaf`,`id`);--> statement-breakpoint
-CREATE INDEX `tree_nodes_parent_tree_idx` ON `tree_nodes` (`parent_id`,`tree_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `tree_nodes_historyItemId_unique` ON `tree_nodes` (`history_item_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `tree_nodes_id_treeId_unique` ON `tree_nodes` (`id`,`tree_id`);--> statement-breakpoint
 CREATE TABLE `trees` (
@@ -90,6 +88,4 @@ CREATE TABLE `trees` (
 	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `trees_name_unique` ON `trees` (`name`);--> statement-breakpoint
-CREATE INDEX `trees_cwd_updated_at_idx` ON `trees` (`cwd`,`updated_at`);--> statement-breakpoint
-CREATE INDEX `trees_updated_at_idx` ON `trees` (`updated_at`);
+CREATE UNIQUE INDEX `trees_name_unique` ON `trees` (`name`);

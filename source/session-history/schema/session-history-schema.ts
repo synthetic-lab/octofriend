@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
-  index,
   integer,
   sqliteTable,
   text,
@@ -10,19 +9,12 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const trees = sqliteTable(
-  "trees",
-  {
-    id: integer().primaryKey({ autoIncrement: true }),
-    name: text().notNull().unique(),
-    cwd: text().notNull(),
-    updatedAt: integer().notNull(),
-  },
-  table => [
-    index("trees_cwd_updated_at_idx").on(table.cwd, table.updatedAt),
-    index("trees_updated_at_idx").on(table.updatedAt),
-  ],
-);
+export const trees = sqliteTable("trees", {
+  id: integer().primaryKey({ autoIncrement: true }),
+  name: text().notNull().unique(),
+  cwd: text().notNull(),
+  updatedAt: integer().notNull(),
+});
 
 export const localLaunches = sqliteTable("local_launches", {
   id: integer().primaryKey({ autoIncrement: true }),
@@ -132,8 +124,6 @@ export const treeNodes = sqliteTable(
     uniqueIndex("tree_nodes_one_root_unique")
       .on(table.treeId)
       .where(sql`${table.parentId} IS NULL`),
-    index("tree_nodes_tree_leaf_id_idx").on(table.treeId, table.isLeaf, table.id),
-    index("tree_nodes_parent_tree_idx").on(table.parentId, table.treeId),
     foreignKey({
       name: "tree_nodes_parent_same_tree_fk",
       columns: [table.parentId, table.treeId],
