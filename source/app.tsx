@@ -20,8 +20,6 @@ import shell from "./tools/tool-defs/bash.ts";
 import read from "./tools/tool-defs/read.ts";
 import list from "./tools/tool-defs/list.ts";
 import edit from "./tools/tool-defs/edit.ts";
-import append from "./tools/tool-defs/append.ts";
-import prepend from "./tools/tool-defs/prepend.ts";
 import rewrite from "./tools/tool-defs/rewrite.ts";
 import createTool from "./tools/tool-defs/create.ts";
 import mcp from "./tools/tool-defs/mcp.ts";
@@ -738,8 +736,6 @@ function ToolRequestRenderer({
         return "read:*";
       case "create":
       case "rewrite":
-      case "append":
-      case "prepend":
       case "edit":
         return "edits:*";
       case "mcp":
@@ -775,8 +771,6 @@ function ToolRequestRenderer({
           </Box>
         );
       case "rewrite":
-      case "append":
-      case "prepend":
       case "edit":
         return (
           <Box>
@@ -1187,10 +1181,6 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
       return <McpToolRenderer item={parsedToolSchema(item)} />;
     case "fetch":
       return <FetchToolRenderer item={parsedToolSchema(item)} />;
-    case "append":
-      return <AppendToolRenderer item={parsedToolSchema(item)} />;
-    case "prepend":
-      return <PrependToolRenderer item={parsedToolSchema(item)} />;
     case "rewrite":
       return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
@@ -1270,31 +1260,6 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
   );
 }
 
-function AppendToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof append> }) {
-  const { filePath, text } = item.arguments;
-
-  let startLineNr = 1;
-  try {
-    const file = readFileSync(filePath, "utf8");
-    const lines = countLines(file);
-    startLineNr = lines + 1;
-  } catch {
-    return null;
-  }
-
-  const renderedFile = (
-    <FileRenderer contents={text} filePath={filePath} startLineNr={startLineNr} />
-  );
-  if (!renderedFile) return null;
-
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text>Octo wants to add the following to the end of the file:</Text>
-      {renderedFile}
-    </Box>
-  );
-}
-
 function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
   const themeColor = useColor();
   return (
@@ -1347,16 +1312,6 @@ function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> })
         <Text color={themeColor}>{item.arguments.filePath}</Text>
       </Box>
       <DiffEditRenderer filePath={item.arguments.filePath} item={item.arguments} />
-    </Box>
-  );
-}
-
-function PrependToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof prepend> }) {
-  const { text, filePath } = item.arguments;
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text>Octo wants to add the following to the beginning of the file:</Text>
-      <FileRenderer contents={text} filePath={filePath} />
     </Box>
   );
 }
@@ -1517,8 +1472,6 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     }
     case "edit":
     case "create":
-    case "append":
-    case "prepend":
     case "rewrite": {
       return (
         <Text>
