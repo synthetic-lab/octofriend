@@ -171,6 +171,7 @@ describe("runResponsesAgent", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.type).toBe("unexpected-tool-call");
+      if (result.error.type !== "unexpected-tool-call") return;
       expect(result.error.headers?.get("x-test-header")).toBe("present");
       expect("usage" in result.error ? result.error.usage : null).toEqual({
         input: { cached: 0, uncached: 1, total: 1 },

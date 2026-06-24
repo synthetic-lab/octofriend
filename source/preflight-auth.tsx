@@ -8,7 +8,7 @@ import {
   mergeEnvVar,
   mergeAutofixEnvVar,
   AuthError,
-  readKeyForModelWithDetails,
+  readAuthForModel,
 } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
 
@@ -16,11 +16,24 @@ function resolveModelFromConfig(
   config: Config,
   model: Config["models"][number],
 ): Config["models"][number] {
-  const exact = config.models.find(
-    candidate => candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl,
-  );
+  const exact = config.models.find(candidate => {
+    if (model.type === "codex") {
+      return (
+        candidate.type === "codex" &&
+        candidate.nickname === model.nickname &&
+        candidate.model === model.model
+      );
+    }
+    if (candidate.type === "codex") return false;
+    return candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl;
+  });
   if (exact) return exact;
-  const fallback = config.models.find(candidate => candidate.baseUrl === model.baseUrl);
+  const fallback = config.models.find(candidate => {
+    if (model.type === "codex")
+      return candidate.type === "codex" && candidate.model === model.model;
+    if (candidate.type === "codex") return false;
+    return candidate.baseUrl === model.baseUrl;
+  });
   return fallback ?? model;
 }
 
@@ -69,7 +82,7 @@ export function PreflightModelAuth({
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveModelFromConfig(reloadedConfig, currentModel);
     setCurrentModel(resolvedModel);
-    const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+    const result = await readAuthForModel(resolvedModel, reloadedConfig);
     if (result.ok === false) {
       setAuthError(result.error);
       setIsRetrying(false);
@@ -112,7 +125,11 @@ export function PreflightModelAuth({
       {!authError && (
         <CustomAuthFlow
           config={config}
-          baseUrl={model.baseUrl}
+          authData={
+            model.type === "codex"
+              ? { modelType: "codex" }
+              : { modelType: model.type, baseUrl: model.baseUrl }
+          }
           onCancel={() => {
             setExitMessage("Press CTRL-C to exit");
           }}
@@ -120,13 +137,22 @@ export function PreflightModelAuth({
             let index = config.models.indexOf(model);
             let updatedModel = model;
             if (index >= 0 && auth) {
-              if (auth.type === "env") {
-                await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+              if (model.type === "codex") {
+                if (auth.type === "codex") {
+                  const updatedModels = [...config.models];
+                  updatedModel = { ...model, auth };
+                  updatedModels[index] = updatedModel;
+                  await writeConfig({ ...config, models: updatedModels }, configPath);
+                }
               } else {
-                const updatedModels = [...config.models];
-                updatedModel = { ...model, auth };
-                updatedModels[index] = updatedModel;
-                await writeConfig({ ...config, models: updatedModels }, configPath);
+                if (auth.type === "env") {
+                  await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+                } else if (auth.type === "command") {
+                  const updatedModels = [...config.models];
+                  updatedModel = { ...model, auth };
+                  updatedModels[index] = updatedModel;
+                  await writeConfig({ ...config, models: updatedModels }, configPath);
+                }
               }
             }
             setCurrentModel(updatedModel);
@@ -134,7 +160,7 @@ export function PreflightModelAuth({
             const reloadedConfig = await readConfig(configPath);
             const resolvedModel = resolveModelFromConfig(reloadedConfig, updatedModel);
             setCurrentModel(resolvedModel);
-            const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+            const result = await readAuthForModel(resolvedModel, reloadedConfig);
             if (result.ok) {
               app.exit();
             } else {
@@ -193,7 +219,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveAutofixModelFromConfig(reloadedConfig, currentModel, autofixKey);
     setCurrentModel(resolvedModel);
-    const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+    const result = await readAuthForModel(resolvedModel, reloadedConfig);
     if (result.ok === false) {
       setAuthError(result.error);
       setIsRetrying(false);
@@ -243,7 +269,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 
           <CustomAuthFlow
             config={config}
-            baseUrl={model.baseUrl}
+            authData={{ modelType: undefined, baseUrl: model.baseUrl }}
             onCancel={() => {
               setExitMessage("Press CTRL-C to exit");
             }}
@@ -255,7 +281,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                     mergeAutofixEnvVar(config, autofixKey, model, auth.name),
                     configPath,
                   );
-                } else {
+                } else if (auth.type === "command") {
                   const merged = { ...config };
                   updatedModel = { ...model, auth };
                   merged[autofixKey] = updatedModel;
@@ -271,7 +297,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                 autofixKey,
               );
               setCurrentModel(resolvedModel);
-              const result = await readKeyForModelWithDetails(resolvedModel, reloadedConfig);
+              const result = await readAuthForModel(resolvedModel, reloadedConfig);
               if (result.ok) {
                 app.exit();
               } else {

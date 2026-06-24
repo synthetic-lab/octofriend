@@ -9,6 +9,7 @@ import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
+import { hasCodexOAuthTokens } from "../codex-oauth.ts";
 
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
@@ -71,8 +72,30 @@ export function ModelSetup({
   });
 
   const onChooseProvider = useCallback(
-    (providerKey: keyof typeof PROVIDERS) => {
-      const provider = PROVIDERS[providerKey];
+    async (providerKey: keyof typeof PROVIDERS) => {
+      const provider: ProviderConfig = PROVIDERS[providerKey];
+      if (provider.type === "codex") {
+        if (await hasCodexOAuthTokens()) {
+          return dispatch({
+            from: "initial",
+            to: {
+              step: "found",
+              provider,
+              overrideAuth: { type: "codex" },
+              useEnvVar: false,
+            },
+          });
+        }
+
+        return dispatch({
+          from: "initial",
+          to: {
+            step: "missing",
+            provider,
+          },
+        });
+      }
+
       const envVar = getEnvVar(provider, config, null);
       if (process.env[envVar]) {
         return dispatch({
@@ -133,15 +156,25 @@ export function ModelSetup({
           onImport={models => {
             onComplete(
               models.map(model => {
-                let t: Partial<Config["models"][number]> = {};
-                if (stepData.provider.type) t = { type: stepData.provider.type };
+                if (stepData.provider.type === "codex") {
+                  return {
+                    ...model,
+                    type: "codex",
+                    nickname: `${model.nickname} (${stepData.provider.name})`,
+                    auth: { type: "codex" },
+                  };
+                }
+
                 const base: Config["models"][number] = {
                   ...model,
+                  ...(stepData.provider.type ? { type: stepData.provider.type } : {}),
                   nickname: `${model.nickname} (${stepData.provider.name})`,
                   baseUrl: stepData.provider.baseUrl,
-                  ...t,
                 };
-                if (stepData.overrideAuth) {
+                if (
+                  stepData.overrideAuth?.type === "env" ||
+                  stepData.overrideAuth?.type === "command"
+                ) {
                   base.auth = stepData.overrideAuth;
                 } else if (stepData.useEnvVar) {
                   base.apiEnvVar = getEnvVar(stepData.provider, config, null);
@@ -171,18 +204,25 @@ export function ModelSetup({
       return (
         <CustomAuthFlow
           config={config}
+          authData={
+            stepData.provider.type === "codex"
+              ? { modelType: "codex" }
+              : { modelType: stepData.provider.type, baseUrl: stepData.provider.baseUrl }
+          }
           onComplete={async auth => {
             if (auth && auth.type === "env") {
               await onOverrideDefaultApiKey({
                 [keyFromName(stepData.provider.name)]: auth.name,
               });
             }
+            const overrideAuth: Auth | null =
+              auth || (stepData.provider.type === "codex" ? { type: "codex" } : null);
             dispatch({
               from: "missing",
               to: {
                 step: "found",
                 provider: stepData.provider,
-                overrideAuth: auth || null,
+                overrideAuth,
                 useEnvVar: false,
               },
             });
@@ -190,7 +230,6 @@ export function ModelSetup({
           onCancel={() => {
             dispatch({ from: "missing", to: { step: "initial" } });
           }}
-          baseUrl={stepData.provider.baseUrl}
         />
       );
 
@@ -199,11 +238,49 @@ export function ModelSetup({
         <CustomModelFlow
           config={config}
           onComplete={model => {
-            let modelClone = { ...model };
-            if (stepData.provider.type) {
-              modelClone.type = stepData.provider.type;
+            if (stepData.provider.type === "codex") {
+              onComplete([
+                {
+                  ...model,
+                  type: "codex",
+                  auth: { type: "codex" },
+                },
+              ]);
+              return;
             }
-            onComplete([modelClone]);
+
+            if (model.type === "codex") return;
+            const apiModel = {
+              nickname: model.nickname,
+              baseUrl: model.baseUrl,
+              model: model.model,
+              context: model.context,
+              ...(model.reasoning ? { reasoning: model.reasoning } : {}),
+              ...(model.modalities ? { modalities: model.modalities } : {}),
+              ...(model.auth?.type === "env" || model.auth?.type === "command"
+                ? { auth: model.auth }
+                : {}),
+            };
+
+            if (
+              stepData.provider.type === "standard" ||
+              stepData.provider.type === "openai-responses" ||
+              stepData.provider.type === "anthropic"
+            ) {
+              onComplete([
+                {
+                  ...apiModel,
+                  type: stepData.provider.type,
+                },
+              ]);
+              return;
+            }
+
+            onComplete([
+              {
+                ...apiModel,
+              },
+            ]);
           }}
           onCancel={() => {
             dispatch({
@@ -305,7 +382,12 @@ function ImportModelsFrom({
     for (const model of provider.models) {
       let found = false;
       for (const storedModel of config.models) {
-        if (storedModel.baseUrl === provider.baseUrl && storedModel.model === model.model) {
+        if (
+          storedModel.model === model.model &&
+          (storedModel.type === "codex"
+            ? provider.type === "codex"
+            : storedModel.baseUrl === provider.baseUrl)
+        ) {
           importedModels.push(model);
           found = true;
           break;

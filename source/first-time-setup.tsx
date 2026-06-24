@@ -266,9 +266,10 @@ function AutofixSetup({
     return (
       <CustomAuthFlow
         config={null}
+        authData={{ modelType: undefined, baseUrl: SYNTHETIC_PROVIDER.baseUrl }}
         onComplete={async auth => {
           if (auth && auth.type === "env") await onOverrideDefaultApiKey(auth.name);
-          const authField = auth ? { auth } : {};
+          const authField = auth?.type === "command" ? { auth } : {};
           onComplete({
             diffApply: {
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
@@ -283,7 +284,6 @@ function AutofixSetup({
           });
         }}
         onCancel={() => setAutofixStep("choose")}
-        baseUrl={SYNTHETIC_PROVIDER.baseUrl}
       />
     );
   }
