@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { setupDb } from "./db/setup.ts";
+import { setupDb } from "../db/setup.ts";
 setupDb();
 
 import React from "react";
@@ -8,81 +8,114 @@ import os from "os";
 import fs from "fs/promises";
 import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
-import { fileExists } from "./fs-utils.ts";
-import App from "./app.tsx";
-import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "./config.ts";
-import { tokenCounts } from "./token-tracker.ts";
-import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
-import { FirstTimeSetup } from "./first-time-setup.tsx";
-import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
-import { Transport } from "./transports/transport-common.ts";
-import { LocalTransport } from "./transports/local.ts";
-import { DockerTransport, manageContainer } from "./transports/docker.ts";
-import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
-import { migrate } from "./db/migrate.ts";
-import { run } from "./compilers/run.ts";
-import type { ModelData } from "./compilers/run.ts";
-import { loadInputHistory } from "./input-history/index.ts";
-import { makeAutofixJson } from "./compilers/autofix.ts";
-import { discoverSkills } from "./skills/skills.ts";
-import { timeout } from "./signals.ts";
-import { shutdownLspClients } from "./lsp/client.ts";
+import { fileExists } from "../fs-utils.ts";
+import App from "../app.tsx";
+import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
+import { tokenCounts } from "../token-tracker.ts";
+import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../tools/tool-defs/mcp.ts";
+import { FirstTimeSetup } from "../first-time-setup.tsx";
+import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
+import { Transport } from "../transports/transport-common.ts";
+import { LocalTransport } from "../transports/local.ts";
+import { DockerTransport, manageContainer } from "../transports/docker.ts";
+import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
+import { migrate } from "../db/migrate.ts";
+import { run } from "../compilers/run.ts";
+import type { ModelData } from "../compilers/run.ts";
+import { loadInputHistory } from "../input-history/index.ts";
+import { makeAutofixJson } from "../compilers/autofix.ts";
+import { discoverSkills } from "../skills/skills.ts";
+import { timeout } from "../signals.ts";
+import { shutdownLspClients } from "../lsp/client.ts";
+import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
+import type {
+  DockerConnectCommand,
+  DockerRunCommand,
+  LocalCommand,
+  ParsedCliArgs,
+} from "./cli-args.ts";
+import {
+  loadSessionRecord,
+  createSessionRecord,
+  SessionHistory,
+} from "../session-history/index.ts";
+import type { SessionRecord } from "../session-history/index.ts";
+import { useAppStore, subscribeSessionHistory } from "../state.ts";
 
 const __dirname = import.meta.dirname;
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
 
-const cli = new Command()
-  .description("If run with no subcommands, runs Octo interactively.")
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
-  .action(async opts => {
-    const transport = new LocalTransport();
+const cli = withOctoFlags(
+  new Command().description("If run with no subcommands, runs Octo interactively."),
+)
+  .option("--resume <session-id>", "Resume a previous Octo session")
+  .argument("[docker-run-args...]", "Optional replacement args for `docker run` when resuming")
+  .action(async (dockerRunArgs, opts) => {
+    const resumeSessionId = opts.resume ?? null;
+    if (resumeSessionId == null && dockerRunArgs.length > 0) {
+      console.error("Use octo docker run <args> to start a new session with Docker.");
+      process.exitCode = 1;
+      return;
+    }
+    let runConfig = null;
+    if (resumeSessionId != null) {
+      runConfig = await buildSessionContext(resumeSessionId, {
+        config: opts.config,
+        unchained: opts.unchained,
+        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
+      });
+      if (runConfig == null) return;
+    } else {
+      runConfig = {
+        sessionRecord: null,
+        transport: new LocalTransport(),
+        parsedCliArgs: {
+          kind: "local",
+          config: opts.config,
+          unchained: opts.unchained,
+        } as LocalCommand,
+      };
+    }
+
     try {
       // Set terminal title for tmux
       process.title = "\\_o_O.//";
       // Set terminal title for xterm-compatible term emulators
       process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
-
-      await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
-        transport,
-      });
+      await runMain(runConfig);
     } finally {
-      await transport.close();
+      await runConfig.transport.close();
     }
   });
 
 const docker = cli.command("docker").description("Sandbox Octo inside Docker");
-docker
-  .command("connect")
+withOctoFlags(docker.command("connect"))
   .description("Sandbox Octo inside an already-running container")
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("<target>", "The Docker container")
   .action(async (target, opts) => {
     const transport = await DockerTransport.create({ type: "container", container: target });
-
     try {
       await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
         transport,
+        sessionRecord: null,
+        parsedCliArgs: {
+          kind: "docker-connect",
+          target,
+          config: opts.config,
+          unchained: opts.unchained,
+        } as DockerConnectCommand,
       });
     } finally {
       await transport.close();
     }
   });
 
-docker
-  .command("run")
+withOctoFlags(docker.command("run"))
   .description(
     "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
   )
-  .option("--config <path>")
-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
   .argument("[args...]", "The args to pass to `docker run`")
   .action(async (args, opts) => {
     const transport = await DockerTransport.create({
@@ -92,18 +125,108 @@ docker
 
     try {
       await runMain({
-        config: opts.config,
-        unchained: opts.unchained,
         transport,
+        sessionRecord: null,
+        parsedCliArgs: {
+          kind: "docker-run",
+          dockerRunArgs: args,
+          config: opts.config,
+          unchained: opts.unchained,
+        } as DockerRunCommand,
       });
     } finally {
       await transport.close();
     }
   });
 
-async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
+async function buildSessionContext(
+  resumeSessionId: string,
+  overrides: { config?: string; unchained?: boolean; dockerRunArgs?: string[] },
+): Promise<{
+  sessionRecord: SessionRecord;
+  transport: Transport;
+  parsedCliArgs: ParsedCliArgs;
+} | null> {
+  const sessionRecord = await loadSessionRecord(resumeSessionId);
+  if (sessionRecord == null) {
+    console.error(`No session found with ID ${resumeSessionId}.`);
+    process.exitCode = 1;
+    return null;
+  }
+
+  const storedCliArgs = sessionRecord.metadata.cliArgs;
+  let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
+  if (overrides.dockerRunArgs != null) {
+    if (effectiveCliArgs.kind !== "docker-run") {
+      console.error(`
+        Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.,
+      `);
+      process.exitCode = 1;
+      return null;
+    } else {
+      effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
+    }
+  }
+
+  const shared = {
+    parsedCliArgs: effectiveCliArgs,
+    sessionRecord,
+  };
+
+  switch (effectiveCliArgs.kind) {
+    case "local":
+      return {
+        ...shared,
+        transport: new LocalTransport(),
+      };
+    case "docker-connect":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "container",
+          container: effectiveCliArgs.target,
+        }),
+      };
+    case "docker-run":
+      return {
+        ...shared,
+        transport: await DockerTransport.create({
+          type: "image",
+          image: await manageContainer(effectiveCliArgs.dockerRunArgs),
+        }),
+      };
+  }
+}
+
+async function resumeExistingSession(sessionRecord: SessionRecord) {
+  const history = sessionRecord.nodePath.map(node => node.historyItem);
+  const sessionHistory = new SessionHistory(sessionRecord);
+  useAppStore.setState({ history, sessionId: sessionRecord.metadata.sessionId, sessionHistory });
+}
+
+async function runMain(opts: {
+  parsedCliArgs: ParsedCliArgs;
+  transport: Transport;
+  sessionRecord?: SessionRecord | null;
+}) {
+  if (opts.sessionRecord != null) {
+    resumeExistingSession(opts.sessionRecord);
+  } else {
+    const sessionId = crypto.randomUUID();
+    const sessionRecord = createSessionRecord(
+      sessionId,
+      opts.transport.cwd,
+      opts.parsedCliArgs.kind,
+      opts.parsedCliArgs,
+    );
+    const sessionHistory = new SessionHistory(sessionRecord);
+    useAppStore.setState({ sessionId, sessionHistory });
+  }
+
+  const unsub = subscribeSessionHistory();
+
   try {
-    let { config, configPath } = await loadConfig(opts.config);
+    let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -138,7 +261,7 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
         configPath={configPath}
         cwd={cwd}
         metadata={APP_METADATA}
-        unchained={!!opts.unchained}
+        unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
@@ -152,6 +275,15 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     );
 
     await waitUntilExit();
+    unsub();
+
+    const { sessionHistory, sessionId } = useAppStore.getState();
+    if (sessionHistory != null) {
+      await sessionHistory.flush();
+    }
+    if (sessionId != null) {
+      console.log(`\nResume this session with octo --resume ${sessionId}`);
+    }
 
     console.log("\nApprox. tokens used:");
     if (Object.keys(tokenCounts()).length === 0) {
