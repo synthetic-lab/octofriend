@@ -7,6 +7,7 @@ import {
 } from "./config.ts";
 import { HistoryItem } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
+import { SessionHistory } from "./session-history/index.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
@@ -99,6 +100,8 @@ export type UiState = {
   history: Array<HistoryItem>;
   clearNonce: number;
   lastUserPromptIndex: number | null;
+  sessionId: string | null;
+  sessionHistory: SessionHistory | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -144,6 +147,8 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptIndex: null,
+  sessionId: null,
+  sessionHistory: null,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -688,4 +693,12 @@ export function useModel() {
   const config = useConfig();
 
   return getModelFromConfig(config, modelOverride);
+}
+
+export function subscribeSessionHistory() {
+  return useAppStore.subscribe((state, prevState) => {
+    if (state.history !== prevState.history && state.sessionHistory != null) {
+      state.sessionHistory.replace(state.history);
+    }
+  });
 }
