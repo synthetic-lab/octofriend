@@ -6,9 +6,8 @@ import {
   readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
-import { SessionHistory } from "./session-history/index.ts";
+import { HistoryItem, SessionHistory } from "./session-history/index.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";

@@ -15,7 +15,6 @@ import {
   useConfig,
   useSetConfig,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -78,6 +77,7 @@ import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
+import { HistoryItem } from "./session-history/index.ts";
 
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
