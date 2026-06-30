@@ -234,6 +234,9 @@ async function runWriteTransaction<T>(operation: (tx: DbTransaction) => T): Prom
       return db().transaction(operation);
     } catch (err) {
       if (!isSqliteBusyError(err) || attempt >= SQLITE_BUSY_RETRY_ATTEMPTS) {
+        // todo: not sure if i should actually throw or just ignore... don't want people to have their octo not work
+        // just cuz the sql is super busy
+        throw err;
       }
     }
   }
@@ -477,6 +480,8 @@ export class SessionHistory {
       session.nodePath = [...nodePath, ...result.newNodes];
       return true;
     } catch (err) {
+      // todo: not sure if i should actually throw or just ignore... don't want people to have their octo not work
+      // just cuz the sql is super busy
       throw err;
     }
   }
