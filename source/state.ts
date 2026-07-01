@@ -7,7 +7,13 @@ import {
   runNotifyCommand,
 } from "./config.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
-import { HistoryItem, SessionHistory } from "./session-history/index.ts";
+import {
+  createSession,
+  HistoryNode,
+  insertHistoryItems,
+  HistoryItem,
+  Session,
+} from "./session-history/index.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
@@ -103,11 +109,10 @@ export type UiState = {
   quotaData: QuotaData | null;
   byteCount: number;
   query: string;
-  history: Array<HistoryItem>;
+  history: Array<HistoryNode>;
   clearNonce: number;
   lastUserPromptIndex: number | null;
-  sessionId: string | null;
-  sessionHistory: SessionHistory | null;
+  session: Session | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -138,6 +143,18 @@ export type UiState = {
   runAgent: (args: RunArgs) => Promise<void>;
 };
 
+function appendAndPersistHistoryItems(
+  session: Session | null,
+  prevHistory: HistoryNode[],
+  itemsToInsert: HistoryItem[],
+): HistoryNode[] {
+  if (session == null) {
+    throw new Error("Cannot write history before the session is initialized.");
+  }
+  const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
+  return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
+}
+
 export const useAppStore = create<UiState>((set, get) => ({
   preMenuModeData: null,
   _notifyTimer: null,
@@ -154,8 +171,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptIndex: null,
-  sessionId: null,
-  sessionHistory: null,
+  session: null,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -210,7 +226,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     };
 
-    let history = [...get().history, userMessage];
+    const history = appendAndPersistHistoryItems(get().session, get().history, [userMessage]);
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport });
   },
@@ -304,8 +320,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     }
     set({
-      history: [
-        ...get().history,
+      history: appendAndPersistHistoryItems(get().session, get().history, [
         {
           type: "llm-ir",
           ir: {
@@ -314,7 +329,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
         },
         ...skippedCalls,
-      ],
+      ]),
       modeData: {
         mode: "input",
         vimMode: "INSERT",
@@ -393,38 +408,35 @@ export const useAppStore = create<UiState>((set, get) => ({
   setModelOverride: model => {
     set({
       modelOverride: model,
-      history: [
-        ...get().history,
+      history: appendAndPersistHistoryItems(get().session, get().history, [
         {
           type: "notification",
           content: `Model: ${model}`,
         },
-      ],
+      ]),
     });
   },
 
   notify: notif => {
     set({
-      history: [
-        ...get().history,
+      history: appendAndPersistHistoryItems(get().session, get().history, [
         {
           type: "notification",
           content: notif,
         },
-      ],
+      ]),
     });
   },
 
   startNewSession: async () => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse, sessionHistory } = get();
+    const { abortResponse, session } = get();
     abortResponse();
 
-    if (sessionHistory == null) {
+    if (session == null) {
       throw new Error("Cannot start a new session before session history is initialized.");
     }
-
-    const sessionId = await sessionHistory.startNewSession();
+    const { cwd, transportKind, cliArgs } = session.metadata;
 
     set(state => ({
       history: [],
@@ -432,7 +444,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      sessionId,
+      session: createSession(crypto.randomUUID(), cwd, transportKind, cliArgs),
     }));
   },
 
@@ -448,10 +460,11 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport }) => {
-    let { modeData } = get();
+    let { modeData, session } = get();
     if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
+    if (session == null) throw new Error("Cannot run a tool before the session is initialized.");
     if (modeData.runningToolCallId != null) {
       if (process.env["CANARY_OCTO"] === "1") {
         throw new Error(
@@ -466,10 +479,10 @@ export const useAppStore = create<UiState>((set, get) => ({
     const tools = await loadTools(transport, abortController.signal, config);
 
     const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    if (get().session !== session) return;
     if (!result.success) {
       set({
-        history: [
-          ...get().history,
+        history: appendAndPersistHistoryItems(session, get().history, [
           {
             type: "llm-ir",
             ir: {
@@ -478,17 +491,16 @@ export const useAppStore = create<UiState>((set, get) => ({
               toolCall: toolReq,
             },
           },
-        ],
+        ]),
       });
     } else {
       set({
-        history: [
-          ...get().history,
+        history: appendAndPersistHistoryItems(session, get().history, [
           {
             type: "llm-ir",
             ir: toolRunResultToIR(result.data, toolReq),
           },
-        ],
+        ]),
       });
     }
 
@@ -504,6 +516,8 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runAgent: async ({ config, transport }) => {
     const historyCopy = [...get().history];
+    const session = get().session;
+    if (session == null) throw new Error("Cannot run the agent before the session is initialized.");
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -611,11 +625,12 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           compactionParsed: event => {
             throttle.flush();
+            if (get().session !== session) return;
             const checkpointItem: HistoryItem = {
               type: "llm-ir",
               ir: event.checkpoint,
             };
-            set({ history: [...historyCopy, checkpointItem] });
+            set({ history: appendAndPersistHistoryItems(session, historyCopy, [checkpointItem]) });
           },
 
           autofixingJson: () => {
@@ -642,13 +657,22 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           retryTool: event => {
             throttle.flush();
-            set({ history: [...historyCopy, ...outputToHistory(event.irs)] });
+            if (get().session !== session) return;
+            set({
+              history: appendAndPersistHistoryItems(
+                session,
+                historyCopy,
+                outputToHistory(event.irs),
+              ),
+            });
           },
         },
       });
       throttle.flush();
-      historyCopy.push(...outputToHistory(finish.irs));
-      set({ history: [...historyCopy] });
+      if (get().session !== session) return;
+      set({
+        history: appendAndPersistHistoryItems(session, historyCopy, outputToHistory(finish.irs)),
+      });
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
         get().notifyReadyForInput(config);
@@ -695,12 +719,11 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: finishReason.requestError,
             curlCommand: finishReason.curl,
           },
-          history: [
-            ...get().history,
+          history: appendAndPersistHistoryItems(session, get().history, [
             {
               type: "compaction-failed",
             },
-          ],
+          ]),
         });
         return;
       }
@@ -750,12 +773,4 @@ export function useModel() {
   const config = useConfig();
 
   return getModelFromConfig(config, modelOverride);
-}
-
-export function subscribeSessionHistory() {
-  return useAppStore.subscribe((state, prevState) => {
-    if (state.history !== prevState.history && state.sessionHistory != null) {
-      state.sessionHistory.replace(state.history);
-    }
-  });
 }

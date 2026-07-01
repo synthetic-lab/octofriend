@@ -135,10 +135,3 @@ export const treeNodes = sqliteTable(
     ),
   ],
 );
-
-export type RequestFailedRow = typeof requestFailedItems.$inferSelect;
-export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect;
-export type NotificationRow = typeof notifications.$inferSelect;
-export type LlmIrRow = typeof llmIrs.$inferSelect;
-
-export type TreeNodeRow = typeof treeNodes.$inferSelect;

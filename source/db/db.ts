@@ -1,8 +1,7 @@
-import { BetterSQLiteTransaction, drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import * as schema from "./schema.ts";
 import { DB_PATH } from "./setup.ts";
-import { ExtractTablesWithRelations } from "drizzle-orm";
 
 export * as schema from "./schema.ts";
 
@@ -26,23 +25,4 @@ export function db() {
     });
   }
   return client;
-}
-
-export type DbTransaction = BetterSQLiteTransaction<
-  typeof schema,
-  ExtractTablesWithRelations<typeof schema>
->; // Drizzle doesn't export the transaction type directly
-
-export function isSqliteBusyError(error: unknown): boolean {
-  const code = sqliteErrorCode(error);
-  return code === "SQLITE_BUSY" || code === "SQLITE_LOCKED";
-}
-
-export function isSqliteConstraint(error: unknown): boolean {
-  return sqliteErrorCode(error).startsWith("SQLITE_CONSTRAINT");
-}
-
-export function sqliteErrorCode(error: unknown): string {
-  if (typeof error !== "object" || error == null || !("code" in error)) return "";
-  return String(error.code);
 }

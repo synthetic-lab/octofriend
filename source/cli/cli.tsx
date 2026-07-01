@@ -6,6 +6,7 @@ import React from "react";
 import path from "path";
 import os from "os";
 import fs from "fs/promises";
+import chalk from "chalk";
 import { render } from "ink";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "../fs-utils.ts";
@@ -34,13 +35,10 @@ import type {
   LocalCommand,
   ParsedCliArgs,
 } from "./cli-args.ts";
-import {
-  loadSessionRecord,
-  createSessionRecord,
-  SessionHistory,
-} from "../session-history/index.ts";
-import type { SessionRecord } from "../session-history/index.ts";
-import { useAppStore, subscribeSessionHistory } from "../state.ts";
+import { createSession, loadSession } from "../session-history/index.ts";
+import type { LoadedSession } from "../session-history/index.ts";
+import { useAppStore } from "../state.ts";
+import { THEME_COLOR } from "../theme.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -69,13 +67,13 @@ const cli = withOctoFlags(
       if (runConfig == null) return;
     } else {
       runConfig = {
-        sessionRecord: null,
+        loadedSession: null,
         transport: new LocalTransport(),
         parsedCliArgs: {
-          kind: "local",
+          kind: "local" as const,
           config: opts.config,
           unchained: opts.unchained,
-        } as LocalCommand,
+        },
       };
     }
 
@@ -99,13 +97,13 @@ withOctoFlags(docker.command("connect"))
     try {
       await runMain({
         transport,
-        sessionRecord: null,
+        loadedSession: null,
         parsedCliArgs: {
           kind: "docker-connect",
           target,
           config: opts.config,
           unchained: opts.unchained,
-        } as DockerConnectCommand,
+        },
       });
     } finally {
       await transport.close();
@@ -126,13 +124,13 @@ withOctoFlags(docker.command("run"))
     try {
       await runMain({
         transport,
-        sessionRecord: null,
+        loadedSession: null,
         parsedCliArgs: {
           kind: "docker-run",
           dockerRunArgs: args,
           config: opts.config,
           unchained: opts.unchained,
-        } as DockerRunCommand,
+        },
       });
     } finally {
       await transport.close();
@@ -143,18 +141,18 @@ async function buildSessionContext(
   resumeSessionId: string,
   overrides: { config?: string; unchained?: boolean; dockerRunArgs?: string[] },
 ): Promise<{
-  sessionRecord: SessionRecord;
+  loadedSession: LoadedSession;
   transport: Transport;
   parsedCliArgs: ParsedCliArgs;
 } | null> {
-  const sessionRecord = await loadSessionRecord(resumeSessionId);
-  if (sessionRecord == null) {
+  const loadedSession = loadSession(resumeSessionId);
+  if (loadedSession == null) {
     console.error(`No session found with ID ${resumeSessionId}.`);
     process.exitCode = 1;
     return null;
   }
 
-  const storedCliArgs = sessionRecord.metadata.cliArgs;
+  const storedCliArgs = loadedSession.session.metadata.cliArgs;
   let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
   if (overrides.dockerRunArgs != null) {
     if (effectiveCliArgs.kind !== "docker-run") {
@@ -170,7 +168,7 @@ async function buildSessionContext(
 
   const shared = {
     parsedCliArgs: effectiveCliArgs,
-    sessionRecord,
+    loadedSession,
   };
 
   switch (effectiveCliArgs.kind) {
@@ -198,32 +196,27 @@ async function buildSessionContext(
   }
 }
 
-async function resumeExistingSession(sessionRecord: SessionRecord) {
-  const history = sessionRecord.nodePath.map(node => node.historyItem);
-  const sessionHistory = new SessionHistory(sessionRecord);
-  useAppStore.setState({ history, sessionId: sessionRecord.metadata.sessionId, sessionHistory });
-}
-
 async function runMain(opts: {
   parsedCliArgs: ParsedCliArgs;
   transport: Transport;
-  sessionRecord?: SessionRecord | null;
+  loadedSession?: LoadedSession | null;
 }) {
-  if (opts.sessionRecord != null) {
-    resumeExistingSession(opts.sessionRecord);
+  if (opts.loadedSession != null) {
+    opts.loadedSession.session.metadata.cliArgs = opts.parsedCliArgs;
+    opts.loadedSession.session.metadata.transportKind = opts.parsedCliArgs.kind;
+    useAppStore.setState({
+      history: opts.loadedSession.history,
+      session: opts.loadedSession.session,
+    });
   } else {
-    const sessionId = crypto.randomUUID();
-    const sessionRecord = createSessionRecord(
-      sessionId,
+    const session = createSession(
+      crypto.randomUUID(),
       opts.transport.cwd,
       opts.parsedCliArgs.kind,
       opts.parsedCliArgs,
     );
-    const sessionHistory = new SessionHistory(sessionRecord);
-    useAppStore.setState({ sessionId, sessionHistory });
+    useAppStore.setState({ history: [], session });
   }
-
-  const unsub = subscribeSessionHistory();
 
   try {
     let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
@@ -275,14 +268,11 @@ async function runMain(opts: {
     );
 
     await waitUntilExit();
-    unsub();
 
-    const { sessionHistory, sessionId } = useAppStore.getState();
-    if (sessionHistory != null) {
-      await sessionHistory.flush();
-    }
-    if (sessionId != null) {
-      console.log(`\nResume this session with octo --resume ${sessionId}`);
+    const { history, session } = useAppStore.getState();
+    if (session != null && history.some(item => item.type === "llm-ir")) {
+      const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
+      console.log(`\nResume this session with ${resumeCommand}`);
     }
 
     console.log("\nApprox. tokens used:");

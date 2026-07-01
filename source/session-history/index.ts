@@ -1,58 +1,30 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
-import { db, DbTransaction, isSqliteBusyError, schema } from "../db/db.ts";
+import { desc, eq } from "drizzle-orm";
+import { db, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
-import { commonPathPrefixLength, hasMessages } from "./history-utils.ts";
 import {
-  RequestFailedRow,
-  CompactionFailedRow,
-  NotificationRow,
-  LlmIrRow,
-  trees,
+  compactionFailedItems,
+  dockerLaunches,
+  historyItems,
   launches,
-  treeNodes,
   llmIrs,
+  localLaunches,
   notifications,
   requestFailedItems,
-  compactionFailedItems,
-  historyItems,
-  TreeNodeRow,
+  treeNodes,
+  trees,
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
 
-const SQLITE_BUSY_RETRY_ATTEMPTS = 4;
-
 export type TransportKind = "local" | "docker-connect" | "docker-run";
 
-export type RequestFailedHistoryItem = Omit<RequestFailedRow, "id"> & {
-  type: "request-failed";
-};
-
-export type CompactionFailedHistoryItem = Omit<CompactionFailedRow, "id"> & {
-  type: "compaction-failed";
-};
-
-export type NotificationHistoryItem = Omit<NotificationRow, "id"> & {
-  type: "notification";
-};
-
-export type LlmIrHistoryItem = Omit<LlmIrRow, "id" | "json"> & {
-  type: "llm-ir";
-  ir: OctoIR;
-};
-
 export type HistoryItem =
-  | RequestFailedHistoryItem
-  | CompactionFailedHistoryItem
-  | NotificationHistoryItem
-  | LlmIrHistoryItem;
+  | { type: "request-failed" }
+  | { type: "compaction-failed" }
+  | { type: "notification"; content: string }
+  | { type: "llm-ir"; ir: OctoIR };
 
-export type SessionNode = {
-  nodeId: number;
-  parentId: number | null;
-  historyItem: HistoryItem;
-};
+export type HistoryNode = HistoryItem & { nodeId: number };
 
 export type SessionMetadata = {
   sessionId: string;
@@ -61,455 +33,302 @@ export type SessionMetadata = {
   cliArgs: ParsedCliArgs;
 };
 
-export type SessionRecord = {
+export type Session = {
   metadata: SessionMetadata;
-  nodePath: SessionNode[];
+  treeId: number | null;
+  launchId: number | null;
 };
 
-export function createSessionRecord(
+export type LoadedSession = {
+  session: Session;
+  history: HistoryNode[];
+};
+
+export function createSession(
   sessionId: string,
   cwd: string,
   transportKind: TransportKind,
   cliArgs: ParsedCliArgs,
-): SessionRecord {
+): Session {
   return {
     metadata: { sessionId, cwd, transportKind, cliArgs },
-    nodePath: [],
+    treeId: null,
+    launchId: null,
   };
 }
 
-export async function loadSessionRecord(sessionId: string): Promise<SessionRecord | null> {
-  return runWriteTransaction(tx => {
-    const tree = tx
-      .select({ id: trees.id, cwd: trees.cwd })
-      .from(trees)
-      .where(eq(trees.name, sessionId))
-      .get();
-
-    if (tree == null) return null;
-
-    const mostRecentLeaf = tx
-      .select()
-      .from(treeNodes)
-      .where(and(eq(treeNodes.treeId, tree.id), eq(treeNodes.isLeaf, true)))
-      .orderBy(desc(treeNodes.id))
-      .limit(1)
-      .get();
-
-    if (mostRecentLeaf == null) return null;
-
-    const metadata = loadSessionMetadata(tx, sessionId, tree.cwd, mostRecentLeaf.launchId);
-    if (metadata == null) return null;
-
-    const nodePath = loadNodePathToLeaf(tx, mostRecentLeaf);
-    return { metadata, nodePath } satisfies SessionRecord;
-  });
-}
-
-function loadSessionMetadata(
-  tx: DbTransaction,
-  sessionId: string,
-  cwd: string,
-  launchId: number,
-): SessionMetadata | null {
-  const cliArgs = loadCliArgsFromLaunch(tx, launchId);
-  if (cliArgs == null) return null;
-
-  return {
-    sessionId,
-    cwd,
-    transportKind: cliArgs.kind,
-    cliArgs,
-  };
-}
-
-function loadCliArgsFromLaunch(tx: DbTransaction, launchId: number): ParsedCliArgs | null {
-  const launch = tx
+export function loadSession(sessionId: string): LoadedSession | null {
+  const rows = db()
     .select({
-      localLaunchId: launches.localLaunchId,
-      dockerLaunchId: launches.dockerLaunchId,
-    })
-    .from(launches)
-    .where(eq(launches.id, launchId))
-    .get()!;
-
-  if (launch.localLaunchId != null) {
-    const local = tx
-      .select({ config: schema.localLaunches.config, unchained: schema.localLaunches.unchained })
-      .from(schema.localLaunches)
-      .where(eq(schema.localLaunches.id, launch.localLaunchId))
-      .get()!;
-    return {
-      kind: "local",
-      config: local.config ?? undefined,
-      unchained: local.unchained || undefined,
-    };
-  }
-
-  if (launch.dockerLaunchId != null) {
-    const docker = tx
-      .select({
-        kind: schema.dockerLaunches.kind,
-        containerTarget: schema.dockerLaunches.containerTarget,
-        dockerRunArgsJson: schema.dockerLaunches.dockerRunArgsJson,
-        config: schema.dockerLaunches.config,
-        unchained: schema.dockerLaunches.unchained,
-      })
-      .from(schema.dockerLaunches)
-      .where(eq(schema.dockerLaunches.id, launch.dockerLaunchId))
-      .get()!;
-    if (docker.kind === "connect") {
-      return {
-        kind: "docker-connect",
-        target: docker.containerTarget!,
-        config: docker.config ?? undefined,
-        unchained: docker.unchained || undefined,
-      };
-    }
-    return {
-      kind: "docker-run",
-      dockerRunArgs: JSON.parse(docker.dockerRunArgsJson!),
-      config: docker.config ?? undefined,
-      unchained: docker.unchained || undefined,
-    };
-  }
-
-  return null;
-}
-
-function loadNodePathToLeaf(tx: DbTransaction, mostRecentLeaf: TreeNodeRow): SessionNode[] {
-  const nodePathToRoot: TreeNodeRow[] = [mostRecentLeaf];
-  let currentParentId = mostRecentLeaf.parentId;
-  while (currentParentId != null) {
-    const parent = tx.select().from(treeNodes).where(eq(treeNodes.id, currentParentId)).get()!;
-    nodePathToRoot.push(parent);
-    currentParentId = parent.parentId;
-  }
-
-  const nodePathToLeaf = nodePathToRoot.reverse();
-
-  return nodePathToLeaf.map(node => ({
-    nodeId: node.id,
-    parentId: node.parentId,
-    historyItem: loadHistoryItem(tx, node.historyItemId),
-  }));
-}
-
-function loadHistoryItem(tx: DbTransaction, historyItemId: number): HistoryItem {
-  const row = tx
-    .select({
+      treeId: trees.id,
+      cwd: trees.cwd,
+      nodeId: treeNodes.id,
+      parentId: treeNodes.parentId,
+      isLeaf: treeNodes.isLeaf,
+      nodeLaunchId: treeNodes.launchId,
       requestFailedId: historyItems.requestFailedId,
       compactionFailedId: historyItems.compactionFailedId,
-      notificationId: historyItems.notificationId,
-      llmIrId: historyItems.llmIrId,
+      notificationContent: notifications.content,
+      llmIrJson: llmIrs.json,
+      localLaunchId: launches.localLaunchId,
+      localConfig: localLaunches.config,
+      localUnchained: localLaunches.unchained,
+      dockerLaunchId: launches.dockerLaunchId,
+      dockerKind: dockerLaunches.kind,
+      dockerContainerTarget: dockerLaunches.containerTarget,
+      dockerRunArgsJson: dockerLaunches.dockerRunArgsJson,
+      dockerConfig: dockerLaunches.config,
+      dockerUnchained: dockerLaunches.unchained,
     })
-    .from(historyItems)
-    .where(eq(historyItems.id, historyItemId))
-    .get()!;
+    .from(trees)
+    .leftJoin(treeNodes, eq(treeNodes.treeId, trees.id))
+    .leftJoin(historyItems, eq(historyItems.id, treeNodes.historyItemId))
+    .leftJoin(requestFailedItems, eq(requestFailedItems.id, historyItems.requestFailedId))
+    .leftJoin(compactionFailedItems, eq(compactionFailedItems.id, historyItems.compactionFailedId))
+    .leftJoin(notifications, eq(notifications.id, historyItems.notificationId))
+    .leftJoin(llmIrs, eq(llmIrs.id, historyItems.llmIrId))
+    .leftJoin(launches, eq(launches.id, treeNodes.launchId))
+    .leftJoin(localLaunches, eq(localLaunches.id, launches.localLaunchId))
+    .leftJoin(dockerLaunches, eq(dockerLaunches.id, launches.dockerLaunchId))
+    .where(eq(trees.name, sessionId))
+    .orderBy(desc(treeNodes.id))
+    .all();
 
-  if (row.llmIrId != null) {
-    const llmIrRow = tx
-      .select({ json: llmIrs.json })
-      .from(llmIrs)
-      .where(eq(llmIrs.id, row.llmIrId))
-      .get()!;
-    return { type: "llm-ir", ir: deserializeLlmIr(llmIrRow.json) };
-  }
-  if (row.notificationId != null) {
-    const notificationRow = tx
-      .select({ content: notifications.content })
-      .from(notifications)
-      .where(eq(notifications.id, row.notificationId))
-      .get()!;
-    return { type: "notification", content: notificationRow.content };
-  }
-  if (row.requestFailedId != null) {
-    return { type: "request-failed" };
-  }
-  return { type: "compaction-failed" };
-}
+  const mostRecentLeaf = rows.find(row => row.nodeId != null && row.isLeaf);
+  if (mostRecentLeaf?.nodeId == null || mostRecentLeaf.nodeLaunchId == null) return null;
 
-async function runWriteTransaction<T>(operation: (tx: DbTransaction) => T): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return db().transaction(operation);
-    } catch (err) {
-      if (!isSqliteBusyError(err) || attempt >= SQLITE_BUSY_RETRY_ATTEMPTS) {
-        // todo: not sure if i should actually throw or just ignore... don't want people to have their octo not work
-        // just cuz the sql is super busy
-        throw err;
-      }
+  const rowsByNodeId = new Map<number, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (row.nodeId != null) rowsByNodeId.set(row.nodeId, row);
+  }
+
+  const history: HistoryNode[] = [];
+  const visited = new Set<number>();
+  let current: (typeof rows)[number] | undefined = mostRecentLeaf;
+  while (current?.nodeId != null) {
+    if (visited.has(current.nodeId)) {
+      throw new Error(`Session ${sessionId} contains a cycle in its history tree.`);
+    }
+    visited.add(current.nodeId);
+    history.push(historyItemFromRow(current));
+    if (current.parentId == null) break;
+    current = rowsByNodeId.get(current.parentId);
+    if (current == null) {
+      throw new Error(`Session ${sessionId} contains a history node with a missing parent.`);
     }
   }
+  history.reverse();
+
+  const cliArgs = cliArgsFromRow(mostRecentLeaf);
+  return {
+    session: {
+      metadata: {
+        sessionId,
+        cwd: mostRecentLeaf.cwd,
+        transportKind: cliArgs.kind,
+        cliArgs,
+      },
+      treeId: mostRecentLeaf.treeId,
+      launchId: null,
+    },
+    history,
+  };
 }
 
-function validateAndGetTreeId(
-  tx: DbTransaction,
-  metadata: SessionMetadata,
-  updatedAt: number,
-): number {
-  const expectedTreeName = metadata.sessionId; // a tree's name is the UUID of the session
-  tx.insert(trees)
-    .values({
-      name: expectedTreeName,
-      cwd: metadata.cwd,
-      updatedAt,
-    })
+function historyItemFromRow(row: {
+  nodeId: number | null;
+  requestFailedId: number | null;
+  compactionFailedId: number | null;
+  notificationContent: string | null;
+  llmIrJson: string | null;
+}): HistoryNode {
+  if (row.nodeId == null) throw new Error("Cannot load a history item without a tree node.");
+  if (row.llmIrJson != null) {
+    return { nodeId: row.nodeId, type: "llm-ir", ir: deserializeLlmIr(row.llmIrJson) };
+  }
+  if (row.notificationContent != null) {
+    return { nodeId: row.nodeId, type: "notification", content: row.notificationContent };
+  }
+  if (row.requestFailedId != null) return { nodeId: row.nodeId, type: "request-failed" };
+  if (row.compactionFailedId != null) return { nodeId: row.nodeId, type: "compaction-failed" };
+  throw new Error(`History node ${row.nodeId} has no payload.`);
+}
+
+function cliArgsFromRow(row: {
+  localLaunchId: number | null;
+  localConfig: string | null;
+  localUnchained: boolean | null;
+  dockerLaunchId: number | null;
+  dockerKind: "connect" | "run" | null;
+  dockerContainerTarget: string | null;
+  dockerRunArgsJson: string | null;
+  dockerConfig: string | null;
+  dockerUnchained: boolean | null;
+}): ParsedCliArgs {
+  if (row.localLaunchId != null) {
+    return {
+      kind: "local",
+      config: row.localConfig ?? undefined,
+      unchained: row.localUnchained || undefined,
+    };
+  }
+  if (row.dockerLaunchId == null || row.dockerKind == null) {
+    throw new Error("Session history node has no launch configuration.");
+  }
+  if (row.dockerKind === "connect") {
+    if (row.dockerContainerTarget == null) {
+      throw new Error("Docker connect launch has no container target.");
+    }
+    return {
+      kind: "docker-connect",
+      target: row.dockerContainerTarget,
+      config: row.dockerConfig ?? undefined,
+      unchained: row.dockerUnchained || undefined,
+    };
+  }
+  if (row.dockerRunArgsJson == null) throw new Error("Docker run launch has no arguments.");
+  return {
+    kind: "docker-run",
+    dockerRunArgs: JSON.parse(row.dockerRunArgsJson),
+    config: row.dockerConfig ?? undefined,
+    unchained: row.dockerUnchained || undefined,
+  };
+}
+
+export function insertHistoryItems(
+  session: Session,
+  parentNodeId: number | null,
+  itemsToInsert: HistoryItem[],
+): HistoryNode[] {
+  if (itemsToInsert.length === 0) return [];
+
+  const treeId = session.treeId ?? createTree(session.metadata);
+  const launchId = session.launchId ?? createLaunch(session.metadata.cliArgs);
+  session.treeId = treeId;
+  session.launchId = launchId;
+
+  const inserted: HistoryNode[] = [];
+  let parentId = parentNodeId;
+  for (const item of itemsToInsert) {
+    const payload = insertHistoryItem(item);
+    const node = db()
+      .insert(treeNodes)
+      .values({
+        treeId,
+        historyItemId: payload.id,
+        parentId,
+        isLeaf: true,
+        launchId,
+      })
+      .returning({ nodeId: treeNodes.id })
+      .get();
+    inserted.push({ ...payload.item, nodeId: node.nodeId });
+    parentId = node.nodeId;
+  }
+
+  db().update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
+  return inserted;
+}
+
+function createTree(metadata: SessionMetadata): number {
+  db()
+    .insert(trees)
+    .values({ name: metadata.sessionId, cwd: metadata.cwd, updatedAt: Date.now() })
     .onConflictDoNothing()
     .run();
-  const tree = tx
-    .select({ id: trees.id, name: trees.name, cwd: trees.cwd })
+
+  const tree = db()
+    .select({ id: trees.id, cwd: trees.cwd })
     .from(trees)
-    .where(eq(trees.name, expectedTreeName))
+    .where(eq(trees.name, metadata.sessionId))
     .get();
-  if (tree == null) {
-    throw new Error("Failed to create history tree.");
-  }
+  if (tree == null) throw new Error("Failed to create history tree.");
   if (tree.cwd !== metadata.cwd) {
-    throw new Error(`Session ${expectedTreeName} belongs to a different working directory`);
-  }
-  if (expectedTreeName != null && expectedTreeName !== tree.name) {
-    throw new Error(`Session ${metadata.sessionId} has a stale tree identifier`);
+    throw new Error(`Session ${metadata.sessionId} belongs to a different working directory.`);
   }
   return tree.id;
 }
 
-function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs) {
+function createLaunch(cliArgs: ParsedCliArgs): number {
+  const shared = { config: cliArgs.config ?? null, unchained: !!cliArgs.unchained };
   let localLaunchId: number | null = null;
   let dockerLaunchId: number | null = null;
-  const config = cliArgs.config ?? null;
-  const unchained = !!cliArgs.unchained;
-  switch (cliArgs.kind) {
-    case "local":
-      localLaunchId = tx
-        .insert(schema.localLaunches)
-        .values({
-          config,
-          unchained,
-        })
-        .returning({ id: schema.localLaunches.id })
-        .get().id;
-      break;
-    case "docker-connect":
-      dockerLaunchId = tx
-        .insert(schema.dockerLaunches)
-        .values({
-          kind: "connect",
-          containerTarget: cliArgs.target,
-          config,
-          unchained,
-          dockerRunArgsJson: null,
-        })
-        .returning({ id: schema.dockerLaunches.id })
-        .get().id;
-      break;
-    case "docker-run":
-      dockerLaunchId = tx
-        .insert(schema.dockerLaunches)
-        .values({
-          kind: "run",
-          containerTarget: null,
-          config,
-          unchained,
-          dockerRunArgsJson: JSON.stringify(cliArgs.dockerRunArgs),
-        })
-        .returning({ id: schema.dockerLaunches.id })
-        .get().id;
-      break;
+
+  if (cliArgs.kind === "local") {
+    localLaunchId = db()
+      .insert(schema.localLaunches)
+      .values(shared)
+      .returning({ id: schema.localLaunches.id })
+      .get().id;
+  } else {
+    dockerLaunchId = db()
+      .insert(schema.dockerLaunches)
+      .values({
+        ...shared,
+        kind: cliArgs.kind === "docker-connect" ? "connect" : "run",
+        containerTarget: cliArgs.kind === "docker-connect" ? cliArgs.target : null,
+        dockerRunArgsJson:
+          cliArgs.kind === "docker-run" ? JSON.stringify(cliArgs.dockerRunArgs) : null,
+      })
+      .returning({ id: schema.dockerLaunches.id })
+      .get().id;
   }
-  return tx
+
+  return db()
     .insert(launches)
     .values({ localLaunchId, dockerLaunchId })
     .returning({ id: launches.id })
     .get().id;
 }
 
-function updateTreeTimestamp(tx: DbTransaction, treeId: number, updatedAt: number) {
-  tx.update(trees).set({ updatedAt }).where(eq(trees.id, treeId)).run();
-}
-
-function insertHistoryItem(tx: DbTransaction, historyItem: HistoryItem): number {
+function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem } {
   let requestFailedId: number | null = null;
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
   let llmIrId: number | null = null;
+  let persistedItem: HistoryItem;
 
-  switch (historyItem.type) {
-    case "llm-ir":
-      llmIrId = tx
+  switch (item.type) {
+    case "llm-ir": {
+      const row = db()
         .insert(llmIrs)
-        .values({ json: serializeLlmIr(historyItem.ir) })
-        .returning({ id: llmIrs.id })
-        .get().id;
+        .values({ json: serializeLlmIr(item.ir) })
+        .returning()
+        .get();
+      llmIrId = row.id;
+      persistedItem = { type: "llm-ir", ir: deserializeLlmIr(row.json) };
       break;
-    case "notification":
-      notificationId = tx
-        .insert(notifications)
-        .values({ content: historyItem.content })
-        .returning({ id: notifications.id })
-        .get().id;
+    }
+    case "notification": {
+      const row = db().insert(notifications).values({ content: item.content }).returning().get();
+      notificationId = row.id;
+      persistedItem = { type: "notification", content: row.content };
       break;
-    case "request-failed":
-      requestFailedId = tx
+    }
+    case "request-failed": {
+      requestFailedId = db()
         .insert(requestFailedItems)
         .values({})
         .returning({ id: requestFailedItems.id })
         .get().id;
+      persistedItem = { type: "request-failed" };
       break;
-    case "compaction-failed":
-      compactionFailedId = tx
+    }
+    case "compaction-failed": {
+      compactionFailedId = db()
         .insert(compactionFailedItems)
         .values({})
         .returning({ id: compactionFailedItems.id })
         .get().id;
+      persistedItem = { type: "compaction-failed" };
       break;
+    }
   }
 
-  return tx
+  const historyItem = db()
     .insert(historyItems)
-    .values({
-      requestFailedId,
-      compactionFailedId,
-      notificationId,
-      llmIrId,
-    })
+    .values({ requestFailedId, compactionFailedId, notificationId, llmIrId })
     .returning({ id: historyItems.id })
-    .get().id;
-}
-
-function insertTreeNodes(
-  tx: DbTransaction,
-  treeId: number,
-  initialParentNodeId: number | null,
-  launchId: number,
-  history: HistoryItem[],
-): SessionNode[] {
-  const nodePath: SessionNode[] = [];
-  let parentId = initialParentNodeId;
-  for (const historyItem of history) {
-    const historyItemId = insertHistoryItem(tx, historyItem);
-    const nodeId = tx
-      .insert(treeNodes)
-      .values({
-        treeId,
-        historyItemId,
-        parentId,
-        isLeaf: true,
-        launchId,
-      })
-      .returning({ id: treeNodes.id })
-      .get().id;
-    nodePath.push({ nodeId, historyItem, parentId });
-    parentId = nodeId;
-  }
-  return nodePath;
-}
-
-export class SessionHistory {
-  private activeSession: SessionRecord;
-  private launchId: number | null = null;
-  private pendingSave: Promise<boolean> = Promise.resolve(false);
-  constructor(sessionRecord: SessionRecord) {
-    this.activeSession = sessionRecord;
-  }
-
-  private enqueue(operation: () => Promise<boolean>): Promise<boolean> {
-    const nextSave = this.pendingSave.then(operation, operation);
-    nextSave.catch(() => undefined);
-
-    this.pendingSave = nextSave;
-    return nextSave;
-  }
-
-  private appendToSession(session: SessionRecord, history: HistoryItem[]): Promise<boolean> {
-    const nodePathLength = session.nodePath.length;
-    const commonLength = commonPathPrefixLength(session.nodePath, history);
-
-    if (history.length <= nodePathLength) {
-      throw new Error(
-        "Cannot append to session: the history path is not longer than the current session path.",
-      );
-    }
-    if (nodePathLength !== commonLength) {
-      throw new Error(
-        "Cannot append to session: the current session path does not match the history path.",
-      );
-    }
-    return this.persistHistory(session, history.slice(commonLength));
-  }
-
-  private async fullyReplaceSessionState(
-    session: SessionRecord,
-    history: HistoryItem[],
-  ): Promise<boolean> {
-    const commonLength = commonPathPrefixLength(session.nodePath, history);
-    const updatedPath = session.nodePath.slice(0, commonLength);
-
-    if (!hasMessages(history)) {
-      session.nodePath = updatedPath;
-      return false;
-    }
-
-    if (commonLength === history.length) {
-      session.nodePath = updatedPath;
-      return true;
-    }
-    return this.persistHistory(session, history.slice(commonLength));
-  }
-
-  private async persistHistory(
-    session: SessionRecord,
-    newHistory: HistoryItem[],
-  ): Promise<boolean> {
-    const { nodePath, metadata } = session;
-    const parentNodeId = nodePath.at(-1)?.nodeId ?? null;
-
-    if (nodePath.length > 0 && parentNodeId == null) {
-      throw new Error("Session path is not empty, but no parent node ID found.");
-    }
-
-    try {
-      const result = await runWriteTransaction(tx => {
-        const updatedAt = Date.now();
-        const treeId = validateAndGetTreeId(tx, metadata, updatedAt);
-        const persistedLaunchId = this.launchId ?? createLaunch(tx, metadata.cliArgs);
-        const newNodes = insertTreeNodes(tx, treeId, parentNodeId, persistedLaunchId, newHistory);
-        updateTreeTimestamp(tx, treeId, updatedAt);
-        return { treeId, launchId: persistedLaunchId, newNodes };
-      });
-      this.launchId = result.launchId;
-      session.nodePath = [...nodePath, ...result.newNodes];
-      return true;
-    } catch (err) {
-      // todo: not sure if i should actually throw or just ignore... don't want people to have their octo not work
-      // just cuz the sql is super busy
-      throw err;
-    }
-  }
-
-  append(history: HistoryItem[]): Promise<boolean> {
-    if (!hasMessages(history)) return Promise.resolve(false);
-
-    const session = this.activeSession;
-    return this.enqueue(() => this.appendToSession(session, history));
-  }
-
-  replace(history: HistoryItem[]): Promise<boolean> {
-    const session = this.activeSession;
-    return this.enqueue(() => this.fullyReplaceSessionState(session, history));
-  }
-
-  async startNewSession(): Promise<string> {
-    await this.flush();
-
-    const sessionId = randomUUID();
-    const { cwd, transportKind, cliArgs } = this.activeSession.metadata;
-    this.activeSession = createSessionRecord(sessionId, cwd, transportKind, cliArgs);
-    this.launchId = null;
-    return sessionId;
-  }
-
-  async flush(): Promise<void> {
-    await this.pendingSave;
-  }
+    .get();
+  return { id: historyItem.id, item: persistedItem };
 }

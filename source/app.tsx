@@ -77,7 +77,7 @@ import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
-import { HistoryItem } from "./session-history/index.ts";
+import { HistoryNode } from "./session-history/index.ts";
 
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
@@ -120,14 +120,14 @@ type StaticItem =
     }
   | {
       type: "history-item";
-      item: HistoryItem;
+      item: HistoryNode;
     }
   | {
       type: "boot-notification";
       content: string;
     };
 
-function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
+function toStaticItems(messages: HistoryNode[]): Array<StaticItem> {
   return messages.map(message => ({
     type: "history-item",
     item: message,
@@ -1118,7 +1118,7 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
   return <MessageDisplay item={item.item} />;
 };
 
-const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   return (
     <Box flexDirection="column" paddingRight={4}>
       <MessageDisplayInner item={item} />
@@ -1126,7 +1126,7 @@ const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) 
   );
 };
 
-const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
