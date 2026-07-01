@@ -68,6 +68,7 @@ import {
   UNCHAINED_PRIORITY,
 } from "./hooks/use-priority-input.tsx";
 import { readFileSync, writeFileSync } from "fs";
+import os from "os";
 import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
@@ -504,7 +505,6 @@ function RequestErrorScreen({
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
-  const cwd = useCwd();
   const themeColor = useColor();
   const { retryFrom, editAndRetryFrom } = useAppStore(
     useShallow(state => ({
@@ -581,7 +581,7 @@ function RequestErrorScreen({
         }
       } else if (item.value === "write-curl") {
         try {
-          const filePath = path.join(cwd, "octo-curl-request.sh");
+          const filePath = path.join(os.tmpdir(), "octo-curl-request.sh");
           writeFileSync(filePath, curlCommand || "Failed to generate cURL command");
           setCurlFilePath(filePath);
           setWroteCurl(true);
@@ -597,7 +597,7 @@ function RequestErrorScreen({
         exit();
       }
     },
-    [curlCommand, cwd, mode, config, transport],
+    [curlCommand, mode, config, transport],
   );
 
   return (
