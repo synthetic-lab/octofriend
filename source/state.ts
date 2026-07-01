@@ -5,8 +5,8 @@ import {
   assertKeyForModel,
   runNotifyCommand,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
+import { HistoryItem, SessionHistory } from "./session-history/index.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
@@ -99,6 +99,8 @@ export type UiState = {
   history: Array<HistoryItem>;
   clearNonce: number;
   lastUserPromptIndex: number | null;
+  sessionId: string | null;
+  sessionHistory: SessionHistory | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -123,7 +125,7 @@ export type UiState = {
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  clearHistory: () => void;
+  startNewSession: () => Promise<void>;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
@@ -144,6 +146,8 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptIndex: null,
+  sessionId: null,
+  sessionHistory: null,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -398,16 +402,24 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  clearHistory: () => {
+  startNewSession: async () => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse } = get();
+    const { abortResponse, sessionHistory } = get();
     abortResponse();
+
+    if (sessionHistory == null) {
+      throw new Error("Cannot start a new session before session history is initialized.");
+    }
+
+    const sessionId = await sessionHistory.startNewSession();
 
     set(state => ({
       history: [],
       lastUserPromptIndex: null,
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
+      sessionAutoNotify: false,
+      sessionId,
     }));
   },
 
@@ -688,4 +700,12 @@ export function useModel() {
   const config = useConfig();
 
   return getModelFromConfig(config, modelOverride);
+}
+
+export function subscribeSessionHistory() {
+  return useAppStore.subscribe((state, prevState) => {
+    if (state.history !== prevState.history && state.sessionHistory != null) {
+      state.sessionHistory.replace(state.history);
+    }
+  });
 }
