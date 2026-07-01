@@ -33,6 +33,7 @@ import { makeAutofixJson } from "./compilers/autofix.ts";
 import { discoverSkills } from "./skills/skills.ts";
 import { timeout } from "./signals.ts";
 import { shutdownLspClients } from "./lsp/client.ts";
+import { normalizeKittyStdin } from "./kitty-normalize.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -137,6 +138,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
 
+    // Normalize kitty keyboard sequences on stdin before Ink reads them, so
+    // unmodified printable keys (reported with an empty modifier field) don't
+    // leak as raw escape codes into the prompt.
+    normalizeKittyStdin(process.stdin);
+
     const { waitUntilExit } = render(
       <App
         bootSkills={skills.map(s => s.name)}
@@ -152,7 +158,13 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport: 
       {
         exitOnCtrlC: false,
         kittyKeyboard: {
+          // Enter is a legacy exception under `disambiguateEscapeCodes`, so
+          // Shift+Enter is only distinguishable once all keys are reported as
+          // escape codes. Associated text is requested too, so shifted keys
+          // (e.g. uppercase letters) still arrive as their actual text rather
+          // than the unshifted codepoint.
           mode: "auto",
+          flags: ["disambiguateEscapeCodes", "reportAllKeysAsEscapeCodes", "reportAssociatedText"],
         },
       },
     );

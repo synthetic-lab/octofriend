@@ -296,11 +296,17 @@ export default function TextInput({
       }
 
       if (key.return) {
-        if (onSubmit) {
-          onSubmit(valueRef.current);
-        }
+        if (key.shift) {
+          // Shift+Enter inserts a newline: fall through to the normal insertion
+          // path so cursor/value updates stay consistent with ordinary typing.
+          input = "\n";
+        } else {
+          if (onSubmit) {
+            onSubmit(valueRef.current);
+          }
 
-        return;
+          return;
+        }
       }
 
       // Try Emacs handler
