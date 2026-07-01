@@ -650,9 +650,9 @@ function ClearConversationConfirm() {
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { clearHistory, toggleMenu, notify } = useAppStore(
+  const { startNewSession, toggleMenu, notify } = useAppStore(
     useShallow(state => ({
-      clearHistory: state.clearHistory,
+      startNewSession: state.startNewSession,
       toggleMenu: state.toggleMenu,
       notify: state.notify,
     })),
@@ -662,8 +662,8 @@ function ClearConversationConfirm() {
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
-      onConfirm={() => {
-        clearHistory();
+      onConfirm={async () => {
+        await startNewSession();
         setMenuMode("main-menu");
         toggleMenu();
         notify("New conversation started");
