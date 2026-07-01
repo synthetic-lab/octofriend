@@ -125,7 +125,7 @@ export type UiState = {
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  clearHistory: () => void;
+  startNewSession: () => Promise<void>;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
@@ -402,16 +402,24 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  clearHistory: () => {
+  startNewSession: async () => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse } = get();
+    const { abortResponse, sessionHistory } = get();
     abortResponse();
+
+    if (sessionHistory == null) {
+      throw new Error("Cannot start a new session before session history is initialized.");
+    }
+
+    const sessionId = await sessionHistory.startNewSession();
 
     set(state => ({
       history: [],
       lastUserPromptIndex: null,
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
+      sessionAutoNotify: false,
+      sessionId,
     }));
   },
 

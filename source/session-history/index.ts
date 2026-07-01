@@ -1,4 +1,5 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
+import { randomUUID } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db, DbTransaction, isSqliteBusyError, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
@@ -496,6 +497,16 @@ export class SessionHistory {
   replace(history: HistoryItem[]): Promise<boolean> {
     const session = this.activeSession;
     return this.enqueue(() => this.fullyReplaceSessionState(session, history));
+  }
+
+  async startNewSession(): Promise<string> {
+    await this.flush();
+
+    const sessionId = randomUUID();
+    const { cwd, transportKind, cliArgs } = this.activeSession.metadata;
+    this.activeSession = createSessionRecord(sessionId, cwd, transportKind, cliArgs);
+    this.launchId = null;
+    return sessionId;
   }
 
   async flush(): Promise<void> {
