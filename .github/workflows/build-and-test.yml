@@ -9,16 +9,65 @@ on:
 
 jobs:
   test:
-    runs-on:
-      - runs-on=${{ github.run_id }}/runner=8cpu-linux-x64/image=ubuntu24-full-x64/family=c7i+c8i/extras=s3-cache
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
-          node-version: 22
-          cache: npm
+          bun-version: 1.3.14
 
-      - run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
 
-      - run: npm run test:run
+      - run: bun install --frozen-lockfile
+
+      - run: bun run prepack
+
+      - name: Smoke test packaged agentd launcher
+        shell: pwsh
+        run: |
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | bun packages/octofwen-cli/bin/octofwen-agentd.js | Select-Object -First 1
+
+      - name: Smoke test PowerShell canary
+        shell: pwsh
+        run: |
+          . ./canary.ps1
+          Invoke-CanaryOctofwen --help | Out-Null
+
+      - name: Smoke test packed global install
+        shell: pwsh
+        run: |
+          $packDir = Join-Path $env:RUNNER_TEMP "octofwen-pack"
+          $installPrefix = Join-Path $env:RUNNER_TEMP "octofwen-install"
+          New-Item -ItemType Directory -Force $packDir, $installPrefix | Out-Null
+          $packOutput = npm pack --json --pack-destination $packDir | Out-String
+          if ($packOutput -notmatch '(?s)(\[\s*\{.*\]\s*)$') {
+            throw "npm pack did not return trailing JSON output: $packOutput"
+          }
+          $packInfo = ($Matches[1] | ConvertFrom-Json)[0]
+          $tarball = Join-Path $packDir $packInfo.filename
+          npm install --global --prefix $installPrefix $tarball
+          $binDir = if ($IsWindows) { $installPrefix } else { Join-Path $installPrefix "bin" }
+          $env:PATH = "$binDir$([IO.Path]::PathSeparator)$env:PATH"
+          octofwen --help | Out-Null
+          octo --help | Out-Null
+          octofriend --help | Out-Null
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | octofwen-agentd | Select-Object -First 1
+
+      - name: Validate Unix canary syntax
+        if: runner.os != 'Windows'
+        run: bash -n canary.sh
+
+      - run: bun run typecheck
+
+      - run: bun test
+
+      - run: cargo fmt --check
+
+      - run: cargo build --workspace
+
+      - run: cargo test --workspace
