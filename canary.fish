@@ -1,21 +1,46 @@
 # To opt into canary builds, source this file in your config.fish
 # Usage: source /path/to/canary.fish
 #
-# This creates a canary-octo function that will build whatever you have in your
-# current octofriend checkout and run it, allowing you to use the main branch
-# without waiting for new octo releases, or to use an in-development branch
-# easily.
+# This creates a canary-octofwen function that runs this checkout directly with
+# OCTOFWEN_CHANNEL=canary, instead of using the published normal channel.
 
-set -g _OCTOFRIEND_DIR (status dirname)
+set -g _OCTOFWEN_DIR (status dirname)
+
+function canary-octofwen
+    set -l old_dir (pwd)
+    cd "$_OCTOFWEN_DIR"
+    set -l cd_status $status
+    if test $cd_status -ne 0
+        return $cd_status
+    end
+
+    bun run typecheck
+    set -l typecheck_status $status
+    cd "$old_dir"
+    if test $typecheck_status -ne 0
+        return $typecheck_status
+    end
+
+    set -l had_channel 0
+    set -l old_channel
+    if set -q OCTOFWEN_CHANNEL
+        set had_channel 1
+        set old_channel $OCTOFWEN_CHANNEL
+    end
+
+    set -gx OCTOFWEN_CHANNEL canary
+    bun "$_OCTOFWEN_DIR/packages/octofwen-cli/src/bin.ts" $argv
+    set -l canary_status $status
+
+    if test "$had_channel" = 1
+        set -gx OCTOFWEN_CHANNEL $old_channel
+    else
+        set -e OCTOFWEN_CHANNEL
+    end
+
+    return $canary_status
+end
 
 function canary-octo
-    set -l old_dir (pwd)
-    cd "$_OCTOFRIEND_DIR"
-    if not npm run build
-        cd "$old_dir"
-        return 1
-    end
-    cd "$old_dir"
-    set -gx CANARY_OCTO 1
-    node "$_OCTOFRIEND_DIR/dist/source/cli.js" $argv
+    canary-octofwen $argv
 end
