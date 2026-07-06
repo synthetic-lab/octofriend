@@ -1,7 +1,7 @@
 import { Box, Text, useInput } from "ink";
-import { errorToString } from "../../app/result.ts";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { errorToString } from "../../app/result.ts";
 import { TextInput } from "../../input/text.ts";
 import {
 	readKeyForModel as readConfiguredKeyForModel,
@@ -9,17 +9,17 @@ import {
 } from "../../internal/configuration/keys.ts";
 import type { Auth, Config } from "../../internal/configuration/schemas.ts";
 import {
-	testConnection,
-	type ModelConnectionTester,
-} from "./add-model-connection.ts";
-import {
 	keyFromName,
 	type ProviderConfig,
-	SYNTHETIC_PROVIDER,
 	providerValues,
+	SYNTHETIC_PROVIDER,
 } from "../../internal/model-provider-catalog/main.ts";
 import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../root.tsx";
+import {
+	type ModelConnectionTester,
+	testConnection,
+} from "./add-model-connection.ts";
 
 export const EMPTY_API_KEY_ERROR = "API key can't be empty";
 export const API_KEY_WRITE_ERROR =
@@ -177,12 +177,17 @@ export function reduceModelSetupStep(
 	return state;
 }
 
+const MISSING_SYNTHETIC_PROVIDER_ERROR =
+	"Synthetic provider is unavailable in the model provider catalog.";
+
 export function syntheticAutofixDiffApplyFromAuth(
 	defaultModel: string,
 	auth?: Auth,
-): AutofixDiffApplyConfig {
+): AutofixDiffApplyConfig | null {
+	const syntheticProvider = SYNTHETIC_PROVIDER;
+	if (!syntheticProvider) return null;
 	const diffApply: AutofixDiffApplyConfig = {
-		baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+		baseUrl: syntheticProvider.baseUrl,
 		model: defaultModel,
 	};
 	if (auth) diffApply.auth = auth;
@@ -247,6 +252,13 @@ export async function resolveSyntheticAutofixSelectionFromAuth({
 	auth,
 	modelConnectionTest,
 }: ResolveSyntheticAutofixSelectionFromAuthInput): Promise<SyntheticAutofixSelectionResult> {
+	const syntheticProvider = SYNTHETIC_PROVIDER;
+	if (!syntheticProvider) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
 	const connection = await testSyntheticAutofixAuth({
 		config,
 		auth,
@@ -254,9 +266,16 @@ export async function resolveSyntheticAutofixSelectionFromAuth({
 		modelConnectionTest,
 	});
 	if (connection) return connection;
+	const diffApply = syntheticAutofixDiffApplyFromAuth(defaultModel, auth);
+	if (!diffApply) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
 	return {
 		step: "complete",
-		diffApply: syntheticAutofixDiffApplyFromAuth(defaultModel, auth),
+		diffApply,
 	};
 }
 
@@ -267,7 +286,14 @@ export async function resolveSyntheticAutofixSelection({
 	readKeyForModel: readKey,
 	modelConnectionTest,
 }: ResolveSyntheticAutofixSelectionInput): Promise<SyntheticAutofixSelectionResult> {
-	const envVar = resolveProviderEnvVar(SYNTHETIC_PROVIDER, config, null);
+	const syntheticProvider = SYNTHETIC_PROVIDER;
+	if (!syntheticProvider) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
+	const envVar = resolveProviderEnvVar(syntheticProvider, config, null);
 	const envKey = env[envVar];
 	if (envKey) {
 		const connection = await testSyntheticAutofixConnection({
@@ -279,7 +305,7 @@ export async function resolveSyntheticAutofixSelection({
 		return {
 			step: "complete",
 			diffApply: {
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: syntheticProvider.baseUrl,
 				apiEnvVar: envVar,
 				model: defaultModel,
 			},
@@ -289,7 +315,7 @@ export async function resolveSyntheticAutofixSelection({
 	const key = await (
 		readKey ??
 		((model) => readConfiguredKeyForModel(model, config as Config | null))
-	)({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
+	)({ baseUrl: syntheticProvider.baseUrl }, config);
 	if (key === null) return { step: "missing-auth" };
 	const connection = await testSyntheticAutofixConnection({
 		apiKey: key,
@@ -297,9 +323,16 @@ export async function resolveSyntheticAutofixSelection({
 		modelConnectionTest,
 	});
 	if (connection) return connection;
+	const diffApply = syntheticAutofixDiffApplyFromAuth(defaultModel);
+	if (!diffApply) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
 	return {
 		step: "complete",
-		diffApply: syntheticAutofixDiffApplyFromAuth(defaultModel),
+		diffApply,
 	};
 }
 
@@ -316,9 +349,16 @@ async function testSyntheticAutofixConnection({
 	{ step: "connection-failed" }
 > | null> {
 	if (!modelConnectionTest) return null;
+	const syntheticProvider = SYNTHETIC_PROVIDER;
+	if (!syntheticProvider) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
 	try {
 		const result = await modelConnectionTest({
-			baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+			baseUrl: syntheticProvider.baseUrl,
 			apiKey,
 			model,
 		});
@@ -344,8 +384,15 @@ async function testSyntheticAutofixAuth({
 	{ step: "connection-failed" }
 > | null> {
 	if (!modelConnectionTest) return null;
+	const syntheticProvider = SYNTHETIC_PROVIDER;
+	if (!syntheticProvider) {
+		return {
+			step: "connection-failed",
+			errorMessage: MISSING_SYNTHETIC_PROVIDER_ERROR,
+		};
+	}
 	const result = await testConnection({
-		baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+		baseUrl: syntheticProvider.baseUrl,
 		auth,
 		config,
 		model,

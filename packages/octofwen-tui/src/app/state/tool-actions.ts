@@ -1,5 +1,5 @@
-import { err } from "../result.ts";
 import { loadTools, runTool } from "../../internal/tool-orchestration/main.ts";
+import { err } from "../result.ts";
 import { toolRunResultToIR } from "./tool-results.ts";
 import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
@@ -23,16 +23,14 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 				);
 				return;
 			}
-			if (modeData.runningToolCallId != null) {
-				if (process.env["OCTOFWEN_CHANNEL"] === "canary") {
-					appendToolRuntimeError(
-						set,
-						get,
-						toolReq,
-						"Canary build error: attempted to run a tool when a tool was already running",
-					);
-					return;
-				}
+			if (shouldRejectConcurrentToolRun(modeData)) {
+				appendToolRuntimeError(
+					set,
+					get,
+					toolReq,
+					"Canary build error: attempted to run a tool when a tool was already running",
+				);
+				return;
 			}
 
 			const abortController = modeData.abortController;
@@ -92,6 +90,14 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 			}
 		},
 	} satisfies Pick<UiState, "runTool">;
+}
+
+function shouldRejectConcurrentToolRun(modeData: UiState["modeData"]): boolean {
+	return (
+		modeData.mode === "tool-call" &&
+		modeData.runningToolCallId != null &&
+		process.env["OCTOFWEN_CHANNEL"] === "canary"
+	);
 }
 
 function appendToolRuntimeError(

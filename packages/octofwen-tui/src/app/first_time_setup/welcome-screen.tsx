@@ -4,6 +4,16 @@ import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../../menu/root.tsx";
 import { TERMINAL_THEME_COLOR } from "../../theme/branding.tsx";
 export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+	const syntheticModel = recommendedModel("synthetic")?.nickname ?? "Synthetic";
+	const closedSourceExamples = [
+		recommendedModel("openai")?.nickname,
+		recommendedModel("anthropic")?.nickname,
+	].filter((model): model is string => model !== undefined);
+	const closedSourceText =
+		closedSourceExamples.length === 0
+			? null
+			: ` You can also add closed-source models from OpenAI and Anthropic, like ${closedSourceExamples.join(" and ")}.`;
+
 	useInput((_, key) => {
 		if (key.return) onContinue();
 	});
@@ -20,13 +30,9 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 			<Box marginTop={1}>
 				<Text>
 					Octo lets you choose the LLM that powers it. Currently our recommended
-					day-to-day coding model to use with Octo is{" "}
-					{recommendedModel("synthetic").nickname}, an open-source coding model
-					you can use via Synthetic, a privacy-focused inference company (that
-					we run!). You can also add closed-source models from OpenAI and
-					Anthropic, like
-					{recommendedModel("openai").nickname} and{" "}
-					{recommendedModel("anthropic").nickname}.
+					day-to-day coding model to use with Octo is {syntheticModel}, an
+					open-source coding model you can use via Synthetic, a privacy-focused
+					inference company (that we run!).{closedSourceText}
 				</Text>
 			</Box>
 

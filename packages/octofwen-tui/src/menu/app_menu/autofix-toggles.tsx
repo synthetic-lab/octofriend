@@ -67,6 +67,7 @@ function AutofixToggle({
 			modelNickname={modelNickname}
 			config={config}
 			onOverrideDefaultApiKey={async (apiEnvVar) => {
+				if (!SYNTHETIC_PROVIDER) return;
 				const key = keyFromName(SYNTHETIC_PROVIDER.name);
 				if (!key.success) return;
 				await setConfig({

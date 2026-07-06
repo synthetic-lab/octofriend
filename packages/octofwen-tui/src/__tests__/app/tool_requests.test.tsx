@@ -62,6 +62,7 @@ describe("terminal tool request rendering", () => {
 				config={config}
 				transport={transport()}
 				toolPermission={async (params) => {
+					await Promise.resolve();
 					permissionCalls.push(params);
 					return {
 						whitelistKey: "rewrite:rewrite.txt",

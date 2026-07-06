@@ -10,13 +10,23 @@ function runCliCommand(...args: string[]) {
 	});
 }
 
-function expectSuccessfulHelp(args: string[], expectedSnippets: string[]) {
+function successfulHelpOutput(args: string[]): string {
 	const result = runCliCommand(...args, "--help");
+	if (result.exitCode !== 0) {
+		throw new Error(
+			result.stderr.toString() ||
+				`Expected exit code 0, got ${result.exitCode}`,
+		);
+	}
+	return result.stdout.toString();
+}
 
-	expect(result.exitCode).toBe(0);
-	const output = result.stdout.toString();
+function expectSuccessfulHelp(args: string[], expectedSnippets: string[]) {
+	const output = successfulHelpOutput(args);
 	for (const snippet of expectedSnippets) {
-		expect(output).toContain(snippet);
+		if (!output.includes(snippet)) {
+			throw new Error(`Expected help output to contain ${snippet}`);
+		}
 	}
 }
 

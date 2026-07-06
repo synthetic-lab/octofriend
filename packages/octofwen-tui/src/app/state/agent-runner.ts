@@ -3,7 +3,10 @@ import { trajectoryArc } from "../../internal/agent-trajectory-runtime/main.ts";
 import type { Finish } from "../../internal/agent-trajectory-runtime/types.ts";
 import { assertKeyForModel } from "../../internal/configuration/keys.ts";
 import { getModelFromConfig } from "../../internal/configuration/model-selection.ts";
-import type { HistoryItem } from "../../internal/conversation-history/main.ts";
+import type {
+	HistoryItem,
+	LlmHistoryItem,
+} from "../../internal/conversation-history/main.ts";
 import {
 	outputToHistory,
 	toLlmIR,
@@ -43,8 +46,17 @@ function assistantMessageIdFromToolCall(value: unknown): string | null {
 	return typeof assistantMessageId === "string" ? assistantMessageId : null;
 }
 
+type LinkableAssistantIR = Omit<
+	Extract<OctoIR, { role: "assistant" }>,
+	"messageId"
+> & { messageId?: string };
+type LinkableOctoIR = OctoIR | LinkableAssistantIR;
+type LinkableHistoryItem =
+	| Exclude<HistoryItem<OctoIR>, LlmHistoryItem<OctoIR>>
+	| LlmHistoryItem<LinkableOctoIR>;
+
 function linkedAssistantItem(
-	item: HistoryItem<OctoIR>,
+	item: LlmHistoryItem<LinkableOctoIR>,
 	ir: Extract<OctoIR, { role: "assistant" }> & Record<string, unknown>,
 	assistantByToolCallId: Map<string, string>,
 ): HistoryItem<OctoIR> {
@@ -77,7 +89,7 @@ function isToolResultLikeRole(role: string): boolean {
 }
 
 function linkedToolResultItem(
-	item: HistoryItem<OctoIR>,
+	item: LlmHistoryItem<LinkableOctoIR>,
 	ir: OctoIR & Record<string, unknown>,
 	assistantByToolCallId: Map<string, string>,
 ): HistoryItem<OctoIR> {
@@ -87,7 +99,7 @@ function linkedToolResultItem(
 	const assistantMessageId =
 		existingAssistantMessageId ??
 		(toolCallId ? assistantByToolCallId.get(toolCallId) : null);
-	if (!assistantMessageId) return item;
+	if (!assistantMessageId) return item as HistoryItem<OctoIR>;
 	return {
 		...item,
 		ir: {
@@ -98,10 +110,10 @@ function linkedToolResultItem(
 }
 
 export function linkTrajectoryHistory(
-	history: readonly HistoryItem<OctoIR>[],
+	history: readonly LinkableHistoryItem[],
 ): HistoryItem<OctoIR>[] {
 	const assistantByToolCallId = new Map<string, string>();
-	return history.map((item) => {
+	return history.map((item): HistoryItem<OctoIR> => {
 		if (item.type !== "llm-ir") return item;
 		const ir = item.ir as OctoIR & Record<string, unknown>;
 		if (ir.role === "assistant") {
@@ -110,7 +122,7 @@ export function linkTrajectoryHistory(
 		if (isToolResultLikeRole(ir.role)) {
 			return linkedToolResultItem(item, ir, assistantByToolCallId);
 		}
-		return item;
+		return item as HistoryItem<OctoIR>;
 	});
 }
 

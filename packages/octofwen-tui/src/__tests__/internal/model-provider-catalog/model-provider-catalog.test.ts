@@ -5,6 +5,7 @@ import {
 	keyFromName,
 	PROVIDERS,
 	type ProviderConfig,
+	providerEntries,
 	providerForBaseUrl,
 	recommendedModel,
 	SYNTHETIC_PROVIDER,
@@ -15,8 +16,15 @@ type TestResult<T, E> =
 	| { success: false; error: E };
 
 function expectOk<T, E>(result: TestResult<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
+}
+
+function expectPresent<T>(value: T): NonNullable<T> {
+	if (value === null || value === undefined) {
+		throw new Error("Expected value to be present");
+	}
+	return value;
 }
 
 describe("provider catalog", () => {
@@ -28,36 +36,38 @@ describe("provider catalog", () => {
 			"gemini",
 			"grok",
 		]);
-		expect(SYNTHETIC_PROVIDER).toBe(PROVIDERS.synthetic);
+		expect(SYNTHETIC_PROVIDER).toBe(expectPresent(PROVIDERS.synthetic));
 		expect(recommendedModel("synthetic")).toEqual(
-			PROVIDERS.synthetic.models[0],
+			expectPresent(PROVIDERS.synthetic).models[0],
 		);
-		expect(recommendedModel("openai").nickname).toBe("GPT-5.5");
-		expect(PROVIDERS.anthropic.type).toBe("anthropic");
-		expect(PROVIDERS.gemini.type).toBe("gemini");
-		expect(PROVIDERS.gemini.envVar).toBe("GEMINI_API_KEY");
-		expect(PROVIDERS.openai.apiKeyUrl).toBe(
+		expect(recommendedModel("openai")?.nickname).toBe("GPT-5.5");
+		expect(expectPresent(PROVIDERS.anthropic).type).toBe("anthropic");
+		expect(expectPresent(PROVIDERS.gemini).type).toBe("gemini");
+		expect(expectPresent(PROVIDERS.gemini).envVar).toBe("GEMINI_API_KEY");
+		expect(expectPresent(PROVIDERS.openai).apiKeyUrl).toBe(
 			"https://platform.openai.com/api-keys",
 		);
-		expect(PROVIDERS.gemini.apiKeyUrl).toBe(
+		expect(expectPresent(PROVIDERS.gemini).apiKeyUrl).toBe(
 			"https://aistudio.google.com/apikey",
 		);
-		expect(PROVIDERS.grok.envVar).toBe("XAI_API_KEY");
-		expect(PROVIDERS.grok.apiKeyUrl).toBe("https://console.x.ai/");
+		expect(expectPresent(PROVIDERS.grok).envVar).toBe("XAI_API_KEY");
+		expect(expectPresent(PROVIDERS.grok).apiKeyUrl).toBe(
+			"https://console.x.ai/",
+		);
 	});
 
 	it("maps provider display names and base URLs to catalog entries", () => {
 		expect(expectOk(keyFromName("Synthetic"))).toBe("synthetic");
 		expect(expectOk(keyFromName("OpenAI"))).toBe("openai");
 		expect(providerForBaseUrl("https://api.synthetic.new/v1")).toEqual(
-			PROVIDERS.synthetic,
+			expectPresent(PROVIDERS.synthetic),
 		);
 		expect(providerForBaseUrl("https://api.anthropic.com")).toEqual(
-			PROVIDERS.anthropic,
+			expectPresent(PROVIDERS.anthropic),
 		);
 		expect(
 			providerForBaseUrl("https://generativelanguage.googleapis.com/v1beta"),
-		).toEqual(PROVIDERS.gemini);
+		).toEqual(expectPresent(PROVIDERS.gemini));
 		expect(providerForBaseUrl("https://example.invalid")).toBeNull();
 		const missingProvider = keyFromName("Missing Provider");
 		expect(missingProvider.success).toBe(false);
@@ -66,6 +76,26 @@ describe("provider catalog", () => {
 				"No provider named Missing Provider found",
 			);
 		}
+	});
+
+	it("filters missing provider entries from stale agentd catalogs", () => {
+		const entries = providerEntries({
+			synthetic: expectPresent(PROVIDERS.synthetic),
+			openai: undefined,
+		});
+
+		expect(entries).toEqual([
+			["synthetic", expectPresent(PROVIDERS.synthetic)],
+		]);
+	});
+
+	it("returns no recommended model for a missing provider entry", () => {
+		expect(
+			recommendedModel("openai", {
+				synthetic: expectPresent(PROVIDERS.synthetic),
+				openai: undefined,
+			}),
+		).toBeNull();
 	});
 
 	it("keeps provider config typed without depending on UI modules", () => {
@@ -93,7 +123,7 @@ describe("provider catalog", () => {
 	it("re-exports multimodal image eligibility helpers", () => {
 		expect(DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE).toBe("Kimi K2.5");
 		expect(
-			canDisplayImage(PROVIDERS.synthetic.models[0].modalities, {
+			canDisplayImage(expectPresent(PROVIDERS.synthetic).models[0].modalities, {
 				mimeType: "image/png",
 				base64Data: "abc",
 				dataUrl: "data:image/png;base64,abc",
@@ -102,7 +132,7 @@ describe("provider catalog", () => {
 			}),
 		).toEqual({ ok: true });
 		expect(
-			canDisplayImage(PROVIDERS.grok.models[0].modalities, {
+			canDisplayImage(expectPresent(PROVIDERS.grok).models[0].modalities, {
 				mimeType: "image/gif",
 				base64Data: "abc",
 				dataUrl: "data:image/gif;base64,abc",

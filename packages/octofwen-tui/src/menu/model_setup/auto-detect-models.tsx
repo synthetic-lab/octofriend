@@ -10,6 +10,8 @@ import {
 	keyFromName,
 	PROVIDERS,
 	type ProviderConfig,
+	type ProviderKey,
+	providerEntries,
 } from "../../internal/model-provider-catalog/main.ts";
 import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../root.tsx";
@@ -55,8 +57,9 @@ export function ModelSetup({
 	});
 
 	const onChooseProvider = useCallback(
-		(providerKey: keyof typeof PROVIDERS) => {
+		(providerKey: ProviderKey) => {
 			const provider = PROVIDERS[providerKey];
+			if (!provider) return;
 			const envVar = resolveProviderEnvVar(provider, config, null);
 			if (process.env[envVar]) {
 				return dispatch({
@@ -228,21 +231,18 @@ function FastProviderList({
 	onBack,
 	titleOverride,
 }: {
-	onChooseProvider: (provider: keyof typeof PROVIDERS) => void;
+	onChooseProvider: (provider: ProviderKey) => void;
 	onChooseCustom: () => void;
 	onBack: () => void;
 	titleOverride?: string;
 }) {
-	const providerItems = Object.entries(PROVIDERS).map(([key, provider]) => {
-		const k = key as keyof typeof PROVIDERS;
-		return {
-			label: provider.name,
-			value: k,
-			shortcut: provider.shortcut,
-		};
-	});
+	const providerItems = providerEntries().map(([key, provider]) => ({
+		label: provider.name,
+		value: key,
+		shortcut: provider.shortcut,
+	}));
 
-	const providerShortcuts: Keymap<keyof typeof PROVIDERS> = {};
+	const providerShortcuts: Keymap<ProviderKey> = {};
 	for (const item of providerItems) {
 		providerShortcuts[item.shortcut] = {
 			label: item.label,
@@ -250,7 +250,7 @@ function FastProviderList({
 		};
 	}
 
-	type ProviderValue = keyof typeof PROVIDERS | "custom" | "back";
+	type ProviderValue = ProviderKey | "custom" | "back";
 	const items: Keymap<ProviderValue> = {
 		...providerShortcuts,
 		c: {

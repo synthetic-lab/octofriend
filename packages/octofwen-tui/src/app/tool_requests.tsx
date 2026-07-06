@@ -3,8 +3,8 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ToolPermissionResult } from "../internal/tool-orchestration/bridge-types.ts";
-import { preflightToolCall } from "../internal/tool-orchestration/main.ts";
 import type { ToolCall as ToolCallRequest } from "../internal/tool-orchestration/main.ts";
+import { preflightToolCall } from "../internal/tool-orchestration/main.ts";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
 	SelectInput,
@@ -153,7 +153,6 @@ export function FinishToolRequests({
 	runAgent,
 	config,
 	transport,
-	trajectoryArcRun,
 	toolPermission,
 	skillDiscover,
 	toolDefinitions,
@@ -163,7 +162,6 @@ export function FinishToolRequests({
 		runAgent({
 			config,
 			transport,
-			trajectoryArcRun,
 			toolPermission,
 			skillDiscover,
 			toolDefinitions,
@@ -173,7 +171,6 @@ export function FinishToolRequests({
 		runAgent,
 		config,
 		transport,
-		trajectoryArcRun,
 		toolPermission,
 		skillDiscover,
 		toolDefinitions,
@@ -251,7 +248,6 @@ export function ToolRequestRenderer({
 	toolReq,
 	config,
 	transport,
-	trajectoryArcRun,
 	toolPermission,
 	skillDiscover,
 	toolDefinitions,
@@ -286,11 +282,8 @@ export function ToolRequestRenderer({
 		null,
 	);
 
-	if (!toolPermission) {
-		return <Text color="red">Tool permission bridge is required</Text>;
-	}
-
 	useEffect(() => {
+		if (!toolPermission) return;
 		let alive = true;
 		setPermission(null);
 		setPreflightedToolReq(null);
@@ -409,6 +402,10 @@ export function ToolRequestRenderer({
 		notifyReadyForInput,
 		permission,
 	]);
+
+	if (!toolPermission) {
+		return <Text color="red">Tool permission bridge is required</Text>;
+	}
 
 	if (permission == null || noConfirmationNeeded || isRunning) {
 		return <Loading overrideStrings={TOOL_REQUEST_LOADING_STRINGS} />;

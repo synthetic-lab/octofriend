@@ -19,8 +19,8 @@ const transport: Transport = {
 };
 
 function expectOk<T, E>(result: Result<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
 }
 
 const baseConfig: Config = {

@@ -3,8 +3,12 @@ import { createTokenHandler } from "../prompt.ts";
 
 describe("createTokenHandler", () => {
 	afterEach(() => {
-		(process.stdout.write as unknown as { mockRestore?: () => void }).mockRestore?.();
-		(process.stderr.write as unknown as { mockRestore?: () => void }).mockRestore?.();
+		(
+			process.stdout.write as unknown as { mockRestore?: () => void }
+		).mockRestore?.();
+		(
+			process.stderr.write as unknown as { mockRestore?: () => void }
+		).mockRestore?.();
 	});
 
 	it("writes reasoning tokens to stderr and content/tool tokens to stdout", () => {

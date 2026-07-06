@@ -7,6 +7,7 @@
 	},
 	"include": [
 		"src",
-		"tests"
+		"tests",
+		"../octofwen-tui/src/types/**/*.d.ts"
 	]
 }

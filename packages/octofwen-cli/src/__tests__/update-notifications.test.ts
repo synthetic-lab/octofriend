@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
+import type { Result } from "../result.ts";
 import {
 	DEFAULT_UPDATES_FILE_PATH,
 	markUpdatesSeen,
 	readUpdates,
 	type UpdateNotificationsParams,
 } from "../update-notifications.ts";
-import type { Result } from "../result.ts";
 
 function bridgeBackedUpdateStore(initialUpdate: string) {
 	let currentUpdate = initialUpdate;
@@ -39,8 +39,8 @@ const fixture = {
 };
 
 function expectOk<T, E>(result: Result<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
 }
 
 test("readUpdates returns the current update text before it has been marked seen", async () => {
@@ -57,7 +57,9 @@ test("readUpdates returns null when the current update text is the most recent s
 
 	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 
-	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBeNull();
+	expect(
+		expectOk(await readUpdates({ ...fixture, read: store.read })),
+	).toBeNull();
 });
 
 test("readUpdates returns changed update text after an older update was marked seen", async () => {
@@ -76,7 +78,9 @@ test("markUpdatesSeen is idempotent for the same update text", async () => {
 	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 
-	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBeNull();
+	expect(
+		expectOk(await readUpdates({ ...fixture, read: store.read })),
+	).toBeNull();
 	expect(store.marks).toEqual([fixture, fixture]);
 });
 

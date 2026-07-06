@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Config } from "../../../internal/configuration/schemas.ts";
 import type { Result } from "../../../app/result.ts";
+import type { Config } from "../../../internal/configuration/schemas.ts";
 import {
 	loadTools,
 	preflightToolCall,
@@ -42,10 +42,9 @@ const baseToolDefinitions = async ({
 	],
 });
 
-
 function expectOk<T, E>(result: Result<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
 }
 
 function transport(overrides: Partial<Transport> = {}): Transport {
@@ -68,12 +67,9 @@ function transport(overrides: Partial<Transport> = {}): Transport {
 describe("tool orchestration", () => {
 	it("loads available built-in tools and skips unavailable dynamic tools", async () => {
 		const tools = expectOk(
-			await loadTools(
-				transport(),
-				new AbortController().signal,
-				baseConfig,
-				{ toolDefinitions: baseToolDefinitions },
-			),
+			await loadTools(transport(), new AbortController().signal, baseConfig, {
+				toolDefinitions: baseToolDefinitions,
+			}),
 		);
 
 		expect(tools["read"]?.name).toBe("read");
@@ -88,16 +84,19 @@ describe("tool orchestration", () => {
 			await loadTools(
 				transport({
 					readFile: async () => {
+						await Promise.resolve();
 						return Promise.reject(
 							new Error("TypeScript skill discovery should not read files"),
 						);
 					},
 					readdir: async () => {
+						await Promise.resolve();
 						return Promise.reject(
 							new Error("TypeScript skill discovery should not read dirs"),
 						);
 					},
 					pathExists: async () => {
+						await Promise.resolve();
 						return Promise.reject(
 							new Error("TypeScript skill discovery should not stat paths"),
 						);
@@ -166,7 +165,10 @@ describe("tool orchestration", () => {
 			shell: {
 				name: "shell",
 				run: async () => {
-					return Promise.reject(new Error("fallback shell runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback shell runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -199,7 +201,10 @@ describe("tool orchestration", () => {
 				name: "read",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback tool runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback tool runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -282,6 +287,7 @@ describe("tool orchestration", () => {
 		const reads: string[] = [];
 		const fakeTransport = transport({
 			readFile: async (_signal, filePath) => {
+				await Promise.resolve();
 				reads.push(filePath);
 				return filePath === "edit.txt"
 					? "fresh edit contents"
@@ -328,7 +334,10 @@ describe("tool orchestration", () => {
 				name: "rewrite",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback rewrite runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback rewrite runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -398,7 +407,10 @@ describe("tool orchestration", () => {
 				name: "read",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback read runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback read runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -460,7 +472,10 @@ describe("tool orchestration", () => {
 				name: "read",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback read runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback read runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -519,7 +534,10 @@ describe("tool orchestration", () => {
 				name: "shell",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback shell runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback shell runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -577,7 +595,10 @@ describe("tool orchestration", () => {
 				name: "glob",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback glob runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback glob runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -635,7 +656,10 @@ describe("tool orchestration", () => {
 				name: "grep",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback grep runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback grep runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -693,7 +717,10 @@ describe("tool orchestration", () => {
 				name: "fetch",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback fetch runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback fetch runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -759,7 +786,10 @@ describe("tool orchestration", () => {
 				name: "web-search",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback web-search runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback web-search runner should not run"),
+					);
 				},
 			},
 		} as never;
@@ -824,7 +854,10 @@ describe("tool orchestration", () => {
 				name: "skill",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					return Promise.reject(new Error("fallback skill runner should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback skill runner should not run"),
+					);
 				},
 				extra: {
 					skills: [
@@ -929,6 +962,7 @@ describe("tool orchestration", () => {
 			call,
 			baseConfig,
 			async () => {
+				await Promise.resolve();
 				return Promise.reject(new Error("bridge down"));
 			},
 		);
@@ -951,7 +985,10 @@ describe("tool orchestration", () => {
 					data: { type: "output", content: [] },
 				}),
 				validate: async () => {
-					return Promise.reject(new Error("fallback tool validator should not run"));
+					await Promise.resolve();
+					return Promise.reject(
+						new Error("fallback tool validator should not run"),
+					);
 				},
 			},
 		} as never;

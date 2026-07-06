@@ -129,10 +129,18 @@ export function AutofixModelMenu({
 	}
 
 	if (step === "missing-auth") {
+		const syntheticProvider = SYNTHETIC_PROVIDER;
+		if (!syntheticProvider) {
+			return (
+				<Text color="red">
+					Synthetic provider is unavailable in the model provider catalog.
+				</Text>
+			);
+		}
 		return (
 			<CustomAuthFlow
 				config={config}
-				baseUrl={SYNTHETIC_PROVIDER.baseUrl}
+				baseUrl={syntheticProvider.baseUrl}
 				onCancel={() => setStep("choose")}
 				onComplete={async (auth) => {
 					const result = await resolveSyntheticAutofixSelectionFromAuth({
@@ -152,7 +160,15 @@ export function AutofixModelMenu({
 					}
 					if (auth && auth.type === "env") {
 						await onOverrideDefaultApiKey(auth.name);
-						onComplete(syntheticAutofixDiffApplyFromAuth(defaultModel));
+						const diffApply = syntheticAutofixDiffApplyFromAuth(defaultModel);
+						if (!diffApply) {
+							showConnectionError(
+								"Synthetic provider is unavailable in the model provider catalog.",
+							);
+							setStep("choose");
+							return;
+						}
+						onComplete(diffApply);
 					} else {
 						onComplete(result.diffApply);
 					}

@@ -7,9 +7,9 @@ import type {
 } from "../bridge/rust/provider-runtime.ts";
 import type { Config } from "../configuration/schemas.ts";
 import {
+	type CliProviderMessage,
 	replayProviderTokenEvents,
 	runCliProviderCompletion,
-	type CliProviderMessage,
 } from "../provider-run.ts";
 
 const emptyAssistantUsage = {
@@ -49,8 +49,11 @@ function finishedResult(
 
 class FakeBridge {
 	readonly requests: AgentdProviderCompilerCompleteParams[] = [];
+	private readonly response: AgentdProviderCompilerCompleteResult;
 
-	constructor(private readonly response: AgentdProviderCompilerCompleteResult) {}
+	constructor(response: AgentdProviderCompilerCompleteResult) {
+		this.response = response;
+	}
 
 	providerCompilerComplete(params: AgentdProviderCompilerCompleteParams) {
 		this.requests.push(params);
@@ -62,14 +65,13 @@ function asBridge(fake: FakeBridge): AgentdRustBridge {
 	return fake as unknown as AgentdRustBridge;
 }
 
-
 type TestResult<T, E> =
 	| { success: true; data: T }
 	| { success: false; error: E };
 
 function expectOk<T, E>(result: TestResult<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
 }
 
 const messages: CliProviderMessage[] = [
@@ -89,14 +91,16 @@ describe("runCliProviderCompletion", () => {
 			thinkingBudgetTokens: 12_000,
 		};
 
-		expectOk(await runCliProviderCompletion({
-			bridge: asBridge(bridge),
-			apiKey: "anthropic-key",
-			model,
-			messages,
-			system: "system prompt",
-			cwd: "/workspace",
-		}));
+		expectOk(
+			await runCliProviderCompletion({
+				bridge: asBridge(bridge),
+				apiKey: "anthropic-key",
+				model,
+				messages,
+				system: "system prompt",
+				cwd: "/workspace",
+			}),
+		);
 
 		expect(bridge.requests).toEqual([
 			{
@@ -134,13 +138,15 @@ describe("runCliProviderCompletion", () => {
 			modalities,
 		};
 
-		expectOk(await runCliProviderCompletion({
-			bridge: asBridge(bridge),
-			apiKey: "openai-key",
-			model,
-			messages,
-			cwd: "/workspace",
-		}));
+		expectOk(
+			await runCliProviderCompletion({
+				bridge: asBridge(bridge),
+				apiKey: "openai-key",
+				model,
+				messages,
+				cwd: "/workspace",
+			}),
+		);
 
 		expect(bridge.requests).toEqual([
 			{
@@ -169,14 +175,16 @@ describe("runCliProviderCompletion", () => {
 			context: 1_048_576,
 		};
 
-		expectOk(await runCliProviderCompletion({
-			bridge: asBridge(bridge),
-			apiKey: "gemini-key",
-			model,
-			messages,
-			system: "system prompt",
-			cwd: "/workspace",
-		}));
+		expectOk(
+			await runCliProviderCompletion({
+				bridge: asBridge(bridge),
+				apiKey: "gemini-key",
+				model,
+				messages,
+				system: "system prompt",
+				cwd: "/workspace",
+			}),
+		);
 
 		expect(bridge.requests).toEqual([
 			{
@@ -228,7 +236,10 @@ describe("runCliProviderCompletion", () => {
 
 describe("replayProviderTokenEvents", () => {
 	it("streams only token events in provider order with reasoning/content/tool kinds", () => {
-		const tokens: Array<{ text: string; kind: "content" | "reasoning" | "tool" }> = [];
+		const tokens: Array<{
+			text: string;
+			kind: "content" | "reasoning" | "tool";
+		}> = [];
 
 		replayProviderTokenEvents(
 			finishedResult([

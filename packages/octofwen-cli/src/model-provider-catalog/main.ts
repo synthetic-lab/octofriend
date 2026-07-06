@@ -57,8 +57,12 @@ export type ProviderConfig = {
 	testModel: string;
 };
 
-export type ProviderKey = "synthetic" | "openai" | "anthropic" | "gemini" | "grok";
-
+export type ProviderKey =
+	| "synthetic"
+	| "openai"
+	| "anthropic"
+	| "gemini"
+	| "grok";
 
 type CatalogResponse = {
 	providers: Record<ProviderKey, ProviderConfig>;
@@ -101,9 +105,10 @@ export function providerValues(): ProviderConfig[] {
 }
 
 export function keyFromName(name: string): Result<ProviderKey, string> {
-	for (const [key, provider] of Object.entries(PROVIDERS) as Array<
-		[ProviderKey, ProviderConfig | undefined]
-	>) {
+	for (const [key, provider] of Object.entries(PROVIDERS) as [
+		ProviderKey,
+		ProviderConfig | undefined,
+	][]) {
 		if (!provider) continue;
 		if (provider.name === name) return ok(key);
 	}

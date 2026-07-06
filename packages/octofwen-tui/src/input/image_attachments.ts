@@ -96,8 +96,7 @@ export function getMimeTypeFromPath(
 ): Result<ImageMimeType, string> {
 	const ext = path.extname(filePath).toLowerCase();
 	const mimeType = IMAGE_EXTENSIONS[ext];
-	if (!mimeType)
-		return err(`Unsupported image format for file: ${filePath}`);
+	if (!mimeType) return err(`Unsupported image format for file: ${filePath}`);
 	return ok(mimeType);
 }
 
@@ -189,11 +188,15 @@ function pushQuotedCharacter(chars: string[], char: string): void {
 	}
 }
 
-async function readImageFile(filePath: string): Promise<Result<Buffer, string>> {
+async function readImageFile(
+	filePath: string,
+): Promise<Result<Buffer, string>> {
 	try {
 		return ok(await fs.readFile(filePath));
 	} catch (error) {
-		return err(`Failed to read image file ${filePath}: ${errorToString(error)}`);
+		return err(
+			`Failed to read image file ${filePath}: ${errorToString(error)}`,
+		);
 	}
 }
 

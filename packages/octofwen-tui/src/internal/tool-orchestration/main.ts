@@ -39,7 +39,7 @@ export type ToolCall = {
 	type: "tool-call";
 	name: string;
 	toolCallId: string;
-	assistantMessageId: string;
+	assistantMessageId?: string;
 	parsed: Record<string, unknown>;
 	original: unknown;
 };

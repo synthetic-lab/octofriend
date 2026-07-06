@@ -142,9 +142,7 @@ describe("try expression tuples", () => {
 	});
 
 	it("converts non-Error sync throws into Error instances", () => {
-		const [error, value] = tryexpr(() =>
-			Function("th" + "row 'string boom'")(),
-		);
+		const [error, value] = tryexpr(() => Function("throw 'string boom'")());
 
 		expect(value).toBeNull();
 		expect(error).toBeInstanceOf(Error);

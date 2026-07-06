@@ -1,5 +1,5 @@
-import { configRunNotify } from "./agentd-config.ts";
 import { err, errorToString, ok, type Result } from "../../app/result.ts";
+import { configRunNotify } from "./agentd-config.ts";
 import type { Config } from "./schemas.ts";
 
 export type DesktopNotification = {
@@ -43,7 +43,9 @@ async function notifyWithToastedNotifier(
 	const module = await import("toasted-notifier");
 	const notifier = (module.default ?? module) as Partial<ToastedNotifier>;
 	if (typeof notifier.notify !== "function") {
-		return Promise.reject(new Error("toasted-notifier does not expose notify()"));
+		return Promise.reject(
+			new Error("toasted-notifier does not expose notify()"),
+		);
 	}
 
 	await new Promise<void>((resolve, reject) => {

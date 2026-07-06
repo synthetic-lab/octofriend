@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { AgentdRustBridge } from "../../packages/octofwen-cli/src/bridge/rust/agent.ts";
@@ -71,6 +71,9 @@ type CaseResult = {
 	duration: number;
 	command: string;
 };
+
+const isoTimestampSeparatorPattern = /[:T]/gu;
+const isoTimestampMillisPattern = /\.\d{3}Z$/u;
 
 const DEFAULT_ARGS: Args = {
 	benchmarksDir: "tmp.benchmarks",
@@ -216,6 +219,7 @@ function parseArgs(argv: string[]): Args {
 			case "--help":
 				printHelp();
 				process.exit(0);
+				break;
 			default:
 				console.error(`Unknown argument: ${arg}`);
 				printHelp();
@@ -275,44 +279,55 @@ async function selectExercises(options: Args): Promise<Exercise[]> {
 		if (!languageDir.isDirectory()) continue;
 		const language = languageDir.name;
 		if (languageFilter && !languageFilter.has(language.toLowerCase())) continue;
-		const practiceDir = path.join(
-			options.exercisesDir,
-			language,
-			"exercises",
-			"practice",
+		exercises.push(
+			...(await collectLanguageExercises(options, language, keywordFilter)),
 		);
-		let entries;
-		try {
-			entries = await readdir(practiceDir, { withFileTypes: true });
-		} catch {
-			continue;
-		}
-		for (const entry of entries) {
-			if (!entry.isDirectory()) continue;
-			const relativePath = path.join(
-				language,
-				"exercises",
-				"practice",
-				entry.name,
-			);
-			if (
-				keywordFilter &&
-				!keywordFilter.some((keyword) => relativePath.includes(keyword))
-			)
-				continue;
-			exercises.push({
-				language,
-				name: entry.name,
-				relativePath,
-				sourcePath: path.join(practiceDir, entry.name),
-			});
-		}
 	}
 	exercises.sort((left, right) =>
 		left.relativePath.localeCompare(right.relativePath),
 	);
 	if (options.numTests > 0) return exercises.slice(0, options.numTests);
 	return exercises;
+}
+
+async function collectLanguageExercises(
+	options: Args,
+	language: string,
+	keywordFilter: readonly string[] | null,
+): Promise<Exercise[]> {
+	const practiceDir = path.join(
+		options.exercisesDir,
+		language,
+		"exercises",
+		"practice",
+	);
+	let entries: Awaited<ReturnType<typeof readdir>>;
+	try {
+		entries = await readdir(practiceDir, { withFileTypes: true });
+	} catch {
+		return [];
+	}
+	return entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => ({
+			language,
+			name: entry.name,
+			relativePath: path.join(language, "exercises", "practice", entry.name),
+			sourcePath: path.join(practiceDir, entry.name),
+		}))
+		.filter((exercise) =>
+			exerciseMatchesKeywords(exercise.relativePath, keywordFilter),
+		);
+}
+
+function exerciseMatchesKeywords(
+	relativePath: string,
+	keywordFilter: readonly string[] | null,
+): boolean {
+	return (
+		keywordFilter == null ||
+		keywordFilter.some((keyword) => relativePath.includes(keyword))
+	);
 }
 
 function csvSet(value: string | undefined): Set<string> | null {
@@ -384,8 +399,8 @@ async function createRunDir(
 ): Promise<string> {
 	const stamp = new Date()
 		.toISOString()
-		.replace(/[:T]/gu, "-")
-		.replace(/\.\d{3}Z$/u, "");
+		.replace(isoTimestampSeparatorPattern, "-")
+		.replace(isoTimestampMillisPattern, "");
 	const runDir = path.join(benchmarksDir, `${stamp}--${name}`);
 	await mkdir(runDir, { recursive: true });
 	return runDir;
@@ -484,7 +499,6 @@ async function runExerciseSafely(params: {
 	}
 }
 
-
 function failedCaseResult(
 	exercise: Exercise,
 	model: ModelConfig,
@@ -553,7 +567,7 @@ async function runExercise({
 			content: [
 				{
 					type: "text",
-					content: await exercisePrompt(exercise, filesSnapshot, workDir),
+					content: exercisePrompt(exercise, filesSnapshot, workDir),
 				},
 			],
 		},
@@ -568,12 +582,7 @@ async function runExercise({
 			messages,
 			model,
 		});
-		await prepareScoringDirectory(
-			filesSnapshot,
-			workDir,
-			caseDir,
-			fileSets,
-		);
+		await prepareScoringDirectory(filesSnapshot, workDir, caseDir, fileSets);
 		const testResult = await runTests(
 			exercise.language,
 			caseDir,
@@ -608,11 +617,11 @@ async function runExercise({
 	return result;
 }
 
-async function exercisePrompt(
+function exercisePrompt(
 	exercise: Exercise,
 	filesSnapshot: readonly SnapshotFile[],
 	workDir: string,
-): Promise<string> {
+): string {
 	const instructions = exerciseDocs(filesSnapshot);
 	return `You are solving an Exercism benchmark exercise for the Aider Polyglot benchmark, using Octofwen tools.
 

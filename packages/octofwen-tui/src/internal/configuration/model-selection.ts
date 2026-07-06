@@ -1,5 +1,5 @@
-import { resolveAgentdCommand } from "../agentd/command.ts";
 import { err, ok, type Result } from "../../app/result.ts";
+import { resolveAgentdCommand } from "../agentd/command.ts";
 import type { Config } from "./schemas.ts";
 
 export function getModelFromConfig(
@@ -10,7 +10,7 @@ export function getModelFromConfig(
 		config,
 		modelOverride,
 	});
-	if (!result.success || !isRecord(result.data)) {
+	if (!(result.success && isRecord(result.data))) {
 		return config.models[0];
 	}
 	return result.data["model"] as Config["models"][number];

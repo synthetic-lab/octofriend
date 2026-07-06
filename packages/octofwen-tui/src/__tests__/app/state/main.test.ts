@@ -94,6 +94,7 @@ test("trajectory finish merge de-duplicates an already active checkpoint", () =>
 		type: "llm-ir" as const,
 		ir: {
 			role: "assistant" as const,
+			messageId: "assistant-previous",
 			content: "previous",
 			usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
 		},
@@ -102,6 +103,7 @@ test("trajectory finish merge de-duplicates an already active checkpoint", () =>
 		type: "llm-ir" as const,
 		ir: {
 			role: "user" as const,
+			messageId: "user-continue",
 			content: [{ type: "text" as const, content: "continue" }],
 		},
 	};
@@ -109,6 +111,7 @@ test("trajectory finish merge de-duplicates an already active checkpoint", () =>
 		type: "llm-ir" as const,
 		ir: {
 			role: "assistant" as const,
+			messageId: "assistant-next",
 			content: "next",
 			usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
 		},
@@ -167,9 +170,10 @@ test("trajectory history links assistant messages to tool calls and outputs", ()
 	if (assistant.ir.role !== "assistant" || output.ir.role !== "tool-output")
 		return;
 	expect(assistant.ir.messageId).toMatch(ASSISTANT_MESSAGE_ID_PREFIX);
-	expect(assistant.ir.toolCalls?.[0]?.assistantMessageId).toBe(
-		assistant.ir.messageId,
-	);
+	const toolCall = assistant.ir.toolCalls?.[0];
+	expect(toolCall?.type).toBe("tool-call");
+	if (toolCall?.type !== "tool-call") return;
+	expect(toolCall.assistantMessageId).toBe(assistant.ir.messageId);
 	expect(output.ir.toolCall.assistantMessageId).toBe(assistant.ir.messageId);
 });
 

@@ -288,6 +288,7 @@ describe("agent trajectory runtime", () => {
 function assistantMessage(content: string) {
 	return {
 		role: "assistant" as const,
+		messageId: `assistant-${content}`,
 		content,
 		usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
 	};

@@ -20,6 +20,7 @@ describe("notification configuration", () => {
 				},
 			},
 			async (notification) => {
+				await Promise.resolve();
 				notifications.push(notification);
 			},
 		);
@@ -43,6 +44,7 @@ describe("notification configuration", () => {
 				},
 			},
 			async (notification) => {
+				await Promise.resolve();
 				notifications.push(notification);
 			},
 		);

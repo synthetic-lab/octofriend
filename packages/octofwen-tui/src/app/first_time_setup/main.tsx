@@ -60,6 +60,7 @@ export function FirstTimeSetup({
 							}
 							onSkip={() => to.addModel({})}
 							onOverrideDefaultApiKey={async (envVar) => {
+								if (!SYNTHETIC_PROVIDER) return;
 								const key = keyFromName(SYNTHETIC_PROVIDER.name);
 								if (key.success) {
 									await addOverride({

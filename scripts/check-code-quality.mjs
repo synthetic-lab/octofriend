@@ -5,6 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+const lineBreakPattern = /\r?\n/u;
+
 const SOURCE_ROOTS = ["crates", "packages"];
 const IGNORED_DIRS = new Set(["dist", "node_modules", "target"]);
 const MAX_FIELDS = 10;
@@ -987,14 +989,19 @@ function changedSourcePaths() {
 	);
 	const output = `${tracked.stdout ?? ""}\n${untracked.stdout ?? ""}`;
 	return output
-		.split(/\r?\n/u)
+		.split(lineBreakPattern)
 		.filter(Boolean)
-		.filter((filePath) => SOURCE_ROOTS.some((root) => filePath.startsWith(`${root}/`)))
+		.filter((filePath) =>
+			SOURCE_ROOTS.some((root) => filePath.startsWith(`${root}/`)),
+		)
 		.filter((filePath) => {
 			const extension = path.extname(filePath);
 			return extension === ".rs" || extension === ".ts";
 		})
-		.filter((filePath) => !filePath.split(path.sep).some((part) => IGNORED_DIRS.has(part)));
+		.filter(
+			(filePath) =>
+				!filePath.split(path.sep).some((part) => IGNORED_DIRS.has(part)),
+		);
 }
 
 function readSourceFile(filePath) {
@@ -1031,7 +1038,9 @@ function main() {
 	}
 
 	if (files.length === 0) {
-		console.error("no changed source files checked; pass --all to scan the whole repo");
+		console.error(
+			"no changed source files checked; pass --all to scan the whole repo",
+		);
 		return;
 	}
 
@@ -1049,7 +1058,9 @@ function main() {
 		if (Bun.argv.includes("--fail-on-findings")) {
 			process.exit(1);
 		}
-		console.error("findings reported; pass --fail-on-findings to fail on findings");
+		console.error(
+			"findings reported; pass --fail-on-findings to fail on findings",
+		);
 	}
 }
 

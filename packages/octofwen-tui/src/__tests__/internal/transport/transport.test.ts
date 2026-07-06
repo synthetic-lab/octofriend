@@ -200,6 +200,7 @@ describe("findFiles", () => {
 			modTime: async () => 0,
 			resolvePath: async (_signal: AbortSignal, file: string) => file,
 			shell: async (signal: AbortSignal, command: string, timeout: number) => {
+				await Promise.resolve();
 				shellCalls.push({ aborted: signal.aborted, command, timeout });
 				return [
 					"./src/a.ts",

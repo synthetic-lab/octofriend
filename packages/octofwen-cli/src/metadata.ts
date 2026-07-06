@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { err, errorToString, ok, type Result } from "./result.ts";
 import { PACKAGE_DIR } from "./configuration/paths.ts";
+import { err, errorToString, ok, type Result } from "./result.ts";
 
 export type Metadata = {
 	version: string;

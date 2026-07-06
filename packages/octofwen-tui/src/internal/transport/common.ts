@@ -90,6 +90,9 @@ export async function findFiles(
 	return result["files"] as string[];
 }
 
+const leadingDotSlashPattern = /^\.\//u;
+const leadingSlashPattern = /^\//u;
+
 const excludedDirs = new Set([
 	"node_modules",
 	".git",
@@ -163,12 +166,12 @@ function excludedFindPruneExpression(): string {
 }
 
 function remoteRelativePath(searchRoot: string, filePath: string): string {
-	const trimmed = filePath.replace(/^\.\//u, "");
+	const trimmed = filePath.replace(leadingDotSlashPattern, "");
 	if (searchRoot === ".") return trimmed;
-	const normalizedRoot = searchRoot.replace(/^\.\//u, "");
+	const normalizedRoot = searchRoot.replace(leadingDotSlashPattern, "");
 	return trimmed.startsWith(`${normalizedRoot}/`)
 		? trimmed.slice(normalizedRoot.length + 1)
-		: trimmed.replace(/^\//u, "");
+		: trimmed.replace(leadingSlashPattern, "");
 }
 
 function remotePathHasExcludedDir(filePath: string): boolean {
@@ -244,12 +247,12 @@ function wildcardMatches(
 			starIndex = patternIndex;
 			matchIndex = valueIndex;
 			patternIndex += 1;
-		} else if (starIndex !== -1) {
+		} else if (starIndex === -1) {
+			return false;
+		} else {
 			patternIndex = starIndex + 1;
 			matchIndex += 1;
 			valueIndex = matchIndex;
-		} else {
-			return false;
 		}
 	}
 	while (

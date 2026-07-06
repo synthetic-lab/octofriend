@@ -18,6 +18,7 @@ describe("Octo agent IR", () => {
 				type: "tool-call",
 				name: "shell",
 				toolCallId: "call_1",
+				assistantMessageId: "assistant_1",
 				original: { cmd: "pwd", timeout: 1000 },
 				parsed: { cmd: "pwd", timeout: 1000 },
 			},

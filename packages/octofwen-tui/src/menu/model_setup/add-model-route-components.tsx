@@ -5,7 +5,7 @@ import {
 	KbShortcutPanel,
 	type ShortcutArray,
 } from "../../input/shortcuts.tsx";
-import { PROVIDERS } from "../../internal/model-provider-catalog/main.ts";
+import { providerForBaseUrl } from "../../internal/model-provider-catalog/main.ts";
 import { useTerminalThemeColor } from "../../theme/branding.tsx";
 import {
 	testConnection,
@@ -28,9 +28,7 @@ export function AuthAsk(
 			onSelect: (route: "apiKey" | "envVar" | "command") => void;
 		},
 ) {
-	const provider = Object.values(PROVIDERS).find((provider) => {
-		return provider.baseUrl === props.baseUrl;
-	});
+	const provider = providerForBaseUrl(props.baseUrl);
 
 	const shortcutItems = [
 		{

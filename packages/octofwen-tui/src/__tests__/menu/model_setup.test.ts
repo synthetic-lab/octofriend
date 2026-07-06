@@ -5,8 +5,15 @@ type TestResult<T, E> =
 	| { success: false; error: E };
 
 function expectOk<T, E>(result: TestResult<T, E>): T {
-	expect(result.success).toBe(true);
-	return result.success ? result.data : (undefined as T);
+	if (result.success) return result.data;
+	throw new Error(String(result.error));
+}
+
+function expectPresent<T>(value: T): NonNullable<T> {
+	if (value === null || value === undefined) {
+		throw new Error("Expected value to be present");
+	}
+	return value;
 }
 
 describe("terminal model setup helpers", () => {
@@ -26,6 +33,28 @@ describe("terminal model setup helpers", () => {
 		expect(getProviderDisplayName("https://models.example.test/v1")).toBe(
 			"https://models.example.test/v1",
 		);
+	});
+
+	it("renders custom base URL auth choices without requiring every catalog provider", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { AuthAsk } = await import(
+			"../../menu/model_setup/add-model-route-components.tsx"
+		);
+
+		const { lastFrame } = render(
+			React.createElement(AuthAsk, {
+				baseUrl: "http://127.0.0.1:8080/v1",
+				renderExamples: false,
+				config: null,
+				done: () => undefined,
+				cancel: () => undefined,
+				back: () => undefined,
+				onSelect: () => undefined,
+			}),
+		);
+
+		expect(lastFrame()).toContain("How do you want to authenticate?");
 	});
 
 	it("returns API key URLs for known providers", async () => {
@@ -168,7 +197,9 @@ describe("model setup state helpers", () => {
 		const { keyFromName, PROVIDERS } = await import(
 			"../../internal/model-provider-catalog/main.ts"
 		);
-		const openaiKey = expectOk(keyFromName(PROVIDERS.openai.name));
+		const openaiKey = expectOk(
+			keyFromName(expectPresent(PROVIDERS.openai).name),
+		);
 		const config = {
 			defaultApiKeyOverrides: {
 				[openaiKey]: "OPENAI_FROM_CONFIG",
@@ -176,14 +207,18 @@ describe("model setup state helpers", () => {
 		};
 
 		expect(
-			resolveProviderEnvVar(PROVIDERS.openai, config, "OPENAI_EXPLICIT"),
+			resolveProviderEnvVar(
+				expectPresent(PROVIDERS.openai),
+				config,
+				"OPENAI_EXPLICIT",
+			),
 		).toBe("OPENAI_EXPLICIT");
-		expect(resolveProviderEnvVar(PROVIDERS.openai, config, null)).toBe(
-			"OPENAI_FROM_CONFIG",
-		);
-		expect(resolveProviderEnvVar(PROVIDERS.openai, null, null)).toBe(
-			PROVIDERS.openai.envVar,
-		);
+		expect(
+			resolveProviderEnvVar(expectPresent(PROVIDERS.openai), config, null),
+		).toBe("OPENAI_FROM_CONFIG");
+		expect(
+			resolveProviderEnvVar(expectPresent(PROVIDERS.openai), null, null),
+		).toBe(expectPresent(PROVIDERS.openai).envVar);
 	});
 
 	it("keeps stale step transitions from replacing the current setup state", async () => {
@@ -196,13 +231,16 @@ describe("model setup state helpers", () => {
 
 		expect(
 			reduceModelSetupStep(
-				{ step: "missing", provider: { ...PROVIDERS.openai } },
+				{ step: "missing", provider: { ...expectPresent(PROVIDERS.openai) } },
 				{ from: "found", to: { step: "initial" } },
 			),
-		).toEqual({ step: "missing", provider: { ...PROVIDERS.openai } });
+		).toEqual({
+			step: "missing",
+			provider: { ...expectPresent(PROVIDERS.openai) },
+		});
 		expect(
 			reduceModelSetupStep(
-				{ step: "missing", provider: { ...PROVIDERS.openai } },
+				{ step: "missing", provider: { ...expectPresent(PROVIDERS.openai) } },
 				{ force: true, to: { step: "initial" } },
 			),
 		).toEqual({ step: "initial" });
@@ -217,7 +255,9 @@ describe("autofix model setup helpers", () => {
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
 			"../../internal/model-provider-catalog/main.ts"
 		);
-		const syntheticKey = expectOk(keyFromName(SYNTHETIC_PROVIDER.name));
+		const syntheticKey = expectOk(
+			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
+		);
 
 		const result = await resolveSyntheticAutofixSelection({
 			config: {
@@ -236,7 +276,7 @@ describe("autofix model setup helpers", () => {
 		expect(result).toEqual({
 			step: "complete",
 			diffApply: {
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiEnvVar: "SYNTHETIC_OVERRIDE",
 				model: "synthetic-diff",
 			},
@@ -250,7 +290,9 @@ describe("autofix model setup helpers", () => {
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
 			"../../internal/model-provider-catalog/main.ts"
 		);
-		const syntheticKey = expectOk(keyFromName(SYNTHETIC_PROVIDER.name));
+		const syntheticKey = expectOk(
+			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
+		);
 		const calls: unknown[] = [];
 
 		const result = await resolveSyntheticAutofixSelection({
@@ -261,15 +303,15 @@ describe("autofix model setup helpers", () => {
 			},
 			defaultModel: "synthetic-diff",
 			env: { SYNTHETIC_OVERRIDE: "present" },
-			modelConnectionTest: async (params) => {
+			modelConnectionTest: (params) => {
 				calls.push(params);
-				return { valid: false };
+				return Promise.resolve({ valid: false });
 			},
 		});
 
 		expect(calls).toEqual([
 			{
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiKey: "present",
 				model: "synthetic-diff",
 			},
@@ -287,7 +329,9 @@ describe("autofix model setup helpers", () => {
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
 			"../../internal/model-provider-catalog/main.ts"
 		);
-		const syntheticKey = expectOk(keyFromName(SYNTHETIC_PROVIDER.name));
+		const syntheticKey = expectOk(
+			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
+		);
 		const calls: unknown[] = [];
 
 		const result = await resolveSyntheticAutofixConfig({
@@ -297,20 +341,20 @@ describe("autofix model setup helpers", () => {
 				},
 			},
 			env: { SYNTHETIC_OVERRIDE: "present" },
-			modelConnectionTest: async (params) => {
+			modelConnectionTest: (params) => {
 				calls.push(params);
-				return { valid: true, metadata: {} };
+				return Promise.resolve({ valid: true, metadata: {} });
 			},
 		});
 
 		expect(calls).toEqual([
 			{
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiKey: "present",
 				model: "hf:syntheticlab/diff-apply",
 			},
 			{
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiKey: "present",
 				model: "hf:syntheticlab/fix-json",
 			},
@@ -319,12 +363,12 @@ describe("autofix model setup helpers", () => {
 			step: "complete",
 			config: {
 				diffApply: {
-					baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 					apiEnvVar: "SYNTHETIC_OVERRIDE",
 					model: "hf:syntheticlab/diff-apply",
 				},
 				fixJson: {
-					baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 					apiEnvVar: "SYNTHETIC_OVERRIDE",
 					model: "hf:syntheticlab/fix-json",
 				},
@@ -345,7 +389,9 @@ describe("autofix model setup helpers", () => {
 			defaultModel: "synthetic-diff",
 			env: {},
 			readKeyForModel: (model) => {
-				expect(model).toEqual({ baseUrl: SYNTHETIC_PROVIDER.baseUrl });
+				expect(model).toEqual({
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
+				});
 				return Promise.resolve("stored-key");
 			},
 		});
@@ -353,7 +399,7 @@ describe("autofix model setup helpers", () => {
 		expect(result).toEqual({
 			step: "complete",
 			diffApply: {
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				model: "synthetic-diff",
 			},
 		});
@@ -373,7 +419,7 @@ describe("autofix model setup helpers", () => {
 			defaultModel: "synthetic-diff",
 			env: {},
 			readKeyForModel: async () => "stored-key",
-			modelConnectionTest: async (params) => {
+			modelConnectionTest: (params) => {
 				calls.push(params);
 				return Promise.reject(new Error("billing required"));
 			},
@@ -381,7 +427,7 @@ describe("autofix model setup helpers", () => {
 
 		expect(calls).toEqual([
 			{
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiKey: "stored-key",
 				model: "synthetic-diff",
 			},
@@ -423,15 +469,15 @@ describe("autofix model setup helpers", () => {
 				config: null,
 				defaultModel: "synthetic-diff",
 				auth: { type: "env", name: "SYNTHETIC_CUSTOM_AUTH_TEST_KEY" },
-				modelConnectionTest: async (params) => {
+				modelConnectionTest: (params) => {
 					calls.push(params);
-					return { valid: false };
+					return Promise.resolve({ valid: false });
 				},
 			});
 
 			expect(calls).toEqual([
 				{
-					baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 					apiKey: "custom-env-key",
 					model: "synthetic-diff",
 				},
@@ -460,15 +506,15 @@ describe("autofix model setup helpers", () => {
 			config: null,
 			defaultModel: "synthetic-diff",
 			auth: { type: "command", command: ["printf", "custom-command-key"] },
-			modelConnectionTest: async (params) => {
+			modelConnectionTest: (params) => {
 				calls.push(params);
-				return { valid: true, metadata: {} };
+				return Promise.resolve({ valid: true, metadata: {} });
 			},
 		});
 
 		expect(calls).toEqual([
 			{
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				apiKey: "custom-command-key",
 				model: "synthetic-diff",
 			},
@@ -476,7 +522,7 @@ describe("autofix model setup helpers", () => {
 		expect(result).toEqual({
 			step: "complete",
 			diffApply: {
-				baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 				auth: { type: "command", command: ["printf", "custom-command-key"] },
 				model: "synthetic-diff",
 			},
@@ -498,23 +544,23 @@ describe("autofix model setup helpers", () => {
 			const result = await resolveSyntheticAutofixConfigFromAuth({
 				config: null,
 				auth: { type: "env", name: "SYNTHETIC_CUSTOM_SETUP_KEY" },
-				modelConnectionTest: async (params) => {
+				modelConnectionTest: (params) => {
 					calls.push(params);
 					if (params.model === "hf:syntheticlab/fix-json") {
 						return Promise.reject(new Error("payment required"));
 					}
-					return { valid: true, metadata: {} };
+					return Promise.resolve({ valid: true, metadata: {} });
 				},
 			});
 
 			expect(calls).toEqual([
 				{
-					baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 					apiKey: "custom-setup-key",
 					model: "hf:syntheticlab/diff-apply",
 				},
 				{
-					baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 					apiKey: "custom-setup-key",
 					model: "hf:syntheticlab/fix-json",
 				},
@@ -539,7 +585,7 @@ describe("autofix model setup helpers", () => {
 		);
 
 		expect(syntheticAutofixDiffApplyFromAuth("synthetic-diff")).toEqual({
-			baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+			baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 			model: "synthetic-diff",
 		});
 		expect(
@@ -548,7 +594,7 @@ describe("autofix model setup helpers", () => {
 				command: ["op", "read", "secret"],
 			}),
 		).toEqual({
-			baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+			baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
 			model: "synthetic-diff",
 			auth: {
 				type: "command",
@@ -572,7 +618,9 @@ describe("terminal model setup UI flows", () => {
 		const { AutofixModelMenu } = await import(
 			"../../menu/model_setup/autofix-model-menu.tsx"
 		);
-		const syntheticKey = expectOk(keyFromName(SYNTHETIC_PROVIDER.name));
+		const syntheticKey = expectOk(
+			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
+		);
 		const oldKey = process.env["SYNTHETIC_UI_ERROR_KEY"];
 		process.env["SYNTHETIC_UI_ERROR_KEY"] = "ui-key";
 

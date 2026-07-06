@@ -23,7 +23,7 @@ export type ToolCall<T extends ToolMap<string, unknown, AnyTransport>> = {
 		type: "tool-call";
 		name: LoadedTools<T>[K]["name"];
 		toolCallId: string;
-		assistantMessageId: string;
+		assistantMessageId?: string;
 		parsed: Record<string, unknown>;
 		original: unknown;
 	};

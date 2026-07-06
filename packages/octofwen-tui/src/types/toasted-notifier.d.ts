@@ -18,5 +18,6 @@ declare module "toasted-notifier" {
 		): unknown;
 	};
 
+	// biome-ignore lint/style/noDefaultExport: toasted-notifier exposes a default export.
 	export default notifier;
 }
