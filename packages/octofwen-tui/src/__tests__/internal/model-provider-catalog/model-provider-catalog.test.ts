@@ -10,36 +10,62 @@ import {
 	SYNTHETIC_PROVIDER,
 } from "../../../internal/model-provider-catalog/main.ts";
 
+type TestResult<T, E> =
+	| { success: true; data: T }
+	| { success: false; error: E };
+
+function expectOk<T, E>(result: TestResult<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : (undefined as T);
+}
+
 describe("provider catalog", () => {
 	it("exports built-in provider metadata with stable keys and recommended models", () => {
 		expect(Object.keys(PROVIDERS)).toEqual([
 			"synthetic",
 			"openai",
 			"anthropic",
+			"gemini",
 			"grok",
 		]);
 		expect(SYNTHETIC_PROVIDER).toBe(PROVIDERS.synthetic);
 		expect(recommendedModel("synthetic")).toEqual(
 			PROVIDERS.synthetic.models[0],
 		);
-		expect(recommendedModel("openai").nickname).toBe("GPT-5.3 Codex");
+		expect(recommendedModel("openai").nickname).toBe("GPT-5.5");
 		expect(PROVIDERS.anthropic.type).toBe("anthropic");
+		expect(PROVIDERS.gemini.type).toBe("gemini");
+		expect(PROVIDERS.gemini.envVar).toBe("GEMINI_API_KEY");
+		expect(PROVIDERS.openai.apiKeyUrl).toBe(
+			"https://platform.openai.com/api-keys",
+		);
+		expect(PROVIDERS.gemini.apiKeyUrl).toBe(
+			"https://aistudio.google.com/apikey",
+		);
 		expect(PROVIDERS.grok.envVar).toBe("XAI_API_KEY");
+		expect(PROVIDERS.grok.apiKeyUrl).toBe("https://console.x.ai/");
 	});
 
 	it("maps provider display names and base URLs to catalog entries", () => {
-		expect(keyFromName("Synthetic")).toBe("synthetic");
-		expect(keyFromName("OpenAI")).toBe("openai");
+		expect(expectOk(keyFromName("Synthetic"))).toBe("synthetic");
+		expect(expectOk(keyFromName("OpenAI"))).toBe("openai");
 		expect(providerForBaseUrl("https://api.synthetic.new/v1")).toEqual(
 			PROVIDERS.synthetic,
 		);
 		expect(providerForBaseUrl("https://api.anthropic.com")).toEqual(
 			PROVIDERS.anthropic,
 		);
+		expect(
+			providerForBaseUrl("https://generativelanguage.googleapis.com/v1beta"),
+		).toEqual(PROVIDERS.gemini);
 		expect(providerForBaseUrl("https://example.invalid")).toBeNull();
-		expect(() => keyFromName("Missing Provider")).toThrow(
-			"No provider named Missing Provider found",
-		);
+		const missingProvider = keyFromName("Missing Provider");
+		expect(missingProvider.success).toBe(false);
+		if (!missingProvider.success) {
+			expect(missingProvider.error).toBe(
+				"No provider named Missing Provider found",
+			);
+		}
 	});
 
 	it("keeps provider config typed without depending on UI modules", () => {
@@ -48,6 +74,7 @@ describe("provider catalog", () => {
 			name: "Local",
 			envVar: "LOCAL_API_KEY",
 			baseUrl: "https://local.invalid/v1",
+			apiKeyUrl: "https://local.invalid/keys",
 			models: [
 				{
 					model: "local-model",

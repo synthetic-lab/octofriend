@@ -51,7 +51,7 @@ const NUM_GENERATED_SAMPLES = 10_000;
 
 const REPOS_DIR = path.join(path.dirname(__dirname), "repos");
 
-async function main() {
+async function main(): Promise<GenResult<void>> {
 	await Promise.all([
 		fs.rm(TRAIN_PATH, { force: true }),
 		fs.rm(EVAL_PATH, { force: true }),
@@ -60,7 +60,8 @@ async function main() {
 	await fs.writeFile(TRAIN_PATH, "");
 	await fs.writeFile(EVAL_PATH, "");
 
-	await genBrokenJsonFromArray("Number", [-1111.8]);
+	let genResult = await genBrokenJsonFromArray("Number", [-1111.8]);
+	if (!genResult.success) return genResult;
 	console.log("Generating synthetic JSON...");
 	const samples: unknown[] = [];
 	for (let i = 0; i < NUM_GENERATED_SAMPLES; i++) {
@@ -68,7 +69,8 @@ async function main() {
 		if (i % 200 === 0) console.log(`Generated ${i}...`);
 	}
 	console.log("Synth data generated; breaking...");
-	await genBrokenJsonFromArray("Generated JSON", samples);
+	genResult = await genBrokenJsonFromArray("Generated JSON", samples);
+	if (!genResult.success) return genResult;
 
 	const pokedex = JSON.parse(
 		await fs.readFile(
@@ -76,7 +78,8 @@ async function main() {
 			"utf8",
 		),
 	);
-	await genBrokenJsonFromArray("Pokedex", pokedex["pokemon"]);
+	genResult = await genBrokenJsonFromArray("Pokedex", pokedex["pokemon"]);
+	if (!genResult.success) return genResult;
 
 	const reps = JSON.parse(
 		await fs.readFile(
@@ -84,7 +87,11 @@ async function main() {
 			"utf8",
 		),
 	);
-	await genBrokenJsonFromArray("US Representatives", reps["objects"]);
+	genResult = await genBrokenJsonFromArray(
+		"US Representatives",
+		reps["objects"],
+	);
+	if (!genResult.success) return genResult;
 
 	const reddit = await fs.readdir(path.join(__dirname, "json-repos/reddit"));
 	for (const redditJson of reddit) {
@@ -94,10 +101,11 @@ async function main() {
 				"utf8",
 			),
 		);
-		await genBrokenJsonFromArray(
+		genResult = await genBrokenJsonFromArray(
 			`/r/${redditJson}`,
 			parsed["data"]["children"],
 		);
+		if (!genResult.success) return genResult;
 	}
 
 	const movies2010 = JSON.parse(
@@ -106,7 +114,8 @@ async function main() {
 			"utf8",
 		),
 	);
-	await genBrokenJsonFromArray("Movies (2010s)", movies2010);
+	genResult = await genBrokenJsonFromArray("Movies (2010s)", movies2010);
+	if (!genResult.success) return genResult;
 
 	const movies2020 = JSON.parse(
 		await fs.readFile(
@@ -114,20 +123,29 @@ async function main() {
 			"utf8",
 		),
 	);
-	await genBrokenJsonFromArray("Movies (2020s)", movies2020);
+	genResult = await genBrokenJsonFromArray("Movies (2020s)", movies2020);
+	if (!genResult.success) return genResult;
 
 	const repos = await fs.readdir(REPOS_DIR);
 	for (const repo of repos) {
 		console.log("Generating broken JSON for", repo);
-		await genBrokenJsonForRepo(path.join(REPOS_DIR, repo));
+		genResult = await genBrokenJsonForRepo(path.join(REPOS_DIR, repo));
+		if (!genResult.success) return genResult;
 	}
+
+	return ok(undefined);
 }
 
-async function genBrokenJsonFromArray(name: string, array: unknown[]) {
+async function genBrokenJsonFromArray(
+	name: string,
+	array: unknown[],
+): Promise<GenResult<void>> {
 	let count = 0;
 	for await (const obj of array) {
 		count++;
-		const sample = randomlyBreak(JSON.stringify(obj));
+		const sampleResult = randomlyBreak(JSON.stringify(obj));
+		if (!sampleResult.success) return sampleResult;
+		const sample = sampleResult.value;
 		const outputPath = percentChance(EVAL_PERCENT) ? EVAL_PATH : TRAIN_PATH;
 		const messages = [
 			{
@@ -149,11 +167,14 @@ async function genBrokenJsonFromArray(name: string, array: unknown[]) {
 		if (count % 200 === 0) console.log(`Broke ${count}...`);
 	}
 	console.log(`Generated ${count} samples for`, name);
+	return ok(undefined);
 }
 
-async function genBrokenJsonForRepo(path: string) {
+async function genBrokenJsonForRepo(path: string): Promise<GenResult<void>> {
 	let count = 0;
-	for await (const sample of getSamplesForRepo(path)) {
+	for await (const sampleResult of getSamplesForRepo(path)) {
+		if (!sampleResult.success) return sampleResult;
+		const sample = sampleResult.value;
 		count++;
 		const outputPath = Math.random() > EVAL_PERCENT ? TRAIN_PATH : EVAL_PATH;
 		const messages = [
@@ -175,6 +196,19 @@ async function genBrokenJsonForRepo(path: string) {
 		);
 	}
 	console.log(`Broke and stored ${count} samples for`, path);
+	return ok(undefined);
+}
+
+type GenResult<T> =
+	| { success: true; value: T }
+	| { success: false; error: string };
+
+function ok<T>(value: T): GenResult<T> {
+	return { success: true, value };
+}
+
+function err(error: string): GenResult<never> {
+	return { success: false, error };
 }
 
 type Sample = {
@@ -187,7 +221,9 @@ type CreateArguments = {
 	content: string;
 };
 
-async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
+async function* getSamplesForRepo(
+	dirpath: string,
+): AsyncGenerator<GenResult<Sample>> {
 	for await (const diff of genDiffs(path.join(dirpath, ".git"))) {
 		if (!percentChance(DIFF_GEN_PERCENT)) continue;
 		yield randomlyBreak(JSON.stringify(diff));
@@ -203,12 +239,12 @@ async function* getSamplesForRepo(dirpath: string): AsyncGenerator<Sample> {
 		}
 
 		if (percentChance(NOT_JSON_PERCENT)) {
-			yield {
+			yield ok({
 				input: file,
 				groundTruth: JSON.stringify({
 					success: false,
 				} satisfies JsonFixResponse),
-			};
+			});
 			continue;
 		}
 
@@ -249,15 +285,15 @@ type OutputNode =
 			brokenNode: BreakValue;
 	  };
 
-function randomlyBreak(str: string): Sample {
+function randomlyBreak(str: string): GenResult<Sample> {
 	if (percentChance(JSON5_PERCENT)) {
-		return {
+		return ok({
 			input: json5.stringify(JSON.parse(str)),
 			groundTruth: JSON.stringify({
 				success: true,
 				fixed: JSON.parse(str),
 			} satisfies JsonFixResponse),
-		};
+		});
 	}
 	let original = str;
 
@@ -269,16 +305,19 @@ function randomlyBreak(str: string): Sample {
 		}
 	}
 
-	return {
-		input: breakStr(original),
+	const broken = breakStr(original);
+	if (!broken.success) return broken;
+
+	return ok({
+		input: broken.value,
 		groundTruth: JSON.stringify({
 			success: true,
 			fixed: JSON.parse(original),
 		} satisfies JsonFixResponse),
-	};
+	});
 }
 
-function breakStr(str: string) {
+function breakStr(str: string): GenResult<string> {
 	let broken = str;
 	const ast = parseJson(str);
 
@@ -294,42 +333,68 @@ function breakStr(str: string) {
 			indexesToBreak.add(randomIndex(ast));
 		}
 
-		const outputNodes = ast.map((node, index): OutputNode => {
-			if (!indexesToBreak.has(index)) return { node, brokenNode: null };
+		const outputNodes = buildOutputNodes(ast, indexesToBreak);
+		if (!outputNodes.success) return outputNodes;
 
-			const numBreaks = zeroToN(MAX_AST_BREAKS[node.type]);
-			let prev: BreakValue = initialBreak(node);
-			for (let i = 0; i < numBreaks; i++) {
-				const typebreaks = astBreaks[node.type] as Breaker<
-					JSONASTNode["type"]
-				>[];
-				const typebreaker = pickRandom(typebreaks);
-				const next = typebreaker(prev);
-				if (next != null) prev = next;
-			}
-			return { node: null, brokenNode: prev };
-		});
-
-		broken = stringify(ast[ast.length - 1], outputNodes);
+		const stringified = stringify(ast[ast.length - 1], outputNodes.value);
+		if (!stringified.success) return stringified;
+		broken = stringified.value;
 	}
 
-	return broken;
+	return ok(broken);
 }
 
-function stringify(original: JSONASTNode, outputNodes: OutputNode[]): string {
+function buildOutputNodes(
+	ast: JSONASTNode[],
+	indexesToBreak: Set<number>,
+): GenResult<OutputNode[]> {
+	const outputNodes: OutputNode[] = [];
+	for (let index = 0; index < ast.length; index++) {
+		const outputNode = buildOutputNode(ast[index], indexesToBreak.has(index));
+		if (!outputNode.success) return outputNode;
+		outputNodes.push(outputNode.value);
+	}
+	return ok(outputNodes);
+}
+
+function buildOutputNode(
+	node: JSONASTNode,
+	shouldBreak: boolean,
+): GenResult<OutputNode> {
+	if (!shouldBreak) return ok({ node, brokenNode: null });
+
+	const initial = initialBreak(node);
+	if (!initial.success) return initial;
+
+	const numBreaks = zeroToN(MAX_AST_BREAKS[node.type]);
+	let prev: BreakValue = initial.value;
+	for (let i = 0; i < numBreaks; i++) {
+		const typebreaks = astBreaks[node.type] as Breaker<JSONASTNode["type"]>[];
+		const typebreaker = pickRandom(typebreaks);
+		const next = typebreaker(prev);
+		if (next != null) prev = next;
+	}
+	return ok({ node: null, brokenNode: prev });
+}
+
+function stringify(
+	original: JSONASTNode,
+	outputNodes: OutputNode[],
+): GenResult<string> {
 	const matchingOutputNode = outputNodes.find((output) => {
 		if (output.node != null) return output.node === original;
 		return output.brokenNode.node === original;
 	});
-	if (matchingOutputNode == null)
-		throw new Error("Couldn't find matching output node");
+	if (matchingOutputNode == null) {
+		return err("Couldn't find matching output node");
+	}
 
 	const { node, brokenNode } = matchingOutputNode;
 	if (node) return stringifyNode(node, outputNodes);
-	if (brokenNode.type === "string") return brokenNode.broken;
-	if (brokenNode.type === "null") return brokenNode.broken;
-	if (brokenNode.type === "number") return brokenNode.broken;
-	if (brokenNode.type === "boolean") return brokenNode.broken;
+	if (brokenNode.type === "string") return ok(brokenNode.broken);
+	if (brokenNode.type === "null") return ok(brokenNode.broken);
+	if (brokenNode.type === "number") return ok(brokenNode.broken);
+	if (brokenNode.type === "boolean") return ok(brokenNode.broken);
 	if (brokenNode.type === "array") {
 		return stringifyBrokenArray(brokenNode, outputNodes);
 	}
@@ -339,13 +404,15 @@ function stringify(original: JSONASTNode, outputNodes: OutputNode[]): string {
 function stringifyBrokenArray(
 	brokenNode: Extract<BreakValue, { type: "array" }>,
 	outputNodes: OutputNode[],
-): string {
+): GenResult<string> {
 	const arr: string[] = [];
 	if (!brokenNode.broken.openCut) arr.push("[");
 	for (let i = 0; i < brokenNode.node.children.length; i++) {
 		const child = brokenNode.node.children[i];
 		arr.push(randomWhitespace());
-		arr.push(stringify(child, outputNodes));
+		const childResult = stringify(child, outputNodes);
+		if (!childResult.success) return childResult;
+		arr.push(childResult.value);
 		arr.push(randomWhitespace());
 		pushOptionalComma(
 			arr,
@@ -355,23 +422,27 @@ function stringifyBrokenArray(
 		);
 	}
 	if (!brokenNode.broken.closeCut) arr.push("]");
-	return arr.join("");
+	return ok(arr.join(""));
 }
 
 function stringifyBrokenObject(
 	brokenNode: Extract<BreakValue, { type: "object" }>,
 	outputNodes: OutputNode[],
-): string {
+): GenResult<string> {
 	const obj: string[] = [];
 	if (!brokenNode.broken.openCut) obj.push("{");
 	for (let i = 0; i < brokenNode.node.children.length; i++) {
 		const [key, value] = brokenNode.node.children[i];
 		obj.push(randomWhitespace());
-		obj.push(stringify(key, outputNodes));
+		const keyResult = stringify(key, outputNodes);
+		if (!keyResult.success) return keyResult;
+		obj.push(keyResult.value);
 		if (!brokenNode.broken.colonCuts.has(i)) obj.push(":");
 		if (brokenNode.broken.colonDupes.has(i)) obj.push(":");
 		obj.push(randomWhitespace());
-		obj.push(stringify(value, outputNodes));
+		const valueResult = stringify(value, outputNodes);
+		if (!valueResult.success) return valueResult;
+		obj.push(valueResult.value);
 		obj.push(randomWhitespace());
 		pushOptionalComma(
 			obj,
@@ -381,7 +452,7 @@ function stringifyBrokenObject(
 		);
 	}
 	if (!brokenNode.broken.closeCut) obj.push("}");
-	return obj.join("");
+	return ok(obj.join(""));
 }
 
 function pushOptionalComma(
@@ -394,60 +465,87 @@ function pushOptionalComma(
 	if (broken.commaDupes.has(index)) output.push(",");
 }
 
-function stringifyNode(node: JSONASTNode, outputNodes: OutputNode[]): string {
+function stringifyNode(
+	node: JSONASTNode,
+	outputNodes: OutputNode[],
+): GenResult<string> {
 	switch (node.type) {
 		case "string":
 		case "null":
 		case "number":
 		case "boolean":
-			return JSON.stringify(node.value);
+			return ok(JSON.stringify(node.value));
 
-		case "array": {
-			const arr = ["["];
-			if (node.children.length === 0) arr.push(randomWhitespace());
-			else {
-				arr.push(
-					node.children
-						.map((child) => {
-							return (
-								randomWhitespace() +
-								stringify(child, outputNodes) +
-								randomWhitespace()
-							);
-						})
-						.join(","),
-				);
-			}
-			arr.push("]");
-			return arr.join("");
-		}
+		case "array":
+			return stringifyArrayNode(node, outputNodes);
 
-		case "object": {
-			const obj = ["{"];
-			if (node.children.length === 0) obj.push(randomWhitespace());
-			else {
-				obj.push(
-					node.children
-						.map(([k, v]) => {
-							return [
-								randomWhitespace(),
-								stringify(k, outputNodes),
-								randomWhitespace(),
-								":",
-								randomWhitespace(),
-								stringify(v, outputNodes),
-								randomWhitespace(),
-							].join("");
-						})
-						.join(","),
-				);
-			}
-			obj.push("}");
-			return obj.join("");
-		}
+		case "object":
+			return stringifyObjectNode(node, outputNodes);
 		default:
-			throw new Error(`Unsupported JSON AST node type: ${String(node.type)}`);
+			return err(`Unsupported JSON AST node type: ${String(node.type)}`);
 	}
+}
+
+function stringifyArrayNode(
+	node: ArrayNode,
+	outputNodes: OutputNode[],
+): GenResult<string> {
+	const arr = ["["];
+	if (node.children.length === 0) arr.push(randomWhitespace());
+	else {
+		const children: string[] = [];
+		for (const child of node.children) {
+			const childResult = stringify(child, outputNodes);
+			if (!childResult.success) return childResult;
+			children.push(
+				randomWhitespace() + childResult.value + randomWhitespace(),
+			);
+		}
+		arr.push(children.join(","));
+	}
+	arr.push("]");
+	return ok(arr.join(""));
+}
+
+function stringifyObjectNode(
+	node: ObjectNode,
+	outputNodes: OutputNode[],
+): GenResult<string> {
+	const obj = ["{"];
+	if (node.children.length === 0) obj.push(randomWhitespace());
+	else {
+		const children: string[] = [];
+		for (const [k, v] of node.children) {
+			const child = stringifyObjectChild(k, v, outputNodes);
+			if (!child.success) return child;
+			children.push(child.value);
+		}
+		obj.push(children.join(","));
+	}
+	obj.push("}");
+	return ok(obj.join(""));
+}
+
+function stringifyObjectChild(
+	key: StringNode,
+	value: JSONASTNode,
+	outputNodes: OutputNode[],
+): GenResult<string> {
+	const keyResult = stringify(key, outputNodes);
+	if (!keyResult.success) return keyResult;
+	const valueResult = stringify(value, outputNodes);
+	if (!valueResult.success) return valueResult;
+	return ok(
+		[
+			randomWhitespace(),
+			keyResult.value,
+			randomWhitespace(),
+			":",
+			randomWhitespace(),
+			valueResult.value,
+			randomWhitespace(),
+		].join(""),
+	);
 }
 
 const MAX_WHITESPACE = 5;
@@ -509,18 +607,22 @@ type BreakResult = {
 type BreakValue = BreakResult[JSONASTNode["type"]];
 export type BreakNode<K extends keyof BreakResult> = BreakResult[K];
 
-function initialBreak<T extends JSONASTNode>(node: T): BreakValue {
+function initialBreak<T extends JSONASTNode>(node: T): GenResult<BreakValue> {
 	switch (node.type) {
 		case "null":
-			return { type: "null", node, broken: "null" };
+			return ok({ type: "null", node, broken: "null" });
 		case "boolean":
-			return { type: "boolean", node, broken: node.value ? "true" : "false" };
+			return ok({
+				type: "boolean",
+				node,
+				broken: node.value ? "true" : "false",
+			});
 		case "number":
-			return { type: "number", node, broken: JSON.stringify(node.value) };
+			return ok({ type: "number", node, broken: JSON.stringify(node.value) });
 		case "string":
-			return { type: "string", node, broken: JSON.stringify(node.value) };
+			return ok({ type: "string", node, broken: JSON.stringify(node.value) });
 		case "array":
-			return {
+			return ok({
 				type: "array",
 				node,
 				broken: {
@@ -529,9 +631,9 @@ function initialBreak<T extends JSONASTNode>(node: T): BreakValue {
 					openCut: false,
 					closeCut: false,
 				},
-			};
+			});
 		case "object":
-			return {
+			return ok({
 				type: "object",
 				node,
 				broken: {
@@ -542,9 +644,9 @@ function initialBreak<T extends JSONASTNode>(node: T): BreakValue {
 					openCut: false,
 					closeCut: false,
 				},
-			};
+			});
 		default:
-			throw new Error(`Unsupported JSON AST node type: ${String(node.type)}`);
+			return err(`Unsupported JSON AST node type: ${String(node.type)}`);
 	}
 }
 
@@ -799,4 +901,14 @@ function isSourceFileName(entry: string): boolean {
 	return SOURCE_FILE_EXTS.has(ext);
 }
 
-main();
+main()
+	.then((result) => {
+		if (!result.success) {
+			console.error(result.error);
+			process.exitCode = 1;
+		}
+	})
+	.catch((error: unknown) => {
+		console.error(error);
+		process.exitCode = 1;
+	});

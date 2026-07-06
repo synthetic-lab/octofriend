@@ -1,6 +1,6 @@
 use octofwen_llm::providers::stream::{
-    AnthropicThinkingBlock, ProviderStreamEvent, ProviderStreamState, ProviderStreamTool,
-    ProviderTokenKind,
+    AnthropicThinkingBlock, GeminiThoughtSignature, ProviderStreamEvent, ProviderStreamState,
+    ProviderStreamTool, ProviderTokenKind,
 };
 use serde_json::{Value, json};
 
@@ -39,6 +39,12 @@ fn provider_stream_event_json(event: &ProviderStreamEvent) -> Value {
             "reasoningId": metadata.reasoning_id,
             "encryptedReasoningContent": metadata.encrypted_reasoning_content,
             "reasoningText": metadata.reasoning_text,
+        }),
+        ProviderStreamEvent::GeminiThoughtSignature(signature) => json!({
+            "type": "gemini-thought-signature",
+            "partIndex": signature.part_index,
+            "toolCallId": signature.tool_call_id,
+            "thoughtSignature": signature.thought_signature,
         }),
         ProviderStreamEvent::AnthropicThinkingDelta {
             index,
@@ -88,6 +94,22 @@ pub(in crate::agentd) fn provider_stream_state_json(state: &ProviderStreamState)
                 .map(anthropic_thinking_block_json)
                 .collect::<Vec<_>>(),
         },
+        "gemini": {
+            "thoughtSignatures": state
+                .gemini
+                .thought_signatures
+                .iter()
+                .map(gemini_thought_signature_json)
+                .collect::<Vec<_>>(),
+        },
+    })
+}
+
+fn gemini_thought_signature_json(signature: &GeminiThoughtSignature) -> Value {
+    json!({
+        "partIndex": signature.part_index,
+        "toolCallId": signature.tool_call_id,
+        "thoughtSignature": signature.thought_signature,
     })
 }
 

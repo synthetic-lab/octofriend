@@ -11,6 +11,13 @@ fn http_response(status: &str, body: &str) -> String {
     )
 }
 
+fn sse_response(status: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status}\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    )
+}
+
 fn start_test_server(responses: Vec<String>) -> (String, JoinHandle<Vec<String>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
     let address = listener
@@ -45,6 +52,21 @@ fn model_connection_line(base_url: &str) -> String {
             "baseUrl": base_url,
             "apiKey": "test-key",
             "model": "gpt-test"
+        }
+    })
+    .to_string()
+}
+
+fn gemini_model_connection_line(base_url: &str) -> String {
+    json!({
+        "jsonrpc": "2.0",
+        "id": "model-connection",
+        "method": AGENTD_MODEL_CONNECTION_TEST_METHOD,
+        "params": {
+            "type": "gemini",
+            "baseUrl": base_url,
+            "apiKey": "test-key",
+            "model": "gemini-test"
         }
     })
     .to_string()
@@ -101,6 +123,59 @@ fn model_connection_test_executes_provider_http_and_returns_metadata() {
     assert!(requests[0].contains("user-agent: octofriend/"));
     assert!(requests[0].contains("\"model\":\"gpt-test\""));
     assert!(requests[1].starts_with("GET /v1/models HTTP/1.1"));
+}
+
+#[test]
+fn model_connection_test_executes_native_gemini_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should expose local address");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .expect("test server should accept request");
+        let mut request = [0_u8; 8192];
+        let bytes_read = stream
+            .read(&mut request)
+            .expect("test server should read request");
+        let request_text = String::from_utf8_lossy(&request[..bytes_read]).into_owned();
+        stream
+            .write_all(
+                sse_response(
+                    "200 OK",
+                    "data: {\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":2}}\n\n",
+                )
+                .as_bytes(),
+            )
+            .expect("test server should write response");
+        request_text
+    });
+
+    let response = handle_agentd_json_rpc_line(&gemini_model_connection_line(&format!(
+        "http://{address}/v1beta"
+    )))
+    .expect("request should produce response");
+    let request = server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(
+        value["result"],
+        json!({
+            "valid": true,
+            "promptTokens": 5,
+            "completionTokens": 2,
+            "metadata": {}
+        })
+    );
+    assert!(
+        request
+            .starts_with("POST /v1beta/models/gemini-test:streamGenerateContent?alt=sse HTTP/1.1")
+    );
+    assert!(request.contains("x-goog-api-key: test-key"));
+    assert!(!request.contains("authorization: Bearer"));
+    assert!(request.contains("\"contents\":[{\"parts\":[{\"text\":\"Respond with the word 'hi' and only the word 'hi'\"}],\"role\":\"user\"}]"));
 }
 
 #[test]

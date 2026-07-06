@@ -5,13 +5,17 @@ pub enum ProviderKind {
     Standard,
     OpenAiResponses,
     Anthropic,
+    Gemini,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReasoningLevel {
+    None,
+    Minimal,
     Low,
     Medium,
     High,
+    XHigh,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +47,7 @@ pub struct ProviderConfig {
     pub name: &'static str,
     pub env_var: &'static str,
     pub base_url: &'static str,
+    pub api_key_url: &'static str,
     pub models: &'static [ProviderModelConfig],
     pub test_model: &'static str,
 }
@@ -52,6 +57,7 @@ pub enum ProviderKey {
     Synthetic,
     OpenAi,
     Anthropic,
+    Gemini,
     Grok,
 }
 
@@ -61,6 +67,7 @@ impl ProviderKey {
             Self::Synthetic => "synthetic",
             Self::OpenAi => "openai",
             Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
             Self::Grok => "grok",
         }
     }
@@ -114,23 +121,39 @@ pub const SYNTHETIC_MODELS: &[ProviderModelConfig] = &[
 ];
 
 pub const OPENAI_MODELS: &[ProviderModelConfig] = &[
-    openai_model("gpt-5.3-codex", "GPT-5.3 Codex"),
-    openai_model("gpt-5.2-pro", "GPT-5.2 Pro"),
-    openai_model("gpt-5.2", "GPT-5.2"),
-    openai_model("gpt-5-mini", "GPT-5 Mini"),
+    openai_model("gpt-5.5", "GPT-5.5", 1_000_000),
+    openai_model("gpt-5.5-pro", "GPT-5.5 Pro", 1_000_000),
+    openai_model("gpt-5.4", "GPT-5.4", 1_000_000),
+    openai_model("gpt-5.4-mini", "GPT-5.4 Mini", 400_000),
 ];
 
 pub const ANTHROPIC_MODELS: &[ProviderModelConfig] = &[
-    anthropic_model("claude-sonnet-4-6", "Claude 4.5 Sonnet"),
-    anthropic_model("claude-opus-4-6", "Claude 4.6 Opus"),
-    anthropic_model("claude-haiku-4-5", "Claude 4.5 Haiku"),
+    anthropic_model("claude-fable-5", "Claude Fable 5", 1_000_000, None),
+    anthropic_model(
+        "claude-opus-4-8",
+        "Claude 4.8 Opus",
+        1_000_000,
+        Some(ReasoningLevel::XHigh),
+    ),
+    anthropic_model(
+        "claude-sonnet-5",
+        "Claude Sonnet 5",
+        1_000_000,
+        Some(ReasoningLevel::High),
+    ),
+    anthropic_model(
+        "claude-haiku-4-5",
+        "Claude 4.5 Haiku",
+        200 * 1000,
+        Some(ReasoningLevel::Medium),
+    ),
 ];
 
 pub const GROK_MODELS: &[ProviderModelConfig] = &[ProviderModelConfig {
-    model: "grok-4-latest",
-    nickname: "Grok 4",
-    context: 64 * 1024,
-    reasoning: None,
+    model: "grok-4.3",
+    nickname: "Grok 4.3",
+    context: 1_000_000,
+    reasoning: Some(ReasoningLevel::Low),
     modalities: Some(MultimodalConfig {
         image: Some(ImageModalityConfig {
             enabled: true,
@@ -140,6 +163,12 @@ pub const GROK_MODELS: &[ProviderModelConfig] = &[ProviderModelConfig {
     }),
 }];
 
+pub const GEMINI_MODELS: &[ProviderModelConfig] = &[gemini_model(
+    "gemini-3.5-flash",
+    "Gemini 3.5 Flash",
+    1_048_576,
+)];
+
 pub const PROVIDERS: &[ProviderConfig] = &[
     ProviderConfig {
         key: ProviderKey::Synthetic,
@@ -148,6 +177,7 @@ pub const PROVIDERS: &[ProviderConfig] = &[
         name: "Synthetic",
         env_var: "SYNTHETIC_API_KEY",
         base_url: "https://api.synthetic.new/v1",
+        api_key_url: "https://dev.synthetic.new/",
         models: SYNTHETIC_MODELS,
         test_model: "hf:MiniMaxAI/MiniMax-M2.1",
     },
@@ -158,8 +188,9 @@ pub const PROVIDERS: &[ProviderConfig] = &[
         name: "OpenAI",
         env_var: "OPENAI_API_KEY",
         base_url: "https://api.openai.com/v1",
+        api_key_url: "https://platform.openai.com/api-keys",
         models: OPENAI_MODELS,
-        test_model: "gpt-5-mini-2025-08-07",
+        test_model: "gpt-5.4-mini",
     },
     ProviderConfig {
         key: ProviderKey::Anthropic,
@@ -168,8 +199,20 @@ pub const PROVIDERS: &[ProviderConfig] = &[
         name: "Anthropic",
         env_var: "ANTHROPIC_API_KEY",
         base_url: "https://api.anthropic.com",
+        api_key_url: "https://console.anthropic.com/settings/keys",
         models: ANTHROPIC_MODELS,
         test_model: "claude-haiku-4-5-20251001",
+    },
+    ProviderConfig {
+        key: ProviderKey::Gemini,
+        shortcut: 'g',
+        kind: ProviderKind::Gemini,
+        name: "Google Gemini",
+        env_var: "GEMINI_API_KEY",
+        base_url: "https://generativelanguage.googleapis.com/v1beta",
+        api_key_url: "https://aistudio.google.com/apikey",
+        models: GEMINI_MODELS,
+        test_model: "gemini-3.5-flash",
     },
     ProviderConfig {
         key: ProviderKey::Grok,
@@ -178,8 +221,9 @@ pub const PROVIDERS: &[ProviderConfig] = &[
         name: "xAI",
         env_var: "XAI_API_KEY",
         base_url: "https://api.x.ai/v1",
+        api_key_url: "https://console.x.ai/",
         models: GROK_MODELS,
-        test_model: "grok-4-latest",
+        test_model: "grok-4.3",
     },
 ];
 
@@ -191,6 +235,7 @@ pub const fn recommended_model(provider: ProviderKey) -> &'static ProviderModelC
         ProviderKey::Synthetic => &SYNTHETIC_MODELS[0],
         ProviderKey::OpenAi => &OPENAI_MODELS[0],
         ProviderKey::Anthropic => &ANTHROPIC_MODELS[0],
+        ProviderKey::Gemini => &GEMINI_MODELS[0],
         ProviderKey::Grok => &GROK_MODELS[0],
     }
 }
@@ -216,15 +261,20 @@ pub fn provider_for_key(key: ProviderKey) -> &'static ProviderConfig {
         ProviderKey::Synthetic => &PROVIDERS[0],
         ProviderKey::OpenAi => &PROVIDERS[1],
         ProviderKey::Anthropic => &PROVIDERS[2],
-        ProviderKey::Grok => &PROVIDERS[3],
+        ProviderKey::Gemini => &PROVIDERS[3],
+        ProviderKey::Grok => &PROVIDERS[4],
     }
 }
 
-const fn openai_model(model: &'static str, nickname: &'static str) -> ProviderModelConfig {
+const fn openai_model(
+    model: &'static str,
+    nickname: &'static str,
+    context: u32,
+) -> ProviderModelConfig {
     ProviderModelConfig {
         model,
         nickname,
-        context: 200 * 1024,
+        context,
         reasoning: Some(ReasoningLevel::Medium),
         modalities: Some(MultimodalConfig {
             image: Some(ImageModalityConfig {
@@ -236,16 +286,41 @@ const fn openai_model(model: &'static str, nickname: &'static str) -> ProviderMo
     }
 }
 
-const fn anthropic_model(model: &'static str, nickname: &'static str) -> ProviderModelConfig {
+const fn anthropic_model(
+    model: &'static str,
+    nickname: &'static str,
+    context: u32,
+    reasoning: Option<ReasoningLevel>,
+) -> ProviderModelConfig {
     ProviderModelConfig {
         model,
         nickname,
-        context: 200 * 1000,
-        reasoning: Some(ReasoningLevel::Medium),
+        context,
+        reasoning,
         modalities: Some(MultimodalConfig {
             image: Some(ImageModalityConfig {
                 enabled: true,
                 max_size_mb: 30,
+                accepted_mime_types: IMAGE_JPEG_PNG_WEBP_GIF,
+            }),
+        }),
+    }
+}
+
+const fn gemini_model(
+    model: &'static str,
+    nickname: &'static str,
+    context: u32,
+) -> ProviderModelConfig {
+    ProviderModelConfig {
+        model,
+        nickname,
+        context,
+        reasoning: Some(ReasoningLevel::Low),
+        modalities: Some(MultimodalConfig {
+            image: Some(ImageModalityConfig {
+                enabled: true,
+                max_size_mb: 20,
                 accepted_mime_types: IMAGE_JPEG_PNG_WEBP_GIF,
             }),
         }),

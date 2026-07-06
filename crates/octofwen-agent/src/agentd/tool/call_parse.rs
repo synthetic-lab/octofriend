@@ -37,6 +37,7 @@ pub(in crate::agentd) enum ToolCallParseProviderParam {
     OpenaiChatCompletions,
     OpenaiResponses,
     Anthropic,
+    Gemini,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -187,7 +188,7 @@ fn tool_call_parse_result_json(params: ToolCallParseOneParams) -> Value {
             input: ToolParseExecutionInput::SchemaError {
                 error,
                 expected: serde_json::to_string(&builder_tool.definition.arguments_schema)
-                    .unwrap_or_else(|_| "{}".into()),
+                    .unwrap_or_else(|_| serde_json::json!({}).to_string()),
             },
         };
         return tool_parse_execution_result_json(&request);
@@ -228,7 +229,8 @@ fn normalize_tool_parse_args(
             normalize_openai_strict_function_arguments(schema, &args)
         }
         ToolCallParseProviderParam::OpenaiChatCompletions
-        | ToolCallParseProviderParam::Anthropic => args,
+        | ToolCallParseProviderParam::Anthropic
+        | ToolCallParseProviderParam::Gemini => args,
     }
 }
 
@@ -255,6 +257,7 @@ fn tool_parse_input_provider(provider: ToolCallParseProviderParam) -> ToolParseI
         }
         ToolCallParseProviderParam::OpenaiResponses => ToolParseInputProvider::OpenAiResponses,
         ToolCallParseProviderParam::Anthropic => ToolParseInputProvider::Anthropic,
+        ToolCallParseProviderParam::Gemini => ToolParseInputProvider::Gemini,
     }
 }
 

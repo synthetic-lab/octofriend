@@ -1,3 +1,4 @@
+use super::template::render_markdown_template;
 use crate::prompts::xml::xml_escape;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -14,6 +15,9 @@ pub struct InstructionFile {
     pub contents: String,
 }
 
+const INSTRUCTIONS_PROMPT: &str = include_str!("templates/instructions.md");
+const INSTRUCTION_FILE_PROMPT: &str = include_str!("templates/instruction_file.md");
+
 pub fn render_instruction_files(user_name: &str, files: &[InstructionFile]) -> String {
     if files.is_empty() {
         return String::new();
@@ -25,14 +29,12 @@ pub fn render_instruction_files(user_name: &str, files: &[InstructionFile]) -> S
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    format!(
-        "# Instructions from {user_name}\n\n\
-{user_name} has left instructions in some config files. They're as follows, listed from\n\
-most-general to most-specific:\n\n\
-{rendered}\n\n\
-These instructions are automatically kept fresh in your context space. You don't need to re-read\n\
-these files."
+    render_markdown_template(
+        INSTRUCTIONS_PROMPT,
+        &[("user_name", user_name), ("rendered", &rendered)],
     )
+    .trim_end_matches('\n')
+    .to_owned()
 }
 
 pub fn instruction_header(target: InstructionTarget) -> &'static str {
@@ -50,10 +52,14 @@ pub fn instruction_header(target: InstructionTarget) -> &'static str {
 }
 
 fn render_instruction_file(file: &InstructionFile) -> String {
-    format!(
-        "Note: {}\n<instruction path=\"{}\">{}</instruction>",
-        instruction_header(file.target),
-        xml_escape(&file.path),
-        xml_escape(&file.contents)
+    render_markdown_template(
+        INSTRUCTION_FILE_PROMPT,
+        &[
+            ("instruction_header", instruction_header(file.target)),
+            ("path", &xml_escape(&file.path)),
+            ("contents", &xml_escape(&file.contents)),
+        ],
     )
+    .trim_end_matches('\n')
+    .to_owned()
 }

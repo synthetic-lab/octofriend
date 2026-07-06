@@ -58,7 +58,8 @@ describe("terminal auth preflight", () => {
 
 	test("resolves an autofix model from the reloaded matching config entry", () => {
 		const diffApply = config.diffApply;
-		if (!diffApply) throw new Error("diffApply fixture must be defined");
+		expect(diffApply).toBeDefined();
+		if (!diffApply) return;
 
 		expect(
 			resolveAutofixModelFromConfig(

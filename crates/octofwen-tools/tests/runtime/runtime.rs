@@ -239,7 +239,59 @@ fn validates_json_schema_property_types() {
 }
 
 #[test]
-fn parses_file_mutation_arguments_with_original_file_contents() {
+fn validates_nested_json_schema_with_schema_crate_semantics() {
+    let tool = ToolBuilder
+        .declare(
+            "write_plan",
+            "Write a plan",
+            json!({
+                "type": "object",
+                "required": ["plan"],
+                "properties": {
+                    "plan": {
+                        "type": "object",
+                        "required": ["steps"],
+                        "properties": {
+                            "steps": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {
+                                    "type": "object",
+                                    "required": ["title"],
+                                    "properties": {
+                                        "title": { "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }),
+        )
+        .define();
+
+    assert_eq!(
+        validate_tool_arguments(
+            &tool.definition,
+            &json!({ "plan": { "steps": [{ "title": "inspect" }] } })
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        validate_tool_arguments(&tool.definition, &json!({ "plan": { "steps": [] } })),
+        Err("tool argument validation failed at /plan/steps: [] has less than 1 item".into())
+    );
+    assert_eq!(
+        validate_tool_arguments(&tool.definition, &json!({ "plan": { "steps": [{}] } })),
+        Err(
+            "tool argument validation failed at /plan/steps/0: \"title\" is a required property"
+                .into()
+        )
+    );
+}
+
+#[test]
+fn parses_file_mutation_arguments_without_original_file_contents_at_parse_time() {
     let root = unique_temp_dir("octofwen-tools-parse");
     std::fs::create_dir_all(&root).expect("temp dir should be created");
     let file_path = root.join("edit.txt");
@@ -258,12 +310,58 @@ fn parses_file_mutation_arguments_with_original_file_contents() {
     );
     assert_eq!(
         parsed.parsed,
+        json!({ "filePath": "edit.txt", "search": "old", "replace": "new" })
+    );
+    std::fs::remove_dir_all(root).expect("temp dir should be removed");
+}
+
+#[test]
+fn parses_file_mutation_arguments_without_original_file_contents_when_file_is_missing() {
+    let root = unique_temp_dir("octofwen-tools-parse-missing");
+    std::fs::create_dir_all(&root).expect("temp dir should be created");
+
+    let parsed = parse_tool_arguments(
+        "edit",
+        &root,
+        json!({ "filePath": "missing.txt", "search": "old", "replace": "new" }),
+    )
+    .expect("edit arguments should parse even when target file is missing");
+
+    assert_eq!(
+        parsed.original,
+        json!({ "filePath": "missing.txt", "search": "old", "replace": "new" })
+    );
+    assert_eq!(
+        parsed.parsed,
+        json!({ "filePath": "missing.txt", "search": "old", "replace": "new" })
+    );
+
+    std::fs::remove_dir_all(root).expect("temp dir should be removed");
+}
+
+#[test]
+fn parses_file_mutation_arguments_drops_stale_original_file_contents_when_file_is_missing() {
+    let root = unique_temp_dir("octofwen-tools-parse-stale");
+    std::fs::create_dir_all(&root).expect("temp dir should be created");
+
+    let parsed = parse_tool_arguments(
+        "rewrite",
+        &root,
         json!({
-            "filePath": "edit.txt",
-            "search": "old",
-            "replace": "new",
-            "originalFileContents": "before\nold\nafter"
-        })
+            "filePath": "missing.txt",
+            "text": "replacement",
+            "originalFileContents": "model-supplied stale contents"
+        }),
+    )
+    .expect("rewrite arguments should parse even when target file is missing");
+
+    assert_eq!(
+        parsed.original,
+        json!({ "filePath": "missing.txt", "text": "replacement" })
+    );
+    assert_eq!(
+        parsed.parsed,
+        json!({ "filePath": "missing.txt", "text": "replacement" })
     );
 
     std::fs::remove_dir_all(root).expect("temp dir should be removed");
@@ -311,6 +409,14 @@ fn validates_runtime_file_and_workspace_tool_calls() {
     assert_eq!(
         validate_runtime_tool_call("create", &root, &json!({ "filePath": "exists.txt" })),
         Err("File already exists".into())
+    );
+    assert_eq!(
+        validate_runtime_tool_call("read", &root, &json!({ "filePath": "edit.txt" })),
+        Ok(())
+    );
+    assert_eq!(
+        validate_runtime_tool_call("read", &root, &json!({ "filePath": "missing.txt" })),
+        Err("missing.txt couldn't be read".into())
     );
     assert_eq!(
         validate_runtime_tool_call("rewrite", &root, &json!({ "filePath": "edit.txt" })),

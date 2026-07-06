@@ -12,7 +12,6 @@ import {
 	useSetConfig,
 } from "../../internal/configuration/react-context.ts";
 import type { Config } from "../../internal/configuration/schemas.ts";
-import { useMenuState } from "./menu-state.ts";
 
 type NotificationValue =
 	| "always-notify"
@@ -20,12 +19,7 @@ type NotificationValue =
 	| "notify-once"
 	| "back";
 
-export function NotificationsMenu() {
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
+export function NotificationsMenu({ onBack }: { onBack: () => void }) {
 	const config = useConfig();
 	const setConfig = useSetConfig();
 	const {
@@ -45,7 +39,7 @@ export function NotificationsMenu() {
 	);
 
 	useInput((_, key) => {
-		if (key.escape) setMenuMode("main-menu");
+		if (key.escape) onBack();
 	});
 
 	const alwaysNotify = config.notifications?.alwaysNotify;
@@ -86,10 +80,9 @@ export function NotificationsMenu() {
 				setNotifySession(!sessionAutoNotify);
 			} else if (item.value === "notify-once") {
 				setNotifyOnce(!notifyOnce);
-				setMenuMode("main-menu");
 				toggleMenu();
 			} else if (item.value === "back") {
-				setMenuMode("main-menu");
+				onBack();
 			}
 		},
 		[
@@ -99,6 +92,7 @@ export function NotificationsMenu() {
 			sessionAutoNotify,
 			notifyOnce,
 			toggleMenu,
+			onBack,
 		],
 	);
 

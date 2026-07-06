@@ -5,26 +5,29 @@ export type AutofixConfig = {
 	fixJson: Config["fixJson"];
 };
 
-export type SetupStep =
-	| {
-			step: "welcome";
-	  }
-	| {
-			step: "autofix-setup";
-	  }
-	| {
-			step: "autofix-complete";
-			autofixConfig: AutofixConfig;
-	  }
-	| {
-			step: "name";
-			models: Config["models"];
-			autofixConfig?: AutofixConfig;
-	  }
-	| {
-			step: "add-model";
-			autofixConfig?: AutofixConfig;
-	  }
-	| {
-			step: "done";
-	  };
+export type FirstTimeSetupRouteData = {
+	welcome: Record<string, never>;
+	autofixSetup: Record<string, never>;
+	autofixComplete: {
+		autofixConfig: AutofixConfig;
+	};
+	addModel: {
+		autofixConfig?: AutofixConfig;
+	};
+	name: {
+		models: Config["models"];
+		autofixConfig?: AutofixConfig;
+	};
+	done: Record<string, never>;
+};
+
+export type AutofixSetupRouteData = {
+	choose: {
+		errorMessage?: string;
+	};
+	syntheticSetup: Record<string, never>;
+	diffApplyCustom: Record<string, never>;
+	fixJsonCustom: {
+		diffApplyConfig: Exclude<Config["diffApply"], undefined>;
+	};
+};

@@ -49,7 +49,9 @@ async function sanitizeConfig(
 			sanitized === null ||
 			Array.isArray(sanitized)
 		) {
-			throw new Error("Invalid octofwen-agentd config sanitize result");
+			return Promise.reject(
+				new Error("Invalid octofwen-agentd config sanitize result"),
+			);
 		}
 		return sanitized as Record<string, unknown>;
 	} finally {

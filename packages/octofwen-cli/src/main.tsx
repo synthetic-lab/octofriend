@@ -62,6 +62,21 @@ export async function runMain(opts: RunMainOptions) {
 		});
 		const skills = await discoverBootSkills(bridge, config, opts.transport);
 		const { App } = await loadTui();
+		const inputHistory = await loadInputHistory({
+			load: (params) => bridge.inputHistoryLoad(params),
+			append: (params) => bridge.inputHistoryAppend(params),
+		});
+		if (!inputHistory.success) {
+			console.error(inputHistory.error);
+			process.exit(1);
+		}
+		const updates = await readUpdates({
+			read: (params) => bridge.updateNotificationsRead(params),
+		});
+		if (!updates.success) {
+			console.error(updates.error);
+			process.exit(1);
+		}
 		const { waitUntilExit } = render(
 			<App
 				bootSkills={skills.map((skill) => skill.name)}
@@ -71,22 +86,14 @@ export async function runMain(opts: RunMainOptions) {
 				metadata={APP_METADATA}
 				unchained={!!opts.unchained}
 				transport={opts.transport}
-				updates={
-					await readUpdates({
-						read: (params) => bridge.updateNotificationsRead(params),
-					})
-				}
-				markUpdatesSeen={() =>
-					markUpdatesSeen({
+				updates={updates.data}
+				markUpdatesSeen={async () => {
+					const result = await markUpdatesSeen({
 						mark: (params) => bridge.updateNotificationsMarkSeen(params),
-					})
-				}
-				inputHistory={
-					await loadInputHistory({
-						load: (params) => bridge.inputHistoryLoad(params),
-						append: (params) => bridge.inputHistoryAppend(params),
-					})
-				}
+					});
+					if (!result.success) console.error(result.error);
+				}}
+				inputHistory={inputHistory.data}
 				modelConnectionTest={(params) => bridge.modelConnectionTest(params)}
 				syntheticQuotaFetch={(params) => bridge.syntheticQuotaFetch(params)}
 				tokenUsageCounts={tokenUsageCounts}

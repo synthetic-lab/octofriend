@@ -32,7 +32,7 @@ function renderChildren(tokens: Token[]): React.ReactNode {
 
 function TokenRenderer({ token }: { token: Token }): React.ReactNode {
 	if (!isMarkedToken(token)) {
-		throw new Error(`Unknown markdown token type: ${token.type}`);
+		return <Text>{renderTokensAsPlaintext([token])}</Text>;
 	}
 
 	switch (token.type) {
@@ -77,7 +77,7 @@ function TokenRenderer({ token }: { token: Token }): React.ReactNode {
 		case "space":
 			return <SpaceRenderer />;
 		default:
-			throw new Error(`Unhandled markdown token type: ${token.type}`);
+			return <Text>{renderTokensAsPlaintext([token])}</Text>;
 	}
 }
 

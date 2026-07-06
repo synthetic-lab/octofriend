@@ -210,7 +210,7 @@ fn is_malformed_tool_request(value: &Value) -> bool {
 
 fn compiler_error_finish_reason_json(error: TrajectoryCompilerErrorParam) -> Value {
     match error.error_type.as_str() {
-        "payment-error" | "rate-limit-error" => json!({
+        "auth-error" | "payment-error" | "rate-limit-error" => json!({
             "type": error.error_type,
             "requestError": error.request_error,
             "curl": error.curl,

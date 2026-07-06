@@ -1,7 +1,3 @@
-import type {
-	OctoIR,
-	OctoToolCall,
-} from "../../internal/octo-agent-ir/main.ts";
 import type { AppStateGet, AppStateSet, RunArgs, UiState } from "./types.ts";
 
 export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
@@ -31,6 +27,7 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 			set((state) => ({
 				history: [],
 				lastUserPromptIndex: null,
+				pendingRejectedToolCall: null,
 				byteCount: 0,
 				clearNonce: state.clearNonce + 1,
 			}));
@@ -77,6 +74,7 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 			set((state) => ({
 				history: filteredHistory,
 				query: textPart?.content ?? "",
+				pendingRejectedToolCall: null,
 				byteCount: 0,
 				clearNonce: state.clearNonce + 1,
 				modeData: { mode: "input", vimMode: "INSERT" },
@@ -84,22 +82,8 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 		},
 
 		rejectTool: (toolCall) => {
-			const skippedCalls = skippedCallsAfterRejectedTool(
-				get().history,
-				toolCall,
-			);
 			set({
-				history: [
-					...get().history,
-					{
-						type: "llm-ir",
-						ir: {
-							role: "tool-reject",
-							toolCall,
-						},
-					},
-					...skippedCalls,
-				],
+				pendingRejectedToolCall: toolCall,
 				modeData: {
 					mode: "input",
 					vimMode: "INSERT",
@@ -114,47 +98,4 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 		| "editAndRetryFrom"
 		| "rejectTool"
 	>;
-}
-
-type HistoryItem = UiState["history"][number];
-type LlmHistoryItem = Extract<HistoryItem, { type: "llm-ir" }>;
-type AssistantToolCallItem = LlmHistoryItem & {
-	ir: Extract<OctoIR, { role: "assistant" }>;
-};
-type SkippedToolCallItem = { type: "llm-ir"; ir: OctoIR };
-
-function skippedCallsAfterRejectedTool(
-	history: HistoryItem[],
-	rejectedToolCall: OctoToolCall,
-): SkippedToolCallItem[] {
-	const assistantItem = findLastAssistantToolCallItem(history);
-	const toolCalls = assistantItem?.ir.toolCalls ?? [];
-	const rejectedIndex = toolCalls.findIndex(
-		(call) =>
-			call.type === "tool-call" &&
-			call.toolCallId === rejectedToolCall.toolCallId,
-	);
-	if (rejectedIndex < 0) return [];
-	return toolCalls
-		.slice(rejectedIndex + 1)
-		.filter((call): call is OctoToolCall => call.type === "tool-call")
-		.map((toolCall) => ({
-			type: "llm-ir",
-			ir: {
-				role: "tool-skip-output",
-				toolCall,
-				reason: "A previous tool call was rejected, so this tool was skipped",
-			},
-		}));
-}
-
-function findLastAssistantToolCallItem(
-	history: HistoryItem[],
-): AssistantToolCallItem | undefined {
-	return history.findLast(
-		(item): item is AssistantToolCallItem =>
-			item.type === "llm-ir" &&
-			item.ir.role === "assistant" &&
-			item.ir.toolCalls != null,
-	);
 }

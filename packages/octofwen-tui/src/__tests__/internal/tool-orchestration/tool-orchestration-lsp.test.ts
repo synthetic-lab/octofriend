@@ -44,7 +44,7 @@ describe("tool orchestration LSP delegation", () => {
 				name: "lsp-definition",
 				run: async () => {
 					await Promise.resolve();
-					throw new Error("fallback LSP runner should not run");
+					return Promise.reject(new Error("fallback LSP runner should not run"));
 				},
 			},
 		} as never;

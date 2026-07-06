@@ -34,6 +34,7 @@ fn builds_responses_and_anthropic_tool_parse_inputs_with_index_id_fallback() {
     for provider in [
         ToolParseInputProvider::OpenAiResponses,
         ToolParseInputProvider::Anthropic,
+        ToolParseInputProvider::Gemini,
     ] {
         let result = build_tool_parse_inputs(&ToolParseInputRequest {
             provider,

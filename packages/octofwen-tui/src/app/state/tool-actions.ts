@@ -1,3 +1,4 @@
+import { err } from "../result.ts";
 import { loadTools, runTool } from "../../internal/tool-orchestration/main.ts";
 import { toolRunResultToIR } from "./tool-results.ts";
 import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
@@ -14,13 +15,23 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 		}) => {
 			let { modeData } = get();
 			if (modeData.mode !== "tool-call") {
-				throw new Error(`Impossible tool mode: ${modeData.mode}`);
+				appendToolRuntimeError(
+					set,
+					get,
+					toolReq,
+					`Impossible tool mode: ${modeData.mode}`,
+				);
+				return;
 			}
 			if (modeData.runningToolCallId != null) {
 				if (process.env["OCTOFWEN_CHANNEL"] === "canary") {
-					throw new Error(
+					appendToolRuntimeError(
+						set,
+						get,
+						toolReq,
 						"Canary build error: attempted to run a tool when a tool was already running",
 					);
+					return;
 				}
 			}
 
@@ -32,21 +43,26 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 				toolDefinitions,
 			});
 
-			const result = await runTool(
-				abortController.signal,
-				transport,
-				tools,
-				toolReq,
-				config,
-				toolRun,
-			);
-			if (result.success) {
+			const result = tools.success
+				? await runTool(
+						abortController.signal,
+						transport,
+						tools.data,
+						toolReq,
+						config,
+						toolRun,
+					)
+				: err(tools.error);
+			const toolIr = result.success
+				? toolRunResultToIR(result.data, toolReq)
+				: result;
+			if (toolIr.success) {
 				set({
 					history: [
 						...get().history,
 						{
 							type: "llm-ir",
-							ir: toolRunResultToIR(result.data, toolReq),
+							ir: toolIr.data,
 						},
 					],
 				});
@@ -58,7 +74,7 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 							type: "llm-ir",
 							ir: {
 								role: "tool-runtime-error",
-								error: result.error,
+								error: toolIr.error,
 								toolCall: toolReq,
 							},
 						},
@@ -76,4 +92,25 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 			}
 		},
 	} satisfies Pick<UiState, "runTool">;
+}
+
+function appendToolRuntimeError(
+	set: AppStateSet,
+	get: AppStateGet,
+	toolReq: Parameters<UiState["runTool"]>[0]["toolReq"],
+	error: string,
+) {
+	set({
+		history: [
+			...get().history,
+			{
+				type: "llm-ir",
+				ir: {
+					role: "tool-runtime-error",
+					error,
+					toolCall: toolReq,
+				},
+			},
+		],
+	});
 }

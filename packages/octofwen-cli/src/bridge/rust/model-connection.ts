@@ -1,4 +1,5 @@
 export type AgentdModelConnectionTestParams = {
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	baseUrl: string;
 	apiKey: string;
 	model: string;

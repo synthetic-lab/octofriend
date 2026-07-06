@@ -354,6 +354,36 @@ fn trajectory_finish_request_maps_compiler_errors_and_quota_events_through_agent
     );
     assert_eq!(error_value["result"]["events"], json!([]));
 
+    let auth_line = json!({
+        "jsonrpc": "2.0",
+        "id": "trajectory-finish-auth-error",
+        "method": AGENTD_TRAJECTORY_FINISH_METHOD,
+        "params": {
+            "irs": [],
+            "compilerError": {
+                "type": "auth-error",
+                "requestError": "invalid api key",
+                "curl": "curl auth"
+            }
+        }
+    })
+    .to_string();
+
+    let auth_response =
+        handle_agentd_json_rpc_line(&auth_line).expect("request should produce response");
+    let auth_value: serde_json::Value =
+        serde_json::from_str(&auth_response).expect("response should be json");
+
+    assert_eq!(auth_value["id"], "trajectory-finish-auth-error");
+    assert_eq!(
+        auth_value["result"]["reason"],
+        json!({
+            "type": "auth-error",
+            "requestError": "invalid api key",
+            "curl": "curl auth"
+        })
+    );
+
     let quota_line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-finish-quota",
@@ -440,6 +470,124 @@ fn trajectory_finish_request_returns_agentd_buffered_assistant_irs() {
             "reason": { "type": "needs-response" },
             "events": []
         })
+    );
+}
+
+#[test]
+fn trajectory_arc_runs_forgotten_check_before_returning_input() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should expose local address");
+    listener
+        .set_nonblocking(true)
+        .expect("test server should accept nonblocking mode");
+    let server = thread::spawn(move || {
+        let mut requests = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        for response_text in ["first answer", "checked answer"] {
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            Instant::now() < deadline,
+                            "timed out waiting for provider request {}",
+                            requests.len() + 1
+                        );
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("test server should accept request: {error}"),
+                }
+            };
+            let mut request = [0_u8; 32768];
+            let bytes_read = stream
+                .read(&mut request)
+                .expect("test server should read request");
+            requests.push(String::from_utf8_lossy(&request[..bytes_read]).to_string());
+
+            let body = format!(
+                "data: {{\"choices\":[{{\"delta\":{{\"content\":\"{response_text}\"}}}}]}}\n\ndata: {{\"usage\":{{\"prompt_tokens\":6,\"completion_tokens\":3}}}}\n\ndata: [DONE]\n\n"
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("test server should write response");
+        }
+        requests
+    });
+
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "trajectory-arc-forgotten-check",
+        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "params": {
+            "cwd": ".",
+            "apiKey": "test-key",
+            "model": {
+                "type": "standard",
+                "baseUrl": format!("http://{address}/v1"),
+                "model": "gpt-test",
+                "context": 1000
+            },
+            "messages": [
+                { "role": "user", "content": [{ "type": "text", "content": "finish the task" }] }
+            ],
+            "config": { "yourName": "Test User" }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let requests = server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].contains("finish the task"));
+    assert!(!requests[0].contains("Before returning control to the user"));
+    assert!(requests[1].contains("first answer"));
+    assert!(requests[1].contains("Before returning control to the user"));
+    assert_eq!(value["id"], "trajectory-arc-forgotten-check");
+    assert_eq!(
+        value["result"]["reason"],
+        json!({ "type": "needs-response" })
+    );
+    assert_eq!(
+        value["result"]["irs"],
+        json!([{
+            "role": "assistant",
+            "content": "checked answer",
+            "usage": {
+                "input": { "cached": 0, "uncached": 6, "total": 6 },
+                "output": 3
+            }
+        }])
+    );
+    assert_eq!(
+        value["result"]["events"]
+            .as_array()
+            .expect("events should be array")
+            .iter()
+            .filter_map(|event| event.get("type").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>(),
+        vec![
+            "start-response",
+            "response-progress",
+            "token-usage",
+            "start-response",
+            "response-progress",
+            "token-usage"
+        ]
     );
 }
 
@@ -613,6 +761,81 @@ fn trajectory_arc_preserves_compaction_events_on_compaction_error() {
 
     assert_eq!(value["id"], "trajectory-arc-compaction-error");
     assert_eq!(value["result"]["reason"]["type"], "compaction-error");
+    assert_eq!(
+        value["result"]["events"],
+        json!([{ "type": "start-compaction" }])
+    );
+}
+
+#[test]
+fn trajectory_arc_preserves_compaction_auth_errors() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should expose local address");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .expect("test server should accept compaction request");
+        let mut request = [0_u8; 8192];
+        let _ = stream
+            .read(&mut request)
+            .expect("test server should read request");
+        let body = "forbidden api key";
+        let response = format!(
+            "HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\ncontent-length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("test server should write response");
+    });
+
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "trajectory-arc-compaction-auth-error",
+        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "params": {
+            "cwd": ".",
+            "apiKey": "bad-key",
+            "model": {
+                "type": "standard",
+                "baseUrl": format!("http://{address}/v1"),
+                "model": "gpt-test",
+                "context": 10
+            },
+            "messages": [{
+                "role": "assistant",
+                "content": "prior",
+                "usage": { "input": { "cached": 0, "uncached": 10, "total": 10 }, "output": 10 }
+            }],
+            "config": { "yourName": "Test User" }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "trajectory-arc-compaction-auth-error");
+    assert_eq!(value["result"]["reason"]["type"], "auth-error");
+    assert_eq!(
+        value["result"]["reason"]["requestError"],
+        "forbidden api key"
+    );
+    assert!(
+        value["result"]["reason"]["curl"]
+            .as_str()
+            .expect("auth error should include curl")
+            .contains("[REDACTED_API_KEY]")
+    );
     assert_eq!(
         value["result"]["events"],
         json!([{ "type": "start-compaction" }])

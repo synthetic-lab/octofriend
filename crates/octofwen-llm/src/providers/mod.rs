@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod gemini;
 pub mod http;
 pub mod message_lowering;
 pub mod openai;
@@ -8,6 +9,6 @@ pub mod tool_definitions;
 
 pub use http::ProviderHttpRequest;
 pub use message_lowering::{
-    anthropic_messages_from_ts_ir, openai_chat_completions_messages_from_ts_ir,
-    openai_responses_input_from_ts_ir,
+    anthropic_messages_from_ts_ir, gemini_contents_from_ts_ir,
+    openai_chat_completions_messages_from_ts_ir, openai_responses_input_from_ts_ir,
 };

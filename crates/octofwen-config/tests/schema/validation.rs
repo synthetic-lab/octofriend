@@ -13,8 +13,9 @@ fn validates_exact_config_shapes_and_preserves_values() {
             "apiEnvVar": "OPENAI_API_KEY",
             "auth": { "type": "env", "name": "OPENAI_API_KEY" },
             "model": "gpt",
-            "context": 100,
-            "reasoning": "medium",
+            "context": 32000,
+            "reasoning": "xhigh",
+            "thinkingBudgetTokens": 12000,
             "modalities": {
                 "image": {
                     "enabled": true,
@@ -63,8 +64,30 @@ fn validates_exact_config_shapes_and_preserves_values() {
     .expect("config should validate");
 
     assert_eq!(validated["yourName"], "Ada");
-    assert_eq!(validated["models"][0]["reasoning"], "medium");
+    assert_eq!(validated["models"][0]["reasoning"], "xhigh");
+    assert_eq!(validated["models"][0]["thinkingBudgetTokens"], 12000);
     assert_eq!(validated["lsp"]["rust"], json!({ "disabled": true }));
+}
+
+#[test]
+fn validates_notifications_without_custom_notify_command() {
+    let validated = validate_config(json!({
+        "yourName": "Ada",
+        "models": [],
+        "notifications": {
+            "notifyTimeoutMs": 1000,
+            "alwaysNotify": true
+        }
+    }))
+    .expect("config should validate");
+
+    assert_eq!(
+        validated["notifications"],
+        json!({
+            "notifyTimeoutMs": 1000,
+            "alwaysNotify": true
+        })
+    );
 }
 
 #[test]
@@ -93,15 +116,26 @@ fn rejects_unknown_keys_and_mixed_lsp_disabled_entries() {
     assert!(
         validate_config(json!({
             "yourName": "Ada",
-            "models": [],
-            "lsp": {
-                "typescript": {
-                    "disabled": true,
-                    "command": ["tsserver"],
-                    "extensions": [".ts"],
-                    "rootCandidates": ["package.json"]
-                }
-            }
+            "models": [{
+                "nickname": "GPT",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt",
+                "context": 100,
+                "thinkingBudgetTokens": -1
+            }]
+        }))
+        .is_err()
+    );
+    assert!(
+        validate_config(json!({
+            "yourName": "Ada",
+            "models": [{
+                "nickname": "GPT",
+                "baseUrl": "https://api.openai.com/v1",
+                "model": "gpt",
+                "context": 100,
+                "thinkingBudgetTokens": 1.5
+            }]
         }))
         .is_err()
     );

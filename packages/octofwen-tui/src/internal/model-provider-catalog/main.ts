@@ -1,4 +1,4 @@
-import { resolveAgentdCommand } from "../agentd/command.ts";
+import { err, ok, type Result } from "../../app/result.ts";
 import { modelProviderCatalog } from "../configuration/agentd-config.ts";
 import type { MultimodalConfig } from "../file-ir-optimization/main.ts";
 import { canDisplayImage } from "../file-ir-optimization/main.ts";
@@ -38,23 +38,24 @@ export type ProviderModelConfig = {
 	model: string;
 	nickname: string;
 	context: number;
-	reasoning?: "low" | "medium" | "high";
+	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	thinkingBudgetTokens?: number;
 	modalities?: MultimodalConfig;
 };
 
 export type ProviderConfig = {
 	shortcut: ProviderShortcut;
-	type?: "standard" | "openai-responses" | "anthropic";
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	name: string;
 	envVar: string;
 	baseUrl: string;
+	apiKeyUrl: string;
 	models: ProviderModelConfig[];
 	testModel: string;
 };
 
-export type ProviderKey = "synthetic" | "openai" | "anthropic" | "grok";
+export type ProviderKey = "synthetic" | "openai" | "anthropic" | "gemini" | "grok";
 
-const AGENTD_PROVIDER_CATALOG_COMMAND = resolveAgentdCommand();
 
 type CatalogResponse = {
 	providers: Record<ProviderKey, ProviderConfig>;
@@ -68,6 +69,7 @@ export const PROVIDERS = {
 	synthetic: catalog.providers.synthetic,
 	openai: catalog.providers.openai,
 	anthropic: catalog.providers.anthropic,
+	gemini: catalog.providers.gemini,
 	grok: catalog.providers.grok,
 };
 
@@ -75,63 +77,29 @@ export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
 	catalog.defaultMultimodalImageModelExample;
 
 export function recommendedModel(provider: ProviderKey): ProviderModelConfig {
-	const result = agentdProviderRequest(
-		"octofwen.agentd/modelRecommendedModel",
-		{ provider },
-	);
-	return (result as { model: ProviderModelConfig }).model;
+	return PROVIDERS[provider].models[0];
 }
 
 export const SYNTHETIC_PROVIDER = PROVIDERS[catalog.syntheticProviderKey];
 
-export function keyFromName(name: string): ProviderKey {
-	const result = agentdProviderRequest(
-		"octofwen.agentd/modelProviderKeyFromName",
-		{ name },
+export function providerValues(): ProviderConfig[] {
+	return Object.values(PROVIDERS).filter(
+		(provider): provider is ProviderConfig => provider !== undefined,
 	);
-	return (result as { key: ProviderKey }).key;
+}
+
+export function keyFromName(name: string): Result<ProviderKey, string> {
+	for (const [key, provider] of Object.entries(PROVIDERS) as Array<
+		[ProviderKey, ProviderConfig | undefined]
+	>) {
+		if (!provider) continue;
+		if (provider.name === name) return ok(key);
+	}
+	return err(`No provider named ${name} found`);
 }
 
 export function providerForBaseUrl(baseUrl: string): ProviderConfig | null {
-	const result = agentdProviderRequest(
-		"octofwen.agentd/modelProviderForBaseUrl",
-		{
-			baseUrl,
-		},
+	return (
+		providerValues().find((provider) => provider.baseUrl === baseUrl) ?? null
 	);
-	return (result as { provider: ProviderConfig | null }).provider;
-}
-
-function agentdProviderRequest(
-	method: string,
-	params: Record<string, unknown>,
-): unknown {
-	const id = 1;
-	const stdin = new TextEncoder().encode(
-		`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-	);
-	const subprocess = Bun.spawnSync(AGENTD_PROVIDER_CATALOG_COMMAND, {
-		stdin,
-		stdout: "pipe",
-		stderr: "pipe",
-		env: process.env,
-	});
-	if (subprocess.exitCode !== 0) {
-		throw new Error(
-			`octofwen-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
-		);
-	}
-	const line = subprocess.stdout
-		.toString()
-		.split("\n")
-		.find((entry) => entry.trim() !== "");
-	if (!line) throw new Error("octofwen-agentd returned no response");
-	const response = JSON.parse(line) as {
-		result?: unknown;
-		error?: { message?: string };
-	};
-	if (response.error) {
-		throw new Error(response.error.message ?? "octofwen-agentd request failed");
-	}
-	return response.result;
 }

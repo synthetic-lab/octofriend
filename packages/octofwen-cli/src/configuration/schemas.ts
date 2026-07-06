@@ -35,14 +35,15 @@ export type KeyResult =
 	| { ok: false; error: AuthError };
 
 export type ModelConfig = {
-	type?: "standard" | "openai-responses" | "anthropic";
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	nickname: string;
 	baseUrl: string;
 	apiEnvVar?: string;
 	auth?: Auth;
 	model: string;
 	context: number;
-	reasoning?: "low" | "medium" | "high";
+	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	thinkingBudgetTokens?: number;
 	modalities?: {
 		image?: {
 			enabled: boolean;
@@ -80,7 +81,7 @@ export type Config = {
 		paths?: string[];
 	};
 	notifications?: {
-		notifyCommand: string;
+		notifyCommand?: string;
 		notifyTimeoutMs?: number;
 		alwaysNotify?: boolean;
 	};

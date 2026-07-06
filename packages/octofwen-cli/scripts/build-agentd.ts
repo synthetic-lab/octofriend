@@ -6,7 +6,8 @@ import { spawn } from "bun";
 const profileIndex = process.argv.indexOf("--profile");
 const profile = profileIndex >= 0 ? process.argv[profileIndex + 1] : "release";
 if (profile !== "debug" && profile !== "release") {
-	throw new Error(`Unsupported octofwen-agentd build profile: ${profile}`);
+	console.error(`Unsupported octofwen-agentd build profile: ${profile}`);
+	process.exit(1);
 }
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

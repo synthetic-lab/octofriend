@@ -32,6 +32,7 @@ fn model_provider_catalog_request_returns_agentd_provider_catalog() {
             "name": "Synthetic",
             "envVar": "SYNTHETIC_API_KEY",
             "baseUrl": "https://api.synthetic.new/v1",
+            "apiKeyUrl": "https://dev.synthetic.new/",
             "models": [
                 {
                     "model": "hf:moonshotai/Kimi-K2.5",
@@ -69,10 +70,39 @@ fn model_provider_catalog_request_returns_agentd_provider_catalog() {
         "openai-responses"
     );
     assert_eq!(
+        value["result"]["providers"]["openai"]["apiKeyUrl"],
+        "https://platform.openai.com/api-keys"
+    );
+    assert_eq!(
         value["result"]["providers"]["anthropic"]["type"],
         "anthropic"
     );
+    assert_eq!(
+        value["result"]["providers"]["anthropic"]["apiKeyUrl"],
+        "https://console.anthropic.com/settings/keys"
+    );
+    assert_eq!(value["result"]["providers"]["gemini"]["type"], "gemini");
+    assert_eq!(
+        value["result"]["providers"]["gemini"]["envVar"],
+        "GEMINI_API_KEY"
+    );
+    assert_eq!(
+        value["result"]["providers"]["gemini"]["baseUrl"],
+        "https://generativelanguage.googleapis.com/v1beta"
+    );
+    assert_eq!(
+        value["result"]["providers"]["gemini"]["apiKeyUrl"],
+        "https://aistudio.google.com/apikey"
+    );
+    assert_eq!(
+        value["result"]["providers"]["gemini"]["testModel"],
+        "gemini-3.5-flash"
+    );
     assert_eq!(value["result"]["providers"]["grok"]["shortcut"], "x");
+    assert_eq!(
+        value["result"]["providers"]["grok"]["apiKeyUrl"],
+        "https://console.x.ai/"
+    );
 }
 
 #[test]
@@ -98,6 +128,22 @@ fn model_provider_lookup_requests_are_agentd() {
     let provider_response = handle_agentd_json_rpc_line(&provider_line).expect("response");
     let provider_value: serde_json::Value = serde_json::from_str(&provider_response).expect("json");
     assert_eq!(provider_value["result"]["provider"]["name"], "Anthropic");
+
+    let gemini_provider_line = json!({
+        "jsonrpc": "2.0",
+        "id": "model-provider-gemini",
+        "method": AGENTD_MODEL_PROVIDER_FOR_BASE_URL_METHOD,
+        "params": { "baseUrl": "https://generativelanguage.googleapis.com/v1beta" }
+    })
+    .to_string();
+    let gemini_provider_response =
+        handle_agentd_json_rpc_line(&gemini_provider_line).expect("response");
+    let gemini_provider_value: serde_json::Value =
+        serde_json::from_str(&gemini_provider_response).expect("json");
+    assert_eq!(
+        gemini_provider_value["result"]["provider"]["name"],
+        "Google Gemini"
+    );
 
     let recommended_line = json!({
         "jsonrpc": "2.0",

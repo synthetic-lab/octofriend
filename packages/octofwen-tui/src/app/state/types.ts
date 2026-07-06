@@ -57,6 +57,10 @@ export type AppModeData =
 			mode: "error-recovery";
 	  }
 	| {
+			mode: "auth-error";
+			error: string;
+	  }
+	| {
 			mode: "payment-error";
 			error: string;
 	  }
@@ -104,6 +108,7 @@ export type UiState = {
 	history: HistoryItem<OctoIR>[];
 	clearNonce: number;
 	lastUserPromptIndex: number | null;
+	pendingRejectedToolCall: ToolCallRequest | null;
 	whitelist: Set<string>;
 	notifyReadyForInput: (config: Config) => void;
 	cancelNotifyReadyForInput: () => void;
@@ -124,6 +129,7 @@ export type UiState = {
 	setQuery: (query: string) => void;
 	retryFrom: (
 		mode:
+			| "auth-error"
 			| "payment-error"
 			| "rate-limit-error"
 			| "request-error"

@@ -14,6 +14,13 @@ pub struct ProviderToolDelta {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeminiThoughtSignature {
+    pub part_index: u64,
+    pub tool_call_id: Option<String>,
+    pub thought_signature: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderOpenAiResponsesMetadata {
     pub reasoning_id: Option<String>,
     pub encrypted_reasoning_content: Option<String>,
@@ -34,6 +41,7 @@ pub enum ProviderStreamEvent {
         reasoning_output: u64,
     },
     OpenAiResponsesMetadata(ProviderOpenAiResponsesMetadata),
+    GeminiThoughtSignature(GeminiThoughtSignature),
     AnthropicThinkingDelta {
         index: u64,
         thinking: Option<String>,
@@ -84,6 +92,11 @@ pub struct ProviderAnthropicState {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProviderGeminiState {
+    pub thought_signatures: Vec<GeminiThoughtSignature>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProviderStreamState {
     pub content: String,
     pub reasoning_content: Option<String>,
@@ -91,6 +104,7 @@ pub struct ProviderStreamState {
     pub tools: Vec<ProviderStreamTool>,
     pub openai: ProviderOpenAiState,
     pub anthropic: ProviderAnthropicState,
+    pub gemini: ProviderGeminiState,
 }
 
 pub fn apply_provider_stream_events(
@@ -118,6 +132,9 @@ pub fn apply_provider_stream_events(
             }
             ProviderStreamEvent::OpenAiResponsesMetadata(metadata) => {
                 apply_openai_responses_metadata(state, metadata);
+            }
+            ProviderStreamEvent::GeminiThoughtSignature(signature) => {
+                apply_gemini_thought_signature(state, signature);
             }
             ProviderStreamEvent::AnthropicThinkingDelta {
                 index,
@@ -154,11 +171,7 @@ fn apply_provider_stream_token(
 }
 
 fn apply_provider_stream_tool_delta(state: &mut ProviderStreamState, delta: &ProviderToolDelta) {
-    let tool_index = match state
-        .tools
-        .iter()
-        .position(|tool| tool.index == delta.index)
-    {
+    let tool_index = match existing_tool_delta_index(state, delta) {
         Some(index) => index,
         None => {
             state.tools.push(ProviderStreamTool {
@@ -185,6 +198,23 @@ fn apply_provider_stream_tool_delta(state: &mut ProviderStreamState, delta: &Pro
     state.tools.sort_by_key(|tool| tool.index);
 }
 
+fn existing_tool_delta_index(
+    state: &ProviderStreamState,
+    delta: &ProviderToolDelta,
+) -> Option<usize> {
+    if let Some(id) = &delta.id {
+        return state
+            .tools
+            .iter()
+            .position(|tool| tool.id.as_ref() == Some(id));
+    }
+
+    state
+        .tools
+        .iter()
+        .position(|tool| tool.index == delta.index)
+}
+
 fn apply_openai_responses_metadata(
     state: &mut ProviderStreamState,
     metadata: &ProviderOpenAiResponsesMetadata,
@@ -201,6 +231,13 @@ fn apply_openai_responses_metadata(
     {
         state.reasoning_content = Some(reasoning_text.clone());
     }
+}
+
+fn apply_gemini_thought_signature(
+    state: &mut ProviderStreamState,
+    signature: &GeminiThoughtSignature,
+) {
+    state.gemini.thought_signatures.push(signature.clone());
 }
 
 fn apply_anthropic_thinking_delta(

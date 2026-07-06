@@ -7,6 +7,12 @@ export type AgentdAssistantOutputUsage = {
 	output: number;
 };
 
+export type AgentdGeminiThoughtSignature = {
+	partIndex: number;
+	toolCallId?: string | null;
+	thoughtSignature: string;
+};
+
 export type AgentdAssistantOutput = {
 	role: "assistant";
 	content: string;
@@ -22,6 +28,9 @@ export type AgentdAssistantOutput = {
 			| { type: "thinking"; thinking: string; signature: string }
 			| { type: "redacted_thinking"; data: string }
 		>;
+	};
+	gemini?: {
+		thoughtSignatures: AgentdGeminiThoughtSignature[];
 	};
 };
 
@@ -58,6 +67,9 @@ export type AgentdProviderStreamState = {
 			  }
 			| { type: "redacted_thinking"; data: string }
 		>;
+	};
+	gemini?: {
+		thoughtSignatures: AgentdGeminiThoughtSignature[];
 	};
 };
 

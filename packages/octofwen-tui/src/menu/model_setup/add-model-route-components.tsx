@@ -149,7 +149,7 @@ export function TestConnection(
 				props.onSubmit(result.metadata);
 				return;
 			}
-			setErrorMessage("Connection failed.");
+			setErrorMessage(result.errorMessage ?? "Connection failed.");
 			props.errorNav();
 		});
 	}, [props, modelConnectionTest]);

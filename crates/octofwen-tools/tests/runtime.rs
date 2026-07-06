@@ -1,4 +1,5 @@
 use html2text as _;
+use jsonschema as _;
 use octofwen_transport as _;
 use reqwest as _;
 use serde as _;

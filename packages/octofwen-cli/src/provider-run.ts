@@ -4,6 +4,7 @@ import type {
 	AgentdProviderStreamEvent,
 } from "./bridge/rust/provider-runtime.ts";
 import type { Config } from "./configuration/schemas.ts";
+import { err, ok, type Result } from "./result.ts";
 
 export type CliProviderMessage = {
 	role: "user" | "assistant" | "system" | "tool";
@@ -29,7 +30,10 @@ export async function runCliProviderCompletion({
 	system,
 	cwd,
 }: CliProviderRunParams): Promise<
-	Extract<AgentdProviderCompilerCompleteResult, { status: "finished" }>
+	Result<
+		Extract<AgentdProviderCompilerCompleteResult, { status: "finished" }>,
+		string
+	>
 > {
 	const result = await bridge.providerCompilerComplete({
 		type: model.type,
@@ -37,6 +41,7 @@ export async function runCliProviderCompletion({
 		model: model.model,
 		context: model.context,
 		reasoning: model.reasoning,
+		thinkingBudgetTokens: model.thinkingBudgetTokens,
 		modalities: model.modalities,
 		apiKey,
 		irs: messages,
@@ -44,9 +49,9 @@ export async function runCliProviderCompletion({
 		cwd,
 	});
 	if (result.status === "error") {
-		throw new Error(result.error.requestError);
+		return err(result.error.requestError);
 	}
-	return result;
+	return ok(result);
 }
 
 export function replayProviderTokenEvents(

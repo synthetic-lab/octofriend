@@ -31,6 +31,7 @@ struct ToolRunParams {
 enum ToolRunTransport {
     Local,
     Docker { container: String },
+    Ssh { target: String },
 }
 
 impl ToolRunTransport {
@@ -40,6 +41,7 @@ impl ToolRunTransport {
             Self::Docker { container } => {
                 RuntimeToolTransport::docker(container, cwd.to_string_lossy())
             }
+            Self::Ssh { target } => RuntimeToolTransport::ssh(target, cwd.to_string_lossy()),
         }
     }
 }

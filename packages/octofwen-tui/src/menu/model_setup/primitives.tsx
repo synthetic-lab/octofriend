@@ -1,4 +1,5 @@
 import { Box, Text, useInput } from "ink";
+import { errorToString } from "../../app/result.ts";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextInput } from "../../input/text.ts";
@@ -8,10 +9,14 @@ import {
 } from "../../internal/configuration/keys.ts";
 import type { Auth, Config } from "../../internal/configuration/schemas.ts";
 import {
+	testConnection,
+	type ModelConnectionTester,
+} from "./add-model-connection.ts";
+import {
 	keyFromName,
-	PROVIDERS,
 	type ProviderConfig,
 	SYNTHETIC_PROVIDER,
+	providerValues,
 } from "../../internal/model-provider-catalog/main.ts";
 import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../root.tsx";
@@ -74,6 +79,10 @@ export type SyntheticAutofixSelectionResult =
 	  }
 	| {
 			step: "missing-auth";
+	  }
+	| {
+			step: "connection-failed";
+			errorMessage: string;
 	  };
 
 export type ResolveSyntheticAutofixSelectionInput = {
@@ -84,13 +93,58 @@ export type ResolveSyntheticAutofixSelectionInput = {
 		model: { baseUrl: string },
 		config: Pick<Config, "defaultApiKeyOverrides"> | null,
 	) => Promise<string | null>;
+	modelConnectionTest?: ModelConnectionTester;
+};
+
+export type SyntheticAutofixConfig = {
+	diffApply: AutofixDiffApplyConfig;
+	fixJson: AutofixDiffApplyConfig;
+};
+
+export type SyntheticAutofixConfigResult =
+	| { step: "complete"; config: SyntheticAutofixConfig }
+	| { step: "missing-auth" }
+	| { step: "connection-failed"; errorMessage: string };
+
+export type ResolveSyntheticAutofixConfigInput = Omit<
+	ResolveSyntheticAutofixSelectionInput,
+	"defaultModel"
+> & {
+	diffApplyModel?: string;
+	fixJsonModel?: string;
+};
+
+export type ResolveSyntheticAutofixSelectionFromAuthInput = {
+	config: Config | null;
+	defaultModel: string;
+	auth?: Auth;
+	modelConnectionTest?: ModelConnectionTester;
+};
+
+export type ResolveSyntheticAutofixConfigFromAuthInput = Omit<
+	ResolveSyntheticAutofixSelectionFromAuthInput,
+	"defaultModel"
+> & {
+	diffApplyModel?: string;
+	fixJsonModel?: string;
 };
 
 export function getProviderDisplayName(baseUrl: string): string {
-	const provider = Object.values(PROVIDERS).find((provider) => {
+	const provider = providerValues().find((provider) => {
 		return provider.baseUrl === baseUrl;
 	});
 	return provider?.name || baseUrl;
+}
+
+export function getProviderApiKeyUrl(baseUrl: string): string | null {
+	const provider = providerValues().find((provider) => {
+		return provider.baseUrl === baseUrl;
+	});
+	return provider?.apiKeyUrl ?? null;
+}
+
+export function terminalHyperlink(url: string, label = url): string {
+	return `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`;
 }
 
 export function validateApiKeyValue(value: string): ApiKeyValidationResult {
@@ -107,8 +161,8 @@ export function resolveProviderEnvVar(
 ): string {
 	if (overrideEnvVar) return overrideEnvVar;
 	const key = keyFromName(provider.name);
-	if (config?.defaultApiKeyOverrides?.[key]) {
-		return config.defaultApiKeyOverrides[key];
+	if (key.success && config?.defaultApiKeyOverrides?.[key.data]) {
+		return config.defaultApiKeyOverrides[key.data];
 	}
 	return provider.envVar;
 }
@@ -135,14 +189,93 @@ export function syntheticAutofixDiffApplyFromAuth(
 	return diffApply;
 }
 
+export async function resolveSyntheticAutofixConfig({
+	diffApplyModel = "hf:syntheticlab/diff-apply",
+	fixJsonModel = "hf:syntheticlab/fix-json",
+	...input
+}: ResolveSyntheticAutofixConfigInput): Promise<SyntheticAutofixConfigResult> {
+	const diffApply = await resolveSyntheticAutofixSelection({
+		...input,
+		defaultModel: diffApplyModel,
+	});
+	if (diffApply.step !== "complete") return diffApply;
+
+	const fixJson = await resolveSyntheticAutofixSelection({
+		...input,
+		defaultModel: fixJsonModel,
+	});
+	if (fixJson.step !== "complete") return fixJson;
+
+	return {
+		step: "complete",
+		config: {
+			diffApply: diffApply.diffApply,
+			fixJson: fixJson.diffApply,
+		},
+	};
+}
+
+export async function resolveSyntheticAutofixConfigFromAuth({
+	diffApplyModel = "hf:syntheticlab/diff-apply",
+	fixJsonModel = "hf:syntheticlab/fix-json",
+	...input
+}: ResolveSyntheticAutofixConfigFromAuthInput): Promise<SyntheticAutofixConfigResult> {
+	const diffApply = await resolveSyntheticAutofixSelectionFromAuth({
+		...input,
+		defaultModel: diffApplyModel,
+	});
+	if (diffApply.step !== "complete") return diffApply;
+
+	const fixJson = await resolveSyntheticAutofixSelectionFromAuth({
+		...input,
+		defaultModel: fixJsonModel,
+	});
+	if (fixJson.step !== "complete") return fixJson;
+
+	return {
+		step: "complete",
+		config: {
+			diffApply: diffApply.diffApply,
+			fixJson: fixJson.diffApply,
+		},
+	};
+}
+
+export async function resolveSyntheticAutofixSelectionFromAuth({
+	config,
+	defaultModel,
+	auth,
+	modelConnectionTest,
+}: ResolveSyntheticAutofixSelectionFromAuthInput): Promise<SyntheticAutofixSelectionResult> {
+	const connection = await testSyntheticAutofixAuth({
+		config,
+		auth,
+		model: defaultModel,
+		modelConnectionTest,
+	});
+	if (connection) return connection;
+	return {
+		step: "complete",
+		diffApply: syntheticAutofixDiffApplyFromAuth(defaultModel, auth),
+	};
+}
+
 export async function resolveSyntheticAutofixSelection({
 	config,
 	defaultModel,
 	env = process.env,
 	readKeyForModel: readKey,
+	modelConnectionTest,
 }: ResolveSyntheticAutofixSelectionInput): Promise<SyntheticAutofixSelectionResult> {
 	const envVar = resolveProviderEnvVar(SYNTHETIC_PROVIDER, config, null);
-	if (env[envVar]) {
+	const envKey = env[envVar];
+	if (envKey) {
+		const connection = await testSyntheticAutofixConnection({
+			apiKey: envKey,
+			model: defaultModel,
+			modelConnectionTest,
+		});
+		if (connection) return connection;
 		return {
 			step: "complete",
 			diffApply: {
@@ -158,14 +291,76 @@ export async function resolveSyntheticAutofixSelection({
 		((model) => readConfiguredKeyForModel(model, config as Config | null))
 	)({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
 	if (key === null) return { step: "missing-auth" };
+	const connection = await testSyntheticAutofixConnection({
+		apiKey: key,
+		model: defaultModel,
+		modelConnectionTest,
+	});
+	if (connection) return connection;
 	return {
 		step: "complete",
 		diffApply: syntheticAutofixDiffApplyFromAuth(defaultModel),
 	};
 }
 
+async function testSyntheticAutofixConnection({
+	apiKey,
+	model,
+	modelConnectionTest,
+}: {
+	apiKey: string;
+	model: string;
+	modelConnectionTest?: ModelConnectionTester;
+}): Promise<Extract<
+	SyntheticAutofixSelectionResult,
+	{ step: "connection-failed" }
+> | null> {
+	if (!modelConnectionTest) return null;
+	try {
+		const result = await modelConnectionTest({
+			baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+			apiKey,
+			model,
+		});
+		if (result.valid) return null;
+		return { step: "connection-failed", errorMessage: "Connection failed." };
+	} catch (error) {
+		return { step: "connection-failed", errorMessage: errorToString(error) };
+	}
+}
+
+async function testSyntheticAutofixAuth({
+	config,
+	auth,
+	model,
+	modelConnectionTest,
+}: {
+	config: Config | null;
+	auth?: Auth;
+	model: string;
+	modelConnectionTest?: ModelConnectionTester;
+}): Promise<Extract<
+	SyntheticAutofixSelectionResult,
+	{ step: "connection-failed" }
+> | null> {
+	if (!modelConnectionTest) return null;
+	const result = await testConnection({
+		baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+		auth,
+		config,
+		model,
+		modelConnectionTest,
+	});
+	if (result.valid) return null;
+	return {
+		step: "connection-failed",
+		errorMessage: result.errorMessage ?? "Connection failed.",
+	};
+}
+
 export function SetApiKey({ baseUrl, onComplete, onCancel }: SetApiKeyProps) {
 	const name = getProviderDisplayName(baseUrl);
+	const apiKeyUrl = getProviderApiKeyUrl(baseUrl);
 	const [saving, setSaving] = useState(false);
 	const [varValue, setVarValue] = useState("");
 	const [errorMessage, setErrorMessage] = useState<null | string>(null);
@@ -215,6 +410,7 @@ export function SetApiKey({ baseUrl, onComplete, onCancel }: SetApiKeyProps) {
 				Enter your API key for {name}
 				{name === baseUrl ? "." : ""}
 			</Text>
+			{apiKeyUrl && <Text>Get one at {terminalHyperlink(apiKeyUrl)}</Text>}
 
 			<Box marginY={1} width={80}>
 				<Box marginRight={1}>

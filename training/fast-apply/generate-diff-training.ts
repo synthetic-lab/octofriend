@@ -53,37 +53,37 @@ async function genEditsForRepo(repo: string) {
 	for await (const edit of genDiffs(path.join(repo, ".git"))) {
 		if (edit.file.length > 1024 * 48) continue;
 
-		try {
-			const response = (() => {
-				if (percentChance(AMBIGUOUS_PERCENT)) {
-					const messages = ambiguousEditMessages(edit);
-					ambiguousCount++;
-					return messages;
-				}
-				return breakEditMessages(edit);
-			})();
-
-			const messages = [
-				{
-					role: "user",
-					content: fixEditPrompt(response.diff),
-				},
-				{
-					role: "assistant",
-					content: JSON.stringify(response.response),
-				},
-			];
-			let outputPath = TRAIN_PATH;
-			if (percentChance(EVAL_PERCENT)) outputPath = EVAL_PATH;
-			await fs.appendFile(
-				outputPath,
-				`${JSON.stringify({ messages })}\n`,
-				"utf8",
-			);
-			successCount++;
-		} catch {
+		const response = (() => {
+			if (percentChance(AMBIGUOUS_PERCENT)) {
+				const messages = ambiguousEditMessages(edit);
+				if (messages.success) ambiguousCount++;
+				return messages;
+			}
+			return breakEditMessages(edit);
+		})();
+		if (!response.success) {
 			skippedBreaks++;
+			continue;
 		}
+
+		const messages = [
+			{
+				role: "user",
+				content: fixEditPrompt(response.value.diff),
+			},
+			{
+				role: "assistant",
+				content: JSON.stringify(response.value.response),
+			},
+		];
+		let outputPath = TRAIN_PATH;
+		if (percentChance(EVAL_PERCENT)) outputPath = EVAL_PATH;
+		await fs.appendFile(
+			outputPath,
+			`${JSON.stringify({ messages })}\n`,
+			"utf8",
+		);
+		successCount++;
 	}
 
 	console.log(
@@ -94,12 +94,24 @@ async function genEditsForRepo(repo: string) {
 	);
 }
 
+type TrainingResult<T> =
+	| { success: true; value: T }
+	| { success: false; error: string };
+
+function ok<T>(value: T): TrainingResult<T> {
+	return { success: true, value };
+}
+
+function err(error: string): TrainingResult<never> {
+	return { success: false, error };
+}
+
 type BreakResponse = {
 	diff: Diff;
 	response: DiffApplyResponseValue;
 };
-function ambiguousEditMessages(diff: Diff): BreakResponse {
-	if (coinFlip()) return dupeAmbiguous(diff);
+function ambiguousEditMessages(diff: Diff): TrainingResult<BreakResponse> {
+	if (coinFlip()) return ok(dupeAmbiguous(diff));
 	return cutAmbiguous(diff);
 }
 
@@ -131,7 +143,7 @@ function moreThanOneMatch(file: string, search: string) {
 	return rest.indexOf(search) >= 0;
 }
 
-function cutAmbiguous(diff: Diff): BreakResponse {
+function cutAmbiguous(diff: Diff): TrainingResult<BreakResponse> {
 	let cut = diff.edit.search;
 
 	while (moreThanOneMatch(diff.file, cut) && cut.length > 1) {
@@ -140,10 +152,10 @@ function cutAmbiguous(diff: Diff): BreakResponse {
 	}
 
 	if (!moreThanOneMatch(diff.file, cut)) {
-		throw new Error("Couldn't cut search string to the point of ambiguity");
+		return err("Couldn't cut search string to the point of ambiguity");
 	}
 
-	return {
+	return ok({
 		diff: {
 			file: diff.file,
 			edit: {
@@ -152,29 +164,34 @@ function cutAmbiguous(diff: Diff): BreakResponse {
 			},
 		},
 		response: { success: false },
-	};
+	});
 }
 
-function breakEditMessages(edit: Diff): BreakResponse {
+function breakEditMessages(edit: Diff): TrainingResult<BreakResponse> {
 	const numBreaks = oneToN(MAX_NUM_BREAKS);
 	let brokenEdit: Diff = { file: edit.file, edit: { ...edit.edit } };
 	for (let i = 0; i < numBreaks; i++) {
+		const search = breakSearchStringRandomly(
+			brokenEdit.edit.search,
+			brokenEdit.file,
+		);
+		if (!search.success) return search;
 		brokenEdit = {
 			file: edit.file,
 			edit: {
-				search: breakSearchStringRandomly(brokenEdit.edit, brokenEdit.file),
+				search: search.value,
 				replace: edit.edit.replace,
 			},
 		};
 	}
 
-	return {
+	return ok({
 		diff: brokenEdit,
 		response: {
 			success: true,
 			search: edit.edit.search,
 		},
-	};
+	});
 }
 
 const breakFns: Array<(search: string) => string> = [];
@@ -262,20 +279,20 @@ function findChar(str: string, searchChar: string) {
 }
 
 function breakSearchStringRandomly(
-	edit: t.GetType<typeof DiffEditSchema>,
+	search: string,
 	file: string,
-) {
+): TrainingResult<string> {
 	const breaker = pickRandom(breakFns);
-	let result = breaker(edit.search);
-	if (!file.includes(result)) return result;
+	let result = breaker(search);
+	if (!file.includes(result)) return ok(result);
 
 	for (let i = 0; i < MAX_BREAK_ATTEMPTS; i++) {
 		const breaker = pickRandom(breakFns);
-		result = breaker(edit.search);
-		if (!file.includes(result)) return result;
+		result = breaker(search);
+		if (!file.includes(result)) return ok(result);
 	}
 
-	throw new Error(
+	return err(
 		`Couldn't break search string after ${MAX_BREAK_ATTEMPTS} attempts`,
 	);
 }

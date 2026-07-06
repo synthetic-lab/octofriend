@@ -2,8 +2,8 @@ use octofwen_llm::compiler::{
     AssistantOutputProvider, AssistantOutputRequest, build_assistant_output,
 };
 use octofwen_llm::providers::stream::{
-    AnthropicThinkingBlock, ProviderAnthropicState, ProviderOpenAiState, ProviderStreamState,
-    ProviderStreamUsage,
+    AnthropicThinkingBlock, GeminiThoughtSignature, ProviderAnthropicState, ProviderGeminiState,
+    ProviderOpenAiState, ProviderStreamState, ProviderStreamUsage,
 };
 use serde_json::json;
 
@@ -25,6 +25,7 @@ fn builds_openai_responses_assistant_output_with_usage_and_metadata() {
                 encrypted_reasoning_content: Some("encrypted".into()),
             },
             anthropic: ProviderAnthropicState::default(),
+            gemini: ProviderGeminiState::default(),
             tools: Vec::new(),
         },
     });
@@ -77,6 +78,7 @@ fn builds_anthropic_assistant_output_with_thinking_blocks() {
                     },
                 ],
             },
+            gemini: ProviderGeminiState::default(),
             tools: Vec::new(),
         },
     });
@@ -95,6 +97,52 @@ fn builds_anthropic_assistant_output_with_thinking_blocks() {
                     { "type": "thinking", "signature": "", "thinking": "internal" },
                     { "type": "redacted_thinking", "data": "blob" }
                 ]
+            }
+        })
+    );
+}
+
+#[test]
+fn builds_gemini_assistant_output_with_thought_signatures() {
+    let result = build_assistant_output(&AssistantOutputRequest {
+        provider: AssistantOutputProvider::Gemini,
+        state: ProviderStreamState {
+            content: "answer".into(),
+            reasoning_content: None,
+            usage: ProviderStreamUsage {
+                input: 1,
+                cached_input: 0,
+                output: 2,
+                reasoning_output: 0,
+            },
+            openai: ProviderOpenAiState::default(),
+            anthropic: ProviderAnthropicState::default(),
+            gemini: ProviderGeminiState {
+                thought_signatures: vec![GeminiThoughtSignature {
+                    part_index: 0,
+                    tool_call_id: Some("call-1".into()),
+                    thought_signature: "sig-1".into(),
+                }],
+            },
+            tools: Vec::new(),
+        },
+    });
+
+    assert_eq!(
+        result.output,
+        json!({
+            "role": "assistant",
+            "content": "answer",
+            "usage": {
+                "input": { "cached": 0, "uncached": 1, "total": 1 },
+                "output": 2,
+            },
+            "gemini": {
+                "thoughtSignatures": [{
+                    "partIndex": 0,
+                    "toolCallId": "call-1",
+                    "thoughtSignature": "sig-1"
+                }]
             }
         })
     );

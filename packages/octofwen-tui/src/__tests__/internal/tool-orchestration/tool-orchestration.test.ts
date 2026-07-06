@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { Config } from "../../../internal/configuration/schemas.ts";
+import type { Result } from "../../../app/result.ts";
 import {
 	loadTools,
+	preflightToolCall,
 	runTool,
 	validateTool,
 } from "../../../internal/tool-orchestration/main.ts";
@@ -40,6 +42,12 @@ const baseToolDefinitions = async ({
 	],
 });
 
+
+function expectOk<T, E>(result: Result<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : (undefined as T);
+}
+
 function transport(overrides: Partial<Transport> = {}): Transport {
 	return {
 		cwd: "/repo",
@@ -59,11 +67,13 @@ function transport(overrides: Partial<Transport> = {}): Transport {
 
 describe("tool orchestration", () => {
 	it("loads available built-in tools and skips unavailable dynamic tools", async () => {
-		const tools = await loadTools(
-			transport(),
-			new AbortController().signal,
-			baseConfig,
-			{ toolDefinitions: baseToolDefinitions },
+		const tools = expectOk(
+			await loadTools(
+				transport(),
+				new AbortController().signal,
+				baseConfig,
+				{ toolDefinitions: baseToolDefinitions },
+			),
 		);
 
 		expect(tools["read"]?.name).toBe("read");
@@ -74,38 +84,43 @@ describe("tool orchestration", () => {
 	});
 
 	it("loads the skill tool from discovered skills", async () => {
-		const tools = await loadTools(
-			transport({
-				readFile: async () => {
-					await Promise.resolve();
-					throw new Error("TypeScript skill discovery should not read files");
-				},
-				readdir: async () => {
-					await Promise.resolve();
-					throw new Error("TypeScript skill discovery should not read dirs");
-				},
-				pathExists: async () => {
-					await Promise.resolve();
-					throw new Error("TypeScript skill discovery should not stat paths");
-				},
-			}),
-			new AbortController().signal,
-			baseConfig,
-			{
-				toolDefinitions: baseToolDefinitions,
-				skillDiscover: async () => ({
-					skills: [
-						{
-							name: "review-code",
-							description: "Reviews source changes.",
-							instructions: "Inspect the diff before commenting.",
-							path: "/skills/review-code",
-							skillFilePath: "/skills/review-code/SKILL.md",
-							metadata: {},
-						},
-					],
+		const tools = expectOk(
+			await loadTools(
+				transport({
+					readFile: async () => {
+						return Promise.reject(
+							new Error("TypeScript skill discovery should not read files"),
+						);
+					},
+					readdir: async () => {
+						return Promise.reject(
+							new Error("TypeScript skill discovery should not read dirs"),
+						);
+					},
+					pathExists: async () => {
+						return Promise.reject(
+							new Error("TypeScript skill discovery should not stat paths"),
+						);
+					},
 				}),
-			},
+				new AbortController().signal,
+				baseConfig,
+				{
+					toolDefinitions: baseToolDefinitions,
+					skillDiscover: async () => ({
+						skills: [
+							{
+								name: "review-code",
+								description: "Reviews source changes.",
+								instructions: "Inspect the diff before commenting.",
+								path: "/skills/review-code",
+								skillFilePath: "/skills/review-code/SKILL.md",
+								metadata: {},
+							},
+						],
+					}),
+				},
+			),
 		);
 
 		expect(tools["skill"]?.name).toBe("skill");
@@ -124,7 +139,6 @@ describe("tool orchestration", () => {
 		]);
 		expect(tools["skill"]?.description).toContain("review-code");
 	});
-
 	it("requires tool run hook for every loaded tool call", async () => {
 		const result = await runTool(
 			new AbortController().signal,
@@ -152,8 +166,7 @@ describe("tool orchestration", () => {
 			shell: {
 				name: "shell",
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback shell runner should not run");
+					return Promise.reject(new Error("fallback shell runner should not run"));
 				},
 			},
 		} as never;
@@ -186,8 +199,7 @@ describe("tool orchestration", () => {
 				name: "read",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback tool runner should not run");
+					return Promise.reject(new Error("fallback tool runner should not run"));
 				},
 			},
 		} as never;
@@ -265,6 +277,116 @@ describe("tool orchestration", () => {
 		]);
 	});
 
+	it("preflights edit and rewrite contents from the transport at run time", async () => {
+		const signal = new AbortController().signal;
+		const reads: string[] = [];
+		const fakeTransport = transport({
+			readFile: async (_signal, filePath) => {
+				reads.push(filePath);
+				return filePath === "edit.txt"
+					? "fresh edit contents"
+					: "fresh rewrite contents";
+			},
+		});
+
+		const preflight = await preflightToolCall(signal, fakeTransport, {
+			type: "tool-call",
+			toolCallId: "edit-1",
+			name: "edit",
+			original: { filePath: "edit.txt", search: "old", replace: "new" },
+			parsed: {
+				filePath: "edit.txt",
+				search: "old",
+				replace: "new",
+				originalFileContents: "stale",
+			},
+		});
+		const preflightData = expectOk(preflight);
+		expect(preflightData).toEqual({
+			type: "tool-call",
+			toolCallId: "edit-1",
+			name: "edit",
+			original: { filePath: "edit.txt", search: "old", replace: "new" },
+			parsed: {
+				filePath: "edit.txt",
+				search: "old",
+				replace: "new",
+				originalFileContents: "fresh edit contents",
+			},
+		});
+		expect(reads).toEqual(["edit.txt"]);
+	});
+
+	it("runs agentd deterministic tool calls with preflighted file contents", async () => {
+		const fakeTransport = transport({
+			readFile: async (_signal, filePath) =>
+				filePath === "rewrite.txt" ? "fresh file" : "",
+		});
+		const runnerCalls: unknown[] = [];
+		const tools = {
+			rewrite: {
+				name: "rewrite",
+				validate: async () => ({ success: true, data: null }),
+				run: async () => {
+					return Promise.reject(new Error("fallback rewrite runner should not run"));
+				},
+			},
+		} as never;
+		const toolRun = async (params: unknown) => {
+			await Promise.resolve();
+			runnerCalls.push(params);
+			return {
+				status: "completed" as const,
+				result: { type: "output" as const, content: [] },
+			};
+		};
+
+		const result = await runTool(
+			new AbortController().signal,
+			fakeTransport,
+			tools,
+			{
+				type: "tool-call",
+				toolCallId: "rewrite-1",
+				name: "rewrite",
+				original: { filePath: "rewrite.txt", text: "replacement" },
+				parsed: {
+					filePath: "rewrite.txt",
+					text: "replacement",
+					originalFileContents: "stale",
+				},
+			},
+			baseConfig,
+			toolRun,
+		);
+
+		expect(result.success).toBe(true);
+		expect(runnerCalls).toEqual([
+			{
+				toolName: "rewrite",
+				cwd: "/repo",
+				toolCallId: "rewrite-1",
+				toolCall: {
+					type: "tool-call",
+					toolCallId: "rewrite-1",
+					name: "rewrite",
+					original: { filePath: "rewrite.txt", text: "replacement" },
+					parsed: {
+						filePath: "rewrite.txt",
+						text: "replacement",
+						originalFileContents: "fresh file",
+					},
+				},
+				parsed: {
+					filePath: "rewrite.txt",
+					text: "replacement",
+					originalFileContents: "fresh file",
+				},
+				modelContext: 200,
+			},
+		]);
+	});
+
 	it("passes Docker transport context to agentd tool runs", async () => {
 		const fakeTransport = transport({
 			cwd: "/workspace",
@@ -276,8 +398,7 @@ describe("tool orchestration", () => {
 				name: "read",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback read runner should not run");
+					return Promise.reject(new Error("fallback read runner should not run"));
 				},
 			},
 		} as never;
@@ -328,6 +449,68 @@ describe("tool orchestration", () => {
 		]);
 	});
 
+	it("passes SSH transport context to agentd tool runs", async () => {
+		const fakeTransport = transport({
+			cwd: "/remote/workspace",
+			toolRunTransport: () => ({ type: "ssh", target: "user@example.test" }),
+		});
+		const runnerCalls: unknown[] = [];
+		const tools = {
+			read: {
+				name: "read",
+				validate: async () => ({ success: true, data: null }),
+				run: async () => {
+					return Promise.reject(new Error("fallback read runner should not run"));
+				},
+			},
+		} as never;
+		const toolRun = async (params: unknown) => {
+			await Promise.resolve();
+			runnerCalls.push(params);
+			return {
+				status: "completed" as const,
+				result: {
+					type: "output" as const,
+					content: [{ type: "text" as const, content: "from ssh" }],
+				},
+			};
+		};
+
+		const result = await runTool(
+			new AbortController().signal,
+			fakeTransport,
+			tools,
+			{
+				type: "tool-call",
+				toolCallId: "read-ssh-1",
+				name: "read",
+				original: { filePath: "README.md" },
+				parsed: { filePath: "README.md" },
+			},
+			baseConfig,
+			toolRun,
+		);
+
+		expect(result.success).toBe(true);
+		expect(runnerCalls).toEqual([
+			{
+				toolName: "read",
+				cwd: "/remote/workspace",
+				transport: { type: "ssh", target: "user@example.test" },
+				toolCallId: "read-ssh-1",
+				toolCall: {
+					type: "tool-call",
+					toolCallId: "read-ssh-1",
+					name: "read",
+					original: { filePath: "README.md" },
+					parsed: { filePath: "README.md" },
+				},
+				parsed: { filePath: "README.md" },
+				modelContext: 200,
+			},
+		]);
+	});
+
 	it("runs shell tool calls through tool run hook", async () => {
 		const fakeTransport = transport();
 		const runnerCalls: unknown[] = [];
@@ -336,8 +519,7 @@ describe("tool orchestration", () => {
 				name: "shell",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback shell runner should not run");
+					return Promise.reject(new Error("fallback shell runner should not run"));
 				},
 			},
 		} as never;
@@ -395,8 +577,7 @@ describe("tool orchestration", () => {
 				name: "glob",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback glob runner should not run");
+					return Promise.reject(new Error("fallback glob runner should not run"));
 				},
 			},
 		} as never;
@@ -454,8 +635,7 @@ describe("tool orchestration", () => {
 				name: "grep",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback grep runner should not run");
+					return Promise.reject(new Error("fallback grep runner should not run"));
 				},
 			},
 		} as never;
@@ -513,8 +693,7 @@ describe("tool orchestration", () => {
 				name: "fetch",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback fetch runner should not run");
+					return Promise.reject(new Error("fallback fetch runner should not run"));
 				},
 			},
 		} as never;
@@ -580,8 +759,7 @@ describe("tool orchestration", () => {
 				name: "web-search",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback web-search runner should not run");
+					return Promise.reject(new Error("fallback web-search runner should not run"));
 				},
 			},
 		} as never;
@@ -646,8 +824,7 @@ describe("tool orchestration", () => {
 				name: "skill",
 				validate: async () => ({ success: true, data: null }),
 				run: async () => {
-					await Promise.resolve();
-					throw new Error("fallback skill runner should not run");
+					return Promise.reject(new Error("fallback skill runner should not run"));
 				},
 				extra: {
 					skills: [
@@ -752,8 +929,7 @@ describe("tool orchestration", () => {
 			call,
 			baseConfig,
 			async () => {
-				await Promise.resolve();
-				throw new Error("bridge down");
+				return Promise.reject(new Error("bridge down"));
 			},
 		);
 
@@ -775,8 +951,7 @@ describe("tool orchestration", () => {
 					data: { type: "output", content: [] },
 				}),
 				validate: async () => {
-					await Promise.resolve();
-					throw new Error("fallback tool validator should not run");
+					return Promise.reject(new Error("fallback tool validator should not run"));
 				},
 			},
 		} as never;

@@ -86,9 +86,13 @@ describe("StreamingXMLParser", () => {
 		]);
 	});
 
-	it("throws when writing after close", () => {
-		const parser = new StreamingXMLParser({ handlers: {} });
+	it("ignores writes after close", () => {
+		const events: XMLEvent[] = [];
+		const parser = new StreamingXMLParser({
+			handlers: { onText: (event) => events.push(event) },
+		});
 		parser.close();
-		expect(() => parser.write("text")).toThrow("Writing to closed XML parser");
+		parser.write("text");
+		expect(events).toEqual([]);
 	});
 });

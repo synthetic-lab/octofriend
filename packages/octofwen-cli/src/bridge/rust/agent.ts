@@ -195,6 +195,7 @@ export type {
 	AgentdSystemPromptResult,
 } from "./system-prompt.ts";
 
+import { err, ok, type Result } from "../../result.ts";
 import {
 	type AgentdSpawnOptions,
 	spawnAgentdProcess,
@@ -320,6 +321,21 @@ type CreateAgentdRustBridgeOptions = AgentdSpawnOptions & {
 	createClient?: () => AgentdClientLike;
 };
 
+function validateAgentdResult<T>(
+	result: unknown,
+	isExpected: (value: unknown) => value is T,
+	invalidResponseError: () => Error,
+): Result<T, Error> {
+	return isExpected(result) ? ok(result) : err(invalidResponseError());
+}
+
+function unwrapAgentdResult<T>(
+	validation: Result<T, Error>,
+): T | Promise<never> {
+	if (!validation.success) return Promise.reject(validation.error);
+	return validation.data;
+}
+
 export class AgentdRustBridge {
 	readonly #client: AgentdClientLike;
 
@@ -334,10 +350,13 @@ export class AgentdRustBridge {
 			AGENTD_INPUT_HISTORY_LOAD_METHOD,
 			params,
 		);
-		if (!isAgentdInputHistoryResult(result)) {
-			throw invalidAgentdInputHistoryResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdInputHistoryResult,
+				invalidAgentdInputHistoryResponseError,
+			),
+		);
 	}
 
 	async inputHistoryAppend(
@@ -347,10 +366,13 @@ export class AgentdRustBridge {
 			AGENTD_INPUT_HISTORY_APPEND_METHOD,
 			params,
 		);
-		if (!isAgentdInputHistoryResult(result)) {
-			throw invalidAgentdInputHistoryResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdInputHistoryResult,
+				invalidAgentdInputHistoryResponseError,
+			),
+		);
 	}
 
 	async conversationHistoryAppend(
@@ -360,10 +382,13 @@ export class AgentdRustBridge {
 			AGENTD_CONVERSATION_HISTORY_APPEND_METHOD,
 			params,
 		);
-		if (!isAgentdConversationHistoryAppendResult(result)) {
-			throw invalidAgentdConversationHistoryAppendResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConversationHistoryAppendResult,
+				invalidAgentdConversationHistoryAppendResponseError,
+			),
+		);
 	}
 
 	async conversationHistoryRecords(
@@ -373,10 +398,13 @@ export class AgentdRustBridge {
 			AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD,
 			params,
 		);
-		if (!isAgentdConversationHistoryRecordsResult(result)) {
-			throw invalidAgentdConversationHistoryRecordsResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConversationHistoryRecordsResult,
+				invalidAgentdConversationHistoryRecordsResponseError,
+			),
+		);
 	}
 
 	async conversationHistoryLlmPayloads(
@@ -386,10 +414,13 @@ export class AgentdRustBridge {
 			AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD,
 			params,
 		);
-		if (!isAgentdConversationHistoryLlmPayloadsResult(result)) {
-			throw invalidAgentdConversationHistoryLlmPayloadsResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConversationHistoryLlmPayloadsResult,
+				invalidAgentdConversationHistoryLlmPayloadsResponseError,
+			),
+		);
 	}
 
 	async updateNotificationsRead(
@@ -399,10 +430,13 @@ export class AgentdRustBridge {
 			AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD,
 			params,
 		);
-		if (!isAgentdUpdateNotificationsReadResult(result)) {
-			throw invalidAgentdUpdateNotificationsReadResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdUpdateNotificationsReadResult,
+				invalidAgentdUpdateNotificationsReadResponseError,
+			),
+		);
 	}
 
 	async updateNotificationsMarkSeen(
@@ -412,10 +446,13 @@ export class AgentdRustBridge {
 			AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD,
 			params,
 		);
-		if (!isAgentdUpdateNotificationsMarkSeenResult(result)) {
-			throw invalidAgentdUpdateNotificationsMarkSeenResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdUpdateNotificationsMarkSeenResult,
+				invalidAgentdUpdateNotificationsMarkSeenResponseError,
+			),
+		);
 	}
 
 	async trajectoryArc(
@@ -427,10 +464,13 @@ export class AgentdRustBridge {
 			params,
 			options,
 		);
-		if (!isAgentdTrajectoryArcResult(result)) {
-			throw invalidAgentdTrajectoryArcResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdTrajectoryArcResult,
+				invalidAgentdTrajectoryArcResponseError,
+			),
+		);
 	}
 
 	async trajectoryFinish(
@@ -440,10 +480,13 @@ export class AgentdRustBridge {
 			AGENTD_TRAJECTORY_FINISH_METHOD,
 			params,
 		);
-		if (!isAgentdTrajectoryFinishResult(result)) {
-			throw invalidAgentdTrajectoryFinishResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdTrajectoryFinishResult,
+				invalidAgentdTrajectoryFinishResponseError,
+			),
+		);
 	}
 
 	async systemPrompt(
@@ -453,10 +496,13 @@ export class AgentdRustBridge {
 			AGENTD_SYSTEM_PROMPT_METHOD,
 			params,
 		);
-		if (!isAgentdSystemPromptResult(result)) {
-			throw invalidAgentdSystemPromptResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdSystemPromptResult,
+				invalidAgentdSystemPromptResponseError,
+			),
+		);
 	}
 
 	async compactionDecision(
@@ -466,10 +512,13 @@ export class AgentdRustBridge {
 			AGENTD_COMPACTION_DECISION_METHOD,
 			params,
 		);
-		if (!isAgentdCompactionDecisionResult(result)) {
-			throw invalidAgentdCompactionDecisionResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdCompactionDecisionResult,
+				invalidAgentdCompactionDecisionResponseError,
+			),
+		);
 	}
 
 	async compactionPrepare(
@@ -479,10 +528,13 @@ export class AgentdRustBridge {
 			AGENTD_COMPACTION_PREPARE_METHOD,
 			params,
 		);
-		if (!isAgentdCompactionPrepareResult(result)) {
-			throw invalidAgentdCompactionPrepareResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdCompactionPrepareResult,
+				invalidAgentdCompactionPrepareResponseError,
+			),
+		);
 	}
 
 	async compactionCheckpointContent(
@@ -492,10 +544,13 @@ export class AgentdRustBridge {
 			AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD,
 			params,
 		);
-		if (!isAgentdCompactionCheckpointContentResult(result)) {
-			throw invalidAgentdCompactionCheckpointContentResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdCompactionCheckpointContentResult,
+				invalidAgentdCompactionCheckpointContentResponseError,
+			),
+		);
 	}
 
 	async autofixJson(
@@ -505,10 +560,13 @@ export class AgentdRustBridge {
 			AGENTD_AUTOFIX_JSON_METHOD,
 			params,
 		);
-		if (!isAgentdAutofixJsonResult(result)) {
-			throw invalidAgentdAutofixJsonResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdAutofixJsonResult,
+				invalidAgentdAutofixJsonResponseError,
+			),
+		);
 	}
 
 	async autofixEdit(
@@ -518,28 +576,37 @@ export class AgentdRustBridge {
 			AGENTD_AUTOFIX_EDIT_METHOD,
 			params,
 		);
-		if (!isAgentdAutofixEditResult(result)) {
-			throw invalidAgentdAutofixEditResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdAutofixEditResult,
+				invalidAgentdAutofixEditResponseError,
+			),
+		);
 	}
 
 	async octoLower(
 		params: AgentdOctoLowerParams,
 	): Promise<AgentdOctoLowerResult> {
 		const result = await this.#client.request(AGENTD_OCTO_LOWER_METHOD, params);
-		if (!isAgentdOctoLowerResult(result)) {
-			throw invalidAgentdOctoLowerResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdOctoLowerResult,
+				invalidAgentdOctoLowerResponseError,
+			),
+		);
 	}
 
 	async initialize(): Promise<AgentdInitializeResult> {
 		const result = await this.#client.request(AGENTD_INITIALIZE_METHOD);
-		if (!isAgentdInitializeResult(result)) {
-			throw invalidAgentdInitializeResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdInitializeResult,
+				invalidAgentdInitializeResponseError,
+			),
+		);
 	}
 
 	async renderToolCall(
@@ -550,10 +617,13 @@ export class AgentdRustBridge {
 			name,
 			arguments: args,
 		});
-		if (!isAgentdToolRenderModel(result)) {
-			throw invalidAgentdToolRenderResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdToolRenderModel,
+				invalidAgentdToolRenderResponseError,
+			),
+		);
 	}
 
 	async toolDefinitions(
@@ -563,10 +633,13 @@ export class AgentdRustBridge {
 			AGENTD_TOOL_DEFINITIONS_METHOD,
 			params,
 		);
-		if (!isAgentdToolDefinitionsResult(result)) {
-			throw invalidAgentdToolDefinitionsResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdToolDefinitionsResult,
+				invalidAgentdToolDefinitionsResponseError,
+			),
+		);
 	}
 
 	async toolRun(
@@ -578,10 +651,13 @@ export class AgentdRustBridge {
 			params,
 			options,
 		);
-		if (!isAgentdToolRunResult(result)) {
-			throw invalidAgentdToolRunResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdToolRunResult,
+				invalidAgentdToolRunResponseError,
+			),
+		);
 	}
 
 	async toolPermission(
@@ -591,10 +667,13 @@ export class AgentdRustBridge {
 			AGENTD_TOOL_PERMISSION_METHOD,
 			params,
 		);
-		if (!isAgentdToolPermissionResult(result)) {
-			throw invalidAgentdToolPermissionResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdToolPermissionResult,
+				invalidAgentdToolPermissionResponseError,
+			),
+		);
 	}
 
 	async skillDiscover(
@@ -604,10 +683,13 @@ export class AgentdRustBridge {
 			AGENTD_SKILL_DISCOVER_METHOD,
 			params,
 		);
-		if (!isAgentdSkillDiscoverResult(result)) {
-			throw invalidAgentdSkillDiscoverResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdSkillDiscoverResult,
+				invalidAgentdSkillDiscoverResponseError,
+			),
+		);
 	}
 
 	async toolValidate(
@@ -619,10 +701,13 @@ export class AgentdRustBridge {
 			params,
 			options,
 		);
-		if (!isAgentdToolValidateResult(result)) {
-			throw invalidAgentdToolValidateResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdToolValidateResult,
+				invalidAgentdToolValidateResponseError,
+			),
+		);
 	}
 
 	async providerCompilerComplete(
@@ -634,20 +719,26 @@ export class AgentdRustBridge {
 			params,
 			options,
 		);
-		if (!isAgentdProviderCompilerCompleteResult(result)) {
-			throw invalidAgentdProviderCompilerCompleteResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdProviderCompilerCompleteResult,
+				invalidAgentdProviderCompilerCompleteResponseError,
+			),
+		);
 	}
 
 	async modelProviderCatalog(): Promise<AgentdModelProviderCatalogResult> {
 		const result = await this.#client.request(
 			AGENTD_MODEL_PROVIDER_CATALOG_METHOD,
 		);
-		if (!isAgentdModelProviderCatalogResult(result)) {
-			throw invalidAgentdModelProviderCatalogResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdModelProviderCatalogResult,
+				invalidAgentdModelProviderCatalogResponseError,
+			),
+		);
 	}
 
 	async configMigrate(params: AgentdConfigParams): Promise<AgentdConfigResult> {
@@ -655,10 +746,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_MIGRATE_METHOD,
 			params,
 		);
-		if (!isAgentdConfigResult(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigResult,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configSanitize(
@@ -668,10 +762,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_SANITIZE_METHOD,
 			params,
 		);
-		if (!isAgentdConfigResult(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigResult,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configKeyForModel(
@@ -681,10 +778,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
 			params,
 		);
-		if (!isAgentdConfigKeyResultEnvelope(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigKeyResultEnvelope,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configKeyForBaseUrl(
@@ -694,10 +794,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
 			params,
 		);
-		if (!isAgentdConfigKeyResultEnvelope(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigKeyResultEnvelope,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configSearch(
@@ -707,10 +810,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_SEARCH_METHOD,
 			params,
 		);
-		if (!isAgentdConfigSearchResult(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigSearchResult,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configHasExistingKey(
@@ -720,10 +826,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_HAS_EXISTING_KEY_METHOD,
 			params,
 		);
-		if (!isAgentdConfigHasExistingKeyResult(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigHasExistingKeyResult,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async configWriteKey(
@@ -733,10 +842,13 @@ export class AgentdRustBridge {
 			AGENTD_CONFIG_WRITE_KEY_METHOD,
 			params,
 		);
-		if (!isAgentdConfigWriteKeyResult(result)) {
-			throw invalidAgentdConfigResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdConfigWriteKeyResult,
+				invalidAgentdConfigResponseError,
+			),
+		);
 	}
 
 	async modelConnectionTest(
@@ -746,10 +858,13 @@ export class AgentdRustBridge {
 			AGENTD_MODEL_CONNECTION_TEST_METHOD,
 			params,
 		);
-		if (!isAgentdModelConnectionTestResult(result)) {
-			throw invalidAgentdModelConnectionTestResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdModelConnectionTestResult,
+				invalidAgentdModelConnectionTestResponseError,
+			),
+		);
 	}
 
 	async syntheticQuotaFetch(
@@ -759,10 +874,13 @@ export class AgentdRustBridge {
 			AGENTD_SYNTHETIC_QUOTA_FETCH_METHOD,
 			params,
 		);
-		if (!isAgentdSyntheticQuotaFetchResult(result)) {
-			throw invalidAgentdSyntheticQuotaFetchResponseError();
-		}
-		return result;
+		return unwrapAgentdResult(
+			validateAgentdResult(
+				result,
+				isAgentdSyntheticQuotaFetchResult,
+				invalidAgentdSyntheticQuotaFetchResponseError,
+			),
+		);
 	}
 
 	close(): void {

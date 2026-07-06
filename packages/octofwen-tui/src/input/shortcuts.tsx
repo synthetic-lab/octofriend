@@ -202,9 +202,7 @@ export function KbShortcutSelect<V>({
 			if (shortcutType.type === "key") {
 				Object.entries(shortcutType.mapping).forEach(([k, v]) => {
 					if (k === "j" || k === "k" || k === "h" || k === "l") {
-						throw new Error(
-							"Can't use j, k, h, or l as shortcuts: reserved for nav",
-						);
+						return;
 					}
 					if (v) {
 						result.push({

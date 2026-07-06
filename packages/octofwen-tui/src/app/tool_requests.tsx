@@ -3,6 +3,7 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { ToolPermissionResult } from "../internal/tool-orchestration/bridge-types.ts";
+import { preflightToolCall } from "../internal/tool-orchestration/main.ts";
 import type { ToolCall as ToolCallRequest } from "../internal/tool-orchestration/main.ts";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
@@ -80,9 +81,36 @@ export function ToolRequestsRenderer({
 }: TerminalToolRequestsProps) {
 	const runAgent = useAppStore((state) => state.runAgent);
 	const [currentIndex, setCurrentIndex] = useState(0);
+	const [preflightedCurrentToolReq, setPreflightedCurrentToolReq] =
+		useState<ToolCallRequest | null>(null);
+	const currentToolReq = toolReqs[currentIndex] ?? null;
 	const onDone = useCallback(() => {
 		setCurrentIndex((i) => i + 1);
 	}, []);
+
+	useEffect(() => {
+		let alive = true;
+		setPreflightedCurrentToolReq(null);
+		if (currentToolReq == null)
+			return () => {
+				alive = false;
+			};
+		(async () => {
+			const preflight = await preflightToolCall(
+				new AbortController().signal,
+				transport,
+				currentToolReq,
+			);
+			if (alive) {
+				setPreflightedCurrentToolReq(
+					preflight.success ? preflight.data : currentToolReq,
+				);
+			}
+		})();
+		return () => {
+			alive = false;
+		};
+	}, [currentToolReq, transport]);
 
 	if (currentIndex >= toolReqs.length) {
 		return (
@@ -99,13 +127,15 @@ export function ToolRequestsRenderer({
 		);
 	}
 
-	const currentToolReq = toolReqs[currentIndex];
+	if (preflightedCurrentToolReq == null) {
+		return <Loading overrideStrings={TOOL_REQUEST_LOADING_STRINGS} />;
+	}
 
 	return (
 		<Box flexDirection="column">
-			<ToolMessageRenderer item={currentToolReq} />
+			<ToolMessageRenderer item={preflightedCurrentToolReq} />
 			<ToolRequestRenderer
-				toolReq={currentToolReq}
+				toolReq={preflightedCurrentToolReq}
 				config={config}
 				transport={transport}
 				trajectoryArcRun={trajectoryArcRun}
@@ -248,26 +278,42 @@ export function ToolRequestRenderer({
 	const [permission, setPermission] = useState<ToolPermissionResult | null>(
 		null,
 	);
+	const [preflightedToolReq, setPreflightedToolReq] =
+		useState<ToolCallRequest | null>(null);
+	const activeToolReq = preflightedToolReq ?? toolReq;
 	const whitelistKey = permission?.whitelistKey ?? null;
 	const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(
 		null,
 	);
 
-	if (!toolPermission) throw new Error("Tool permission bridge is required");
+	if (!toolPermission) {
+		return <Text color="red">Tool permission bridge is required</Text>;
+	}
 
 	useEffect(() => {
 		let alive = true;
+		setPermission(null);
+		setPreflightedToolReq(null);
 		(async () => {
+			const preflight = await preflightToolCall(
+				new AbortController().signal,
+				transport,
+				toolReq,
+			);
+			const resolvedToolReq = preflight.success ? preflight.data : toolReq;
 			const resolved = await toolPermission({
-				toolName: toolReq.name,
-				parsed: toolReq.parsed,
+				toolName: resolvedToolReq.name,
+				parsed: resolvedToolReq.parsed,
 			});
-			if (alive) setPermission(resolved);
+			if (alive) {
+				setPreflightedToolReq(resolvedToolReq);
+				setPermission(resolved);
+			}
 		})();
 		return () => {
 			alive = false;
 		};
-	}, [toolPermission, toolReq]);
+	}, [toolPermission, toolReq, transport]);
 
 	useEffect(() => {
 		if (whitelistKey == null) return;
@@ -278,17 +324,21 @@ export function ToolRequestRenderer({
 	}, [whitelistKey, isWhitelisted]);
 
 	const items = permission
-		? toolRequestItems({ toolReq, permission, isToolWhitelisted })
+		? toolRequestItems({
+				toolReq: activeToolReq,
+				permission,
+				isToolWhitelisted,
+			})
 		: [];
 	const onSelect = useCallback(
 		async (item: ToolRequestSelectItem) => {
 			if (item.value === "no") {
-				rejectTool(toolReq);
+				rejectTool(activeToolReq);
 			} else if (item.value === "yes-whitelist") {
 				if (whitelistKey == null) return;
 				await addToWhitelist(whitelistKey);
 				await runTool({
-					toolReq,
+					toolReq: activeToolReq,
 					config,
 					transport,
 					skillDiscover,
@@ -298,7 +348,7 @@ export function ToolRequestRenderer({
 				onDone();
 			} else {
 				await runTool({
-					toolReq,
+					toolReq: activeToolReq,
 					config,
 					transport,
 					skillDiscover,
@@ -309,13 +359,15 @@ export function ToolRequestRenderer({
 			}
 		},
 		[
-			toolReq,
+			activeToolReq,
 			config,
 			transport,
 			addToWhitelist,
 			runTool,
 			rejectTool,
 			whitelistKey,
+			skillDiscover,
+			toolDefinitions,
 			toolRun,
 			onDone,
 		],
@@ -325,7 +377,7 @@ export function ToolRequestRenderer({
 	);
 	const isRunning =
 		modeData.mode === "tool-call" &&
-		modeData.runningToolCallId === toolReq.toolCallId;
+		modeData.runningToolCallId === activeToolReq.toolCallId;
 
 	const noConfirmationNeeded =
 		permission != null &&
@@ -334,7 +386,7 @@ export function ToolRequestRenderer({
 	useEffect(() => {
 		if (noConfirmationNeeded) {
 			runTool({
-				toolReq,
+				toolReq: activeToolReq,
 				config,
 				transport,
 				skillDiscover,
@@ -345,13 +397,16 @@ export function ToolRequestRenderer({
 			notifyReadyForInput(config);
 		}
 	}, [
-		toolReq,
+		activeToolReq,
 		noConfirmationNeeded,
 		config,
 		transport,
 		onDone,
-		trajectoryArcRun,
-		toolPermission,
+		skillDiscover,
+		toolDefinitions,
+		toolRun,
+		runTool,
+		notifyReadyForInput,
 		permission,
 	]);
 
@@ -361,7 +416,7 @@ export function ToolRequestRenderer({
 
 	return (
 		<Box flexDirection="column" gap={1}>
-			<ToolRequestPrompt toolReq={toolReq} configColor={themeColor} />
+			<ToolRequestPrompt toolReq={activeToolReq} configColor={themeColor} />
 			<SelectInput
 				items={items}
 				onSelect={onSelect}

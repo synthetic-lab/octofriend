@@ -10,6 +10,7 @@ packages/octofwen-cli/bin/octofwen-agentd
 packages/octofwen-cli/bin/octofwen-agentd.exe
 
 # local/generated state
+.env
 .codebase-memory/
 .octofriend
 .octofwen

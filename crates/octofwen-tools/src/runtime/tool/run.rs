@@ -161,30 +161,34 @@ fn run_web_search(parsed: &Value) -> Result<Value, String> {
     Ok(output_text(lines.join("\n"), None))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WebSearchResultLine<'a> {
+    url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<Option<&'a str>>,
+    text: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    published: Option<Option<&'a str>>,
+}
+
 fn web_search_result_line(entry: &Value) -> Result<String, String> {
-    let url = required_string(entry, "url")?;
-    let text = required_string(entry, "text")?;
-    let mut fields = vec![
-        format!("\"url\":{}", json_string(url)),
-        format!("\"text\":{}", json_string(text)),
-    ];
-    if let Some(title) = optional_string_or_null(entry, "title")? {
-        fields.insert(1, format!("\"title\":{}", title));
-    }
-    if let Some(published) = optional_string_or_null(entry, "published")? {
-        fields.push(format!("\"published\":{}", published));
-    }
-    Ok(format!("{{{}}}", fields.join(",")))
+    let line = WebSearchResultLine {
+        url: required_string(entry, "url")?,
+        title: optional_string_or_null(entry, "title")?,
+        text: required_string(entry, "text")?,
+        published: optional_string_or_null(entry, "published")?,
+    };
+    serde_json::to_string(&line).map_err(|error| format!("failed to render search result: {error}"))
 }
 
-fn json_string(value: &str) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "\"\"".into())
-}
-
-fn optional_string_or_null(value: &Value, key: &str) -> Result<Option<String>, String> {
+fn optional_string_or_null<'a>(
+    value: &'a Value,
+    key: &str,
+) -> Result<Option<Option<&'a str>>, String> {
     match value.get(key) {
-        Some(Value::String(value)) => Ok(Some(json_string(value))),
-        Some(Value::Null) => Ok(Some("null".into())),
+        Some(Value::String(value)) => Ok(Some(Some(value))),
+        Some(Value::Null) => Ok(Some(None)),
         Some(_) => Err(format!("tool argument {key} must be a string")),
         None => Ok(None),
     }
@@ -261,7 +265,7 @@ fn run_grep(transport: &RuntimeToolTransport, parsed: &Value) -> Result<Value, S
             default_path = cwd.to_string_lossy().to_string();
             &default_path
         }
-        (None, RuntimeToolTransport::Docker(_)) => ".",
+        (None, RuntimeToolTransport::Docker(_) | RuntimeToolTransport::Ssh(_)) => ".",
     };
     args.push(shell_quote(search_path));
 
@@ -291,8 +295,11 @@ fn shell_quote(value: &str) -> String {
 
 fn run_glob(transport: &RuntimeToolTransport, parsed: &Value) -> Result<Value, String> {
     let search_root = optional_string(parsed, "path")?.unwrap_or(".");
-    if matches!(transport, RuntimeToolTransport::Docker(_)) {
-        return run_docker_glob(transport, parsed, search_root);
+    if matches!(
+        transport,
+        RuntimeToolTransport::Docker(_) | RuntimeToolTransport::Ssh(_)
+    ) {
+        return run_remote_glob(transport, parsed, search_root);
     }
     let base = resolve_path(transport.cwd(), search_root);
     let include_name = optional_string(parsed, "includeName")?;
@@ -329,7 +336,7 @@ fn run_glob(transport: &RuntimeToolTransport, parsed: &Value) -> Result<Value, S
     Ok(output_text(results.join("\n"), None))
 }
 
-fn run_docker_glob(
+fn run_remote_glob(
     transport: &RuntimeToolTransport,
     parsed: &Value,
     search_root: &str,
@@ -357,8 +364,8 @@ fn run_docker_glob(
         if max_results.is_some_and(|max| results.len() >= max) {
             break;
         }
-        let relative = docker_relative_path(search_root, line);
-        if docker_path_has_excluded_dir(&relative) {
+        let relative = remote_relative_path(search_root, line);
+        if remote_path_has_excluded_dir(&relative) {
             continue;
         }
         let name = relative.rsplit('/').next().unwrap_or(&relative);
@@ -390,7 +397,7 @@ fn run_docker_glob(
     ))
 }
 
-fn docker_relative_path(search_root: &str, path: &str) -> String {
+fn remote_relative_path(search_root: &str, path: &str) -> String {
     let trimmed = path.trim_start_matches("./");
     if search_root == "." {
         return trimmed.to_string();
@@ -402,7 +409,7 @@ fn docker_relative_path(search_root: &str, path: &str) -> String {
         .to_string()
 }
 
-fn docker_path_has_excluded_dir(path: &str) -> bool {
+fn remote_path_has_excluded_dir(path: &str) -> bool {
     path.split('/').any(is_excluded_dir)
 }
 

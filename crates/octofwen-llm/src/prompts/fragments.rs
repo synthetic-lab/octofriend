@@ -1,10 +1,15 @@
+use super::template::render_markdown_template;
+
+const TOOL_SKIP_PROMPT: &str = include_str!("templates/tool_skip.md");
+const IMAGE_ATTACHMENT_PLACEHOLDER_TEXT: &str =
+    include_str!("templates/image_attachment_placeholder.md");
+
 pub fn tool_skip(reason: &str) -> String {
-    format!(
-        "Tool was skipped and didn't run. The reason for skipping the tool was:\n{}",
-        reason
-    )
+    render_markdown_template(TOOL_SKIP_PROMPT, &[("reason", reason)])
+        .trim_end_matches('\n')
+        .to_owned()
 }
 
-pub fn image_attachment_placeholder_text() -> &'static str {
-    "[An image was attached here. Since images are not supported by your model, the source to the image is omitted. There might be future context that allows you to make a guess about what the image was, so keep that in mind as you process the rest of the messages.]"
+pub fn image_attachment_placeholder_text() -> String {
+    render_markdown_template(IMAGE_ATTACHMENT_PLACEHOLDER_TEXT, &[])
 }

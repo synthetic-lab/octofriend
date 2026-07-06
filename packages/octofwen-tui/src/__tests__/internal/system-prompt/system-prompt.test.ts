@@ -7,31 +7,31 @@ function memoryTransport(cwd: string): Transport {
 	return {
 		cwd,
 		writeFile() {
-			throw new Error("unexpected writeFile");
+			return Promise.reject(new Error("unexpected writeFile"));
 		},
 		readFile() {
-			throw new Error("unexpected readFile");
+			return Promise.reject(new Error("unexpected readFile"));
 		},
 		pathExists() {
-			throw new Error("unexpected pathExists");
+			return Promise.reject(new Error("unexpected pathExists"));
 		},
 		isDirectory() {
-			throw new Error("unexpected isDirectory");
+			return Promise.reject(new Error("unexpected isDirectory"));
 		},
 		mkdir() {
-			throw new Error("unexpected mkdir");
+			return Promise.reject(new Error("unexpected mkdir"));
 		},
 		readdir() {
-			throw new Error("unexpected readdir");
+			return Promise.reject(new Error("unexpected readdir"));
 		},
 		modTime() {
-			throw new Error("unexpected modTime");
+			return Promise.reject(new Error("unexpected modTime"));
 		},
 		resolvePath() {
-			throw new Error("unexpected resolvePath");
+			return Promise.reject(new Error("unexpected resolvePath"));
 		},
 		shell() {
-			throw new Error("unexpected shell");
+			return Promise.reject(new Error("unexpected shell"));
 		},
 		close() {
 			return Promise.resolve();

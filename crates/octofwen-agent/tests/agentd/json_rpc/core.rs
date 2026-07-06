@@ -134,6 +134,65 @@ fn system_prompt_request_discovers_workspace_context_through_agentd() {
 }
 
 #[test]
+fn system_prompt_discovers_gitignore_aware_directory_hierarchy() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "octofwen-agent-system-prompt-hierarchy-{}-{}",
+        std::process::id(),
+        NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(temp_dir.join("src").join("nested"))
+        .expect("src nested dir should be created");
+    fs::create_dir_all(temp_dir.join("target").join("debug"))
+        .expect("ignored target dir should be created");
+    fs::create_dir_all(temp_dir.join(".git")).expect("git dir should be created");
+    fs::write(temp_dir.join(".gitignore"), "target/\n*.log\n")
+        .expect("gitignore should be written");
+    fs::write(temp_dir.join("src").join("main.rs"), "fn main() {}")
+        .expect("source file should be written");
+    fs::write(
+        temp_dir.join("src").join("nested").join("mod.rs"),
+        "pub mod nested;",
+    )
+    .expect("nested source file should be written");
+    fs::write(
+        temp_dir.join("target").join("debug").join("artifact"),
+        "ignored",
+    )
+    .expect("ignored artifact should be written");
+    fs::write(temp_dir.join("debug.log"), "ignored").expect("ignored log should be written");
+    let temp_dir = fs::canonicalize(&temp_dir).expect("temp dir should canonicalize");
+
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "system-prompt-hierarchy",
+        "method": AGENTD_SYSTEM_PROMPT_METHOD,
+        "params": {
+            "userName": "Krystian",
+            "workingDirectory": temp_dir,
+            "mcpPrompt": ""
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    fs::remove_dir_all(&temp_dir).expect("temp dir should be removed");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "system-prompt-hierarchy");
+    let prompt = value["result"]["prompt"]
+        .as_str()
+        .expect("prompt should be a string");
+    assert!(prompt.contains(r#"{"entry":"src","isDirectory":true}"#));
+    assert!(prompt.contains(r#"{"entry":"src/main.rs","isDirectory":false}"#));
+    assert!(prompt.contains(r#"{"entry":"src/nested","isDirectory":true}"#));
+    assert!(prompt.contains(r#"{"entry":"src/nested/mod.rs","isDirectory":false}"#));
+    assert!(!prompt.contains(r#"{"entry":"target","isDirectory":true}"#));
+    assert!(!prompt.contains("target/debug/artifact"));
+    assert!(!prompt.contains("debug.log"));
+}
+
+#[test]
 fn notifications_do_not_emit_responses() {
     let line = json!({
         "jsonrpc": "2.0",

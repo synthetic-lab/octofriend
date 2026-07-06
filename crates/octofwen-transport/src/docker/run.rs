@@ -4,8 +4,8 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::docker::paths::{shell_quote, shell_quote_path};
 use crate::local::filesystem::{DirectoryEntry, TransportError, TransportResult};
+use crate::shell::{shell_quote, shell_quote_path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DockerTransport {

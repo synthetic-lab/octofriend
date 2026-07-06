@@ -1,3 +1,7 @@
+import { convert as htmlToText } from "html-to-text";
+import { marked } from "marked";
+import { z } from "zod";
+
 type DiffEdit = {
 	search: string;
 	replace: string;
@@ -25,24 +29,26 @@ export type JsonFixResponse = JsonFixSuccessResponse | JsonFixFailureResponse;
 
 type ResponseSchema<T> = {
 	name: string;
-	typeScript: string;
+	jsonSchema(): unknown;
 	slice(value: unknown): T;
 	or<Other>(other: ResponseSchema<Other>): ResponseSchema<T | Other>;
 };
 
-class LiteralResponseSchema<T> implements ResponseSchema<T> {
+class ZodResponseSchema<T> implements ResponseSchema<T> {
 	readonly name: string;
-	readonly typeScript: string;
-	readonly #parse: (value: unknown) => T;
+	readonly #schema: z.ZodType<T>;
 
-	constructor(name: string, typeScript: string, parse: (value: unknown) => T) {
+	constructor(name: string, schema: z.ZodType<T>) {
 		this.name = name;
-		this.typeScript = typeScript;
-		this.#parse = parse;
+		this.#schema = schema;
+	}
+
+	jsonSchema(): unknown {
+		return z.toJSONSchema(this.#schema, { target: "draft-7" });
 	}
 
 	slice(value: unknown): T {
-		return this.#parse(value);
+		return this.#schema.parse(value);
 	}
 
 	or<Other>(other: ResponseSchema<Other>): ResponseSchema<T | Other> {
@@ -52,7 +58,6 @@ class LiteralResponseSchema<T> implements ResponseSchema<T> {
 
 class UnionResponseSchema<A, B> implements ResponseSchema<A | B> {
 	readonly name: string;
-	readonly typeScript: string;
 	readonly #left: ResponseSchema<A>;
 	readonly #right: ResponseSchema<B>;
 
@@ -60,8 +65,16 @@ class UnionResponseSchema<A, B> implements ResponseSchema<A | B> {
 		this.#left = left;
 		this.#right = right;
 		this.name = `${left.name} | ${right.name}`;
-		this.typeScript = `${left.typeScript}
-${right.typeScript}`;
+	}
+
+	jsonSchema(): unknown {
+		return {
+			$schema: "http://json-schema.org/draft-07/schema#",
+			anyOf: [
+				withoutSchemaKey(this.#left.jsonSchema()),
+				withoutSchemaKey(this.#right.jsonSchema()),
+			],
+		};
 	}
 
 	slice(value: unknown): A | B {
@@ -77,122 +90,117 @@ ${right.typeScript}`;
 	}
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-	if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-		return value as Record<string, unknown>;
+const FIX_EDIT_PROMPT = await Bun.file(
+	new URL("./templates/fix_edit.md", import.meta.url),
+).text();
+const FIX_JSON_PROMPT = await Bun.file(
+	new URL("./templates/fix_json.md", import.meta.url),
+).text();
+
+function renderTemplate(
+	template: string,
+	values: Record<string, string>,
+): string {
+	const { protectedTemplate, placeholders } = protectTemplateLiterals(template);
+	const renderedMarkdown = renderMarkdownText(protectedTemplate);
+	return restoreTemplateLiterals(renderedMarkdown, placeholders)
+		.replaceAll(/\{\{([A-Za-z0-9_]+)\}\}/gu, (placeholder, key) =>
+			Object.hasOwn(values, key) ? values[key] : placeholder,
+		)
+		.trimEnd();
+}
+
+function protectTemplateLiterals(template: string): {
+	protectedTemplate: string;
+	placeholders: Map<string, string>;
+} {
+	let index = 0;
+	const placeholders = new Map<string, string>();
+	const protectedTemplate = template.replaceAll(
+		/\{\{[A-Za-z0-9_]+\}\}|<\/?[A-Za-z][^>\n]*>/gu,
+		(literal) => {
+			const token = `\u{E000}${index}\u{E001}`;
+			index += 1;
+			placeholders.set(token, literal);
+			return token;
+		},
+	);
+	return { protectedTemplate, placeholders };
+}
+
+function restoreTemplateLiterals(
+	template: string,
+	placeholders: Map<string, string>,
+): string {
+	let restored = template;
+	for (const [token, placeholder] of placeholders) {
+		restored = restored.replaceAll(token, placeholder);
 	}
-	throw new Error("Expected object");
+	return restored;
 }
 
-function assertExactKeys(
-	record: Record<string, unknown>,
-	allowed: readonly string[],
-	schemaName: string,
-): void {
-	const allowedKeys = new Set(allowed);
-	for (const key of Object.keys(record)) {
-		if (!allowedKeys.has(key))
-			throw new Error(`Unexpected ${schemaName}.${key}`);
+function renderMarkdownText(markdown: string): string {
+	const html = marked.parse(markdown, {
+		async: false,
+		breaks: true,
+		gfm: true,
+	}) as string;
+	return htmlToText(html, {
+		wordwrap: false,
+		selectors: [
+			{ selector: "h1", options: { uppercase: false } },
+			{ selector: "h2", options: { uppercase: false } },
+			{ selector: "h3", options: { uppercase: false } },
+			{ selector: "h4", options: { uppercase: false } },
+			{ selector: "h5", options: { uppercase: false } },
+			{ selector: "h6", options: { uppercase: false } },
+			{ selector: "table", options: { uppercaseHeaderCells: false } },
+		],
+	}).trimEnd();
+}
+
+function schemaJson(schema: ResponseSchema<unknown>): string {
+	return JSON.stringify(schema.jsonSchema(), null, 2);
+}
+
+function withoutSchemaKey(value: unknown): unknown {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return value;
 	}
+	const { $schema: _schema, ...rest } = value as Record<string, unknown>;
+	return rest;
 }
 
-function parseDiffApplySuccess(value: unknown): DiffApplySuccessResponse {
-	const record = asRecord(value);
-	assertExactKeys(record, ["success", "search"], "DiffApplySuccess");
-	if (record["success"] !== true || typeof record["search"] !== "string") {
-		throw new Error("Expected DiffApplySuccess");
-	}
-	return { success: true, search: record["search"] };
-}
-
-function parseDiffApplyFailure(value: unknown): DiffApplyFailureResponse {
-	const record = asRecord(value);
-	assertExactKeys(record, ["success"], "DiffApplyFailure");
-	if (record["success"] !== false) throw new Error("Expected DiffApplyFailure");
-	return { success: false };
-}
-
-function parseJsonFixSuccess(value: unknown): JsonFixSuccessResponse {
-	const record = asRecord(value);
-	assertExactKeys(record, ["success", "fixed"], "JsonFixSuccess");
-	if (record["success"] !== true || !("fixed" in record)) {
-		throw new Error("Expected JsonFixSuccess");
-	}
-	return { success: true, fixed: record["fixed"] };
-}
-
-function parseJsonFixFailure(value: unknown): JsonFixFailureResponse {
-	const record = asRecord(value);
-	assertExactKeys(record, ["success"], "JsonFixFailure");
-	if (record["success"] !== false) throw new Error("Expected JsonFixFailure");
-	return { success: false };
-}
-
-function renderTypeScript(schema: ResponseSchema<unknown>): string {
-	return schema.typeScript;
-}
-
-export const DiffApplySuccess = new LiteralResponseSchema(
+export const DiffApplySuccess = new ZodResponseSchema(
 	"DiffApplySuccess",
-	`type DiffApplySuccess = {
-  success: true;
-  search: string;
-};`,
-	parseDiffApplySuccess,
+	z.strictObject({ success: z.literal(true), search: z.string() }),
 );
-export const DiffApplyFailure = new LiteralResponseSchema(
+export const DiffApplyFailure = new ZodResponseSchema(
 	"DiffApplyFailure",
-	`type DiffApplyFailure = {
-  success: false;
-};`,
-	parseDiffApplyFailure,
+	z.strictObject({ success: z.literal(false) }),
 );
 export const DiffApplyResponse = DiffApplySuccess.or(DiffApplyFailure);
 
 export function fixEditPrompt(brokenEdit: { file: string; edit: DiffEdit }) {
-	return `The following diff edit is invalid: the search string does not match perfectly with the file contents.
-Your task is to fix the search string if possible.
-
-Respond only with JSON in the following format, defined as TypeScript types:
-
-// Response if you fixed the search string:
-${renderTypeScript(DiffApplySuccess)}
-
-// Response if the edit is impossible to fix (search string is ambiguous or has no clear matches):
-${renderTypeScript(DiffApplyFailure)}
-
-Here's the broken edit and underlying file it's being applied to:
-${JSON.stringify(brokenEdit)}`;
+	return renderTemplate(FIX_EDIT_PROMPT, {
+		diff_apply_response_schema: schemaJson(DiffApplyResponse),
+		broken_edit_json: JSON.stringify(brokenEdit),
+	});
 }
 
-export const JsonFixSuccess = new LiteralResponseSchema(
+export const JsonFixSuccess = new ZodResponseSchema(
 	"JsonFixSuccess",
-	`type JsonFixSuccess = {
-  success: true;
-  fixed: unknown; // The parsed JSON
-};`,
-	parseJsonFixSuccess,
+	z.strictObject({ success: z.literal(true), fixed: z.unknown() }),
 );
-export const JsonFixFailure = new LiteralResponseSchema(
+export const JsonFixFailure = new ZodResponseSchema(
 	"JsonFixFailure",
-	`type JsonFixFailure = {
-  success: false;
-};`,
-	parseJsonFixFailure,
+	z.strictObject({ success: z.literal(false) }),
 );
 export const JsonFixResponseSchema = JsonFixSuccess.or(JsonFixFailure);
 
 export function fixJsonPrompt(str: string) {
-	return `The following string may be broken JSON. Fix it if possible. Respond with JSON in the following
-format, defined as TypeScript types:
-
-// Success response:
-${renderTypeScript(JsonFixSuccess)}
-
-// Failure response:
-${renderTypeScript(JsonFixFailure)}
-
-If it's more-or-less JSON, fix it and respond with the success response. If it's not, respond with
-the failure response. Here's the string:
-${str}`;
+	return renderTemplate(FIX_JSON_PROMPT, {
+		json_fix_response_schema: schemaJson(JsonFixResponseSchema),
+		input: str,
+	});
 }

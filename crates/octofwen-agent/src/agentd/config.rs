@@ -1,7 +1,7 @@
 use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -112,15 +112,10 @@ pub(super) fn config_key_for_model_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
-    let Some(params) = params else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
-    };
-    let Ok(params) = serde_json::from_value::<ConfigModelKeyParams>(params) else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
-    };
-    create_json_rpc_success(
+    config_params_success::<ConfigModelKeyParams>(
         id,
-        json!({ "result": key_for_model_result(&params.model, params.config.as_ref()) }),
+        params,
+        |params| json!({ "result": key_for_model_result(&params.model, params.config.as_ref()) }),
     )
 }
 
@@ -128,15 +123,10 @@ pub(super) fn config_key_for_base_url_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
-    let Some(params) = params else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
-    };
-    let Ok(params) = serde_json::from_value::<ConfigBaseUrlParams>(params) else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
-    };
-    create_json_rpc_success(
+    config_params_success::<ConfigBaseUrlParams>(
         id,
-        json!({ "result": key_for_base_url_result(&params.base_url, params.config.as_ref()) }),
+        params,
+        |params| json!({ "result": key_for_base_url_result(&params.base_url, params.config.as_ref()) }),
     )
 }
 
@@ -157,16 +147,28 @@ pub(super) fn config_has_existing_key_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
+    config_params_success::<ConfigBaseUrlParams>(
+        id,
+        params,
+        |params| json!({ "hasExistingKey": has_existing_key(&params.base_url, params.config.as_ref()) }),
+    )
+}
+
+fn config_params_success<T>(
+    id: JsonRpcId,
+    params: Option<Value>,
+    result: impl FnOnce(T) -> Value,
+) -> JsonRpcResponse
+where
+    T: DeserializeOwned,
+{
     let Some(params) = params else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
-    let Ok(params) = serde_json::from_value::<ConfigBaseUrlParams>(params) else {
+    let Ok(params) = serde_json::from_value::<T>(params) else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
-    create_json_rpc_success(
-        id,
-        json!({ "hasExistingKey": has_existing_key(&params.base_url, params.config.as_ref()) }),
-    )
+    create_json_rpc_success(id, result(params))
 }
 
 pub(super) fn config_write_key_response(id: JsonRpcId, params: Option<Value>) -> JsonRpcResponse {
@@ -233,7 +235,10 @@ pub(super) fn config_select_model_response(
         &params.config,
         params.model_override.as_deref(),
     ) {
-        Some(model) => create_json_rpc_success(id, json!({ "model": model })),
+        Some(model) => {
+            let key_result = key_for_model_result(&model, Some(&params.config));
+            create_json_rpc_success(id, json!({ "model": model, "keyResult": key_result }))
+        }
         None => create_json_rpc_error(id, INVALID_PARAMS, "Invalid config", None),
     }
 }
@@ -316,12 +321,7 @@ fn platform_shell() -> (String, &'static str) {
 fn key_for_model_result(model: &Value, config: Option<&Value>) -> Value {
     if let Some(auth) = auth_for_model(model) {
         let result = resolve_auth_result(&auth);
-        if result.get("ok").and_then(Value::as_bool) == Some(true) {
-            return result;
-        }
-        if is_command_auth(&auth) {
-            return result;
-        }
+        return result;
     }
     let Some(base_url) = model.get("baseUrl").and_then(Value::as_str) else {
         return missing_key_result("No API key found for unknown model");
@@ -425,15 +425,11 @@ fn auth_for_model(model: &Value) -> Option<Value> {
         if auth.get("type").and_then(Value::as_str) == Some("command") {
             return Some(Value::Object(auth.clone()));
         }
-        if let Some(env_var) = auth.get("name").and_then(Value::as_str)
-            && env_var_key(env_var).is_some()
-        {
+        if auth.contains_key("name") {
             return Some(Value::Object(auth.clone()));
         }
     }
-    if let Some(env_var) = model.get("apiEnvVar").and_then(Value::as_str)
-        && env_var_key(env_var).is_some()
-    {
+    if let Some(env_var) = model.get("apiEnvVar").and_then(Value::as_str) {
         return Some(json!({ "type": "env", "name": env_var }));
     }
     None
@@ -514,10 +510,6 @@ fn resolve_auth_result(auth: &Value) -> Value {
     }
 }
 
-fn is_command_auth(auth: &Value) -> bool {
-    auth.get("type").and_then(Value::as_str) == Some("command")
-}
-
 fn env_var_key(name: &str) -> Option<String> {
     let value = std::env::var(name).ok()?;
     if value.is_empty() { None } else { Some(value) }
@@ -560,7 +552,7 @@ fn write_key_for_base_url(base_url: &str, api_key: &str) -> std::io::Result<()> 
     }
     std::fs::write(
         key_file,
-        json5::to_string(&keys).unwrap_or_else(|_| "{}".into()),
+        json5::to_string(&keys).unwrap_or_else(|_| serde_json::json!({}).to_string()),
     )
 }
 

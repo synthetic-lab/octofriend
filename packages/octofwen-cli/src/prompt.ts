@@ -43,7 +43,7 @@ function reportKeyError(
 	process.exit(1);
 }
 
-function createTokenHandler() {
+export function createTokenHandler() {
 	let seenReasoning = false;
 	let seenContent = false;
 	return (chunk: string, type: "reasoning" | "content" | "tool") => {
@@ -86,7 +86,11 @@ export async function runPromptCommand(
 				},
 			],
 		});
-		replayProviderTokenEvents(result, createTokenHandler());
+		if (!result.success) {
+			console.error(result.error);
+			process.exit(1);
+		}
+		replayProviderTokenEvents(result.data, createTokenHandler());
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);

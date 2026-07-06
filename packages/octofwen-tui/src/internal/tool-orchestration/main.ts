@@ -39,6 +39,7 @@ export type ToolCall = {
 	type: "tool-call";
 	name: string;
 	toolCallId: string;
+	assistantMessageId: string;
 	parsed: Record<string, unknown>;
 	original: unknown;
 };
@@ -68,9 +69,9 @@ export async function loadTools(
 	_signal: AbortSignal,
 	config: Config,
 	options: LoadToolsOptions = {},
-): Promise<Partial<LoadedTools>> {
+): Promise<Result<Partial<LoadedTools>, string>> {
 	if (!options.toolDefinitions) {
-		throw new Error("Tool definitions bridge is required");
+		return err("Tool definitions bridge is required");
 	}
 	const loaded: Partial<LoadedTools> = {};
 	const searchConfig = await readSearchConfig(config);
@@ -98,7 +99,7 @@ export async function loadTools(
 				: tool;
 	}
 
-	return loaded;
+	return ok(loaded);
 }
 
 function agentdToolDefinition(
@@ -109,6 +110,36 @@ function agentdToolDefinition(
 		description: definition.description,
 		providerSchema: definition.argumentsSchema,
 	};
+}
+
+export async function preflightToolCall(
+	abortSignal: AbortSignal,
+	transport: Transport,
+	call: ToolCall,
+): Promise<Result<ToolCall, string>> {
+	if (call.name !== "edit" && call.name !== "rewrite") return ok(call);
+	const filePath = stringField(call.parsed, "filePath");
+	if (filePath == null) return ok(call);
+	const parsed = { ...call.parsed };
+	delete parsed["originalFileContents"];
+	try {
+		const originalFileContents = await transport.readFile(
+			abortSignal,
+			filePath,
+		);
+		parsed["originalFileContents"] = originalFileContents;
+	} catch {
+		delete parsed["originalFileContents"];
+	}
+	return ok({ ...call, parsed });
+}
+
+function stringField(
+	value: Record<string, unknown>,
+	key: string,
+): string | null {
+	const field = value[key];
+	return typeof field === "string" ? field : null;
 }
 
 export async function runTool(
@@ -126,17 +157,20 @@ export async function runTool(
 	const context = await agentdToolRunContext(call.name, config, def.data);
 	if (!context.success) return context;
 	if (abortSignal.aborted) return err("Tool run aborted");
+	const preflight = await preflightToolCall(abortSignal, transport, call);
+	if (!preflight.success) return preflight;
+	const preflightedCall = preflight.data;
 	try {
 		const result = await toolRun(
 			{
-				toolName: call.name,
+				toolName: preflightedCall.name,
 				cwd: transport.cwd,
 				...(transport.toolRunTransport
 					? { transport: transport.toolRunTransport() }
 					: {}),
-				toolCallId: call.toolCallId,
-				toolCall: call,
-				parsed: asRecord(call.parsed),
+				toolCallId: preflightedCall.toolCallId,
+				toolCall: preflightedCall,
+				parsed: asRecord(preflightedCall.parsed),
 				modelContext,
 				...context.data,
 			},

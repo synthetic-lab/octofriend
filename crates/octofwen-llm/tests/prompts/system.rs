@@ -32,3 +32,18 @@ fn system_prompt_renders_identity_workspace_listing_and_instruction_context() {
     assert!(prompt.contains("# Instructions from Krystian"));
     assert!(prompt.contains("<instruction path=\"/home/krystian/project/AGENTS.md\">Use Bun &amp; &lt;escape&gt;</instruction>"));
 }
+
+#[test]
+fn system_prompt_does_not_reprocess_template_tokens_from_values() {
+    let prompt = system_prompt(&SystemPromptInput {
+        user_name: "{{working_directory}}".into(),
+        working_directory: "/workspace".into(),
+        directory_entries: vec![],
+        mcp_prompt: "{{instruction_prompt}}".into(),
+        instruction_prompt: "literal instructions".into(),
+    });
+
+    assert!(prompt.contains("The user's name is {{working_directory}}"));
+    assert!(prompt.contains("{{instruction_prompt}}"));
+    assert!(prompt.contains("Your current working directory is: /workspace"));
+}

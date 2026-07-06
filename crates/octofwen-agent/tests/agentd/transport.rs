@@ -7,7 +7,7 @@ use octofwen_agent::agentd::{
 };
 use octofwen_agent::agentd::{
     AGENTD_TRANSPORT_FIND_FILES_METHOD, AGENTD_TRANSPORT_GET_ENV_METHOD,
-    AGENTD_TRANSPORT_LOCAL_METHOD, handle_agentd_json_rpc_line,
+    AGENTD_TRANSPORT_LOCAL_METHOD, AGENTD_TRANSPORT_SSH_METHOD, handle_agentd_json_rpc_line,
 };
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -187,6 +187,62 @@ fn docker_run_and_kill_requests_execute_through_transport() {
     let logged = fs::read_to_string(&docker_log).expect("docker log");
     assert!(logged.contains("run\n"));
     assert!(logged.contains("kill\n"));
+}
+
+#[cfg(not(windows))]
+#[test]
+fn ssh_transport_requests_execute_through_transport() {
+    let root = temp_root("transport-ssh");
+    let fake_ssh = root.join("ssh");
+    let ssh_log = root.join("ssh.log");
+    let remote_cwd = root.join("remote/workspace");
+    fs::create_dir_all(&remote_cwd).expect("remote cwd");
+    fs::write(remote_cwd.join("marker.txt"), "ssh-output").expect("remote marker");
+    fs::write(
+        &fake_ssh,
+        format!(
+            "#!/bin/sh\nprintf 'target=%s command=%s\\n' \"$1\" \"$2\" >> '{}'\ncase \"$2\" in\n  *pwd*) printf '{}\\n' ;;\n  *) shift; /bin/sh -c \"$1\" ;;\nesac\n",
+            ssh_log.display(),
+            remote_cwd.display()
+        ),
+    )
+    .expect("fake ssh");
+    make_executable(&fake_ssh);
+
+    let cwd_line = json!({
+        "jsonrpc": "2.0",
+        "id": "transport-ssh-cwd",
+        "method": AGENTD_TRANSPORT_SSH_METHOD,
+        "params": { "target": "user@example.test", "operation": "cwd" }
+    })
+    .to_string();
+    let cwd_response = run_agentd_with_path(&cwd_line, &root);
+    let cwd_value: serde_json::Value = serde_json::from_str(&cwd_response).expect("json");
+    assert_eq!(
+        cwd_value["result"]["cwd"],
+        format!("{}\n", remote_cwd.display())
+    );
+
+    let shell_line = json!({
+        "jsonrpc": "2.0",
+        "id": "transport-ssh-shell",
+        "method": AGENTD_TRANSPORT_SSH_METHOD,
+        "params": {
+            "target": "user@example.test",
+            "cwd": remote_cwd,
+            "operation": "shell",
+            "command": "cat marker.txt",
+            "timeoutMs": 5000
+        }
+    })
+    .to_string();
+    let shell_response = run_agentd_with_path(&shell_line, &root);
+    let shell_value: serde_json::Value = serde_json::from_str(&shell_response).expect("json");
+    assert_eq!(shell_value["result"]["output"], "ssh-output");
+
+    let logged = fs::read_to_string(&ssh_log).expect("ssh log");
+    assert!(logged.contains("user@example.test"));
+    assert!(logged.contains("cat marker.txt"));
 }
 
 #[test]

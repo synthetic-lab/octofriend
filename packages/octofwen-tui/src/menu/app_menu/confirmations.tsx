@@ -2,14 +2,8 @@ import { useApp } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "../../app/state/store.ts";
 import { ConfirmDialog } from "../../input/shortcuts.tsx";
-import { useMenuState } from "./menu-state.ts";
 
-export function QuitConfirm() {
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
+export function QuitConfirm({ onBack }: { onBack: () => void }) {
 	const app = useApp();
 
 	return (
@@ -17,18 +11,13 @@ export function QuitConfirm() {
 			confirmLabel="Yes, quit"
 			rejectLabel="Never mind, take me back"
 			onConfirm={() => app.exit()}
-			onReject={() => setMenuMode("main-menu")}
+			onReject={onBack}
 			rejectFirst={true}
 		/>
 	);
 }
 
-export function ClearConversationConfirm() {
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
+export function ClearConversationConfirm({ onBack }: { onBack: () => void }) {
 	const { clearHistory, toggleMenu, notify } = useAppStore(
 		useShallow((state) => ({
 			clearHistory: state.clearHistory,
@@ -43,11 +32,10 @@ export function ClearConversationConfirm() {
 			rejectLabel="Never mind, take me back"
 			onConfirm={() => {
 				clearHistory();
-				setMenuMode("main-menu");
 				toggleMenu();
 				notify("New conversation started");
 			}}
-			onReject={() => setMenuMode("main-menu")}
+			onReject={onBack}
 		/>
 	);
 }

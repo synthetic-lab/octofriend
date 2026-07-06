@@ -6,6 +6,7 @@ pub enum ToolParseInputProvider {
     OpenAiChatCompletions,
     OpenAiResponses,
     Anthropic,
+    Gemini,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -50,7 +51,9 @@ fn tool_parse_input_item(
 fn tool_call_id(provider: ToolParseInputProvider, tool: &ProviderStreamTool) -> String {
     match provider {
         ToolParseInputProvider::OpenAiChatCompletions => tool.id.clone().unwrap_or_default(),
-        ToolParseInputProvider::OpenAiResponses | ToolParseInputProvider::Anthropic => {
+        ToolParseInputProvider::OpenAiResponses
+        | ToolParseInputProvider::Anthropic
+        | ToolParseInputProvider::Gemini => {
             tool.id.clone().unwrap_or_else(|| tool.index.to_string())
         }
     }

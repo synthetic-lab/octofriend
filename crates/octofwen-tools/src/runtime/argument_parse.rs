@@ -13,8 +13,9 @@ pub fn parse_tool_arguments(
     cwd: impl AsRef<Path>,
     original: Value,
 ) -> Result<ToolArgumentParseResult, String> {
+    let _ = cwd.as_ref();
     match tool_name {
-        "edit" | "rewrite" => parse_file_mutation_arguments(cwd.as_ref(), original),
+        "edit" | "rewrite" => parse_file_mutation_arguments(original),
         _ => Ok(ToolArgumentParseResult {
             original: original.clone(),
             parsed: original,
@@ -22,36 +23,19 @@ pub fn parse_tool_arguments(
     }
 }
 
-fn parse_file_mutation_arguments(
-    cwd: &Path,
-    original: Value,
-) -> Result<ToolArgumentParseResult, String> {
+fn parse_file_mutation_arguments(original: Value) -> Result<ToolArgumentParseResult, String> {
     let object = original
         .as_object()
         .ok_or_else(|| "tool arguments must be an object".to_owned())?;
-    let file_path = object
-        .get("filePath")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "tool argument filePath must be a string".to_owned())?;
-    let contents = std::fs::read_to_string(resolve_path(cwd, file_path))
-        .map_err(|_| format!("{file_path} couldn't be read"))?;
     let mut parsed = Map::from_iter(
         object
             .iter()
             .map(|(key, value)| (key.clone(), value.clone())),
     );
-    parsed.insert("originalFileContents".into(), Value::String(contents));
+    parsed.remove("originalFileContents");
+    let normalized = Value::Object(parsed);
     Ok(ToolArgumentParseResult {
-        original,
-        parsed: Value::Object(parsed),
+        original: normalized.clone(),
+        parsed: normalized,
     })
-}
-
-fn resolve_path(cwd: &Path, file_path: &str) -> std::path::PathBuf {
-    let path = Path::new(file_path);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        cwd.join(path)
-    }
 }

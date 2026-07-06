@@ -12,6 +12,8 @@ use super::super::{
 };
 use super::trajectory_finish_response;
 
+const FORGOTTEN_CHECK_PROMPT: &str = "Before returning control to the user, check whether the previous assistant response forgot any required finalization. In particular, verify whether you should run relevant tests, run a compiler, run a typecheck or lint, inspect an expected result, or report a precise blocker. If the previous response is already complete, answer with the same final response. If anything actionable is missing, use the available tools to do that work instead of returning to the user.";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TrajectoryArcParams {
@@ -34,6 +36,8 @@ struct TrajectoryArcModelParam {
     model: String,
     context: u64,
     reasoning: Option<String>,
+    #[serde(rename = "thinkingBudgetTokens")]
+    thinking_budget_tokens: Option<u64>,
     modalities: Option<Value>,
 }
 
@@ -160,37 +164,16 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
     ))?;
     let mut events = Vec::new();
     let provider_irs = provider_irs_after_compaction(&params, &mut events)?;
+    let system_prompt_text = system_prompt.get("prompt").cloned().unwrap_or(Value::Null);
+    let tools = provider_tools(tool_definitions.get("tools"));
 
-    let provider_result = call_result(provider_compiler_complete_response(
-        JsonRpcId::String("trajectory-arc-provider".into()),
-        Some(json!({
-            "type": params.model.provider_type.clone(),
-            "baseUrl": params.model.base_url.clone(),
-            "model": params.model.model.clone(),
-            "context": params.model.context,
-            "reasoning": params.model.reasoning.clone(),
-            "modalities": params.model.modalities.clone(),
-            "apiKey": params.api_key.clone(),
-            "irs": provider_irs.clone(),
-            "system": system_prompt.get("prompt").cloned().unwrap_or(Value::Null),
-            "tools": provider_tools(tool_definitions.get("tools")),
-            "cwd": params.cwd.clone(),
-            "aborted": false,
-            "autofixJson": params.config.fix_json.as_ref().map(|config| json!({
-                "baseUrl": config.base_url,
-                "apiKey": config.api_key,
-                "apiEnvVar": config.api_env_var,
-                "auth": config.auth,
-                "model": config.model,
-                "defaultApiKeyOverrides": params.config.default_api_key_overrides,
-                "authModels": params.config.auth_models.into_iter().map(|model| json!({
-                    "baseUrl": model.base_url,
-                    "apiEnvVar": model.api_env_var,
-                    "auth": model.auth,
-                })).collect::<Vec<_>>(),
-            })),
-        })),
-    ))?;
+    let provider_result = call_main_provider(
+        &params,
+        provider_irs.clone(),
+        system_prompt_text.clone(),
+        tools.clone(),
+        "trajectory-arc-provider",
+    )?;
 
     events.extend(provider_response_events(provider_result.get("events")));
     let quota_finish = call_result(trajectory_finish_response(
@@ -218,7 +201,8 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
                 "assistantMessage": provider_result.get("output").cloned().unwrap_or(Value::Null),
             })),
         ))?;
-        finish_after_tool_validation(assistant_finish, &params.cwd)?
+        let finish = finish_after_tool_validation(assistant_finish, &params.cwd)?;
+        finish_after_forgotten_check(finish, &params, system_prompt_text, tools, &mut events)?
     };
 
     events.extend(value_array(finish.get("events")));
@@ -228,6 +212,46 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
         "reason": finish.get("reason").cloned().unwrap_or_else(|| json!({ "type": "needs-response" })),
         "events": events,
     }))
+}
+
+fn call_main_provider(
+    params: &TrajectoryArcParams,
+    irs: Value,
+    system: Value,
+    tools: Value,
+    id: &str,
+) -> Result<Value, JsonRpcResponse> {
+    call_result(provider_compiler_complete_response(
+        JsonRpcId::String(id.into()),
+        Some(json!({
+            "type": params.model.provider_type.clone(),
+            "baseUrl": params.model.base_url.clone(),
+            "model": params.model.model.clone(),
+            "context": params.model.context,
+            "reasoning": params.model.reasoning.clone(),
+            "thinkingBudgetTokens": params.model.thinking_budget_tokens,
+            "modalities": params.model.modalities.clone(),
+            "apiKey": params.api_key.clone(),
+            "irs": irs,
+            "system": system,
+            "tools": tools,
+            "cwd": params.cwd.clone(),
+            "aborted": false,
+            "autofixJson": params.config.fix_json.as_ref().map(|config| json!({
+                "baseUrl": config.base_url,
+                "apiKey": config.api_key,
+                "apiEnvVar": config.api_env_var,
+                "auth": config.auth,
+                "model": config.model,
+                "defaultApiKeyOverrides": params.config.default_api_key_overrides,
+                "authModels": params.config.auth_models.iter().map(|model| json!({
+                    "baseUrl": model.base_url,
+                    "apiEnvVar": model.api_env_var,
+                    "auth": model.auth,
+                })).collect::<Vec<_>>(),
+            })),
+        })),
+    ))
 }
 
 fn provider_irs_after_compaction(
@@ -272,6 +296,7 @@ fn provider_irs_after_compaction(
             "model": params.model.model,
             "context": params.model.context,
             "reasoning": params.model.reasoning,
+            "thinkingBudgetTokens": params.model.thinking_budget_tokens,
             "modalities": params.model.modalities,
             "apiKey": params.api_key,
             "irs": compaction_irs,
@@ -347,7 +372,7 @@ fn compaction_error_response(error: Option<&Value>, events: Vec<Value>) -> JsonR
         .and_then(Value::as_str)
         .unwrap_or("");
     let reason = match error_type {
-        "payment-error" | "rate-limit-error" => json!({
+        "auth-error" | "payment-error" | "rate-limit-error" => json!({
             "type": error_type,
             "requestError": request_error,
             "curl": curl,
@@ -523,6 +548,94 @@ fn finish_after_tool_validation(finish: Value, cwd: &str) -> Result<Value, JsonR
             "validationResults": validation_results,
         })),
     ))
+}
+
+fn finish_after_forgotten_check(
+    finish: Value,
+    params: &TrajectoryArcParams,
+    system: Value,
+    tools: Value,
+    events: &mut Vec<Value>,
+) -> Result<Value, JsonRpcResponse> {
+    if !should_run_forgotten_check(&finish) {
+        return Ok(finish);
+    }
+
+    let original_irs = finish
+        .get("irs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let (base_irs, provider_irs) = forgotten_check_irs(original_irs);
+    let provider_result = match call_main_provider(
+        params,
+        Value::Array(provider_irs),
+        system,
+        tools,
+        "trajectory-arc-forgotten-check-provider",
+    ) {
+        Ok(result) => result,
+        Err(_) => return Ok(finish),
+    };
+    if provider_result.get("status").and_then(Value::as_str) == Some("error") {
+        return Ok(finish);
+    }
+
+    events.extend(provider_response_events(provider_result.get("events")));
+    let checked_finish = call_result(trajectory_finish_response(
+        JsonRpcId::String("trajectory-arc-forgotten-check-finish".into()),
+        Some(json!({
+            "irs": base_irs,
+            "assistantMessage": provider_result.get("output").cloned().unwrap_or(Value::Null),
+        })),
+    ))?;
+    finish_after_tool_validation(checked_finish, &params.cwd)
+}
+
+fn should_run_forgotten_check(finish: &Value) -> bool {
+    let reason = finish
+        .get("reason")
+        .and_then(|reason| reason.get("type"))
+        .and_then(Value::as_str);
+    if reason != Some("needs-response") {
+        return false;
+    }
+    let has_retry_tool_event = finish
+        .get("events")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|event| event.get("type").and_then(Value::as_str) == Some("retry-tool"));
+    if has_retry_tool_event {
+        return false;
+    }
+    finish
+        .get("irs")
+        .and_then(Value::as_array)
+        .and_then(|irs| irs.last())
+        .and_then(|ir| ir.get("role"))
+        .and_then(Value::as_str)
+        == Some("assistant")
+}
+
+fn forgotten_check_irs(mut original_irs: Vec<Value>) -> (Vec<Value>, Vec<Value>) {
+    let mut provider_irs = original_irs.clone();
+    provider_irs.push(json!({
+        "role": "user",
+        "content": [{
+            "type": "text",
+            "content": FORGOTTEN_CHECK_PROMPT,
+        }],
+    }));
+    if original_irs
+        .last()
+        .and_then(|ir| ir.get("role"))
+        .and_then(Value::as_str)
+        == Some("assistant")
+    {
+        original_irs.pop();
+    }
+    (original_irs, provider_irs)
 }
 
 fn validate_tool_call(cwd: &str, tool_call: &Value) -> Value {

@@ -42,6 +42,7 @@ export type OctoToolCall = ToolCall<typeof BuiltInToolContracts>;
 export type OctoToolRejectIR = {
 	role: "tool-reject";
 	toolCall: OctoToolCall;
+	rejectedByUserMessageId: string;
 };
 
 export type OctoFileIR = FileReadIR<OctoToolCall> | FileMutateIR<OctoToolCall>;

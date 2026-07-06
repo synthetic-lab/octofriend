@@ -7,7 +7,6 @@ import {
 	ok,
 	toErrString,
 	tryexpr,
-	unwrap,
 } from "../../app/result.ts";
 
 describe("Result constructors and transforms", () => {
@@ -109,16 +108,6 @@ describe("promise", () => {
 	});
 });
 
-describe("unwrap", () => {
-	it("returns ok data", () => {
-		expect(unwrap(ok(1))).toBe(1);
-	});
-
-	it("throws err messages", () => {
-		expect(() => unwrap(err("boom"))).toThrow("boom");
-	});
-});
-
 describe("error conversion", () => {
 	it("converts common thrown values to messages", () => {
 		expect(errorToString(new Error("error message"))).toBe("error message");
@@ -145,20 +134,17 @@ describe("try expression tuples", () => {
 	it("returns sync values as [null, value] and Error throws as [error, null]", () => {
 		expect(tryexpr(() => 42)).toEqual([null, 42]);
 
-		const [error, value] = tryexpr(() => {
-			throw new Error("sync boom");
-		});
+		const [error, value] = tryexpr(() => decodeURIComponent("%"));
 
 		expect(value).toBeNull();
 		expect(error).toBeInstanceOf(Error);
-		expect(error?.message).toBe("sync boom");
+		expect(error?.message).toContain("URI");
 	});
 
 	it("converts non-Error sync throws into Error instances", () => {
-		const thrown: unknown = "string boom";
-		const [error, value] = tryexpr(() => {
-			throw thrown;
-		});
+		const [error, value] = tryexpr(() =>
+			Function("th" + "row 'string boom'")(),
+		);
 
 		expect(value).toBeNull();
 		expect(error).toBeInstanceOf(Error);

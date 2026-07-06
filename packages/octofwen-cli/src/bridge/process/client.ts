@@ -45,10 +45,10 @@ export class AgentdProcessClient {
 		params?: unknown,
 		options: AgentdRequestOptions = {},
 	): Promise<unknown> {
-		if (this.#closed) throw new Error("agentd client closed");
+		if (this.#closed) return Promise.reject(new Error("agentd client closed"));
 		if (options.abortSignal?.aborted) {
 			if (options.cancelOnAbort) this.close();
-			throw new Error("agentd request aborted");
+			return Promise.reject(new Error("agentd request aborted"));
 		}
 		const id = this.#nextId++;
 		const request = createAgentdRequest(id, method, params);
@@ -69,7 +69,7 @@ export class AgentdProcessClient {
 		} catch (error) {
 			this.#pending.delete(id);
 			if (abort) options.abortSignal?.removeEventListener("abort", abort);
-			throw error;
+			return Promise.reject(error);
 		}
 		try {
 			return await response;

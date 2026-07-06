@@ -4,6 +4,10 @@ use octofwen_llm::providers::anthropic::{
     AnthropicCurlRequest, AnthropicMessagesHttpRequestParams, anthropic_messages_curl,
     anthropic_messages_http_request,
 };
+use octofwen_llm::providers::gemini::{
+    GeminiGenerateContentCurlRequest, GeminiGenerateContentHttpRequestParams,
+    gemini_generate_content_curl, gemini_generate_content_http_request,
+};
 use octofwen_llm::providers::openai::{
     OpenAiChatCompletionsCurlRequest, OpenAiChatCompletionsHttpRequestParams,
     OpenAiResponsesCurlRequest, OpenAiResponsesHttpRequestParams, openai_chat_completions_curl,
@@ -13,7 +17,7 @@ use octofwen_llm::providers::tool_definitions::{
     ProviderToolDefinition, ProviderToolDefinitionTarget, provider_tool_definitions_json,
 };
 use octofwen_llm::providers::{
-    ProviderHttpRequest, anthropic_messages_from_ts_ir,
+    ProviderHttpRequest, anthropic_messages_from_ts_ir, gemini_contents_from_ts_ir,
     openai_chat_completions_messages_from_ts_ir, openai_responses_input_from_ts_ir,
 };
 use octofwen_protocol::json_rpc::{
@@ -75,6 +79,7 @@ use trajectory::trajectory_finish_response;
 use transport::{
     transport_docker_kill_response, transport_docker_response, transport_docker_run_response,
     transport_find_files_response, transport_get_env_response, transport_local_response,
+    transport_ssh_response,
 };
 use update_notifications::{
     update_notifications_mark_seen_response, update_notifications_read_response,
@@ -123,6 +128,7 @@ pub const AGENTD_TOOL_PERMISSION_METHOD: &str = "octofwen.agentd/toolPermission"
 pub const AGENTD_TOOL_VALIDATE_METHOD: &str = "octofwen.agentd/toolValidate";
 pub const AGENTD_TRANSPORT_LOCAL_METHOD: &str = "octofwen.agentd/transportLocal";
 pub const AGENTD_TRANSPORT_DOCKER_METHOD: &str = "octofwen.agentd/transportDocker";
+pub const AGENTD_TRANSPORT_SSH_METHOD: &str = "octofwen.agentd/transportSsh";
 pub const AGENTD_TRANSPORT_FIND_FILES_METHOD: &str = "octofwen.agentd/transportFindFiles";
 pub const AGENTD_TRANSPORT_GET_ENV_METHOD: &str = "octofwen.agentd/transportGetEnv";
 pub const AGENTD_TRANSPORT_DOCKER_RUN_METHOD: &str = "octofwen.agentd/transportDockerRun";
@@ -170,6 +176,8 @@ struct ProviderCompilerPlanParams {
     model: String,
     context: u64,
     reasoning: Option<ProviderReasoningParam>,
+    #[serde(rename = "thinkingBudgetTokens")]
+    thinking_budget_tokens: Option<u64>,
     modalities: Option<ProviderCompilerModalitiesParam>,
 }
 
@@ -179,14 +187,19 @@ enum ProviderCompilerPlanTypeParam {
     Standard,
     OpenaiResponses,
     Anthropic,
+    Gemini,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum ProviderReasoningParam {
+    None,
+    Minimal,
     Low,
     Medium,
     High,
+    #[serde(rename = "xhigh")]
+    XHigh,
 }
 
 #[derive(Debug, Deserialize)]
@@ -220,6 +233,8 @@ struct ProviderCompilerRequestParams {
     model: String,
     context: u64,
     reasoning: Option<ProviderReasoningParam>,
+    #[serde(rename = "thinkingBudgetTokens")]
+    thinking_budget_tokens: Option<u64>,
     modalities: Option<ProviderCompilerModalitiesParam>,
     #[serde(rename = "apiKey")]
     api_key: String,
@@ -252,6 +267,14 @@ enum ProviderHttpRequestPlanParam {
         #[serde(rename = "maxTokens")]
         max_tokens: u64,
         thinking: Option<Value>,
+        #[serde(rename = "outputConfig")]
+        output_config: Option<Value>,
+    },
+    Gemini {
+        #[serde(rename = "baseUrl")]
+        base_url: String,
+        model: String,
+        modalities: Option<Vec<String>>,
     },
 }
 
@@ -337,6 +360,7 @@ pub fn handle_agentd_json_rpc_line(line: &str) -> Option<String> {
         AGENTD_TOOL_VALIDATE_METHOD => tool_validate_response(id, request.params),
         AGENTD_TRANSPORT_LOCAL_METHOD => transport_local_response(id, request.params),
         AGENTD_TRANSPORT_DOCKER_METHOD => transport_docker_response(id, request.params),
+        AGENTD_TRANSPORT_SSH_METHOD => transport_ssh_response(id, request.params),
         AGENTD_TRANSPORT_FIND_FILES_METHOD => transport_find_files_response(id, request.params),
         AGENTD_TRANSPORT_GET_ENV_METHOD => transport_get_env_response(id, request.params),
         AGENTD_TRANSPORT_DOCKER_RUN_METHOD => transport_docker_run_response(id, request.params),
@@ -381,7 +405,7 @@ fn provider_compiler_plan_json(
         .unwrap_or(ProviderCompilerPlanTypeParam::Standard);
     let mut result = serde_json::Map::from_iter([
         ("baseUrl".into(), Value::String(params.base_url)),
-        ("model".into(), Value::String(params.model)),
+        ("model".into(), Value::String(params.model.clone())),
         ("modalities".into(), Value::Array(modalities)),
     ]);
 
@@ -400,20 +424,23 @@ fn provider_compiler_plan_json(
         }
         ProviderCompilerPlanTypeParam::Anthropic => {
             result.insert("provider".into(), Value::String("anthropic".into()));
-            let thinking_budget = anthropic_thinking_budget(params.reasoning);
-            let max_tokens = params
-                .context
-                .min(32_000_u64.saturating_sub(thinking_budget.unwrap_or(0)));
+            let max_tokens = params.context.min(32_000);
             result.insert("maxTokens".into(), Value::from(max_tokens));
-            if let Some(budget_tokens) = thinking_budget {
-                result.insert(
-                    "thinking".into(),
-                    json!({
-                        "type": "enabled",
-                        "budget_tokens": budget_tokens,
-                    }),
-                );
+            let thinking = anthropic_thinking(
+                &params.model,
+                params.reasoning,
+                params.thinking_budget_tokens,
+                max_tokens,
+            );
+            if let Some(thinking) = thinking {
+                result.insert("thinking".into(), thinking);
             }
+            if let Some(output_config) = anthropic_output_config(&params.model, params.reasoning) {
+                result.insert("outputConfig".into(), output_config);
+            }
+        }
+        ProviderCompilerPlanTypeParam::Gemini => {
+            result.insert("provider".into(), Value::String("gemini".into()));
         }
     }
 
@@ -429,19 +456,143 @@ fn openai_responses_reasoning(reasoning: Option<ProviderReasoningParam>) -> Opti
     })
 }
 
+fn anthropic_thinking(
+    model: &str,
+    reasoning: Option<ProviderReasoningParam>,
+    explicit_budget_tokens: Option<u64>,
+    max_tokens: u64,
+) -> Option<Value> {
+    if anthropic_uses_adaptive_thinking(model) {
+        return anthropic_adaptive_thinking(model, reasoning, explicit_budget_tokens);
+    }
+
+    explicit_budget_tokens
+        .or_else(|| anthropic_thinking_budget(reasoning))
+        .and_then(|budget_tokens| anthropic_valid_thinking_budget(budget_tokens, max_tokens))
+        .map(|budget_tokens| {
+            json!({
+                "type": "enabled",
+                "budget_tokens": budget_tokens,
+            })
+        })
+}
+
+fn anthropic_adaptive_thinking(
+    model: &str,
+    reasoning: Option<ProviderReasoningParam>,
+    explicit_budget_tokens: Option<u64>,
+) -> Option<Value> {
+    match reasoning {
+        Some(ProviderReasoningParam::None) if anthropic_can_disable_adaptive_thinking(model) => {
+            Some(json!({ "type": "disabled" }))
+        }
+        Some(ProviderReasoningParam::None) | None
+            if anthropic_adaptive_thinking_is_always_on(model) =>
+        {
+            None
+        }
+        Some(ProviderReasoningParam::None) => None,
+        None if explicit_budget_tokens.is_some() => Some(json!({ "type": "adaptive" })),
+        None => None,
+        Some(_) if anthropic_adaptive_thinking_is_always_on(model) => None,
+        Some(_) => Some(json!({ "type": "adaptive" })),
+    }
+}
+
+fn anthropic_output_config(
+    model: &str,
+    reasoning: Option<ProviderReasoningParam>,
+) -> Option<Value> {
+    if !anthropic_supports_effort(model) {
+        return None;
+    }
+    let reasoning = reasoning?;
+    let effort = anthropic_effort(reasoning)?;
+    Some(json!({ "effort": effort }))
+}
+
+fn anthropic_effort(reasoning: ProviderReasoningParam) -> Option<&'static str> {
+    match reasoning {
+        ProviderReasoningParam::XHigh => Some("xhigh"),
+        ProviderReasoningParam::High => Some("high"),
+        ProviderReasoningParam::Medium => Some("medium"),
+        ProviderReasoningParam::Low | ProviderReasoningParam::Minimal => Some("low"),
+        ProviderReasoningParam::None => None,
+    }
+}
+
+fn anthropic_uses_adaptive_thinking(model: &str) -> bool {
+    anthropic_model_family(
+        model,
+        &[
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+            "claude-sonnet-5",
+        ],
+    )
+}
+
+fn anthropic_adaptive_thinking_is_always_on(model: &str) -> bool {
+    anthropic_model_family(model, &["claude-fable-5", "claude-mythos-5"])
+}
+
+fn anthropic_can_disable_adaptive_thinking(model: &str) -> bool {
+    anthropic_model_family(model, &["claude-sonnet-5"])
+}
+
+fn anthropic_supports_effort(model: &str) -> bool {
+    anthropic_model_family(
+        model,
+        &[
+            "claude-fable-5",
+            "claude-mythos-5",
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+            "claude-opus-4-6",
+            "claude-sonnet-5",
+            "claude-sonnet-4-6",
+            "claude-opus-4-5",
+        ],
+    )
+}
+
+fn anthropic_model_family(model: &str, families: &[&str]) -> bool {
+    families.iter().any(|family| {
+        model == *family
+            || model
+                .strip_prefix(family)
+                .is_some_and(|suffix| suffix.starts_with('-'))
+    })
+}
+
+fn anthropic_valid_thinking_budget(budget_tokens: u64, max_tokens: u64) -> Option<u64> {
+    if !(1024..max_tokens).contains(&budget_tokens) {
+        return None;
+    }
+    Some(budget_tokens)
+}
+
 fn anthropic_thinking_budget(reasoning: Option<ProviderReasoningParam>) -> Option<u64> {
-    reasoning.map(|reasoning| match reasoning {
+    Some(match reasoning? {
+        ProviderReasoningParam::XHigh => 16_384,
         ProviderReasoningParam::High => 8192,
         ProviderReasoningParam::Medium => 4096,
         ProviderReasoningParam::Low => 2048,
+        ProviderReasoningParam::Minimal => 1024,
+        ProviderReasoningParam::None => return None,
     })
 }
 
 fn provider_reasoning_effort(reasoning: ProviderReasoningParam) -> &'static str {
     match reasoning {
+        ProviderReasoningParam::XHigh => "xhigh",
         ProviderReasoningParam::High => "high",
         ProviderReasoningParam::Medium => "medium",
         ProviderReasoningParam::Low => "low",
+        ProviderReasoningParam::Minimal => "minimal",
+        ProviderReasoningParam::None => "none",
     }
 }
 
@@ -592,6 +743,7 @@ fn provider_http_request_parts(
             modalities,
             max_tokens,
             thinking,
+            output_config,
         } => {
             let Ok(messages) = anthropic_messages_from_ts_ir(&irs, modalities.as_deref()) else {
                 return Err(());
@@ -605,6 +757,8 @@ fn provider_http_request_parts(
                 messages: messages.clone(),
                 tools: tools.clone(),
                 max_tokens,
+                thinking: thinking.clone(),
+                output_config: output_config.clone(),
             };
             let http_request = AnthropicMessagesHttpRequestParams {
                 base_url,
@@ -615,12 +769,49 @@ fn provider_http_request_parts(
                 tools,
                 max_tokens,
                 thinking,
+                output_config,
             };
             (
                 "anthropic",
                 AssistantOutputProvider::Anthropic,
                 anthropic_messages_http_request(&http_request),
                 anthropic_messages_curl(&curl_request),
+            )
+        }
+        ProviderHttpRequestPlanParam::Gemini {
+            base_url,
+            model,
+            modalities,
+        } => {
+            let Ok(contents) = gemini_contents_from_ts_ir(&irs, modalities.as_deref()) else {
+                return Err(());
+            };
+            let system_instruction = system.map(|system| {
+                json!({
+                    "parts": [{ "text": system }],
+                })
+            });
+            let tools = provider_tool_definitions_json(ProviderToolDefinitionTarget::Gemini, tools);
+            let curl_request = GeminiGenerateContentCurlRequest {
+                base_url: base_url.clone(),
+                model: model.clone(),
+                contents: contents.clone(),
+                system_instruction: system_instruction.clone(),
+                tools: tools.clone(),
+            };
+            let http_request = GeminiGenerateContentHttpRequestParams {
+                base_url,
+                api_key,
+                model,
+                contents,
+                system_instruction,
+                tools,
+            };
+            (
+                "gemini",
+                AssistantOutputProvider::Gemini,
+                gemini_generate_content_http_request(&http_request),
+                gemini_generate_content_curl(&curl_request),
             )
         }
     };
@@ -643,6 +834,14 @@ fn provider_http_stream_request(request: &ProviderHttpRequest) -> ProviderHttpSt
 
 fn serialize_response(response: octofwen_protocol::json_rpc::JsonRpcResponse) -> String {
     serde_json::to_string(&response).unwrap_or_else(|_| {
-        r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}}"#.into()
+        json!({
+            "jsonrpc": "2.0",
+            "id": Value::Null,
+            "error": {
+                "code": -32603,
+                "message": "Internal error",
+            },
+        })
+        .to_string()
     })
 }

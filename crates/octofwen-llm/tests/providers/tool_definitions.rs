@@ -107,3 +107,33 @@ fn shapes_anthropic_tool_definitions() {
         }]))
     );
 }
+
+#[test]
+fn shapes_gemini_tool_definitions() {
+    assert_eq!(
+        provider_tool_definitions_json(
+            ProviderToolDefinitionTarget::Gemini,
+            Some(vec![ProviderToolDefinition {
+                name: "read".into(),
+                description: "Read a file".into(),
+                schema: json!({
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "title": "ReadArgs",
+                    "description": "Read args",
+                    "type": "object",
+                    "additionalProperties": false
+                }),
+            }]),
+        ),
+        Some(json!([{
+            "functionDeclarations": [{
+                "name": "read",
+                "description": "Read a file",
+                "parametersJsonSchema": {
+                    "type": "object",
+                    "additionalProperties": false
+                }
+            }]
+        }]))
+    );
+}

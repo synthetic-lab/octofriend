@@ -110,6 +110,7 @@ fn provider_run_result(mut params: Map<String, Value>) -> Result<Value, JsonRpcR
         model: params.model,
         context: params.context,
         reasoning: params.reasoning,
+        thinking_budget_tokens: params.thinking_budget_tokens,
         modalities: params.modalities,
     });
     let Ok(plan) = serde_json::from_value::<ProviderHttpRequestPlanParam>(Value::Object(plan))
@@ -173,6 +174,7 @@ fn provider_request_error_result_json(
         "output": 0,
     });
     let error_type = match status_code {
+        Some(401 | 403) => "auth-error",
         Some(402) => "payment-error",
         Some(429) => "rate-limit-error",
         _ => "request-error",

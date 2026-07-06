@@ -1,6 +1,5 @@
 import { useInput } from "ink";
 import { useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
 import {
 	type Item,
 	KbShortcutPanel,
@@ -8,7 +7,6 @@ import {
 } from "../../input/shortcuts.tsx";
 import { useConfig } from "../../internal/configuration/react-context.ts";
 import type { Config } from "../../internal/configuration/schemas.ts";
-import { useMenuState } from "./menu-state.ts";
 
 export type SettingsValues =
 	| "set-default-model"
@@ -60,17 +58,22 @@ export function filterSettingsItems(config: Config) {
 	return items;
 }
 
-export function SettingsMenu() {
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
-
+export function SettingsMenu({
+	onBack,
+	onNavigate,
+}: {
+	onBack: () => void;
+	onNavigate: {
+		setDefaultModel: () => void;
+		removeModel: () => void;
+		diffApplyToggle: () => void;
+		fixJsonToggle: () => void;
+	};
+}) {
 	const config = useConfig();
 
 	useInput((_, key) => {
-		if (key.escape) setMenuMode("main-menu");
+		if (key.escape) onBack();
 	});
 
 	const settingsItems = filterSettingsItems(config);
@@ -82,12 +85,16 @@ export function SettingsMenu() {
 		},
 	};
 
-	const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
-		if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
-		else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
-		else if (item.value === "back") setMenuMode("main-menu");
-		else setMenuMode(item.value);
-	}, []);
+	const onSelect = useCallback(
+		(item: Item<SettingsValues | "back">) => {
+			if (item.value === "disable-diff-apply") onNavigate.diffApplyToggle();
+			else if (item.value === "disable-fix-json") onNavigate.fixJsonToggle();
+			else if (item.value === "set-default-model") onNavigate.setDefaultModel();
+			else if (item.value === "remove-model") onNavigate.removeModel();
+			else onBack();
+		},
+		[onBack, onNavigate],
+	);
 
 	return (
 		<KbShortcutPanel

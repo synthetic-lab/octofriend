@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { Result } from "../../app/result.ts";
 import {
 	countLines,
 	cutIndex,
@@ -10,6 +11,11 @@ import {
 	numWidth,
 	wrapTextWithMapping,
 } from "../../app/text_processing.ts";
+
+function expectOk<T, E>(result: Result<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : undefined as T;
+}
 
 describe("text processing", () => {
 	it("counts lines and exposes the shared line split regex", () => {
@@ -32,16 +38,25 @@ describe("text processing", () => {
 	});
 
 	it("inserts and cuts strings with legacy boundary semantics", () => {
-		expect(insertAt("abc", 0, "X")).toBe("Xabc");
-		expect(insertAt("abc", 1, "X")).toBe("aXbc");
-		expect(insertAt("abc", 2, "X")).toBe("abcX");
-		expect(() => insertAt("abc", 3, "X")).toThrow(
-			"inserting past end of string",
-		);
-		expect(cutIndex("abc", 0)).toBe("bc");
-		expect(cutIndex("abc", 1)).toBe("ac");
-		expect(cutIndex("abc", 2)).toBe("ab");
-		expect(() => cutIndex("abc", 3)).toThrow("cutting past end of string");
+		expect(expectOk(insertAt("abc", 0, "X"))).toBe("Xabc");
+		expect(expectOk(insertAt("abc", 1, "X"))).toBe("aXbc");
+		expect(expectOk(insertAt("abc", 2, "X"))).toBe("abcX");
+
+		const insertPastEnd = insertAt("abc", 3, "X");
+		expect(insertPastEnd.success).toBe(false);
+		if (!insertPastEnd.success) {
+			expect(insertPastEnd.error).toBe("inserting past end of string");
+		}
+
+		expect(expectOk(cutIndex("abc", 0))).toBe("bc");
+		expect(expectOk(cutIndex("abc", 1))).toBe("ac");
+		expect(expectOk(cutIndex("abc", 2))).toBe("ab");
+
+		const cutPastEnd = cutIndex("abc", 3);
+		expect(cutPastEnd.success).toBe(false);
+		if (!cutPastEnd.success) {
+			expect(cutPastEnd.error).toBe("cutting past end of string");
+		}
 	});
 
 	it("wraps text at word boundaries and maps inserted newlines", () => {

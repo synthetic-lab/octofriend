@@ -79,7 +79,7 @@ export type Transitions<T> = {
 
 export type TestConnectionResult =
 	| { valid: true; metadata: ModelMetadata }
-	| { valid: false };
+	| { valid: false; errorMessage?: string };
 
 export type MinConnectArgs = {
 	model: string;

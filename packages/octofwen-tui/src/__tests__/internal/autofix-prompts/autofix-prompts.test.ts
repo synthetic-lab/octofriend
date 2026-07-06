@@ -21,8 +21,15 @@ describe("autofix prompts", () => {
 		});
 
 		expect(prompt).toContain("The following diff edit is invalid");
-		expect(prompt).toContain("DiffApplySuccess");
-		expect(prompt).toContain("DiffApplyFailure");
+		expect(prompt).not.toContain("```");
+		expect(prompt).not.toContain("typescript");
+		expect(prompt).not.toContain("TypeScript");
+		expect(prompt).toContain(
+			"Respond only with JSON matching this JSON Schema:",
+		);
+		expect(prompt).toContain('"anyOf"');
+		expect(prompt).toContain('"const": true');
+		expect(prompt).toContain('"search"');
 		expect(prompt).toContain('"file":"const value = 1;"');
 		expect(prompt).toContain('"search":"const value = 2;"');
 		expect(prompt).toContain('"replace":"const value = 3;"');
@@ -32,8 +39,13 @@ describe("autofix prompts", () => {
 		const prompt = fixJsonPrompt('{"name":');
 
 		expect(prompt).toContain("The following string may be broken JSON");
-		expect(prompt).toContain("JsonFixSuccess");
-		expect(prompt).toContain("JsonFixFailure");
+		expect(prompt).not.toContain("```");
+		expect(prompt).not.toContain("typescript");
+		expect(prompt).not.toContain("TypeScript");
+		expect(prompt).toContain("Respond with JSON matching this JSON Schema:");
+		expect(prompt).toContain('"anyOf"');
+		expect(prompt).toContain('"fixed"');
+		expect(prompt).toContain('"const": false');
 		expect(prompt).toContain('{"name":');
 		expect(
 			JsonFixResponseSchema.slice({ success: true, fixed: { name: "Octo" } }),

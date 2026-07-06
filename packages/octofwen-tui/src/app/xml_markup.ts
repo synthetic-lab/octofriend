@@ -74,7 +74,7 @@ export class StreamingXMLParser {
 	 * Process a chunk of XML text
 	 */
 	write(chunk: string): void {
-		if (this.closed) throw new Error("Writing to closed XML parser");
+		if (this.closed) return;
 
 		if (!chunk) return;
 		for (const char of chunk) {

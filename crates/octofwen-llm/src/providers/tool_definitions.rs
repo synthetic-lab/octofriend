@@ -15,6 +15,7 @@ pub enum ProviderToolDefinitionTarget {
     OpenAiChatCompletions,
     OpenAiResponses,
     Anthropic,
+    Gemini,
 }
 
 pub fn provider_tool_definitions_json(
@@ -24,6 +25,15 @@ pub fn provider_tool_definitions_json(
     let tools = tools?;
     if tools.is_empty() {
         return None;
+    }
+
+    if target == ProviderToolDefinitionTarget::Gemini {
+        return Some(json!([{
+            "functionDeclarations": tools
+                .into_iter()
+                .map(gemini_function_declaration_json)
+                .collect::<Vec<_>>(),
+        }]));
     }
 
     Some(Value::Array(
@@ -60,7 +70,16 @@ fn provider_tool_definition_json(
             "description": tool.description,
             "input_schema": cleaned_schema(tool.schema),
         }),
+        ProviderToolDefinitionTarget::Gemini => gemini_function_declaration_json(tool),
     }
+}
+
+fn gemini_function_declaration_json(tool: ProviderToolDefinition) -> Value {
+    json!({
+        "name": tool.name,
+        "description": tool.description,
+        "parametersJsonSchema": cleaned_schema(tool.schema),
+    })
 }
 
 fn cleaned_schema(mut schema: Value) -> Value {

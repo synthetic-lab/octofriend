@@ -140,8 +140,8 @@ describe("AgentdRustBridge provider compiler bridge", () => {
 			},
 			headers: { "x-synthetic-quotas": '{"remaining":0}' },
 			error: {
-				type: "request-error",
-				requestError: "rate limited",
+				type: "auth-error",
+				requestError: "invalid api key",
 				curl: "agentd curl",
 				usage: {
 					input: { cached: 0, uncached: 0, total: 0 },

@@ -21,6 +21,10 @@ export type RequestErrorScreenProps = {
 	curlCommand: string | null;
 };
 
+export type AuthErrorScreenProps = {
+	error: string;
+};
+
 export type RateLimitErrorScreenProps = {
 	error: string;
 };
@@ -147,6 +151,30 @@ export function RequestErrorScreen({
 				</Box>
 			)}
 		</KbShortcutPanel>
+	);
+}
+
+export function AuthErrorScreen({ error }: AuthErrorScreenProps) {
+	const config = useConfig();
+	const transport = useContext(TransportContext);
+	const { retryFrom } = useAppStore(
+		useShallow((state) => ({
+			retryFrom: state.retryFrom,
+		})),
+	);
+
+	useInput(() => {
+		retryFrom("auth-error", { config, transport });
+	});
+
+	return (
+		<CenteredBox>
+			<Text color="red">Authentication error:</Text>
+			<Text>{error}</Text>
+			<Text color="gray">
+				Update your API key, then press any key to retry.
+			</Text>
+		</CenteredBox>
 	);
 }
 

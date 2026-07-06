@@ -4,6 +4,7 @@ pub mod fragments;
 pub mod instructions;
 pub mod model_context;
 pub mod system;
+mod template;
 pub mod xml;
 
 pub use autofix::{BrokenDiffEdit, DiffEdit, fix_edit_prompt, fix_json_prompt};

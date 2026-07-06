@@ -11,6 +11,7 @@ import { readKeyForModel } from "./configuration/keys.ts";
 import { CONFIG_DIR, CONFIG_FILE } from "./configuration/paths.ts";
 import type { Config } from "./configuration/schemas.ts";
 import { selectModel } from "./model-selection.ts";
+import { err, ok, type Result } from "./result.ts";
 import { loadTui } from "./tui.ts";
 import {
 	markUpdatesSeen,
@@ -20,14 +21,16 @@ import {
 export const CONFIG_STANDARD_DIR = CONFIG_DIR;
 export const CONFIG_JSON5_FILE = CONFIG_FILE;
 
-async function configAutofixKeys(): Promise<Array<"diffApply" | "fixJson">> {
+async function configAutofixKeys(): Promise<
+	Result<Array<"diffApply" | "fixJson">, string>
+> {
 	const client = new AgentdProcessClient(spawnAgentdProcess());
 	try {
 		const result = await client.request("octofwen.agentd/configAutofixKeys");
 		if (!isAutofixKeysResult(result)) {
-			throw new Error("Invalid octofwen-agentd autofix keys result");
+			return err("Invalid octofwen-agentd autofix keys result");
 		}
-		return result.keys;
+		return ok(result.keys);
 	} finally {
 		client.close();
 	}
@@ -101,7 +104,12 @@ async function ensureAutofixModelAuth(
 	options: LoadConfigOptions,
 ): Promise<LoadedConfig> {
 	let { config, configPath } = loaded;
-	for (const key of await configAutofixKeys()) {
+	const autofixKeys = await configAutofixKeys();
+	if (!autofixKeys.success) {
+		console.error(autofixKeys.error);
+		process.exit(1);
+	}
+	for (const key of autofixKeys.data) {
 		const reloaded = await ensureOneAutofixModelAuth(
 			{ config, configPath },
 			key,
@@ -158,10 +166,16 @@ export async function loadConfigWithoutReauth(
 		};
 	}
 
-	await markUpdatesSeen({ mark: options.markUpdatesSeen });
+	const markResult = await markUpdatesSeen({ mark: options.markUpdatesSeen });
+	if (!markResult.success) {
+		console.error(markResult.error);
+	}
 	const ownedBridge = options.bridge ? null : await createAgentdRustBridge();
 	const bridge = options.bridge ?? ownedBridge;
-	if (!bridge) throw new Error("Missing octofwen-agentd bridge");
+	if (bridge == null) {
+		console.error("Missing octofwen-agentd bridge");
+		process.exit(1);
+	}
 	try {
 		const { FirstTimeSetup } = await loadTui();
 		const { waitUntilExit } = render(

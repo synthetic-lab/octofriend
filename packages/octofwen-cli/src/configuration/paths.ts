@@ -17,7 +17,9 @@ async function configDefaultPaths(): Promise<{
 	try {
 		const result = await client.request("octofwen.agentd/configDefaultPaths");
 		if (!isDefaultPathsResult(result)) {
-			throw new Error("Invalid octofwen-agentd config paths result");
+			return Promise.reject(
+				new Error("Invalid octofwen-agentd config paths result"),
+			);
 		}
 		return result;
 	} finally {

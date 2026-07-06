@@ -64,15 +64,16 @@ async function runSingleBenchmark({
 				},
 			],
 		});
+		if (!result.success) return { success: false, error: result.error };
 		let sawToken = false;
-		replayProviderTokenEvents(result, () => {
+		replayProviderTokenEvents(result.data, () => {
 			sawToken = true;
 		});
 
 		const end = new Date();
 		if (!sawToken) return { success: false, error: "No tokens received" };
 
-		const tokens = result.usage.output;
+		const tokens = result.data.usage.output;
 		const requestElapsed = end.getTime() - start.getTime();
 		return { tokens, requestElapsed, success: true };
 	} catch (error) {

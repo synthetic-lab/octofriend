@@ -12,6 +12,7 @@ import { APP_METADATA } from "../metadata.ts";
 import { runPromptCommand } from "../prompt.ts";
 import { DockerTransport, manageContainer } from "../transport/docker.ts";
 import { LocalTransport } from "../transport/local.ts";
+import { SshTransport } from "../transport/ssh.ts";
 
 const CHANGELOG_PATH = path.join(
 	import.meta.dirname,
@@ -70,6 +71,22 @@ async function runWithDockerImage(
 	}
 }
 
+async function runWithSshTransport(
+	target: string,
+	opts: { config?: string; unchained?: boolean },
+) {
+	const transport = await SshTransport.create(target);
+	try {
+		await runMain({
+			config: opts.config,
+			unchained: opts.unchained,
+			transport,
+		});
+	} finally {
+		await transport.close();
+	}
+}
+
 function registerDockerCommands(cli: Command) {
 	const docker = cli
 		.command("docker")
@@ -97,6 +114,19 @@ function registerDockerCommands(cli: Command) {
 		)
 		.argument("[args...]", "The args to pass to `docker run`")
 		.action(runWithDockerImage);
+}
+
+function registerSshCommands(cli: Command) {
+	cli
+		.command("ssh")
+		.description("Run Octo over SSH on a remote host")
+		.option("--config <path>")
+		.option(
+			"--unchained",
+			"Skips confirmation for all tools, running them immediately. Dangerous.",
+		)
+		.argument("<target>", "The SSH target, e.g. user@host")
+		.action(runWithSshTransport);
 }
 
 function registerBasicCommands(cli: Command) {
@@ -207,6 +237,7 @@ export function createOctofwenCommand(): Command {
 		.action((opts) => runWithLocalTransport(opts.config, opts.unchained));
 
 	registerDockerCommands(cli);
+	registerSshCommands(cli);
 	registerBasicCommands(cli);
 	registerBenchmarkCommands(cli);
 	registerPromptCommand(cli);

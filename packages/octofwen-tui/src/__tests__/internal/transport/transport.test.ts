@@ -108,18 +108,19 @@ describe("LocalTransport", () => {
 		const [reportedCwd, marker] = normalizeShellOutput(output).split("\n");
 		expect(await realpath(reportedCwd)).toBe(await realpath(root));
 		expect(marker).toBe("ok");
+		let commandError: unknown;
 		try {
 			await transport.shell(signal, failingCommand(), 5000);
-			throw new Error("command should fail");
 		} catch (error) {
-			expect(error).toMatchObject({
-				name: "CommandFailedError",
-				exitCode: 7,
-			});
-			expect(normalizeShellOutput((error as Error).message)).toBe(
-				"Command exited with code: 7\noutput: failed\n",
-			);
+			commandError = error;
 		}
+		expect(commandError).toMatchObject({
+			name: "CommandFailedError",
+			exitCode: 7,
+		});
+		expect(normalizeShellOutput((commandError as Error).message)).toBe(
+			"Command exited with code: 7\noutput: failed\n",
+		);
 	});
 
 	it("maps shell aborts and timeouts to transport errors", async () => {
@@ -180,6 +181,54 @@ describe("findFiles", () => {
 
 		expect(cappedResults).toHaveLength(1);
 		expect(cappedResults).toEqual(["a.ts"]);
+	});
+
+	it("finds files through the remote shell for SSH transports", async () => {
+		const shellCalls: unknown[] = [];
+		const transport = {
+			cwd: "/remote/workspace",
+			toolRunTransport: () => ({
+				type: "ssh" as const,
+				target: "user@example.test",
+			}),
+			writeFile: async () => undefined,
+			readFile: async () => "",
+			pathExists: async () => false,
+			isDirectory: async () => false,
+			mkdir: async () => undefined,
+			readdir: async () => [],
+			modTime: async () => 0,
+			resolvePath: async (_signal: AbortSignal, file: string) => file,
+			shell: async (signal: AbortSignal, command: string, timeout: number) => {
+				shellCalls.push({ aborted: signal.aborted, command, timeout });
+				return [
+					"./src/a.ts",
+					"./src/b.test.ts",
+					"./src/nested/c.ts",
+					"./node_modules/pkg/hidden.ts",
+				].join("\n");
+			},
+			close: async () => undefined,
+		};
+
+		await expect(
+			findFiles(new AbortController().signal, transport, {
+				includeName: "*.ts",
+				excludeName: "*.test.ts",
+				maxResults: 10,
+			}),
+		).resolves.toEqual(["src/a.ts", "src/nested/c.ts"]);
+		expect(shellCalls).toHaveLength(1);
+		const command = (shellCalls[0] as { command: string }).command;
+		expect(command).toStartWith("find '.' -mindepth 1 \\( -type d \\(");
+		expect(command).toContain("-name 'node_modules'");
+		expect(command).toContain("-name '.git'");
+		expect(command).toContain("\\) -prune \\) -o -type f -print | sort");
+		expect(shellCalls).toContainEqual({
+			aborted: false,
+			command,
+			timeout: 30000,
+		});
 	});
 });
 

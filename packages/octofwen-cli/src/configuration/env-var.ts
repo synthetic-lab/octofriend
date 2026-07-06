@@ -36,7 +36,9 @@ async function requestConfigMerge(
 	try {
 		const result = await client.request(method, params);
 		if (!(isRecord(result) && "config" in result)) {
-			throw new Error("Invalid octofwen-agentd config merge result");
+			return Promise.reject(
+				new Error("Invalid octofwen-agentd config merge result"),
+			);
 		}
 		return result["config"];
 	} finally {

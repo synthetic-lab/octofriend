@@ -40,7 +40,7 @@ describe("MCP tool orchestration", () => {
 				name: "mcp",
 				run: async () => {
 					await Promise.resolve();
-					throw new Error("fallback MCP runner should not run");
+					return Promise.reject(new Error("fallback MCP runner should not run"));
 				},
 			},
 		} as never;

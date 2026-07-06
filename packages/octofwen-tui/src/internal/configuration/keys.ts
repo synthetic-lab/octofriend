@@ -21,7 +21,7 @@ export async function assertKeyForModel(
 	config: Config | null,
 ): Promise<string> {
 	const result = await readKeyForModelWithDetails(model, config);
-	if (!result.ok) throw new Error(result.error.message);
+	if (!result.ok) return Promise.reject(new Error(result.error.message));
 	return result.key;
 }
 

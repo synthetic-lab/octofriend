@@ -28,11 +28,14 @@ function bridgeBackedInputHistoryStore(initialHistory: string[] = []) {
 describe("loadInputHistory", () => {
 	test("loads empty history and appends non-empty items through the bridge", async () => {
 		const store = bridgeBackedInputHistoryStore();
-		const inputHistory = await loadInputHistory({
+		const result = await loadInputHistory({
 			load: store.load,
 			append: store.append,
 			databasePath: "/tmp/history.sqlite",
 		});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		const inputHistory = result.data;
 
 		expect(inputHistory.getCurrentHistory()).toEqual([]);
 
@@ -50,10 +53,13 @@ describe("loadInputHistory", () => {
 
 	test("ignores blank input before calling the bridge", async () => {
 		const store = bridgeBackedInputHistoryStore(["existing"]);
-		const inputHistory = await loadInputHistory({
+		const result = await loadInputHistory({
 			load: store.load,
 			append: store.append,
 		});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		const inputHistory = result.data;
 
 		await inputHistory.appendToInputHistory("   ");
 
@@ -63,12 +69,15 @@ describe("loadInputHistory", () => {
 
 	test("passes configured database path and limit to bridge load and append calls", async () => {
 		const store = bridgeBackedInputHistoryStore();
-		const inputHistory = await loadInputHistory({
+		const result = await loadInputHistory({
 			load: store.load,
 			append: store.append,
 			databasePath: "/tmp/custom.sqlite",
 			maxHistoryItems: 3,
 		});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		const inputHistory = result.data;
 
 		await inputHistory.appendToInputHistory("prompt");
 
@@ -86,10 +95,13 @@ describe("loadInputHistory", () => {
 
 	test("omits database path by default so storage owns the persisted location", async () => {
 		const store = bridgeBackedInputHistoryStore();
-		const inputHistory = await loadInputHistory({
+		const result = await loadInputHistory({
 			load: store.load,
 			append: store.append,
 		});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		const inputHistory = result.data;
 
 		await inputHistory.appendToInputHistory("prompt");
 
@@ -97,5 +109,13 @@ describe("loadInputHistory", () => {
 		expect(store.appends).toEqual([
 			{ input: "prompt", maxHistoryItems: MAX_HISTORY_ITEMS },
 		]);
+	});
+	test("returns an error when bridge functions are missing", async () => {
+		const result = await loadInputHistory();
+
+		expect(result).toEqual({
+			success: false,
+			error: "Input history bridge is required",
+		});
 	});
 });

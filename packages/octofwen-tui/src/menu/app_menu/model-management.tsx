@@ -13,9 +13,8 @@ import {
 } from "../../internal/configuration/react-context.ts";
 import type { Config } from "../../internal/configuration/schemas.ts";
 import { ModelSetup } from "../model_setup/auto-detect-models.tsx";
-import { useMenuState } from "./menu-state.ts";
 
-export function SetDefaultModelMenu() {
+export function SetDefaultModelMenu({ onBack }: { onBack: () => void }) {
 	const { setModelOverride, toggleMenu } = useAppStore(
 		useShallow((state) => ({
 			setModelOverride: state.setModelOverride,
@@ -25,14 +24,9 @@ export function SetDefaultModelMenu() {
 
 	const config = useConfig();
 	const setConfig = useSetConfig();
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
 
 	useInput((_, key) => {
-		if (key.escape) setMenuMode("main-menu");
+		if (key.escape) onBack();
 	});
 
 	const numericItems = config.models.map((model) => {
@@ -61,7 +55,7 @@ export function SetDefaultModelMenu() {
 	const onSelect = useCallback(
 		async (item: Item<`model-${string}` | "back">) => {
 			if (item.value === "back") {
-				setMenuMode("main-menu");
+				onBack();
 				return;
 			}
 			const target = item.value.replace("model-", "");
@@ -73,10 +67,9 @@ export function SetDefaultModelMenu() {
 				models: [model, ...rest],
 			});
 			setModelOverride(target);
-			setMenuMode("main-menu");
 			toggleMenu();
 		},
-		[config],
+		[config, onBack, setConfig, setModelOverride, toggleMenu],
 	);
 
 	return (
@@ -88,7 +81,7 @@ export function SetDefaultModelMenu() {
 	);
 }
 
-export function RemoveModelMenu() {
+export function RemoveModelMenu({ onBack }: { onBack: () => void }) {
 	const { setModelOverride, toggleMenu } = useAppStore(
 		useShallow((state) => ({
 			setModelOverride: state.setModelOverride,
@@ -98,14 +91,9 @@ export function RemoveModelMenu() {
 
 	const config = useConfig();
 	const setConfig = useSetConfig();
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
 
 	useInput((_, key) => {
-		if (key.escape) setMenuMode("main-menu");
+		if (key.escape) onBack();
 	});
 
 	const numericItems = config.models.map((model) => {
@@ -134,7 +122,7 @@ export function RemoveModelMenu() {
 	const onSelect = useCallback(
 		async (item: Item<`model-${string}` | "back">) => {
 			if (item.value === "back") {
-				setMenuMode("main-menu");
+				onBack();
 				return;
 			}
 			const target = item.value.replace("model-", "");
@@ -145,10 +133,9 @@ export function RemoveModelMenu() {
 			});
 			const current = rest[0];
 			setModelOverride(current.nickname);
-			setMenuMode("main-menu");
 			toggleMenu();
 		},
-		[config],
+		[config, onBack, setConfig, setModelOverride, toggleMenu],
 	);
 
 	return (
@@ -160,12 +147,13 @@ export function RemoveModelMenu() {
 	);
 }
 
-export function AddModelMenuFlow() {
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
+export function AddModelMenuFlow({
+	onComplete: onRouteComplete,
+	onCancel,
+}: {
+	onComplete: () => void;
+	onCancel: () => void;
+}) {
 	const setConfig = useSetConfig();
 	const config = useConfig();
 
@@ -175,14 +163,10 @@ export function AddModelMenuFlow() {
 				...config,
 				models: [...config.models, ...models],
 			});
-			setMenuMode("model-select");
+			onRouteComplete();
 		},
-		[config, setConfig],
+		[config, onRouteComplete, setConfig],
 	);
-
-	const onCancel = useCallback(() => {
-		setMenuMode("main-menu");
-	}, [setMenuMode]);
 
 	const onOverrideDefaultApiKey = useCallback(
 		async (overrides: Record<string, string>) => {

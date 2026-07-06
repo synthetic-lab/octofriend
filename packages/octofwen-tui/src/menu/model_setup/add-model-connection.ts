@@ -1,7 +1,9 @@
 import { createContext, useContext } from "react";
+import { errorToString } from "../../app/result.ts";
 import * as logger from "../../app/runtime_logging.ts";
 import { trackTokens } from "../../app/token_usage.ts";
 import { assertKeyForModel } from "../../internal/configuration/keys.ts";
+import { providerForBaseUrl } from "../../internal/model-provider-catalog/main.ts";
 import type {
 	MinConnectArgs,
 	ModelMetadata,
@@ -9,6 +11,7 @@ import type {
 } from "./add-model-types.ts";
 
 export type ModelConnectionTestParams = {
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	baseUrl: string;
 	apiKey: string;
 	model: string;
@@ -44,7 +47,13 @@ export async function testConnection({
 }: MinConnectArgs): Promise<TestConnectionResult> {
 	try {
 		const apiKey = await assertKeyForModel({ baseUrl, auth }, config);
-		const result = await modelConnectionTest({ baseUrl, apiKey, model });
+		const providerType = providerForBaseUrl(baseUrl)?.type;
+		const result = await modelConnectionTest({
+			...(providerType === "gemini" ? { type: providerType } : {}),
+			baseUrl,
+			apiKey,
+			model,
+		});
 		if (!result.valid) return { valid: false };
 
 		trackTokens(model, "input", result.promptTokens ?? 0);
@@ -53,6 +62,6 @@ export async function testConnection({
 		return { valid: true, metadata: result.metadata };
 	} catch (error) {
 		logger.error("verbose", error);
-		return { valid: false };
+		return { valid: false, errorMessage: errorToString(error) };
 	}
 }

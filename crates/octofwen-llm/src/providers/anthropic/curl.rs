@@ -9,6 +9,8 @@ pub struct AnthropicCurlRequest {
     pub messages: Value,
     pub tools: Option<Value>,
     pub max_tokens: u64,
+    pub thinking: Option<Value>,
+    pub output_config: Option<Value>,
 }
 
 pub fn anthropic_messages_curl(request: &AnthropicCurlRequest) -> String {
@@ -18,7 +20,8 @@ pub fn anthropic_messages_curl(request: &AnthropicCurlRequest) -> String {
         &request.messages,
         request.tools.as_ref(),
         request.max_tokens,
-        None,
+        request.thinking.as_ref(),
+        request.output_config.as_ref(),
     );
 
     format!(

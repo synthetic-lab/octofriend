@@ -46,7 +46,7 @@ pub fn build_tool_parse_execution_result(
 }
 
 fn schema_error_message(error: &str, args: &Value, expected: &str) -> String {
-    let args_json = serde_json::to_string(args).unwrap_or_else(|_| "null".into());
+    let args_json = serde_json::to_string(args).unwrap_or_else(|_| Value::Null.to_string());
     format!(
         "Failed to parse tool call: {error}. Make sure your arguments are valid and match the expected format.\n\nYour arguments were:\n{args_json}\n\nExpected:\n{expected}"
     )

@@ -12,7 +12,6 @@ import {
 	SYNTHETIC_PROVIDER,
 } from "../../internal/model-provider-catalog/main.ts";
 import { AutofixModelMenu } from "../model_setup/autofix-model-menu.tsx";
-import { useMenuState } from "./menu-state.ts";
 
 function AutofixToggle({
 	configKey,
@@ -21,6 +20,7 @@ function AutofixToggle({
 	enableNotification,
 	defaultModel,
 	children,
+	onBack,
 }: {
 	disableNotification: string;
 	enableNotification: string;
@@ -28,14 +28,10 @@ function AutofixToggle({
 	modelNickname: string;
 	configKey: "diffApply" | "fixJson";
 	children: React.ReactNode;
+	onBack: () => void;
 }) {
 	const config = useConfig();
 	const setConfig = useSetConfig();
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
-		})),
-	);
 	const { toggleMenu, notify } = useAppStore(
 		useShallow((state) => ({
 			toggleMenu: state.toggleMenu,
@@ -44,7 +40,7 @@ function AutofixToggle({
 	);
 
 	useInput((_, key) => {
-		if (key.escape) setMenuMode("main-menu");
+		if (key.escape) onBack();
 	});
 
 	if (config[configKey]) {
@@ -56,12 +52,11 @@ function AutofixToggle({
 					const newconf = { ...config };
 					delete newconf[configKey];
 					await setConfig(newconf);
-					setMenuMode("main-menu");
 					toggleMenu();
 					notify(disableNotification);
 				}}
 				onConfirm={() => {
-					setMenuMode("main-menu");
+					onBack();
 				}}
 			/>
 		);
@@ -72,11 +67,13 @@ function AutofixToggle({
 			modelNickname={modelNickname}
 			config={config}
 			onOverrideDefaultApiKey={async (apiEnvVar) => {
+				const key = keyFromName(SYNTHETIC_PROVIDER.name);
+				if (!key.success) return;
 				await setConfig({
 					...config,
 					defaultApiKeyOverrides: {
 						...(config.defaultApiKeyOverrides || {}),
-						[keyFromName(SYNTHETIC_PROVIDER.name)]: apiEnvVar,
+						[key.data]: apiEnvVar,
 					},
 				});
 			}}
@@ -85,12 +82,11 @@ function AutofixToggle({
 					...config,
 					[configKey]: setting,
 				});
-				setMenuMode("main-menu");
 				toggleMenu();
 				notify(enableNotification);
 			}}
 			onCancel={() => {
-				setMenuMode("main-menu");
+				onBack();
 			}}
 		>
 			{children}
@@ -98,7 +94,7 @@ function AutofixToggle({
 	);
 }
 
-export function DiffApplyToggle() {
+export function DiffApplyToggle({ onBack }: { onBack: () => void }) {
 	return (
 		<AutofixToggle
 			defaultModel="hf:syntheticlab/diff-apply"
@@ -106,6 +102,7 @@ export function DiffApplyToggle() {
 			modelNickname="diff-apply"
 			enableNotification="Fast diff apply enabled"
 			disableNotification="Fast diff apply disabled"
+			onBack={onBack}
 		>
 			<Text>
 				Even good coding models sometimes make minor mistakes generating code
@@ -119,7 +116,7 @@ export function DiffApplyToggle() {
 	);
 }
 
-export function FixJsonToggle() {
+export function FixJsonToggle({ onBack }: { onBack: () => void }) {
 	return (
 		<AutofixToggle
 			defaultModel="hf:syntheticlab/fix-json"
@@ -127,6 +124,7 @@ export function FixJsonToggle() {
 			modelNickname="fix-json"
 			enableNotification="JSON auto-fix enabled"
 			disableNotification="JSON auto-fix disabled"
+			onBack={onBack}
 		>
 			<Text>
 				Octo uses tools to work with your underlying codebase. Some model

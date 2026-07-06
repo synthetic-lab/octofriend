@@ -162,9 +162,12 @@ export function ModelSetup({
 					config={config}
 					onComplete={async (auth) => {
 						if (auth && auth.type === "env") {
-							await onOverrideDefaultApiKey({
-								[keyFromName(stepData.provider.name)]: auth.name,
-							});
+							const key = keyFromName(stepData.provider.name);
+							if (key.success) {
+								await onOverrideDefaultApiKey({
+									[key.data]: auth.name,
+								});
+							}
 						}
 						dispatch({
 							from: "missing",

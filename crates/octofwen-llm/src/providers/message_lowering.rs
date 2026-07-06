@@ -1,5 +1,5 @@
 use crate::prompts::{image_attachment_placeholder_text, tool_skip};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 pub fn anthropic_messages_from_ts_ir(
     irs: &[Value],
@@ -10,6 +10,224 @@ pub fn anthropic_messages_from_ts_ir(
         .map(|ir| anthropic_message_from_ts_ir(ir, modalities))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Value::Array(messages))
+}
+
+pub fn gemini_contents_from_ts_ir(
+    irs: &[Value],
+    modalities: Option<&[String]>,
+) -> Result<Value, String> {
+    let contents = irs
+        .iter()
+        .map(|ir| gemini_content_from_ts_ir(ir, modalities))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Value::Array(contents))
+}
+
+fn gemini_content_from_ts_ir(ir: &Value, modalities: Option<&[String]>) -> Result<Value, String> {
+    match string_field(ir, "role").unwrap_or_default() {
+        "assistant" => Ok(json!({
+            "role": "model",
+            "parts": gemini_assistant_parts(ir),
+        })),
+        "user" | "lowered-checkpoint" => Ok(json!({
+            "role": "user",
+            "parts": gemini_content_parts(ir.get("content"), modalities),
+        })),
+        "tool-output" => Ok(gemini_function_response_content(
+            ir.get("toolCall"),
+            "output",
+            gemini_tool_output(ir.get("content"), modalities),
+        )),
+        "tool-skip-output" => Ok(gemini_function_response_content(
+            ir.get("toolCall"),
+            "error",
+            tool_skip(string_field(ir, "reason").unwrap_or_default()),
+        )),
+        "tool-runtime-error" | "tool-validation-error" => Ok(gemini_function_response_content(
+            ir.get("toolCall"),
+            "error",
+            format!("Error: {}", string_field(ir, "error").unwrap_or_default()),
+        )),
+        "tool-parse-error" => Ok(gemini_function_response_content(
+            ir.get("malformedRequest"),
+            "error",
+            format!(
+                "Error: {}",
+                nested_string_field(ir, "malformedRequest", "error")
+            ),
+        )),
+        role => Err(format!("Unsupported IR role: {role}")),
+    }
+}
+
+fn gemini_assistant_parts(ir: &Value) -> Vec<Value> {
+    let tool_calls = ir.get("toolCalls").and_then(Value::as_array);
+    let mut parts = Vec::new();
+    if string_field(ir, "content").is_some_and(|content| !content.is_empty())
+        || tool_calls.is_none_or(|tool_calls| tool_calls.is_empty())
+    {
+        let part_index = parts.len() as u64;
+        let mut part = Map::new();
+        part.insert(
+            "text".into(),
+            Value::String(
+                match string_field(ir, "content") {
+                    Some("") | None => " ",
+                    Some(content) => content,
+                }
+                .into(),
+            ),
+        );
+        append_gemini_thought_signature(&mut part, gemini_thought_signature(ir, part_index, None));
+        parts.push(Value::Object(part));
+    }
+    if let Some(tool_calls) = tool_calls {
+        for tool_call in tool_calls
+            .iter()
+            .filter(|tool_call| string_field(tool_call, "type") == Some("tool-call"))
+        {
+            let part_index = parts.len() as u64;
+            let tool_call_id = string_field(tool_call, "toolCallId").unwrap_or_default();
+            let mut function_call = Map::new();
+            function_call.insert("id".into(), Value::String(tool_call_id.into()));
+            function_call.insert(
+                "name".into(),
+                Value::String(string_field(tool_call, "name").unwrap_or_default().into()),
+            );
+            function_call.insert(
+                "args".into(),
+                tool_call
+                    .get("original")
+                    .cloned()
+                    .unwrap_or_else(|| json!({})),
+            );
+            let mut part = Map::new();
+            part.insert("functionCall".into(), Value::Object(function_call));
+            append_gemini_thought_signature(
+                &mut part,
+                gemini_thought_signature(ir, part_index, Some(tool_call_id)),
+            );
+            parts.push(Value::Object(part));
+        }
+    }
+    parts
+}
+
+fn append_gemini_thought_signature(part: &mut Map<String, Value>, signature: Option<&str>) {
+    if let Some(signature) = signature {
+        part.insert("thoughtSignature".into(), Value::String(signature.into()));
+    }
+}
+
+fn gemini_thought_signature<'a>(
+    ir: &'a Value,
+    part_index: u64,
+    tool_call_id: Option<&str>,
+) -> Option<&'a str> {
+    let signatures = ir
+        .get("gemini")
+        .and_then(|gemini| gemini.get("thoughtSignatures"))
+        .and_then(Value::as_array)?;
+
+    if let Some(tool_call_id) = tool_call_id.filter(|tool_call_id| !tool_call_id.is_empty())
+        && let Some(signature) = signatures.iter().find(|signature| {
+            string_field(signature, "toolCallId") == Some(tool_call_id)
+                && string_field(signature, "thoughtSignature").is_some()
+        })
+    {
+        return string_field(signature, "thoughtSignature");
+    }
+
+    signatures
+        .iter()
+        .find(|signature| {
+            signature.get("partIndex").and_then(Value::as_u64) == Some(part_index)
+                && string_field(signature, "thoughtSignature").is_some()
+        })
+        .and_then(|signature| string_field(signature, "thoughtSignature"))
+}
+
+fn gemini_function_response_content(
+    tool_call: Option<&Value>,
+    response_field: &str,
+    response_value: String,
+) -> Value {
+    json!({
+        "role": "user",
+        "parts": [{
+            "functionResponse": {
+                "id": tool_call_id(tool_call),
+                "name": tool_call_name(tool_call),
+                "response": {
+                    response_field: response_value,
+                },
+            },
+        }],
+    })
+}
+
+fn gemini_content_parts(content: Option<&Value>, modalities: Option<&[String]>) -> Vec<Value> {
+    let Some(parts) = content.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    parts
+        .iter()
+        .map(|part| gemini_content_part(part, modalities))
+        .collect()
+}
+
+fn gemini_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
+    if string_field(part, "type") == Some("text") {
+        return json!({
+            "text": string_field(part, "content").unwrap_or_default(),
+        });
+    }
+    if supports_vision(modalities) {
+        return json!({
+            "inlineData": {
+                "mimeType": nested_string_field(part, "image", "mimeType"),
+                "data": nested_string_field(part, "image", "base64Data"),
+            },
+        });
+    }
+    json!({
+        "text": image_attachment_placeholder_text(),
+    })
+}
+
+fn gemini_tool_output(content: Option<&Value>, modalities: Option<&[String]>) -> String {
+    let Some(parts) = content.and_then(Value::as_array) else {
+        return String::new();
+    };
+    let visible_parts = parts
+        .iter()
+        .map(|part| {
+            if string_field(part, "type") == Some("text") {
+                return json!({ "type": "text", "text": string_field(part, "content").unwrap_or_default() });
+            }
+            if !supports_vision(modalities) {
+                return json!({ "type": "text", "text": image_attachment_placeholder_text() });
+            }
+            json!({
+                "type": "image",
+                "mimeType": nested_string_field(part, "image", "mimeType"),
+                "data": nested_string_field(part, "image", "base64Data"),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    if visible_parts
+        .iter()
+        .all(|part| string_field(part, "type") == Some("text"))
+    {
+        return visible_parts
+            .iter()
+            .map(|part| string_field(part, "text").unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
+
+    serde_json::to_string(&visible_parts).unwrap_or_else(|_| Value::Null.to_string())
 }
 
 fn anthropic_message_from_ts_ir(
@@ -150,6 +368,13 @@ fn tool_call_id(value: Option<&Value>) -> &str {
         .unwrap_or_default()
 }
 
+fn tool_call_name(value: Option<&Value>) -> &str {
+    value
+        .and_then(|value| value.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
 fn nested_string_field<'a>(
     value: &'a Value,
     object_field: &str,
@@ -160,6 +385,14 @@ fn nested_string_field<'a>(
         .and_then(|object| object.get(string_field_name))
         .and_then(Value::as_str)
         .unwrap_or_default()
+}
+
+fn json_value_string(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| Value::Null.to_string())
+}
+
+fn empty_json_object_string() -> String {
+    json!({}).to_string()
 }
 
 fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
@@ -249,7 +482,7 @@ fn openai_chat_completion_message_from_ts_ir(
 fn openai_assistant_message(ir: &Value) -> Value {
     let tool_calls = ir.get("toolCalls").and_then(Value::as_array);
     let has_tool_calls = tool_calls.is_some_and(|tool_calls| !tool_calls.is_empty());
-    let mut message = serde_json::Map::new();
+    let mut message = Map::new();
     if let Some(reasoning_content) = string_field(ir, "reasoningContent") {
         message.insert(
             "reasoning_content".into(),
@@ -295,8 +528,8 @@ fn openai_tool_call(tool_call: &Value) -> Value {
             "name": string_field(tool_call, "name").unwrap_or_default(),
             "arguments": tool_call
                 .get("original")
-                .map(|original| serde_json::to_string(original).expect("serializing serde_json::Value cannot fail"))
-                .unwrap_or_else(|| "{}".into()),
+                .map(json_value_string)
+                .unwrap_or_else(empty_json_object_string),
         },
         "id": string_field(tool_call, "toolCallId").unwrap_or_default(),
     })
@@ -436,8 +669,8 @@ fn openai_response_assistant_input(ir: &Value) -> Vec<Value> {
                         "name": string_field(tool_call, "name").unwrap_or_default(),
                         "arguments": tool_call
                             .get("original")
-                            .map(|original| serde_json::to_string(original).expect("serializing serde_json::Value cannot fail"))
-                            .unwrap_or_else(|| "{}".into()),
+                            .map(json_value_string)
+                            .unwrap_or_else(empty_json_object_string),
                     })
                 }),
         );
@@ -508,5 +741,5 @@ fn response_tool_output(content: Option<&Value>, modalities: Option<&[String]>) 
             .join("\n");
     }
 
-    serde_json::to_string(&visible_parts).expect("serializing serde_json::Value cannot fail")
+    serde_json::to_string(&visible_parts).unwrap_or_else(|_| Value::Null.to_string())
 }

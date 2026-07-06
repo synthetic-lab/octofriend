@@ -23,6 +23,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 	query: "",
 	clearNonce: 0,
 	lastUserPromptIndex: null,
+	pendingRejectedToolCall: null,
 	whitelist: new Set<string>(),
 	...createNotificationActions(set, get),
 	...createAgentActions(set, get),

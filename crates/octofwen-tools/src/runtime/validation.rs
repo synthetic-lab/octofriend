@@ -1,3 +1,4 @@
+use jsonschema::ValidationError;
 use serde_json::Value;
 
 use crate::runtime::builder::ToolDefinition;
@@ -13,6 +14,17 @@ pub fn validate_json_schema_arguments(schema: &Value, arguments: &Value) -> Resu
     if !schema.is_object() {
         return Ok(());
     }
+
+    validate_legacy_root_argument_messages(schema, arguments)?;
+
+    let validator = jsonschema::validator_for(schema)
+        .map_err(|error| format!("invalid tool argument schema: {error}"))?;
+    validator
+        .validate(arguments)
+        .map_err(format_json_schema_validation_error)
+}
+
+fn validate_legacy_root_argument_messages(schema: &Value, arguments: &Value) -> Result<(), String> {
     if schema.get("type").and_then(Value::as_str) == Some("object") && !arguments.is_object() {
         return Err("tool arguments must be an object".into());
     }
@@ -35,12 +47,12 @@ pub fn validate_json_schema_arguments(schema: &Value, arguments: &Value) -> Resu
         let Some(value) = object.get(key) else {
             continue;
         };
-        validate_property_type(key, property_schema, value)?;
+        validate_legacy_property_type(key, property_schema, value)?;
     }
     Ok(())
 }
 
-fn validate_property_type(key: &str, schema: &Value, value: &Value) -> Result<(), String> {
+fn validate_legacy_property_type(key: &str, schema: &Value, value: &Value) -> Result<(), String> {
     let Some(schema_type) = schema.get("type").and_then(Value::as_str) else {
         return Ok(());
     };
@@ -57,4 +69,11 @@ fn validate_property_type(key: &str, schema: &Value, value: &Value) -> Result<()
         return Ok(());
     }
     Err(format!("tool argument {key} must be a {schema_type}"))
+}
+
+fn format_json_schema_validation_error(error: ValidationError<'_>) -> String {
+    format!(
+        "tool argument validation failed at {}: {error}",
+        error.instance_path()
+    )
 }

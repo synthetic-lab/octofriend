@@ -1,6 +1,6 @@
-import { Box, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useContext, useState } from "react";
 import {
 	type Item,
 	KbShortcutPanel,
@@ -8,9 +8,12 @@ import {
 } from "../../input/shortcuts.tsx";
 import type { Config } from "../../internal/configuration/schemas.ts";
 import { SYNTHETIC_PROVIDER } from "../../internal/model-provider-catalog/main.ts";
+import { useModelConnectionTest } from "./add-model-connection.ts";
+import { errorContext } from "./add-model-error-context.tsx";
 import { CustomAuthFlow, CustomAutofixFlow } from "./add-model-flow.tsx";
 import {
 	resolveSyntheticAutofixSelection,
+	resolveSyntheticAutofixSelectionFromAuth,
 	syntheticAutofixDiffApplyFromAuth,
 } from "./primitives.tsx";
 
@@ -40,6 +43,16 @@ export function AutofixModelMenu({
 	const [step, setStep] = useState<"choose" | "custom" | "missing-auth">(
 		"choose",
 	);
+	const [errorMessage, setLocalErrorMessage] = useState("");
+	const { setErrorMessage } = useContext(errorContext);
+	const modelConnectionTest = useModelConnectionTest();
+	const showConnectionError = useCallback(
+		(message: string) => {
+			setLocalErrorMessage(message);
+			setErrorMessage(message);
+		},
+		[setErrorMessage],
+	);
 
 	useInput((_, key) => {
 		if (key.escape) onCancel();
@@ -67,13 +80,17 @@ export function AutofixModelMenu({
 
 	const onSelect = useCallback(
 		async (item: Item<"synthetic" | "custom" | "back">) => {
+			setLocalErrorMessage("");
 			if (item.value === "synthetic") {
 				const result = await resolveSyntheticAutofixSelection({
 					config,
 					defaultModel,
+					modelConnectionTest,
 				});
 				if (result.step === "missing-auth") {
 					setStep("missing-auth");
+				} else if (result.step === "connection-failed") {
+					showConnectionError(result.errorMessage);
 				} else {
 					onComplete(result.diffApply);
 				}
@@ -83,7 +100,14 @@ export function AutofixModelMenu({
 			if (item.value === "custom") setStep("custom");
 			else onCancel();
 		},
-		[config, onCancel, onComplete],
+		[
+			config,
+			defaultModel,
+			modelConnectionTest,
+			onCancel,
+			onComplete,
+			showConnectionError,
+		],
 	);
 
 	if (step === "custom") {
@@ -111,11 +135,26 @@ export function AutofixModelMenu({
 				baseUrl={SYNTHETIC_PROVIDER.baseUrl}
 				onCancel={() => setStep("choose")}
 				onComplete={async (auth) => {
+					const result = await resolveSyntheticAutofixSelectionFromAuth({
+						config,
+						defaultModel,
+						auth,
+						modelConnectionTest,
+					});
+					if (result.step === "connection-failed") {
+						showConnectionError(result.errorMessage);
+						setStep("choose");
+						return;
+					}
+					if (result.step === "missing-auth") {
+						setStep("missing-auth");
+						return;
+					}
 					if (auth && auth.type === "env") {
 						await onOverrideDefaultApiKey(auth.name);
 						onComplete(syntheticAutofixDiffApplyFromAuth(defaultModel));
 					} else {
-						onComplete(syntheticAutofixDiffApplyFromAuth(defaultModel, auth));
+						onComplete(result.diffApply);
 					}
 				}}
 			/>
@@ -129,6 +168,11 @@ export function AutofixModelMenu({
 			onSelect={onSelect}
 		>
 			<Box marginBottom={1} flexDirection="column" gap={1}>
+				{errorMessage && (
+					<Text color="red" bold={true}>
+						{errorMessage}
+					</Text>
+				)}
 				{children}
 			</Box>
 		</KbShortcutPanel>

@@ -40,6 +40,7 @@ export type AgentdTrajectoryFinishResult = {
 		| { type: "needs-response" }
 		| { type: "request-tool"; toolCalls: unknown[] }
 		| { type: "request-error"; requestError: string; curl: string }
+		| { type: "auth-error"; requestError: string; curl: string }
 		| { type: "payment-error"; requestError: string; curl: string }
 		| { type: "rate-limit-error"; requestError: string; curl: string };
 	events: Array<
@@ -61,6 +62,7 @@ function isTrajectoryFinishReason(
 		return Array.isArray(value["toolCalls"]);
 	return (
 		(value["type"] === "request-error" ||
+			value["type"] === "auth-error" ||
 			value["type"] === "payment-error" ||
 			value["type"] === "rate-limit-error") &&
 		typeof value["requestError"] === "string" &&

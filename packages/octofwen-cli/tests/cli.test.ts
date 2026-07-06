@@ -13,16 +13,10 @@ function runCliCommand(...args: string[]) {
 function expectSuccessfulHelp(args: string[], expectedSnippets: string[]) {
 	const result = runCliCommand(...args, "--help");
 
-	if (result.exitCode !== 0) {
-		throw new Error(
-			`Expected help command to exit with 0, got ${result.exitCode}`,
-		);
-	}
+	expect(result.exitCode).toBe(0);
 	const output = result.stdout.toString();
 	for (const snippet of expectedSnippets) {
-		if (!output.includes(snippet)) {
-			throw new Error(`Expected help output to contain ${snippet}`);
-		}
+		expect(output).toContain(snippet);
 	}
 }
 

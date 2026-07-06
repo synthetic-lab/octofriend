@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Result } from "../../../app/result.ts";
 import type { Config } from "../../../internal/configuration/schemas.ts";
 import { loadTools } from "../../../internal/tool-orchestration/main.ts";
 import type { Transport } from "../../../internal/transport/common.ts";
@@ -17,6 +18,11 @@ const transport: Transport = {
 	close: async () => undefined,
 };
 
+function expectOk<T, E>(result: Result<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : (undefined as T);
+}
+
 const baseConfig: Config = {
 	yourName: "Octo",
 	models: [
@@ -31,26 +37,28 @@ const baseConfig: Config = {
 
 test("MCP tool declaration availability is requested from runtime definitions", async () => {
 	const calls: unknown[] = [];
-	await loadTools(
-		transport,
-		new AbortController().signal,
-		{
-			...baseConfig,
-			mcpServers: {
-				filesystem: { command: "mcp-server", args: ["--stdio"] },
+	expectOk(
+		await loadTools(
+			transport,
+			new AbortController().signal,
+			{
+				...baseConfig,
+				mcpServers: {
+					filesystem: { command: "mcp-server", args: ["--stdio"] },
+				},
 			},
-		},
-		{
-			toolDefinitions: async (params) => {
-				await Promise.resolve();
-				calls.push(params);
-				return {
-					tools: [
-						{ name: "mcp", description: "MCP tools", argumentsSchema: {} },
-					],
-				};
+			{
+				toolDefinitions: async (params) => {
+					await Promise.resolve();
+					calls.push(params);
+					return {
+						tools: [
+							{ name: "mcp", description: "MCP tools", argumentsSchema: {} },
+						],
+					};
+				},
 			},
-		},
+		),
 	);
 
 	expect(calls).toEqual([

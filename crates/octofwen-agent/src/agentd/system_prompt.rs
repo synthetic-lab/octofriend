@@ -1,3 +1,4 @@
+use ignore::WalkBuilder;
 use octofwen_llm::prompts::{
     DirectoryEntry, InstructionFile, InstructionTarget, SystemPromptInput,
     render_instruction_files, system_prompt,
@@ -13,6 +14,8 @@ const INVALID_PARAMS: i64 = -32602;
 const CLAUDE_FILE_NAME: &str = "CLAUDE.md";
 const AGENTS_FILE_NAME: &str = "AGENTS.md";
 const AGENTS_DIRECTORY_NAME: &str = ".agents";
+const MAX_DIRECTORY_CONTEXT_ENTRIES: usize = 200;
+const MAX_DIRECTORY_CONTEXT_DEPTH: usize = 4;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,24 +121,43 @@ fn directory_entries_from_params(
 }
 
 fn directory_entries_from_filesystem(cwd: &Path) -> Vec<DirectoryEntry> {
-    let Ok(entries) = std::fs::read_dir(cwd) else {
-        return Vec::new();
-    };
-    let mut entries = entries
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let is_directory = entry
-                .metadata()
-                .map(|metadata| metadata.is_dir())
-                .unwrap_or(false);
-            Some(DirectoryEntry {
-                entry: entry.file_name().to_string_lossy().into_owned(),
-                is_directory,
-            })
-        })
+    let mut entries = WalkBuilder::new(cwd)
+        .standard_filters(true)
+        .max_depth(Some(MAX_DIRECTORY_CONTEXT_DEPTH))
+        .build()
+        .filter_map(|entry| directory_entry_from_walk_result(cwd, entry))
         .collect::<Vec<_>>();
     entries.sort_by(|left, right| left.entry.cmp(&right.entry));
+    entries.truncate(MAX_DIRECTORY_CONTEXT_ENTRIES);
     entries
+}
+
+fn directory_entry_from_walk_result(
+    cwd: &Path,
+    entry: Result<ignore::DirEntry, ignore::Error>,
+) -> Option<DirectoryEntry> {
+    let entry = entry.ok()?;
+    let path = entry.path();
+    if path == cwd {
+        return None;
+    }
+    let relative_path = path.strip_prefix(cwd).ok()?;
+    let entry_path = relative_path
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    if entry_path.is_empty() {
+        return None;
+    }
+    let is_directory = entry
+        .file_type()
+        .map(|file_type| file_type.is_dir())
+        .unwrap_or(false);
+    Some(DirectoryEntry {
+        entry: entry_path,
+        is_directory,
+    })
 }
 
 fn instruction_file_from_param(file: &SystemPromptInstructionFileParam) -> InstructionFile {

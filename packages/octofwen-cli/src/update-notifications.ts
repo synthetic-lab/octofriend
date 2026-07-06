@@ -1,4 +1,5 @@
 import path from "node:path";
+import { err, ok, type Result } from "./result.ts";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, "../../..");
 
@@ -36,21 +37,22 @@ export type MarkUpdatesSeenOptions = UpdateNotificationsParams & {
 
 export async function readUpdates(
 	options: ReadUpdatesOptions = {},
-): Promise<string | null> {
+): Promise<Result<string | null, string>> {
 	if (!options.read) {
-		throw new Error("Update notifications bridge is required");
+		return err("Update notifications bridge is required");
 	}
 	const result = await options.read(updateNotificationParams(options));
-	return result.updates;
+	return ok(result.updates);
 }
 
 export async function markUpdatesSeen(
 	options: MarkUpdatesSeenOptions = {},
-): Promise<void> {
+): Promise<Result<null, string>> {
 	if (!options.mark) {
-		throw new Error("Update notifications bridge is required");
+		return err("Update notifications bridge is required");
 	}
 	await options.mark(updateNotificationParams(options));
+	return ok(null);
 }
 
 function updateNotificationParams(

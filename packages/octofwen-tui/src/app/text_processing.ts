@@ -1,5 +1,7 @@
 import stringWidth from "string-width";
 
+import { err, ok, type Result } from "./result.ts";
+
 export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
 const LEADING_WHITESPACE_REGEX = /(^\s+)/;
 const TRAILING_WHITESPACE_REGEX = /(\s+$)/;
@@ -43,18 +45,22 @@ export function extractTrim(line: string): [string, string, string] {
 	return [spaceBefore, line.trim(), spaceAfter];
 }
 
-export function insertAt(str: string, index: number, add: string): string {
-	if (str.length === index + 1) return str + add;
-	if (index === 0) return add + str;
-	if (index >= str.length) throw new Error("inserting past end of string");
-	return str.slice(0, index) + add + str.slice(index);
+export function insertAt(
+	str: string,
+	index: number,
+	add: string,
+): Result<string, string> {
+	if (str.length === index + 1) return ok(str + add);
+	if (index === 0) return ok(add + str);
+	if (index >= str.length) return err("inserting past end of string");
+	return ok(str.slice(0, index) + add + str.slice(index));
 }
 
-export function cutIndex(str: string, index: number): string {
-	if (str.length === index + 1) return str.slice(0, index);
-	if (index === 0) return str.slice(1);
-	if (index >= str.length) throw new Error("cutting past end of string");
-	return str.slice(0, index) + str.slice(index + 1);
+export function cutIndex(str: string, index: number): Result<string, string> {
+	if (str.length === index + 1) return ok(str.slice(0, index));
+	if (index === 0) return ok(str.slice(1));
+	if (index >= str.length) return err("cutting past end of string");
+	return ok(str.slice(0, index) + str.slice(index + 1));
 }
 
 export function wrapTextWithMapping(

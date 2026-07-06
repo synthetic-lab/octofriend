@@ -43,7 +43,13 @@ export type TrajectoryArcRunner = (
 		apiKey: string;
 		model: Pick<
 			ModelConfig,
-			"type" | "baseUrl" | "model" | "context" | "reasoning" | "modalities"
+			| "type"
+			| "baseUrl"
+			| "model"
+			| "context"
+			| "reasoning"
+			| "thinkingBudgetTokens"
+			| "modalities"
 		>;
 		messages: readonly unknown[];
 		config: {
@@ -106,6 +112,7 @@ export async function trajectoryArc({
 				model: model.model,
 				context: model.context,
 				reasoning: model.reasoning,
+				thinkingBudgetTokens: model.thinkingBudgetTokens,
 				modalities: model.modalities,
 			},
 			messages,

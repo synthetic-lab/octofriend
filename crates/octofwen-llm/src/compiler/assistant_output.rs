@@ -1,4 +1,6 @@
-use crate::providers::stream::{AnthropicThinkingBlock, ProviderStreamState};
+use crate::providers::stream::{
+    AnthropicThinkingBlock, GeminiThoughtSignature, ProviderStreamState,
+};
 use serde_json::{Map, Value, json};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -6,6 +8,7 @@ pub enum AssistantOutputProvider {
     OpenAiChatCompletions,
     OpenAiResponses,
     Anthropic,
+    Gemini,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,6 +41,7 @@ pub fn build_assistant_output(request: &AssistantOutputRequest) -> AssistantOutp
         AssistantOutputProvider::Anthropic => {
             append_anthropic_metadata(&mut output, &request.state)
         }
+        AssistantOutputProvider::Gemini => append_gemini_metadata(&mut output, &request.state),
     }
 
     AssistantOutputResult {
@@ -81,6 +85,26 @@ fn append_anthropic_metadata(output: &mut Map<String, Value>, state: &ProviderSt
             "thinkingBlocks": state.anthropic.thinking_blocks.iter().map(anthropic_thinking_block_json).collect::<Vec<_>>(),
         }),
     );
+}
+
+fn append_gemini_metadata(output: &mut Map<String, Value>, state: &ProviderStreamState) {
+    if state.gemini.thought_signatures.is_empty() {
+        return;
+    }
+    output.insert(
+        "gemini".into(),
+        json!({
+            "thoughtSignatures": state.gemini.thought_signatures.iter().map(gemini_thought_signature_json).collect::<Vec<_>>(),
+        }),
+    );
+}
+
+fn gemini_thought_signature_json(signature: &GeminiThoughtSignature) -> Value {
+    json!({
+        "partIndex": signature.part_index,
+        "toolCallId": signature.tool_call_id,
+        "thoughtSignature": signature.thought_signature,
+    })
 }
 
 fn anthropic_thinking_block_json(block: &AnthropicThinkingBlock) -> Value {

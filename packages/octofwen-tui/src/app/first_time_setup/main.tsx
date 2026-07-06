@@ -1,5 +1,5 @@
 import { useApp } from "ink";
-import { useCallback, useLayoutEffect, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Config } from "../../internal/configuration/schemas.ts";
 import {
 	keyFromName,
@@ -8,11 +8,22 @@ import {
 import type { ModelConnectionTester } from "../../menu/model_setup/add-model-connection.ts";
 import { ModelConnectionTestContext } from "../../menu/model_setup/add-model-connection.ts";
 import { ModelSetup } from "../../menu/model_setup/auto-detect-models.tsx";
+import { Back, router } from "../../menu/model_setup/primitives.tsx";
 import { AutofixCompleteScreen } from "./autofix-complete-screen.tsx";
 import { AutofixSetup } from "./autofix-setup.tsx";
 import { NameStep } from "./name-step.tsx";
-import type { AutofixConfig, SetupStep } from "./types.ts";
+import type { FirstTimeSetupRouteData } from "./types.ts";
 import { WelcomeScreen } from "./welcome-screen.tsx";
+
+export const firstTimeSetupFlow = router<FirstTimeSetupRouteData>();
+
+function DoneRoute() {
+	const app = useApp();
+	useLayoutEffect(() => {
+		app.exit();
+	}, [app]);
+	return null;
+}
 
 export function FirstTimeSetup({
 	configPath,
@@ -21,108 +32,89 @@ export function FirstTimeSetup({
 	configPath: string;
 	modelConnectionTest: ModelConnectionTester;
 }) {
-	const [step, setStep] = useState<SetupStep>({ step: "welcome" });
 	const [defaultApiKeyOverrides, setDefaultApiKeyOverrides] = useState<
 		Record<string, string>
 	>({});
-	const app = useApp();
+	const defaultApiKeyOverridesRef = useRef(defaultApiKeyOverrides);
+	defaultApiKeyOverridesRef.current = defaultApiKeyOverrides;
 
-	const addOverride = useCallback(
-		async (override: Record<string, string>) => {
-			await Promise.resolve();
-			setDefaultApiKeyOverrides({
-				...defaultApiKeyOverrides,
-				...override,
-			});
-		},
-		[defaultApiKeyOverrides],
+	const addOverride = useCallback(async (override: Record<string, string>) => {
+		await Promise.resolve();
+		setDefaultApiKeyOverrides((current) => ({
+			...current,
+			...override,
+		}));
+	}, []);
+
+	const routes = useMemo(
+		() =>
+			firstTimeSetupFlow.route({
+				welcome: (to) => () => (
+					<WelcomeScreen onContinue={() => to.autofixSetup({})} />
+				),
+				autofixSetup: (to) => () => (
+					<ModelConnectionTestContext.Provider value={modelConnectionTest}>
+						<AutofixSetup
+							onComplete={(autofixConfig) =>
+								to.autofixComplete({ autofixConfig })
+							}
+							onSkip={() => to.addModel({})}
+							onOverrideDefaultApiKey={async (envVar) => {
+								const key = keyFromName(SYNTHETIC_PROVIDER.name);
+								if (key.success) {
+									await addOverride({
+										[key.data]: envVar,
+									});
+								}
+							}}
+						/>
+					</ModelConnectionTestContext.Provider>
+				),
+				autofixComplete: (to) => (props) => (
+					<Back go={() => to.autofixSetup({})}>
+						<AutofixCompleteScreen
+							onContinue={() =>
+								to.addModel({ autofixConfig: props.autofixConfig })
+							}
+						/>
+					</Back>
+				),
+				addModel: (to) => (props) => (
+					<ModelConnectionTestContext.Provider value={modelConnectionTest}>
+						<ModelSetup
+							config={null}
+							onComplete={(models: Config["models"]) =>
+								to.name({ models, autofixConfig: props.autofixConfig })
+							}
+							onCancel={() => {
+								if (props.autofixConfig) {
+									to.autofixComplete({ autofixConfig: props.autofixConfig });
+									return;
+								}
+								to.welcome({});
+							}}
+							onOverrideDefaultApiKey={addOverride}
+							titleOverride={
+								props.autofixConfig
+									? undefined
+									: "Okay, we'll skip that for now. Let's set you up with a coding model. Which inference provider do you want to use?"
+							}
+						/>
+					</ModelConnectionTestContext.Provider>
+				),
+				name: (to) => (props) => (
+					<NameStep
+						configPath={configPath}
+						models={props.models}
+						autofixConfig={props.autofixConfig}
+						defaultApiKeyOverrides={defaultApiKeyOverridesRef.current}
+						onDone={() => to.done({})}
+					/>
+				),
+				done: () => DoneRoute,
+			}),
+		[addOverride, configPath, modelConnectionTest],
 	);
 
-	useLayoutEffect(() => {
-		if (step.step === "done") app.exit();
-	}, [step, app]);
-
-	const handleWelcomeContinue = useCallback(() => {
-		setStep({ step: "autofix-setup" });
-	}, []);
-	const autofixComplete = useCallback((autofixConfig: AutofixConfig) => {
-		setStep({ step: "autofix-complete", autofixConfig });
-	}, []);
-	const autofixSkip = useCallback(() => {
-		setStep({ step: "add-model" });
-	}, []);
-	const autofixCompleteContinue = useCallback(() => {
-		if (step.step === "autofix-complete") {
-			setStep({ step: "add-model", autofixConfig: step.autofixConfig });
-		}
-	}, [step]);
-	const addModelComplete = useCallback(
-		(models: Config["models"]) => {
-			if (step.step === "add-model" && step.autofixConfig) {
-				setStep({ step: "name", models, autofixConfig: step.autofixConfig });
-			} else {
-				setStep({ step: "name", models });
-			}
-		},
-		[step],
-	);
-	const addModelCancel = useCallback(() => {
-		if (step.step === "add-model" && step.autofixConfig) {
-			setStep({ step: "autofix-complete", autofixConfig: step.autofixConfig });
-		} else {
-			setStep({ step: "welcome" });
-		}
-	}, [step]);
-
-	if (step.step === "welcome") {
-		return <WelcomeScreen onContinue={handleWelcomeContinue} />;
-	}
-	if (step.step === "autofix-setup") {
-		return (
-			<ModelConnectionTestContext.Provider value={modelConnectionTest}>
-				<AutofixSetup
-					onComplete={autofixComplete}
-					onSkip={autofixSkip}
-					onOverrideDefaultApiKey={async (envVar) => {
-						await addOverride({
-							[keyFromName(SYNTHETIC_PROVIDER.name)]: envVar,
-						});
-					}}
-				/>
-			</ModelConnectionTestContext.Provider>
-		);
-	}
-	if (step.step === "autofix-complete") {
-		return <AutofixCompleteScreen onContinue={autofixCompleteContinue} />;
-	}
-	if (step.step === "add-model") {
-		return (
-			<ModelConnectionTestContext.Provider value={modelConnectionTest}>
-				<ModelSetup
-					config={null}
-					onComplete={addModelComplete}
-					onCancel={addModelCancel}
-					onOverrideDefaultApiKey={addOverride}
-					titleOverride={
-						step.autofixConfig
-							? undefined
-							: "Okay, we'll skip that for now. Let's set you up with a coding model. Which inference provider do you want to use?"
-					}
-				/>
-			</ModelConnectionTestContext.Provider>
-		);
-	}
-	if (step.step === "done") return null;
-
-	const _: "name" = step.step;
-
-	return (
-		<NameStep
-			configPath={configPath}
-			models={step.models}
-			autofixConfig={step.autofixConfig}
-			defaultApiKeyOverrides={defaultApiKeyOverrides}
-			onDone={() => setStep({ step: "done" })}
-		/>
-	);
+	return <routes.Root route="welcome" props={{}} />;
 }

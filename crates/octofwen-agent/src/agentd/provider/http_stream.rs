@@ -2,6 +2,7 @@ use octofwen_llm::compiler::{
     AssistantOutputProvider, AssistantOutputRequest, build_assistant_output,
 };
 use octofwen_llm::providers::anthropic::anthropic_messages_stream_events;
+use octofwen_llm::providers::gemini::gemini_generate_content_stream_events;
 use octofwen_llm::providers::openai::{
     openai_chat_completions_stream_events, openai_responses_stream_events,
 };
@@ -38,6 +39,7 @@ pub(in crate::agentd) fn provider_http_events_result_json(
             "openai-chat-completions" => openai_chat_completions_stream_events(event),
             "openai-responses" => openai_responses_stream_events(event),
             "anthropic" => anthropic_messages_stream_events(event),
+            "gemini" => gemini_generate_content_stream_events(event),
             _ => Vec::new(),
         })
         .collect::<Vec<_>>();

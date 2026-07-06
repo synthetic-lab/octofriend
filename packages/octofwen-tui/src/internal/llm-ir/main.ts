@@ -23,6 +23,7 @@ export type ToolCall<T extends ToolMap<string, unknown, AnyTransport>> = {
 		type: "tool-call";
 		name: LoadedTools<T>[K]["name"];
 		toolCallId: string;
+		assistantMessageId: string;
 		parsed: Record<string, unknown>;
 		original: unknown;
 	};
@@ -99,6 +100,7 @@ export type CompilerUsage = {
 
 export type AssistantMessage<T extends ToolMap<string, unknown>> = {
 	role: "assistant";
+	messageId: string;
 	content: string;
 	reasoningContent?: string | null;
 	openai?: {
@@ -112,6 +114,7 @@ export type AssistantMessage<T extends ToolMap<string, unknown>> = {
 
 export type UserMessage = Content & {
 	role: "user";
+	messageId: string;
 };
 
 export type ToolOutputMessage<T extends ToolMap<string, unknown>> = Content & {

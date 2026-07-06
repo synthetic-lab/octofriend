@@ -85,10 +85,10 @@ fn tool_run_request_runs_shell_in_docker_transport() {
                 "type": "tool-call",
                 "toolCallId": "shell-1",
                 "name": "shell",
-                "original": { "cmd": "printf host-output", "timeout": 5000 },
-                "parsed": { "cmd": "printf host-output", "timeout": 5000 }
+                "original": { "cmd": "cat marker.txt", "timeout": 5000 },
+                "parsed": { "cmd": "cat marker.txt", "timeout": 5000 }
             },
-            "parsed": { "cmd": "printf host-output", "timeout": 5000 }
+            "parsed": { "cmd": "cat marker.txt", "timeout": 5000 }
         }
     })
     .to_string();
@@ -111,6 +111,69 @@ fn tool_run_request_runs_shell_in_docker_transport() {
     let logged = std::fs::read_to_string(&docker_log).expect("fake docker should be invoked");
     assert!(logged.contains("exec"));
     assert!(logged.contains("octofwen-test-container"));
+
+    std::fs::remove_dir_all(root).expect("temp dir should be removed");
+}
+
+#[cfg(not(windows))]
+#[test]
+fn tool_run_request_runs_shell_in_ssh_transport() {
+    let root = unique_temp_dir("octofwen-agentd-ssh-run");
+    std::fs::create_dir_all(&root).expect("temp dir should be created");
+    let fake_ssh = root.join("ssh");
+    let ssh_log = root.join("ssh.log");
+    let remote_cwd = root.join("remote/workspace");
+    std::fs::create_dir_all(&remote_cwd).expect("remote cwd should be created");
+    std::fs::write(remote_cwd.join("marker.txt"), "ssh-output")
+        .expect("remote marker should be written");
+    std::fs::write(
+        &fake_ssh,
+        format!(
+            "#!/bin/sh\nprintf 'target=%s command=%s\\n' \"$1\" \"$2\" > '{}'\nshift\n/bin/sh -c \"$1\"\n",
+            ssh_log.display()
+        ),
+    )
+    .expect("fake ssh should be written");
+    make_executable(&fake_ssh);
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "tool-run-ssh-shell",
+        "method": AGENTD_TOOL_RUN_METHOD,
+        "params": {
+            "toolName": "shell",
+            "cwd": remote_cwd,
+            "transport": { "type": "ssh", "target": "user@example.test" },
+            "toolCallId": "shell-1",
+            "toolCall": {
+                "type": "tool-call",
+                "toolCallId": "shell-1",
+                "name": "shell",
+                "original": { "cmd": "cat marker.txt", "timeout": 5000 },
+                "parsed": { "cmd": "cat marker.txt", "timeout": 5000 }
+            },
+            "parsed": { "cmd": "cat marker.txt", "timeout": 5000 }
+        }
+    })
+    .to_string();
+
+    let response = run_agentd_with_path(&line, &root);
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(
+        value["result"],
+        json!({
+            "status": "completed",
+            "result": {
+                "type": "output",
+                "content": [{ "type": "text", "content": "ssh-output" }],
+                "lines": null
+            }
+        })
+    );
+    let logged = std::fs::read_to_string(&ssh_log).expect("fake ssh should be invoked");
+    assert!(logged.contains("user@example.test"));
+    assert!(logged.contains("cat marker.txt"));
 
     std::fs::remove_dir_all(root).expect("temp dir should be removed");
 }

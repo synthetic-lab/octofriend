@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
 
+function fail<T>(message: string): Promise<T> {
+	return Promise.reject(new Error(message));
+}
+
 /**
  * Async generator that yields commit SHAs one at a time using git plumbing commands.
  * Uses git rev-list --all to get all commits reachable from any ref.
@@ -62,7 +66,7 @@ export async function getCommitDetails(
 
 	const error = await errorOutput;
 	if (error.trim()) {
-		throw new Error(`git error: ${error.trim()}`);
+		return fail(`git error: ${error.trim()}`);
 	}
 
 	return output;
@@ -132,9 +136,9 @@ export async function getCommitDiff(
 	const error = await errorOutput;
 	if (error.trim()) {
 		// For empty diffs and some special cases, git might write to stderr
-		// but still have valid output - only throw if stdout is empty
+		// but still have valid output - only fail if stdout is empty
 		if (output.trim() === "") {
-			throw new Error(`git error: ${error.trim()}`);
+			return fail(`git error: ${error.trim()}`);
 		}
 	}
 
@@ -215,7 +219,7 @@ export async function getFileContentsBeforeAfter(
 
 		return [before, after];
 	} catch (error) {
-		throw new Error(`Error reading file ${filePath}: ${error}`);
+		return fail(`Error reading file ${filePath}: ${error}`);
 	}
 }
 

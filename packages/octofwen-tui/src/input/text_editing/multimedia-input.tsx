@@ -55,21 +55,20 @@ export function MultimediaInput(props: MultimediaInputProps) {
 
 	const tryLoadImage = useCallback(
 		async (inputPath: string): Promise<ImageInfo | null> => {
-			try {
-				const image = await loadImageFromPath(inputPath);
-				const imageCheck = canDisplayImage(props.modalities, image);
-				if (!imageCheck.ok) {
-					setErrorMessages((prev) => [...prev, imageCheck.reason]);
-					return null;
-				}
-				return image;
-			} catch (error) {
+			const image = await loadImageFromPath(inputPath);
+			if (!image.success) {
 				setErrorMessages((prev) => [
 					...prev,
-					formatImageLoadError(inputPath, error),
+					formatImageLoadError(inputPath, image.error),
 				]);
 				return null;
 			}
+			const imageCheck = canDisplayImage(props.modalities, image.data);
+			if (!imageCheck.ok) {
+				setErrorMessages((prev) => [...prev, imageCheck.reason]);
+				return null;
+			}
+			return image.data;
 		},
 		[props.modalities],
 	);

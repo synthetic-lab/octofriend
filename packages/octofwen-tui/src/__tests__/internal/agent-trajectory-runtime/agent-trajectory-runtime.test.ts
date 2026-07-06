@@ -12,6 +12,8 @@ describe("agent trajectory runtime", () => {
 				model: "gpt-test",
 				baseUrl: "https://api.example.test/v1",
 				context: 1000,
+				reasoning: "xhigh",
+				thinkingBudgetTokens: 12000,
 			},
 			messages: [
 				{ role: "user", content: [{ type: "text", content: "hello" }] },
@@ -46,7 +48,8 @@ describe("agent trajectory runtime", () => {
 					baseUrl: "https://api.example.test/v1",
 					model: "gpt-test",
 					context: 1000,
-					reasoning: undefined,
+					reasoning: "xhigh",
+					thinkingBudgetTokens: 12000,
 					modalities: undefined,
 				},
 				messages: [

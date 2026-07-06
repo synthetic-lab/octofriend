@@ -13,6 +13,15 @@ import {
 	separateFilePaths,
 } from "../../input/image_attachments.ts";
 
+type TestResult<T, E> =
+	| { success: true; data: T }
+	| { success: false; error: E };
+
+function expectOk<T, E>(result: TestResult<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : (undefined as T);
+}
+
 describe("image path parsing", () => {
 	it("separates regular-space-delimited paths while preserving non-breaking and thin spaces", () => {
 		expect(separateFilePaths("/path/to/file.png")).toEqual([
@@ -83,14 +92,16 @@ describe("image MIME helpers", () => {
 		expect(isImagePath("/tmp/a.PNG")).toBe(true);
 		expect(isImagePath("/tmp/a.txt")).toBe(false);
 		expect(isImagePath("plain-name")).toBe(false);
-		expect(getMimeTypeFromPath("/tmp/a.png")).toBe("image/png");
-		expect(getMimeTypeFromPath("/tmp/a.jpg")).toBe("image/jpeg");
-		expect(getMimeTypeFromPath("/tmp/a.jpeg")).toBe("image/jpeg");
-		expect(getMimeTypeFromPath("/tmp/a.webp")).toBe("image/webp");
-		expect(getMimeTypeFromPath("/tmp/a.gif")).toBe("image/gif");
-		expect(() => getMimeTypeFromPath("/tmp/a.txt")).toThrow(
-			"Unsupported image format",
-		);
+		expect(expectOk(getMimeTypeFromPath("/tmp/a.png"))).toBe("image/png");
+		expect(expectOk(getMimeTypeFromPath("/tmp/a.jpg"))).toBe("image/jpeg");
+		expect(expectOk(getMimeTypeFromPath("/tmp/a.jpeg"))).toBe("image/jpeg");
+		expect(expectOk(getMimeTypeFromPath("/tmp/a.webp"))).toBe("image/webp");
+		expect(expectOk(getMimeTypeFromPath("/tmp/a.gif"))).toBe("image/gif");
+		const unsupported = getMimeTypeFromPath("/tmp/a.txt");
+		expect(unsupported.success).toBe(false);
+		if (!unsupported.success) {
+			expect(unsupported.error).toContain("Unsupported image format");
+		}
 	});
 
 	it("extracts MIME type and base64 data from data URLs", () => {
@@ -114,7 +125,7 @@ describe("loadImageFromPath", () => {
 		const imagePath = path.join(directory, "tiny.png");
 		await writeFile(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
-		const image = await loadImageFromPath(imagePath);
+		const image = expectOk(await loadImageFromPath(imagePath));
 
 		expect(image).toEqual({
 			mimeType: "image/png",
@@ -126,8 +137,12 @@ describe("loadImageFromPath", () => {
 	});
 
 	it("reports read failures with the path", async () => {
-		await expect(loadImageFromPath("/missing/image.png")).rejects.toThrow(
-			"Failed to read image file /missing/image.png",
-		);
+		const result = await loadImageFromPath("/missing/image.png");
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toContain(
+				"Failed to read image file /missing/image.png",
+			);
+		}
 	});
 });

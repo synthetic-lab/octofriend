@@ -18,7 +18,7 @@ function Invoke-CanaryOctofwen {
         bun run typecheck
         $typecheckExitCode = $LASTEXITCODE
         if ($typecheckExitCode -ne 0) {
-            throw "octofwen canary typecheck failed with exit code $typecheckExitCode"
+            Write-Error "octofwen canary typecheck failed with exit code $typecheckExitCode" -ErrorAction Stop
         }
     }
     finally {
@@ -31,7 +31,7 @@ function Invoke-CanaryOctofwen {
         bun (Join-Path $script:OctofwenCanaryDir "packages/octofwen-cli/src/bin.ts") @Arguments
         $canaryExitCode = $LASTEXITCODE
         if ($canaryExitCode -ne 0) {
-            throw "octofwen canary command failed with exit code $canaryExitCode"
+            Write-Error "octofwen canary command failed with exit code $canaryExitCode" -ErrorAction Stop
         }
     }
     finally {

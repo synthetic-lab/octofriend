@@ -135,6 +135,7 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
             "model",
             "context",
             "reasoning",
+            "thinkingBudgetTokens",
             "modalities",
         ],
         context,
@@ -144,7 +145,7 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
         &mut validated,
         &data,
         "type",
-        &["standard", "openai-responses", "anthropic"],
+        &["standard", "openai-responses", "anthropic", "gemini"],
         context,
     )?;
     insert_required_string(&mut validated, &data, "nickname", context)?;
@@ -157,9 +158,11 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
         &mut validated,
         &data,
         "reasoning",
-        &["low", "medium", "high"],
+        &["none", "minimal", "low", "medium", "high", "xhigh"],
         context,
     )?;
+    validate_thinking_budget_tokens(&data, context)?;
+    insert_optional_u64_number(&mut validated, &data, "thinkingBudgetTokens", context)?;
     insert_optional_value(
         &mut validated,
         &data,
@@ -168,6 +171,28 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
         validate_modalities,
     )?;
     Ok(Value::Object(validated))
+}
+
+fn validate_thinking_budget_tokens(
+    data: &Map<String, Value>,
+    context: &str,
+) -> ConfigValidationResult<()> {
+    let Some(value) = data.get("thinkingBudgetTokens") else {
+        return Ok(());
+    };
+    let Some(budget_tokens) = value.as_u64() else {
+        return Ok(());
+    };
+    let Some(context_tokens) = data.get("context").and_then(Value::as_u64) else {
+        return Ok(());
+    };
+    let max_tokens = context_tokens.min(32_000);
+    if budget_tokens >= max_tokens {
+        return Err(ConfigValidationError::new(format!(
+            "{context}.thinkingBudgetTokens must be less than {max_tokens}"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_autofix_model(value: Value, context: &str) -> ConfigValidationResult<Value> {
@@ -306,7 +331,7 @@ fn validate_skills(value: Value, context: &str) -> ConfigValidationResult<Value>
 fn validate_notifications(value: Value, context: &str) -> ConfigValidationResult<Value> {
     let data = object(value, context)?;
     let mut validated = Map::new();
-    insert_required_string(&mut validated, &data, "notifyCommand", context)?;
+    insert_optional_string(&mut validated, &data, "notifyCommand", context)?;
     insert_optional_number(&mut validated, &data, "notifyTimeoutMs", context)?;
     insert_optional_boolean(&mut validated, &data, "alwaysNotify", context)?;
     Ok(Value::Object(validated))
@@ -484,6 +509,28 @@ fn insert_optional_number(
             key.into(),
             number_value(value, &format!("{context}.{key}"))?,
         );
+    }
+    Ok(())
+}
+
+fn insert_optional_u64_number(
+    target: &mut Map<String, Value>,
+    data: &Map<String, Value>,
+    key: &str,
+    context: &str,
+) -> ConfigValidationResult<()> {
+    if let Some(value) = data.get(key) {
+        let Some(number) = value.as_u64() else {
+            return Err(ConfigValidationError::new(format!(
+                "{context}.{key} must be a non-negative integer"
+            )));
+        };
+        if key == "thinkingBudgetTokens" && number < 1024 {
+            return Err(ConfigValidationError::new(format!(
+                "{context}.{key} must be at least 1024"
+            )));
+        }
+        target.insert(key.into(), Value::from(number));
     }
     Ok(())
 }

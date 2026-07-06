@@ -16,6 +16,7 @@ pub struct AnthropicMessagesHttpRequestParams {
     pub tools: Option<Value>,
     pub max_tokens: u64,
     pub thinking: Option<Value>,
+    pub output_config: Option<Value>,
 }
 
 pub fn anthropic_messages_http_request(
@@ -36,6 +37,7 @@ pub fn anthropic_messages_http_request(
             request.tools.as_ref(),
             request.max_tokens,
             request.thinking.as_ref(),
+            request.output_config.as_ref(),
         ),
     }
 }
@@ -47,6 +49,7 @@ pub(crate) fn anthropic_messages_body(
     tools: Option<&Value>,
     max_tokens: u64,
     thinking: Option<&Value>,
+    output_config: Option<&Value>,
 ) -> Value {
     let mut body = Map::new();
     body.insert("max_tokens".into(), Value::Number(max_tokens.into()));
@@ -56,6 +59,9 @@ pub(crate) fn anthropic_messages_body(
     body.insert("system".into(), Value::String(system.into()));
     if let Some(thinking) = thinking {
         body.insert("thinking".into(), thinking.clone());
+    }
+    if let Some(output_config) = output_config {
+        body.insert("output_config".into(), output_config.clone());
     }
     body.insert(
         "tool_choice".into(),

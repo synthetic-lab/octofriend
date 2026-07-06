@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchRequest {
@@ -15,7 +16,7 @@ impl SearchRequest {
             url: url.into(),
             method: "POST".into(),
             authorization_header: format!("Bearer {}", key.as_ref()),
-            body: format!(r#"{{"query":"{}"}}"#, escape_json_string(query)),
+            body: json!({ "query": query }).to_string(),
         }
     }
 }
@@ -33,23 +34,9 @@ pub fn render_search_results(results: &[SearchResult]) -> String {
         .iter()
         .map(|entry| {
             serde_json::to_string(entry).unwrap_or_else(|error| {
-                format!(r#"{{"error":"failed to render search result: {error}"}}"#)
+                json!({ "error": format!("failed to render search result: {error}") }).to_string()
             })
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn escape_json_string(value: &str) -> String {
-    value
-        .chars()
-        .flat_map(|character| match character {
-            '"' => ['\\', '"'].into_iter().collect::<Vec<_>>(),
-            '\\' => ['\\', '\\'].into_iter().collect::<Vec<_>>(),
-            '\n' => ['\\', 'n'].into_iter().collect::<Vec<_>>(),
-            '\r' => ['\\', 'r'].into_iter().collect::<Vec<_>>(),
-            '\t' => ['\\', 't'].into_iter().collect::<Vec<_>>(),
-            other => [other].into_iter().collect::<Vec<_>>(),
-        })
-        .collect()
 }

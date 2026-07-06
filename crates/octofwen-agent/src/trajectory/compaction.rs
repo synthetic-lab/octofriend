@@ -99,7 +99,7 @@ pub fn compaction_request_messages(messages: &[LlmIr]) -> Vec<LlmIr> {
     let mut request_messages = messages.to_vec();
     request_messages.push(LlmIr::User {
         content: vec![ContentPart::Text {
-            content: compaction_prompt().to_string(),
+            content: compaction_prompt(),
         }],
     });
     request_messages

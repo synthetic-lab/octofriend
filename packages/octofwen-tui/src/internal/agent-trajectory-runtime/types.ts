@@ -10,6 +10,7 @@ import type { ToolCall as BuiltInToolCall } from "../tool-orchestration/main.ts"
 
 type RequestCompilerError =
 	| { type: "request-error"; requestError: string; curl: string }
+	| { type: "auth-error"; requestError: string; curl: string }
 	| { type: "payment-error"; requestError: string; curl: string }
 	| { type: "rate-limit-error"; requestError: string; curl: string };
 
@@ -55,7 +56,7 @@ export type CompactionType = {
 
 export type RecoverableRequestError = Extract<
 	RequestCompilerError,
-	{ type: "payment-error" | "rate-limit-error" }
+	{ type: "auth-error" | "payment-error" | "rate-limit-error" }
 >;
 
 export type AutocompactionStream = {

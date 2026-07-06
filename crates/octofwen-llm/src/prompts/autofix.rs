@@ -1,3 +1,8 @@
+use super::template::render_markdown_template;
+use schemars::JsonSchema;
+use serde::Serialize;
+use serde_json::{Value, json};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DiffEdit {
     pub search: String,
@@ -10,72 +15,151 @@ pub struct BrokenDiffEdit {
     pub edit: DiffEdit,
 }
 
+#[derive(serde::Serialize)]
+struct BrokenDiffEditPayload<'a> {
+    file: &'a str,
+    edit: DiffEditPayload<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct DiffEditPayload<'a> {
+    search: &'a str,
+    replace: &'a str,
+}
+
+#[derive(JsonSchema)]
+#[serde(untagged)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+enum DiffApplyResponseSchema {
+    Success(DiffApplySuccessSchema),
+    Failure(DiffApplyFailureSchema),
+}
+
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct DiffApplySuccessSchema {
+    success: TrueConst,
+    search: String,
+}
+
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct DiffApplyFailureSchema {
+    success: FalseConst,
+}
+
+#[derive(JsonSchema)]
+#[serde(untagged)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+enum JsonFixResponseSchema {
+    Success(JsonFixSuccessSchema),
+    Failure(JsonFixFailureSchema),
+}
+
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct JsonFixSuccessSchema {
+    success: TrueConst,
+    fixed: Value,
+}
+
+#[derive(JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct JsonFixFailureSchema {
+    success: FalseConst,
+}
+
+#[derive(JsonSchema)]
+#[schemars(extend("const" = true))]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct TrueConst(bool);
+
+#[derive(JsonSchema)]
+#[schemars(extend("const" = false))]
+#[expect(
+    dead_code,
+    reason = "schema marker type used only by schemars::schema_for"
+)]
+struct FalseConst(bool);
+
+const FIX_EDIT_PROMPT: &str = include_str!("templates/fix_edit.md");
+const FIX_JSON_PROMPT: &str = include_str!("templates/fix_json.md");
+
 pub fn fix_edit_prompt(broken_edit: &BrokenDiffEdit) -> String {
-    format!(
-        "The following diff edit is invalid: the search string does not match perfectly with the file contents.\n\
-Your task is to fix the search string if possible.\n\n\
-Respond only with JSON in the following format, defined as TypeScript types:\n\n\
-// Response if you fixed the search string:\n\
-type DiffApplySuccess = {{\n  success: true,\n  search: string,\n}};\n\n\
-// Response if the edit is impossible to fix (search string is ambiguous or has no clear matches):\n\
-type DiffApplyFailure = {{\n  success: false,\n}};\n\n\
-Here's the broken edit and underlying file it's being applied to:\n{}",
-        broken_diff_edit_json(broken_edit)
+    render_markdown_template(
+        FIX_EDIT_PROMPT,
+        &[
+            (
+                "diff_apply_response_schema",
+                &diff_apply_response_schema_json(),
+            ),
+            ("broken_edit_json", &broken_diff_edit_json(broken_edit)),
+        ],
     )
+    .trim_end_matches('\n')
+    .to_owned()
 }
 
 pub fn fix_json_prompt(input: &str) -> String {
-    format!(
-        "The following string may be broken JSON. Fix it if possible. Respond with JSON in the following\n\
-format, defined as TypeScript types:\n\n\
-// Success response:\n\
-type JsonFixSuccess = {{\n  success: true,\n\n  // The parsed JSON\n  fixed: any,\n}};\n\n\
-// Failure response:\n\
-type JsonFixFailure = {{\n  success: false,\n}};\n\n\
-If it's more-or-less JSON, fix it and respond with the success response. If it's not, respond with\n\
-the failure response. Here's the string:\n{}",
-        input
+    render_markdown_template(
+        FIX_JSON_PROMPT,
+        &[
+            ("json_fix_response_schema", &json_fix_response_schema_json()),
+            ("input", input),
+        ],
     )
+    .trim_end_matches('\n')
+    .to_owned()
 }
 
 fn broken_diff_edit_json(broken_edit: &BrokenDiffEdit) -> String {
-    format!(
-        "{{\"file\":{},\"edit\":{{\"search\":{},\"replace\":{}}}}}",
-        json_string(&broken_edit.file),
-        json_string(&broken_edit.edit.search),
-        json_string(&broken_edit.edit.replace)
-    )
+    let payload = BrokenDiffEditPayload {
+        file: &broken_edit.file,
+        edit: DiffEditPayload {
+            search: &broken_edit.edit.search,
+            replace: &broken_edit.edit.replace,
+        },
+    };
+    serde_json::to_string(&payload).unwrap_or_else(|error| {
+        json!({ "error": format!("failed to serialize broken edit: {error}") }).to_string()
+    })
 }
 
-fn json_string(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len() + 2);
-    encoded.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => encoded.push_str("\\\""),
-            '\\' => encoded.push_str("\\\\"),
-            '\u{08}' => encoded.push_str("\\b"),
-            '\u{0c}' => encoded.push_str("\\f"),
-            '\n' => encoded.push_str("\\n"),
-            '\r' => encoded.push_str("\\r"),
-            '\t' => encoded.push_str("\\t"),
-            ch if ch <= '\u{1f}' => {
-                encoded.push_str("\\u00");
-                let code = ch as u8;
-                encoded.push(hex_digit(code >> 4));
-                encoded.push(hex_digit(code & 0x0f));
-            }
-            ch => encoded.push(ch),
-        }
-    }
-    encoded.push('"');
-    encoded
+fn diff_apply_response_schema_json() -> String {
+    json_schema_string(&schemars::schema_for!(DiffApplyResponseSchema))
 }
 
-fn hex_digit(value: u8) -> char {
-    match value {
-        0..=9 => char::from(b'0' + value),
-        10..=15 => char::from(b'a' + value - 10),
-        _ => '0',
-    }
+fn json_fix_response_schema_json() -> String {
+    json_schema_string(&schemars::schema_for!(JsonFixResponseSchema))
+}
+
+fn json_schema_string(schema: &impl Serialize) -> String {
+    serde_json::to_string_pretty(schema).unwrap_or_else(|error| {
+        json!({ "error": format!("failed to serialize JSON schema: {error}") }).to_string()
+    })
 }

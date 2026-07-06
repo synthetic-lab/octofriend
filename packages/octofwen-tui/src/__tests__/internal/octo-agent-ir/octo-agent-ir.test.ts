@@ -21,6 +21,7 @@ describe("Octo agent IR", () => {
 				original: { cmd: "pwd", timeout: 1000 },
 				parsed: { cmd: "pwd", timeout: 1000 },
 			},
+			rejectedByUserMessageId: "user_1",
 		} satisfies OctoIR;
 
 		expect(rejected.role).toBe("tool-reject");

@@ -7,7 +7,8 @@ export async function agentdTransportRequestRaw(
 	method: string,
 	params: Record<string, unknown>,
 ): Promise<unknown> {
-	if (signal.aborted) throw new Error("agentd request aborted");
+	if (signal.aborted)
+		return Promise.reject(new Error("agentd request aborted"));
 	const subprocess = Bun.spawn(resolveAgentdCommand(), {
 		stdin: "pipe",
 		stdout: "pipe",
@@ -32,14 +33,16 @@ export async function agentdTransportRequestRaw(
 			new Response(subprocess.stderr).text(),
 		]);
 		const exitCode = await subprocess.exited;
-		if (aborted) throw new Error("agentd request aborted");
+		if (aborted) return Promise.reject(new Error("agentd request aborted"));
 		if (exitCode !== 0) {
-			throw new Error(
-				`octofwen-agentd exited with code ${exitCode}: ${stderr}`,
+			return Promise.reject(
+				new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
 			);
 		}
 		const firstLine = stdout.split("\n").find((line) => line.trim() !== "");
-		if (!firstLine) throw new Error("octofwen-agentd returned no response");
+		if (!firstLine) {
+			return Promise.reject(new Error("octofwen-agentd returned no response"));
+		}
 		const response = JSON.parse(firstLine) as {
 			result?: unknown;
 			error?: { message?: string; data?: unknown };
@@ -49,7 +52,7 @@ export async function agentdTransportRequestRaw(
 				response.error.message ?? "octofwen-agentd request failed",
 			);
 			(error as Error & { data?: unknown }).data = response.error.data;
-			throw error;
+			return Promise.reject(error);
 		}
 		return response.result;
 	} finally {

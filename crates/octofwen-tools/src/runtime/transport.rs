@@ -3,10 +3,12 @@ use std::time::Duration;
 
 use octofwen_transport::docker::DockerTransport;
 use octofwen_transport::local::{DirectoryEntry, LocalTransport};
+use octofwen_transport::ssh::SshTransport;
 
 pub enum RuntimeToolTransport {
     Local(PathBuf),
     Docker(DockerTransport),
+    Ssh(SshTransport),
 }
 
 impl RuntimeToolTransport {
@@ -18,10 +20,15 @@ impl RuntimeToolTransport {
         Self::Docker(DockerTransport::new(container, cwd))
     }
 
+    pub fn ssh(target: impl Into<String>, cwd: impl Into<String>) -> Self {
+        Self::Ssh(SshTransport::new(target, cwd))
+    }
+
     pub fn cwd(&self) -> &Path {
         match self {
             Self::Local(cwd) => cwd,
             Self::Docker(transport) => transport.cwd_path(),
+            Self::Ssh(transport) => transport.cwd_path(),
         }
     }
 
@@ -33,6 +40,9 @@ impl RuntimeToolTransport {
             Self::Docker(transport) => transport
                 .shell(command, Duration::from_millis(timeout_ms))
                 .map_err(|error| error.to_string()),
+            Self::Ssh(transport) => transport
+                .shell(command, Duration::from_millis(timeout_ms))
+                .map_err(|error| error.to_string()),
         }
     }
 
@@ -41,6 +51,9 @@ impl RuntimeToolTransport {
             Self::Local(cwd) => std::fs::read_to_string(resolve_path(cwd, file_path))
                 .map_err(|_| format!("{file_path} couldn't be read")),
             Self::Docker(transport) => transport
+                .read_file(file_path)
+                .map_err(|_| format!("{file_path} couldn't be read")),
+            Self::Ssh(transport) => transport
                 .read_file(file_path)
                 .map_err(|_| format!("{file_path} couldn't be read")),
         }
@@ -56,6 +69,9 @@ impl RuntimeToolTransport {
                 std::fs::write(path, content).map_err(|error| error.to_string())
             }
             Self::Docker(transport) => transport
+                .write_file(file_path, content)
+                .map_err(|error| error.to_string()),
+            Self::Ssh(transport) => transport
                 .write_file(file_path, content)
                 .map_err(|error| error.to_string()),
         }
@@ -83,6 +99,9 @@ impl RuntimeToolTransport {
             Self::Docker(transport) => transport
                 .readdir(dir_path)
                 .map_err(|_| format!("No such directory: {dir_path}")),
+            Self::Ssh(transport) => transport
+                .readdir(dir_path)
+                .map_err(|_| format!("No such directory: {dir_path}")),
         }
     }
 
@@ -90,6 +109,7 @@ impl RuntimeToolTransport {
         match self {
             Self::Local(cwd) => resolve_path(cwd, file_path).exists(),
             Self::Docker(transport) => transport.path_exists(file_path),
+            Self::Ssh(transport) => transport.path_exists(file_path),
         }
     }
 }

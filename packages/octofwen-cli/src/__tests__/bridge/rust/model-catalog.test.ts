@@ -35,6 +35,7 @@ const catalogResponse: AgentdModelProviderCatalogResult = {
 			name: "Synthetic",
 			envVar: "SYNTHETIC_API_KEY",
 			baseUrl: "https://api.synthetic.new/v1",
+			apiKeyUrl: "https://dev.synthetic.new/",
 			models: [
 				{
 					model: "hf:moonshotai/Kimi-K2.5",
@@ -55,6 +56,22 @@ const catalogResponse: AgentdModelProviderCatalogResult = {
 				},
 			],
 			testModel: "hf:MiniMaxAI/MiniMax-M2.1",
+		},
+		gemini: {
+			shortcut: "g",
+			type: "gemini",
+			name: "Google Gemini",
+			envVar: "GEMINI_API_KEY",
+			baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+			apiKeyUrl: "https://aistudio.google.com/apikey",
+			models: [
+				{
+					model: "gemini-3.5-flash",
+					nickname: "Gemini 3.5 Flash",
+					context: 1048576,
+				},
+			],
+			testModel: "gemini-3.5-flash",
 		},
 	},
 };

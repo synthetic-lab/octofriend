@@ -42,3 +42,18 @@ fn instruction_header_describes_supported_instruction_targets() {
     assert!(instruction_header(InstructionTarget::Claude).contains("Claude"));
     assert!(instruction_header(InstructionTarget::AgentsDirectory).contains("repository-local"));
 }
+
+#[test]
+fn render_instruction_files_does_not_reprocess_template_tokens_from_values() {
+    let rendered = render_instruction_files(
+        "{{rendered}}",
+        &[InstructionFile {
+            path: "/repo/AGENTS.md".into(),
+            target: InstructionTarget::Agents,
+            contents: "Use {{user_name}} literally.".into(),
+        }],
+    );
+
+    assert!(rendered.contains("# Instructions from {{rendered}}"));
+    assert!(rendered.contains("Use {{user_name}} literally."));
+}

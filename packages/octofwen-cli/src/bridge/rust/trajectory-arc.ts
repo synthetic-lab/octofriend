@@ -2,11 +2,12 @@ export type AgentdTrajectoryArcParams = {
 	cwd: string;
 	apiKey: string;
 	model: {
-		type?: "standard" | "openai-responses" | "anthropic";
+		type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 		baseUrl: string;
 		model: string;
 		context: number;
-		reasoning?: "low" | "medium" | "high";
+		reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+		thinkingBudgetTokens?: number;
 		modalities?: unknown;
 	};
 	messages: readonly unknown[];
@@ -60,6 +61,7 @@ export type AgentdTrajectoryArcResult = {
 		| { type: "needs-response" }
 		| { type: "request-tool"; toolCalls: unknown[] }
 		| { type: "request-error"; requestError: string; curl: string }
+		| { type: "auth-error"; requestError: string; curl: string }
 		| { type: "payment-error"; requestError: string; curl: string }
 		| { type: "rate-limit-error"; requestError: string; curl: string }
 		| { type: "compaction-error"; requestError: string; curl: string | null };
@@ -91,6 +93,7 @@ function isTrajectoryArcReason(
 	}
 	return (
 		(value["type"] === "request-error" ||
+			value["type"] === "auth-error" ||
 			value["type"] === "payment-error" ||
 			value["type"] === "rate-limit-error") &&
 		typeof value["requestError"] === "string" &&

@@ -13,6 +13,7 @@ import {
 	useTerminalUnchained,
 } from "../theme/branding.tsx";
 import {
+	AuthErrorScreen,
 	PaymentErrorScreen,
 	RateLimitErrorScreen,
 	RequestErrorScreen,
@@ -173,6 +174,9 @@ function packageLatestVersion(contents: unknown): string | null {
 function renderBottomBarErrorContent(
 	modeData: ReturnType<typeof useAppStore.getState>["modeData"],
 ) {
+	if (modeData.mode === "auth-error") {
+		return <AuthErrorScreen error={modeData.error} />;
+	}
 	if (modeData.mode === "payment-error") {
 		return <PaymentErrorScreen error={modeData.error} />;
 	}
@@ -320,6 +324,7 @@ export function BottomBarContent({
 		return <Loading overrideStrings={["Auto-fixing JSON"]} />;
 	}
 	if (
+		modeData.mode === "auth-error" ||
 		modeData.mode === "payment-error" ||
 		modeData.mode === "rate-limit-error" ||
 		modeData.mode === "request-error" ||

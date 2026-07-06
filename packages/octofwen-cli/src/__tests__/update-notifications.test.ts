@@ -6,6 +6,7 @@ import {
 	readUpdates,
 	type UpdateNotificationsParams,
 } from "../update-notifications.ts";
+import type { Result } from "../result.ts";
 
 function bridgeBackedUpdateStore(initialUpdate: string) {
 	let currentUpdate = initialUpdate;
@@ -37,10 +38,15 @@ const fixture = {
 	databasePath: "/tmp/sqlite.db",
 };
 
+function expectOk<T, E>(result: Result<T, E>): T {
+	expect(result.success).toBe(true);
+	return result.success ? result.data : (undefined as T);
+}
+
 test("readUpdates returns the current update text before it has been marked seen", async () => {
 	const store = bridgeBackedUpdateStore("New Octo update\n");
 
-	await expect(readUpdates({ ...fixture, read: store.read })).resolves.toBe(
+	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBe(
 		"New Octo update\n",
 	);
 	expect(store.reads).toEqual([fixture]);
@@ -49,19 +55,17 @@ test("readUpdates returns the current update text before it has been marked seen
 test("readUpdates returns null when the current update text is the most recent seen update", async () => {
 	const store = bridgeBackedUpdateStore("Already seen\n");
 
-	await markUpdatesSeen({ ...fixture, mark: store.mark });
+	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 
-	await expect(
-		readUpdates({ ...fixture, read: store.read }),
-	).resolves.toBeNull();
+	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBeNull();
 });
 
 test("readUpdates returns changed update text after an older update was marked seen", async () => {
 	const store = bridgeBackedUpdateStore("First update\n");
-	await markUpdatesSeen({ ...fixture, mark: store.mark });
+	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 	store.setCurrentUpdate("Second update\n");
 
-	await expect(readUpdates({ ...fixture, read: store.read })).resolves.toBe(
+	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBe(
 		"Second update\n",
 	);
 });
@@ -69,20 +73,18 @@ test("readUpdates returns changed update text after an older update was marked s
 test("markUpdatesSeen is idempotent for the same update text", async () => {
 	const store = bridgeBackedUpdateStore("Duplicate update\n");
 
-	await markUpdatesSeen({ ...fixture, mark: store.mark });
-	await markUpdatesSeen({ ...fixture, mark: store.mark });
+	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
+	expectOk(await markUpdatesSeen({ ...fixture, mark: store.mark }));
 
-	await expect(
-		readUpdates({ ...fixture, read: store.read }),
-	).resolves.toBeNull();
+	expect(expectOk(await readUpdates({ ...fixture, read: store.read }))).toBeNull();
 	expect(store.marks).toEqual([fixture, fixture]);
 });
 
 test("default update notification params omit database path so storage owns persisted location", async () => {
 	const store = bridgeBackedUpdateStore("New Octo update\n");
 
-	await readUpdates({ read: store.read });
-	await markUpdatesSeen({ mark: store.mark });
+	expectOk(await readUpdates({ read: store.read }));
+	expectOk(await markUpdatesSeen({ mark: store.mark }));
 
 	const expectedParams = { updatesPath: DEFAULT_UPDATES_FILE_PATH };
 	expect(DEFAULT_UPDATES_FILE_PATH).toBe(
@@ -90,4 +92,18 @@ test("default update notification params omit database path so storage owns pers
 	);
 	expect(store.reads).toEqual([expectedParams]);
 	expect(store.marks).toEqual([expectedParams]);
+});
+
+test("missing update notification bridges return Result errors", async () => {
+	const readResult = await readUpdates();
+	const markResult = await markUpdatesSeen();
+
+	expect(readResult.success).toBe(false);
+	if (!readResult.success) {
+		expect(readResult.error).toBe("Update notifications bridge is required");
+	}
+	expect(markResult.success).toBe(false);
+	if (!markResult.success) {
+		expect(markResult.error).toBe("Update notifications bridge is required");
+	}
 });

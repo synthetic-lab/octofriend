@@ -88,7 +88,9 @@ export async function configDefaultPaths(): Promise<{
 		typeof result["configFile"] !== "string" ||
 		typeof result["keyFile"] !== "string"
 	) {
-		throw new Error("Invalid octofwen-agentd config paths result");
+		return Promise.reject(
+			new Error("Invalid octofwen-agentd config paths result"),
+		);
 	}
 	return {
 		configDir: result["configDir"],
@@ -160,20 +162,28 @@ async function agentdRequest(
 	]);
 	const exitCode = await subprocess.exited;
 	if (exitCode !== 0) {
-		throw new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`);
+		return Promise.reject(
+			new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
+		);
 	}
 	const firstLine = stdout.split("\n").find((line) => line.trim() !== "");
-	if (!firstLine) throw new Error("octofwen-agentd returned no response");
+	if (!firstLine) {
+		return Promise.reject(new Error("octofwen-agentd returned no response"));
+	}
 	const response = JSON.parse(firstLine) as {
 		id?: unknown;
 		result?: unknown;
 		error?: { message?: string };
 	};
 	if (response.error) {
-		throw new Error(response.error.message ?? "octofwen-agentd request failed");
+		return Promise.reject(
+			new Error(response.error.message ?? "octofwen-agentd request failed"),
+		);
 	}
 	if (!isRecord(response.result)) {
-		throw new Error("octofwen-agentd returned invalid config response");
+		return Promise.reject(
+			new Error("octofwen-agentd returned invalid config response"),
+		);
 	}
 	return response.result;
 }

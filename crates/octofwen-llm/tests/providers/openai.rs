@@ -43,6 +43,26 @@ fn maps_payment_required_status_errors_to_payment_errors() {
 }
 
 #[test]
+fn maps_payment_required_status_errors_without_headers_to_payment_errors() {
+    assert_eq!(
+        openai_request_error(
+            "curl payment no headers",
+            OpenAiStatusError {
+                status: Some(402),
+                headers: Vec::new(),
+                error: Some("buy credits".into()),
+                fallback: "raw payment error".into(),
+            }
+        ),
+        OpenAiCompilerError::PaymentError {
+            request_error: "buy credits".into(),
+            curl: "curl payment no headers".into(),
+            headers: Vec::new(),
+        }
+    );
+}
+
+#[test]
 fn maps_rate_limit_status_errors_to_rate_limit_errors() {
     let headers = vec![("x-request-id".into(), "limited".into())];
 

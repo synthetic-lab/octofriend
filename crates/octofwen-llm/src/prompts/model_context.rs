@@ -1,3 +1,5 @@
+use super::template::render_markdown_template;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModelContextToolSummary {
     pub name: String,
@@ -10,6 +12,8 @@ pub struct ModelContextServerTools {
     pub tools: Vec<ModelContextToolSummary>,
 }
 
+const MODEL_CONTEXT_PROMPT: &str = include_str!("templates/model_context.md");
+
 pub fn format_model_context_servers_prompt(servers: &[ModelContextServerTools]) -> String {
     if servers.is_empty() {
         return String::new();
@@ -21,12 +25,9 @@ pub fn format_model_context_servers_prompt(servers: &[ModelContextServerTools]) 
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    format!(
-        "# Model-Context-Protocol (MCP) Tools\n\n\
-You have access to the following MCP servers and their sub-tools. Use the mcp tool to call them,\n\
-specifying the server and tool name:\n\n\
-{sections}"
-    )
+    render_markdown_template(MODEL_CONTEXT_PROMPT, &[("sections", &sections)])
+        .trim_end_matches('\n')
+        .to_owned()
 }
 
 fn format_model_context_server_tools(server: &ModelContextServerTools) -> String {

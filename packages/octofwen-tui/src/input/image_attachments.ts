@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parse } from "shell-quote";
+import { err, errorToString, ok, type Result } from "../app/result.ts";
 
 const CHARACTER_PLACEHOLDER = "_";
 
@@ -90,27 +91,33 @@ export function parseImagePaths(input: string): string[] | null {
 	return imagePaths;
 }
 
-export function getMimeTypeFromPath(filePath: string): ImageMimeType {
+export function getMimeTypeFromPath(
+	filePath: string,
+): Result<ImageMimeType, string> {
 	const ext = path.extname(filePath).toLowerCase();
 	const mimeType = IMAGE_EXTENSIONS[ext];
 	if (!mimeType)
-		throw new Error(`Unsupported image format for file: ${filePath}`);
-	return mimeType;
+		return err(`Unsupported image format for file: ${filePath}`);
+	return ok(mimeType);
 }
 
-export async function loadImageFromPath(filePath: string): Promise<ImageInfo> {
+export async function loadImageFromPath(
+	filePath: string,
+): Promise<Result<ImageInfo, string>> {
 	const mimeType = getMimeTypeFromPath(filePath);
+	if (!mimeType.success) return mimeType;
 	const buffer = await readImageFile(filePath);
-	const base64Data = buffer.toString("base64");
-	const dataUrl = `data:${mimeType};base64,${base64Data}`;
+	if (!buffer.success) return buffer;
+	const base64Data = buffer.data.toString("base64");
+	const dataUrl = `data:${mimeType.data};base64,${base64Data}`;
 
-	return {
-		mimeType,
+	return ok({
+		mimeType: mimeType.data,
 		base64Data,
 		dataUrl,
 		filePath: path.resolve(filePath),
-		sizeBytes: buffer.length,
-	};
+		sizeBytes: buffer.data.length,
+	});
 }
 
 export function getMimeTypeFromDataUrl(
@@ -182,11 +189,11 @@ function pushQuotedCharacter(chars: string[], char: string): void {
 	}
 }
 
-async function readImageFile(filePath: string): Promise<Buffer> {
+async function readImageFile(filePath: string): Promise<Result<Buffer, string>> {
 	try {
-		return await fs.readFile(filePath);
+		return ok(await fs.readFile(filePath));
 	} catch (error) {
-		throw new Error(`Failed to read image file ${filePath}: ${error}`);
+		return err(`Failed to read image file ${filePath}: ${errorToString(error)}`);
 	}
 }
 

@@ -1,3 +1,5 @@
+import { err, ok, type Result } from "./result.ts";
+
 export const MAX_HISTORY_ITEMS = 100;
 export const MAX_HISTORY_TRUNCATION_BATCH = 20;
 
@@ -79,9 +81,9 @@ class BridgeInputHistory implements InputHistory {
 
 export async function loadInputHistory(
 	options: LoadInputHistoryOptions = {},
-): Promise<InputHistory> {
+): Promise<Result<InputHistory, string>> {
 	if (!(options.load && options.append)) {
-		throw new Error("Input history bridge is required");
+		return err("Input history bridge is required");
 	}
 	const maxHistoryItems = options.maxHistoryItems ?? MAX_HISTORY_ITEMS;
 	const bridgeParams = inputHistoryBridgeParams({
@@ -89,12 +91,14 @@ export async function loadInputHistory(
 		maxHistoryItems,
 	});
 	const result = await options.load(bridgeParams);
-	return new BridgeInputHistory({
-		history: result.history,
-		append: options.append,
-		databasePath: options.databasePath,
-		maxHistoryItems,
-	});
+	return ok(
+		new BridgeInputHistory({
+			history: result.history,
+			append: options.append,
+			databasePath: options.databasePath,
+			maxHistoryItems,
+		}),
+	);
 }
 
 function inputHistoryBridgeParams({

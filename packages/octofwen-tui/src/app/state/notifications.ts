@@ -13,7 +13,7 @@ export function createNotificationActions(set: AppStateSet, get: AppStateGet) {
 		},
 
 		notifyReadyForInput: (config: Config) => {
-			const { sessionAutoNotify, notifyOnce } = get();
+			const { _notifyTimer, sessionAutoNotify, notifyOnce } = get();
 
 			if (notifyOnce) {
 				set({ notifyOnce: false });
@@ -29,8 +29,17 @@ export function createNotificationActions(set: AppStateSet, get: AppStateGet) {
 				return config.notifications?.notifyTimeoutMs ?? 10_000;
 			})();
 
+			if (_notifyTimer) clearTimeout(_notifyTimer);
 			const timer = setTimeout(async () => {
-				await runNotifyCommand(config);
+				const result = await runNotifyCommand(config);
+				if (!result.success) {
+					set({
+						history: [
+							...get().history,
+							{ type: "notification", content: result.error },
+						],
+					});
+				}
 			}, notifyTimeout);
 
 			set({ _notifyTimer: timer });

@@ -17,7 +17,6 @@ import {
 	SYNTHETIC_PROVIDER,
 } from "../../internal/model-provider-catalog/main.ts";
 import { MenuQuotaIndicator } from "../quota.tsx";
-import { useMenuState } from "./menu-state.ts";
 import { filterSettingsItems } from "./settings-menu.tsx";
 
 type Value =
@@ -32,19 +31,24 @@ type Value =
 	| "clear-confirm"
 	| "notifications-menu";
 
-export function MainMenu() {
+export type MainMenuNavigate = {
+	settingsMenu: () => void;
+	modelSelect: () => void;
+	addModel: () => void;
+	diffApplyToggle: () => void;
+	fixJsonToggle: () => void;
+	quitConfirm: () => void;
+	clearConfirm: () => void;
+	notificationsMenu: () => void;
+};
+
+export function MainMenu({ onNavigate }: { onNavigate: MainMenuNavigate }) {
 	const { toggleMenu, notify, resetPreMenuVimMode, quotaData } = useAppStore(
 		useShallow((state) => ({
 			toggleMenu: state.toggleMenu,
 			notify: state.notify,
 			resetPreMenuVimMode: state.resetPreMenuVimMode,
 			quotaData: state.quotaData,
-		})),
-	);
-
-	const { setMenuMode } = useMenuState(
-		useShallow((state) => ({
-			setMenuMode: state.setMenuMode,
 		})),
 	);
 
@@ -110,15 +114,13 @@ export function MainMenu() {
 		};
 	}
 
-	if (config.notifications?.notifyCommand) {
-		items = {
-			...items,
-			n: {
-				label: "🕭 Notifications",
-				value: "notifications-menu" as const,
-			},
-		};
-	}
+	items = {
+		...items,
+		n: {
+			label: "🕭 Notifications",
+			value: "notifications-menu" as const,
+		},
+	};
 
 	const settings = filterSettingsItems(config);
 	if (Object.values(settings).length > 0) {
@@ -150,7 +152,7 @@ export function MainMenu() {
 					toggleMenu();
 					return;
 				case "quit":
-					setMenuMode("quit-confirm");
+					onNavigate.quitConfirm();
 					return;
 				case "vim-toggle": {
 					const wasEnabled = config.vimEmulation?.["enabled"] ?? false;
@@ -171,13 +173,31 @@ export function MainMenu() {
 					return;
 				}
 				case "clear-confirm":
-					setMenuMode("clear-confirm");
+					onNavigate.clearConfirm();
+					return;
+				case "settings-menu":
+					onNavigate.settingsMenu();
+					return;
+				case "model-select":
+					onNavigate.modelSelect();
+					return;
+				case "add-model":
+					onNavigate.addModel();
+					return;
+				case "fix-json-toggle":
+					onNavigate.fixJsonToggle();
+					return;
+				case "diff-apply-toggle":
+					onNavigate.diffApplyToggle();
+					return;
+				case "notifications-menu":
+					onNavigate.notificationsMenu();
 					return;
 				default:
-					setMenuMode(item.value);
+					return;
 			}
 		},
-		[config, notify, resetPreMenuVimMode, setConfig, setMenuMode, toggleMenu],
+		[config, notify, onNavigate, resetPreMenuVimMode, setConfig, toggleMenu],
 	);
 
 	return (

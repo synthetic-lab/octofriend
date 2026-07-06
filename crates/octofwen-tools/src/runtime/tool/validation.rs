@@ -11,6 +11,7 @@ pub fn validate_runtime_tool_call(
 ) -> Result<(), String> {
     match tool_name {
         "list" => validate_list(cwd.as_ref(), parsed),
+        "read" => validate_read(cwd.as_ref(), parsed),
         "create" => validate_create(cwd.as_ref(), parsed),
         "rewrite" => validate_rewrite(cwd.as_ref(), parsed),
         "edit" => validate_edit(cwd.as_ref(), parsed),
@@ -34,6 +35,11 @@ fn validate_create(cwd: &Path, parsed: &Value) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+fn validate_read(cwd: &Path, parsed: &Value) -> Result<(), String> {
+    let file_path = required_string(parsed, "filePath")?;
+    read_file(cwd, file_path).map(|_| ())
 }
 
 fn validate_rewrite(cwd: &Path, parsed: &Value) -> Result<(), String> {

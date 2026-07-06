@@ -8,11 +8,12 @@ import type {
 export type { AgentdProviderStreamState } from "./assistant-output.ts";
 
 export type AgentdProviderCompilerCompleteParams = {
-	type?: "standard" | "openai-responses" | "anthropic";
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	baseUrl: string;
 	model: string;
 	context: number;
-	reasoning?: "low" | "medium" | "high";
+	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	thinkingBudgetTokens?: number;
 	modalities?: unknown;
 	apiKey: string;
 	irs: readonly unknown[];
@@ -60,6 +61,12 @@ export type AgentdProviderStreamEvent =
 			reasoningText?: string | null;
 	  }
 	| {
+			type: "gemini-thought-signature";
+			partIndex: number;
+			toolCallId?: string | null;
+			thoughtSignature: string;
+	  }
+	| {
 			type: "anthropic-thinking-delta";
 			index: number;
 			thinking?: string | null;
@@ -93,6 +100,7 @@ export type AgentdProviderCompilerCompleteResult =
 				type:
 					| "unexpected-tool-call"
 					| "request-error"
+					| "auth-error"
 					| "payment-error"
 					| "rate-limit-error";
 				requestError: string;
@@ -183,6 +191,7 @@ export function isAgentdProviderCompilerCompleteResult(
 		isRecord(error) &&
 		(error["type"] === "unexpected-tool-call" ||
 			error["type"] === "request-error" ||
+			error["type"] === "auth-error" ||
 			error["type"] === "payment-error" ||
 			error["type"] === "rate-limit-error") &&
 		typeof error["requestError"] === "string" &&
@@ -205,6 +214,8 @@ function isAgentdProviderStreamEvent(
 			return isAgentdProviderStreamUsageEvent(value);
 		case "openai-responses-metadata":
 			return isAgentdOpenAiResponsesMetadataEvent(value);
+		case "gemini-thought-signature":
+			return isAgentdGeminiThoughtSignatureEvent(value);
 		case "anthropic-thinking-delta":
 			return isAgentdAnthropicThinkingDeltaEvent(value);
 		case "anthropic-redacted-thinking":
@@ -257,6 +268,16 @@ function isAgentdOpenAiResponsesMetadataEvent(
 	);
 }
 
+function isAgentdGeminiThoughtSignatureEvent(
+	value: Record<string, unknown>,
+): boolean {
+	return (
+		typeof value["partIndex"] === "number" &&
+		isOptionalString(value["toolCallId"]) &&
+		typeof value["thoughtSignature"] === "string"
+	);
+}
+
 function isAgentdAnthropicThinkingDeltaEvent(
 	value: Record<string, unknown>,
 ): boolean {
@@ -282,7 +303,8 @@ export function isAgentdProviderStreamState(
 		Array.isArray(tools) &&
 		tools.every(isAgentdProviderStreamTool) &&
 		isAgentdProviderOpenAiState(value["openai"]) &&
-		isAgentdProviderAnthropicState(value["anthropic"])
+		isAgentdProviderAnthropicState(value["anthropic"]) &&
+		isAgentdProviderGeminiState(value["gemini"])
 	);
 }
 
@@ -340,4 +362,23 @@ function isAgentdProviderAnthropicThinkingBlock(value: unknown): boolean {
 		return typeof value["data"] === "string";
 	}
 	return false;
+}
+
+function isAgentdProviderGeminiState(value: unknown): boolean {
+	if (value === undefined) return true;
+	if (!isRecord(value)) return false;
+	const thoughtSignatures = value["thoughtSignatures"];
+	return (
+		Array.isArray(thoughtSignatures) &&
+		thoughtSignatures.every(isAgentdGeminiThoughtSignature)
+	);
+}
+
+function isAgentdGeminiThoughtSignature(value: unknown): boolean {
+	return (
+		isRecord(value) &&
+		typeof value["partIndex"] === "number" &&
+		isOptionalString(value["toolCallId"]) &&
+		typeof value["thoughtSignature"] === "string"
+	);
 }

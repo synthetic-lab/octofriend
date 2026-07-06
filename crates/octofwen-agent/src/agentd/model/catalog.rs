@@ -98,6 +98,7 @@ fn provider_json(provider: &ProviderConfig) -> Value {
         "name": provider.name,
         "envVar": provider.env_var,
         "baseUrl": provider.base_url,
+        "apiKeyUrl": provider.api_key_url,
         "models": provider.models.iter().map(model_json).collect::<Vec<_>>(),
         "testModel": provider.test_model,
     })
@@ -112,9 +113,12 @@ fn model_json(model: &octofwen_config::models::ProviderModelConfig) -> Value {
         object.insert(
             "reasoning".into(),
             json!(match reasoning {
+                octofwen_config::models::ReasoningLevel::None => "none",
+                octofwen_config::models::ReasoningLevel::Minimal => "minimal",
                 octofwen_config::models::ReasoningLevel::Low => "low",
                 octofwen_config::models::ReasoningLevel::Medium => "medium",
                 octofwen_config::models::ReasoningLevel::High => "high",
+                octofwen_config::models::ReasoningLevel::XHigh => "xhigh",
             }),
         );
     }
@@ -144,5 +148,6 @@ fn provider_kind_json(kind: ProviderKind) -> &'static str {
         ProviderKind::Standard => "standard",
         ProviderKind::OpenAiResponses => "openai-responses",
         ProviderKind::Anthropic => "anthropic",
+        ProviderKind::Gemini => "gemini",
     }
 }

@@ -33,7 +33,7 @@ const fetchUserData = async (userId) => {
     const { data, errors } = await response.json();
 
     if (errors?.length > 0) {
-      throw new Error(\`API Error: \${errors[0].message}\`);
+      return Promise.reject(new Error(\`API Error: \${errors[0].message}\`));
     }
 
     return data;
@@ -107,7 +107,7 @@ class ApiClient<T extends Record<string, unknown>> {
     });
 
     if (!response.ok) {
-      throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+      return Promise.reject(new Error(\`HTTP \${response.status}: \${response.statusText}\`));
     }
 
     return response.json();
