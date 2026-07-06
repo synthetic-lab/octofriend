@@ -1,0 +1,35 @@
+[package]
+name = "octofwen-agent"
+description = "Agent orchestration and octofwen-agentd bridge binary for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_agent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "octofwen-agentd"
+path = "src/bin/agentd.rs"
+
+[dependencies]
+octofwen-core.workspace = true
+octofwen-config.workspace = true
+octofwen-protocol.workspace = true
+octofwen-storage.workspace = true
+octofwen-transport.workspace = true
+octofwen-llm.workspace = true
+octofwen-tools.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+json5.workspace = true
+reqwest.workspace = true
+
+[lints]
+workspace = true

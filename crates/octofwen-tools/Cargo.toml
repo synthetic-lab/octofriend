@@ -1,0 +1,25 @@
+[package]
+name = "octofwen-tools"
+description = "Tool runtime and tool implementations for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_tools"
+path = "src/lib.rs"
+
+[dependencies]
+octofwen-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+html2text.workspace = true
+
+[lints]
+workspace = true

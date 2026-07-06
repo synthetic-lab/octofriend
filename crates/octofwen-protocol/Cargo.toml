@@ -1,0 +1,22 @@
+[package]
+name = "octofwen-protocol"
+description = "Wire protocol contracts for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_protocol"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

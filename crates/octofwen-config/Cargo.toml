@@ -1,0 +1,21 @@
+[package]
+name = "octofwen-config"
+description = "Configuration, auth, paths, and model catalog domain for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_config"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

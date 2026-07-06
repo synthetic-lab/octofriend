@@ -1,0 +1,148 @@
+[workspace]
+members = [
+    "crates/octofwen-core",
+    "crates/octofwen-config",
+    "crates/octofwen-protocol",
+    "crates/octofwen-storage",
+    "crates/octofwen-transport",
+    "crates/octofwen-llm",
+    "crates/octofwen-tools",
+    "crates/octofwen-agent",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "MIT"
+repository = "https://github.com/xsyetopz/octofwen.git"
+readme = "README.md"
+keywords = ["octofwen", "octofriend", "agents", "sdk"]
+categories = ["development-tools"]
+version = "0.0.0"
+
+[workspace.dependencies]
+octofwen-agent = { path = "crates/octofwen-agent" }
+octofwen-config = { path = "crates/octofwen-config" }
+octofwen-core = { path = "crates/octofwen-core" }
+octofwen-llm = { path = "crates/octofwen-llm" }
+octofwen-protocol = { path = "crates/octofwen-protocol" }
+octofwen-storage = { path = "crates/octofwen-storage" }
+octofwen-tools = { path = "crates/octofwen-tools" }
+octofwen-transport = { path = "crates/octofwen-transport" }
+
+html2text = "0.17.1"
+json5 = "1.3.1"
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "blocking",
+    "rustls",
+] }
+rusqlite = { version = "0.40.1", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+unicode-width = "0.2.2"
+
+[workspace.lints.rust]
+warnings = { level = "deny", priority = -10 }
+future_incompatible = { level = "deny", priority = -9 }
+rust_2018_idioms = { level = "deny", priority = -9 }
+rust_2024_compatibility = { level = "deny", priority = -9 }
+
+unsafe_code = { level = "warn", priority = 10 }
+unsafe_op_in_unsafe_fn = "deny"
+unsafe_attr_outside_unsafe = "deny"
+missing_unsafe_on_extern = "deny"
+ffi_unwind_calls = "deny"
+
+deprecated = "deny"
+unreachable_pub = "warn"
+unused_crate_dependencies = "warn"
+unused_extern_crates = "deny"
+unused_import_braces = "deny"
+unused_lifetimes = "deny"
+unused_macro_rules = "deny"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+variant_size_differences = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -10 }
+correctness = { level = "deny", priority = -9 }
+suspicious = { level = "deny", priority = -9 }
+complexity = { level = "deny", priority = -9 }
+perf = { level = "deny", priority = -9 }
+style = { level = "deny", priority = -9 }
+
+pedantic = { level = "warn", priority = -20 }
+nursery = { level = "warn", priority = -20 }
+cargo = { level = "warn", priority = -20 }
+
+restriction = { level = "allow", priority = -30 }
+
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+missing_safety_doc = "deny"
+unnecessary_safety_comment = "deny"
+
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+assigning_clones = "allow"
+collapsible_if = "allow"
+derivable_impls = "allow"
+explicit_iter_loop = "allow"
+fn_params_excessive_bools = "allow"
+map_unwrap_or = "allow"
+multiple_crate_versions = "allow"
+missing_const_for_fn = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+needless_borrow = "allow"
+needless_borrows_for_generic_args = "allow"
+needless_lifetimes = "allow"
+needless_pass_by_value = "allow"
+needless_raw_string_hashes = "allow"
+obfuscated_if_else = "allow"
+option_if_let_else = "allow"
+or_fun_call = "allow"
+question_mark = "allow"
+range_plus_one = "allow"
+redundant_pub_crate = "allow"
+single_option_map = "allow"
+struct_excessive_bools = "allow"
+too_many_arguments = "allow"
+trivially_copy_pass_by_ref = "allow"
+unnecessary_lazy_evaluations = "allow"
+unnecessary_struct_initialization = "allow"
+unnested_or_patterns = "allow"
+use_self = "allow"
+
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "warn"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+print_stderr = "warn"
+
+large_enum_variant = "deny"
+large_stack_arrays = "warn"
+large_stack_frames = "warn"
+large_types_passed_by_value = "warn"
+
+items_after_test_module = "deny"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = 0
+incremental = false
+
+[profile.release-with-checks]
+inherits = "release"
+overflow-checks = true
+debug-assertions = true

@@ -1,0 +1,9 @@
+mod autofix;
+mod compaction;
+mod config;
+mod core;
+mod model_catalog;
+mod model_connection;
+mod provider;
+mod synthetic_quota;
+mod trajectory;
