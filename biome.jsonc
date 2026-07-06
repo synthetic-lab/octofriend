@@ -1,0 +1,158 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"**/*.cjs",
+			"**/*.js",
+			"**/*.jsx",
+			"**/*.mjs",
+			"**/*.mts",
+			"**/*.ts",
+			"**/*.tsx",
+			"!external",
+			"!**/node_modules",
+			"!**/dist"
+		],
+		"ignoreUnknown": true
+	},
+	"overrides": [
+		{
+			"includes": [
+				"**/*.cjs",
+				"**/*.config.js",
+				"**/*.config.mjs",
+				"**/*.config.mts",
+				"**/*.config.ts"
+			],
+			"linter": {
+				"rules": {
+					"style": {
+						"noDefaultExport": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["packages/vscode-extension/src/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noUndeclaredDependencies": "off" // vscode is provided by the extension host at runtime
+					},
+					"complexity": {
+						"noExcessiveCognitiveComplexity": "warn" // parsers/formatters are inherently complex
+					}
+				}
+			}
+		}
+	],
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"complexity": {
+				"noExcessiveCognitiveComplexity": "error",
+				"noUselessStringConcat": "warn",
+				"noUselessUndefinedInitialization": "error",
+				"noVoid": "warn",
+				"useDateNow": "warn",
+				"useLiteralKeys": "off",
+				"useSimplifiedLogicExpression": "warn"
+			},
+			"correctness": {
+				"noConstantMathMinMaxClamp": "error",
+				// "noNodejsModules": "off",
+				"noUndeclaredDependencies": "error",
+				"noUndeclaredVariables": "error",
+				"noUnusedFunctionParameters": "warn",
+				"noUnusedImports": "error",
+				"noUnusedPrivateClassMembers": "error",
+				"noUnusedVariables": "error",
+				"useHookAtTopLevel": "error",
+				"useImportExtensions": "warn",
+				"noInvalidBuiltinInstantiation": "error",
+				"noSwitchDeclarations": "info"
+			},
+			"performance": {
+				"noBarrelFile": "warn",
+				"noReExportAll": "warn",
+				"useTopLevelRegex": "warn",
+				"noNamespaceImport": "off"
+			},
+			"style": {
+				"noDefaultExport": "warn",
+				"noDoneCallback": "warn",
+				"noImplicitBoolean": "info",
+				"noNamespace": "error",
+				"noNegationElse": "info",
+				"noParameterProperties": "warn",
+				"noRestrictedGlobals": "error",
+				"noShoutyConstants": "info",
+				"noYodaExpression": "info",
+				"useBlockStatements": "off",
+				"useCollapsedElseIf": "info",
+				"useConsistentArrayType": "warn",
+				"useConsistentBuiltinInstantiation": "warn",
+				"useDefaultSwitchClause": "info",
+				"useExplicitLengthCheck": "warn",
+				"useForOf": "info",
+				"useFragmentSyntax": "warn",
+				"useLiteralEnumMembers": "warn",
+				"useNodeAssertStrict": "error",
+				"useShorthandAssign": "info",
+				"useThrowNewError": "error",
+				"useThrowOnlyError": "error",
+				"noParameterAssign": "error",
+				"useAsConstAssertion": "error",
+				"useDefaultParameterLast": "error",
+				"useEnumInitializers": "error",
+				"useSelfClosingElements": "error",
+				"useSingleVarDeclarator": "error",
+				"noUnusedTemplateLiteral": "error",
+				"useNumberNamespace": "error",
+				"noInferrableTypes": "error",
+				"noUselessElse": "error",
+				"useArrayLiterals": "warn"
+			},
+			"suspicious": {
+				"noEmptyBlockStatements": "error",
+				"noEvolvingTypes": "error",
+				"noMisplacedAssertion": "error",
+				"noReactSpecificProps": "error",
+				"noSkippedTests": "error",
+				"useAwait": "error",
+				"useErrorMessage": "warn",
+				"useNumberToFixedDigitsArgument": "warn"
+			}
+		}
+	},
+	"javascript": {
+		"globals": ["Bun", "$"],
+		"formatter": {
+			"quoteStyle": "double"
+		}
+	},
+	"css": {
+		"formatter": {
+			"enabled": true
+		},
+		"linter": {
+			"enabled": true
+		}
+	}
+}

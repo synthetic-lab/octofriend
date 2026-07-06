@@ -1,7 +1,24 @@
-node_modules
-dist
-/training/fast-apply/unfat/output
-/training/fix-json/unfat/output
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+packages/*/dist/
+target/
+*.tsbuildinfo
+packages/octofwen-cli/bin/octofwen-agentd
+packages/octofwen-cli/bin/octofwen-agentd.exe
+
+# local/generated state
+.codebase-memory/
+.octofriend
+.octofwen
+*.log
+
+# training outputs
+/training/fast-apply/unfat/output/
+/training/fix-json/unfat/output/
+
+# OS/editor noise
 .DS_Store
 *.DS_Store
-.octofriend
