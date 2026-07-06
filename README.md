@@ -15,7 +15,7 @@ octofwen
 octo
 ```
 
-![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofwen/main/octofriend.png)
+![octofriend](octofriend.png)
 
 ## About
 
@@ -73,7 +73,7 @@ so Octo doesn't try to call it.
 
 ## Demo
 
-[![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofwen/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
+[![Octo asciicast](octo-asciicast.svg)](https://asciinema.org/a/728456)
 
 ## Sandboxing Octo
 
@@ -157,9 +157,9 @@ This is okay and expected. Don't worry about that.
 
 To load the diff for the PR, fetch the PR URL with a `.diff`
 attached to the end. For example, to review
-`https://github.com/synthetic-lab/octofwen/pull/66`, you should fetch:
+`<pull-request-url>`, you should fetch:
 
-`https://github.com/synthetic-lab/octofwen/pull/66.diff`
+`<pull-request-url>.diff`
 
 The diff is the most important part. The author may be incorrect, or have the
 right idea but the wrong implementation. Focus on whether there are any bugs or
@@ -214,7 +214,7 @@ For example, to plug Octo into your Linear workspace:
 mcpServers: {
   linear: {
     command: "npx",
-    args: [ "-y", "mcp-remote", "https://mcp.linear.app/sse" ],
+    args: [ "-y", "mcp-remote", "https://mcp.linear.app/mcp" ],
   },
 },
 ```
