@@ -1,25 +1,25 @@
-Octo is a small, helpful, zero-telemetry, cephalopod-flavored coding assistant.
-Octo is your friend.
+Octofwen is the Bun-first TypeScript and Rust rewrite of Octofriend.
+Octo is still your friend.
 
 ## Get Started
 
 ```bash
-npm install --global octofriend
+bun install --global octofwen
 ```
 
 And then:
 
 ```bash
-octofriend
+octofwen
 # or, for short:
 octo
 ```
 
-![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octofriend.png)
+![octofriend](https://raw.githubusercontent.com/synthetic-lab/octofwen/main/octofriend.png)
 
 ## About
 
-Octo is a small, helpful, cephalopod-flavored coding assistant that works with
+Octofwen is a small, helpful, cephalopod-flavored coding assistant that works with
 any OpenAI-compatible or Anthropic-compatible LLM API, and allows you to switch
 models at will mid-conversation when a particular model gets stuck. Octo can
 optionally use (and we recommend using) ML models we custom-trained and
@@ -73,7 +73,7 @@ so Octo doesn't try to call it.
 
 ## Demo
 
-[![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
+[![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofwen/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
 
 ## Sandboxing Octo
 
@@ -107,24 +107,21 @@ installed.
 
 ## Rules
 
-Octo will look for instruction files named like so:
+Octofwen looks for active instruction files named like so:
 
-- `OCTO.md`
-- `CLAUDE.md`
 - `AGENTS.md`
+- `.agents/AGENTS.md`
+- `CLAUDE.md`
 
-Octo uses the _first_ one of those it finds: so if you want to have different
-instructions for Octo than for Claude, just have an `OCTO.md` and a
-`CLAUDE.md`, and Octo will ignore your `CLAUDE.md`.
+`OCTO.md` is legacy documentation only and is not loaded as an active
+instruction source.
 
-Octo will search the current directory for rules, and every parent directory,
-up until (inclusive of) your home directory. All rule files will be merged: so
-if you want project-specific rules as well as general rules to apply
-everywhere, you can add an `OCTO.md` to your project, as well as a global
-`OCTO.md` in your home directory.
+Octofwen searches from general to specific: the user config file, then each
+parent directory down to the current directory. Directory-level `AGENTS.md`,
+`.agents/AGENTS.md`, and `CLAUDE.md` files are merged in that order.
 
-If you don't want to clutter your home directory, you can also add a global
-rules file in `~/.config/octofriend/OCTO.md`.
+You can add a user-level rules file in `$XDG_CONFIG_HOME/AGENTS.md`, or in
+`~/.config/AGENTS.md` when `XDG_CONFIG_HOME` is unset.
 
 ## Skills
 
@@ -160,9 +157,9 @@ This is okay and expected. Don't worry about that.
 
 To load the diff for the PR, fetch the PR URL with a `.diff`
 attached to the end. For example, to review
-`https://github.com/synthetic-lab/octofriend/pull/66`, you should fetch:
+`https://github.com/synthetic-lab/octofwen/pull/66`, you should fetch:
 
-`https://github.com/synthetic-lab/octofriend/pull/66.diff`
+`https://github.com/synthetic-lab/octofwen/pull/66.diff`
 
 The diff is the most important part. The author may be incorrect, or have the
 right idea but the wrong implementation. Focus on whether there are any bugs or
@@ -193,7 +190,7 @@ skills: {
 Octo can do a lot out of the box — pretty much anything is possible with enough
 Bash — but if you want access to rich data from an MCP server, it'll help Octo
 out a lot to just provide the MCP server directly instead of trying to contort
-its tentacles into crafting the right Bash-isms. After you run `octofriend` for
+its tentacles into crafting the right Bash-isms. After you run `octofwen` for
 the first time, you'll end up with a config file in
 `~/.config/octofriend/octofriend.json5`. To hook Octo up to your favorite MCP
 server, add the following to the config file:
@@ -254,7 +251,7 @@ underlying error messages from APIs or tool calls, run Octo with the
 `OCTO_VERBOSE` environment variable set to any truthy string; for example:
 
 ```bash
-OCTO_VERBOSE=1 octofriend
+OCTO_VERBOSE=1 octofwen
 ```
 
 ## Desktop notifications
@@ -300,5 +297,8 @@ notifications: {
 
 ## Opting into canary versions
 
-If you want to use unreleased versions of Octo, clone this repo and read the
-instructions in `canary.sh` to install `canary-octo` in your shell.
+If you want to use unreleased versions of Octofwen, clone this repo and source
+`canary.sh`, `canary.fish`, or `canary.ps1`. Bash and fish install
+`canary-octofwen`, with `canary-octo` retained as a shell alias. PowerShell
+installs `Invoke-CanaryOctofwen` and a `canary-octo` alias. All three run the
+checkout directly with `OCTOFWEN_CHANNEL=canary`.

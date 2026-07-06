@@ -1,6 +1,6 @@
-# Contributing to Octofriend
+# Contributing to Octofwen
 
-Thank you for your interest in contributing to Octofriend! We welcome contributions in many forms: code, bug reports, and documentation improvements. Before diving in, please take a moment to read through these guidelines so we can keep the project healthy and the review process smooth for everyone.
+Thank you for your interest in contributing to Octofwen! We welcome contributions in many forms: code, bug reports, and documentation improvements. Before diving in, please take a moment to read through these guidelines so we can keep the project healthy and the review process smooth for everyone.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Octofriend! We welcome contributi
 
 ## Before You Start
 
-- Check existing [issues](https://github.com/synthetic-lab/octofriend/issues) and [pull requests](https://github.com/synthetic-lab/octofriend/pulls) to avoid duplicating work.
+- Check existing [issues](https://github.com/synthetic-lab/octofwen/issues) and [pull requests](https://github.com/synthetic-lab/octofwen/pulls) to avoid duplicating work.
 - For new features, discuss your approach in a [#feature-request](https://discord.com/channels/1315627714056687706/1476772316401893407) post in our [Discord](https://synthetic.new/discord) or in a Github issue. We may have opinions on the direction, and it's better to align early than after you've put in the work.
 - If you want to work on an open issue or feature, comment on it (either on Discord or GH Issues) to let others know.
 
@@ -27,29 +27,41 @@ Thank you for your interest in contributing to Octofriend! We welcome contributi
 
 ```bash
 # Fork the repo on GitHub, then clone your fork:
-git clone https://github.com/your-username/octofriend.git
-cd octofriend
+git clone https://github.com/your-username/octofwen.git
+cd octofwen
 
 # Install dependencies:
-npm install
+bun install
 
 # Build & run the project:
-npm run exec
+bun run exec
 ```
 
 **Canary builds:**
 
-If you ever want to run your local checkout directly instead of a published release, source `canary.sh` in your shell config:
+If you ever want to run your local checkout directly instead of a published release, source the canary file for your shell:
 
 ```bash
 # Add this to your ~/.zshrc or ~/.bashrc:
-source /path/to/octofriend/canary.sh
+source /path/to/octofwen/canary.sh
+
+# Or for fish, add this to ~/.config/fish/config.fish:
+source /path/to/octofwen/canary.fish
 ```
 
-This defines a `canary-octo` command that builds your current checkout and runs it on the spot. Useful for testing your changes without a full publish cycle:
+```powershell
+# Add this to your PowerShell profile:
+. /path/to/octofwen/canary.ps1
+```
+
+The bash and fish scripts define a `canary-octofwen` command. The PowerShell script defines `Invoke-CanaryOctofwen` and a `canary-octo` alias. Each command builds your current checkout and runs it on the spot. Useful for testing your changes without a full publish cycle:
 
 ```bash
-canary-octo
+canary-octofwen
+```
+
+```powershell
+Invoke-CanaryOctofwen
 ```
 
 ---
@@ -58,9 +70,9 @@ canary-octo
 
 1. **Keep PRs focused.** One fix or feature per PR. Large, sprawling PRs are hard to review and more likely to be closed.
 2. **Write a clear description.** Explain what the change does and why. Link to any related issues using `fixes #123` or `closes #123`.
-3. **Make sure the build passes.** Run `npm run build` before submitting.
-4. **Run tests.** Run `npm run test:run` and make sure nothing is broken.
-5. **Format your code.** Run `npm run format` before pushing.
+3. **Make sure the build passes.** Run `bun run typecheck` before submitting.
+4. **Run tests.** Run `bun test` and make sure nothing is broken.
+5. **Format your code.** Match the existing style in touched files.
 6. **Screenshots.** If your PR changes something visible (UI layout, terminal output, formatting, error messages, or any user-facing behavior), please include screenshots or terminal recordings in the PR description.
 7. **Run your PR through an AI code-review agent** Code-review agents help catch any obvious bugs or nits, requiring less back-and-forth for everyone!
 8. **Mark drafts as drafts.** If your PR isn't ready for review, open it as a Draft.
@@ -84,7 +96,7 @@ We're a small team. We do our best to review PRs promptly, but please give us so
 
 ## Code Style
 
-- Prettier handles formatting automatically. Just run `npm run format`.
+- Match the existing formatting style in touched files.
 - Prefer `type Blah = { ... }` over `interface Blah { ... }` unless you specifically need an interface (i.e., it's designed for classes to implement).
 - Keep things simple. Don't add abstractions, helpers, or generalization for hypothetical future needs.
 - Remove redundant comments that restate what the code already says. If your AI assistant added them, delete them before submitting. For example, delete these kinds of comments:
@@ -104,7 +116,7 @@ A good bug report makes it much easier to reproduce and fix the issue. Please in
 - **What actually happened**
 - **Steps to reproduce**: as minimal and specific as possible. For request errors, use Copy request as cURL to give us more information.
 - **Your environment**: OS, terminal, LLM provider/model, etc.
-- **Relevant logs**: run with `OCTO_VERBOSE=1 octofriend` to get more detailed output
+- **Relevant logs**: run with `OCTO_VERBOSE=1 octofwen` to get more detailed output
 - **Screenshots or recordings**: especially if the issue is visual or involves terminal rendering
 
 Please search existing issues before opening a new one.
@@ -128,4 +140,4 @@ If you submit a PR that looks vibecoded, we may close it. This isn't about gatek
 
 ---
 
-Thank you for contributing. Now go build something cool with Octo! 🐙
+Thank you for contributing. Now go build something cool with Octofwen! 🐙
