@@ -1,6 +1,6 @@
-import React from "react";
 import { render } from "ink";
-import { renderMarkdown } from "../../source/markdown";
+import React from "react";
+import { Markdown } from "../../packages/octofwen-tui/src/rendering/markdown.tsx";
 
 const demoMarkdown = `# Markdown Rendering Demo
 
@@ -31,11 +31,11 @@ const fetchUserData = async (userId) => {
   try {
     const response = await fetch(\`/api/users/\${userId}\`);
     const { data, errors } = await response.json();
-    
+
     if (errors?.length > 0) {
       throw new Error(\`API Error: \${errors[0].message}\`);
     }
-    
+
     return data;
   } catch (error) {
     console.error('Failed to fetch user:', error);
@@ -46,18 +46,18 @@ const fetchUserData = async (userId) => {
 // Class with private fields and methods
 class UserManager {
   #users = new Map();
-  
+
   constructor(apiClient) {
     this.apiClient = apiClient;
   }
-  
+
   async #validateUser(userData) {
     const schema = { name: 'string', email: 'string' };
-    return Object.keys(schema).every(key => 
+    return Object.keys(schema).every(key =>
       typeof userData[key] === schema[key]
     );
   }
-  
+
   async addUser(userData) {
     if (await this.#validateUser(userData)) {
       this.#users.set(userData.id, userData);
@@ -94,22 +94,22 @@ interface User {
 
 class ApiClient<T extends Record<string, unknown>> {
   constructor(private baseUrl: string, private token?: string) {}
-  
+
   async get<R>(endpoint: string): Promise<ApiResponse<R>> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       ...(this.token && { Authorization: \`Bearer \${this.token}\` })
     };
-    
+
     const response = await fetch(\`\${this.baseUrl}\${endpoint}\`, {
       headers,
       method: 'GET'
     });
-    
+
     if (!response.ok) {
       throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
     }
-    
+
     return response.json();
   }
 }
@@ -135,7 +135,7 @@ class User:
     name: str
     email: str
     created_at: datetime = dataclasses.field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     def __post_init__(self):
         if '@' not in self.email:
             raise ValueError(f"Invalid email: {self.email}")
@@ -150,7 +150,7 @@ class UserService:
     def __init__(self, db: DatabaseProtocol):
         self._db = db
         self._cache: Dict[str, User] = {}
-    
+
     @asynccontextmanager
     async def transaction(self):
         """Context manager for database transactions"""
@@ -161,17 +161,17 @@ class UserService:
         except Exception as e:
             await self._db.rollback()
             raise e
-    
+
     async def create_user(self, name: str, email: str) -> User:
         user = User(id=f"user_{len(self._cache)}", name=name, email=email)
-        
+
         async with self.transaction():
             user_id = await self._db.save({
                 'name': user.name,
                 'email': user.email,
                 'created_at': user.created_at.isoformat()
             })
-            
+
         self._cache[user_id] = user
         return user
 
@@ -180,24 +180,24 @@ def process_data(items: List[Dict[str, Any]]) -> List[str]:
     # Filter, transform, and extract with comprehensions
     valid_items = [item for item in items if item.get('status') == 'active']
     processed = [f"{item['name'].upper()}_{item['id']}" for item in valid_items]
-    
+
     # Generator for memory efficiency
     def batch_generator(data, batch_size=10):
         for i in range(0, len(data), batch_size):
             yield data[i:i + batch_size]
-    
+
     return [item for batch in batch_generator(processed) for item in batch]
 
 # Async main function
 async def main():
     db = MockDatabase()  # Implements DatabaseProtocol
     service = UserService(db)
-    
+
     users = await asyncio.gather(*[
         service.create_user(f"User {i}", f"user{i}@example.com")
         for i in range(5)
     ])
-    
+
     print(f"Created {len(users)} users successfully!")
 
 if __name__ == "__main__":
@@ -242,7 +242,7 @@ impl<'a, R: Repository<User>> UserService<'a, R> {
             cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-    
+
     async fn create_user(&self, name: String, email: String) -> Result<User, Box<dyn std::error::Error>> {
         let user = User {
             id: uuid::Uuid::new_v4().to_string(),
@@ -250,14 +250,14 @@ impl<'a, R: Repository<User>> UserService<'a, R> {
             email: email.clone(),
             created_at: chrono::Utc::now(),
         };
-        
+
         // Save to repository
         let user_id = self.repository.save(&user).await?;
-        
+
         // Update cache
         let mut cache = self.cache.write().await;
         cache.insert(user_id, user.clone());
-        
+
         Ok(user)
     }
 }
@@ -265,7 +265,7 @@ impl<'a, R: Repository<User>> UserService<'a, R> {
 // Pattern matching and error handling
 fn parse_config(input: &str) -> Result<HashMap<String, String>, &'static str> {
     let mut config = HashMap::new();
-    
+
     for line in input.lines() {
         match line.split_once('=') {
             Some((key, value)) if !key.trim().is_empty() => {
@@ -276,7 +276,7 @@ fn parse_config(input: &str) -> Result<HashMap<String, String>, &'static str> {
             None => return Err("Invalid line format"),
         }
     }
-    
+
     Ok(config)
 }
 
@@ -284,12 +284,12 @@ fn parse_config(input: &str) -> Result<HashMap<String, String>, &'static str> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repo = InMemoryRepository::new();
     let service = UserService::new(&repo);
-    
+
     let user = service.create_user(
         "Alice Johnson".to_string(),
         "alice@example.com".to_string()
     ).await?;
-    
+
     println!("Created user: {:#?}", user);
     Ok(())
 }
@@ -351,30 +351,30 @@ func (s *UserService) CreateUser(ctx context.Context, name, email string) (*User
     if name == "" || email == "" {
         return nil, fmt.Errorf("name and email are required")
     }
-    
+
     user := &User{
         ID:        generateID(),
         Name:      name,
         Email:     email,
         CreatedAt: time.Now().UTC(),
     }
-    
+
     // Save to repository
     if err := s.repo.Save(ctx, user); err != nil {
         return nil, fmt.Errorf("failed to save user: %w", err)
     }
-    
+
     // Cache the user
     cacheKey := fmt.Sprintf("user:%s", user.ID)
     if err := s.cache.Set(cacheKey, user, 1*time.Hour); err != nil {
         log.Printf("Warning: failed to cache user %s: %v", user.ID, err)
     }
-    
+
     // Update stats
     s.mu.Lock()
     s.stats["users_created"]++
     s.mu.Unlock()
-    
+
     return user, nil
 }
 
@@ -384,26 +384,26 @@ func (s *UserService) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
-    
+
     var req struct {
         Name  string \`json:"name"\`
         Email string \`json:"email"\`
     }
-    
+
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         http.Error(w, "Invalid JSON", http.StatusBadRequest)
         return
     }
-    
+
     ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
     defer cancel()
-    
+
     user, err := s.CreateUser(ctx, req.Name, req.Email)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
-    
+
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(user)
 }
@@ -412,7 +412,7 @@ func (s *UserService) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
 func (s *UserService) StartMetricsWorker(ctx context.Context) {
     ticker := time.NewTicker(30 * time.Second)
     defer ticker.Stop()
-    
+
     for {
         select {
         case <-ctx.Done():
@@ -424,7 +424,7 @@ func (s *UserService) StartMetricsWorker(ctx context.Context) {
                 stats[k] = v
             }
             s.mu.RUnlock()
-            
+
             log.Printf("Metrics: %+v", stats)
         }
     }
@@ -434,15 +434,15 @@ func main() {
     repo := &InMemoryRepository{}
     cache := &InMemoryCache{}
     service := NewUserService(repo, cache)
-    
+
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
-    
+
     // Start background worker
     go service.StartMetricsWorker(ctx)
-    
+
     http.HandleFunc("/users", service.CreateUserHandler)
-    
+
     fmt.Println("Server starting on :8080")
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
@@ -457,7 +457,7 @@ func generateID() string {
 \`\`\`sql
 -- Complex query with CTEs, window functions, and joins
 WITH user_stats AS (
-    SELECT 
+    SELECT
         u.id,
         u.name,
         u.email,
@@ -466,7 +466,7 @@ WITH user_stats AS (
         AVG(o.total_amount) as avg_order_value,
         ROW_NUMBER() OVER (ORDER BY SUM(o.total_amount) DESC) as spending_rank
     FROM users u
-    LEFT JOIN orders o ON u.id = o.user_id 
+    LEFT JOIN orders o ON u.id = o.user_id
     WHERE u.created_at >= '2023-01-01'
     GROUP BY u.id, u.name, u.email
 ),
@@ -475,13 +475,13 @@ top_customers AS (
     FROM user_stats
     WHERE spending_rank <= 100
 )
-SELECT 
+SELECT
     tc.name,
     tc.email,
     tc.order_count,
     tc.total_spent,
     tc.avg_order_value,
-    CASE 
+    CASE
         WHEN tc.total_spent > 1000 THEN 'VIP'
         WHEN tc.total_spent > 500 THEN 'Premium'
         ELSE 'Standard'
@@ -492,12 +492,12 @@ FROM top_customers tc
 ORDER BY tc.total_spent DESC;
 
 -- Advanced indexing and constraints
-CREATE INDEX CONCURRENTLY idx_users_email_active 
-ON users (email) 
+CREATE INDEX CONCURRENTLY idx_users_email_active
+ON users (email)
 WHERE status = 'active';
 
-CREATE UNIQUE INDEX idx_users_external_id 
-ON users (external_id) 
+CREATE UNIQUE INDEX idx_users_external_id
+ON users (external_id)
 WHERE external_id IS NOT NULL;
 
 -- Trigger function for audit logging
@@ -574,53 +574,53 @@ trap cleanup EXIT
 # Validation functions
 check_prerequisites() {
     log "Checking prerequisites..."
-    
+
     local required_tools=("docker" "kubectl" "helm" "jq")
     for tool in "\${required_tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             error "Required tool '$tool' is not installed"
         fi
     done
-    
+
     # Check if we're in the right directory
     if [[ ! -f "$PROJECT_ROOT/package.json" ]]; then
         error "Not in a valid project directory"
     fi
-    
+
     log "Prerequisites check passed"
 }
 
 # Build and test
 build_application() {
     log "Building application..."
-    
+
     cd "$PROJECT_ROOT"
-    
+
     # Install dependencies if needed
     if [[ ! -d "node_modules" ]] || [[ "package.json" -nt "node_modules" ]]; then
         log "Installing dependencies..."
         npm ci --silent
     fi
-    
+
     # Run tests
     log "Running tests..."
     npm run test 2>&1 | tee -a "$LOG_FILE"
-    
+
     # Build the application
     log "Building production bundle..."
     NODE_ENV=production npm run build 2>&1 | tee -a "$LOG_FILE"
-    
+
     # Build Docker image
     local image_tag="myapp:$(git rev-parse --short HEAD)"
     log "Building Docker image: $image_tag"
-    
+
     docker build \\
         --tag "$image_tag" \\
         --build-arg NODE_ENV=production \\
         --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \\
         --build-arg VCS_REF="$(git rev-parse HEAD)" \\
         . | tee -a "$LOG_FILE"
-    
+
     echo "$image_tag"
 }
 
@@ -628,15 +628,15 @@ build_application() {
 deploy_to_k8s() {
     local image_tag="$1"
     local environment="\${2:-staging}"
-    
+
     log "Deploying to Kubernetes environment: $environment"
-    
+
     # Update Helm values
     local values_file="k8s/values-$environment.yaml"
     if [[ ! -f "$values_file" ]]; then
         error "Values file not found: $values_file"
     fi
-    
+
     # Deploy with Helm
     helm upgrade --install \\
         "myapp-$environment" \\
@@ -648,15 +648,15 @@ deploy_to_k8s() {
         --create-namespace \\
         --wait \\
         --timeout 10m | tee -a "$LOG_FILE"
-    
+
     # Verify deployment
     log "Verifying deployment..."
     kubectl rollout status deployment/myapp -n "$environment" --timeout=300s
-    
+
     # Run health checks
     local service_url
     service_url=$(kubectl get service myapp -n "$environment" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-    
+
     if [[ -n "$service_url" ]]; then
         log "Running health check on http://$service_url/health"
         for i in {1..30}; do
@@ -676,17 +676,17 @@ deploy_to_k8s() {
 # Main function
 main() {
     local environment="\${1:-staging}"
-    
+
     log "Starting deployment to $environment environment"
     log "Log file: $LOG_FILE"
-    
+
     check_prerequisites
-    
+
     local image_tag
     image_tag=$(build_application)
-    
+
     deploy_to_k8s "$image_tag" "$environment"
-    
+
     log "Deployment pipeline completed successfully!"
     log "Image deployed: $image_tag"
 }
@@ -813,7 +813,7 @@ Or configuration:
   server.host = localhost
   server.port = 8080
   database.url = postgresql://...
-  
+
 Or any other plain text code format.
 \`\`\`
 
@@ -853,7 +853,7 @@ You can also have [links with **bold text**](https://example.com/bold) inside th
 ## Blockquotes
 
 > This is a blockquote with important information.
-> 
+>
 > It can span multiple lines and contain **formatted text** and \`code\`.
 >
 > > Nested blockquotes are also supported
@@ -897,14 +897,14 @@ This section combines multiple elements:
 3. **Create** your main file:
    \`\`\`typescript
    import express from 'express';
-   
+
    const app = express();
    const PORT = process.env.PORT || 3000;
-   
+
    app.get('/', (req, res) => {
      res.json({ message: 'Hello, World!' });
    });
-   
+
    app.listen(PORT, () => {
      console.log(\`Server running on port \${PORT}\`);
    });
@@ -937,7 +937,9 @@ console.log("🎨 Markdown Rendering Demo");
 console.log("=".repeat(50));
 console.log();
 
-const markdownComponent = renderMarkdown(demoMarkdown);
+const markdownComponent = React.createElement(Markdown, {
+	markdown: demoMarkdown,
+});
 render(markdownComponent);
 
 console.log("=".repeat(50));
