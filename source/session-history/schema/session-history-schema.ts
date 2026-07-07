@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
+  index,
   integer,
   sqliteTable,
   text,
@@ -119,6 +120,7 @@ export const treeNodes = sqliteTable(
       .references(() => launches.id),
   },
   table => [
+    index("tree_nodes_tree_id_idx").on(table.treeId),
     unique().on(table.historyItemId),
     unique().on(table.id, table.treeId),
     uniqueIndex("tree_nodes_one_root_unique")
