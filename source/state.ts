@@ -1,8 +1,9 @@
 import {
+  AuthError,
   Config,
   useConfig,
   getModelFromConfig,
-  assertKeyForModel,
+  readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
 import { HistoryItem } from "./history.ts";
@@ -14,6 +15,7 @@ import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
+import type { ModelData } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
@@ -64,6 +66,11 @@ export type UiState = {
     | {
         mode: "rate-limit-error";
         error: string;
+      }
+    | {
+        mode: "auth-error";
+        model: Config["models"][number];
+        error: AuthError;
       }
     | {
         mode: "request-error";
@@ -119,6 +126,7 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
+  clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
@@ -207,6 +215,11 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (get().modeData.mode === mode) {
       await get().runAgent(args);
     }
+  },
+
+  clearAuthError: () => {
+    if (get().modeData.mode !== "auth-error") return;
+    set({ modeData: { mode: "input", vimMode: "INSERT" } });
   },
 
   editAndRetryFrom: (mode, _args) => {
@@ -483,14 +496,40 @@ export const useAppStore = create<UiState>((set, get) => ({
     let compactionByteCount = 0;
     let responseByteCount = 0;
     const model = getModelFromConfig(config, get().modelOverride);
-    const apiKey = await assertKeyForModel(model, config);
+    let modelData: ModelData;
+    if (model.type === "codex") {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: authResult.error,
+          },
+        });
+        return;
+      }
+      modelData = { type: "codex", auth: authResult.auth, model };
+    } else {
+      const authResult = await readAuthForModel(model, config);
+      if (!authResult.ok) {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: authResult.error,
+          },
+        });
+        return;
+      }
+      modelData = { type: "api", auth: authResult.auth, model };
+    }
 
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
       const finish = await trajectoryArc({
-        apiKey,
-        model,
+        modelData,
         messages: toLlmIR(historyCopy),
         config,
         transport,
@@ -623,6 +662,17 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       if (finishReason.type === "rate-limit-error") {
         set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
+        return;
+      }
+
+      if (finishReason.type === "auth-error") {
+        set({
+          modeData: {
+            mode: "auth-error",
+            model,
+            error: { type: "invalid", message: finishReason.authError },
+          },
+        });
         return;
       }
 

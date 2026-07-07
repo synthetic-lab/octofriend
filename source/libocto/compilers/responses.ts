@@ -291,7 +291,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
     const reasoningConfig = model.reasoningEffort
       ? {
           reasoning: {
-            effort: model.reasoningEffort,
+            effort: model.reasoningEffort as "low" | "medium" | "high",
             summary: "auto" as const,
           },
         }

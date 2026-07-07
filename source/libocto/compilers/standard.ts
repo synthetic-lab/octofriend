@@ -315,7 +315,8 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
       let reasoning: {
         reasoning_effort?: "low" | "medium" | "high";
       } = {};
-      if (model.reasoningEffort) reasoning.reasoning_effort = model.reasoningEffort;
+      if (model.reasoningEffort)
+        reasoning.reasoning_effort = model.reasoningEffort as "low" | "medium" | "high";
 
       const { data: res, response } = await model.client.chat.completions
         .create(

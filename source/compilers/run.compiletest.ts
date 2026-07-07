@@ -1,4 +1,3 @@
-import type { ModelConfig } from "../config.ts";
 import type {
   CompilerResult,
   CompilerResultWithoutToolCalls,
@@ -11,11 +10,11 @@ import type { LoadedTools } from "../tools/index.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { octoAgent } from "../ir/octo-ir.ts";
 import { run } from "./run.ts";
+import type { ModelData } from "./run.ts";
 
 function expectType<T>(_: T) {}
 
-declare const apiKey: string;
-declare const model: ModelConfig;
+declare const modelData: ModelData;
 declare const messages: Array<LoweredIR<typeof toolMap>>;
 declare const signal: AbortSignal;
 declare const transport: Transport;
@@ -23,8 +22,7 @@ declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<Jso
 declare const tools: Partial<LoadedTools>;
 
 const noToolsResult = run({
-  apiKey,
-  model,
+  modelData,
   messages,
   abortSignal: signal,
   transport,
@@ -47,8 +45,7 @@ noToolsResult.then(result => {
 });
 
 const withToolsResult = run({
-  apiKey,
-  model,
+  modelData,
   messages,
   abortSignal: signal,
   transport,
@@ -65,8 +62,7 @@ const withToolsResult = run({
 expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
 run({
-  apiKey,
-  model,
+  modelData,
   messages,
   abortSignal: signal,
   transport,

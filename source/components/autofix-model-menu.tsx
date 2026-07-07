@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Box, useInput } from "ink";
-import { Config, readKeyForModel } from "../config.ts";
+import { Config, readAuthForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
@@ -74,8 +74,8 @@ export function AutofixModelMenu({
             model: defaultModel,
           });
         } else {
-          const key = await readKeyForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
-          if (key !== null) {
+          const auth = await readAuthForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
+          if (auth.ok) {
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,
@@ -98,12 +98,12 @@ export function AutofixModelMenu({
       <CustomAutofixFlow
         config={config}
         onComplete={model => {
+          if (model.type === "codex") return;
           const val: Exclude<Config["diffApply"], undefined> = {
             baseUrl: model.baseUrl,
-            auth: model.auth,
             model: model.model,
           };
-          if (model.auth == null) delete val.auth;
+          if (model.auth?.type === "env" || model.auth?.type === "command") val.auth = model.auth;
           onComplete(val);
         }}
         onCancel={() => setStep("choose")}
@@ -115,7 +115,7 @@ export function AutofixModelMenu({
     return (
       <CustomAuthFlow
         config={config}
-        baseUrl={SYNTHETIC_PROVIDER.baseUrl}
+        authData={{ modelType: undefined, baseUrl: SYNTHETIC_PROVIDER.baseUrl }}
         onCancel={() => setStep("choose")}
         onComplete={async auth => {
           if (auth && auth.type === "env") {
@@ -124,7 +124,7 @@ export function AutofixModelMenu({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,
             });
-          } else if (auth) {
+          } else if (auth?.type === "command") {
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
               model: defaultModel,

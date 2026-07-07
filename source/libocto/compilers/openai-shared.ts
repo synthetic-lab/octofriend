@@ -7,7 +7,7 @@ export type OpenAICompilerModel = {
   client: OpenAI;
   model: string;
   modalities?: CompilerModalities;
-  reasoningEffort?: "low" | "medium" | "high";
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
 };
 
 const OpenAIStatusErrorSchema = t.subtype({

@@ -13,7 +13,7 @@ export type MultimodalConfig = {
 
 export type ProviderConfig = {
   shortcut: Hotkey;
-  type?: "standard" | "openai-responses" | "anthropic";
+  type?: "standard" | "openai-responses" | "anthropic" | "codex";
   name: string;
   envVar: string;
   baseUrl: string;
@@ -21,7 +21,7 @@ export type ProviderConfig = {
     model: string;
     nickname: string;
     context: number;
-    reasoning?: "low" | "medium" | "high";
+    reasoning?: "low" | "medium" | "high" | "xhigh";
     modalities?: MultimodalConfig;
   }>;
   testModel: string;
@@ -60,16 +60,40 @@ export const PROVIDERS = {
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
   } satisfies ProviderConfig,
 
+  codex: {
+    shortcut: "d" as const,
+    type: "codex",
+    name: "OpenAI Codex Subscription",
+    envVar: "OPENAI_CODEX_ACCESS_TOKEN",
+    baseUrl: "https://chatgpt.com/backend-api/codex",
+    models: [
+      {
+        model: "gpt-5.5",
+        nickname: "GPT-5.5",
+        context: 200 * 1024,
+        reasoning: "xhigh",
+        modalities: {
+          image: {
+            enabled: true,
+            maxSizeMB: 20,
+            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        },
+      },
+    ],
+    testModel: "gpt-5.5",
+  } satisfies ProviderConfig,
+
   openai: {
     shortcut: "o" as const,
     type: "openai-responses",
-    name: "OpenAI",
+    name: "OpenAI API",
     envVar: "OPENAI_API_KEY",
     baseUrl: "https://api.openai.com/v1",
     models: [
       {
-        model: "gpt-5.3-codex",
-        nickname: "GPT-5.3 Codex",
+        model: "gpt-5.5",
+        nickname: "GPT-5.5",
         context: 200 * 1024,
         reasoning: "medium",
         modalities: {
@@ -231,6 +255,7 @@ export function recommendedModel(provider: ProviderKey): ProviderConfig["models"
 }
 
 export const SYNTHETIC_PROVIDER = PROVIDERS.synthetic;
+export const CODEX_PROVIDER = PROVIDERS.codex;
 
 export function keyFromName(name: string): keyof typeof PROVIDERS {
   for (const [key, value] of Object.entries(PROVIDERS)) {
@@ -239,9 +264,7 @@ export function keyFromName(name: string): keyof typeof PROVIDERS {
   throw new Error(`No provider named ${name} found`);
 }
 
-export function providerForBaseUrl(
-  baseUrl: string,
-): (typeof PROVIDERS)[keyof typeof PROVIDERS] | null {
+export function providerForBaseUrl(baseUrl: string): ProviderConfig | null {
   const provider = Object.values(PROVIDERS).find(p => p.baseUrl === baseUrl);
   if (provider == null) return null;
   return provider;

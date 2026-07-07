@@ -10,7 +10,8 @@ import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import { QuotaData } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
-import { Config, ModelConfig } from "../config.ts";
+import { Config } from "../config.ts";
+import type { ModelData } from "../compilers/run.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { run } from "../compilers/run.ts";
 import type { CompilerError } from "../libocto/compilers/compiler-interface.ts";
@@ -115,6 +116,10 @@ type Finish = {
         requestError: string;
         curl: string;
       }
+    | {
+        type: "auth-error";
+        authError: string;
+      }
     | RecoverableRequestError
     | {
         type: "compaction-error";
@@ -128,16 +133,14 @@ type Finish = {
  * above is hit.
  */
 export async function trajectoryArc({
-  apiKey,
-  model,
+  modelData,
   messages,
   config,
   transport,
   abortSignal,
   handler,
 }: {
-  apiKey: string;
-  model: ModelConfig;
+  modelData: ModelData;
   messages: OctoIR[];
   config: Config;
   transport: Transport;
@@ -152,10 +155,10 @@ export async function trajectoryArc({
   const autofixJson = makeAutofixJson(config);
   let irs: TrajectoryOutputIR[] = [];
   const tools = await loadTools(transport, abortSignal, config);
+  const { model } = modelData;
 
   const parsedCompaction = await maybeAutocompact({
-    apiKey,
-    model,
+    modelData,
     abortSignal,
     transport,
     autofixJson,
@@ -166,7 +169,10 @@ export async function trajectoryArc({
     },
   });
   if (!parsedCompaction.success) {
-    if (isRecoverableRequestError(parsedCompaction.error)) {
+    if (
+      isRecoverableRequestError(parsedCompaction.error) ||
+      parsedCompaction.error.type === "auth-error"
+    ) {
       return {
         type: "finish",
         irs,
@@ -197,8 +203,7 @@ export async function trajectoryArc({
   let buffer: AssistantBuffer<ResponseTokenTypes> = {};
   const loweredMessages = lowerOcto(messagesCopy, model.modalities);
   const result = await run({
-    apiKey,
-    model,
+    modelData,
     autofixJson,
     abortSignal,
     transport,
@@ -241,7 +246,11 @@ export async function trajectoryArc({
     return [];
   }
 
-  const headers = result.success ? result.data.headers : result.error.headers;
+  const headers = result.success
+    ? result.data.headers
+    : "headers" in result.error
+      ? result.error.headers
+      : undefined;
   const quota = parseQuotaFromHeaders(headers);
   if (quota) handler.onQuotaUpdated(quota);
 
@@ -288,8 +297,7 @@ export async function trajectoryArc({
 
     handler.retryTool({ irs });
     const retried = await trajectoryArc({
-      apiKey,
-      model,
+      modelData,
       config,
       transport,
       abortSignal,
@@ -424,8 +432,7 @@ export async function trajectoryArc({
     const fullRetryTrajectory = [...irs, ...retryIrs];
     handler.retryTool({ irs: fullRetryTrajectory });
     const retried = await trajectoryArc({
-      apiKey,
-      model,
+      modelData,
       config,
       transport,
       abortSignal,
@@ -457,6 +464,7 @@ function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefi
 }
 
 function compilerErrorToFinishReason(error: CompilerError): Finish["reason"] {
+  if (error.type === "auth-error") return error;
   if (isRecoverableRequestError(error)) return error;
   return {
     type: "request-error",
@@ -470,16 +478,14 @@ function isRecoverableRequestError(error: { type: string }): error is Recoverabl
 }
 
 async function maybeAutocompact({
-  apiKey,
-  model,
+  modelData,
   messages,
   abortSignal,
   transport,
   handler,
   autofixJson,
 }: {
-  apiKey: string;
-  model: ModelConfig;
+  modelData: ModelData;
   messages: OctoIR[];
   abortSignal: AbortSignal;
   transport: Transport;
@@ -489,6 +495,7 @@ async function maybeAutocompact({
     compactionProgress: (stream: AutocompactionStream) => void;
   };
 }): Promise<Result<CompactionType | null, CompactionError>> {
+  const { model } = modelData;
   const loweredMessages = lowerOcto(messages, model.modalities);
   if (!shouldAutoCompactHistory(model.context, loweredMessages)) return ok(null);
 
@@ -499,8 +506,7 @@ async function maybeAutocompact({
     messages: loweredMessages,
     run: messages =>
       run({
-        apiKey,
-        model,
+        modelData,
         messages,
         abortSignal,
         transport,
