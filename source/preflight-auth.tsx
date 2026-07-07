@@ -12,29 +12,38 @@ import {
 } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
 
+function matchCodex<T>(
+  model: Config["models"][number],
+  arms: {
+    codex: (model: Extract<Config["models"][number], { type: "codex" }>) => T;
+    others: (model: Exclude<Config["models"][number], { type: "codex" }>) => T;
+  },
+): T {
+  if (model.type === "codex") return arms.codex(model);
+  return arms.others(model);
+}
+
 function resolveModelFromConfig(
   config: Config,
   model: Config["models"][number],
 ): Config["models"][number] {
   const exact = config.models.find(candidate => {
-    if (model.type === "codex") {
-      return (
-        candidate.type === "codex" &&
-        candidate.nickname === model.nickname &&
-        candidate.model === model.model
-      );
-    }
-    if (candidate.type === "codex") return false;
-    return candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl;
+    return matchCodex(model, {
+      codex: model => {
+        return (
+          candidate.type === "codex" &&
+          candidate.nickname === model.nickname &&
+          candidate.model === model.model
+        );
+      },
+      others: model => {
+        if (candidate.type === "codex") return false;
+        return candidate.nickname === model.nickname && candidate.baseUrl === model.baseUrl;
+      },
+    });
   });
   if (exact) return exact;
-  const fallback = config.models.find(candidate => {
-    if (model.type === "codex")
-      return candidate.type === "codex" && candidate.model === model.model;
-    if (candidate.type === "codex") return false;
-    return candidate.baseUrl === model.baseUrl;
-  });
-  return fallback ?? model;
+  return model;
 }
 
 function resolveAutofixModelFromConfig<K extends "diffApply" | "fixJson">(
@@ -137,23 +146,26 @@ export function PreflightModelAuth({
             let index = config.models.indexOf(model);
             let updatedModel = model;
             if (index >= 0 && auth) {
-              if (model.type === "codex") {
-                if (auth.type === "codex") {
-                  const updatedModels = [...config.models];
-                  updatedModel = { ...model, auth };
-                  updatedModels[index] = updatedModel;
-                  await writeConfig({ ...config, models: updatedModels }, configPath);
-                }
-              } else {
-                if (auth.type === "env") {
-                  await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
-                } else if (auth.type === "command") {
-                  const updatedModels = [...config.models];
-                  updatedModel = { ...model, auth };
-                  updatedModels[index] = updatedModel;
-                  await writeConfig({ ...config, models: updatedModels }, configPath);
-                }
-              }
+              await matchCodex(model, {
+                codex: async model => {
+                  if (auth.type === "codex") {
+                    const updatedModels = [...config.models];
+                    updatedModel = { ...model, auth };
+                    updatedModels[index] = updatedModel;
+                    await writeConfig({ ...config, models: updatedModels }, configPath);
+                  }
+                },
+                others: async model => {
+                  if (auth.type === "env") {
+                    await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+                  } else if (auth.type === "command") {
+                    const updatedModels = [...config.models];
+                    updatedModel = { ...model, auth };
+                    updatedModels[index] = updatedModel;
+                    await writeConfig({ ...config, models: updatedModels }, configPath);
+                  }
+                },
+              });
             }
             setCurrentModel(updatedModel);
             // Reload config to ensure we validate against the updated state

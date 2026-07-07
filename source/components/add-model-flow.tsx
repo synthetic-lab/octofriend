@@ -578,7 +578,7 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             model,
             nickname,
             context,
-            ...(auth ? { auth } : {}),
+            auth,
           });
         }}
       >
