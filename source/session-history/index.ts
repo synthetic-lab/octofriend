@@ -1,14 +1,12 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { desc, eq } from "drizzle-orm";
-import { db, schema } from "../db/db.ts";
+import { eq } from "drizzle-orm";
+import { db, DbTransaction, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
 import {
   compactionFailedItems,
-  dockerLaunches,
   historyItems,
   launches,
   llmIrs,
-  localLaunches,
   notifications,
   requestFailedItems,
   treeNodes,
@@ -29,7 +27,6 @@ export type HistoryNode = HistoryItem & { nodeId: number };
 export type SessionMetadata = {
   sessionId: string;
   cwd: string;
-  transportKind: TransportKind;
   cliArgs: ParsedCliArgs;
 };
 
@@ -44,78 +41,38 @@ export type LoadedSession = {
   history: HistoryNode[];
 };
 
-export function createSession(
-  sessionId: string,
-  cwd: string,
-  transportKind: TransportKind,
-  cliArgs: ParsedCliArgs,
-): Session {
+export function createSession(sessionId: string, cwd: string, cliArgs: ParsedCliArgs): Session {
   return {
-    metadata: { sessionId, cwd, transportKind, cliArgs },
+    metadata: { sessionId, cwd, cliArgs },
     treeId: null,
     launchId: null,
   };
 }
 
 export function loadSession(sessionId: string): LoadedSession | null {
-  const rows = db()
-    .select({
-      treeId: trees.id,
-      cwd: trees.cwd,
-      nodeId: treeNodes.id,
-      parentId: treeNodes.parentId,
-      isLeaf: treeNodes.isLeaf,
-      nodeLaunchId: treeNodes.launchId,
-      requestFailedId: historyItems.requestFailedId,
-      compactionFailedId: historyItems.compactionFailedId,
-      notificationContent: notifications.content,
-      llmIrJson: llmIrs.json,
-      localLaunchId: launches.localLaunchId,
-      localConfig: localLaunches.config,
-      localUnchained: localLaunches.unchained,
-      dockerLaunchId: launches.dockerLaunchId,
-      dockerKind: dockerLaunches.kind,
-      dockerContainerTarget: dockerLaunches.containerTarget,
-      dockerRunArgsJson: dockerLaunches.dockerRunArgsJson,
-      dockerConfig: dockerLaunches.config,
-      dockerUnchained: dockerLaunches.unchained,
-    })
-    .from(trees)
-    .leftJoin(treeNodes, eq(treeNodes.treeId, trees.id))
-    .leftJoin(historyItems, eq(historyItems.id, treeNodes.historyItemId))
-    .leftJoin(requestFailedItems, eq(requestFailedItems.id, historyItems.requestFailedId))
-    .leftJoin(compactionFailedItems, eq(compactionFailedItems.id, historyItems.compactionFailedId))
-    .leftJoin(notifications, eq(notifications.id, historyItems.notificationId))
-    .leftJoin(llmIrs, eq(llmIrs.id, historyItems.llmIrId))
-    .leftJoin(launches, eq(launches.id, treeNodes.launchId))
-    .leftJoin(localLaunches, eq(localLaunches.id, launches.localLaunchId))
-    .leftJoin(dockerLaunches, eq(dockerLaunches.id, launches.dockerLaunchId))
-    .where(eq(trees.name, sessionId))
-    .orderBy(desc(treeNodes.id))
-    .all();
+  const tree = loadSessionTree(sessionId);
+  if (tree == null) return null;
 
-  const mostRecentLeaf = rows.find(row => row.nodeId != null && row.isLeaf);
-  if (mostRecentLeaf?.nodeId == null || mostRecentLeaf.nodeLaunchId == null) return null;
-
-  const rowsByNodeId = new Map<number, (typeof rows)[number]>();
-  for (const row of rows) {
-    if (row.nodeId != null) rowsByNodeId.set(row.nodeId, row);
+  let mostRecentLeaf: SessionTreeNode | undefined;
+  const nodesById = new Map<number, SessionTreeNode>();
+  for (const node of tree.nodes) {
+    nodesById.set(node.id, node);
+    if (node.isLeaf && (mostRecentLeaf == null || node.id > mostRecentLeaf.id)) {
+      // todo should we add a updated at field to the tree nodes to find most recent leaf instead of relying on the autoincrementing id?
+      mostRecentLeaf = node;
+    }
   }
+  if (mostRecentLeaf == null) return null;
 
   const history: HistoryNode[] = [];
-  const visited = new Set<number>();
-  let current: (typeof rows)[number] | undefined = mostRecentLeaf;
-  while (current?.nodeId != null) {
-    if (visited.has(current.nodeId)) {
-      throw new Error(`Session ${sessionId} contains a cycle in its history tree.`);
-    }
-    visited.add(current.nodeId);
-    history.push(historyItemFromRow(current));
+  const visitedNodeIds = new Set<number>();
+  let current: SessionTreeNode | undefined = mostRecentLeaf;
+  while (current != null) {
+    visitedNodeIds.add(current.id);
+    history.push(historyNodeFromRow(current));
+
     if (current.parentId == null) break;
-    current = rowsByNodeId.get(current.parentId);
-    if (current == null) {
-      throw new Error(`Session ${sessionId} contains a history node with a missing parent.`);
-    }
+    current = nodesById.get(current.parentId);
   }
   history.reverse();
 
@@ -124,74 +81,89 @@ export function loadSession(sessionId: string): LoadedSession | null {
     session: {
       metadata: {
         sessionId,
-        cwd: mostRecentLeaf.cwd,
-        transportKind: cliArgs.kind,
+        cwd: tree.cwd,
         cliArgs,
       },
-      treeId: mostRecentLeaf.treeId,
+      treeId: tree.id,
       launchId: null,
     },
     history,
   };
 }
 
-function historyItemFromRow(row: {
-  nodeId: number | null;
-  requestFailedId: number | null;
-  compactionFailedId: number | null;
-  notificationContent: string | null;
-  llmIrJson: string | null;
-}): HistoryNode {
-  if (row.nodeId == null) throw new Error("Cannot load a history item without a tree node.");
-  if (row.llmIrJson != null) {
-    return { nodeId: row.nodeId, type: "llm-ir", ir: deserializeLlmIr(row.llmIrJson) };
-  }
-  if (row.notificationContent != null) {
-    return { nodeId: row.nodeId, type: "notification", content: row.notificationContent };
-  }
-  if (row.requestFailedId != null) return { nodeId: row.nodeId, type: "request-failed" };
-  if (row.compactionFailedId != null) return { nodeId: row.nodeId, type: "compaction-failed" };
-  throw new Error(`History node ${row.nodeId} has no payload.`);
+function loadSessionTree(sessionId: string) {
+  return db()
+    .query.trees.findFirst({
+      where: (table, { eq }) => eq(table.name, sessionId),
+      with: {
+        nodes: {
+          with: {
+            historyItem: {
+              with: {
+                requestFailedItem: true,
+                compactionFailedItem: true,
+                notification: true,
+                llmIr: true,
+              },
+            },
+            launch: {
+              with: {
+                local: true,
+                docker: true,
+              },
+            },
+          },
+        },
+      },
+    })
+    .sync();
 }
 
-function cliArgsFromRow(row: {
-  localLaunchId: number | null;
-  localConfig: string | null;
-  localUnchained: boolean | null;
-  dockerLaunchId: number | null;
-  dockerKind: "connect" | "run" | null;
-  dockerContainerTarget: string | null;
-  dockerRunArgsJson: string | null;
-  dockerConfig: string | null;
-  dockerUnchained: boolean | null;
-}): ParsedCliArgs {
-  if (row.localLaunchId != null) {
+type SessionTree = NonNullable<ReturnType<typeof loadSessionTree>>;
+type SessionTreeNode = SessionTree["nodes"][number];
+
+function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
+  const item = node.historyItem;
+  if (item.llmIr != null) {
+    return { nodeId: node.id, type: "llm-ir", ir: deserializeLlmIr(item.llmIr.json) };
+  }
+  if (item.notification != null) {
+    return { nodeId: node.id, type: "notification", content: item.notification.content };
+  }
+  if (item.requestFailedItem != null) return { nodeId: node.id, type: "request-failed" };
+  if (item.compactionFailedItem != null) return { nodeId: node.id, type: "compaction-failed" };
+  throw new Error(`History node ${node.id} has no payload.`);
+}
+
+function cliArgsFromRow(node: SessionTreeNode): ParsedCliArgs {
+  const { local, docker } = node.launch;
+  if (local != null) {
     return {
       kind: "local",
-      config: row.localConfig ?? undefined,
-      unchained: row.localUnchained || undefined,
+      config: local.config ?? undefined,
+      unchained: local.unchained || undefined,
     };
   }
-  if (row.dockerLaunchId == null || row.dockerKind == null) {
+  if (docker == null) {
     throw new Error("Session history node has no launch configuration.");
   }
-  if (row.dockerKind === "connect") {
-    if (row.dockerContainerTarget == null) {
+  if (docker.kind === "connect") {
+    if (docker.containerTarget == null) {
       throw new Error("Docker connect launch has no container target.");
     }
     return {
       kind: "docker-connect",
-      target: row.dockerContainerTarget,
-      config: row.dockerConfig ?? undefined,
-      unchained: row.dockerUnchained || undefined,
+      target: docker.containerTarget,
+      config: docker.config ?? undefined,
+      unchained: docker.unchained || undefined,
     };
   }
-  if (row.dockerRunArgsJson == null) throw new Error("Docker run launch has no arguments.");
+  if (docker.dockerRunArgsJson == null) throw new Error("Docker run launch has no arguments.");
   return {
     kind: "docker-run",
-    dockerRunArgs: JSON.parse(row.dockerRunArgsJson),
-    config: row.dockerConfig ?? undefined,
-    unchained: row.dockerUnchained || undefined,
+    dockerRunArgs: JSON.parse(docker.dockerRunArgsJson),
+    config: docker.config ?? undefined,
+    unchained: docker.unchained || undefined,
   };
 }
 
@@ -202,42 +174,45 @@ export function insertHistoryItems(
 ): HistoryNode[] {
   if (itemsToInsert.length === 0) return [];
 
-  const treeId = session.treeId ?? createTree(session.metadata);
-  const launchId = session.launchId ?? createLaunch(session.metadata.cliArgs);
-  session.treeId = treeId;
-  session.launchId = launchId;
+  const result = db().transaction(tx => {
+    // we don't create a session tree or uuid until at least one history item is available
+    const treeId = session.treeId ?? createTree(tx, session.metadata);
+    const launchId = session.launchId ?? createLaunch(tx, session.metadata.cliArgs);
 
-  const inserted: HistoryNode[] = [];
-  let parentId = parentNodeId;
-  for (const item of itemsToInsert) {
-    const payload = insertHistoryItem(item);
-    const node = db()
-      .insert(treeNodes)
-      .values({
-        treeId,
-        historyItemId: payload.id,
-        parentId,
-        isLeaf: true,
-        launchId,
-      })
-      .returning({ nodeId: treeNodes.id })
-      .get();
-    inserted.push({ ...payload.item, nodeId: node.nodeId });
-    parentId = node.nodeId;
-  }
+    const insertedNodes: HistoryNode[] = [];
+    let currParentId = parentNodeId;
+    for (const historyItem of itemsToInsert) {
+      const insertedHistoryItemId = insertHistoryItem(tx, historyItem);
+      const insertedTreeNode = tx
+        .insert(treeNodes)
+        .values({
+          treeId,
+          historyItemId: insertedHistoryItemId,
+          parentId: currParentId,
+          isLeaf: true,
+          launchId,
+        })
+        .returning({ id: treeNodes.id })
+        .get();
+      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id });
+      currParentId = insertedTreeNode.id;
+    }
+    tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
+    return { treeId, launchId, insertedNodes };
+  });
 
-  db().update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
-  return inserted;
+  session.treeId = result.treeId;
+  session.launchId = result.launchId;
+  return result.insertedNodes;
 }
 
-function createTree(metadata: SessionMetadata): number {
-  db()
-    .insert(trees)
+function createTree(tx: DbTransaction, metadata: SessionMetadata): number {
+  tx.insert(trees)
     .values({ name: metadata.sessionId, cwd: metadata.cwd, updatedAt: Date.now() })
     .onConflictDoNothing()
     .run();
 
-  const tree = db()
+  const tree = tx
     .select({ id: trees.id, cwd: trees.cwd })
     .from(trees)
     .where(eq(trees.name, metadata.sessionId))
@@ -249,19 +224,19 @@ function createTree(metadata: SessionMetadata): number {
   return tree.id;
 }
 
-function createLaunch(cliArgs: ParsedCliArgs): number {
+function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
   const shared = { config: cliArgs.config ?? null, unchained: !!cliArgs.unchained };
   let localLaunchId: number | null = null;
   let dockerLaunchId: number | null = null;
 
   if (cliArgs.kind === "local") {
-    localLaunchId = db()
+    localLaunchId = tx
       .insert(schema.localLaunches)
       .values(shared)
       .returning({ id: schema.localLaunches.id })
       .get().id;
   } else {
-    dockerLaunchId = db()
+    dockerLaunchId = tx
       .insert(schema.dockerLaunches)
       .values({
         ...shared,
@@ -274,14 +249,14 @@ function createLaunch(cliArgs: ParsedCliArgs): number {
       .get().id;
   }
 
-  return db()
+  return tx
     .insert(launches)
     .values({ localLaunchId, dockerLaunchId })
     .returning({ id: launches.id })
     .get().id;
 }
 
-function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem } {
+function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
   let requestFailedId: number | null = null;
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
@@ -290,7 +265,7 @@ function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem }
 
   switch (item.type) {
     case "llm-ir": {
-      const row = db()
+      const row = tx
         .insert(llmIrs)
         .values({ json: serializeLlmIr(item.ir) })
         .returning()
@@ -300,13 +275,13 @@ function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem }
       break;
     }
     case "notification": {
-      const row = db().insert(notifications).values({ content: item.content }).returning().get();
+      const row = tx.insert(notifications).values({ content: item.content }).returning().get();
       notificationId = row.id;
       persistedItem = { type: "notification", content: row.content };
       break;
     }
     case "request-failed": {
-      requestFailedId = db()
+      requestFailedId = tx
         .insert(requestFailedItems)
         .values({})
         .returning({ id: requestFailedItems.id })
@@ -315,7 +290,7 @@ function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem }
       break;
     }
     case "compaction-failed": {
-      compactionFailedId = db()
+      compactionFailedId = tx
         .insert(compactionFailedItems)
         .values({})
         .returning({ id: compactionFailedItems.id })
@@ -325,10 +300,10 @@ function insertHistoryItem(item: HistoryItem): { id: number; item: HistoryItem }
     }
   }
 
-  const historyItem = db()
+  const insertedHistoryItem = tx
     .insert(historyItems)
     .values({ requestFailedId, compactionFailedId, notificationId, llmIrId })
     .returning({ id: historyItems.id })
     .get();
-  return { id: historyItem.id, item: persistedItem };
+  return insertedHistoryItem.id;
 }

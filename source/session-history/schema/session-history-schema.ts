@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
@@ -137,3 +137,52 @@ export const treeNodes = sqliteTable(
     ),
   ],
 );
+
+export const treesRelations = relations(trees, ({ many }) => ({
+  nodes: many(treeNodes),
+}));
+
+export const treeNodesRelations = relations(treeNodes, ({ one }) => ({
+  tree: one(trees, {
+    fields: [treeNodes.treeId],
+    references: [trees.id],
+  }),
+  historyItem: one(historyItems, {
+    fields: [treeNodes.historyItemId],
+    references: [historyItems.id],
+  }),
+  launch: one(launches, {
+    fields: [treeNodes.launchId],
+    references: [launches.id],
+  }),
+}));
+
+export const historyItemsRelations = relations(historyItems, ({ one }) => ({
+  requestFailedItem: one(requestFailedItems, {
+    fields: [historyItems.requestFailedId],
+    references: [requestFailedItems.id],
+  }),
+  compactionFailedItem: one(compactionFailedItems, {
+    fields: [historyItems.compactionFailedId],
+    references: [compactionFailedItems.id],
+  }),
+  notification: one(notifications, {
+    fields: [historyItems.notificationId],
+    references: [notifications.id],
+  }),
+  llmIr: one(llmIrs, {
+    fields: [historyItems.llmIrId],
+    references: [llmIrs.id],
+  }),
+}));
+
+export const launchesRelations = relations(launches, ({ one }) => ({
+  local: one(localLaunches, {
+    fields: [launches.localLaunchId],
+    references: [localLaunches.id],
+  }),
+  docker: one(dockerLaunches, {
+    fields: [launches.dockerLaunchId],
+    references: [dockerLaunches.id],
+  }),
+}));

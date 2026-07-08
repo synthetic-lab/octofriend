@@ -138,12 +138,12 @@ export type UiState = {
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  startNewSession: () => Promise<void>;
+  startNewSession: () => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
 
-function appendAndPersistHistoryItems(
+function appendAndPersistHistory(
   session: Session | null,
   prevHistory: HistoryNode[],
   itemsToInsert: HistoryItem[],
@@ -226,7 +226,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     };
 
-    const history = appendAndPersistHistoryItems(get().session, get().history, [userMessage]);
+    const history = appendAndPersistHistory(get().session, get().history, [userMessage]);
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport });
   },
@@ -320,7 +320,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     }
     set({
-      history: appendAndPersistHistoryItems(get().session, get().history, [
+      history: appendAndPersistHistory(get().session, get().history, [
         {
           type: "llm-ir",
           ir: {
@@ -408,7 +408,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   setModelOverride: model => {
     set({
       modelOverride: model,
-      history: appendAndPersistHistoryItems(get().session, get().history, [
+      history: appendAndPersistHistory(get().session, get().history, [
         {
           type: "notification",
           content: `Model: ${model}`,
@@ -419,7 +419,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   notify: notif => {
     set({
-      history: appendAndPersistHistoryItems(get().session, get().history, [
+      history: appendAndPersistHistory(get().session, get().history, [
         {
           type: "notification",
           content: notif,
@@ -428,7 +428,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  startNewSession: async () => {
+  startNewSession: () => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
     const { abortResponse, session } = get();
     abortResponse();
@@ -436,7 +436,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (session == null) {
       throw new Error("Cannot start a new session before session history is initialized.");
     }
-    const { cwd, transportKind, cliArgs } = session.metadata;
+    const { cwd, cliArgs } = session.metadata;
 
     set(state => ({
       history: [],
@@ -444,7 +444,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      session: createSession(crypto.randomUUID(), cwd, transportKind, cliArgs),
+      session: createSession(crypto.randomUUID(), cwd, cliArgs),
     }));
   },
 
@@ -482,7 +482,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (get().session !== session) return;
     if (!result.success) {
       set({
-        history: appendAndPersistHistoryItems(session, get().history, [
+        history: appendAndPersistHistory(session, get().history, [
           {
             type: "llm-ir",
             ir: {
@@ -495,7 +495,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     } else {
       set({
-        history: appendAndPersistHistoryItems(session, get().history, [
+        history: appendAndPersistHistory(session, get().history, [
           {
             type: "llm-ir",
             ir: toolRunResultToIR(result.data, toolReq),
@@ -630,7 +630,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               type: "llm-ir",
               ir: event.checkpoint,
             };
-            set({ history: appendAndPersistHistoryItems(session, historyCopy, [checkpointItem]) });
+            set({ history: appendAndPersistHistory(session, historyCopy, [checkpointItem]) });
           },
 
           autofixingJson: () => {
@@ -659,11 +659,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             throttle.flush();
             if (get().session !== session) return;
             set({
-              history: appendAndPersistHistoryItems(
-                session,
-                historyCopy,
-                outputToHistory(event.irs),
-              ),
+              history: appendAndPersistHistory(session, historyCopy, outputToHistory(event.irs)),
             });
           },
         },
@@ -671,7 +667,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       throttle.flush();
       if (get().session !== session) return;
       set({
-        history: appendAndPersistHistoryItems(session, historyCopy, outputToHistory(finish.irs)),
+        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs)),
       });
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
@@ -719,7 +715,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: finishReason.requestError,
             curlCommand: finishReason.curl,
           },
-          history: appendAndPersistHistoryItems(session, get().history, [
+          history: appendAndPersistHistory(session, get().history, [
             {
               type: "compaction-failed",
             },

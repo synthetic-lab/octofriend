@@ -29,12 +29,7 @@ import { discoverSkills } from "../skills/skills.ts";
 import { timeout } from "../signals.ts";
 import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
-import type {
-  DockerConnectCommand,
-  DockerRunCommand,
-  LocalCommand,
-  ParsedCliArgs,
-} from "./cli-args.ts";
+import type { ParsedCliArgs } from "./cli-args.ts";
 import { createSession, loadSession } from "../session-history/index.ts";
 import type { LoadedSession } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
@@ -203,18 +198,12 @@ async function runMain(opts: {
 }) {
   if (opts.loadedSession != null) {
     opts.loadedSession.session.metadata.cliArgs = opts.parsedCliArgs;
-    opts.loadedSession.session.metadata.transportKind = opts.parsedCliArgs.kind;
     useAppStore.setState({
       history: opts.loadedSession.history,
       session: opts.loadedSession.session,
     });
   } else {
-    const session = createSession(
-      crypto.randomUUID(),
-      opts.transport.cwd,
-      opts.parsedCliArgs.kind,
-      opts.parsedCliArgs,
-    );
+    const session = createSession(crypto.randomUUID(), opts.transport.cwd, opts.parsedCliArgs);
     useAppStore.setState({ history: [], session });
   }
 
@@ -309,7 +298,7 @@ cli
   .command("changelog")
   .description("List the changelog")
   .action(async () => {
-    const changelog = await fs.readFile(path.join(__dirname, "../../CHANGELOG.md"), "utf8");
+    const changelog = await fs.readFile(path.join(__dirname, "../../../CHANGELOG.md"), "utf8");
     console.log(changelog);
   });
 
