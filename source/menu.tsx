@@ -650,11 +650,12 @@ function ClearConversationConfirm() {
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { startNewSession, toggleMenu, notify } = useAppStore(
+  const { startNewSession, toggleMenu, notify, session } = useAppStore(
     useShallow(state => ({
       startNewSession: state.startNewSession,
       toggleMenu: state.toggleMenu,
       notify: state.notify,
+      session: state.session,
     })),
   );
 
@@ -663,7 +664,8 @@ function ClearConversationConfirm() {
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
       onConfirm={async () => {
-        await startNewSession();
+        const { cwd, cliArgs } = session.metadata;
+        startNewSession(cwd, cliArgs);
         setMenuMode("main-menu");
         toggleMenu();
         notify("New conversation started");

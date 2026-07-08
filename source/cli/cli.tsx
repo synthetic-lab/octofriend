@@ -30,7 +30,7 @@ import { timeout } from "../signals.ts";
 import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
-import { createSession, loadSession } from "../session-history/index.ts";
+import { loadSession } from "../session-history/index.ts";
 import type { LoadedSession } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { THEME_COLOR } from "../theme.ts";
@@ -197,14 +197,13 @@ async function runMain(opts: {
   loadedSession?: LoadedSession | null;
 }) {
   if (opts.loadedSession != null) {
-    opts.loadedSession.session.metadata.cliArgs = opts.parsedCliArgs;
-    useAppStore.setState({
-      history: opts.loadedSession.history,
-      session: opts.loadedSession.session,
-    });
+    const session = {
+      ...opts.loadedSession.session,
+      metadata: { ...opts.loadedSession.session.metadata, cliArgs: opts.parsedCliArgs },
+    };
+    useAppStore.getState().hydrateSession(session, opts.loadedSession.history);
   } else {
-    const session = createSession(crypto.randomUUID(), opts.transport.cwd, opts.parsedCliArgs);
-    useAppStore.setState({ history: [], session });
+    useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
   }
 
   try {

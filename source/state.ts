@@ -14,6 +14,7 @@ import {
   HistoryItem,
   Session,
 } from "./session-history/index.ts";
+import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
@@ -138,7 +139,8 @@ export type UiState = {
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  startNewSession: () => void;
+  hydrateSession: (session: Session, history: HistoryNode[]) => void;
+  startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
@@ -428,15 +430,21 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  startNewSession: () => {
-    // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse, session } = get();
-    abortResponse();
+  hydrateSession: (session, history) => {
+    set(state => ({
+      session,
+      history,
+      lastUserPromptIndex: null,
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+      sessionAutoNotify: false,
+    }));
+  },
 
-    if (session == null) {
-      throw new Error("Cannot start a new session before session history is initialized.");
-    }
-    const { cwd, cliArgs } = session.metadata;
+  startNewSession: (cwd, cliArgs) => {
+    // Abort any ongoing responses to avoid polluting the new cleared state.
+    const { abortResponse } = get();
+    abortResponse();
 
     set(state => ({
       history: [],
