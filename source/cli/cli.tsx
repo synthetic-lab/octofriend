@@ -143,8 +143,7 @@ async function buildSessionContext(
   const loadedSession = loadSession(resumeSessionId);
   if (loadedSession == null) {
     console.error(`No session found with ID ${resumeSessionId}.`);
-    process.exitCode = 1;
-    return null;
+    process.exit(1);
   }
 
   const storedCliArgs = loadedSession.session.metadata.cliArgs;
@@ -154,8 +153,7 @@ async function buildSessionContext(
       console.error(`
         Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.,
       `);
-      process.exitCode = 1;
-      return null;
+      process.exit(1);
     } else {
       effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
     }
