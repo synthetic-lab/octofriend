@@ -25,7 +25,7 @@ export type HistoryItem =
 export type HistoryNode = HistoryItem & { nodeId: number };
 
 export type SessionMetadata = {
-  sessionId: string;
+  sessionId: string | null;
   cwd: string;
   cliArgs: ParsedCliArgs;
 };
@@ -38,12 +38,12 @@ export type Session = {
 
 export type LoadedSession = {
   session: Session;
-  history: HistoryNode[];
+  history: readonly HistoryNode[];
 };
 
-export function createSession(sessionId: string, cwd: string, cliArgs: ParsedCliArgs): Session {
+export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
   return {
-    metadata: { sessionId, cwd, cliArgs },
+    metadata: { sessionId: null, cwd, cliArgs },
     treeId: null,
     launchId: null,
   };
@@ -58,7 +58,7 @@ export function loadSession(sessionId: string): LoadedSession | null {
   for (const node of tree.nodes) {
     nodesById.set(node.id, node);
     if (node.isLeaf && (mostRecentLeaf == null || node.id > mostRecentLeaf.id)) {
-      // todo should we add a updated at field to the tree nodes to find most recent leaf instead of relying on the autoincrementing id?
+      // todo should we add a created at field to the tree nodes to find most recent leaf instead of relying on the autoincrementing id?
       mostRecentLeaf = node;
     }
   }
@@ -174,6 +174,11 @@ export function insertHistoryItems(
 ): HistoryNode[] {
   if (itemsToInsert.length === 0) return [];
 
+  // sessionId is null until the first durable history item is persisted; generate it lazily.
+  if (session.metadata.sessionId == null) {
+    session.metadata = { ...session.metadata, sessionId: crypto.randomUUID() };
+  }
+
   const result = db().transaction(tx => {
     // we don't create a session tree or uuid until at least one history item is available
     const treeId = session.treeId ?? createTree(tx, session.metadata);
@@ -207,19 +212,21 @@ export function insertHistoryItems(
 }
 
 function createTree(tx: DbTransaction, metadata: SessionMetadata): number {
+  const sessionId = metadata.sessionId;
+  if (sessionId == null) throw new Error("Cannot create a tree without a session id.");
   tx.insert(trees)
-    .values({ name: metadata.sessionId, cwd: metadata.cwd, updatedAt: Date.now() })
+    .values({ name: sessionId, cwd: metadata.cwd, updatedAt: Date.now() })
     .onConflictDoNothing()
     .run();
 
   const tree = tx
     .select({ id: trees.id, cwd: trees.cwd })
     .from(trees)
-    .where(eq(trees.name, metadata.sessionId))
+    .where(eq(trees.name, sessionId))
     .get();
   if (tree == null) throw new Error("Failed to create history tree.");
   if (tree.cwd !== metadata.cwd) {
-    throw new Error(`Session ${metadata.sessionId} belongs to a different working directory.`);
+    throw new Error(`Session ${sessionId} belongs to a different working directory.`);
   }
   return tree.id;
 }

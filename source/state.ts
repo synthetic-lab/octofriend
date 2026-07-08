@@ -110,10 +110,11 @@ export type UiState = {
   quotaData: QuotaData | null;
   byteCount: number;
   query: string;
-  history: Array<HistoryNode>;
+  readonly history: readonly HistoryNode[];
   clearNonce: number;
   lastUserPromptIndex: number | null;
-  session: Session | null;
+  _session: Session | null;
+  getSession: () => Session;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -139,20 +140,18 @@ export type UiState = {
   notify: (notif: string) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  hydrateSession: (session: Session, history: HistoryNode[]) => void;
+  hydrateSession: (session: Session, history: readonly HistoryNode[]) => void;
   startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => void;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
 
 function appendAndPersistHistory(
-  session: Session | null,
-  prevHistory: HistoryNode[],
+  session: Session,
+  prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
 ): HistoryNode[] {
-  if (session == null) {
-    throw new Error("Cannot write history before the session is initialized.");
-  }
+  if (useAppStore.getState()._session !== session) return [...prevHistory];
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
@@ -173,7 +172,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptIndex: null,
-  session: null,
+  _session: null,
+  getSession: () => {
+    const session = get()._session;
+    if (session == null) throw new Error("Session is not initialized.");
+    return session;
+  },
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -228,7 +232,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     };
 
-    const history = appendAndPersistHistory(get().session, get().history, [userMessage]);
+    const history = appendAndPersistHistory(get().getSession(), get().history, [userMessage]);
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport });
   },
@@ -322,7 +326,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     }
     set({
-      history: appendAndPersistHistory(get().session, get().history, [
+      history: appendAndPersistHistory(get().getSession(), get().history, [
         {
           type: "llm-ir",
           ir: {
@@ -410,7 +414,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   setModelOverride: model => {
     set({
       modelOverride: model,
-      history: appendAndPersistHistory(get().session, get().history, [
+      history: appendAndPersistHistory(get().getSession(), get().history, [
         {
           type: "notification",
           content: `Model: ${model}`,
@@ -421,7 +425,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   notify: notif => {
     set({
-      history: appendAndPersistHistory(get().session, get().history, [
+      history: appendAndPersistHistory(get().getSession(), get().history, [
         {
           type: "notification",
           content: notif,
@@ -432,7 +436,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   hydrateSession: (session, history) => {
     set(state => ({
-      session,
+      _session: session,
       history,
       lastUserPromptIndex: null,
       byteCount: 0,
@@ -452,7 +456,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      session: createSession(crypto.randomUUID(), cwd, cliArgs),
+      _session: createSession(cwd, cliArgs),
     }));
   },
 
@@ -468,11 +472,11 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport }) => {
-    let { modeData, session } = get();
+    let { modeData } = get();
+    const session = get().getSession();
     if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
-    if (session == null) throw new Error("Cannot run a tool before the session is initialized.");
     if (modeData.runningToolCallId != null) {
       if (process.env["CANARY_OCTO"] === "1") {
         throw new Error(
@@ -487,7 +491,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     const tools = await loadTools(transport, abortController.signal, config);
 
     const result = await runTool(abortController.signal, transport, tools, toolReq, config);
-    if (get().session !== session) return;
     if (!result.success) {
       set({
         history: appendAndPersistHistory(session, get().history, [
@@ -524,8 +527,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runAgent: async ({ config, transport }) => {
     const historyCopy = [...get().history];
-    const session = get().session;
-    if (session == null) throw new Error("Cannot run the agent before the session is initialized.");
+    const session = get().getSession();
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -633,7 +635,6 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           compactionParsed: event => {
             throttle.flush();
-            if (get().session !== session) return;
             const checkpointItem: HistoryItem = {
               type: "llm-ir",
               ir: event.checkpoint,
@@ -665,7 +666,6 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           retryTool: event => {
             throttle.flush();
-            if (get().session !== session) return;
             set({
               history: appendAndPersistHistory(session, historyCopy, outputToHistory(event.irs)),
             });
@@ -673,7 +673,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      if (get().session !== session) return;
       set({
         history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs)),
       });

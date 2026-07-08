@@ -127,7 +127,7 @@ type StaticItem =
       content: string;
     };
 
-function toStaticItems(messages: HistoryNode[]): Array<StaticItem> {
+function toStaticItems(messages: readonly HistoryNode[]): Array<StaticItem> {
   return messages.map(message => ({
     type: "history-item",
     item: message,

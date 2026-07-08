@@ -256,9 +256,9 @@ async function runMain(opts: {
     );
 
     await waitUntilExit();
-
-    const { history, session } = useAppStore.getState();
-    if (session != null && history.some(item => item.type === "llm-ir")) {
+    const { history, getSession } = useAppStore.getState();
+    if (history.some(item => item.type === "llm-ir")) {
+      const session = getSession();
       const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
       console.log(`\nResume this session with ${resumeCommand}`);
     }

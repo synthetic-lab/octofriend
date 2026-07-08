@@ -650,12 +650,12 @@ function ClearConversationConfirm() {
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { startNewSession, toggleMenu, notify, session } = useAppStore(
+  const { startNewSession, toggleMenu, notify, getSession } = useAppStore(
     useShallow(state => ({
       startNewSession: state.startNewSession,
       toggleMenu: state.toggleMenu,
       notify: state.notify,
-      session: state.session,
+      getSession: state.getSession,
     })),
   );
 
@@ -664,7 +664,7 @@ function ClearConversationConfirm() {
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
       onConfirm={async () => {
-        const { cwd, cliArgs } = session.metadata;
+        const { cwd, cliArgs } = getSession().metadata;
         startNewSession(cwd, cliArgs);
         setMenuMode("main-menu");
         toggleMenu();
