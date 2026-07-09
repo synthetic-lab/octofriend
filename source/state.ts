@@ -151,7 +151,7 @@ function appendAndPersistHistory(
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
 ): HistoryNode[] {
-  if (useAppStore.getState()._session !== session) return [...prevHistory];
+  if (useAppStore.getState().getSession() !== session) return [...prevHistory];
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
