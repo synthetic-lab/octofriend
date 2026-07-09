@@ -1,11 +1,11 @@
-use octofwen_agent::trajectory::{
+use octofwen_agent::run_events::{
     TrajectoryEvent, TrajectoryFinishReason, TrajectoryOutputIr, apply_compaction_checkpoint,
     approximate_ir_tokens, compaction_checkpoint_content, compaction_request_messages,
     compiler_error_to_compaction_finish_reason, process_compacted_history,
     should_auto_compact_history,
 };
-use octofwen_llm::compiler::CompilerError;
-use octofwen_llm::ir::{ContentPart, LlmIr, TokenUsage};
+use octofwen_models::compiler::CompilerError;
+use octofwen_models::request_ir::{ContentPart, LlmIr, TokenUsage};
 
 fn assistant(content: &str, total_input: u64, output: u64) -> LlmIr {
     LlmIr::Assistant {
@@ -173,8 +173,8 @@ fn compaction_compiler_request_like_errors_become_compaction_errors() {
     );
 }
 
-use octofwen_agent::trajectory::{CompactionTokenDelta, append_compaction_token_progress};
-use octofwen_llm::compiler::{CompilerTokenBuffer, CompilerTokenType};
+use octofwen_agent::run_events::{CompactionTokenDelta, append_compaction_token_progress};
+use octofwen_models::compiler::{CompilerTokenBuffer, CompilerTokenType};
 
 #[test]
 fn compaction_token_progress_updates_buffer_and_returns_stream_event() {

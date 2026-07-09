@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD, AGENTD_COMPACTION_DECISION_METHOD,
     AGENTD_COMPACTION_PREPARE_METHOD, handle_agentd_json_rpc_line,
 };

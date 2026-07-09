@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use octofwen_tools::filesystem::{FileExistsError, FileTracker};
+use octofwen_tools::fs::{FileExistsError, FileTracker};
 
 #[test]
 fn file_tracker_records_read_timestamps_and_detects_newer_modification_times() {

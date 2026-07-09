@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use octofwen_transport::docker::DockerTransport;
-use octofwen_transport::local::{DirectoryEntry, LocalTransport};
-use octofwen_transport::ssh::SshTransport;
+use octofwen_workspace::docker::DockerTransport;
+use octofwen_workspace::local::{DirectoryEntry, LocalTransport};
+use octofwen_workspace::ssh::SshTransport;
 
 pub enum RuntimeToolTransport {
     Local(PathBuf),

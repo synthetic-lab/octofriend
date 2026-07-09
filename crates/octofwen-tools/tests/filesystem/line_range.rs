@@ -1,4 +1,4 @@
-use octofwen_tools::filesystem::{line_range, validate_line_range, with_line_numbers};
+use octofwen_tools::fs::{line_range, validate_line_range, with_line_numbers};
 
 #[test]
 fn formats_content_with_one_based_line_numbers() {

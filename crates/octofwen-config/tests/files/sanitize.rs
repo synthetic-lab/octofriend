@@ -67,7 +67,7 @@ fn removes_blank_api_env_vars_when_sanitizing() {
 }
 
 #[test]
-fn honors_default_api_key_overrides_when_sanitizing() {
+fn honors_default_api_keys_when_sanitizing() {
     let sanitized = sanitize_config(json!({
         "yourName": "Ada",
         "defaultApiKeyOverrides": { "openai": "CUSTOM_OPENAI_KEY" },
@@ -84,7 +84,7 @@ fn honors_default_api_key_overrides_when_sanitizing() {
 }
 
 #[test]
-fn trims_default_api_key_overrides_when_sanitizing() {
+fn trims_default_api_keys_when_sanitizing() {
     let sanitized = sanitize_config(json!({
         "yourName": "Ada",
         "defaultApiKeyOverrides": {
@@ -109,7 +109,7 @@ fn trims_default_api_key_overrides_when_sanitizing() {
 }
 
 #[test]
-fn removes_empty_default_api_key_overrides_when_sanitizing() {
+fn removes_empty_default_api_keys_when_sanitizing() {
     let sanitized = sanitize_config(json!({
         "yourName": "Ada",
         "defaultApiKeyOverrides": {

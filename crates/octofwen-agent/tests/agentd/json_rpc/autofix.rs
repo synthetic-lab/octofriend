@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_AUTOFIX_EDIT_METHOD, AGENTD_AUTOFIX_JSON_METHOD, AGENTD_OCTO_LOWER_METHOD,
     handle_agentd_json_rpc_line,
 };

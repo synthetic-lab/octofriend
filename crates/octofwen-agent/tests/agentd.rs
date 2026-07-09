@@ -21,22 +21,22 @@
 use ignore as _;
 use json5 as _;
 use octofwen_config as _;
-use octofwen_core as _;
-use octofwen_llm as _;
-use octofwen_protocol as _;
-use octofwen_storage as _;
+use octofwen_models as _;
+use octofwen_store as _;
+use octofwen_text as _;
 use octofwen_tools as _;
-use octofwen_transport as _;
+use octofwen_wire as _;
+use octofwen_workspace as _;
 use reqwest as _;
 use serde as _;
 use serde_json as _;
 
 mod agentd {
-    mod conversation_history;
-    mod input_history;
+    mod history;
+    mod input;
     mod json_rpc;
-    mod skill_discovery;
+    mod skills;
     mod tool;
     mod transport;
-    mod update_notifications;
+    mod updates;
 }

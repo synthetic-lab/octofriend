@@ -1,9 +1,9 @@
-use octofwen_agent::trajectory::{
+use octofwen_agent::run_events::{
     TrajectoryEvent, TrajectoryFinishReason, compiler_error_to_finish_reason,
     parse_quota_from_headers, quota_update_event_from_headers,
 };
-use octofwen_llm::compiler::CompilerError;
-use octofwen_llm::providers::synthetic::{QuotaData, QuotaEntry};
+use octofwen_models::compiler::CompilerError;
+use octofwen_models::providers::synthetic::{QuotaData, QuotaEntry};
 
 #[test]
 fn compiler_payment_and_rate_limit_errors_remain_recoverable_finish_reasons() {

@@ -1,0 +1,21 @@
+{
+	"name": "@octofwen/shared",
+	"version": "0.0.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit -p tsconfig.json"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^26.1.1",
+		"typescript": "^7.0.2"
+	},
+	"files": [
+		"src",
+		"package.json",
+		"tsconfig.json"
+	]
+}

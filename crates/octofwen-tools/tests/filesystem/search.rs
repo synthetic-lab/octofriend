@@ -1,4 +1,4 @@
-use octofwen_tools::filesystem::{
+use octofwen_tools::fs::{
     FILE_OUTDATED_ERROR_MESSAGE, SearchReplaceEdit, apply_search_replace_edit,
     validate_search_replace,
 };

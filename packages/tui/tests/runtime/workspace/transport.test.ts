@@ -1,0 +1,295 @@
+import { afterEach, describe, expect, it } from "bun:test";
+import {
+	mkdir,
+	mkdtemp,
+	realpath,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+	AbortError,
+	CommandFailedError,
+	findFiles,
+	getEnvVar,
+	TransportError,
+} from "../../../src/runtime/workspace/common";
+import { LocalTransport } from "../../../src/runtime/workspace/local";
+
+const temporaryDirectories: string[] = [];
+const isWindows = process.platform === "win32";
+
+function printWorkingDirectoryAndMarkerCommand() {
+	return isWindows ? "cd && type marker.txt" : "pwd && cat marker.txt";
+}
+
+function failingCommand() {
+	return isWindows ? "echo failed && exit /b 7" : "echo failed && exit 7";
+}
+
+function sleepCommand() {
+	return isWindows ? "ping -n 2 127.0.0.1 >NUL" : "sleep 1";
+}
+
+function normalizeShellOutput(output: string) {
+	return output.replace(/\r\n/g, "\n").replace(/[ \t]+\n/g, "\n");
+}
+
+async function makeTempDirectory() {
+	const dir = await mkdtemp(path.join(tmpdir(), "octofwen-transport-"));
+	temporaryDirectories.push(dir);
+	return dir;
+}
+
+afterEach(async () => {
+	await Promise.all(
+		temporaryDirectories
+			.splice(0)
+			.map((dir) => rm(dir, { recursive: true, force: true })),
+	);
+});
+
+describe("LocalTransport", () => {
+	it("reads, writes, resolves, lists, and stats local filesystem entries", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await transport.mkdir(signal, path.join(root, "dir"));
+		await transport.writeFile(
+			signal,
+			path.join(root, "dir/file.txt"),
+			"contents",
+		);
+		if (!isWindows) {
+			await symlink(path.join(root, "dir"), path.join(root, "link-to-dir"));
+		}
+
+		await expect(
+			transport.readFile(signal, path.join(root, "dir/file.txt")),
+		).resolves.toBe("contents");
+		await expect(
+			transport.pathExists(signal, path.join(root, "dir/file.txt")),
+		).resolves.toBe(true);
+		await expect(
+			transport.isDirectory(signal, path.join(root, "dir")),
+		).resolves.toBe(true);
+		await expect(
+			transport.resolvePath(signal, path.join(root, "missing.txt")),
+		).resolves.toBe(path.join(root, "missing.txt"));
+		expect(
+			await transport.modTime(signal, path.join(root, "dir/file.txt")),
+		).toBeGreaterThan(0);
+
+		const entries = await transport.readdir(signal, root);
+		expect(entries).toContainEqual({ entry: "dir", isDirectory: true });
+		if (!isWindows) {
+			expect(entries).toContainEqual({
+				entry: "link-to-dir",
+				isDirectory: true,
+			});
+		}
+	});
+
+	it("runs shell commands from the transport cwd and reports command failures", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await writeFile(path.join(root, "marker.txt"), "ok", "utf8");
+
+		const output = await transport.shell(
+			signal,
+			printWorkingDirectoryAndMarkerCommand(),
+			5000,
+		);
+		const [reportedCwd, marker] = normalizeShellOutput(output).split("\n");
+		expect(await realpath(reportedCwd)).toBe(await realpath(root));
+		expect(marker).toBe("ok");
+		let commandError: unknown;
+		try {
+			await transport.shell(signal, failingCommand(), 5000);
+		} catch (error) {
+			commandError = error;
+		}
+		expect(commandError).toMatchObject({
+			name: "CommandFailedError",
+			exitCode: 7,
+		});
+		expect(normalizeShellOutput((commandError as Error).message)).toBe(
+			"Command exited with code: 7\noutput: failed\n",
+		);
+	});
+
+	it("maps shell aborts and timeouts to transport errors", async () => {
+		const root = await makeTempDirectory();
+		const transport = new LocalTransport(root);
+		const abortController = new AbortController();
+		abortController.abort();
+
+		await expect(
+			transport.shell(abortController.signal, sleepCommand(), 5000),
+		).rejects.toBeInstanceOf(AbortError);
+		await expect(
+			transport.shell(new AbortController().signal, sleepCommand(), 10),
+		).rejects.toBeInstanceOf(CommandFailedError);
+	});
+
+	it("wraps missing file mtime failures in TransportError", async () => {
+		const root = await makeTempDirectory();
+		const transport = new LocalTransport(root);
+
+		await expect(
+			transport.modTime(
+				new AbortController().signal,
+				path.join(root, "missing.txt"),
+			),
+		).rejects.toBeInstanceOf(TransportError);
+	});
+});
+
+describe("findFiles", () => {
+	it("finds relative files with pruning, filters, max depth, and result caps", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await mkdir(path.join(root, "src/nested"), { recursive: true });
+		await mkdir(path.join(root, "node_modules/pkg"), { recursive: true });
+		await writeFile(path.join(root, "src/a.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/b.test.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/nested/c.ts"), "", "utf8");
+		await writeFile(path.join(root, "node_modules/pkg/hidden.ts"), "", "utf8");
+
+		await expect(
+			findFiles(signal, transport, {
+				includeName: "*.ts",
+				excludeName: "*.test.ts",
+				type: "f",
+			}),
+		).resolves.toEqual(["src/a.ts", "src/nested/c.ts"]);
+
+		const cappedResults = await findFiles(signal, transport, {
+			path: path.join(root, "src"),
+			includeName: "*.ts",
+			excludeName: "*.test.ts",
+			maxDepth: 1,
+			maxResults: 1,
+		});
+
+		expect(cappedResults).toHaveLength(1);
+		expect(cappedResults).toEqual(["a.ts"]);
+	});
+
+	it("matches exact filenames without requiring wildcard patterns", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await mkdir(path.join(root, "src"), { recursive: true });
+		await writeFile(path.join(root, "src/Exact.TS"), "", "utf8");
+		await writeFile(path.join(root, "src/other.ts"), "", "utf8");
+
+		await expect(
+			findFiles(signal, transport, {
+				includeName: "exact.ts",
+				caseInsensitive: true,
+			}),
+		).resolves.toEqual(["src/Exact.TS"]);
+	});
+
+	it("matches single-star filename patterns without generic wildcard scan", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await mkdir(path.join(root, "src"), { recursive: true });
+		await writeFile(path.join(root, "src/octofwen-agent.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/octofwen.test.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/other.ts"), "", "utf8");
+
+		await expect(
+			findFiles(signal, transport, {
+				includeName: "octofwen*.ts",
+				excludeName: "*.test.ts",
+			}),
+		).resolves.toEqual(["src/octofwen-agent.ts"]);
+	});
+
+	it("finds files through the remote shell for SSH transports", async () => {
+		const shellCalls: unknown[] = [];
+		const transport = {
+			cwd: "/remote/workspace",
+			toolRunTransport: () => ({
+				type: "ssh" as const,
+				target: "user@example.test",
+			}),
+			writeFile: async () => undefined,
+			readFile: async () => "",
+			pathExists: async () => false,
+			isDirectory: async () => false,
+			mkdir: async () => undefined,
+			readdir: async () => [],
+			modTime: async () => 0,
+			resolvePath: async (_signal: AbortSignal, file: string) => file,
+			shell: async (signal: AbortSignal, command: string, timeout: number) => {
+				await Promise.resolve();
+				shellCalls.push({ aborted: signal.aborted, command, timeout });
+				return [
+					"",
+					"./src/a.ts",
+					"./src/b.test.ts",
+					"./src/nested/c.ts",
+					"./src/build/generated.ts",
+					"./node_modules/pkg/hidden.ts",
+					"",
+				].join("\n");
+			},
+			close: async () => undefined,
+		};
+
+		await expect(
+			findFiles(new AbortController().signal, transport, {
+				includeName: "*.TS",
+				includePath: "src/*",
+				excludeName: "*.test.ts",
+				excludePath: "*/build/*",
+				caseInsensitive: true,
+				maxResults: 10,
+			}),
+		).resolves.toEqual(["src/a.ts", "src/nested/c.ts"]);
+		expect(shellCalls).toHaveLength(1);
+		const command = (shellCalls[0] as { command: string }).command;
+		expect(command).toStartWith("find '.' -mindepth 1 \\( -type d \\(");
+		expect(command).toContain("-name 'node_modules'");
+		expect(command).toContain("-name '.git'");
+		expect(command).toContain("\\) -prune \\) -o -type f -print | sort");
+		expect(shellCalls).toContainEqual({
+			aborted: false,
+			command,
+			timeout: 30000,
+		});
+	});
+});
+
+describe("getEnvVar", () => {
+	it("reads environment variables through agentd transport", async () => {
+		const root = await makeTempDirectory();
+		const transport = new LocalTransport(root);
+
+		expect(
+			await getEnvVar(
+				new AbortController().signal,
+				transport,
+				"OCTOFWEN_TRANSPORT_TEST_VALUE",
+				5000,
+			),
+		).toBe("");
+
+		expect(
+			await getEnvVar(new AbortController().signal, transport, "PATH", 5000),
+		).toBe(process.env.PATH ?? "");
+	});
+});

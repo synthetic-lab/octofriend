@@ -1,6 +1,6 @@
 #[cfg(not(windows))]
-use octofwen_agent::agentd::AGENTD_CONFIG_RUN_NOTIFY_METHOD;
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::AGENTD_CONFIG_RUN_NOTIFY_METHOD;
+use octofwen_agent::runtime::{
     AGENTD_CONFIG_AUTOFIX_KEYS_METHOD, AGENTD_CONFIG_DEFAULT_PATHS_METHOD,
     AGENTD_CONFIG_MIGRATE_METHOD, AGENTD_CONFIG_SANITIZE_METHOD, AGENTD_CONFIG_WRITE_KEY_METHOD,
     handle_agentd_json_rpc_line,

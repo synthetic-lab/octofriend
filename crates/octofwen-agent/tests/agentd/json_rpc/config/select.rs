@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{AGENTD_CONFIG_SELECT_MODEL_METHOD, handle_agentd_json_rpc_line};
+use octofwen_agent::runtime::{AGENTD_CONFIG_SELECT_MODEL_METHOD, handle_agentd_json_rpc_line};
 use serde_json::json;
 
 #[test]

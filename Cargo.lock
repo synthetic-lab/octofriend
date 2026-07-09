@@ -1308,12 +1308,12 @@ dependencies = [
  "ignore",
  "json5",
  "octofwen-config",
- "octofwen-core",
- "octofwen-llm",
- "octofwen-protocol",
- "octofwen-storage",
+ "octofwen-models",
+ "octofwen-store",
+ "octofwen-text",
  "octofwen-tools",
- "octofwen-transport",
+ "octofwen-wire",
+ "octofwen-workspace",
  "reqwest",
  "serde",
  "serde_json",
@@ -1334,11 +1334,10 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
- "unicode-width",
 ]
 
 [[package]]
-name = "octofwen-llm"
+name = "octofwen-models"
 version = "0.0.0"
 dependencies = [
  "comrak",
@@ -1349,7 +1348,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-protocol"
+name = "octofwen-store"
+version = "0.0.0"
+dependencies = [
+ "octofwen-config",
+ "rusqlite",
+]
+
+[[package]]
+name = "octofwen-text"
+version = "0.0.0"
+dependencies = [
+ "octofwen-core",
+ "unicode-width",
+]
+
+[[package]]
+name = "octofwen-tools"
+version = "0.0.0"
+dependencies = [
+ "html2text",
+ "jsonschema",
+ "octofwen-workspace",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "octofwen-wire"
 version = "0.0.0"
 dependencies = [
  "a2a-lf",
@@ -1360,27 +1387,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-storage"
-version = "0.0.0"
-dependencies = [
- "octofwen-config",
- "rusqlite",
-]
-
-[[package]]
-name = "octofwen-tools"
-version = "0.0.0"
-dependencies = [
- "html2text",
- "jsonschema",
- "octofwen-transport",
- "reqwest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "octofwen-transport"
+name = "octofwen-workspace"
 version = "0.0.0"
 
 [[package]]

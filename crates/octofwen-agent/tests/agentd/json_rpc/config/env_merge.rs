@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_CONFIG_MERGE_AUTOFIX_ENV_VAR_METHOD, AGENTD_CONFIG_MERGE_ENV_VAR_METHOD,
     handle_agentd_json_rpc_line,
 };

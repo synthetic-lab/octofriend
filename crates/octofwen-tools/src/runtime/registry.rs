@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::runtime::builder::{RuntimeTool, ToolCall};
-use crate::runtime::validation::validate_tool_arguments;
+use crate::runtime::check::validate_tool_arguments;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ToolRegistry {

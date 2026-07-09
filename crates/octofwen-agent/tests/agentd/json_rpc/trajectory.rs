@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{AGENTD_TRAJECTORY_FINISH_METHOD, handle_agentd_json_rpc_line};
+use octofwen_agent::runtime::{AGENTD_TRAJECTORY_FINISH_METHOD, handle_agentd_json_rpc_line};
 use serde_json::json;
 
 #[test]
@@ -529,7 +529,7 @@ fn trajectory_arc_runs_forgotten_check_before_returning_input() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-arc-forgotten-check",
-        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
         "params": {
             "cwd": ".",
             "apiKey": "test-key",
@@ -647,7 +647,7 @@ fn trajectory_arc_auto_compacts_before_main_provider_request() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-arc-compaction",
-        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
         "params": {
             "cwd": ".",
             "apiKey": "test-key",
@@ -734,7 +734,7 @@ fn trajectory_arc_preserves_compaction_events_on_compaction_error() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-arc-compaction-error",
-        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
         "params": {
             "cwd": ".",
             "apiKey": "test-key",
@@ -799,7 +799,7 @@ fn trajectory_arc_preserves_compaction_auth_errors() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-arc-compaction-auth-error",
-        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
         "params": {
             "cwd": ".",
             "apiKey": "bad-key",
@@ -847,7 +847,7 @@ fn trajectory_arc_request_returns_abort_without_provider_execution() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "trajectory-arc-abort",
-        "method": octofwen_agent::agentd::AGENTD_TRAJECTORY_ARC_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
         "params": {
             "cwd": ".",
             "apiKey": "unused",

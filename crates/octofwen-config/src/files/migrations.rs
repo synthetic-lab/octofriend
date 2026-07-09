@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::auth::default_env_var;
-use crate::files::api_key_overrides::{ApiKeyOverrideMap, default_api_key_overrides};
+use crate::files::api_keys::{ApiKeyOverrideMap, default_overrides};
 use crate::files::env_var::env_auth;
 use crate::models::{
     PROVIDERS, ProviderConfig, ProviderKey, ProviderKind, ProviderModelConfig, base_urls_match,
@@ -127,7 +127,7 @@ fn is_legacy_codex_model(object: &JsonObject) -> bool {
 }
 
 fn migrate_api_env_var_auth(mut raw: Value) -> Value {
-    let overrides = default_api_key_overrides(&raw);
+    let overrides = default_overrides(&raw);
     if let Some(models) = raw.get_mut("models").and_then(Value::as_array_mut) {
         for model in models {
             migrate_model_api_env_var_auth(model, &overrides);
@@ -277,7 +277,7 @@ fn migrate_missing_model_context(mut raw: Value) -> Value {
 }
 
 fn migrate_missing_provider_type(mut raw: Value) -> Value {
-    let overrides = default_api_key_overrides(&raw);
+    let overrides = default_overrides(&raw);
     if let Some(models) = raw.get_mut("models").and_then(Value::as_array_mut) {
         for model in models {
             migrate_model_provider_type(model, &overrides);
@@ -335,7 +335,7 @@ fn provider_from_model_env_hint(
 }
 
 fn migrate_legacy_autofix_json(mut raw: Value) -> Value {
-    let overrides = default_api_key_overrides(&raw);
+    let overrides = default_overrides(&raw);
     let Some(object) = raw.as_object_mut() else {
         return raw;
     };

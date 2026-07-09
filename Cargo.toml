@@ -1,11 +1,12 @@
 [workspace]
 members = [
     "crates/octofwen-core",
+    "crates/octofwen-text",
     "crates/octofwen-config",
-    "crates/octofwen-protocol",
-    "crates/octofwen-storage",
-    "crates/octofwen-transport",
-    "crates/octofwen-llm",
+    "crates/octofwen-wire",
+    "crates/octofwen-store",
+    "crates/octofwen-workspace",
+    "crates/octofwen-models",
     "crates/octofwen-tools",
     "crates/octofwen-agent",
 ]
@@ -25,11 +26,12 @@ version = "0.0.0"
 octofwen-agent = { path = "crates/octofwen-agent" }
 octofwen-config = { path = "crates/octofwen-config" }
 octofwen-core = { path = "crates/octofwen-core" }
-octofwen-llm = { path = "crates/octofwen-llm" }
-octofwen-protocol = { path = "crates/octofwen-protocol" }
-octofwen-storage = { path = "crates/octofwen-storage" }
+octofwen-text = { path = "crates/octofwen-text" }
+octofwen-models = { path = "crates/octofwen-models" }
+octofwen-wire = { path = "crates/octofwen-wire" }
+octofwen-store = { path = "crates/octofwen-store" }
 octofwen-tools = { path = "crates/octofwen-tools" }
-octofwen-transport = { path = "crates/octofwen-transport" }
+octofwen-workspace = { path = "crates/octofwen-workspace" }
 
 base64 = "0.22.1"
 a2a-lf = "0.3.0"

@@ -4,10 +4,10 @@
 	"license": "MIT",
 	"repository": "github:synthetic-lab/octofwen",
 	"bin": {
-		"octofriend": "packages/octofwen-cli/src/bin.ts",
-		"octofwen": "packages/octofwen-cli/src/bin.ts",
-		"octo": "packages/octofwen-cli/src/bin.ts",
-		"octofwen-agentd": "packages/octofwen-cli/bin/octofwen-agentd.js"
+		"octofriend": "packages/cli/src/bin.ts",
+		"octofwen": "packages/cli/src/bin.ts",
+		"octo": "packages/cli/src/bin.ts",
+		"octofwen-agentd": "packages/cli/bin/octofwen-agentd.js"
 	},
 	"type": "module",
 	"preferGlobal": true,
@@ -19,13 +19,13 @@
 		"biome:check": "biome check --write --unsafe --max-diagnostics 16384",
 		"biome:format": "biome format --write --max-diagnostics 16384",
 		"biome:lint": "biome lint --write --max-diagnostics 16384",
-		"dev": "bun --watch packages/octofwen-cli/src/bin.ts",
-		"exec": "bun packages/octofwen-cli/src/bin.ts",
+		"dev": "bun --watch packages/cli/src/bin.ts",
+		"exec": "bun packages/cli/src/bin.ts",
 		"test": "bun test",
 		"test:run": "bun test",
 		"typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter \"@octofwen/*\" typecheck",
 		"prepublishOnly": "bun run build",
-		"prepack": "bun run --filter \"@octofwen/octofwen-cli\" build:agentd"
+		"prepack": "bun run --filter \"@octofwen/cli\" build:agentd"
 	},
 	"files": [
 		"packages",

@@ -1,4 +1,4 @@
-use octofwen_agent::trajectory::{
+use octofwen_agent::run_events::{
     MalformedToolRequest, TrajectoryAbortState, TrajectoryArcInput, TrajectoryArcRunner,
     TrajectoryEvent, TrajectoryFinish, TrajectoryFinishReason, TrajectoryToolRequest,
 };
@@ -27,7 +27,7 @@ fn aborted_trajectory_exits_before_loading_tools_or_calling_providers() {
 #[test]
 fn assistant_output_without_tool_calls_finishes_needing_response() {
     let assistant = assistant_message("done");
-    let finish = octofwen_agent::trajectory::finish_after_assistant_output(
+    let finish = octofwen_agent::run_events::finish_after_assistant_output(
         Vec::new(),
         assistant.clone(),
         None,
@@ -49,7 +49,7 @@ fn assistant_output_with_valid_tool_calls_finishes_requesting_tools() {
     let assistant = assistant_message("I will read the file");
     let tool_call = tool_call("call-1", "read");
     let registry = validation_registry();
-    let finish = octofwen_agent::trajectory::finish_after_assistant_output(
+    let finish = octofwen_agent::run_events::finish_after_assistant_output(
         Vec::new(),
         assistant.clone(),
         Some(vec![TrajectoryToolRequest::ToolCall(tool_call.clone())]),
@@ -68,11 +68,11 @@ fn assistant_output_with_valid_tool_calls_finishes_requesting_tools() {
     );
 }
 
-fn assistant_message(content: &str) -> octofwen_llm::ir::LlmIr {
-    octofwen_llm::ir::LlmIr::Assistant {
+fn assistant_message(content: &str) -> octofwen_models::request_ir::LlmIr {
+    octofwen_models::request_ir::LlmIr::Assistant {
         content: content.into(),
         reasoning_content: None,
-        usage: octofwen_llm::ir::TokenUsage {
+        usage: octofwen_models::request_ir::TokenUsage {
             cached_input: 0,
             uncached_input: 0,
             total_input: 0,
@@ -81,8 +81,8 @@ fn assistant_message(content: &str) -> octofwen_llm::ir::LlmIr {
     }
 }
 
-fn tool_call(id: &str, name: &str) -> octofwen_llm::ir::ToolCall {
-    octofwen_llm::ir::ToolCall {
+fn tool_call(id: &str, name: &str) -> octofwen_models::request_ir::ToolCall {
+    octofwen_models::request_ir::ToolCall {
         tool_call_id: id.into(),
         name: name.into(),
         original: serde_json::json!({ "name": name, "arguments": { "filePath": "README.md" } }),
@@ -117,7 +117,7 @@ fn malformed_tool_output_emits_retry_tool_event_with_retry_trajectory() {
     let assistant = assistant_message("bad tool json");
     let tool_call = tool_call("call-1", "read");
     let malformed = malformed_request("bad-1");
-    let finish = octofwen_agent::trajectory::finish_after_assistant_output(
+    let finish = octofwen_agent::run_events::finish_after_assistant_output(
         Vec::new(),
         assistant.clone(),
         Some(vec![
@@ -128,12 +128,12 @@ fn malformed_tool_output_emits_retry_tool_event_with_retry_trajectory() {
     );
     let expected_irs = vec![
         assistant.into(),
-        octofwen_llm::ir::LlmIr::ToolSkipOutput {
+        octofwen_models::request_ir::LlmIr::ToolSkipOutput {
             tool_call,
-            reason: octofwen_agent::trajectory::MALFORMED_BATCH_SKIP_REASON.into(),
+            reason: octofwen_agent::run_events::MALFORMED_BATCH_SKIP_REASON.into(),
         }
         .into(),
-        octofwen_agent::trajectory::TrajectoryOutputIr::ToolParseError {
+        octofwen_agent::run_events::TrajectoryOutputIr::ToolParseError {
             malformed_request: malformed,
         },
     ];
@@ -151,11 +151,11 @@ fn malformed_tool_output_emits_retry_tool_event_with_retry_trajectory() {
 #[test]
 fn invalid_tool_output_emits_retry_tool_event_with_validation_errors() {
     let assistant = assistant_message("invalid read args");
-    let invalid_tool_call = octofwen_llm::ir::ToolCall {
+    let invalid_tool_call = octofwen_models::request_ir::ToolCall {
         parsed: serde_json::json!({}),
         ..tool_call("call-1", "read")
     };
-    let finish = octofwen_agent::trajectory::finish_after_assistant_output(
+    let finish = octofwen_agent::run_events::finish_after_assistant_output(
         Vec::new(),
         assistant.clone(),
         Some(vec![TrajectoryToolRequest::ToolCall(
@@ -165,7 +165,7 @@ fn invalid_tool_output_emits_retry_tool_event_with_validation_errors() {
     );
     let expected_irs = vec![
         assistant.into(),
-        octofwen_agent::trajectory::TrajectoryOutputIr::ToolValidationError {
+        octofwen_agent::run_events::TrajectoryOutputIr::ToolValidationError {
             tool_call: invalid_tool_call,
             error: "missing required tool argument filePath".into(),
             aborted: false,
@@ -194,15 +194,15 @@ fn malformed_request(id: &str) -> MalformedToolRequest {
 #[test]
 fn trajectory_events_include_compaction_start_and_autofix_markers() {
     assert_eq!(
-        octofwen_agent::trajectory::start_compaction_event(),
+        octofwen_agent::run_events::start_compaction_event(),
         TrajectoryEvent::StartCompaction
     );
     assert_eq!(
-        octofwen_agent::trajectory::autofixing_json_event(),
+        octofwen_agent::run_events::autofixing_json_event(),
         TrajectoryEvent::AutofixingJson
     );
     assert_eq!(
-        octofwen_agent::trajectory::autofixing_diff_event(),
+        octofwen_agent::run_events::autofixing_diff_event(),
         TrajectoryEvent::AutofixingDiff
     );
 }

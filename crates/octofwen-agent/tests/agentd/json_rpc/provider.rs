@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_PROVIDER_COMPILER_COMPLETE_METHOD, AGENTD_RENDER_TOOL_CALL_METHOD,
     handle_agentd_json_rpc_line,
 };

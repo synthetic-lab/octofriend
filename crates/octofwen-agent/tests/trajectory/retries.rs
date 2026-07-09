@@ -1,9 +1,9 @@
-use octofwen_agent::trajectory::{
+use octofwen_agent::run_events::{
     MALFORMED_BATCH_SKIP_REASON, MalformedToolRequest, TrajectoryRetryError, TrajectoryToolRequest,
     append_malformed_tool_retry_irs, has_malformed_tool_requests,
     has_retryable_tool_validation_failure, require_wellformed_tool_calls,
 };
-use octofwen_llm::ir::{LlmIr, ToolCall};
+use octofwen_models::request_ir::{LlmIr, ToolCall};
 use serde_json::json;
 
 #[test]
@@ -37,7 +37,7 @@ fn malformed_tool_batches_emit_parse_errors_and_skip_wellformed_calls() {
                 reason: MALFORMED_BATCH_SKIP_REASON.into(),
             }
             .into(),
-            octofwen_agent::trajectory::TrajectoryOutputIr::ToolParseError {
+            octofwen_agent::run_events::TrajectoryOutputIr::ToolParseError {
                 malformed_request: malformed_request("bad-1"),
             },
         ]
@@ -70,7 +70,7 @@ fn retryable_tool_validation_failure_ignores_only_skip_outputs() {
             reason: "skip".into(),
         }
         .into(),
-        octofwen_agent::trajectory::TrajectoryOutputIr::ToolValidationError {
+        octofwen_agent::run_events::TrajectoryOutputIr::ToolValidationError {
             tool_call: tool_call("call-2", "edit"),
             error: "invalid edit".into(),
             aborted: false,
@@ -99,7 +99,7 @@ fn malformed_request(id: &str) -> MalformedToolRequest {
 #[test]
 fn validation_retry_converts_valid_tool_calls_to_skip_outputs() {
     let registry = validation_registry();
-    let retry_irs = octofwen_agent::trajectory::validate_tool_calls_for_retry(
+    let retry_irs = octofwen_agent::run_events::validate_tool_calls_for_retry(
         &[tool_call("call-1", "read")],
         &registry,
     );
@@ -109,7 +109,7 @@ fn validation_retry_converts_valid_tool_calls_to_skip_outputs() {
         vec![
             LlmIr::ToolSkipOutput {
                 tool_call: tool_call("call-1", "read"),
-                reason: octofwen_agent::trajectory::SKIP_INVALID_REASON.into(),
+                reason: octofwen_agent::run_events::SKIP_INVALID_REASON.into(),
             }
             .into()
         ]
@@ -119,7 +119,7 @@ fn validation_retry_converts_valid_tool_calls_to_skip_outputs() {
 #[test]
 fn validation_retry_returns_validation_errors_for_invalid_tool_calls() {
     let registry = validation_registry();
-    let retry_irs = octofwen_agent::trajectory::validate_tool_calls_for_retry(
+    let retry_irs = octofwen_agent::run_events::validate_tool_calls_for_retry(
         &[ToolCall {
             parsed: json!({}),
             ..tool_call("call-1", "read")
@@ -130,7 +130,7 @@ fn validation_retry_returns_validation_errors_for_invalid_tool_calls() {
     assert_eq!(
         retry_irs,
         vec![
-            octofwen_agent::trajectory::TrajectoryOutputIr::ToolValidationError {
+            octofwen_agent::run_events::TrajectoryOutputIr::ToolValidationError {
                 tool_call: ToolCall {
                     parsed: json!({}),
                     ..tool_call("call-1", "read")
@@ -144,7 +144,7 @@ fn validation_retry_returns_validation_errors_for_invalid_tool_calls() {
 
 #[test]
 fn validation_retry_reports_missing_tools_as_validation_errors() {
-    let retry_irs = octofwen_agent::trajectory::validate_tool_calls_for_retry(
+    let retry_irs = octofwen_agent::run_events::validate_tool_calls_for_retry(
         &[tool_call("call-1", "read")],
         &octofwen_tools::runtime::ToolRegistry::new(),
     );
@@ -152,7 +152,7 @@ fn validation_retry_reports_missing_tools_as_validation_errors() {
     assert_eq!(
         retry_irs,
         vec![
-            octofwen_agent::trajectory::TrajectoryOutputIr::ToolValidationError {
+            octofwen_agent::run_events::TrajectoryOutputIr::ToolValidationError {
                 tool_call: tool_call("call-1", "read"),
                 error: "unknown tool read".into(),
                 aborted: false,

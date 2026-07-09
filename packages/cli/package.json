@@ -1,0 +1,42 @@
+{
+	"name": "@octofwen/cli",
+	"version": "0.0.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.tsx"
+	},
+	"bin": {
+		"octofriend": "./src/bin.ts",
+		"octofwen": "./src/bin.ts",
+		"octo": "./src/bin.ts",
+		"octofwen-agentd": "./bin/octofwen-agentd.js"
+	},
+	"scripts": {
+		"test": "bun test tests",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"build:agentd": "bun src/scripts/build-agentd.ts",
+		"prepack": "bun run build:agentd"
+	},
+	"dependencies": {
+		"@commander-js/extra-typings": "^15.0.0",
+		"commander": "^15.0.0",
+		"ink": "^7.1.0",
+		"@octofwen/tui": "workspace:*",
+		"json5": "^2.2.3",
+		"@octofwen/shared": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.3.14",
+		"@types/node": "^26.1.0",
+		"@types/react": "^19.2.17",
+		"typescript": "^7.0.2"
+	},
+	"files": [
+		"bin",
+		"src",
+		"tests",
+		"package.json",
+		"tsconfig.json",
+		"scripts"
+	]
+}

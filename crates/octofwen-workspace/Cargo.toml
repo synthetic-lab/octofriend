@@ -1,0 +1,20 @@
+[package]
+name = "octofwen-workspace"
+description = "Local, remote, and workspace process/file transport for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_workspace"
+path = "src/lib.rs"
+
+[dependencies]
+
+[lints]
+workspace = true

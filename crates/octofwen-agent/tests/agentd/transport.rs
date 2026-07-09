@@ -1,11 +1,11 @@
 use std::fs;
 
 #[cfg(not(windows))]
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_TRANSPORT_DOCKER_KILL_METHOD, AGENTD_TRANSPORT_DOCKER_METHOD,
     AGENTD_TRANSPORT_DOCKER_RUN_METHOD,
 };
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_TRANSPORT_FIND_FILES_METHOD, AGENTD_TRANSPORT_GET_ENV_METHOD,
     AGENTD_TRANSPORT_LOCAL_METHOD, AGENTD_TRANSPORT_SSH_METHOD, handle_agentd_json_rpc_line,
 };

@@ -2,19 +2,17 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use octofwen_transport::workspace::wildcard_matches_bytes;
+use octofwen_workspace::workspace::wildcard_matches_bytes;
 use serde_json::{Value, json};
 
 use crate::skills::AgentSkill;
 
-use crate::filesystem::{
-    SearchReplaceEdit, apply_search_replace_edit, line_range, with_line_numbers,
-};
+use crate::fs::{SearchReplaceEdit, apply_search_replace_edit, line_range, with_line_numbers};
 
 use super::super::lsp::run_lsp;
 use super::super::mcp::run_mcp;
 use super::super::transport::RuntimeToolTransport;
-use super::validation::validate_runtime_tool_call;
+use super::check::validate_runtime_tool_call;
 
 pub fn run_runtime_tool_call(
     tool_name: &str,
@@ -591,7 +589,7 @@ fn run_read(
     let file_path = required_string(parsed, "filePath")?;
     let offset = optional_usize(parsed, "offset")?;
     let limit = optional_usize(parsed, "limit")?;
-    crate::filesystem::validate_line_range(offset, limit)?;
+    crate::fs::validate_line_range(offset, limit)?;
     let content = transport
         .read_file(file_path)
         .map_err(|_| format!("No such file {file_path}"))?;

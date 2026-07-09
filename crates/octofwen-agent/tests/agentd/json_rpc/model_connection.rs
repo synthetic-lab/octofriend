@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{AGENTD_MODEL_CONNECTION_TEST_METHOD, handle_agentd_json_rpc_line};
+use octofwen_agent::runtime::{AGENTD_MODEL_CONNECTION_TEST_METHOD, handle_agentd_json_rpc_line};
 use serde_json::json;
 use std::io::{Read, Write};
 use std::net::TcpListener;

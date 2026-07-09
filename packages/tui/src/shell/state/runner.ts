@@ -1,0 +1,275 @@
+import { trajectoryArc } from "../../runtime/run-log/main";
+import { assertKeyForModel } from "../../runtime/config/keys";
+import { getModelFromConfig } from "../../runtime/config/model-selection";
+import type { HistoryItem } from "../../runtime/history/main";
+import {
+	outputToHistory,
+	toLlmIR,
+} from "../../runtime/history/main";
+import type { OctoIR } from "../../runtime/agent/ir/main";
+import { errorToString } from "../result";
+import { handleFinishReason } from "./runner-finish";
+import {
+	appendHistoryItems,
+	createLocalMessageId,
+	linkFinishReasonToolCalls,
+	linkTrajectoryHistory,
+	mergeTrajectoryFinishHistory,
+	rejectedToolHistoryForUserMessage,
+	userMessageContent,
+} from "./runner-history";
+import { throttledMergeBuffer } from "./scheduling";
+import type { AppStateGet, AppStateSet, UiState } from "./types";
+
+export function createAgentActions(set: AppStateSet, get: AppStateGet) {
+	return {
+		input: async ({
+			config,
+			query,
+			transport,
+			images,
+			trajectoryArcRun,
+			toolPermission,
+			toolRun,
+		}) => {
+			const userMessageId = createLocalMessageId("user");
+			const userMessage: HistoryItem<OctoIR> = {
+				type: "llm-ir",
+				ir: {
+					role: "user",
+					messageId: userMessageId,
+					content: userMessageContent(query, images),
+				},
+			};
+
+			const state = get();
+			const baseHistory = state.history;
+			const pendingRejectedToolCall = state.pendingRejectedToolCall;
+			const rejectedToolHistory = pendingRejectedToolCall
+				? rejectedToolHistoryForUserMessage(
+						baseHistory,
+						pendingRejectedToolCall,
+						userMessageId,
+					)
+				: [];
+			const history: HistoryItem<OctoIR>[] = [];
+			appendHistoryItems(history, baseHistory);
+			appendHistoryItems(history, rejectedToolHistory);
+			history.push(userMessage);
+			set({
+				history,
+				lastUserPromptIndex: history.length - 1,
+				pendingRejectedToolCall: null,
+			});
+			await get().runAgent({
+				config,
+				transport,
+				trajectoryArcRun,
+				toolPermission,
+				toolRun,
+			});
+		},
+
+		retryFrom: async (mode, args) => {
+			if (get().modeData.mode === mode) {
+				await get().runAgent(args);
+			}
+		},
+
+		abortResponse: () => {
+			const { modeData } = get();
+			if ("abortController" in modeData) modeData.abortController.abort();
+		},
+
+		_maybeHandleAbort: (signal: AbortSignal): boolean => {
+			if (signal.aborted) {
+				set({
+					modeData: {
+						mode: "input",
+						vimMode: "INSERT",
+					},
+				});
+				return true;
+			}
+			return false;
+		},
+
+		runAgent: async ({ config, transport, trajectoryArcRun }) => {
+			let baseHistory = [...get().history];
+			const abortController = new AbortController();
+			let compactionByteCount = 0;
+			let responseByteCount = 0;
+			const model = getModelFromConfig(config, get().modelOverride);
+			const apiKey = await assertKeyForModel(model, config);
+			if (!trajectoryArcRun) {
+				set({
+					modeData: {
+						mode: "request-error",
+						error: "Trajectory arc bridge is required",
+						curlCommand: null,
+					},
+				});
+				return;
+			}
+
+			const throttle = throttledMergeBuffer<Partial<UiState>>(300, set);
+			set({
+				modeData: {
+					mode: "responding",
+					inflightResponse: { type: "inflight-response", content: "" },
+					abortController,
+				},
+			});
+
+			try {
+				const finish = await trajectoryArc({
+					apiKey,
+					model,
+					messages: toLlmIR(baseHistory),
+					config,
+					transport,
+					abortSignal: abortController.signal,
+					trajectoryArcRun,
+					handler: {
+						startResponse: () => {
+							throttle.flush();
+							set({
+								modeData: {
+									mode: "responding",
+									inflightResponse: {
+										type: "inflight-response",
+										content: "",
+									},
+									abortController,
+								},
+								byteCount: responseByteCount,
+							});
+						},
+
+						responseProgress: (event) => {
+							responseByteCount += event.delta.value.length;
+							throttle.emit({
+								modeData: {
+									mode: "responding",
+									inflightResponse: {
+										type: "inflight-response",
+										reasoningContent: event.buffer.reasoning,
+										content: event.buffer.content || "",
+									},
+									abortController,
+								},
+								byteCount: responseByteCount,
+							});
+						},
+
+						startCompaction: () => {
+							throttle.flush();
+							set({
+								modeData: {
+									mode: "compacting",
+									inflightResponse: {
+										type: "inflight-response",
+										content: "",
+									},
+									abortController,
+								},
+								byteCount: compactionByteCount,
+							});
+						},
+
+						compactionProgress: (event) => {
+							compactionByteCount += event.delta.value.length;
+							throttle.emit({
+								modeData: {
+									mode: "compacting",
+									inflightResponse: {
+										type: "inflight-response",
+										reasoningContent: event.buffer.reasoning,
+										content: event.buffer.content || "",
+									},
+									abortController,
+								},
+								byteCount: compactionByteCount,
+							});
+						},
+
+						compactionParsed: (event) => {
+							throttle.flush();
+							const checkpointItem: HistoryItem<OctoIR> = {
+								type: "llm-ir",
+								ir: event.checkpoint,
+							};
+							baseHistory = [checkpointItem];
+							set({ history: [...baseHistory] });
+						},
+
+						autofixingJson: () => {
+							throttle.flush();
+							set({
+								modeData: {
+									mode: "fix-json",
+									abortController,
+								},
+							});
+						},
+
+						autofixingDiff: () => {
+							throttle.flush();
+							set({
+								modeData: {
+									mode: "diff-apply",
+									abortController,
+								},
+							});
+						},
+
+						onQuotaUpdated: (quota) => set({ quotaData: quota }),
+
+						retryTool: (event) => {
+							throttle.flush();
+							set({
+								history: mergeTrajectoryFinishHistory(
+									baseHistory,
+									linkTrajectoryHistory(outputToHistory(event.irs)),
+								),
+							});
+						},
+					},
+				});
+				throttle.flush();
+				const finishHistory = linkTrajectoryHistory(
+					outputToHistory(finish.irs),
+				);
+				const finalHistory = mergeTrajectoryFinishHistory(
+					baseHistory,
+					finishHistory,
+				);
+				baseHistory = finalHistory;
+				set({ history: [...baseHistory] });
+				handleFinishReason({
+					config,
+					finishReason: linkFinishReasonToolCalls(finish.reason, finalHistory),
+					get,
+					set,
+				});
+			} catch (error) {
+				if (get()._maybeHandleAbort(abortController.signal)) {
+					return;
+				}
+
+				set({
+					modeData: {
+						mode: "request-error",
+						error: errorToString(error),
+						curlCommand: null,
+					},
+				});
+			} finally {
+				set({ byteCount: 0 });
+			}
+		},
+	} satisfies Pick<
+		UiState,
+		"input" | "retryFrom" | "abortResponse" | "_maybeHandleAbort" | "runAgent"
+	>;
+}

@@ -1,36 +1,36 @@
 {
-    "compilerOptions": {
-        "allowArbitraryExtensions": true,
-        "allowImportingTsExtensions": true,
-        "allowUmdGlobalAccess": true,
-        "allowUnreachableCode": false,
-        "allowUnusedLabels": false,
-        "checkJs": true,
-        "composite": true,
-        "erasableSyntaxOnly": false,
-        "exactOptionalPropertyTypes": false,
-        "lib": [
-            "ES2022"
-        ],
-        "module": "ESNext",
-        "moduleDetection": "force",
-        "moduleResolution": "bundler",
-        "newLine": "lf",
-        "noEmit": true,
-        "noFallthroughCasesInSwitch": true,
-        "noImplicitOverride": true,
-        "noImplicitReturns": true,
-        "noPropertyAccessFromIndexSignature": false,
-        "noUncheckedIndexedAccess": false,
-        "noUncheckedSideEffectImports": true,
-        "noUnusedLocals": false,
-        "noUnusedParameters": false,
-        "sourceMap": true,
-        "strict": true,
-        "target": "ES2022",
-        "types": [
-            "bun",
-            "node"
-        ]
-    }
+	"compilerOptions": {
+		"allowArbitraryExtensions": true,
+		"allowImportingTsExtensions": true,
+		"allowUmdGlobalAccess": true,
+		"allowUnreachableCode": false,
+		"allowUnusedLabels": false,
+		"checkJs": true,
+		"composite": true,
+		"erasableSyntaxOnly": false,
+		"exactOptionalPropertyTypes": false,
+		"lib": [
+			"ES2022"
+		],
+		"module": "ESNext",
+		"moduleDetection": "force",
+		"moduleResolution": "bundler",
+		"newLine": "lf",
+		"noEmit": true,
+		"noFallthroughCasesInSwitch": true,
+		"noImplicitOverride": true,
+		"noImplicitReturns": true,
+		"noPropertyAccessFromIndexSignature": false,
+		"noUncheckedIndexedAccess": false,
+		"noUncheckedSideEffectImports": true,
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"sourceMap": true,
+		"strict": true,
+		"target": "ES2022",
+		"types": [
+			"bun",
+			"node"
+		]
+	}
 }

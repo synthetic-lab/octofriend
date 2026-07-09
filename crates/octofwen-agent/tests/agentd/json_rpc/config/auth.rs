@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::handle_agentd_json_rpc_line;
+use octofwen_agent::runtime::handle_agentd_json_rpc_line;
 use serde_json::json;
 
 use env as safe_env;
@@ -33,7 +33,7 @@ fn config_key_for_model_runs_agentd_command_auth() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-1",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "baseUrl": "https://api.example.invalid/v1",
@@ -60,7 +60,7 @@ fn config_key_for_model_rejects_invalid_explicit_env_auth_without_fallback() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-invalid-env-auth",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "type": "openai-responses",
@@ -98,7 +98,7 @@ fn config_key_for_model_rejects_blank_explicit_env_auth_without_fallback() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-blank-env-auth",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "type": "openai-responses",
@@ -136,7 +136,7 @@ fn config_key_for_model_rejects_non_string_command_auth_args_without_dropping_th
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-command-non-string-arg",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "baseUrl": "https://api.example.invalid/v1",
@@ -169,7 +169,7 @@ fn config_key_for_model_rejects_chatgpt_oauth_for_non_openai_provider() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-anthropic-oauth",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "baseUrl": "http://127.0.0.1:8080",
@@ -208,7 +208,7 @@ fn config_key_for_model_allows_chatgpt_oauth_for_openai_provider() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-openai-oauth",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "baseUrl": "http://127.0.0.1:8080/v1",
@@ -246,7 +246,7 @@ fn config_key_for_model_uses_provider_type_for_local_proxy_base_url() {
         let line = json!({
             "jsonrpc": "2.0",
             "id": format!("config-key-model-local-proxy-{provider_key}"),
-            "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+            "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
             "params": {
                 "model": {
                     "baseUrl": base_url,
@@ -282,7 +282,7 @@ fn config_key_for_model_uses_known_standard_model_for_local_synthetic_proxy_base
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-model-local-proxy-synthetic",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
         "params": {
             "model": {
                 "baseUrl": "http://127.0.0.1:8080/v1",
@@ -315,7 +315,7 @@ fn config_key_for_base_url_normalizes_known_provider_base_urls() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-base-url-normalized-openai",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
         "params": {
             "baseUrl": " https://api.openai.com/v1/ ",
             "config": {
@@ -343,7 +343,7 @@ fn config_key_for_base_url_normalizes_configured_model_base_urls() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-base-url-normalized-config-model",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
         "params": {
             "baseUrl": "https://models.example.test/v1/",
             "config": {
@@ -373,7 +373,7 @@ fn config_key_for_legacy_synthetic_base_url_uses_synthetic_env_config() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-key-base-url-legacy-synthetic",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
         "params": {
             "baseUrl": "https://api.synthetic.new/openai/v1",
             "config": if env_restore.is_some() {
@@ -418,7 +418,7 @@ fn config_search_uses_agentd_search_auth() {
     let line = json!({
         "jsonrpc": "2.0",
         "id": "config-search-1",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_SEARCH_METHOD,
+        "method": octofwen_agent::runtime::AGENTD_CONFIG_SEARCH_METHOD,
         "params": {
             "config": {
                 "search": {

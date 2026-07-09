@@ -1,6 +1,6 @@
 import { render } from "ink";
 import React from "react";
-import { Markdown } from "../../packages/octofwen-tui/src/rendering/markdown.tsx";
+import { Markdown } from "../../packages/tui/src/render/markdown.tsx";
 
 const demoMarkdown = `# Markdown Rendering Demo
 

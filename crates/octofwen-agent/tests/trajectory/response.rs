@@ -1,6 +1,6 @@
-use octofwen_agent::trajectory::{TrajectoryEvent, TrajectoryOutputIr, buffered_assistant_irs};
-use octofwen_llm::compiler::CompilerTokenBuffer;
-use octofwen_llm::ir::{LlmIr, TokenUsage};
+use octofwen_agent::run_events::{TrajectoryEvent, TrajectoryOutputIr, buffered_assistant_irs};
+use octofwen_models::compiler::CompilerTokenBuffer;
+use octofwen_models::request_ir::{LlmIr, TokenUsage};
 
 #[test]
 fn buffered_assistant_irs_returns_empty_without_buffered_tokens() {
@@ -64,8 +64,8 @@ fn buffered_assistant_irs_uses_empty_content_and_no_reasoning_when_only_tool_tok
     );
 }
 
-use octofwen_agent::trajectory::{ResponseTokenDelta, append_response_token_progress};
-use octofwen_llm::compiler::CompilerTokenType;
+use octofwen_agent::run_events::{ResponseTokenDelta, append_response_token_progress};
+use octofwen_models::compiler::CompilerTokenType;
 
 #[test]
 fn response_token_progress_updates_buffer_and_returns_progress_event() {

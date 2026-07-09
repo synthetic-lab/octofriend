@@ -1,4 +1,4 @@
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     AGENTD_PROVIDER_COMPILER_COMPLETE_METHOD, handle_agentd_json_rpc_line,
 };
 use serde_json::json;

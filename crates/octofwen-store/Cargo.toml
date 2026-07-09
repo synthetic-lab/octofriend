@@ -1,0 +1,23 @@
+[package]
+name = "octofwen-store"
+description = "SQLite records and repositories for Octofwen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofwen_store"
+path = "src/lib.rs"
+
+[dependencies]
+octofwen-config.workspace = true
+
+rusqlite.workspace = true
+
+[lints]
+workspace = true

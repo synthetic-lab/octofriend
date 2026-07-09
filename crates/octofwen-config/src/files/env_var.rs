@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::files::api_key_overrides::default_api_key_overrides;
+use crate::files::api_keys::default_overrides;
 use crate::models::provider_for_model_object;
 
 pub const AUTOFIX_KEYS: &[&str] = &["diffApply", "fixJson"];
@@ -17,7 +17,7 @@ pub fn merge_env_var(mut config: Value, model: &Value, api_env_var: &str) -> Opt
         .position(|entry| entry == model)?;
     if let Some(provider) = model.as_object().and_then(provider_for_model_object) {
         let provider_key = provider.key.as_config_key().to_string();
-        let overrides = default_api_key_overrides(&config);
+        let overrides = default_overrides(&config);
         let default_env_var = crate::auth::default_env_var(provider, Some(&overrides));
         if default_env_var == api_env_var {
             let object = config.as_object_mut()?;
@@ -76,7 +76,7 @@ pub fn merge_autofix_env_var(
     }
     if let Some(provider) = model.as_object().and_then(provider_for_model_object) {
         let provider_key = provider.key.as_config_key().to_string();
-        let overrides = default_api_key_overrides(&config);
+        let overrides = default_overrides(&config);
         let default_env_var = crate::auth::default_env_var(provider, Some(&overrides));
         if default_env_var == api_env_var {
             if let Some(model) = config

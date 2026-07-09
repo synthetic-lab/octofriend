@@ -15,7 +15,7 @@ name = "octofwen_tools"
 path = "src/lib.rs"
 
 [dependencies]
-octofwen-transport.workspace = true
+octofwen-workspace.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 jsonschema.workspace = true

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 
 use crate::auth::default_env_var;
-use crate::files::api_key_overrides::default_api_key_overrides;
+use crate::files::api_keys::default_overrides;
 use crate::files::migrations::CURRENT_CONFIG_VERSION;
 use crate::models::provider_for_model_object;
 
@@ -11,8 +11,8 @@ pub fn sanitize_config(mut config: Value) -> Value {
     if !config.is_object() {
         config = Value::Object(Map::default());
     }
-    normalize_default_api_key_overrides(&mut config);
-    let overrides = default_api_key_overrides(&config);
+    normalize_default_overrides(&mut config);
+    let overrides = default_overrides(&config);
     if let Some(models) = config.get_mut("models").and_then(Value::as_array_mut) {
         for model in models {
             omit_default_api_env_var(model, &overrides);
@@ -29,7 +29,7 @@ pub fn sanitize_config(mut config: Value) -> Value {
     config
 }
 
-fn normalize_default_api_key_overrides(config: &mut Value) {
+fn normalize_default_overrides(config: &mut Value) {
     let Some(object) = config.as_object_mut() else {
         return;
     };

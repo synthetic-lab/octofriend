@@ -1,5 +1,5 @@
 use env as safe_env;
-use octofwen_agent::agentd::{
+use octofwen_agent::runtime::{
     A2A_GET_TASK_METHOD, A2A_SEND_MESSAGE_METHOD, ACP_INITIALIZE_METHOD, ACP_SESSION_NEW_METHOD,
     ACP_SESSION_PROMPT_METHOD, AGENTD_INITIALIZE_METHOD, AGENTD_SYSTEM_PROMPT_METHOD,
     AgentdJsonRpcHandler, handle_agentd_json_rpc_line,

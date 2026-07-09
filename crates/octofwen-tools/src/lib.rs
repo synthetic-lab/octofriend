@@ -1,4 +1,4 @@
-pub mod filesystem;
+pub mod fs;
 pub mod lsp;
 pub mod mcp;
 pub mod runtime;
