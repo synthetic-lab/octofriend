@@ -15,15 +15,28 @@ octofwen
 octo
 ```
 
+To try the current checkout without installing globally:
+
+```bash
+bun install
+bun run exec
+```
+
+For local proxy testing, copy `.env.template` to `.env`. The template points
+OpenAI, Anthropic, Gemini, and Synthetic clients at `http://127.0.0.1:8080`
+with `pwd` API keys so a local codex-proxy can exercise every provider path.
+
 ![octofriend](octofriend.png)
 
 ## About
 
 Octofwen is a small, helpful, cephalopod-flavored coding assistant that works with
-any OpenAI-compatible or Anthropic-compatible LLM API, and allows you to switch
-models at will mid-conversation when a particular model gets stuck. Octo can
-optionally use (and we recommend using) ML models we custom-trained and
-open-sourced ([1](https://huggingface.co/syntheticlab/diff-apply),
+OpenAI, Anthropic, Gemini, Synthetic, and compatible LLM APIs, and allows you to
+switch models at will mid-conversation when a particular model gets stuck. OpenAI
+setup supports ChatGPT OAuth or `OPENAI_API_KEY`; Anthropic, Gemini, and
+Synthetic setup use API keys. Octo can optionally use (and we recommend using)
+ML models we custom-trained and open-sourced
+([1](https://huggingface.co/syntheticlab/diff-apply),
 [2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
 call and code edit failures from the main coding models you're working with:
 the autofix models work with any coding LLM. Octo works great with Kimi K2.5,
@@ -32,8 +45,8 @@ coding model will work). Octo wants to help you because Octo is your friend.
 
 Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
 selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
-yours. But you can also use it with any OpenAI-compatible API provider, with
-Anthropic, or with local LLMs you run on your own machine.
+yours. But you can also use it with OpenAI-compatible providers, Anthropic,
+Gemini, Synthetic, or local LLMs you run on your own machine.
 
 ## Enabling web search
 
@@ -47,12 +60,12 @@ If you don't want to use Synthetic's search API, but you still want to use the
 web search tool, you can configure the `search` config in
 `~/.config/octofriend/octofriend.json5`:
 
-```typescript
+```json5
 {
   // ...the rest of your config,
   search: {
     url: "some_search_api_url",
-    apiEnvVar: "SOME_ENV_VAR_FOR_AUTH"
+    auth: { type: "env", name: "SOME_ENV_VAR_FOR_AUTH", credential: "api-key" },
   },
 }
 ```
@@ -177,7 +190,7 @@ We automatically detect skills in the following places:
 If there are more directories you want Octo to discover skills from, you can
 add them to your `~/.config/octofriend/octofriend.json5` config file like so:
 
-```javascript
+```json5
 skills: {
   paths: [
     // a list of directory paths containing skills
@@ -231,15 +244,15 @@ environment variable to use as a credential; just use any non-empty environment
 variable and it should work (since most local LLM server ignore credentials
 anyway).
 
-You can also edit the Octofriend config directly in
-`~/.config/octofriend/octofriend.json5`. Just add the following to your list of
-models:
+You can also edit the Octofwen config directly in
+`~/.config/octofriend/octofriend.json5`. The file path is kept for Octofriend
+compatibility. Add the following to your list of models:
 
 ```json5
 {
   nickname: "The string to show in the UI for your model name",
   baseUrl: "http://localhost:SOME_PORT",
-  apiEnvVar: "any non-empty env var",
+  auth: { type: "env", name: "ANY_NON_EMPTY_ENV_VAR", credential: "api-key" },
   model: "The model string used by the API server, e.g. openai/gpt-oss-20b",
 }
 ```
