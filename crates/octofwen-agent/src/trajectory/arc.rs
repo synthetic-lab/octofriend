@@ -14,7 +14,7 @@ pub enum TrajectoryAbortState {
     Aborted,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrajectoryArcInput {
     pub abort: TrajectoryAbortState,
     pub messages: Vec<LlmIr>,

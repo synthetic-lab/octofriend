@@ -62,13 +62,13 @@ pub enum CompilerFinishDecision {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompilerFinishOutputRequest {
     pub tools_enabled: bool,
     pub output: serde_json::Value,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompilerFinishOutputResult {
     pub output: serde_json::Value,
 }

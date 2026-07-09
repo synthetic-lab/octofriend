@@ -101,15 +101,12 @@ pub(in crate::agentd) fn tool_call_parse_batch_result_json(
 
     let mut output = params.output;
     if !tool_calls.is_empty() {
-        match &mut output {
-            Value::Object(object) => {
-                object.insert("toolCalls".into(), Value::Array(tool_calls));
-            }
-            _ => {
-                let mut object = Map::new();
-                object.insert("toolCalls".into(), Value::Array(tool_calls));
-                output = Value::Object(object);
-            }
+        if let Value::Object(object) = &mut output {
+            object.insert("toolCalls".into(), Value::Array(tool_calls));
+        } else {
+            let mut object = Map::new();
+            object.insert("toolCalls".into(), Value::Array(tool_calls));
+            output = Value::Object(object);
         }
     }
 
@@ -120,7 +117,14 @@ pub(in crate::agentd) fn tool_call_parse_batch_result_json(
 }
 
 fn tool_call_parse_result_json(params: ToolCallParseOneParams) -> Value {
-    let tool_input = tool_parse_input(params.provider, params.tool);
+    let Ok(tool_input) = tool_parse_input(params.provider, params.tool) else {
+        return tool_call_parse_error_json(
+            String::new(),
+            String::new(),
+            Value::Null,
+            "No tool parse input produced".to_owned(),
+        );
+    };
     let fallback_tool_call_id = tool_input.tool_call_id.clone();
     let fallback_tool_name = tool_input.tool_name.clone();
     let fallback_args = tool_input.args.clone();
@@ -237,7 +241,7 @@ fn normalize_tool_parse_args(
 fn tool_parse_input(
     provider: ToolCallParseProviderParam,
     tool: ToolCallParseToolParam,
-) -> octofwen_llm::compiler::ToolParseInputItem {
+) -> Result<octofwen_llm::compiler::ToolParseInputItem, String> {
     let result = build_tool_parse_inputs(&ToolParseInputRequest {
         provider: tool_parse_input_provider(provider),
         tools: vec![ProviderStreamTool {
@@ -247,7 +251,11 @@ fn tool_parse_input(
             arguments: tool.arguments,
         }],
     });
-    result.items.into_iter().next().unwrap()
+    result
+        .items
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No tool parse input produced".to_owned())
 }
 
 fn tool_parse_input_provider(provider: ToolCallParseProviderParam) -> ToolParseInputProvider {

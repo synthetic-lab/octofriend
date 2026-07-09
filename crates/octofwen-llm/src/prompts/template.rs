@@ -106,7 +106,7 @@ fn render_markdown_text(markdown: &str) -> String {
     config::with_decorator(PromptTextDecorator::default())
         .no_table_borders()
         .string_from_read(html.as_bytes(), 4_096)
-        .expect("markdown template HTML should render to text")
+        .unwrap_or_else(|_| markdown.to_owned())
         .trim_end()
         .to_owned()
 }

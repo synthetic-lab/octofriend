@@ -12,10 +12,12 @@ fn buffered_assistant_irs_returns_empty_without_buffered_tokens() {
 
 #[test]
 fn buffered_assistant_irs_appends_assistant_with_zero_usage_when_tokens_exist() {
-    let mut buffer = CompilerTokenBuffer::default();
-    buffer.content = "partial answer".to_string();
-    buffer.reasoning = "thinking".to_string();
-    buffer.tool = "tool-json".to_string();
+    let buffer = CompilerTokenBuffer {
+        content: "partial answer".to_string(),
+        reasoning: "thinking".to_string(),
+        tool: "tool-json".to_string(),
+        ..CompilerTokenBuffer::default()
+    };
 
     let prior = vec![TrajectoryOutputIr::Llm(LlmIr::User {
         content: Vec::new(),
@@ -42,8 +44,10 @@ fn buffered_assistant_irs_appends_assistant_with_zero_usage_when_tokens_exist() 
 
 #[test]
 fn buffered_assistant_irs_uses_empty_content_and_no_reasoning_when_only_tool_tokens_exist() {
-    let mut buffer = CompilerTokenBuffer::default();
-    buffer.tool = "tool-json".to_string();
+    let buffer = CompilerTokenBuffer {
+        tool: "tool-json".to_string(),
+        ..CompilerTokenBuffer::default()
+    };
 
     assert_eq!(
         buffered_assistant_irs(Vec::new(), &buffer),

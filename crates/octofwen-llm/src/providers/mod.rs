@@ -6,6 +6,7 @@ pub mod openai;
 pub mod stream;
 pub mod synthetic;
 pub mod tool_definitions;
+mod value;
 
 pub use http::ProviderHttpRequest;
 pub use message_lowering::{

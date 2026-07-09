@@ -6,7 +6,7 @@ use octofwen_agent::rendering_model::{
 fn tool_render_model_describes_shell_command_and_timeout() {
     let model = build_tool_call_render_model(
         "shell",
-        serde_json::json!({ "cmd": "cargo test", "timeout": 120000 }),
+        serde_json::json!({ "cmd": "cargo test", "timeout": 120_000 }),
     );
 
     assert_eq!(model.kind, ToolRenderKind::Shell);

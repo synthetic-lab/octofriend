@@ -21,7 +21,7 @@ fn detects_malformed_tool_requests_in_assistant_batches() {
 fn malformed_tool_batches_emit_parse_errors_and_skip_wellformed_calls() {
     let existing = vec![LlmIr::Trajectory.into()];
     let retry_irs = append_malformed_tool_retry_irs(
-        existing.clone(),
+        existing,
         &[
             TrajectoryToolRequest::ToolCall(tool_call("call-1", "read")),
             TrajectoryToolRequest::Malformed(malformed_request("bad-1")),

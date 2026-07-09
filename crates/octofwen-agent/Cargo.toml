@@ -31,6 +31,8 @@ serde_json.workspace = true
 json5.workspace = true
 reqwest.workspace = true
 ignore.workspace = true
+env.workspace = true
+
 
 [lints]
 workspace = true

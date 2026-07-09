@@ -11,7 +11,11 @@ fn validates_exact_config_shapes_and_preserves_values() {
             "nickname": "GPT",
             "baseUrl": "https://api.openai.com/v1",
             "apiEnvVar": "OPENAI_API_KEY",
-            "auth": { "type": "env", "name": "OPENAI_API_KEY" },
+            "auth": {
+                "type": "env",
+                "name": "CODEX_ACCESS_TOKEN",
+                "credential": "chatgpt-oauth"
+            },
             "model": "gpt",
             "context": 32000,
             "reasoning": "xhigh",
@@ -25,10 +29,12 @@ fn validates_exact_config_shapes_and_preserves_values() {
             }
         }],
         "diffApply": {
+            "type": "openai-responses",
             "baseUrl": "https://api.openai.com/v1",
             "model": "gpt"
         },
         "fixJson": {
+            "type": "gemini",
             "baseUrl": "https://api.openai.com/v1",
             "auth": { "type": "command", "command": ["op", "read"] },
             "model": "gpt"
@@ -64,8 +70,14 @@ fn validates_exact_config_shapes_and_preserves_values() {
     .expect("config should validate");
 
     assert_eq!(validated["yourName"], "Ada");
+    assert_eq!(
+        validated["models"][0]["auth"]["credential"],
+        "chatgpt-oauth"
+    );
     assert_eq!(validated["models"][0]["reasoning"], "xhigh");
     assert_eq!(validated["models"][0]["thinkingBudgetTokens"], 12000);
+    assert_eq!(validated["diffApply"]["type"], "openai-responses");
+    assert_eq!(validated["fixJson"]["type"], "gemini");
     assert_eq!(validated["lsp"]["rust"], json!({ "disabled": true }));
 }
 
@@ -87,6 +99,27 @@ fn validates_notifications_without_custom_notify_command() {
             "notifyTimeoutMs": 1000,
             "alwaysNotify": true
         })
+    );
+}
+
+#[test]
+fn rejects_invalid_env_auth_credential() {
+    assert!(
+        validate_config(json!({
+            "yourName": "Ada",
+            "models": [{
+                "nickname": "GPT",
+                "baseUrl": "https://api.openai.com/v1",
+                "auth": {
+                    "type": "env",
+                    "name": "CODEX_ACCESS_TOKEN",
+                    "credential": "oauth"
+                },
+                "model": "gpt",
+                "context": 100
+            }]
+        }))
+        .is_err()
     );
 }
 

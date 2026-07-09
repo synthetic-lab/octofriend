@@ -1,5 +1,7 @@
 use std::fmt;
 
+use serde_json::{Map, Value};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderKind {
     Standard,
@@ -16,6 +18,12 @@ pub enum ReasoningLevel {
     Medium,
     High,
     XHigh,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderAuthMethod {
+    ApiKey,
+    ChatGptOAuth,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,16 +48,23 @@ pub struct ProviderModelConfig {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProviderConnectionConfig {
+    pub env_var: &'static str,
+    pub base_url: &'static str,
+    pub base_url_aliases: &'static [&'static str],
+    pub api_key_url: &'static str,
+    pub auth_methods: &'static [ProviderAuthMethod],
+    pub test_model: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProviderConfig {
     pub key: ProviderKey,
     pub shortcut: char,
     pub kind: ProviderKind,
     pub name: &'static str,
-    pub env_var: &'static str,
-    pub base_url: &'static str,
-    pub api_key_url: &'static str,
+    pub connection: ProviderConnectionConfig,
     pub models: &'static [ProviderModelConfig],
-    pub test_model: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -89,6 +104,18 @@ impl std::error::Error for MissingProviderName {}
 pub const IMAGE_JPEG_PNG_WEBP_GIF: &[&str] =
     &["image/jpeg", "image/png", "image/webp", "image/gif"];
 pub const IMAGE_JPEG_PNG: &[&str] = &["image/jpeg", "image/png"];
+
+pub const API_KEY_AUTH: &[ProviderAuthMethod] = &[ProviderAuthMethod::ApiKey];
+pub const OPENAI_AUTH: &[ProviderAuthMethod] =
+    &[ProviderAuthMethod::ChatGptOAuth, ProviderAuthMethod::ApiKey];
+pub const NO_BASE_URL_ALIASES: &[&str] = &[];
+pub const SYNTHETIC_BASE_URL_ALIASES: &[&str] = &[
+    "https://api.synthetic.new/openai/v1",
+    "https://synthetic.new/api/openai/v1",
+    "https://api.glhf.chat/v1",
+    "https://glhf.chat/api/v1",
+    "https://glhf.chat/api/openai/v1",
+];
 
 pub const SYNTHETIC_MODELS: &[ProviderModelConfig] = &[
     ProviderModelConfig {
@@ -175,55 +202,75 @@ pub const PROVIDERS: &[ProviderConfig] = &[
         shortcut: 's',
         kind: ProviderKind::Standard,
         name: "Synthetic",
-        env_var: "SYNTHETIC_API_KEY",
-        base_url: "https://api.synthetic.new/v1",
-        api_key_url: "https://dev.synthetic.new/",
+        connection: ProviderConnectionConfig {
+            env_var: "SYNTHETIC_API_KEY",
+            base_url: "https://api.synthetic.new/v1",
+            base_url_aliases: SYNTHETIC_BASE_URL_ALIASES,
+            api_key_url: "https://dev.synthetic.new/",
+            auth_methods: API_KEY_AUTH,
+            test_model: "hf:MiniMaxAI/MiniMax-M2.1",
+        },
         models: SYNTHETIC_MODELS,
-        test_model: "hf:MiniMaxAI/MiniMax-M2.1",
     },
     ProviderConfig {
         key: ProviderKey::OpenAi,
         shortcut: 'o',
         kind: ProviderKind::OpenAiResponses,
         name: "OpenAI",
-        env_var: "OPENAI_API_KEY",
-        base_url: "https://api.openai.com/v1",
-        api_key_url: "https://platform.openai.com/api-keys",
+        connection: ProviderConnectionConfig {
+            env_var: "OPENAI_API_KEY",
+            base_url: "https://api.openai.com/v1",
+            base_url_aliases: NO_BASE_URL_ALIASES,
+            api_key_url: "https://platform.openai.com/api-keys",
+            auth_methods: OPENAI_AUTH,
+            test_model: "gpt-5.4-mini",
+        },
         models: OPENAI_MODELS,
-        test_model: "gpt-5.4-mini",
     },
     ProviderConfig {
         key: ProviderKey::Anthropic,
         shortcut: 'a',
         kind: ProviderKind::Anthropic,
         name: "Anthropic",
-        env_var: "ANTHROPIC_API_KEY",
-        base_url: "https://api.anthropic.com",
-        api_key_url: "https://console.anthropic.com/settings/keys",
+        connection: ProviderConnectionConfig {
+            env_var: "ANTHROPIC_API_KEY",
+            base_url: "https://api.anthropic.com",
+            base_url_aliases: NO_BASE_URL_ALIASES,
+            api_key_url: "https://console.anthropic.com/settings/keys",
+            auth_methods: API_KEY_AUTH,
+            test_model: "claude-haiku-4-5-20251001",
+        },
         models: ANTHROPIC_MODELS,
-        test_model: "claude-haiku-4-5-20251001",
     },
     ProviderConfig {
         key: ProviderKey::Gemini,
         shortcut: 'g',
         kind: ProviderKind::Gemini,
         name: "Google Gemini",
-        env_var: "GEMINI_API_KEY",
-        base_url: "https://generativelanguage.googleapis.com/v1beta",
-        api_key_url: "https://aistudio.google.com/apikey",
+        connection: ProviderConnectionConfig {
+            env_var: "GEMINI_API_KEY",
+            base_url: "https://generativelanguage.googleapis.com/v1beta",
+            base_url_aliases: NO_BASE_URL_ALIASES,
+            api_key_url: "https://aistudio.google.com/apikey",
+            auth_methods: API_KEY_AUTH,
+            test_model: "gemini-3.5-flash",
+        },
         models: GEMINI_MODELS,
-        test_model: "gemini-3.5-flash",
     },
     ProviderConfig {
         key: ProviderKey::Grok,
         shortcut: 'x',
         kind: ProviderKind::Standard,
         name: "xAI",
-        env_var: "XAI_API_KEY",
-        base_url: "https://api.x.ai/v1",
-        api_key_url: "https://console.x.ai/",
+        connection: ProviderConnectionConfig {
+            env_var: "XAI_API_KEY",
+            base_url: "https://api.x.ai/v1",
+            base_url_aliases: NO_BASE_URL_ALIASES,
+            api_key_url: "https://console.x.ai/",
+            auth_methods: API_KEY_AUTH,
+            test_model: "grok-4.3",
+        },
         models: GROK_MODELS,
-        test_model: "grok-4.3",
     },
 ];
 
@@ -251,9 +298,65 @@ pub fn key_from_name(name: &str) -> Result<ProviderKey, MissingProviderName> {
 }
 
 pub fn provider_for_base_url(base_url: &str) -> Option<&'static ProviderConfig> {
-    PROVIDERS
-        .iter()
-        .find(|provider| provider.base_url == base_url)
+    PROVIDERS.iter().find(|provider| {
+        base_urls_match(provider.connection.base_url, base_url)
+            || provider
+                .connection
+                .base_url_aliases
+                .iter()
+                .any(|alias| base_urls_match(alias, base_url))
+    })
+}
+
+pub fn provider_for_type(provider_type: &str) -> Option<&'static ProviderConfig> {
+    match provider_type {
+        "openai-responses" => Some(provider_for_key(ProviderKey::OpenAi)),
+        "anthropic" => Some(provider_for_key(ProviderKey::Anthropic)),
+        "gemini" => Some(provider_for_key(ProviderKey::Gemini)),
+        _ => None,
+    }
+}
+
+pub fn provider_for_model_object(object: &Map<String, Value>) -> Option<&'static ProviderConfig> {
+    if let Some(provider) = object
+        .get("type")
+        .and_then(Value::as_str)
+        .filter(|provider_type| *provider_type != "standard")
+        .and_then(provider_for_type)
+    {
+        return Some(provider);
+    }
+    object
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .and_then(provider_for_base_url)
+        .or_else(|| {
+            object
+                .get("model")
+                .and_then(Value::as_str)
+                .and_then(provider_for_model_name)
+        })
+}
+
+pub fn provider_for_model_name(model_name: &str) -> Option<&'static ProviderConfig> {
+    PROVIDERS.iter().find(|provider| {
+        provider
+            .models
+            .iter()
+            .any(|model| model.model == model_name)
+    })
+}
+
+pub fn base_urls_match(left: &str, right: &str) -> bool {
+    normalize_base_url(left) == normalize_base_url(right)
+}
+
+fn normalize_base_url(mut base_url: &str) -> &str {
+    base_url = base_url.trim();
+    while base_url.len() > 1 && base_url.ends_with('/') {
+        base_url = &base_url[..base_url.len() - 1];
+    }
+    base_url
 }
 
 pub fn provider_for_key(key: ProviderKey) -> &'static ProviderConfig {

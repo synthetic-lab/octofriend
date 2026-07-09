@@ -7,6 +7,10 @@ pub struct WrapResult {
     pub wrapped_to_original: Vec<isize>,
 }
 
+fn usize_to_isize(value: usize) -> isize {
+    isize::try_from(value).unwrap_or(isize::MAX)
+}
+
 struct WrapState<'a> {
     width: usize,
     effective_width: usize,
@@ -30,7 +34,7 @@ pub fn wrap_text_with_mapping(
         return WrapResult {
             wrapped: text.to_owned(),
             original_to_wrapped: mapping.clone(),
-            wrapped_to_original: mapping.into_iter().map(|value| value as isize).collect(),
+            wrapped_to_original: mapping.into_iter().map(usize_to_isize).collect(),
         };
     }
 
@@ -61,7 +65,7 @@ pub fn wrap_text_with_mapping(
     set_isize(
         &mut state.wrapped_to_original,
         state.wrapped_pos,
-        state.original_pos as isize,
+        usize_to_isize(state.original_pos),
     );
 
     WrapResult {
@@ -151,7 +155,7 @@ fn append_original_newline(state: &mut WrapState<'_>) {
     set_isize(
         &mut state.wrapped_to_original,
         state.wrapped_pos,
-        state.original_pos as isize,
+        usize_to_isize(state.original_pos),
     );
     state.wrapped.push('\n');
     state.wrapped_pos += 1;
@@ -175,7 +179,7 @@ fn append_original_char(state: &mut WrapState<'_>, character: char) {
     set_isize(
         &mut state.wrapped_to_original,
         state.wrapped_pos,
-        state.original_pos as isize,
+        usize_to_isize(state.original_pos),
     );
     state.wrapped.push(character);
     state.wrapped_pos += 1;

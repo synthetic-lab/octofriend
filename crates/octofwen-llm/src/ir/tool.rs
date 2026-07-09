@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCall {
     pub tool_call_id: String,
     pub name: String,

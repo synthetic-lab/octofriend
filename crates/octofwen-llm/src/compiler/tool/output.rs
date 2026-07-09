@@ -1,11 +1,11 @@
 use serde_json::{Value, json};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCallOutputRequest {
     pub items: Vec<ToolCallOutputItem>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolCallOutputItem {
     Parsed(ToolCallOutputParsed),
     Malformed {
@@ -16,7 +16,7 @@ pub enum ToolCallOutputItem {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCallOutputParsed {
     pub tool_call_id: String,
     pub name: String,
@@ -24,7 +24,7 @@ pub struct ToolCallOutputParsed {
     pub parsed: Value,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCallOutputResult {
     pub tool_calls: Vec<Value>,
 }

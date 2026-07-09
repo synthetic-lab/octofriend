@@ -1,4 +1,6 @@
-use octofwen_config::models::{PROVIDERS, ProviderConfig, ProviderKey, ProviderKind};
+use octofwen_config::models::{
+    PROVIDERS, ProviderAuthMethod, ProviderConfig, ProviderKey, ProviderKind,
+};
 use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
@@ -96,11 +98,13 @@ fn provider_json(provider: &ProviderConfig) -> Value {
         "shortcut": provider.shortcut.to_string(),
         "type": provider_kind_json(provider.kind),
         "name": provider.name,
-        "envVar": provider.env_var,
-        "baseUrl": provider.base_url,
-        "apiKeyUrl": provider.api_key_url,
+        "envVar": provider.connection.env_var,
+        "baseUrl": provider.connection.base_url,
+        "baseUrlAliases": provider.connection.base_url_aliases,
+        "apiKeyUrl": provider.connection.api_key_url,
+        "authMethods": provider.connection.auth_methods.iter().map(|method| auth_method_json(*method)).collect::<Vec<_>>(),
         "models": provider.models.iter().map(model_json).collect::<Vec<_>>(),
-        "testModel": provider.test_model,
+        "testModel": provider.connection.test_model,
     })
 }
 
@@ -141,6 +145,13 @@ fn provider_for_key(key: &str) -> Option<&'static ProviderConfig> {
     PROVIDERS
         .iter()
         .find(|provider| provider.key.as_config_key() == key)
+}
+
+fn auth_method_json(method: ProviderAuthMethod) -> &'static str {
+    match method {
+        ProviderAuthMethod::ApiKey => "api-key",
+        ProviderAuthMethod::ChatGptOAuth => "chatgpt-oauth",
+    }
 }
 
 fn provider_kind_json(kind: ProviderKind) -> &'static str {

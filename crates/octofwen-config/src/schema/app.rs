@@ -1,5 +1,8 @@
 use serde_json::{Map, Value};
 
+type JsonMap = Map<String, Value>;
+type ValueValidator = fn(Value, &str) -> ConfigValidationResult<Value>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigValidationError {
     message: String,
@@ -173,10 +176,7 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
     Ok(Value::Object(validated))
 }
 
-fn validate_thinking_budget_tokens(
-    data: &Map<String, Value>,
-    context: &str,
-) -> ConfigValidationResult<()> {
+fn validate_thinking_budget_tokens(data: &JsonMap, context: &str) -> ConfigValidationResult<()> {
     let Some(value) = data.get("thinkingBudgetTokens") else {
         return Ok(());
     };
@@ -197,8 +197,19 @@ fn validate_thinking_budget_tokens(
 
 fn validate_autofix_model(value: Value, context: &str) -> ConfigValidationResult<Value> {
     let data = object(value, context)?;
-    assert_exact_keys(&data, &["baseUrl", "apiEnvVar", "auth", "model"], context)?;
+    assert_exact_keys(
+        &data,
+        &["type", "baseUrl", "apiEnvVar", "auth", "model"],
+        context,
+    )?;
     let mut validated = Map::new();
+    insert_optional_enum(
+        &mut validated,
+        &data,
+        "type",
+        &["standard", "openai-responses", "anthropic", "gemini"],
+        context,
+    )?;
     insert_required_string(&mut validated, &data, "baseUrl", context)?;
     insert_optional_string(&mut validated, &data, "apiEnvVar", context)?;
     insert_optional_value(&mut validated, &data, "auth", context, validate_auth)?;
@@ -210,10 +221,17 @@ fn validate_auth(value: Value, context: &str) -> ConfigValidationResult<Value> {
     let data = object(value, context)?;
     match data.get("type").and_then(Value::as_str) {
         Some("env") => {
-            assert_exact_keys(&data, &["type", "name"], context)?;
+            assert_exact_keys(&data, &["type", "name", "credential"], context)?;
             let mut validated = Map::new();
             validated.insert("type".into(), Value::String("env".into()));
             insert_required_string(&mut validated, &data, "name", context)?;
+            insert_optional_enum(
+                &mut validated,
+                &data,
+                "credential",
+                &["api-key", "chatgpt-oauth"],
+                context,
+            )?;
             Ok(Value::Object(validated))
         }
         Some("command") => {
@@ -337,25 +355,21 @@ fn validate_notifications(value: Value, context: &str) -> ConfigValidationResult
     Ok(Value::Object(validated))
 }
 
-fn object(value: Value, context: &str) -> ConfigValidationResult<Map<String, Value>> {
+fn object(value: Value, context: &str) -> ConfigValidationResult<JsonMap> {
     value
         .as_object()
         .cloned()
         .ok_or_else(|| ConfigValidationError::new(format!("Expected {context} to be an object")))
 }
 
-fn field<'a>(
-    data: &'a Map<String, Value>,
-    key: &str,
-    context: &str,
-) -> ConfigValidationResult<&'a Value> {
+fn field<'a>(data: &'a JsonMap, key: &str, context: &str) -> ConfigValidationResult<&'a Value> {
     data.get(key).ok_or_else(|| {
         ConfigValidationError::new(format!("Expected {context}.{key} to be present"))
     })
 }
 
 fn assert_exact_keys(
-    data: &Map<String, Value>,
+    data: &JsonMap,
     allowed: &[&str],
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -406,7 +420,7 @@ fn string_array(value: Value, context: &str) -> ConfigValidationResult<Vec<Value
         .collect()
 }
 
-fn string_record(value: Value, context: &str) -> ConfigValidationResult<Map<String, Value>> {
+fn string_record(value: Value, context: &str) -> ConfigValidationResult<JsonMap> {
     let data = object(value, context)?;
     data.iter()
         .map(|(key, value)| {
@@ -421,7 +435,7 @@ fn string_record(value: Value, context: &str) -> ConfigValidationResult<Map<Stri
 fn map_record(
     value: Value,
     context: &str,
-    validate: fn(Value, &str) -> ConfigValidationResult<Value>,
+    validate: ValueValidator,
 ) -> ConfigValidationResult<Value> {
     let data = object(value, context)?;
     Ok(Value::Object(
@@ -429,7 +443,7 @@ fn map_record(
             .map(|(key, value)| {
                 validate(value, &format!("{context}.{key}")).map(|value| (key, value))
             })
-            .collect::<ConfigValidationResult<Map<String, Value>>>()?,
+            .collect::<ConfigValidationResult<JsonMap>>()?,
     ))
 }
 
@@ -444,25 +458,17 @@ fn enum_string(value: &Value, allowed: &[&str], context: &str) -> ConfigValidati
     )))
 }
 
-fn string_field(
-    data: &Map<String, Value>,
-    key: &str,
-    context: &str,
-) -> ConfigValidationResult<String> {
+fn string_field(data: &JsonMap, key: &str, context: &str) -> ConfigValidationResult<String> {
     string_value(field(data, key, context)?, &format!("{context}.{key}"))
 }
 
-fn boolean_field(
-    data: &Map<String, Value>,
-    key: &str,
-    context: &str,
-) -> ConfigValidationResult<bool> {
+fn boolean_field(data: &JsonMap, key: &str, context: &str) -> ConfigValidationResult<bool> {
     boolean_value(field(data, key, context)?, &format!("{context}.{key}"))
 }
 
 fn insert_required_string(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -471,8 +477,8 @@ fn insert_required_string(
 }
 
 fn insert_optional_string(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -486,8 +492,8 @@ fn insert_optional_string(
 }
 
 fn insert_required_number(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -499,8 +505,8 @@ fn insert_required_number(
 }
 
 fn insert_optional_number(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -514,8 +520,8 @@ fn insert_optional_number(
 }
 
 fn insert_optional_u64_number(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -536,8 +542,8 @@ fn insert_optional_u64_number(
 }
 
 fn insert_required_boolean(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -546,8 +552,8 @@ fn insert_required_boolean(
 }
 
 fn insert_optional_boolean(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -561,8 +567,8 @@ fn insert_optional_boolean(
 }
 
 fn insert_required_string_array(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -577,8 +583,8 @@ fn insert_required_string_array(
 }
 
 fn insert_optional_string_array(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
 ) -> ConfigValidationResult<()> {
@@ -592,8 +598,8 @@ fn insert_optional_string_array(
 }
 
 fn insert_optional_enum(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     allowed: &[&str],
     context: &str,
@@ -608,11 +614,11 @@ fn insert_optional_enum(
 }
 
 fn insert_optional_value(
-    target: &mut Map<String, Value>,
-    data: &Map<String, Value>,
+    target: &mut JsonMap,
+    data: &JsonMap,
     key: &str,
     context: &str,
-    validate: fn(Value, &str) -> ConfigValidationResult<Value>,
+    validate: ValueValidator,
 ) -> ConfigValidationResult<()> {
     if let Some(value) = data.get(key) {
         target.insert(

@@ -26,6 +26,7 @@ impl ToolDeclaration {
         }
     }
 
+    #[must_use]
     pub fn with_permission(mut self, permission: ToolPermission) -> Self {
         self.permission = permission;
         self
@@ -61,6 +62,7 @@ impl ToolPermission {
         Self { mode, reason: None }
     }
 
+    #[must_use]
     pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
         self.reason = Some(reason.into());
         self

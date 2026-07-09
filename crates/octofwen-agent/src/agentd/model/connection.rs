@@ -1,11 +1,18 @@
-use octofwen_llm::providers::ProviderHttpRequest;
-use octofwen_llm::providers::gemini::{
-    GeminiGenerateContentHttpRequestParams, gemini_generate_content_http_request,
+use octofwen_llm::providers::{
+    ProviderHttpRequest,
+    anthropic::{AnthropicMessagesHttpRequestParams, anthropic_messages_http_request},
+    gemini::{GeminiGenerateContentHttpRequestParams, gemini_generate_content_http_request},
+    openai::{
+        OpenAiChatCompletionsHttpRequestParams, OpenAiResponsesHttpRequestParams,
+        openai_chat_completions_http_request, openai_responses_http_request,
+    },
 };
 use octofwen_protocol::json_rpc::{JsonRpcId, create_json_rpc_error, create_json_rpc_success};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
+
+use super::super::sse::parse_server_sent_json_events;
 
 const INVALID_PARAMS: i64 = -32602;
 
@@ -52,36 +59,135 @@ fn run_model_connection_test(params: &ModelConnectionTestParams) -> Result<Value
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|error| error.to_string())?;
-    if params.provider_type == Some(ModelConnectionProviderType::Gemini) {
-        return run_gemini_model_connection_test(&client, params);
+    match params
+        .provider_type
+        .unwrap_or(ModelConnectionProviderType::Standard)
+    {
+        ModelConnectionProviderType::Standard => {
+            run_openai_chat_model_connection_test(&client, params)
+        }
+        ModelConnectionProviderType::OpenaiResponses => {
+            run_openai_responses_model_connection_test(&client, params)
+        }
+        ModelConnectionProviderType::Anthropic => {
+            run_anthropic_model_connection_test(&client, params)
+        }
+        ModelConnectionProviderType::Gemini => run_gemini_model_connection_test(&client, params),
     }
-    let chat = client
-        .post(join_openai_path(&params.base_url, "/chat/completions"))
-        .headers(openai_headers(&params.api_key))
-        .body(
-            json!({
-            "model": params.model,
-            "messages": [{
-                "role": "user",
-                "content": "Respond with the word 'hi' and only the word 'hi'",
-            }],
-            })
-            .to_string(),
-        )
-        .send()
-        .map_err(|error| error.to_string())?;
-    if !chat.status().is_success() {
-        return Err(chat.text().unwrap_or_else(|error| error.to_string()));
-    }
-    let chat_json: Value = serde_json::from_str(&chat.text().map_err(|error| error.to_string())?)
-        .map_err(|error| error.to_string())?;
-    let metadata = model_metadata(&client, params).unwrap_or_else(|| json!({}));
+}
+
+fn run_openai_chat_model_connection_test(
+    client: &reqwest::blocking::Client,
+    params: &ModelConnectionTestParams,
+) -> Result<Value, String> {
+    let request = openai_chat_completions_http_request(&OpenAiChatCompletionsHttpRequestParams {
+        base_url: params.base_url.clone(),
+        api_key: params.api_key.clone(),
+        model: params.model.clone(),
+        messages: connection_openai_messages(),
+        tools: None,
+    });
+    let chat_json = provider_request_json(client, &request)?;
+    let metadata = model_metadata(client, params).unwrap_or_else(|| json!({}));
     Ok(json!({
         "valid": true,
         "promptTokens": chat_json.pointer("/usage/prompt_tokens").and_then(Value::as_u64),
         "completionTokens": chat_json.pointer("/usage/completion_tokens").and_then(Value::as_u64),
         "metadata": metadata,
     }))
+}
+
+fn run_openai_responses_model_connection_test(
+    client: &reqwest::blocking::Client,
+    params: &ModelConnectionTestParams,
+) -> Result<Value, String> {
+    let request = openai_responses_http_request(&OpenAiResponsesHttpRequestParams {
+        base_url: params.base_url.clone(),
+        api_key: params.api_key.clone(),
+        model: params.model.clone(),
+        input: connection_openai_responses_input(),
+        instructions: None,
+        tools: None,
+        reasoning: None,
+    });
+    let response_json = provider_request_json(client, &request)?;
+    Ok(json!({
+        "valid": true,
+        "promptTokens": response_json
+            .pointer("/usage/input_tokens")
+            .or_else(|| response_json.pointer("/response/usage/input_tokens"))
+            .and_then(Value::as_u64),
+        "completionTokens": response_json
+            .pointer("/usage/output_tokens")
+            .or_else(|| response_json.pointer("/response/usage/output_tokens"))
+            .and_then(Value::as_u64),
+        "metadata": {},
+    }))
+}
+
+fn run_anthropic_model_connection_test(
+    client: &reqwest::blocking::Client,
+    params: &ModelConnectionTestParams,
+) -> Result<Value, String> {
+    let request = anthropic_messages_http_request(&AnthropicMessagesHttpRequestParams {
+        base_url: params.base_url.clone(),
+        api_key: params.api_key.clone(),
+        model: params.model.clone(),
+        system: String::new(),
+        messages: connection_anthropic_messages(),
+        tools: None,
+        max_tokens: 16,
+        thinking: None,
+        output_config: None,
+    });
+    let response_json = provider_request_json(client, &request)?;
+    Ok(json!({
+        "valid": true,
+        "promptTokens": response_json
+            .pointer("/usage/input_tokens")
+            .or_else(|| response_json.pointer("/message/usage/input_tokens"))
+            .and_then(Value::as_u64),
+        "completionTokens": response_json
+            .pointer("/usage/output_tokens")
+            .or_else(|| response_json.pointer("/message/usage/output_tokens"))
+            .and_then(Value::as_u64),
+        "metadata": {},
+    }))
+}
+
+fn provider_request_json(
+    client: &reqwest::blocking::Client,
+    request: &ProviderHttpRequest,
+) -> Result<Value, String> {
+    let response_text = send_provider_request(client, request)?;
+    provider_response_json(&response_text)
+}
+
+fn send_provider_request(
+    client: &reqwest::blocking::Client,
+    request: &ProviderHttpRequest,
+) -> Result<String, String> {
+    let chat = client
+        .post(&request.url)
+        .headers(provider_headers(request)?)
+        .body(request.body.to_string())
+        .send()
+        .map_err(|error| error.to_string())?;
+    if !chat.status().is_success() {
+        return Err(chat.text().unwrap_or_else(|error| error.to_string()));
+    }
+    chat.text().map_err(|error| error.to_string())
+}
+
+fn provider_response_json(response_text: &str) -> Result<Value, String> {
+    if let Ok(value) = serde_json::from_str::<Value>(response_text) {
+        return Ok(value);
+    }
+
+    parse_server_sent_json_events(response_text, "connection")?
+        .into_iter()
+        .last()
+        .ok_or_else(|| "Connection test returned no stream events".into())
 }
 
 fn run_gemini_model_connection_test(
@@ -93,13 +199,14 @@ fn run_gemini_model_connection_test(
         api_key: params.api_key.clone(),
         model: params.model.clone(),
         contents: json!([{
-            "role": "user",
             "parts": [{
                 "text": "Respond with the word 'hi' and only the word 'hi'",
             }],
+            "role": "user",
         }]),
         system_instruction: None,
         tools: None,
+        generation_config: None,
     });
     let response = client
         .post(&request.url)
@@ -111,44 +218,13 @@ fn run_gemini_model_connection_test(
         return Err(response.text().unwrap_or_else(|error| error.to_string()));
     }
     let response_text = response.text().map_err(|error| error.to_string())?;
-    let response_json = gemini_connection_response_json(&response_text)?;
+    let response_json = provider_response_json(&response_text)?;
     Ok(json!({
         "valid": true,
         "promptTokens": response_json.pointer("/usageMetadata/promptTokenCount").and_then(Value::as_u64),
         "completionTokens": response_json.pointer("/usageMetadata/candidatesTokenCount").and_then(Value::as_u64),
         "metadata": {},
     }))
-}
-
-fn gemini_connection_response_json(response_text: &str) -> Result<Value, String> {
-    if let Ok(value) = serde_json::from_str::<Value>(response_text) {
-        return Ok(value);
-    }
-
-    parse_server_sent_json_events(response_text)?
-        .into_iter()
-        .last()
-        .ok_or_else(|| "Gemini connection test returned no stream events".into())
-}
-
-fn parse_server_sent_json_events(response_text: &str) -> Result<Vec<Value>, String> {
-    let mut events = Vec::new();
-    let normalized_response_text = response_text.replace("\r\n", "\n");
-    for frame in normalized_response_text.split("\n\n") {
-        let data = frame
-            .lines()
-            .filter_map(|line| line.strip_prefix("data:"))
-            .map(str::trim_start)
-            .collect::<Vec<_>>()
-            .join("\n");
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-        let value = serde_json::from_str::<Value>(&data)
-            .map_err(|error| format!("Invalid Gemini connection stream JSON event: {error}"))?;
-        events.push(value);
-    }
-    Ok(events)
 }
 
 fn provider_headers(request: &ProviderHttpRequest) -> Result<reqwest::header::HeaderMap, String> {
@@ -159,6 +235,15 @@ fn provider_headers(request: &ProviderHttpRequest) -> Result<reqwest::header::He
         let header_value =
             reqwest::header::HeaderValue::from_str(value).map_err(|error| error.to_string())?;
         headers.insert(header_name, header_value);
+    }
+    if !headers.contains_key(reqwest::header::USER_AGENT) {
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            reqwest::header::HeaderValue::from_static(concat!(
+                "octofriend/",
+                env!("CARGO_PKG_VERSION")
+            )),
+        );
     }
     Ok(headers)
 }
@@ -213,4 +298,35 @@ fn openai_headers(api_key: &str) -> reqwest::header::HeaderMap {
 
 fn join_openai_path(base_url: &str, path: &str) -> String {
     format!("{}{}", base_url.trim_end_matches('/'), path)
+}
+
+fn connection_prompt() -> &'static str {
+    "Respond with the word 'hi' and only the word 'hi'"
+}
+
+fn connection_openai_messages() -> Value {
+    json!([{
+        "role": "user",
+        "content": connection_prompt(),
+    }])
+}
+
+fn connection_openai_responses_input() -> Value {
+    json!([{
+        "role": "user",
+        "content": [{
+            "type": "input_text",
+            "text": connection_prompt(),
+        }],
+    }])
+}
+
+fn connection_anthropic_messages() -> Value {
+    json!([{
+        "role": "user",
+        "content": [{
+            "type": "text",
+            "text": connection_prompt(),
+        }],
+    }])
 }

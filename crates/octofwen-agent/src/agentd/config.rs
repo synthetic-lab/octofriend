@@ -1,9 +1,9 @@
+use env as safe_env;
 use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
-use std::collections::BTreeMap;
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 
 const INVALID_PARAMS: i64 = -32602;
 const SYNTHETIC_SEARCH_URL: &str = "https://api.synthetic.new/v2/search";
+
+type JsonObject = Map<String, Value>;
 
 #[derive(Debug, Deserialize)]
 struct ConfigParams {
@@ -320,18 +322,33 @@ fn platform_shell() -> (String, &'static str) {
 
 fn key_for_model_result(model: &Value, config: Option<&Value>) -> Value {
     if let Some(auth) = auth_for_model(model) {
+        if auth_uses_chatgpt_oauth(&auth) && !model_supports_chatgpt_oauth(model) {
+            return key_error_result(
+                "invalid",
+                "ChatGPT OAuth is only supported for OpenAI providers.".to_string(),
+            );
+        }
         let result = resolve_auth_result(&auth);
         return result;
     }
+    if let Some(env_var) = provider_env_var_for_model_type(model, config)
+        && let Some(key) = safe_env::var(&env_var)
+            .ok()
+            .and_then(|value| env_value_key(&value))
+    {
+        return ok_key_result(key);
+    }
     let Some(base_url) = model.get("baseUrl").and_then(Value::as_str) else {
-        return missing_key_result("No API key found for unknown model");
+        return key_error_result("missing", "No API key found for unknown model".to_string());
     };
     key_for_base_url_result(base_url, config)
 }
 
 fn key_for_base_url_result(base_url: &str, config: Option<&Value>) -> Value {
     if let Some(env_var) = provider_env_var_for_base_url(base_url, config)
-        && let Some(key) = env_var_key(&env_var)
+        && let Some(key) = safe_env::var(&env_var)
+            .ok()
+            .and_then(|value| env_value_key(&value))
     {
         return ok_key_result(key);
     }
@@ -341,7 +358,7 @@ fn key_for_base_url_result(base_url: &str, config: Option<&Value>) -> Value {
     if let Some(key) = configured_model_key(base_url, config) {
         return ok_key_result(key);
     }
-    missing_key_result(format!("No API key found for {base_url}"))
+    key_error_result("missing", format!("No API key found for {base_url}"))
 }
 
 fn search_config(config: Option<&Value>) -> Value {
@@ -406,7 +423,9 @@ fn find_synthetic_key(config: Option<&Value>) -> Option<String> {
         .and_then(|config| config.get("defaultApiKeyOverrides"))
         .and_then(Value::as_object)
         && let Some(env_var) = overrides.get("synthetic").and_then(Value::as_str)
-        && let Some(key) = env_var_key(env_var)
+        && let Some(key) = safe_env::var(env_var)
+            .ok()
+            .and_then(|value| env_value_key(&value))
     {
         return Some(key);
     }
@@ -422,12 +441,7 @@ fn find_synthetic_key(config: Option<&Value>) -> Option<String> {
 fn auth_for_model(model: &Value) -> Option<Value> {
     let model = model.as_object()?;
     if let Some(auth) = model.get("auth").and_then(Value::as_object) {
-        if auth.get("type").and_then(Value::as_str) == Some("command") {
-            return Some(Value::Object(auth.clone()));
-        }
-        if auth.contains_key("name") {
-            return Some(Value::Object(auth.clone()));
-        }
+        return Some(Value::Object(auth.clone()));
     }
     if let Some(env_var) = model.get("apiEnvVar").and_then(Value::as_str) {
         return Some(json!({ "type": "env", "name": env_var }));
@@ -435,7 +449,7 @@ fn auth_for_model(model: &Value) -> Option<Value> {
     None
 }
 
-fn auth_for_record(record: &Map<String, Value>) -> Option<Value> {
+fn auth_for_record(record: &JsonObject) -> Option<Value> {
     if let Some(auth) = record.get("auth") {
         return Some(auth.clone());
     }
@@ -465,10 +479,21 @@ fn configured_model_key(base_url: &str, config: Option<&Value>) -> Option<String
 }
 
 fn configured_model_entry_key(base_url: &str, model: &Value) -> Option<String> {
-    if model.get("baseUrl").and_then(Value::as_str) != Some(base_url) {
+    if !model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .is_some_and(|model_base_url| {
+            octofwen_config::models::base_urls_match(model_base_url, base_url)
+        })
+    {
         return None;
     }
-    let result = auth_for_model(model).map(|auth| resolve_auth_result(&auth));
+    let result = auth_for_model(model).and_then(|auth| {
+        if auth_uses_chatgpt_oauth(&auth) && !model_supports_chatgpt_oauth(model) {
+            return None;
+        }
+        Some(resolve_auth_result(&auth))
+    });
     if let Some(result) = result
         && let Some(key) = result.get("key").and_then(Value::as_str)
     {
@@ -478,7 +503,23 @@ fn configured_model_entry_key(base_url: &str, model: &Value) -> Option<String> {
 }
 
 fn provider_env_var_for_base_url(base_url: &str, config: Option<&Value>) -> Option<String> {
-    let overrides = config
+    let overrides = default_api_key_overrides(config);
+    octofwen_config::auth::provider_env_var_for_base_url(base_url, overrides.as_ref())
+}
+
+fn provider_env_var_for_model_type(model: &Value, config: Option<&Value>) -> Option<String> {
+    let provider = model
+        .as_object()
+        .and_then(octofwen_config::models::provider_for_model_object)?;
+    let overrides = default_api_key_overrides(config);
+    Some(octofwen_config::auth::default_env_var(
+        provider,
+        overrides.as_ref(),
+    ))
+}
+
+fn default_api_key_overrides(config: Option<&Value>) -> Option<octofwen_config::auth::ApiKeyMap> {
+    config
         .and_then(Value::as_object)
         .and_then(|config| config.get("defaultApiKeyOverrides"))
         .and_then(Value::as_object)
@@ -486,67 +527,94 @@ fn provider_env_var_for_base_url(base_url: &str, config: Option<&Value>) -> Opti
             object
                 .iter()
                 .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
-                .collect::<BTreeMap<_, _>>()
-        });
-    octofwen_config::auth::provider_env_var_for_base_url(base_url, overrides.as_ref())
+                .collect::<octofwen_config::auth::ApiKeyMap>()
+        })
+}
+
+fn auth_uses_chatgpt_oauth(auth: &Value) -> bool {
+    auth.as_object()
+        .and_then(|auth| auth.get("credential"))
+        .and_then(Value::as_str)
+        == Some("chatgpt-oauth")
+}
+
+fn model_supports_chatgpt_oauth(model: &Value) -> bool {
+    let Some(model) = model.as_object() else {
+        return false;
+    };
+    let provider = octofwen_config::models::provider_for_model_object(model);
+    provider.is_some_and(|provider| {
+        provider
+            .connection
+            .auth_methods
+            .contains(&octofwen_config::models::ProviderAuthMethod::ChatGptOAuth)
+    })
 }
 
 fn resolve_auth_result(auth: &Value) -> Value {
     let Some(auth) = auth.as_object() else {
-        return invalid_key_result("Invalid auth configuration");
+        return key_error_result("invalid", "Invalid auth configuration".to_string());
     };
     match auth.get("type").and_then(Value::as_str) {
         Some("env") => {
-            let Some(name) = auth.get("name").and_then(Value::as_str) else {
-                return invalid_key_result("Environment auth name is missing");
+            let Some(name) = auth
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            else {
+                return key_error_result("invalid", "Environment auth name is missing".to_string());
             };
-            env_var_key(name).map_or_else(
-                || missing_key_result(format!("Environment variable {name} is not set")),
-                ok_key_result,
-            )
+            safe_env::var(name)
+                .ok()
+                .and_then(|value| env_value_key(&value))
+                .map_or_else(
+                    || {
+                        key_error_result(
+                            "missing",
+                            format!("Environment variable {name} is not set"),
+                        )
+                    },
+                    ok_key_result,
+                )
         }
         Some("command") => command_auth_result(auth),
-        _ => invalid_key_result("Invalid auth configuration"),
+        _ => key_error_result("invalid", "Invalid auth configuration".to_string()),
     }
 }
 
-fn env_var_key(name: &str) -> Option<String> {
-    let value = std::env::var(name).ok()?;
-    if value.is_empty() { None } else { Some(value) }
+fn env_value_key(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 fn key_file_api_key(base_url: &str) -> Option<String> {
-    parse_key_file(&std::fs::read_to_string(octofwen_config::paths::default_key_file()).ok()?)
-        .get(base_url)
-        .cloned()
-}
-
-fn parse_key_file(contents: &str) -> BTreeMap<String, String> {
-    json5::from_str::<Value>(contents)
-        .or_else(|_| serde_json::from_str::<Value>(contents))
-        .map(string_map)
-        .unwrap_or_default()
-}
-
-fn string_map(value: Value) -> BTreeMap<String, String> {
-    value
-        .as_object()
-        .map(|object| {
-            object
-                .iter()
-                .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
-                .collect()
-        })
-        .unwrap_or_default()
+    octofwen_config::auth::parse_api_key_map(
+        &std::fs::read_to_string(octofwen_config::paths::default_key_file()).ok()?,
+    )
+    .into_iter()
+    .find_map(|(key_base_url, api_key)| {
+        octofwen_config::models::base_urls_match(&key_base_url, base_url).then_some(api_key)
+    })
 }
 
 fn write_key_for_base_url(base_url: &str, api_key: &str) -> std::io::Result<()> {
+    let Some(api_key) = env_value_key(api_key) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "API key is empty",
+        ));
+    };
     let key_file = octofwen_config::paths::default_key_file();
     let mut keys = std::fs::read_to_string(&key_file)
         .ok()
-        .map(|contents| parse_key_file(&contents))
+        .map(|contents| octofwen_config::auth::parse_api_key_map(&contents))
         .unwrap_or_default();
-    keys.insert(base_url.to_string(), api_key.to_string());
+    upsert_key_file_key(&mut keys, base_url, &api_key);
     if let Some(parent) = key_file.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -556,21 +624,44 @@ fn write_key_for_base_url(base_url: &str, api_key: &str) -> std::io::Result<()> 
     )
 }
 
-fn command_auth_result(auth: &Map<String, Value>) -> Value {
-    let Some(command) = auth.get("command").and_then(Value::as_array) else {
-        return invalid_key_result("Auth command is empty");
-    };
-    let Some(program) = command.first().and_then(Value::as_str) else {
-        return invalid_key_result("Auth command is empty");
-    };
-    if program.is_empty() {
-        return invalid_key_result("Auth command is empty");
+fn upsert_key_file_key(keys: &mut octofwen_config::auth::ApiKeyMap, base_url: &str, api_key: &str) {
+    let normalized_base_url = normalize_key_file_base_url(base_url);
+    keys.retain(|key_base_url, _| {
+        !octofwen_config::models::base_urls_match(key_base_url, &normalized_base_url)
+    });
+    keys.insert(normalized_base_url, api_key.to_string());
+}
+
+fn normalize_key_file_base_url(base_url: &str) -> String {
+    let mut normalized = base_url.trim();
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized = &normalized[..normalized.len() - 1];
     }
-    let args = command
-        .iter()
-        .skip(1)
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
+    normalized.to_string()
+}
+
+fn command_auth_result(auth: &JsonObject) -> Value {
+    let Some(command) = auth.get("command").and_then(Value::as_array) else {
+        return key_error_result("invalid", "Auth command is empty".to_string());
+    };
+    let Some(program) = command
+        .first()
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|program| !program.is_empty())
+    else {
+        return key_error_result("invalid", "Auth command is empty".to_string());
+    };
+    let mut args = Vec::with_capacity(command.len().saturating_sub(1));
+    for arg in command.iter().skip(1) {
+        let Some(arg) = arg.as_str() else {
+            return key_error_result(
+                "invalid",
+                "Auth command arguments must be strings".to_string(),
+            );
+        };
+        args.push(arg);
+    }
     let mut child = match Command::new(program)
         .args(args)
         .stdout(Stdio::piped())
@@ -581,10 +672,18 @@ fn command_auth_result(auth: &Map<String, Value>) -> Value {
         Err(error) => return command_failed_key_result(error.to_string(), None, None),
     };
     let Some(stdout) = child.stdout.take() else {
-        return command_failed_key_result("Could not read auth command stdout", None, None);
+        return command_failed_key_result(
+            "Could not read auth command stdout".to_string(),
+            None,
+            None,
+        );
     };
     let Some(stderr) = child.stderr.take() else {
-        return command_failed_key_result("Could not read auth command stderr", None, None);
+        return command_failed_key_result(
+            "Could not read auth command stderr".to_string(),
+            None,
+            None,
+        );
     };
     let stdout_receiver = read_limited_stream(stdout);
     let stderr_receiver = read_limited_stream(stderr);
@@ -620,12 +719,15 @@ fn command_auth_result(auth: &Map<String, Value>) -> Value {
                     );
                 }
                 if stdout.len() > octofwen_config::auth::AUTH_COMMAND_MAX_OUTPUT_BYTES {
-                    return invalid_key_result("Auth command output exceeded maximum size");
+                    return key_error_result(
+                        "invalid",
+                        "Auth command output exceeded maximum size".to_string(),
+                    );
                 }
                 let stdout = String::from_utf8_lossy(&stdout);
                 let key = stdout.trim();
                 return if key.is_empty() {
-                    invalid_key_result("Auth command returned empty output")
+                    key_error_result("invalid", "Auth command returned empty output".to_string())
                 } else {
                     ok_key_result(key)
                 };
@@ -653,22 +755,18 @@ fn ok_key_result(key: impl Into<String>) -> Value {
     json!({ "ok": true, "key": key.into() })
 }
 
-fn missing_key_result(message: impl Into<String>) -> Value {
-    json!({ "ok": false, "error": { "type": "missing", "message": message.into() } })
-}
-
-fn invalid_key_result(message: impl Into<String>) -> Value {
-    json!({ "ok": false, "error": { "type": "invalid", "message": message.into() } })
+fn key_error_result(error_type: &'static str, message: String) -> Value {
+    json!({ "ok": false, "error": { "type": error_type, "message": message } })
 }
 
 fn command_failed_key_result(
-    message: impl Into<String>,
+    message: String,
     exit_code: Option<i32>,
     stderr: Option<String>,
 ) -> Value {
     let mut error = Map::new();
     error.insert("type".into(), Value::String("command_failed".into()));
-    error.insert("message".into(), Value::String(message.into()));
+    error.insert("message".into(), Value::String(message));
     if let Some(exit_code) = exit_code {
         error.insert("exitCode".into(), Value::from(exit_code));
     }
@@ -678,4 +776,60 @@ fn command_failed_key_result(
         error.insert("stderr".into(), Value::String(stderr));
     }
     json!({ "ok": false, "error": Value::Object(error) })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{env_value_key, upsert_key_file_key};
+
+    #[test]
+    fn env_value_key_trims_and_rejects_whitespace_only_values() {
+        assert_eq!(env_value_key(" key "), Some("key".to_string()));
+        assert_eq!(env_value_key(" \n\t "), None);
+        assert_eq!(env_value_key(""), None);
+    }
+
+    #[test]
+    fn upsert_key_file_key_normalizes_base_urls_and_replaces_equivalent_entries() {
+        let mut keys = BTreeMap::from([
+            (
+                "https://api.openai.com/v1/".to_string(),
+                "old-openai".to_string(),
+            ),
+            (
+                "https://api.anthropic.com".to_string(),
+                "anthropic".to_string(),
+            ),
+        ]);
+
+        upsert_key_file_key(&mut keys, " https://api.openai.com/v1 ", "new-openai");
+
+        assert_eq!(
+            keys,
+            BTreeMap::from([
+                (
+                    "https://api.anthropic.com".to_string(),
+                    "anthropic".to_string(),
+                ),
+                (
+                    "https://api.openai.com/v1".to_string(),
+                    "new-openai".to_string(),
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn write_key_for_base_url_rejects_empty_api_keys() {
+        assert!(
+            super::write_key_for_base_url(
+                "https://api.example.test/v1",
+                " 
+	 "
+            )
+            .is_err()
+        );
+    }
 }

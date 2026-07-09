@@ -2,10 +2,11 @@ use crate::providers::{
     ProviderHttpRequest,
     openai::curl::{openai_endpoint_url, redacted_openai_curl},
     stream::{ProviderStreamEvent, ProviderTokenKind, ProviderToolDelta},
+    value::non_empty_str,
 };
 use serde_json::{Map, Value, json};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OpenAiChatCompletionsCurlRequest {
     pub base_url: String,
     pub model: String,
@@ -13,7 +14,7 @@ pub struct OpenAiChatCompletionsCurlRequest {
     pub tools: Option<Value>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OpenAiChatCompletionsHttpRequestParams {
     pub base_url: String,
     pub api_key: String,
@@ -132,10 +133,4 @@ pub fn openai_chat_completions_stream_events(chunk: &Value) -> Vec<ProviderStrea
     }
 
     events
-}
-
-fn non_empty_str(value: Option<&Value>) -> Option<&str> {
-    value
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
 }

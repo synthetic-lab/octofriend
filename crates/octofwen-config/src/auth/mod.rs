@@ -8,5 +8,6 @@ pub use commands::{
 };
 pub use env::{AuthError, EnvAuth, KeyResult, resolve_env_auth, resolve_env_auth_from};
 pub use keys::{
-    SYNTHETIC_BASE_URLS, default_env_var, is_synthetic_base_url, provider_env_var_for_base_url,
+    ApiKeyMap, SYNTHETIC_BASE_URLS, api_key_map_from_value, default_env_var, is_synthetic_base_url,
+    parse_api_key_map, provider_env_var_for_base_url,
 };

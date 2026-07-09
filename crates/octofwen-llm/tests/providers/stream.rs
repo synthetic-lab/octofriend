@@ -148,7 +148,7 @@ fn normalizes_openai_responses_stream_events() {
 }
 
 #[test]
-fn normalizes_anthropic_messages_stream_events() {
+fn normalizes_anthropic_tool_start_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_start",
@@ -172,7 +172,10 @@ fn normalizes_anthropic_messages_stream_events() {
             }),
         ]
     );
+}
 
+#[test]
+fn normalizes_anthropic_tool_argument_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_delta",
@@ -192,7 +195,10 @@ fn normalizes_anthropic_messages_stream_events() {
             }),
         ]
     );
+}
 
+#[test]
+fn normalizes_anthropic_text_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_delta",
@@ -204,7 +210,10 @@ fn normalizes_anthropic_messages_stream_events() {
             text: "hello".into(),
         }]
     );
+}
 
+#[test]
+fn normalizes_anthropic_thinking_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_delta",
@@ -223,7 +232,10 @@ fn normalizes_anthropic_messages_stream_events() {
             },
         ]
     );
+}
 
+#[test]
+fn normalizes_anthropic_thinking_signature_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_delta",
@@ -236,7 +248,10 @@ fn normalizes_anthropic_messages_stream_events() {
             signature: Some("sig".into()),
         }]
     );
+}
 
+#[test]
+fn normalizes_anthropic_redacted_thinking_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "content_block_start",
@@ -247,7 +262,10 @@ fn normalizes_anthropic_messages_stream_events() {
             data: "redacted".into(),
         }]
     );
+}
 
+#[test]
+fn normalizes_anthropic_usage_stream_events() {
     assert_eq!(
         anthropic::anthropic_messages_stream_events(&json!({
             "type": "message_delta",

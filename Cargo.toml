@@ -31,7 +31,11 @@ octofwen-storage = { path = "crates/octofwen-storage" }
 octofwen-tools = { path = "crates/octofwen-tools" }
 octofwen-transport = { path = "crates/octofwen-transport" }
 
+base64 = "0.22.1"
+a2a-lf = "0.3.0"
+agent-client-protocol-schema = "1.4.0"
 comrak = { version = "0.53.0", default-features = false }
+env = "1.0.1"
 html2text = "0.17.1"
 ignore = "0.4.27"
 json5 = "1.3.1"

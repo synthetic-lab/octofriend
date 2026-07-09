@@ -1,3 +1,4 @@
+mod api_key_overrides;
 pub mod env_var;
 pub mod json5;
 pub mod migrations;

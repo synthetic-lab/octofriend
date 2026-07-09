@@ -18,6 +18,13 @@ struct ToolRunParams {
     tool_call_id: String,
     tool_call: Value,
     parsed: Value,
+    #[serde(flatten)]
+    context: ToolRunContextParams,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolRunContextParams {
     model_context: Option<usize>,
     mcp_servers: Option<Value>,
     lsp: Option<Value>,
@@ -58,22 +65,22 @@ pub(in crate::agentd) fn tool_run_response(
     };
 
     let mut parsed = params.parsed;
-    if let Some(model_context) = params.model_context {
+    if let Some(model_context) = params.context.model_context {
         if let Some(object) = parsed.as_object_mut() {
             object.insert("modelContext".into(), json!(model_context));
         }
     }
-    if let Some(mcp_servers) = params.mcp_servers {
+    if let Some(mcp_servers) = params.context.mcp_servers {
         if let Some(object) = parsed.as_object_mut() {
             object.insert("mcpServers".into(), mcp_servers);
         }
     }
-    if let Some(lsp) = params.lsp {
+    if let Some(lsp) = params.context.lsp {
         if let Some(object) = parsed.as_object_mut() {
             object.insert("lsp".into(), lsp);
         }
     }
-    if let Some(web_search) = params.web_search {
+    if let Some(web_search) = params.context.web_search {
         if let Some(object) = parsed.as_object_mut() {
             if let Some(search_url) = web_search.get("searchUrl") {
                 object.insert("searchUrl".into(), search_url.clone());
@@ -83,12 +90,12 @@ pub(in crate::agentd) fn tool_run_response(
             }
         }
     }
-    if let Some(user_name) = params.user_name {
+    if let Some(user_name) = params.context.user_name {
         if let Some(object) = parsed.as_object_mut() {
             object.insert("userName".into(), json!(user_name));
         }
     }
-    if let Some(skills) = params.skills {
+    if let Some(skills) = params.context.skills {
         if let Some(object) = parsed.as_object_mut() {
             object.insert("skills".into(), skills);
         }

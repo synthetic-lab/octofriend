@@ -1,3 +1,4 @@
+use super::quota::quota_json;
 use octofwen_llm::providers::synthetic::parse_quota_json;
 use octofwen_protocol::json_rpc::{JsonRpcId, create_json_rpc_error, create_json_rpc_success};
 use serde::Deserialize;
@@ -53,32 +54,4 @@ fn fetch_synthetic_quota(api_key: &str) -> Option<Value> {
     }
     let body = response.text().ok()?;
     parse_quota_json(&body).map(quota_json)
-}
-
-fn quota_json(quota: octofwen_llm::providers::synthetic::QuotaData) -> Value {
-    let mut value = serde_json::Map::new();
-    if let Some(entry) = quota.rolling_five_hour_limit {
-        value.insert(
-            "rollingFiveHourLimit".into(),
-            json!({
-                "remaining": entry.remaining,
-                "max": entry.max,
-                "nextTickAt": entry.next_tick_at,
-                "tickPercent": entry.tick_percent,
-            }),
-        );
-    }
-    if let Some(entry) = quota.weekly_token_limit {
-        value.insert(
-            "weeklyTokenLimit".into(),
-            json!({
-                "nextRegenAt": entry.next_regen_at,
-                "percentRemaining": entry.percent_remaining,
-                "maxCredits": entry.max_credits,
-                "remainingCredits": entry.remaining_credits,
-                "nextRegenCredits": entry.next_regen_credits,
-            }),
-        );
-    }
-    Value::Object(value)
 }

@@ -141,7 +141,12 @@ pub fn apply_provider_stream_events(
                 thinking,
                 signature,
             } => {
-                apply_anthropic_thinking_delta(state, *index, thinking, signature);
+                apply_anthropic_thinking_delta(
+                    state,
+                    *index,
+                    thinking.as_ref(),
+                    signature.as_ref(),
+                );
             }
             ProviderStreamEvent::AnthropicRedactedThinking { data } => {
                 state
@@ -171,17 +176,16 @@ fn apply_provider_stream_token(
 }
 
 fn apply_provider_stream_tool_delta(state: &mut ProviderStreamState, delta: &ProviderToolDelta) {
-    let tool_index = match existing_tool_delta_index(state, delta) {
-        Some(index) => index,
-        None => {
-            state.tools.push(ProviderStreamTool {
-                index: delta.index,
-                id: None,
-                name: None,
-                arguments: None,
-            });
-            state.tools.len() - 1
-        }
+    let tool_index = if let Some(index) = existing_tool_delta_index(state, delta) {
+        index
+    } else {
+        state.tools.push(ProviderStreamTool {
+            index: delta.index,
+            id: None,
+            name: None,
+            arguments: None,
+        });
+        state.tools.len() - 1
     };
     let tool = &mut state.tools[tool_index];
     if let Some(id) = &delta.id {
@@ -243,27 +247,26 @@ fn apply_gemini_thought_signature(
 fn apply_anthropic_thinking_delta(
     state: &mut ProviderStreamState,
     index: u64,
-    thinking: &Option<String>,
-    signature: &Option<String>,
+    thinking: Option<&String>,
+    signature: Option<&String>,
 ) {
     let block_index = state
         .anthropic
         .thinking_blocks
         .iter()
         .position(|block| matches!(block, AnthropicThinkingBlock::Thinking { index: existing, .. } if *existing == index));
-    let block_index = match block_index {
-        Some(block_index) => block_index,
-        None => {
-            state
-                .anthropic
-                .thinking_blocks
-                .push(AnthropicThinkingBlock::Thinking {
-                    index,
-                    thinking: String::new(),
-                    signature: None,
-                });
-            state.anthropic.thinking_blocks.len() - 1
-        }
+    let block_index = if let Some(block_index) = block_index {
+        block_index
+    } else {
+        state
+            .anthropic
+            .thinking_blocks
+            .push(AnthropicThinkingBlock::Thinking {
+                index,
+                thinking: String::new(),
+                signature: None,
+            });
+        state.anthropic.thinking_blocks.len() - 1
     };
     let AnthropicThinkingBlock::Thinking {
         thinking: block_thinking,

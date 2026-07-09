@@ -3,9 +3,14 @@ pub const AGENT_CLIENT_AGENT_METHODS: &[&str] = &[
     "authenticate",
     "session/new",
     "session/load",
+    "session/list",
+    "session/delete",
     "session/prompt",
     "logout",
     "session/set_mode",
+    "session/set_config_option",
+    "session/resume",
+    "session/close",
 ];
 
 pub const AGENT_CLIENT_AGENT_NOTIFICATIONS: &[&str] = &["session/cancel"];
@@ -23,11 +28,14 @@ pub const AGENT_CLIENT_CLIENT_METHODS: &[&str] = &[
 
 pub const AGENT_CLIENT_CLIENT_NOTIFICATIONS: &[&str] = &["session/update"];
 
+pub const AGENT_CLIENT_PROTOCOL_NOTIFICATIONS: &[&str] = &["$/cancel_request"];
+
 pub fn is_agent_client_method(value: &str) -> bool {
     AGENT_CLIENT_AGENT_METHODS.contains(&value)
         || AGENT_CLIENT_AGENT_NOTIFICATIONS.contains(&value)
         || AGENT_CLIENT_CLIENT_METHODS.contains(&value)
         || AGENT_CLIENT_CLIENT_NOTIFICATIONS.contains(&value)
+        || AGENT_CLIENT_PROTOCOL_NOTIFICATIONS.contains(&value)
 }
 
 pub fn is_absolute_agent_client_path(value: &str) -> bool {

@@ -57,6 +57,21 @@ fn model_connection_line(base_url: &str) -> String {
     .to_string()
 }
 
+fn typed_model_connection_line(base_url: &str, provider_type: &str, model: &str) -> String {
+    json!({
+        "jsonrpc": "2.0",
+        "id": "model-connection",
+        "method": AGENTD_MODEL_CONNECTION_TEST_METHOD,
+        "params": {
+            "type": provider_type,
+            "baseUrl": base_url,
+            "apiKey": "test-key",
+            "model": model
+        }
+    })
+    .to_string()
+}
+
 fn gemini_model_connection_line(base_url: &str) -> String {
     json!({
         "jsonrpc": "2.0",
@@ -123,6 +138,77 @@ fn model_connection_test_executes_provider_http_and_returns_metadata() {
     assert!(requests[0].contains("user-agent: octofriend/"));
     assert!(requests[0].contains("\"model\":\"gpt-test\""));
     assert!(requests[1].starts_with("GET /v1/models HTTP/1.1"));
+}
+
+#[test]
+fn model_connection_test_executes_openai_responses_request() {
+    let (base_url, server) = start_test_server(vec![http_response(
+        "200 OK",
+        r#"{"usage":{"input_tokens":7,"output_tokens":3}}"#,
+    )]);
+
+    let response = handle_agentd_json_rpc_line(&typed_model_connection_line(
+        &base_url,
+        "openai-responses",
+        "gpt-test",
+    ))
+    .expect("request should produce response");
+    let requests = server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(
+        value["result"],
+        json!({
+            "valid": true,
+            "promptTokens": 7,
+            "completionTokens": 3,
+            "metadata": {}
+        })
+    );
+    assert!(requests[0].starts_with("POST /v1/responses HTTP/1.1"));
+    assert!(requests[0].contains("authorization: Bearer test-key"));
+    assert!(requests[0].contains("\"model\":\"gpt-test\""));
+    assert!(requests[0].contains("\"store\":false"));
+    assert!(requests[0].contains("\"input\""));
+    assert!(!requests[0].contains("/chat/completions"));
+}
+
+#[test]
+fn model_connection_test_executes_anthropic_messages_request() {
+    let (base_url, server) = start_test_server(vec![http_response(
+        "200 OK",
+        r#"{"usage":{"input_tokens":11,"output_tokens":5}}"#,
+    )]);
+    let anthropic_base_url = base_url
+        .strip_suffix("/v1")
+        .expect("test base URL should end with /v1");
+
+    let response = handle_agentd_json_rpc_line(&typed_model_connection_line(
+        anthropic_base_url,
+        "anthropic",
+        "claude-test",
+    ))
+    .expect("request should produce response");
+    let requests = server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(
+        value["result"],
+        json!({
+            "valid": true,
+            "promptTokens": 11,
+            "completionTokens": 5,
+            "metadata": {}
+        })
+    );
+    assert!(requests[0].starts_with("POST /v1/messages HTTP/1.1"));
+    assert!(requests[0].contains("x-api-key: test-key"));
+    assert!(requests[0].contains("anthropic-version: 2023-06-01"));
+    assert!(requests[0].contains("\"model\":\"claude-test\""));
+    assert!(requests[0].contains("\"max_tokens\":16"));
+    assert!(!requests[0].contains("authorization: Bearer"));
 }
 
 #[test]

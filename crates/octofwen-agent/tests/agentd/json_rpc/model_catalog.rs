@@ -32,7 +32,15 @@ fn model_provider_catalog_request_returns_agentd_provider_catalog() {
             "name": "Synthetic",
             "envVar": "SYNTHETIC_API_KEY",
             "baseUrl": "https://api.synthetic.new/v1",
+            "baseUrlAliases": [
+                "https://api.synthetic.new/openai/v1",
+                "https://synthetic.new/api/openai/v1",
+                "https://api.glhf.chat/v1",
+                "https://glhf.chat/api/v1",
+                "https://glhf.chat/api/openai/v1"
+            ],
             "apiKeyUrl": "https://dev.synthetic.new/",
+            "authMethods": ["api-key"],
             "models": [
                 {
                     "model": "hf:moonshotai/Kimi-K2.5",
@@ -74,12 +82,24 @@ fn model_provider_catalog_request_returns_agentd_provider_catalog() {
         "https://platform.openai.com/api-keys"
     );
     assert_eq!(
+        value["result"]["providers"]["openai"]["baseUrlAliases"],
+        json!([])
+    );
+    assert_eq!(
+        value["result"]["providers"]["openai"]["authMethods"],
+        json!(["chatgpt-oauth", "api-key"])
+    );
+    assert_eq!(
         value["result"]["providers"]["anthropic"]["type"],
         "anthropic"
     );
     assert_eq!(
         value["result"]["providers"]["anthropic"]["apiKeyUrl"],
         "https://console.anthropic.com/settings/keys"
+    );
+    assert_eq!(
+        value["result"]["providers"]["anthropic"]["authMethods"],
+        json!(["api-key"])
     );
     assert_eq!(value["result"]["providers"]["gemini"]["type"], "gemini");
     assert_eq!(
@@ -91,8 +111,16 @@ fn model_provider_catalog_request_returns_agentd_provider_catalog() {
         "https://generativelanguage.googleapis.com/v1beta"
     );
     assert_eq!(
+        value["result"]["providers"]["gemini"]["baseUrlAliases"],
+        json!([])
+    );
+    assert_eq!(
         value["result"]["providers"]["gemini"]["apiKeyUrl"],
         "https://aistudio.google.com/apikey"
+    );
+    assert_eq!(
+        value["result"]["providers"]["gemini"]["authMethods"],
+        json!(["api-key"])
     );
     assert_eq!(
         value["result"]["providers"]["gemini"]["testModel"],
@@ -122,7 +150,7 @@ fn model_provider_lookup_requests_are_agentd() {
         "jsonrpc": "2.0",
         "id": "model-provider-1",
         "method": AGENTD_MODEL_PROVIDER_FOR_BASE_URL_METHOD,
-        "params": { "baseUrl": "https://api.anthropic.com" }
+        "params": { "baseUrl": " https://api.anthropic.com/ " }
     })
     .to_string();
     let provider_response = handle_agentd_json_rpc_line(&provider_line).expect("response");
@@ -143,6 +171,22 @@ fn model_provider_lookup_requests_are_agentd() {
     assert_eq!(
         gemini_provider_value["result"]["provider"]["name"],
         "Google Gemini"
+    );
+
+    let legacy_synthetic_provider_line = json!({
+        "jsonrpc": "2.0",
+        "id": "model-provider-legacy-synthetic",
+        "method": AGENTD_MODEL_PROVIDER_FOR_BASE_URL_METHOD,
+        "params": { "baseUrl": "https://api.synthetic.new/openai/v1" }
+    })
+    .to_string();
+    let legacy_synthetic_provider_response =
+        handle_agentd_json_rpc_line(&legacy_synthetic_provider_line).expect("response");
+    let legacy_synthetic_provider_value: serde_json::Value =
+        serde_json::from_str(&legacy_synthetic_provider_response).expect("json");
+    assert_eq!(
+        legacy_synthetic_provider_value["result"]["provider"]["name"],
+        "Synthetic"
     );
 
     let recommended_line = json!({

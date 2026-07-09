@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 const INVALID_PARAMS: i64 = -32602;
-const AUTOCOMPACT_THRESHOLD: f64 = 0.9;
+const AUTOCOMPACT_THRESHOLD_NUMERATOR: usize = 9;
+const AUTOCOMPACT_THRESHOLD_DENOMINATOR: usize = 10;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,8 +42,7 @@ pub(super) fn compaction_decision_response(
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
 
-    let max_allowed_tokens =
-        ((params.max_context_window as f64) * AUTOCOMPACT_THRESHOLD).floor() as usize;
+    let max_allowed_tokens = autocompact_max_allowed_tokens(params.max_context_window);
     let estimated_tokens = approximate_ts_ir_tokens(&params.messages);
 
     create_json_rpc_success(
@@ -112,6 +112,11 @@ pub(super) fn compaction_checkpoint_content_response(
     )
 }
 
+fn autocompact_max_allowed_tokens(max_context_window: usize) -> usize {
+    max_context_window.saturating_mul(AUTOCOMPACT_THRESHOLD_NUMERATOR)
+        / AUTOCOMPACT_THRESHOLD_DENOMINATOR
+}
+
 fn approximate_ts_ir_tokens(messages: &[Value]) -> usize {
     let most_recent_assistant_index = messages
         .iter()
@@ -125,7 +130,9 @@ fn approximate_ts_ir_tokens(messages: &[Value]) -> usize {
                     .get("input")?
                     .get("total")?
                     .as_u64()?
-                    .saturating_add(usage.get("output")?.as_u64()?) as usize,
+                    .saturating_add(usage.get("output")?.as_u64()?)
+                    .try_into()
+                    .unwrap_or(usize::MAX),
             )
         })
         .unwrap_or(0);

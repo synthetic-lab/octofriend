@@ -3,7 +3,7 @@ use octofwen_llm::compiler::CompilerError;
 use octofwen_llm::ir::ToolCall;
 use octofwen_llm::providers::synthetic::{QuotaData, parse_quota_json};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrajectoryFinishReason {
     Abort,
     NeedsResponse,

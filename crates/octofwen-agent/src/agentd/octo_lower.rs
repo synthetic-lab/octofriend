@@ -3,14 +3,16 @@ use octofwen_protocol::json_rpc::{
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use std::collections::HashSet;
+
+type JsonValues = Vec<Value>;
+type SeenPaths = std::collections::HashSet<String>;
 
 const INVALID_PARAMS: i64 = -32602;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OctoLowerParams {
-    messages: Vec<Value>,
+    messages: JsonValues,
     modalities: Option<Value>,
 }
 
@@ -34,9 +36,9 @@ pub(super) fn octo_lower_response(id: JsonRpcId, params: Option<Value>) -> JsonR
 }
 
 fn lower_octo_values(
-    messages: Vec<Value>,
+    messages: JsonValues,
     modalities: Option<&Value>,
-) -> Result<Vec<Value>, String> {
+) -> Result<JsonValues, String> {
     let rejected_messages = messages
         .into_iter()
         .map(lower_tool_reject)
@@ -56,9 +58,9 @@ fn lower_tool_reject(message: Value) -> Value {
     })
 }
 
-fn optimize_file_values(messages: Vec<Value>, modalities: Option<&Value>) -> Vec<Value> {
+fn optimize_file_values(messages: JsonValues, modalities: Option<&Value>) -> JsonValues {
     let mut output = Vec::new();
-    let mut seen_paths = HashSet::new();
+    let mut seen_paths = SeenPaths::new();
 
     for message in messages.into_iter().rev() {
         output.push(optimize_file_value(message, &mut seen_paths, modalities));
@@ -70,7 +72,7 @@ fn optimize_file_values(messages: Vec<Value>, modalities: Option<&Value>) -> Vec
 
 fn optimize_file_value(
     message: Value,
-    seen_paths: &mut HashSet<String>,
+    seen_paths: &mut SeenPaths,
     modalities: Option<&Value>,
 ) -> Value {
     match role(&message) {
@@ -82,7 +84,7 @@ fn optimize_file_value(
 
 fn file_read_value(
     message: Value,
-    seen_paths: &mut HashSet<String>,
+    seen_paths: &mut SeenPaths,
     modalities: Option<&Value>,
 ) -> Value {
     let path = message
@@ -143,7 +145,7 @@ fn file_mutate_value(message: Value) -> Value {
     })
 }
 
-fn lower_checkpointed_values(messages: Vec<Value>) -> Result<Vec<Value>, String> {
+fn lower_checkpointed_values(messages: JsonValues) -> Result<JsonValues, String> {
     let start = messages
         .iter()
         .rposition(|message| role(message) == Some("checkpoint"))
@@ -265,7 +267,7 @@ fn tool_call_id(value: &Value) -> &str {
 
 fn format_max_size_mb(max_size_mb: f64) -> String {
     if max_size_mb.fract() == 0.0 {
-        format!("{}", max_size_mb as u64)
+        format!("{max_size_mb:.0}")
     } else {
         max_size_mb.to_string()
     }

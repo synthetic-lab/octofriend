@@ -56,7 +56,7 @@ fn input_history_load_and_append_requests_use_storage() {
             handle_agentd_json_rpc_line(&append_line).expect("request should produce response");
         let append_value: serde_json::Value =
             serde_json::from_str(&append_response).expect("response should be json");
-        assert_eq!(append_value["result"]["history"].as_array().is_some(), true);
+        assert!(append_value["result"]["history"].as_array().is_some());
     }
 
     let load_line = json!({

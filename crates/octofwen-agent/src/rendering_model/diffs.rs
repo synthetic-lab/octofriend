@@ -101,22 +101,16 @@ fn build_diff_rows(start_line: usize, old_text: &str, new_text: &str) -> Vec<Dif
     let new_changed = &new_lines[prefix_len..new_changed_end];
     let changed_len = old_changed.len().max(new_changed.len());
     for index in 0..changed_len {
-        let old = old_changed.get(index).map_or_else(
-            || blank_line(),
-            |line| {
-                let rendered = render_line(Some(old_line_number), DiffLineKind::Removed, line);
-                old_line_number += 1;
-                rendered
-            },
-        );
-        let new = new_changed.get(index).map_or_else(
-            || blank_line(),
-            |line| {
-                let rendered = render_line(Some(new_line_number), DiffLineKind::Added, line);
-                new_line_number += 1;
-                rendered
-            },
-        );
+        let old = old_changed.get(index).map_or_else(blank_line, |line| {
+            let rendered = render_line(Some(old_line_number), DiffLineKind::Removed, line);
+            old_line_number += 1;
+            rendered
+        });
+        let new = new_changed.get(index).map_or_else(blank_line, |line| {
+            let rendered = render_line(Some(new_line_number), DiffLineKind::Added, line);
+            new_line_number += 1;
+            rendered
+        });
         rows.push(DiffRenderRow { old, new });
     }
 

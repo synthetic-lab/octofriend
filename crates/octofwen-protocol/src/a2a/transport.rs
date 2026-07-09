@@ -1,4 +1,4 @@
-pub const AGENT_TO_AGENT_TRANSPORTS: &[&str] = &["jsonrpc-http", "sse"];
+pub const AGENT_TO_AGENT_TRANSPORTS: &[&str] = &["JSONRPC", "HTTP+JSON", "GRPC", "SLIMRPC"];
 pub const AGENT_TO_AGENT_JSON_RPC_METHODS: &[&str] = &[
     "SendMessage",
     "SendStreamingMessage",

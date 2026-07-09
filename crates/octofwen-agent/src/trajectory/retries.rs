@@ -9,7 +9,7 @@ pub const MALFORMED_BATCH_SKIP_REASON: &str =
 pub const MALFORMED_TOOL_ORDERING_ERROR: &str =
     "Impossible tool ordering: encountered a malformed tool with no malformed response";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MalformedToolRequest {
     pub error: String,
     pub tool_call_id: String,
@@ -17,13 +17,13 @@ pub struct MalformedToolRequest {
     pub original_arguments: Value,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrajectoryToolRequest {
     ToolCall(ToolCall),
     Malformed(MalformedToolRequest),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrajectoryOutputIr {
     Llm(LlmIr),
     ToolParseError {

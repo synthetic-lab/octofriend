@@ -1,3 +1,4 @@
+use super::super::quota::quota_json;
 use crate::trajectory::{MALFORMED_BATCH_SKIP_REASON, parse_quota_from_headers};
 use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
@@ -8,13 +9,15 @@ use std::collections::BTreeMap;
 
 const INVALID_PARAMS: i64 = -32602;
 
+type JsonValues = Vec<Value>;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TrajectoryFinishParams {
-    irs: Vec<Value>,
+    irs: JsonValues,
     assistant_message: Option<Value>,
-    tool_calls: Option<Vec<Value>>,
-    retry_irs: Option<Vec<Value>>,
+    tool_calls: Option<JsonValues>,
+    retry_irs: Option<JsonValues>,
     validation_results: Option<Vec<ToolValidationResultParam>>,
     compiler_error: Option<TrajectoryCompilerErrorParam>,
     headers: Option<BTreeMap<String, String>>,
@@ -154,9 +157,9 @@ fn trajectory_finish_result_json(params: TrajectoryFinishParams) -> Value {
 }
 
 fn validation_retry_finish_json(
-    irs: Vec<Value>,
-    tool_calls: Vec<Value>,
-    retry_irs: Vec<Value>,
+    irs: JsonValues,
+    tool_calls: JsonValues,
+    retry_irs: JsonValues,
 ) -> Value {
     if retry_irs.iter().any(is_retryable_validation_failure) {
         let full_trajectory = irs.into_iter().chain(retry_irs).collect::<Vec<_>>();
@@ -178,9 +181,9 @@ fn validation_retry_finish_json(
 }
 
 fn validation_retry_irs_json(
-    tool_calls: Vec<Value>,
+    tool_calls: JsonValues,
     validation_results: Vec<ToolValidationResultParam>,
-) -> Vec<Value> {
+) -> JsonValues {
     tool_calls
         .into_iter()
         .zip(validation_results)
@@ -223,7 +226,7 @@ fn compiler_error_finish_reason_json(error: TrajectoryCompilerErrorParam) -> Val
     }
 }
 
-fn quota_events_json(headers: BTreeMap<String, String>) -> Vec<Value> {
+fn quota_events_json(headers: BTreeMap<String, String>) -> JsonValues {
     let header_pairs = headers.into_iter().collect::<Vec<_>>();
     let Some(quota) = parse_quota_from_headers(&header_pairs) else {
         return Vec::new();
@@ -234,35 +237,7 @@ fn quota_events_json(headers: BTreeMap<String, String>) -> Vec<Value> {
     })]
 }
 
-fn quota_json(quota: octofwen_llm::providers::synthetic::QuotaData) -> Value {
-    let mut value = serde_json::Map::new();
-    if let Some(entry) = quota.rolling_five_hour_limit {
-        value.insert(
-            "rollingFiveHourLimit".into(),
-            json!({
-                "remaining": entry.remaining,
-                "max": entry.max,
-                "nextTickAt": entry.next_tick_at,
-                "tickPercent": entry.tick_percent,
-            }),
-        );
-    }
-    if let Some(entry) = quota.weekly_token_limit {
-        value.insert(
-            "weeklyTokenLimit".into(),
-            json!({
-                "nextRegenAt": entry.next_regen_at,
-                "percentRemaining": entry.percent_remaining,
-                "maxCredits": entry.max_credits,
-                "remainingCredits": entry.remaining_credits,
-                "nextRegenCredits": entry.next_regen_credits,
-            }),
-        );
-    }
-    Value::Object(value)
-}
-
-fn buffered_assistant_irs_json(mut irs: Vec<Value>, buffer: TrajectoryBufferParam) -> Vec<Value> {
+fn buffered_assistant_irs_json(mut irs: JsonValues, buffer: TrajectoryBufferParam) -> JsonValues {
     let content = buffer.content.unwrap_or_default();
     let reasoning = buffer.reasoning.unwrap_or_default();
     let tool = buffer.tool.unwrap_or_default();

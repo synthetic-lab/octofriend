@@ -1,23 +1,23 @@
 use std::collections::BTreeMap;
-use std::io::Read;
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::thread;
-use std::time::{Duration, Instant};
 
 use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
 use serde_json::{Map, Value, json};
 
+use super::super::INVALID_PARAMS;
 use super::super::autofix::autofix_json_response;
-use super::super::{
-    INVALID_PARAMS, ProviderCompilerPlanParams, ProviderCompilerRequestParams,
-    ProviderHttpRequestParams, ProviderHttpRequestPlanParam, provider_compiler_plan_json,
-    provider_http_request_parts, provider_http_stream_request,
+use super::super::provider_plan::{
+    ProviderCompilerPlanParams, ProviderCompilerRequestParams, ProviderHttpRequestParams,
+    ProviderHttpRequestPlanParam, provider_compiler_plan_json, provider_http_request_parts,
+    provider_http_stream_request,
 };
+use super::auth_keys::autofix_api_key;
 use super::http_stream::provider_http_events_result_json;
 use super::provider_compiler_finalize_response;
+
+type JsonObject = Map<String, Value>;
+type JsonValueMap = BTreeMap<String, Value>;
 
 pub(in crate::agentd) fn provider_compiler_complete_response(
     id: JsonRpcId,
@@ -43,8 +43,13 @@ pub(in crate::agentd) fn provider_compiler_complete_response(
         return create_json_rpc_success(id, run_result);
     }
 
-    let finalize_result = match finalize_provider_result(&params, &run_result, cwd.clone(), aborted)
-    {
+    let finalize_result = match finalize_provider_result_with_autofix(
+        &params,
+        &run_result,
+        cwd.clone(),
+        aborted,
+        JsonValueMap::new(),
+    ) {
         Ok(result) => result,
         Err(response) => return response.with_id(id),
     };
@@ -90,9 +95,10 @@ impl ResponseIdExt for JsonRpcResponse {
     }
 }
 
-fn provider_run_result(mut params: Map<String, Value>) -> Result<Value, JsonRpcResponse> {
+fn provider_run_result(mut params: JsonObject) -> Result<Value, JsonRpcResponse> {
     params.remove("cwd");
     params.remove("aborted");
+    params.remove("fixJson");
     params.remove("autofixJson");
     let Ok(params) = serde_json::from_value::<ProviderCompilerRequestParams>(Value::Object(params))
     else {
@@ -166,7 +172,7 @@ fn provider_request_error_result_json(
     provider: &str,
     curl: String,
     message: String,
-    headers: Map<String, Value>,
+    headers: JsonObject,
     status_code: Option<u16>,
 ) -> Value {
     let usage = json!({
@@ -219,21 +225,12 @@ fn provider_request_error_result_json(
     })
 }
 
-fn finalize_provider_result(
-    params: &Map<String, Value>,
-    run_result: &Value,
-    cwd: Value,
-    aborted: bool,
-) -> Result<Value, JsonRpcResponse> {
-    finalize_provider_result_with_autofix(params, run_result, cwd, aborted, BTreeMap::new())
-}
-
 fn finalize_provider_result_with_autofix(
-    params: &Map<String, Value>,
+    params: &JsonObject,
     run_result: &Value,
     cwd: Value,
     aborted: bool,
-    autofixed_args_by_index: BTreeMap<String, Value>,
+    autofixed_args_by_index: JsonValueMap,
 ) -> Result<Value, JsonRpcResponse> {
     let Some(provider) = run_result.get("provider").cloned() else {
         return Err(create_json_rpc_error(
@@ -271,14 +268,14 @@ fn finalize_provider_result_with_autofix(
     }
 }
 
-fn tools_enabled(params: &Map<String, Value>) -> bool {
+fn tools_enabled(params: &JsonObject) -> bool {
     params
         .get("tools")
         .and_then(Value::as_array)
         .is_some_and(|tools| !tools.is_empty())
 }
 
-fn available_tools(params: &Map<String, Value>) -> Value {
+fn available_tools(params: &JsonObject) -> Value {
     let tools = params
         .get("tools")
         .and_then(Value::as_array)
@@ -297,16 +294,13 @@ fn available_tools(params: &Map<String, Value>) -> Value {
     )
 }
 
-fn autofixed_args_by_index(
-    params: &Map<String, Value>,
-    finalize_result: &Value,
-) -> BTreeMap<String, Value> {
+fn autofixed_args_by_index(params: &JsonObject, finalize_result: &Value) -> JsonValueMap {
     let requests = finalize_result
         .get("requests")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let mut output = BTreeMap::new();
+    let mut output = JsonValueMap::new();
     for request in requests {
         let Some(index) = request.get("index").and_then(Value::as_u64) else {
             continue;
@@ -320,8 +314,9 @@ fn autofixed_args_by_index(
     output
 }
 
-fn autofix_json(params: &Map<String, Value>, bad_json: &str) -> Value {
-    let Some(Value::Object(config)) = params.get("autofixJson") else {
+fn autofix_json(params: &JsonObject, bad_json: &str) -> Value {
+    let Some(Value::Object(config)) = params.get("fixJson").or_else(|| params.get("autofixJson"))
+    else {
         return Value::String(bad_json.to_string());
     };
     let Some(api_key) = autofix_api_key(config) else {
@@ -345,168 +340,6 @@ fn autofix_json(params: &Map<String, Value>, bad_json: &str) -> Value {
             }
         }
         JsonRpcResponse::Error { .. } => Value::String(bad_json.to_string()),
-    }
-}
-
-fn autofix_api_key(config: &Map<String, Value>) -> Option<String> {
-    if let Some(api_key) = config.get("apiKey").and_then(Value::as_str) {
-        if !api_key.is_empty() {
-            return Some(api_key.to_string());
-        }
-    }
-
-    if let Some(auth_key) = auth_api_key(config.get("auth")) {
-        return Some(auth_key);
-    }
-
-    if let Some(env_var_key) = env_var_api_key(config.get("apiEnvVar")) {
-        return Some(env_var_key);
-    }
-
-    let base_url = config.get("baseUrl").and_then(Value::as_str)?;
-    if let Some(default_env_key) = default_env_api_key(base_url, config) {
-        return Some(default_env_key);
-    }
-
-    if let Some(key_file_key) = key_file_api_key(base_url) {
-        return Some(key_file_key);
-    }
-
-    configured_model_api_key(base_url, config)
-}
-
-fn env_var_api_key(value: Option<&Value>) -> Option<String> {
-    let env_var = value.and_then(Value::as_str)?;
-    let value = std::env::var(env_var).ok()?;
-    if value.is_empty() { None } else { Some(value) }
-}
-
-fn default_env_api_key(base_url: &str, config: &Map<String, Value>) -> Option<String> {
-    let overrides = config
-        .get("defaultApiKeyOverrides")
-        .and_then(Value::as_object)
-        .map(|object| {
-            object
-                .iter()
-                .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
-                .collect::<BTreeMap<_, _>>()
-        });
-    let env_var =
-        octofwen_config::auth::provider_env_var_for_base_url(base_url, overrides.as_ref())?;
-    let value = std::env::var(env_var).ok()?;
-    if value.is_empty() { None } else { Some(value) }
-}
-
-fn key_file_api_key(base_url: &str) -> Option<String> {
-    let contents = std::fs::read_to_string(octofwen_config::paths::default_key_file()).ok()?;
-    parse_key_file(&contents).get(base_url).cloned()
-}
-
-fn parse_key_file(contents: &str) -> BTreeMap<String, String> {
-    json5::from_str::<Value>(contents)
-        .or_else(|_| serde_json::from_str::<Value>(contents))
-        .map(string_map)
-        .unwrap_or_default()
-}
-
-fn string_map(value: Value) -> BTreeMap<String, String> {
-    value
-        .as_object()
-        .map(|object| {
-            object
-                .iter()
-                .filter_map(|(key, value)| Some((key.clone(), value.as_str()?.to_string())))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn configured_model_api_key(base_url: &str, config: &Map<String, Value>) -> Option<String> {
-    let models = config.get("authModels")?.as_array()?;
-    for model in models {
-        let Some(model) = model.as_object() else {
-            continue;
-        };
-        if model.get("baseUrl").and_then(Value::as_str) != Some(base_url) {
-            continue;
-        }
-        if let Some(auth_key) = auth_api_key(model.get("auth")) {
-            return Some(auth_key);
-        }
-        if let Some(env_key) = env_var_api_key(model.get("apiEnvVar")) {
-            return Some(env_key);
-        }
-    }
-    None
-}
-
-fn auth_api_key(auth: Option<&Value>) -> Option<String> {
-    let auth = auth?.as_object()?;
-    match auth.get("type").and_then(Value::as_str)? {
-        "env" => {
-            let name = auth.get("name").and_then(Value::as_str)?;
-            let value = std::env::var(name).ok()?;
-            if value.is_empty() { None } else { Some(value) }
-        }
-        "command" => command_auth_api_key(auth),
-        _ => None,
-    }
-}
-
-fn command_auth_api_key(auth: &Map<String, Value>) -> Option<String> {
-    let command = auth.get("command")?.as_array()?;
-    let program = command.first()?.as_str()?;
-    if program.is_empty() {
-        return None;
-    }
-    let args = command
-        .iter()
-        .skip(1)
-        .filter_map(Value::as_str)
-        .collect::<Vec<_>>();
-    let mut child = Command::new(program)
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let stdout = child.stdout.take()?;
-    let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let mut limited =
-            stdout.take(octofwen_config::auth::AUTH_COMMAND_MAX_OUTPUT_BYTES as u64 + 1);
-        let mut buffer = Vec::new();
-        let _ = limited.read_to_end(&mut buffer);
-        let _ = sender.send(buffer);
-    });
-    let deadline =
-        Instant::now() + Duration::from_millis(octofwen_config::auth::AUTH_COMMAND_TIMEOUT_MS);
-    loop {
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return None;
-        }
-        match child.try_wait().ok()? {
-            Some(status) => {
-                if !status.success() {
-                    return None;
-                }
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                let output = receiver.recv_timeout(remaining).ok()?;
-                if output.len() > octofwen_config::auth::AUTH_COMMAND_MAX_OUTPUT_BYTES {
-                    return None;
-                }
-                let stdout = String::from_utf8(output).ok()?;
-                let key = stdout.trim();
-                return if key.is_empty() {
-                    None
-                } else {
-                    Some(key.to_string())
-                };
-            }
-            None => thread::sleep(Duration::from_millis(25)),
-        }
     }
 }
 

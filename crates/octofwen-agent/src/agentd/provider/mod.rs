@@ -1,3 +1,4 @@
+mod auth_keys;
 mod compiler_complete;
 mod compiler_finalize;
 mod http_stream;

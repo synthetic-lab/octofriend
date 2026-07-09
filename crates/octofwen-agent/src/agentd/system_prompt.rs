@@ -1,3 +1,4 @@
+use env as safe_env;
 use ignore::WalkBuilder;
 use octofwen_llm::prompts::{
     DirectoryEntry, InstructionFile, InstructionTarget, SystemPromptInput,
@@ -16,6 +17,9 @@ const AGENTS_FILE_NAME: &str = "AGENTS.md";
 const AGENTS_DIRECTORY_NAME: &str = ".agents";
 const MAX_DIRECTORY_CONTEXT_ENTRIES: usize = 200;
 const MAX_DIRECTORY_CONTEXT_DEPTH: usize = 4;
+
+type DirectoryEntries = Vec<DirectoryEntry>;
+type InstructionFiles = Vec<InstructionFile>;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,12 +109,12 @@ fn instruction_prompt(params: &SystemPromptParams, cwd: &Path) -> String {
 fn current_directory(explicit: Option<&str>) -> PathBuf {
     explicit
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        .unwrap_or_else(|| safe_env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
 fn directory_entries_from_params(
     entries: Vec<SystemPromptDirectoryEntryParam>,
-) -> Vec<DirectoryEntry> {
+) -> DirectoryEntries {
     entries
         .into_iter()
         .map(|entry| DirectoryEntry {
@@ -120,7 +124,7 @@ fn directory_entries_from_params(
         .collect()
 }
 
-fn directory_entries_from_filesystem(cwd: &Path) -> Vec<DirectoryEntry> {
+fn directory_entries_from_filesystem(cwd: &Path) -> DirectoryEntries {
     let mut entries = WalkBuilder::new(cwd)
         .standard_filters(true)
         .max_depth(Some(MAX_DIRECTORY_CONTEXT_DEPTH))
@@ -175,18 +179,18 @@ fn instruction_file_from_param(file: &SystemPromptInstructionFileParam) -> Instr
 }
 
 fn discovered_instruction_prompt(user_name: &str, cwd: &Path) -> String {
-    let home = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
+    let home = safe_env::var_os("HOME")
+        .or_else(|| safe_env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    let config_home = std::env::var_os("XDG_CONFIG_HOME")
+    let config_home = safe_env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| home.join(".config"));
     let files = load_instruction_files(cwd, &home, &config_home);
     render_instruction_files(user_name, &files)
 }
 
-fn load_instruction_files(cwd: &Path, home: &Path, config_home: &Path) -> Vec<InstructionFile> {
+fn load_instruction_files(cwd: &Path, home: &Path, config_home: &Path) -> InstructionFiles {
     let mut directory_groups = Vec::new();
     let mut current = cwd.to_path_buf();
 
@@ -220,7 +224,7 @@ fn load_instruction_files(cwd: &Path, home: &Path, config_home: &Path) -> Vec<In
     discovered
 }
 
-fn push_instruction_file_in_directory(files: &mut Vec<InstructionFile>, directory: &Path) {
+fn push_instruction_file_in_directory(files: &mut InstructionFiles, directory: &Path) {
     push_if_file(
         files,
         directory.join(AGENTS_FILE_NAME),
@@ -238,11 +242,7 @@ fn push_instruction_file_in_directory(files: &mut Vec<InstructionFile>, director
     );
 }
 
-fn push_if_file(
-    files: &mut Vec<InstructionFile>,
-    path: PathBuf,
-    target: InstructionTarget,
-) -> bool {
+fn push_if_file(files: &mut InstructionFiles, path: PathBuf, target: InstructionTarget) -> bool {
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return false;
     };

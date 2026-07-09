@@ -1,12 +1,15 @@
 use crate::providers::{
     ProviderHttpRequest,
     stream::{ProviderStreamEvent, ProviderTokenKind, ProviderToolDelta},
+    value::non_empty_str,
 };
+type StreamEvents = Vec<ProviderStreamEvent>;
+
 use serde_json::{Map, Value, json};
 
 pub const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AnthropicMessagesHttpRequestParams {
     pub base_url: String,
     pub api_key: String,
@@ -17,6 +20,16 @@ pub struct AnthropicMessagesHttpRequestParams {
     pub max_tokens: u64,
     pub thinking: Option<Value>,
     pub output_config: Option<Value>,
+}
+
+pub(crate) struct AnthropicMessagesBodyParams<'a> {
+    pub model: &'a str,
+    pub system: &'a str,
+    pub messages: &'a Value,
+    pub tools: Option<&'a Value>,
+    pub max_tokens: u64,
+    pub thinking: Option<&'a Value>,
+    pub output_config: Option<&'a Value>,
 }
 
 pub fn anthropic_messages_http_request(
@@ -30,27 +43,28 @@ pub fn anthropic_messages_http_request(
             ("x-api-key".into(), request.api_key.clone()),
             ("anthropic-version".into(), ANTHROPIC_API_VERSION.into()),
         ],
-        body: anthropic_messages_body(
-            &request.model,
-            &request.system,
-            &request.messages,
-            request.tools.as_ref(),
-            request.max_tokens,
-            request.thinking.as_ref(),
-            request.output_config.as_ref(),
-        ),
+        body: anthropic_messages_body(AnthropicMessagesBodyParams {
+            model: &request.model,
+            system: &request.system,
+            messages: &request.messages,
+            tools: request.tools.as_ref(),
+            max_tokens: request.max_tokens,
+            thinking: request.thinking.as_ref(),
+            output_config: request.output_config.as_ref(),
+        }),
     }
 }
 
-pub(crate) fn anthropic_messages_body(
-    model: &str,
-    system: &str,
-    messages: &Value,
-    tools: Option<&Value>,
-    max_tokens: u64,
-    thinking: Option<&Value>,
-    output_config: Option<&Value>,
-) -> Value {
+pub(crate) fn anthropic_messages_body(params: AnthropicMessagesBodyParams<'_>) -> Value {
+    let AnthropicMessagesBodyParams {
+        model,
+        system,
+        messages,
+        tools,
+        max_tokens,
+        thinking,
+        output_config,
+    } = params;
     let mut body = Map::new();
     body.insert("max_tokens".into(), Value::Number(max_tokens.into()));
     body.insert("messages".into(), messages.clone());
@@ -76,7 +90,7 @@ pub(crate) fn anthropic_messages_body(
     Value::Object(body)
 }
 
-pub fn anthropic_messages_stream_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
+pub fn anthropic_messages_stream_events(chunk: &Value) -> StreamEvents {
     match chunk.get("type").and_then(Value::as_str) {
         Some("content_block_delta") => content_block_delta_events(chunk),
         Some("content_block_start") => content_block_start_events(chunk),
@@ -86,7 +100,7 @@ pub fn anthropic_messages_stream_events(chunk: &Value) -> Vec<ProviderStreamEven
     }
 }
 
-fn content_block_delta_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
+fn content_block_delta_events(chunk: &Value) -> StreamEvents {
     let Some(delta) = chunk.get("delta") else {
         return Vec::new();
     };
@@ -140,7 +154,7 @@ fn content_block_delta_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
     }
 }
 
-fn content_block_start_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
+fn content_block_start_events(chunk: &Value) -> StreamEvents {
     let Some(content_block) = chunk.get("content_block") else {
         return Vec::new();
     };
@@ -170,7 +184,7 @@ fn content_block_start_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
     ]
 }
 
-fn message_delta_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
+fn message_delta_events(chunk: &Value) -> StreamEvents {
     let Some(usage) = chunk.get("usage") else {
         return Vec::new();
     };
@@ -191,7 +205,7 @@ fn message_delta_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
     }]
 }
 
-fn message_start_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
+fn message_start_events(chunk: &Value) -> StreamEvents {
     let Some(usage) = chunk
         .get("message")
         .and_then(|message| message.get("usage"))
@@ -215,7 +229,7 @@ fn message_start_events(chunk: &Value) -> Vec<ProviderStreamEvent> {
     }]
 }
 
-fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> Vec<ProviderStreamEvent> {
+fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> StreamEvents {
     non_empty_str(value.get(field))
         .map(|text| {
             vec![ProviderStreamEvent::Token {
@@ -224,10 +238,4 @@ fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> Vec<Provi
             }]
         })
         .unwrap_or_default()
-}
-
-fn non_empty_str(value: Option<&Value>) -> Option<&str> {
-    value
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
 }

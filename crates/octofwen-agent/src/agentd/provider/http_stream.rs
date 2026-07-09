@@ -14,6 +14,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use super::super::sse::parse_server_sent_json_events;
 use super::stream::{provider_stream_events_json, provider_stream_state_json};
 
 #[derive(Debug, Deserialize)]
@@ -126,12 +127,13 @@ fn execute_provider_http_stream(
         });
     }
 
-    let events =
-        parse_server_sent_json_events(&response_text).map_err(|error| ProviderHttpStreamError {
+    let events = parse_server_sent_json_events(&response_text, "provider").map_err(|error| {
+        ProviderHttpStreamError {
             message: error,
             headers: response_headers.clone(),
             status_code: Some(status.as_u16()),
-        })?;
+        }
+    })?;
 
     Ok(ProviderHttpStreamResult {
         events,
@@ -162,26 +164,6 @@ fn response_headers(headers: &HeaderMap) -> Map<String, Value> {
         }
     }
     output
-}
-
-fn parse_server_sent_json_events(response_text: &str) -> Result<Vec<Value>, String> {
-    let mut events = Vec::new();
-    let normalized_response_text = response_text.replace("\r\n", "\n");
-    for frame in normalized_response_text.split("\n\n") {
-        let data = frame
-            .lines()
-            .filter_map(|line| line.strip_prefix("data:"))
-            .map(str::trim_start)
-            .collect::<Vec<_>>()
-            .join("\n");
-        if data.is_empty() || data == "[DONE]" {
-            continue;
-        }
-        let value = serde_json::from_str::<Value>(&data)
-            .map_err(|error| format!("Invalid provider stream JSON event: {error}"))?;
-        events.push(value);
-    }
-    Ok(events)
 }
 
 fn unexpected_tool_call(events: &[ProviderStreamEvent], tools_enabled: bool) -> bool {

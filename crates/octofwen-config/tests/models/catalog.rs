@@ -1,7 +1,9 @@
 use octofwen_config::models::{
-    DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE, PROVIDERS, ProviderKey, ProviderKind, ReasoningLevel,
-    SYNTHETIC_PROVIDER, key_from_name, provider_for_base_url, provider_for_key, recommended_model,
+    DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE, PROVIDERS, ProviderAuthMethod, ProviderKey,
+    ProviderKind, ReasoningLevel, SYNTHETIC_PROVIDER, key_from_name, provider_for_base_url,
+    provider_for_key, provider_for_model_object, recommended_model,
 };
+use serde_json::json;
 
 #[test]
 fn exports_builtin_provider_metadata_with_stable_keys_and_recommended_models() {
@@ -26,8 +28,30 @@ fn exports_builtin_provider_metadata_with_stable_keys_and_recommended_models() {
     assert_eq!(recommended_model(ProviderKey::OpenAi).nickname, "GPT-5.5");
     assert_eq!(PROVIDERS[2].kind, ProviderKind::Anthropic);
     assert_eq!(PROVIDERS[3].kind, ProviderKind::Gemini);
-    assert_eq!(PROVIDERS[3].env_var, "GEMINI_API_KEY");
-    assert_eq!(PROVIDERS[4].env_var, "XAI_API_KEY");
+    assert_eq!(PROVIDERS[3].connection.env_var, "GEMINI_API_KEY");
+    assert_eq!(PROVIDERS[4].connection.env_var, "XAI_API_KEY");
+}
+
+#[test]
+fn exports_provider_auth_methods_for_setup_flows() {
+    assert_eq!(
+        provider_for_key(ProviderKey::OpenAi)
+            .connection
+            .auth_methods,
+        [ProviderAuthMethod::ChatGptOAuth, ProviderAuthMethod::ApiKey]
+    );
+
+    for key in [
+        ProviderKey::Synthetic,
+        ProviderKey::Anthropic,
+        ProviderKey::Gemini,
+    ] {
+        assert_eq!(
+            provider_for_key(key).connection.auth_methods,
+            [ProviderAuthMethod::ApiKey],
+            "{key:?} setup should stay API-key-only"
+        );
+    }
 }
 
 #[test]
@@ -51,6 +75,49 @@ fn maps_provider_display_names_and_base_urls_to_catalog_entries() {
         key_from_name("Missing Provider").map_err(|error| error.to_string()),
         Err("No provider named Missing Provider found".into())
     );
+}
+
+#[test]
+fn model_object_provider_type_takes_precedence_over_base_url() {
+    let typed_model = json!({
+        "type": "anthropic",
+        "baseUrl": "https://api.openai.com/v1"
+    });
+    let typed_provider = provider_for_model_object(
+        typed_model
+            .as_object()
+            .expect("typed model should be object"),
+    )
+    .expect("typed model should resolve provider");
+
+    assert_eq!(typed_provider.key, ProviderKey::Anthropic);
+
+    let standard_model = json!({
+        "type": "standard",
+        "baseUrl": "https://api.openai.com/v1"
+    });
+    let standard_provider = provider_for_model_object(
+        standard_model
+            .as_object()
+            .expect("standard model should be object"),
+    )
+    .expect("standard model should resolve provider from base URL");
+
+    assert_eq!(standard_provider.key, ProviderKey::OpenAi);
+
+    let local_synthetic_model = json!({
+        "type": "standard",
+        "baseUrl": "http://127.0.0.1:8080/v1",
+        "model": "hf:moonshotai/Kimi-K2.5"
+    });
+    let local_synthetic_provider = provider_for_model_object(
+        local_synthetic_model
+            .as_object()
+            .expect("local synthetic model should be object"),
+    )
+    .expect("local synthetic model should resolve provider from model name");
+
+    assert_eq!(local_synthetic_provider.key, ProviderKey::Synthetic);
 }
 
 #[test]
@@ -84,15 +151,18 @@ fn exports_native_gemini_provider_metadata() {
 
     assert_eq!(gemini.kind, ProviderKind::Gemini);
     assert_eq!(gemini.name, "Google Gemini");
-    assert_eq!(gemini.env_var, "GEMINI_API_KEY");
+    assert_eq!(gemini.connection.env_var, "GEMINI_API_KEY");
     assert_eq!(
-        gemini.base_url,
+        gemini.connection.base_url,
         "https://generativelanguage.googleapis.com/v1beta"
     );
-    assert_eq!(gemini.api_key_url, "https://aistudio.google.com/apikey");
+    assert_eq!(
+        gemini.connection.api_key_url,
+        "https://aistudio.google.com/apikey"
+    );
     assert_eq!(gemini.models[0].model, "gemini-3.5-flash");
     assert_eq!(gemini.models[0].context, 1_048_576);
-    assert_eq!(gemini.test_model, "gemini-3.5-flash");
+    assert_eq!(gemini.connection.test_model, "gemini-3.5-flash");
     assert_eq!(
         recommended_model(ProviderKey::Gemini).model,
         "gemini-3.5-flash"

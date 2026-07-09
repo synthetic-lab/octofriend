@@ -1,8 +1,10 @@
 use serde_json::Value;
 
+type OptionalPropertyPaths = Vec<Vec<String>>;
+
 const INVALID_JSON_MESSAGE: &str = "Syntax error: invalid JSON in tool call arguments";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCallPreparseInput {
     pub tool_call_id: String,
     pub tool_name: String,
@@ -11,7 +13,7 @@ pub struct ToolCallPreparseInput {
     pub autofixed_args: Option<Value>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolCallPreparseResult {
     Ready {
         tool_call_id: String,
@@ -58,14 +60,11 @@ pub fn preparse_tool_call(input: &ToolCallPreparseInput) -> ToolCallPreparseResu
 
 fn preparse_string_args(raw_args: &str, autofixed_args: Option<&Value>) -> Result<Value, String> {
     let source = if raw_args.is_empty() { "{}" } else { raw_args };
-    let parsed = match serde_json::from_str::<Value>(source) {
-        Ok(parsed) => parsed,
-        Err(_) => {
-            if let Some(autofixed_args) = autofixed_args {
-                return Ok(autofixed_args.clone());
-            }
-            return Err(source.into());
+    let Ok(parsed) = serde_json::from_str::<Value>(source) else {
+        if let Some(autofixed_args) = autofixed_args {
+            return Ok(autofixed_args.clone());
         }
+        return Err(source.into());
     };
 
     Ok(match parsed {
@@ -93,7 +92,7 @@ pub fn normalize_openai_strict_function_arguments(schema: &Value, args: &Value) 
 fn collect_optional_property_paths(
     schema: &Value,
     path: Vec<String>,
-    optional_paths: &mut Vec<Vec<String>>,
+    optional_paths: &mut OptionalPropertyPaths,
 ) {
     match schema {
         Value::Array(items) => {
@@ -117,7 +116,7 @@ fn collect_optional_property_paths(
 fn collect_object_optional_property_paths(
     schema: &serde_json::Map<String, Value>,
     path: &[String],
-    optional_paths: &mut Vec<Vec<String>>,
+    optional_paths: &mut OptionalPropertyPaths,
 ) {
     let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
         return;

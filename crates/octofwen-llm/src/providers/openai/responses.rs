@@ -4,10 +4,13 @@ use crate::providers::{
     stream::{
         ProviderOpenAiResponsesMetadata, ProviderStreamEvent, ProviderTokenKind, ProviderToolDelta,
     },
+    value::non_empty_str,
 };
+type StreamEvents = Vec<ProviderStreamEvent>;
+
 use serde_json::{Map, Value};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OpenAiResponsesCurlRequest {
     pub base_url: String,
     pub model: String,
@@ -17,7 +20,7 @@ pub struct OpenAiResponsesCurlRequest {
     pub reasoning: Option<Value>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OpenAiResponsesHttpRequestParams {
     pub base_url: String,
     pub api_key: String,
@@ -93,7 +96,7 @@ fn openai_responses_body(
     Value::Object(body)
 }
 
-pub fn openai_responses_stream_events(event: &Value) -> Vec<ProviderStreamEvent> {
+pub fn openai_responses_stream_events(event: &Value) -> StreamEvents {
     match event.get("type").and_then(Value::as_str) {
         Some("response.output_text.delta") => {
             token_event(event, "delta", ProviderTokenKind::Content)
@@ -113,7 +116,7 @@ pub fn openai_responses_stream_events(event: &Value) -> Vec<ProviderStreamEvent>
     }
 }
 
-fn response_completed_events(event: &Value) -> Vec<ProviderStreamEvent> {
+fn response_completed_events(event: &Value) -> StreamEvents {
     let mut events = Vec::new();
     if let Some(output) = event
         .get("response")
@@ -152,7 +155,7 @@ fn response_completed_events(event: &Value) -> Vec<ProviderStreamEvent> {
     events
 }
 
-fn response_output_item_events(item: &Value) -> Vec<ProviderStreamEvent> {
+fn response_output_item_events(item: &Value) -> StreamEvents {
     match item.get("type").and_then(Value::as_str) {
         Some("function_call") => vec![ProviderStreamEvent::ToolDelta(ProviderToolDelta {
             index: 0,
@@ -194,7 +197,7 @@ fn push_reasoning_text_parts(parts: &mut Vec<String>, value: Option<&Value>) {
     }
 }
 
-fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> Vec<ProviderStreamEvent> {
+fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> StreamEvents {
     non_empty_str(value.get(field))
         .map(|text| {
             vec![ProviderStreamEvent::Token {
@@ -203,10 +206,4 @@ fn token_event(value: &Value, field: &str, kind: ProviderTokenKind) -> Vec<Provi
             }]
         })
         .unwrap_or_default()
-}
-
-fn non_empty_str(value: Option<&Value>) -> Option<&str> {
-    value
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
 }

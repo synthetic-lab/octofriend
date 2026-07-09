@@ -1,11 +1,321 @@
+use env as safe_env;
 use octofwen_agent::agentd::{
-    AGENTD_INITIALIZE_METHOD, AGENTD_SYSTEM_PROMPT_METHOD, handle_agentd_json_rpc_line,
+    A2A_GET_TASK_METHOD, A2A_SEND_MESSAGE_METHOD, ACP_INITIALIZE_METHOD, ACP_SESSION_NEW_METHOD,
+    ACP_SESSION_PROMPT_METHOD, AGENTD_INITIALIZE_METHOD, AGENTD_SYSTEM_PROMPT_METHOD,
+    AgentdJsonRpcHandler, handle_agentd_json_rpc_line,
 };
 use serde_json::json;
 use std::fs;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+#[test]
+fn stateful_handler_tracks_acp_sessions_and_a2a_tasks() {
+    let mut handler = AgentdJsonRpcHandler::default();
+    let unknown_prompt = json!({
+        "jsonrpc": "2.0",
+        "id": "unknown-prompt",
+        "method": ACP_SESSION_PROMPT_METHOD,
+        "params": {
+            "sessionId": "octofwen:/missing",
+            "prompt": [{ "type": "text", "text": "hello" }]
+        }
+    })
+    .to_string();
+    let response = handler
+        .handle_line(&unknown_prompt)
+        .expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["error"]["message"], "Unknown session");
+
+    let new_session = json!({
+        "jsonrpc": "2.0",
+        "id": "tracked-session",
+        "method": ACP_SESSION_NEW_METHOD,
+        "params": {
+            "cwd": "/repo",
+            "mcpServers": []
+        }
+    })
+    .to_string();
+    let response = handler
+        .handle_line(&new_session)
+        .expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["result"]["sessionId"], "octofwen:/repo");
+
+    let prompt = json!({
+        "jsonrpc": "2.0",
+        "id": "tracked-prompt",
+        "method": ACP_SESSION_PROMPT_METHOD,
+        "params": {
+            "sessionId": "octofwen:/repo",
+            "prompt": [{ "type": "text", "text": "hello" }]
+        }
+    })
+    .to_string();
+    let response = handler
+        .handle_line(&prompt)
+        .expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["result"]["stopReason"], "end_turn");
+
+    let message = json!({
+        "jsonrpc": "2.0",
+        "id": "a2a-track",
+        "method": A2A_SEND_MESSAGE_METHOD,
+        "params": {
+            "message": {
+                "messageId": "message-2",
+                "taskId": "task-2",
+                "contextId": "context-2",
+                "role": "ROLE_USER",
+                "parts": [{ "text": "Track me" }]
+            }
+        }
+    })
+    .to_string();
+    handler
+        .handle_line(&message)
+        .expect("request should produce response");
+    let get_task = json!({
+        "jsonrpc": "2.0",
+        "id": "get-task",
+        "method": A2A_GET_TASK_METHOD,
+        "params": { "id": "task-2" }
+    })
+    .to_string();
+    let response = handler
+        .handle_line(&get_task)
+        .expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["result"]["task"]["id"], "task-2");
+    assert_eq!(
+        value["result"]["task"]["status"]["state"],
+        "TASK_STATE_COMPLETED"
+    );
+}
+
+#[test]
+fn a2a_send_message_accepts_field_presence_message_shape() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "a2a-message",
+        "method": A2A_SEND_MESSAGE_METHOD,
+        "params": {
+            "message": {
+                "messageId": "message-1",
+                "contextId": "context-1",
+                "role": "ROLE_USER",
+                "parts": [{ "text": "Summarize repo" }]
+            }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "a2a-message");
+    assert_eq!(value["result"]["message"]["role"], "ROLE_AGENT");
+    assert_eq!(
+        value["result"]["message"]["messageId"],
+        "message-1:response"
+    );
+    assert_eq!(value["result"]["message"]["contextId"], "context-1");
+    assert_eq!(
+        value["result"]["message"]["parts"],
+        json!([{ "text": "Accepted by octofwen-agentd" }])
+    );
+}
+
+#[test]
+fn a2a_send_message_runs_octofwen_trajectory_extension() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "a2a-trajectory",
+        "method": A2A_SEND_MESSAGE_METHOD,
+        "params": {
+            "message": {
+                "messageId": "message-trajectory",
+                "role": "ROLE_USER",
+                "parts": [{ "text": "Summarize repo" }]
+            },
+            "octofwenTrajectory": aborted_trajectory_params()
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "a2a-trajectory");
+    assert_eq!(
+        value["result"]["message"]["parts"],
+        json!([{ "text": "octofwen trajectory finished with abort" }])
+    );
+    assert_eq!(
+        value["result"]["octofwenTrajectory"]["reason"],
+        json!({ "type": "abort" })
+    );
+}
+
+#[test]
+fn a2a_send_message_rejects_missing_message_id() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "a2a-bad-message",
+        "method": A2A_SEND_MESSAGE_METHOD,
+        "params": {
+            "message": {
+                "role": "ROLE_USER",
+                "parts": [{ "text": "Summarize repo" }]
+            }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "a2a-bad-message");
+    assert_eq!(value["error"]["code"], -32602);
+    assert_eq!(value["error"]["message"], "Invalid params");
+}
+
+#[test]
+fn acp_initialize_request_returns_agent_capabilities() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "acp-init",
+        "method": ACP_INITIALIZE_METHOD,
+        "params": {
+            "protocolVersion": 1,
+            "clientCapabilities": {
+                "fs": { "readTextFile": true, "writeTextFile": true }
+            },
+            "clientInfo": { "name": "test-client", "version": "0.0.0" }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "acp-init");
+    assert_eq!(value["result"]["protocolVersion"], 1);
+    assert_eq!(value["result"]["agentInfo"]["name"], "octofwen-agentd");
+    assert_eq!(value["result"]["agentCapabilities"]["loadSession"], false);
+}
+
+#[test]
+fn acp_session_new_and_prompt_accept_protocol_shapes() {
+    let new_session = json!({
+        "jsonrpc": "2.0",
+        "id": "new-session",
+        "method": ACP_SESSION_NEW_METHOD,
+        "params": {
+            "cwd": "/repo",
+            "additionalDirectories": ["/repo/packages"],
+            "mcpServers": []
+        }
+    })
+    .to_string();
+    let response =
+        handle_agentd_json_rpc_line(&new_session).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["id"], "new-session");
+    assert_eq!(value["result"]["sessionId"], "octofwen:/repo");
+
+    let prompt = json!({
+        "jsonrpc": "2.0",
+        "id": "prompt",
+        "method": ACP_SESSION_PROMPT_METHOD,
+        "params": {
+            "sessionId": "octofwen:/repo",
+            "prompt": [{ "type": "text", "text": "hello" }]
+        }
+    })
+    .to_string();
+    let response = handle_agentd_json_rpc_line(&prompt).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(value["id"], "prompt");
+    assert_eq!(value["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn acp_session_prompt_runs_octofwen_trajectory_extension() {
+    let mut handler = AgentdJsonRpcHandler::default();
+    let new_session = json!({
+        "jsonrpc": "2.0",
+        "id": "new-session-for-trajectory",
+        "method": ACP_SESSION_NEW_METHOD,
+        "params": {
+            "cwd": "/repo",
+            "mcpServers": []
+        }
+    })
+    .to_string();
+    handler
+        .handle_line(&new_session)
+        .expect("request should produce response");
+
+    let prompt = json!({
+        "jsonrpc": "2.0",
+        "id": "prompt-trajectory",
+        "method": ACP_SESSION_PROMPT_METHOD,
+        "params": {
+            "sessionId": "octofwen:/repo",
+            "prompt": [{ "type": "text", "text": "hello" }],
+            "_meta": {
+                "octofwen": {
+                    "trajectoryArc": aborted_trajectory_params()
+                }
+            }
+        }
+    })
+    .to_string();
+    let response = handler
+        .handle_line(&prompt)
+        .expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "prompt-trajectory");
+    assert_eq!(value["result"]["stopReason"], "end_turn");
+    assert_eq!(
+        value["result"]["octofwenTrajectory"]["reason"],
+        json!({ "type": "abort" })
+    );
+}
+
+fn aborted_trajectory_params() -> serde_json::Value {
+    json!({
+        "cwd": "/repo",
+        "apiKey": "test-key",
+        "model": {
+            "baseUrl": "https://api.openai.com/v1",
+            "model": "gpt-test",
+            "context": 128
+        },
+        "messages": [],
+        "config": {
+            "yourName": "Tester"
+        },
+        "aborted": true
+    })
+}
 
 #[test]
 fn initialize_request_returns_agentd_capabilities() {
@@ -67,8 +377,8 @@ fn system_prompt_request_returns_agentd_prompt() {
 
 #[test]
 fn system_prompt_request_discovers_workspace_context_through_agentd() {
-    let original_dir = std::env::current_dir().expect("current dir should be available");
-    let temp_dir = std::env::temp_dir().join(format!(
+    let original_dir = safe_env::current_dir().expect("current dir should be available");
+    let temp_dir = safe_env::temp_dir().join(format!(
         "octofwen-agent-system-prompt-{}-{}",
         std::process::id(),
         NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
@@ -87,7 +397,7 @@ fn system_prompt_request_discovers_workspace_context_through_agentd() {
     fs::write(temp_dir.join("package.json"), "{}").expect("package file should be written");
     let temp_dir = fs::canonicalize(&temp_dir).expect("temp dir should canonicalize");
 
-    std::env::set_current_dir(&temp_dir).expect("temp dir should become cwd");
+    safe_env::set_current_dir(&temp_dir).expect("temp dir should become cwd");
     let line = json!({
         "jsonrpc": "2.0",
         "id": "system-prompt-discovery",
@@ -100,7 +410,7 @@ fn system_prompt_request_discovers_workspace_context_through_agentd() {
     .to_string();
 
     let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    std::env::set_current_dir(original_dir).expect("original cwd should be restored");
+    safe_env::set_current_dir(original_dir).expect("original cwd should be restored");
     fs::remove_dir_all(&temp_dir).expect("temp dir should be removed");
     let value: serde_json::Value =
         serde_json::from_str(&response).expect("response should be json");
@@ -135,7 +445,7 @@ fn system_prompt_request_discovers_workspace_context_through_agentd() {
 
 #[test]
 fn system_prompt_discovers_gitignore_aware_directory_hierarchy() {
-    let temp_dir = std::env::temp_dir().join(format!(
+    let temp_dir = safe_env::temp_dir().join(format!(
         "octofwen-agent-system-prompt-hierarchy-{}-{}",
         std::process::id(),
         NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)

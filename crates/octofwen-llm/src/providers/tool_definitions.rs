@@ -1,8 +1,10 @@
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+
+type JsonObject = Map<String, Value>;
 use std::collections::HashSet;
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderToolDefinition {
     pub name: String,
@@ -118,7 +120,7 @@ fn lower_to_openai_strict_schema(schema: &mut Value) {
     }
 }
 
-fn lower_properties_into_openai_strict_schema(node: &mut Map<String, Value>) {
+fn lower_properties_into_openai_strict_schema(node: &mut JsonObject) {
     let required = node
         .get("required")
         .and_then(Value::as_array)
@@ -134,7 +136,8 @@ fn lower_properties_into_openai_strict_schema(node: &mut Map<String, Value>) {
     let Some(Value::Object(properties)) = node.get_mut("properties") else {
         return;
     };
-    let property_names = properties.keys().cloned().collect::<Vec<_>>();
+    let mut property_names = properties.keys().cloned().collect::<Vec<_>>();
+    property_names.sort_unstable();
 
     for property_name in &property_names {
         let Some(property_schema) = properties.get_mut(property_name) else {
@@ -154,7 +157,7 @@ fn lower_properties_into_openai_strict_schema(node: &mut Map<String, Value>) {
         .or_insert(Value::Bool(false));
 }
 
-fn lower_nested_openai_strict_schema_values(node: &mut Map<String, Value>) {
+fn lower_nested_openai_strict_schema_values(node: &mut JsonObject) {
     for (key, value) in node {
         if key == "properties" || key == "required" {
             continue;
@@ -163,7 +166,7 @@ fn lower_nested_openai_strict_schema_values(node: &mut Map<String, Value>) {
     }
 }
 
-fn add_openai_strict_type_hints(node: &mut Map<String, Value>) {
+fn add_openai_strict_type_hints(node: &mut JsonObject) {
     if node.contains_key("type") {
         return;
     }
@@ -182,13 +185,21 @@ fn add_openai_strict_type_hints(node: &mut Map<String, Value>) {
             } else {
                 Value::String("string".into())
             };
-            node.insert("type".into(), type_value);
+            insert_type_before_existing_keys(node, type_value);
             return;
         }
     }
 
     if node.get("const").is_some_and(Value::is_string) {
-        node.insert("type".into(), Value::String("string".into()));
+        insert_type_before_existing_keys(node, Value::String("string".into()));
+    }
+}
+
+fn insert_type_before_existing_keys(node: &mut JsonObject, type_value: Value) {
+    let existing = std::mem::take(node);
+    node.insert("type".into(), type_value);
+    for (key, value) in existing {
+        node.insert(key, value);
     }
 }
 

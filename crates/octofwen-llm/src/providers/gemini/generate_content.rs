@@ -1,19 +1,21 @@
 use crate::providers::{
     ProviderHttpRequest,
     stream::{GeminiThoughtSignature, ProviderStreamEvent, ProviderTokenKind, ProviderToolDelta},
+    value::{empty_json_object_string, json_value_string, non_empty_str, sorted_json_value_string},
 };
 use serde_json::{Map, Value};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeminiGenerateContentCurlRequest {
     pub base_url: String,
     pub model: String,
     pub contents: Value,
     pub system_instruction: Option<Value>,
     pub tools: Option<Value>,
+    pub generation_config: Option<Value>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeminiGenerateContentHttpRequestParams {
     pub base_url: String,
     pub api_key: String,
@@ -21,6 +23,7 @@ pub struct GeminiGenerateContentHttpRequestParams {
     pub contents: Value,
     pub system_instruction: Option<Value>,
     pub tools: Option<Value>,
+    pub generation_config: Option<Value>,
 }
 
 pub fn gemini_generate_content_curl(request: &GeminiGenerateContentCurlRequest) -> String {
@@ -28,11 +31,12 @@ pub fn gemini_generate_content_curl(request: &GeminiGenerateContentCurlRequest) 
         &request.contents,
         request.system_instruction.as_ref(),
         request.tools.as_ref(),
+        request.generation_config.as_ref(),
     );
     format!(
         "curl -X POST '{}' \\\n  -H \"Content-Type: application/json\" \\\n  -H \"x-goog-api-key: [REDACTED_API_KEY]\" \\\n  -d @- <<'JSON'\n{}\nJSON",
         gemini_generate_content_url(&request.base_url, &request.model),
-        serde_json::to_string(&body).expect("serializing serde_json::Value cannot fail")
+        sorted_json_value_string(&body)
     )
 }
 
@@ -50,6 +54,7 @@ pub fn gemini_generate_content_http_request(
             &request.contents,
             request.system_instruction.as_ref(),
             request.tools.as_ref(),
+            request.generation_config.as_ref(),
         ),
     }
 }
@@ -66,6 +71,7 @@ fn gemini_generate_content_body(
     contents: &Value,
     system_instruction: Option<&Value>,
     tools: Option<&Value>,
+    generation_config: Option<&Value>,
 ) -> Value {
     let mut body = Map::new();
     body.insert("contents".into(), contents.clone());
@@ -74,6 +80,9 @@ fn gemini_generate_content_body(
     }
     if let Some(tools) = tools {
         body.insert("tools".into(), tools.clone());
+    }
+    if let Some(generation_config) = generation_config {
+        body.insert("generationConfig".into(), generation_config.clone());
     }
     Value::Object(body)
 }
@@ -151,18 +160,4 @@ pub fn gemini_generate_content_stream_events(chunk: &Value) -> Vec<ProviderStrea
     }
 
     events
-}
-
-fn json_value_string(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| Value::Null.to_string())
-}
-
-fn empty_json_object_string() -> String {
-    "{}".into()
-}
-
-fn non_empty_str(value: Option<&Value>) -> Option<&str> {
-    value
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
 }

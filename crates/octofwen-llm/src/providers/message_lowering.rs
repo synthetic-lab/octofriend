@@ -1,9 +1,13 @@
+use super::value::{empty_json_object_string, json_value_string};
 use crate::prompts::{image_attachment_placeholder_text, tool_skip};
 use serde_json::{Map, Value, json};
 
+type Modalities<'a> = Option<&'a [String]>;
+type JsonValues = Vec<Value>;
+
 pub fn anthropic_messages_from_ts_ir(
     irs: &[Value],
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Value, String> {
     let messages = irs
         .iter()
@@ -14,7 +18,7 @@ pub fn anthropic_messages_from_ts_ir(
 
 pub fn gemini_contents_from_ts_ir(
     irs: &[Value],
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Value, String> {
     let contents = irs
         .iter()
@@ -23,7 +27,7 @@ pub fn gemini_contents_from_ts_ir(
     Ok(Value::Array(contents))
 }
 
-fn gemini_content_from_ts_ir(ir: &Value, modalities: Option<&[String]>) -> Result<Value, String> {
+fn gemini_content_from_ts_ir(ir: &Value, modalities: Modalities<'_>) -> Result<Value, String> {
     match string_field(ir, "role").unwrap_or_default() {
         "assistant" => Ok(json!({
             "role": "model",
@@ -60,11 +64,11 @@ fn gemini_content_from_ts_ir(ir: &Value, modalities: Option<&[String]>) -> Resul
     }
 }
 
-fn gemini_assistant_parts(ir: &Value) -> Vec<Value> {
+fn gemini_assistant_parts(ir: &Value) -> JsonValues {
     let tool_calls = ir.get("toolCalls").and_then(Value::as_array);
     let mut parts = Vec::new();
     if string_field(ir, "content").is_some_and(|content| !content.is_empty())
-        || tool_calls.is_none_or(|tool_calls| tool_calls.is_empty())
+        || tool_calls.is_none_or(Vec::is_empty)
     {
         let part_index = parts.len() as u64;
         let mut part = Map::new();
@@ -166,7 +170,7 @@ fn gemini_function_response_content(
     })
 }
 
-fn gemini_content_parts(content: Option<&Value>, modalities: Option<&[String]>) -> Vec<Value> {
+fn gemini_content_parts(content: Option<&Value>, modalities: Modalities<'_>) -> JsonValues {
     let Some(parts) = content.and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -176,7 +180,7 @@ fn gemini_content_parts(content: Option<&Value>, modalities: Option<&[String]>) 
         .collect()
 }
 
-fn gemini_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
+fn gemini_content_part(part: &Value, modalities: Modalities<'_>) -> Value {
     if string_field(part, "type") == Some("text") {
         return json!({
             "text": string_field(part, "content").unwrap_or_default(),
@@ -195,25 +199,27 @@ fn gemini_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
     })
 }
 
-fn gemini_tool_output(content: Option<&Value>, modalities: Option<&[String]>) -> String {
+fn gemini_tool_output(content: Option<&Value>, modalities: Modalities<'_>) -> String {
+    tool_output_text(content, modalities, ToolOutputImageData::Base64)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ToolOutputImageData {
+    Base64,
+    DataUrl,
+}
+
+fn tool_output_text(
+    content: Option<&Value>,
+    modalities: Modalities<'_>,
+    image_data: ToolOutputImageData,
+) -> String {
     let Some(parts) = content.and_then(Value::as_array) else {
         return String::new();
     };
     let visible_parts = parts
         .iter()
-        .map(|part| {
-            if string_field(part, "type") == Some("text") {
-                return json!({ "type": "text", "text": string_field(part, "content").unwrap_or_default() });
-            }
-            if !supports_vision(modalities) {
-                return json!({ "type": "text", "text": image_attachment_placeholder_text() });
-            }
-            json!({
-                "type": "image",
-                "mimeType": nested_string_field(part, "image", "mimeType"),
-                "data": nested_string_field(part, "image", "base64Data"),
-            })
-        })
+        .map(|part| tool_output_visible_part(part, modalities, image_data))
         .collect::<Vec<_>>();
 
     if visible_parts
@@ -230,10 +236,42 @@ fn gemini_tool_output(content: Option<&Value>, modalities: Option<&[String]>) ->
     serde_json::to_string(&visible_parts).unwrap_or_else(|_| Value::Null.to_string())
 }
 
-fn anthropic_message_from_ts_ir(
-    ir: &Value,
-    modalities: Option<&[String]>,
-) -> Result<Value, String> {
+fn tool_output_visible_part(
+    part: &Value,
+    modalities: Modalities<'_>,
+    image_data: ToolOutputImageData,
+) -> Value {
+    if string_field(part, "type") == Some("text") {
+        return json!({ "type": "text", "text": string_field(part, "content").unwrap_or_default() });
+    }
+    if !supports_vision(modalities) {
+        return json!({ "type": "text", "text": image_attachment_placeholder_text() });
+    }
+
+    let mut image = Map::new();
+    image.insert("type".into(), Value::String("image".into()));
+    image.insert(
+        "mimeType".into(),
+        Value::String(nested_string_field(part, "image", "mimeType").to_owned()),
+    );
+    match image_data {
+        ToolOutputImageData::Base64 => {
+            image.insert(
+                "data".into(),
+                Value::String(nested_string_field(part, "image", "base64Data").to_owned()),
+            );
+        }
+        ToolOutputImageData::DataUrl => {
+            image.insert(
+                "dataUrl".into(),
+                Value::String(nested_string_field(part, "image", "dataUrl").to_owned()),
+            );
+        }
+    }
+    Value::Object(image)
+}
+
+fn anthropic_message_from_ts_ir(ir: &Value, modalities: Modalities<'_>) -> Result<Value, String> {
     match string_field(ir, "role").unwrap_or_default() {
         "assistant" => Ok(json!({
             "role": "assistant",
@@ -282,7 +320,7 @@ fn anthropic_message_from_ts_ir(
     }
 }
 
-fn assistant_content(ir: &Value) -> Vec<Value> {
+fn assistant_content(ir: &Value) -> JsonValues {
     let mut content = Vec::new();
     if let Some(thinking_blocks) = ir
         .get("anthropic")
@@ -319,7 +357,7 @@ fn assistant_content(ir: &Value) -> Vec<Value> {
     content
 }
 
-fn anthropic_content_parts(content: Option<&Value>, modalities: Option<&[String]>) -> Vec<Value> {
+fn anthropic_content_parts(content: Option<&Value>, modalities: Modalities<'_>) -> JsonValues {
     let Some(parts) = content.and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -329,7 +367,7 @@ fn anthropic_content_parts(content: Option<&Value>, modalities: Option<&[String]
         .collect()
 }
 
-fn anthropic_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
+fn anthropic_content_part(part: &Value, modalities: Modalities<'_>) -> Value {
     if string_field(part, "type") == Some("text") {
         return json!({
             "type": "text",
@@ -354,7 +392,7 @@ fn anthropic_content_part(part: &Value, modalities: Option<&[String]>) -> Value 
     })
 }
 
-fn supports_vision(modalities: Option<&[String]>) -> bool {
+fn supports_vision(modalities: Modalities<'_>) -> bool {
     modalities
         .unwrap_or_default()
         .iter()
@@ -387,14 +425,6 @@ fn nested_string_field<'a>(
         .unwrap_or_default()
 }
 
-fn json_value_string(value: &Value) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| Value::Null.to_string())
-}
-
-fn empty_json_object_string() -> String {
-    json!({}).to_string()
-}
-
 fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.get(field).and_then(Value::as_str)
 }
@@ -402,7 +432,7 @@ fn string_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 pub fn openai_chat_completions_messages_from_ts_ir(
     irs: &[Value],
     system_prompt: Option<&str>,
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Value, String> {
     let mut messages = Vec::new();
     if let Some(system_prompt) = system_prompt {
@@ -421,7 +451,7 @@ pub fn openai_chat_completions_messages_from_ts_ir(
 
 fn openai_chat_completion_message_from_ts_ir(
     ir: &Value,
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Value, String> {
     match string_field(ir, "role").unwrap_or_default() {
         "assistant" => Ok(openai_assistant_message(ir)),
@@ -535,7 +565,7 @@ fn openai_tool_call(tool_call: &Value) -> Value {
     })
 }
 
-fn openai_content_parts(content: Option<&Value>, modalities: Option<&[String]>) -> Vec<Value> {
+fn openai_content_parts(content: Option<&Value>, modalities: Modalities<'_>) -> JsonValues {
     let Some(parts) = content.and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -545,7 +575,7 @@ fn openai_content_parts(content: Option<&Value>, modalities: Option<&[String]>) 
         .collect()
 }
 
-fn openai_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
+fn openai_content_part(part: &Value, modalities: Modalities<'_>) -> Value {
     if string_field(part, "type") == Some("text") {
         return json!({
             "type": "text",
@@ -572,7 +602,7 @@ fn tagged_tool_error(content: &str) -> String {
 
 pub fn openai_responses_input_from_ts_ir(
     irs: &[Value],
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Value, String> {
     let input = irs
         .iter()
@@ -586,7 +616,7 @@ pub fn openai_responses_input_from_ts_ir(
 
 fn openai_response_input_from_ts_ir(
     ir: &Value,
-    modalities: Option<&[String]>,
+    modalities: Modalities<'_>,
 ) -> Result<Vec<Value>, String> {
     match string_field(ir, "role").unwrap_or_default() {
         "assistant" => Ok(openai_response_assistant_input(ir)),
@@ -618,7 +648,7 @@ fn openai_response_input_from_ts_ir(
     }
 }
 
-fn openai_response_assistant_input(ir: &Value) -> Vec<Value> {
+fn openai_response_assistant_input(ir: &Value) -> JsonValues {
     let mut output = Vec::new();
     if ir
         .get("openai")
@@ -646,7 +676,7 @@ fn openai_response_assistant_input(ir: &Value) -> Vec<Value> {
     let tool_calls = ir.get("toolCalls").and_then(Value::as_array);
     if string_field(ir, "content").is_some_and(|content| !content.is_empty())
         || string_field(ir, "reasoningContent").is_some_and(|content| !content.is_empty())
-        || tool_calls.is_none_or(|tool_calls| tool_calls.is_empty())
+        || tool_calls.is_none_or(Vec::is_empty)
     {
         output.push(json!({
             "role": "assistant",
@@ -679,7 +709,7 @@ fn openai_response_assistant_input(ir: &Value) -> Vec<Value> {
     output
 }
 
-fn response_content_parts(content: Option<&Value>, modalities: Option<&[String]>) -> Vec<Value> {
+fn response_content_parts(content: Option<&Value>, modalities: Modalities<'_>) -> JsonValues {
     let Some(parts) = content.and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -689,7 +719,7 @@ fn response_content_parts(content: Option<&Value>, modalities: Option<&[String]>
         .collect()
 }
 
-fn response_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
+fn response_content_part(part: &Value, modalities: Modalities<'_>) -> Value {
     if string_field(part, "type") == Some("text") {
         return json!({
             "type": "input_text",
@@ -709,37 +739,6 @@ fn response_content_part(part: &Value, modalities: Option<&[String]>) -> Value {
     })
 }
 
-fn response_tool_output(content: Option<&Value>, modalities: Option<&[String]>) -> String {
-    let Some(parts) = content.and_then(Value::as_array) else {
-        return String::new();
-    };
-    let visible_parts = parts
-        .iter()
-        .map(|part| {
-            if string_field(part, "type") == Some("text") {
-                return json!({ "type": "text", "text": string_field(part, "content").unwrap_or_default() });
-            }
-            if !supports_vision(modalities) {
-                return json!({ "type": "text", "text": image_attachment_placeholder_text() });
-            }
-            json!({
-                "type": "image",
-                "mimeType": nested_string_field(part, "image", "mimeType"),
-                "dataUrl": nested_string_field(part, "image", "dataUrl"),
-            })
-        })
-        .collect::<Vec<_>>();
-
-    if visible_parts
-        .iter()
-        .all(|part| string_field(part, "type") == Some("text"))
-    {
-        return visible_parts
-            .iter()
-            .map(|part| string_field(part, "text").unwrap_or_default())
-            .collect::<Vec<_>>()
-            .join("\n");
-    }
-
-    serde_json::to_string(&visible_parts).unwrap_or_else(|_| Value::Null.to_string())
+fn response_tool_output(content: Option<&Value>, modalities: Modalities<'_>) -> String {
+    tool_output_text(content, modalities, ToolOutputImageData::DataUrl)
 }

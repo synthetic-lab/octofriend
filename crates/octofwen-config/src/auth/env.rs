@@ -1,3 +1,4 @@
+use env as safe_env;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -7,7 +8,9 @@ pub struct EnvAuth {
 
 impl EnvAuth {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into() }
+        Self {
+            name: name.into().trim().into(),
+        }
     }
 }
 
@@ -47,15 +50,24 @@ impl KeyResult {
 }
 
 pub fn resolve_env_auth(auth: &EnvAuth) -> KeyResult {
-    match std::env::var(&auth.name) {
-        Ok(value) if !value.is_empty() => KeyResult::ok(value),
+    match safe_env::var(&auth.name) {
+        Ok(value) => env_value_result(&auth.name, &value),
         _ => KeyResult::missing(format!("Environment variable {} is not set", auth.name)),
     }
 }
 
 pub fn resolve_env_auth_from(auth: &EnvAuth, env: &BTreeMap<String, String>) -> KeyResult {
     match env.get(&auth.name) {
-        Some(value) if !value.is_empty() => KeyResult::ok(value.clone()),
+        Some(value) => env_value_result(&auth.name, value),
         _ => KeyResult::missing(format!("Environment variable {} is not set", auth.name)),
+    }
+}
+
+fn env_value_result(name: &str, value: &str) -> KeyResult {
+    let key = value.trim();
+    if key.is_empty() {
+        KeyResult::missing(format!("Environment variable {name} is not set"))
+    } else {
+        KeyResult::ok(key)
     }
 }

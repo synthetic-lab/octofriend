@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolParseExecutionRequest {
     pub tool_call_id: String,
     pub tool_name: String,
@@ -8,14 +8,14 @@ pub struct ToolParseExecutionRequest {
     pub input: ToolParseExecutionInput,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolParseExecutionInput {
     Parsed { original: Value, parsed: Value },
     ToolError { message: String },
     SchemaError { error: String, expected: String },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolParseExecutionResult {
     Success { tool: Value },
     Error { message: String },

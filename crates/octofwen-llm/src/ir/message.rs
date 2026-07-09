@@ -8,7 +8,7 @@ pub struct TokenUsage {
     pub output: u64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LlmIr {
     User {
         content: Vec<ContentPart>,

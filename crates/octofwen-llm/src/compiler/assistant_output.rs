@@ -3,6 +3,8 @@ use crate::providers::stream::{
 };
 use serde_json::{Map, Value, json};
 
+type JsonObject = Map<String, Value>;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AssistantOutputProvider {
     OpenAiChatCompletions,
@@ -17,7 +19,7 @@ pub struct AssistantOutputRequest {
     pub state: ProviderStreamState,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssistantOutputResult {
     pub output: Value,
     pub usage: Value,
@@ -36,10 +38,10 @@ pub fn build_assistant_output(request: &AssistantOutputRequest) -> AssistantOutp
     match request.provider {
         AssistantOutputProvider::OpenAiChatCompletions => {}
         AssistantOutputProvider::OpenAiResponses => {
-            append_openai_metadata(&mut output, &request.state)
+            append_openai_metadata(&mut output, &request.state);
         }
         AssistantOutputProvider::Anthropic => {
-            append_anthropic_metadata(&mut output, &request.state)
+            append_anthropic_metadata(&mut output, &request.state);
         }
         AssistantOutputProvider::Gemini => append_gemini_metadata(&mut output, &request.state),
     }
@@ -62,7 +64,7 @@ fn compiler_usage_json(state: &ProviderStreamState) -> Value {
     })
 }
 
-fn append_openai_metadata(output: &mut Map<String, Value>, state: &ProviderStreamState) {
+fn append_openai_metadata(output: &mut JsonObject, state: &ProviderStreamState) {
     if state.openai.reasoning_id.is_none() && state.openai.encrypted_reasoning_content.is_none() {
         return;
     }
@@ -75,7 +77,7 @@ fn append_openai_metadata(output: &mut Map<String, Value>, state: &ProviderStrea
     );
 }
 
-fn append_anthropic_metadata(output: &mut Map<String, Value>, state: &ProviderStreamState) {
+fn append_anthropic_metadata(output: &mut JsonObject, state: &ProviderStreamState) {
     if state.anthropic.thinking_blocks.is_empty() {
         return;
     }
@@ -87,7 +89,7 @@ fn append_anthropic_metadata(output: &mut Map<String, Value>, state: &ProviderSt
     );
 }
 
-fn append_gemini_metadata(output: &mut Map<String, Value>, state: &ProviderStreamState) {
+fn append_gemini_metadata(output: &mut JsonObject, state: &ProviderStreamState) {
     if state.gemini.thought_signatures.is_empty() {
         return;
     }

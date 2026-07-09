@@ -2,11 +2,15 @@
 use octofwen_agent::agentd::AGENTD_CONFIG_RUN_NOTIFY_METHOD;
 use octofwen_agent::agentd::{
     AGENTD_CONFIG_AUTOFIX_KEYS_METHOD, AGENTD_CONFIG_DEFAULT_PATHS_METHOD,
-    AGENTD_CONFIG_MERGE_AUTOFIX_ENV_VAR_METHOD, AGENTD_CONFIG_MERGE_ENV_VAR_METHOD,
-    AGENTD_CONFIG_MIGRATE_METHOD, AGENTD_CONFIG_SANITIZE_METHOD, AGENTD_CONFIG_SELECT_MODEL_METHOD,
+    AGENTD_CONFIG_MIGRATE_METHOD, AGENTD_CONFIG_SANITIZE_METHOD, AGENTD_CONFIG_WRITE_KEY_METHOD,
     handle_agentd_json_rpc_line,
 };
+use octofwen_config::files::CURRENT_CONFIG_VERSION;
 use serde_json::json;
+
+mod auth;
+mod env_merge;
+mod select;
 
 #[cfg(windows)]
 fn echo_command(text: &str) -> Vec<String> {
@@ -23,6 +27,29 @@ fn normalize_path_text(value: &serde_json::Value) -> String {
         .as_str()
         .expect("path should be a string")
         .replace('\\', "/")
+}
+
+#[test]
+fn config_write_key_rejects_empty_api_keys() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "config-write-key-empty",
+        "method": AGENTD_CONFIG_WRITE_KEY_METHOD,
+        "params": {
+            "baseUrl": "https://api.example.test/v1",
+            "apiKey": "
+     "
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["id"], "config-write-key-empty");
+    assert_eq!(value["error"]["code"], -32602);
+    assert_eq!(value["error"]["message"], "Could not write key file");
 }
 
 #[test]
@@ -51,7 +78,10 @@ fn config_migrate_request_uses_config_migrations() {
         serde_json::from_str(&response).expect("response should be json");
 
     assert_eq!(value["id"], "config-migrate-1");
-    assert_eq!(value["result"]["config"]["configVersion"], 2);
+    assert_eq!(
+        value["result"]["config"]["configVersion"],
+        CURRENT_CONFIG_VERSION
+    );
     assert_eq!(
         value["result"]["config"]["notifications"]["notifyCommand"],
         "say done"
@@ -98,7 +128,10 @@ fn config_sanitize_request_uses_config_sanitizer() {
         serde_json::from_str(&response).expect("response should be json");
 
     assert_eq!(value["id"], "config-sanitize-1");
-    assert_eq!(value["result"]["config"]["configVersion"], 2);
+    assert_eq!(
+        value["result"]["config"]["configVersion"],
+        CURRENT_CONFIG_VERSION
+    );
     assert!(
         value["result"]["config"]["models"][0]
             .get("apiEnvVar")
@@ -106,134 +139,6 @@ fn config_sanitize_request_uses_config_sanitizer() {
     );
     assert!(
         value["result"]["config"]["diffApply"]
-            .get("apiEnvVar")
-            .is_none()
-    );
-}
-
-#[test]
-fn config_key_for_model_runs_agentd_command_auth() {
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-key-model-1",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
-        "params": {
-            "model": {
-                "baseUrl": "https://api.example.invalid/v1",
-                "auth": { "type": "command", "command": echo_command("model-key") }
-            },
-            "config": null
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(value["id"], "config-key-model-1");
-    assert_eq!(
-        value["result"]["result"],
-        json!({ "ok": true, "key": "model-key" })
-    );
-}
-
-#[test]
-fn config_search_uses_agentd_search_auth() {
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-search-1",
-        "method": octofwen_agent::agentd::AGENTD_CONFIG_SEARCH_METHOD,
-        "params": {
-            "config": {
-                "search": {
-                    "url": "https://search.example.invalid",
-                    "auth": { "type": "command", "command": echo_command("search-key") }
-                }
-            }
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(value["id"], "config-search-1");
-    assert_eq!(
-        value["result"]["search"],
-        json!({ "url": "https://search.example.invalid", "key": "search-key" })
-    );
-}
-
-#[test]
-fn config_merge_env_var_uses_provider_defaults() {
-    let model = json!({
-        "nickname": "GPT-5 Mini",
-        "baseUrl": "https://api.openai.com/v1",
-        "model": "gpt-5-mini",
-        "context": 200000
-    });
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-merge-env-1",
-        "method": AGENTD_CONFIG_MERGE_ENV_VAR_METHOD,
-        "params": {
-            "config": { "yourName": "Ada", "models": [model.clone()] },
-            "model": model,
-            "apiEnvVar": "CUSTOM_OPENAI_KEY"
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(
-        value["result"]["config"]["defaultApiKeyOverrides"]["openai"],
-        "CUSTOM_OPENAI_KEY"
-    );
-    assert!(
-        value["result"]["config"]["models"][0]
-            .get("apiEnvVar")
-            .is_none()
-    );
-}
-
-#[test]
-fn config_merge_autofix_env_var_uses_provider_defaults() {
-    let model = json!({
-        "baseUrl": "https://api.openai.com/v1",
-        "model": "gpt-5-mini"
-    });
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-merge-autofix-env-1",
-        "method": AGENTD_CONFIG_MERGE_AUTOFIX_ENV_VAR_METHOD,
-        "params": {
-            "config": {
-                "yourName": "Ada",
-                "models": [],
-                "fixJson": model.clone()
-            },
-            "key": "fixJson",
-            "model": model,
-            "apiEnvVar": "CUSTOM_OPENAI_KEY"
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(
-        value["result"]["config"]["defaultApiKeyOverrides"]["openai"],
-        "CUSTOM_OPENAI_KEY"
-    );
-    assert!(
-        value["result"]["config"]["fixJson"]
             .get("apiEnvVar")
             .is_none()
     );
@@ -340,111 +245,4 @@ fn config_run_notify_executes_command() {
         "notified"
     );
     std::fs::remove_file(output).expect("cleanup");
-}
-
-#[test]
-fn config_select_model_uses_model_selection() {
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-select-model-1",
-        "method": AGENTD_CONFIG_SELECT_MODEL_METHOD,
-        "params": {
-            "config": {
-                "models": [
-                    {
-                        "nickname": "default",
-                        "baseUrl": "https://api.openai.com/v1",
-                        "model": "gpt-5-mini",
-                        "context": 200000
-                    },
-                    {
-                        "nickname": "chosen",
-                        "baseUrl": "https://api.anthropic.com",
-                        "model": "claude-opus-4-5",
-                        "context": 200000
-                    }
-                ]
-            },
-            "modelOverride": "chosen"
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(value["result"]["model"]["nickname"], "chosen");
-
-    let missing_line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-select-model-2",
-        "method": AGENTD_CONFIG_SELECT_MODEL_METHOD,
-        "params": {
-            "config": {
-                "models": [
-                    {
-                        "nickname": "default",
-                        "baseUrl": "https://api.openai.com/v1",
-                        "model": "gpt-5-mini",
-                        "context": 200000
-                    }
-                ]
-            },
-            "modelOverride": "missing"
-        }
-    })
-    .to_string();
-    let missing_response =
-        handle_agentd_json_rpc_line(&missing_line).expect("request should produce response");
-    let missing_value: serde_json::Value =
-        serde_json::from_str(&missing_response).expect("response should be json");
-    assert_eq!(missing_value["result"]["model"]["nickname"], "default");
-}
-
-#[test]
-fn config_select_model_reports_missing_configured_env_auth() {
-    let line = json!({
-        "jsonrpc": "2.0",
-        "id": "config-select-model-missing-auth",
-        "method": AGENTD_CONFIG_SELECT_MODEL_METHOD,
-        "params": {
-            "config": {
-                "models": [
-                    {
-                        "nickname": "default",
-                        "baseUrl": "https://api.openai.com/v1",
-                        "model": "gpt-5-mini",
-                        "context": 200000
-                    },
-                    {
-                        "nickname": "chosen",
-                        "baseUrl": "https://api.example.invalid/v1",
-                        "apiEnvVar": "OCTOFWEN_MISSING_SWITCH_KEY_DO_NOT_SET",
-                        "model": "custom-model",
-                        "context": 200000
-                    }
-                ]
-            },
-            "modelOverride": "chosen"
-        }
-    })
-    .to_string();
-
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
-
-    assert_eq!(value["id"], "config-select-model-missing-auth");
-    assert_eq!(value["result"]["model"]["nickname"], "chosen");
-    assert_eq!(
-        value["result"]["keyResult"],
-        json!({
-            "ok": false,
-            "error": {
-                "type": "missing",
-                "message": "Environment variable OCTOFWEN_MISSING_SWITCH_KEY_DO_NOT_SET is not set"
-            }
-        })
-    );
 }

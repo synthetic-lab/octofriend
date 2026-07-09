@@ -82,6 +82,7 @@ impl InputHistoryOptions {
         }
     }
 
+    #[must_use]
     pub fn with_max_history_items(mut self, max_history_items: usize) -> Self {
         self.max_history_items = Some(max_history_items);
         self

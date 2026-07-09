@@ -7,6 +7,8 @@ use octofwen_storage::repositories::conversation_history::{
 };
 use rusqlite::Connection;
 
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 fn temp_database_path(name: &str) -> PathBuf {
@@ -25,46 +27,29 @@ fn remove_database_root(database_path: &Path) {
     }
 }
 
-fn insert_raw(database_path: &Path, kind: &str, payload: Option<&str>) {
-    let connection = Connection::open(database_path).unwrap_or_else(|error| {
-        panic!(
-            "failed to open test database {}: {error}",
-            database_path.display()
-        )
-    });
-    connection
-        .execute(
-            "insert into conversation_history (kind, payload) values (?, ?)",
-            (kind, payload),
-        )
-        .unwrap_or_else(|error| panic!("failed to insert raw conversation history row: {error}"));
+fn insert_raw(database_path: &Path, kind: &str, payload: Option<&str>) -> TestResult {
+    let connection = Connection::open(database_path)?;
+    connection.execute(
+        "insert into conversation_history (kind, payload) values (?, ?)",
+        (kind, payload),
+    )?;
+    Ok(())
 }
 
 #[test]
-fn appends_and_reads_conversation_history_entries_in_order() {
+fn appends_and_reads_conversation_history_entries_in_order() -> TestResult {
     let database_path = temp_database_path("append");
     let repository = ConversationHistoryRepository::open(
         ConversationHistoryOptions::with_database_path(&database_path),
-    )
-    .unwrap_or_else(|error| panic!("failed to open conversation history: {error}"));
+    )?;
 
-    repository
-        .append_notification("heads up")
-        .unwrap_or_else(|error| panic!("failed to append notification: {error}"));
-    repository
-        .append_request_failed()
-        .unwrap_or_else(|error| panic!("failed to append request failure: {error}"));
-    repository
-        .append_llm_ir(r#"{"role":"user","content":"hello"}"#)
-        .unwrap_or_else(|error| panic!("failed to append llm ir: {error}"));
-    repository
-        .append_compaction_failed()
-        .unwrap_or_else(|error| panic!("failed to append compaction failure: {error}"));
+    repository.append_notification("heads up")?;
+    repository.append_request_failed()?;
+    repository.append_llm_ir(r#"{"role":"user","content":"hello"}"#)?;
+    repository.append_compaction_failed()?;
 
     assert_eq!(
-        repository
-            .records()
-            .unwrap_or_else(|error| panic!("failed to read records: {error}")),
+        repository.records()?,
         vec![
             ConversationHistoryRecord {
                 id: 1,
@@ -89,71 +74,53 @@ fn appends_and_reads_conversation_history_entries_in_order() {
         ]
     );
     remove_database_root(&database_path);
+    Ok(())
 }
 
 #[test]
-fn extracts_only_llm_ir_payloads_from_mixed_history() {
+fn extracts_only_llm_ir_payloads_from_mixed_history() -> TestResult {
     let database_path = temp_database_path("llm-ir");
     let repository = ConversationHistoryRepository::open(
         ConversationHistoryOptions::with_database_path(&database_path),
-    )
-    .unwrap_or_else(|error| panic!("failed to open conversation history: {error}"));
+    )?;
 
-    repository
-        .append_notification("heads up")
-        .unwrap_or_else(|error| panic!("failed to append notification: {error}"));
-    repository
-        .append_llm_ir(r#"{"role":"user","content":"hello"}"#)
-        .unwrap_or_else(|error| panic!("failed to append user llm ir: {error}"));
-    repository
-        .append_request_failed()
-        .unwrap_or_else(|error| panic!("failed to append request failure: {error}"));
-    repository
-        .append_llm_ir(r#"{"role":"assistant","content":"hi"}"#)
-        .unwrap_or_else(|error| panic!("failed to append assistant llm ir: {error}"));
+    repository.append_notification("heads up")?;
+    repository.append_llm_ir(r#"{"role":"user","content":"hello"}"#)?;
+    repository.append_request_failed()?;
+    repository.append_llm_ir(r#"{"role":"assistant","content":"hi"}"#)?;
 
     assert_eq!(
-        repository
-            .llm_ir_payloads()
-            .unwrap_or_else(|error| panic!("failed to read llm ir payloads: {error}")),
+        repository.llm_ir_payloads()?,
         vec![
             r#"{"role":"user","content":"hello"}"#.to_string(),
             r#"{"role":"assistant","content":"hi"}"#.to_string(),
         ]
     );
     remove_database_root(&database_path);
+    Ok(())
 }
 
 #[test]
-fn creates_parent_directories_for_file_backed_databases() {
+fn creates_parent_directories_for_file_backed_databases() -> TestResult {
     let database_path = temp_database_path("parent").join("nested/conversation/history.sqlite");
     let repository = ConversationHistoryRepository::open(
         ConversationHistoryOptions::with_database_path(&database_path),
-    )
-    .unwrap_or_else(|error| panic!("failed to open conversation history: {error}"));
+    )?;
 
-    repository
-        .append_notification("created")
-        .unwrap_or_else(|error| panic!("failed to append notification: {error}"));
+    repository.append_notification("created")?;
 
-    assert_eq!(
-        repository
-            .records()
-            .unwrap_or_else(|error| panic!("failed to read records: {error}"))
-            .len(),
-        1
-    );
+    assert_eq!(repository.records()?.len(), 1);
     remove_database_root(&database_path);
+    Ok(())
 }
 
 #[test]
-fn invalid_persisted_history_kind_returns_an_error() {
+fn invalid_persisted_history_kind_returns_an_error() -> TestResult {
     let database_path = temp_database_path("invalid-kind");
     let repository = ConversationHistoryRepository::open(
         ConversationHistoryOptions::with_database_path(&database_path),
-    )
-    .unwrap_or_else(|error| panic!("failed to open conversation history: {error}"));
-    insert_raw(&database_path, "unexpected", Some("payload"));
+    )?;
+    insert_raw(&database_path, "unexpected", Some("payload"))?;
 
     let error = repository.records().expect_err("invalid kind should fail");
 
@@ -164,6 +131,7 @@ fn invalid_persisted_history_kind_returns_an_error() {
         "unexpected error: {error}"
     );
     remove_database_root(&database_path);
+    Ok(())
 }
 
 #[test]

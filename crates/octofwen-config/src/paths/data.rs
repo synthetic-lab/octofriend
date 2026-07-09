@@ -1,3 +1,4 @@
+use env as safe_env;
 use std::path::{Path, PathBuf};
 
 pub const DATA_DIRECTORY: &str = ".local/share/octofriend";
@@ -20,8 +21,8 @@ pub fn default_sqlite_database() -> PathBuf {
 }
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
+    safe_env::var_os("HOME")
+        .or_else(|| safe_env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
 }

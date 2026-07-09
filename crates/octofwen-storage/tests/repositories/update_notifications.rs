@@ -6,21 +6,21 @@ use octofwen_storage::repositories::update_notifications::{
     mark_updates_seen, read_updates,
 };
 
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
-fn fixture(update_text: &str) -> (PathBuf, PathBuf) {
+fn fixture(update_text: &str) -> std::io::Result<(PathBuf, PathBuf)> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let directory = std::env::temp_dir().join(format!(
         "octofwen-update-notifications-{}-{id}",
         std::process::id()
     ));
-    std::fs::create_dir_all(&directory)
-        .unwrap_or_else(|error| panic!("failed to create fixture directory: {error}"));
+    std::fs::create_dir_all(&directory)?;
     let updates_path = directory.join("IN-APP-UPDATES.txt");
     let database_path = directory.join("sqlite.db");
-    std::fs::write(&updates_path, update_text)
-        .unwrap_or_else(|error| panic!("failed to write updates fixture: {error}"));
-    (updates_path, database_path)
+    std::fs::write(&updates_path, update_text)?;
+    Ok((updates_path, database_path))
 }
 
 fn options(updates_path: &Path, database_path: &Path) -> UpdateNotificationsOptions {
@@ -34,61 +34,56 @@ fn remove_fixture(path: &Path) {
 }
 
 #[test]
-fn read_updates_returns_current_update_text_before_it_has_been_marked_seen() {
-    let (updates_path, database_path) = fixture("New Octo update\n");
+fn read_updates_returns_current_update_text_before_it_has_been_marked_seen() -> TestResult {
+    let (updates_path, database_path) = fixture("New Octo update\n")?;
     let options = options(&updates_path, &database_path);
 
-    let updates =
-        read_updates(&options).unwrap_or_else(|error| panic!("failed to read updates: {error}"));
+    let updates = read_updates(&options)?;
 
     assert_eq!(updates, Some("New Octo update\n".into()));
     remove_fixture(&database_path);
+    Ok(())
 }
 
 #[test]
-fn read_updates_returns_none_when_current_update_is_the_most_recent_seen_update() {
-    let (updates_path, database_path) = fixture("Already seen\n");
+fn read_updates_returns_none_when_current_update_is_the_most_recent_seen_update() -> TestResult {
+    let (updates_path, database_path) = fixture("Already seen\n")?;
     let options = options(&updates_path, &database_path);
 
-    mark_updates_seen(&options)
-        .unwrap_or_else(|error| panic!("failed to mark updates seen: {error}"));
-    let updates =
-        read_updates(&options).unwrap_or_else(|error| panic!("failed to read updates: {error}"));
+    mark_updates_seen(&options)?;
+    let updates = read_updates(&options)?;
 
     assert_eq!(updates, None);
     remove_fixture(&database_path);
+    Ok(())
 }
 
 #[test]
-fn read_updates_returns_changed_update_text_after_an_older_update_was_marked_seen() {
-    let (updates_path, database_path) = fixture("First update\n");
+fn read_updates_returns_changed_update_text_after_an_older_update_was_marked_seen() -> TestResult {
+    let (updates_path, database_path) = fixture("First update\n")?;
     let options = options(&updates_path, &database_path);
-    mark_updates_seen(&options)
-        .unwrap_or_else(|error| panic!("failed to mark first update seen: {error}"));
-    std::fs::write(&updates_path, "Second update\n")
-        .unwrap_or_else(|error| panic!("failed to write second update: {error}"));
+    mark_updates_seen(&options)?;
+    std::fs::write(&updates_path, "Second update\n")?;
 
-    let updates =
-        read_updates(&options).unwrap_or_else(|error| panic!("failed to read updates: {error}"));
+    let updates = read_updates(&options)?;
 
     assert_eq!(updates, Some("Second update\n".into()));
     remove_fixture(&database_path);
+    Ok(())
 }
 
 #[test]
-fn mark_updates_seen_is_idempotent_for_the_same_update_text() {
-    let (updates_path, database_path) = fixture("Duplicate update\n");
+fn mark_updates_seen_is_idempotent_for_the_same_update_text() -> TestResult {
+    let (updates_path, database_path) = fixture("Duplicate update\n")?;
     let options = options(&updates_path, &database_path);
 
-    mark_updates_seen(&options)
-        .unwrap_or_else(|error| panic!("failed to mark update seen: {error}"));
-    mark_updates_seen(&options)
-        .unwrap_or_else(|error| panic!("failed to mark update seen again: {error}"));
-    let updates =
-        read_updates(&options).unwrap_or_else(|error| panic!("failed to read updates: {error}"));
+    mark_updates_seen(&options)?;
+    mark_updates_seen(&options)?;
+    let updates = read_updates(&options)?;
 
     assert_eq!(updates, None);
     remove_fixture(&database_path);
+    Ok(())
 }
 
 #[test]

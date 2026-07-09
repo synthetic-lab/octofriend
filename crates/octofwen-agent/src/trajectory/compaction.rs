@@ -4,7 +4,8 @@ use octofwen_llm::compiler::{CompilerError, CompilerTokenBuffer, CompilerTokenTy
 use octofwen_llm::ir::{ContentPart, LlmIr};
 use octofwen_llm::prompts::compaction_prompt;
 
-const AUTOCOMPACT_THRESHOLD: f64 = 0.9;
+const AUTOCOMPACT_THRESHOLD_NUMERATOR: usize = 9;
+const AUTOCOMPACT_THRESHOLD_DENOMINATOR: usize = 10;
 
 const COMPACTION_CHECKPOINT_PREFIX: &str = "# Conversation History Summary\n\nThe following text is a condensed summary of all previous messages in this conversation:\n\n";
 
@@ -31,8 +32,13 @@ pub fn append_compaction_token_progress(
     }
 }
 
+fn autocompact_max_allowed_tokens(max_context_window: usize) -> usize {
+    max_context_window.saturating_mul(AUTOCOMPACT_THRESHOLD_NUMERATOR)
+        / AUTOCOMPACT_THRESHOLD_DENOMINATOR
+}
+
 pub fn should_auto_compact_history(max_context_window: usize, messages: &[LlmIr]) -> bool {
-    let max_allowed_tokens = ((max_context_window as f64) * AUTOCOMPACT_THRESHOLD).floor() as usize;
+    let max_allowed_tokens = autocompact_max_allowed_tokens(max_context_window);
     let current_tokens = approximate_ir_tokens(messages);
 
     current_tokens >= max_allowed_tokens
@@ -45,7 +51,10 @@ pub fn approximate_ir_tokens(ir: &[LlmIr]) -> usize {
 
     let checkpoint_token_count = most_recent_assistant_index
         .and_then(|index| match &ir[index] {
-            LlmIr::Assistant { usage, .. } => Some((usage.total_input + usage.output) as usize),
+            LlmIr::Assistant { usage, .. } => Some(
+                usize::try_from(usage.total_input.saturating_add(usage.output))
+                    .unwrap_or(usize::MAX),
+            ),
             _ => None,
         })
         .unwrap_or(0);

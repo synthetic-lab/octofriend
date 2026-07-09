@@ -65,9 +65,8 @@ pub(super) fn conversation_history_records_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
-    let params = match parse_params(params) {
-        Ok(params) => params,
-        Err(()) => return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None),
+    let Ok(params) = parse_params(params) else {
+        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
     let repository = match open_repository(params.database_path) {
         Ok(repository) => repository,
@@ -92,9 +91,8 @@ pub(super) fn conversation_history_llm_payloads_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
-    let params = match parse_params(params) {
-        Ok(params) => params,
-        Err(()) => return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None),
+    let Ok(params) = parse_params(params) else {
+        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
     let repository = match open_repository(params.database_path) {
         Ok(repository) => repository,

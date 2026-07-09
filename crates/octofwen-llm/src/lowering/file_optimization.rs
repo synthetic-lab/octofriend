@@ -60,12 +60,11 @@ pub fn can_display_image(
         };
     }
     if let Some(size_bytes) = image.size_bytes {
-        let max_size_bytes = image_config.max_size_mb * 1024.0 * 1024.0;
-        if size_bytes as f64 > max_size_bytes {
+        if size_bytes > max_size_bytes(image_config.max_size_mb) {
             return CanDisplayImageResult::Rejected {
                 reason: format!(
-                    "Image file is too large ({:.1} MB). Maximum supported size is {} MB.",
-                    size_bytes as f64 / (1024.0 * 1024.0),
+                    "Image file is too large ({} MB). Maximum supported size is {} MB.",
+                    format_size_mb(size_bytes),
                     format_max_size_mb(image_config.max_size_mb)
                 ),
             };
@@ -148,9 +147,26 @@ fn file_read_message(
     }
 }
 
+fn max_size_bytes(max_size_mb: f64) -> u64 {
+    if !max_size_mb.is_finite() {
+        return u64::MAX;
+    }
+    if max_size_mb <= 0.0 {
+        return 0;
+    }
+    format!("{:.0}", (max_size_mb * 1_048_576.0).ceil())
+        .parse()
+        .unwrap_or(u64::MAX)
+}
+
+fn format_size_mb(size_bytes: u64) -> String {
+    let tenths = (size_bytes.saturating_mul(10) + 524_288) / 1_048_576;
+    format!("{}.{:01}", tenths / 10, tenths % 10)
+}
+
 fn format_max_size_mb(max_size_mb: f64) -> String {
     if max_size_mb.fract() == 0.0 {
-        format!("{}", max_size_mb as u64)
+        format!("{max_size_mb:.0}")
     } else {
         max_size_mb.to_string()
     }

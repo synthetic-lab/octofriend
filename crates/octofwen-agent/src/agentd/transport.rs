@@ -6,13 +6,16 @@ use octofwen_protocol::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
 use octofwen_transport::docker::DockerTransport;
-use octofwen_transport::local::{LocalTransport, TransportError};
+use octofwen_transport::local::{DirectoryEntry, LocalTransport, TransportError, TransportResult};
 use octofwen_transport::ssh::SshTransport;
 use octofwen_transport::workspace::{FindFilesEntryType, FindFilesOptions, find_files};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 const INVALID_PARAMS: i64 = -32602;
+
+type RemoteStringResult = TransportResult<String>;
+type RemoteEntriesResult = TransportResult<Vec<DirectoryEntry>>;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,6 +75,38 @@ struct FindFilesOptionsParam {
     entry_type: Option<String>,
     max_depth: Option<usize>,
     max_results: Option<usize>,
+}
+
+struct RemoteTransportParts {
+    operation: String,
+    cwd: Option<String>,
+    path: Option<String>,
+    contents: Option<String>,
+    command: Option<String>,
+    timeout_ms: Option<u64>,
+    kind: RemoteTransportKind,
+}
+
+#[derive(Debug)]
+enum RemoteTransportKind {
+    Docker { container: String },
+    Ssh { target: String },
+}
+
+enum RemoteTransportInstance {
+    Docker(DockerTransport),
+    Ssh(SshTransport),
+}
+
+impl RemoteTransportKind {
+    fn into_transport(self, cwd: String) -> RemoteTransportInstance {
+        match self {
+            Self::Docker { container } => {
+                RemoteTransportInstance::Docker(DockerTransport::new(container, cwd))
+            }
+            Self::Ssh { target } => RemoteTransportInstance::Ssh(SshTransport::new(target, cwd)),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,35 +212,140 @@ pub(super) fn transport_local_response(id: JsonRpcId, params: Option<Value>) -> 
 }
 
 pub(super) fn transport_docker_response(id: JsonRpcId, params: Option<Value>) -> JsonRpcResponse {
-    let Some(params) = params else {
+    remote_transport_parts_response(id, params.and_then(docker_remote_transport_parts))
+}
+
+pub(super) fn transport_ssh_response(id: JsonRpcId, params: Option<Value>) -> JsonRpcResponse {
+    remote_transport_parts_response(id, params.and_then(ssh_remote_transport_parts))
+}
+
+fn docker_remote_transport_parts(params: Value) -> Option<RemoteTransportParts> {
+    serde_json::from_value::<DockerTransportParams>(params)
+        .ok()
+        .map(docker_parts)
+}
+
+fn ssh_remote_transport_parts(params: Value) -> Option<RemoteTransportParts> {
+    serde_json::from_value::<SshTransportParams>(params)
+        .ok()
+        .map(ssh_parts)
+}
+
+fn docker_parts(params: DockerTransportParams) -> RemoteTransportParts {
+    RemoteTransportParts {
+        operation: params.operation,
+        cwd: params.cwd,
+        path: params.path,
+        contents: params.contents,
+        command: params.command,
+        timeout_ms: params.timeout_ms,
+        kind: RemoteTransportKind::Docker {
+            container: params.container,
+        },
+    }
+}
+
+fn ssh_parts(params: SshTransportParams) -> RemoteTransportParts {
+    RemoteTransportParts {
+        operation: params.operation,
+        cwd: params.cwd,
+        path: params.path,
+        contents: params.contents,
+        command: params.command,
+        timeout_ms: params.timeout_ms,
+        kind: RemoteTransportKind::Ssh {
+            target: params.target,
+        },
+    }
+}
+
+fn remote_transport_parts_response(
+    id: JsonRpcId,
+    parts: Option<RemoteTransportParts>,
+) -> JsonRpcResponse {
+    let Some(parts) = parts else {
         return invalid_params(id);
     };
-    let Ok(params) = serde_json::from_value::<DockerTransportParams>(params) else {
-        return invalid_params(id);
-    };
-    if params.operation == "cwd" {
-        let transport = DockerTransport::new(params.container, ".");
+    remote_transport_response(id, parts)
+}
+
+trait RemoteTransport {
+    fn shell(&self, command: &str, timeout: Duration) -> RemoteStringResult;
+    fn write_file(&self, path: &str, contents: &str) -> TransportResult<()>;
+    fn read_file(&self, path: &str) -> RemoteStringResult;
+    fn readdir(&self, path: &str) -> RemoteEntriesResult;
+    fn path_exists(&self, path: &str) -> bool;
+}
+
+impl RemoteTransport for RemoteTransportInstance {
+    fn shell(&self, command: &str, timeout: Duration) -> RemoteStringResult {
+        match self {
+            Self::Docker(transport) => transport.shell(command, timeout),
+            Self::Ssh(transport) => transport.shell(command, timeout),
+        }
+    }
+
+    fn write_file(&self, path: &str, contents: &str) -> TransportResult<()> {
+        match self {
+            Self::Docker(transport) => transport.write_file(path, contents),
+            Self::Ssh(transport) => transport.write_file(path, contents),
+        }
+    }
+
+    fn read_file(&self, path: &str) -> RemoteStringResult {
+        match self {
+            Self::Docker(transport) => transport.read_file(path),
+            Self::Ssh(transport) => transport.read_file(path),
+        }
+    }
+
+    fn readdir(&self, path: &str) -> RemoteEntriesResult {
+        match self {
+            Self::Docker(transport) => transport.readdir(path),
+            Self::Ssh(transport) => transport.readdir(path),
+        }
+    }
+
+    fn path_exists(&self, path: &str) -> bool {
+        match self {
+            Self::Docker(transport) => transport.path_exists(path),
+            Self::Ssh(transport) => transport.path_exists(path),
+        }
+    }
+}
+
+fn remote_transport_response(id: JsonRpcId, parts: RemoteTransportParts) -> JsonRpcResponse {
+    let RemoteTransportParts {
+        operation,
+        cwd,
+        path,
+        contents,
+        command,
+        timeout_ms,
+        kind,
+    } = parts;
+    if operation == "cwd" {
+        let transport = kind.into_transport(".".into());
         return result_response(
             id,
             transport
-                .shell("pwd", timeout(params.timeout_ms))
+                .shell("pwd", timeout(timeout_ms))
                 .map(|cwd| json!({ "cwd": cwd })),
         );
     }
-    let cwd = params.cwd.unwrap_or_else(|| "/".into());
-    let transport = DockerTransport::new(params.container, cwd);
-    let result = match params.operation.as_str() {
+    let transport = kind.into_transport(cwd.unwrap_or_else(|| "/".into()));
+    let result = match operation.as_str() {
         "writeFile" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            let Some(contents) = params.contents else {
+            let Some(contents) = contents else {
                 return invalid_params(id);
             };
             transport.write_file(&path, &contents).map(|()| json!({}))
         }
         "readFile" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
             transport
@@ -213,191 +353,111 @@ pub(super) fn transport_docker_response(id: JsonRpcId, params: Option<Value>) ->
                 .map(|contents| json!({ "contents": contents }))
         }
         "readdir" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            transport.readdir(&path).map(|entries| {
-                json!({
-                    "entries": entries.into_iter().map(|entry| json!({
-                        "entry": entry.entry,
-                        "isDirectory": entry.is_directory,
-                    })).collect::<Vec<_>>()
-                })
-            })
+            transport.readdir(&path).map(directory_entries_json)
         }
         "pathExists" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
             Ok(json!({ "exists": transport.path_exists(&path) }))
         }
         "shell" => {
-            let Some(command) = params.command else {
+            let Some(command) = command else {
                 return invalid_params(id);
             };
             transport
-                .shell(&command, timeout(params.timeout_ms))
+                .shell(&command, timeout(timeout_ms))
                 .map(|output| json!({ "output": output }))
         }
         "modTime" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            transport
-                .shell(
-                    &format!("stat -c %Y -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|output| {
-                    let seconds = output.trim().parse::<f64>().unwrap_or_default();
-                    json!({ "mtime": seconds * 1000.0 })
-                })
+            remote_stat_mtime(&transport, &path, timeout_ms)
         }
         "resolvePath" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            transport
-                .shell(
-                    &format!("readlink -f -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|output| json!({ "path": output.trim() }))
+            remote_resolve_path(&transport, &path, timeout_ms)
         }
         "mkdir" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            transport
-                .shell(
-                    &format!("mkdir -p -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|_| json!({}))
+            remote_mkdir(&transport, &path, timeout_ms)
         }
         "isDirectory" => {
-            let Some(path) = params.path else {
+            let Some(path) = path else {
                 return invalid_params(id);
             };
-            Ok(
-                json!({ "isDirectory": transport.shell(&format!("test -d -- '{}'", path.replace('\'', "'\\''")), Duration::from_secs(10)).is_ok() }),
-            )
+            Ok(remote_is_directory(&transport, &path))
         }
         _ => return invalid_params(id),
     };
     result_response(id, result)
 }
 
-pub(super) fn transport_ssh_response(id: JsonRpcId, params: Option<Value>) -> JsonRpcResponse {
-    let Some(params) = params else {
-        return invalid_params(id);
-    };
-    let Ok(params) = serde_json::from_value::<SshTransportParams>(params) else {
-        return invalid_params(id);
-    };
-    if params.operation == "cwd" {
-        let transport = SshTransport::new(params.target, ".");
-        return result_response(
-            id,
-            transport
-                .shell("pwd", timeout(params.timeout_ms))
-                .map(|cwd| json!({ "cwd": cwd })),
-        );
-    }
-    let cwd = params.cwd.unwrap_or_else(|| "/".into());
-    let transport = SshTransport::new(params.target, cwd);
-    let result = match params.operation.as_str() {
-        "writeFile" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            let Some(contents) = params.contents else {
-                return invalid_params(id);
-            };
-            transport.write_file(&path, &contents).map(|()| json!({}))
-        }
-        "readFile" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            transport
-                .read_file(&path)
-                .map(|contents| json!({ "contents": contents }))
-        }
-        "readdir" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            transport.readdir(&path).map(|entries| {
-                json!({
-                    "entries": entries.into_iter().map(|entry| json!({
-                        "entry": entry.entry,
-                        "isDirectory": entry.is_directory,
-                    })).collect::<Vec<_>>()
-                })
-            })
-        }
-        "pathExists" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            Ok(json!({ "exists": transport.path_exists(&path) }))
-        }
-        "shell" => {
-            let Some(command) = params.command else {
-                return invalid_params(id);
-            };
-            transport
-                .shell(&command, timeout(params.timeout_ms))
-                .map(|output| json!({ "output": output }))
-        }
-        "modTime" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            transport
-                .shell(
-                    &format!("stat -c %Y -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|output| {
-                    let seconds = output.trim().parse::<f64>().unwrap_or_default();
-                    json!({ "mtime": seconds * 1000.0 })
-                })
-        }
-        "resolvePath" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            transport
-                .shell(
-                    &format!("readlink -f -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|output| json!({ "path": output.trim() }))
-        }
-        "mkdir" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            transport
-                .shell(
-                    &format!("mkdir -p -- '{}'", path.replace('\'', "'\\''")),
-                    timeout(params.timeout_ms),
-                )
-                .map(|_| json!({}))
-        }
-        "isDirectory" => {
-            let Some(path) = params.path else {
-                return invalid_params(id);
-            };
-            Ok(
-                json!({ "isDirectory": transport.shell(&format!("test -d -- '{}'", path.replace('\'', "'\\''")), Duration::from_secs(10)).is_ok() }),
-            )
-        }
-        _ => return invalid_params(id),
-    };
-    result_response(id, result)
+fn directory_entries_json(entries: Vec<DirectoryEntry>) -> Value {
+    json!({
+        "entries": entries.into_iter().map(|entry| json!({
+            "entry": entry.entry,
+            "isDirectory": entry.is_directory,
+        })).collect::<Vec<_>>()
+    })
+}
+
+fn remote_stat_mtime<T: RemoteTransport>(
+    transport: &T,
+    path: &str,
+    timeout_ms: Option<u64>,
+) -> Result<Value, TransportError> {
+    transport
+        .shell(
+            &format!("stat -c %Y -- '{}'", path.replace('\'', "'\\''")),
+            timeout(timeout_ms),
+        )
+        .map(|output| {
+            let seconds = output.trim().parse::<f64>().unwrap_or_default();
+            json!({ "mtime": seconds * 1000.0 })
+        })
+}
+
+fn remote_resolve_path<T: RemoteTransport>(
+    transport: &T,
+    path: &str,
+    timeout_ms: Option<u64>,
+) -> Result<Value, TransportError> {
+    transport
+        .shell(
+            &format!("readlink -f -- '{}'", path.replace('\'', "'\\''")),
+            timeout(timeout_ms),
+        )
+        .map(|output| json!({ "path": output.trim() }))
+}
+
+fn remote_mkdir<T: RemoteTransport>(
+    transport: &T,
+    path: &str,
+    timeout_ms: Option<u64>,
+) -> Result<Value, TransportError> {
+    transport
+        .shell(
+            &format!("mkdir -p -- '{}'", path.replace('\'', "'\\''")),
+            timeout(timeout_ms),
+        )
+        .map(|_| json!({}))
+}
+
+fn remote_is_directory<T: RemoteTransport>(transport: &T, path: &str) -> Value {
+    json!({
+        "isDirectory": transport
+            .shell(&format!("test -d -- '{}'", path.replace('\'', "'\\''")), Duration::from_secs(10))
+            .is_ok()
+    })
 }
 
 pub(super) fn transport_find_files_response(

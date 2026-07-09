@@ -1,3 +1,4 @@
+use env as safe_env;
 use std::path::{Path, PathBuf};
 
 use octofwen_protocol::json_rpc::{
@@ -65,7 +66,7 @@ impl AgentSkillHost for StdSkillHost {
         if name == "HOME" {
             self.home.clone()
         } else {
-            std::env::var(name).unwrap_or_default()
+            safe_env::var(name).unwrap_or_default()
         }
     }
 
