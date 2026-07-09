@@ -52,10 +52,10 @@
 		"ignore": "^7.0.5",
 		"ink": "^7.1.0",
 		"json5": "^2.2.3",
-		"marked": "^18.0.5",
+		"marked": "^18.0.6",
 		"react": "^19.2.7",
 		"shell-quote": "^1.9.0",
-		"string-width": "^8.2.1",
+		"string-width": "^8.2.2",
 		"toasted-notifier": "^10.1.0",
 		"zod": "^4.4.3",
 		"zustand": "^5.0.14"
