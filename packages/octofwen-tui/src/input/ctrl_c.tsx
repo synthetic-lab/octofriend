@@ -1,5 +1,6 @@
-import { useApp, useInput } from "ink";
+import { useApp } from "ink";
 import * as React from "react";
+import { useLatestInput } from "./latest_input.ts";
 
 export type ExitOnDoubleCtrlCProps = {
 	children: React.ReactNode;
@@ -14,11 +15,16 @@ const CTRL_C_INPUT = "\x03";
 const CtrlCPressedContext = React.createContext(false);
 
 export function useCtrlC(callback: () => void) {
-	useInput((input, key) => {
-		if ((key.ctrl && input === "c") || input === CTRL_C_INPUT) {
-			callback();
-		}
-	});
+	useLatestInput(
+		React.useCallback(
+			(input, key) => {
+				if ((key.ctrl && input === "c") || input === CTRL_C_INPUT) {
+					callback();
+				}
+			},
+			[callback],
+		),
+	);
 }
 
 export function useCtrlCPressed() {
@@ -32,20 +38,44 @@ export function ExitOnDoubleCtrlC({
 	resetDelayMs = DEFAULT_RESET_DELAY_MS,
 }: ExitOnDoubleCtrlCProps) {
 	const [ctrlCPressed, setCtrlCPressed] = React.useState(false);
+	const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+		null,
+	);
 	const { exit } = useApp();
 	const exitApplication = onExit ?? exit;
+	const clearResetTimer = React.useCallback(() => {
+		if (resetTimerRef.current === null) return;
+		clearTimeout(resetTimerRef.current);
+		resetTimerRef.current = null;
+	}, []);
+
+	React.useEffect(() => clearResetTimer, [clearResetTimer]);
+
+	React.useLayoutEffect(() => {
+		if (!(isInputInsertMode && ctrlCPressed)) return;
+		clearResetTimer();
+		setCtrlCPressed(false);
+	}, [clearResetTimer, ctrlCPressed, isInputInsertMode]);
+
+	const effectiveCtrlCPressed = ctrlCPressed && !isInputInsertMode;
 
 	useCtrlC(() => {
+		if (isInputInsertMode) return;
 		if (ctrlCPressed) {
+			clearResetTimer();
 			exitApplication();
-		} else if (!isInputInsertMode) {
+		} else {
 			setCtrlCPressed(true);
-			setTimeout(() => setCtrlCPressed(false), resetDelayMs);
+			clearResetTimer();
+			resetTimerRef.current = setTimeout(() => {
+				resetTimerRef.current = null;
+				setCtrlCPressed(false);
+			}, resetDelayMs);
 		}
 	});
 
 	return (
-		<CtrlCPressedContext.Provider value={ctrlCPressed}>
+		<CtrlCPressedContext.Provider value={effectiveCtrlCPressed}>
 			{children}
 		</CtrlCPressedContext.Provider>
 	);

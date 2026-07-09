@@ -12,3 +12,5 @@ export type VimHandlerActions = {
 	enterInsertMode: (text: string, cursorPosition: number) => void;
 	setVimMode: (mode: VimMode) => void;
 };
+
+export type VimHandlerRuntime = VimHandlerState & VimHandlerActions;

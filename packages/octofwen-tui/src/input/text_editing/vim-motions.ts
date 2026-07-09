@@ -1,3 +1,5 @@
+import { nextTextBoundary, previousTextBoundary } from "./text-boundaries.ts";
+import { previousTextGrapheme, textGraphemeAt } from "./text-graphemes.ts";
 import {
 	getFirstNonWhitespacePosition,
 	getLineEnd,
@@ -13,69 +15,34 @@ export const motions: Record<string, Motion> = {
 	// OR (2) a sequence of other non-blank characters (punctuation). These two
 	// types of words are distinct - "foo-bar" contains 3 words: "foo", "-", "bar".
 	w: (text, cursorPosition) => {
-		const textLength = text.length;
-		if (cursorPosition >= textLength) {
+		if (cursorPosition >= text.length) {
 			return { start: cursorPosition, end: cursorPosition };
 		}
 
-		const currentChar = text[cursorPosition];
-		let endPosition: number;
-
-		if (isWhitespace(currentChar)) {
-			// In whitespace: skip to the next non-whitespace
-			endPosition = cursorPosition;
-			while (endPosition < textLength && isWhitespace(text[endPosition])) {
-				endPosition++;
-			}
-		} else {
-			// On a non-whitespace char: skip chars of the same class, then skip whitespace
-			const currentCharIsWord = isWordChar(currentChar);
-			endPosition = cursorPosition;
-
-			// Skip characters of the same class
-			while (endPosition < textLength && !isWhitespace(text[endPosition])) {
-				const charIsWord = isWordChar(text[endPosition]);
-				if (charIsWord !== currentCharIsWord) {
-					break;
-				}
-				endPosition++;
-			}
-
-			// Skip trailing whitespace to reach start of next word/WORD
-			while (endPosition < textLength && isWhitespace(text[endPosition])) {
-				endPosition++;
-			}
-		}
+		const currentChar = textGraphemeAt(text, cursorPosition);
+		const endPosition = isWhitespace(currentChar)
+			? skipWhitespaceForward(text, cursorPosition)
+			: skipWhitespaceForward(
+					text,
+					skipWordClassForward(text, cursorPosition, isWordChar(currentChar)),
+				);
 
 		return { start: cursorPosition, end: endPosition };
 	},
 	// A "WORD" is a sequence of non-blank characters, separated by whitespace.
 	// "foo-bar" is a single WORD, but "foo bar" is two WORDs.
 	W: (text, cursorPosition) => {
-		const textLength = text.length;
-		if (cursorPosition >= textLength) {
+		if (cursorPosition >= text.length) {
 			return { start: cursorPosition, end: cursorPosition };
 		}
 
-		const currentChar = text[cursorPosition];
-		let endPosition: number;
-
-		if (isWhitespace(currentChar)) {
-			// In whitespace: skip to the next non-whitespace
-			endPosition = cursorPosition;
-			while (endPosition < textLength && isWhitespace(text[endPosition])) {
-				endPosition++;
-			}
-		} else {
-			// On a non-whitespace char: skip the entire WORD, then skip whitespace
-			endPosition = cursorPosition;
-			while (endPosition < textLength && !isWhitespace(text[endPosition])) {
-				endPosition++;
-			}
-			while (endPosition < textLength && isWhitespace(text[endPosition])) {
-				endPosition++;
-			}
-		}
+		const currentChar = textGraphemeAt(text, cursorPosition);
+		const endPosition = isWhitespace(currentChar)
+			? skipWhitespaceForward(text, cursorPosition)
+			: skipWhitespaceForward(
+					text,
+					skipNonWhitespaceForward(text, cursorPosition),
+				);
 
 		return { start: cursorPosition, end: endPosition };
 	},
@@ -87,34 +54,15 @@ export const motions: Record<string, Motion> = {
 			return { start: 0, end: 0 };
 		}
 
-		let start = cursorPosition;
+		const afterWhitespace = skipWhitespaceBackward(text, cursorPosition);
+		if (afterWhitespace === 0) return { start: 0, end: cursorPosition };
+		const start = skipWordClassBackward(
+			text,
+			afterWhitespace,
+			isWordChar(previousTextGrapheme(text, afterWhitespace)),
+		);
 
-		// Skip whitespace
-		while (start > 0 && isWhitespace(text[start - 1])) {
-			start--;
-		}
-
-		// If we're at the start of the text after skipping whitespace, we're done
-		if (start === 0) {
-			return { start: 0, end: cursorPosition };
-		}
-
-		// Determine the character class of the first non-whitespace char we're on
-		const firstNonWsChar = text[start - 1];
-		const firstCharIsWord = isWordChar(firstNonWsChar);
-
-		// Continue skipping characters of the same class
-		while (start > 0 && !isWhitespace(text[start - 1])) {
-			const currentChar = text[start - 1];
-			const currentCharIsWord = isWordChar(currentChar);
-			// Stop when we hit a different character class
-			if (currentCharIsWord !== firstCharIsWord) {
-				break;
-			}
-			start--;
-		}
-
-		return { start: start, end: cursorPosition };
+		return { start, end: cursorPosition };
 	},
 	// A "WORD" is a sequence of non-blank characters, separated by whitespace.
 	// "foo-bar" is a single WORD, but "foo bar" is two WORDs.
@@ -123,19 +71,13 @@ export const motions: Record<string, Motion> = {
 			return { start: 0, end: 0 };
 		}
 
-		let start = cursorPosition;
-
-		// Skip whitespace
-		while (start > 0 && isWhitespace(text[start - 1])) {
-			start--;
-		}
-
-		// Skip all non-whitespace characters (the entire WORD)
-		while (start > 0 && !isWhitespace(text[start - 1])) {
-			start--;
-		}
-
-		return { start: start, end: cursorPosition };
+		return {
+			start: skipNonWhitespaceBackward(
+				text,
+				skipWhitespaceBackward(text, cursorPosition),
+			),
+			end: cursorPosition,
+		};
 	},
 	e: (text, cursorPosition) => {
 		const endPos = wordEndMotionPosition(text, cursorPosition);
@@ -162,35 +104,90 @@ export const motions: Record<string, Motion> = {
 	},
 };
 
+function skipWordClassForward(
+	text: string,
+	position: number,
+	wordClass: boolean,
+): number {
+	let nextPosition = position;
+	while (nextPosition < text.length) {
+		const char = textGraphemeAt(text, nextPosition);
+		if (isWhitespace(char) || isWordChar(char) !== wordClass) break;
+		nextPosition = nextTextBoundary(text, nextPosition);
+	}
+	return nextPosition;
+}
+
+function skipWhitespaceBackward(text: string, position: number): number {
+	let previousPosition = position;
+	while (previousPosition > 0) {
+		const char = previousTextGrapheme(text, previousPosition);
+		if (!isWhitespace(char)) break;
+		previousPosition = previousTextBoundary(text, previousPosition);
+	}
+	return previousPosition;
+}
+
+function skipWordClassBackward(
+	text: string,
+	position: number,
+	wordClass: boolean,
+): number {
+	let previousPosition = position;
+	while (previousPosition > 0) {
+		const char = previousTextGrapheme(text, previousPosition);
+		if (isWhitespace(char) || isWordChar(char) !== wordClass) break;
+		previousPosition = previousTextBoundary(text, previousPosition);
+	}
+	return previousPosition;
+}
+
+function skipNonWhitespaceBackward(text: string, position: number): number {
+	let previousPosition = position;
+	while (previousPosition > 0) {
+		const char = previousTextGrapheme(text, previousPosition);
+		if (isWhitespace(char)) break;
+		previousPosition = previousTextBoundary(text, previousPosition);
+	}
+	return previousPosition;
+}
+
 function wordEndMotionPosition(text: string, cursorPosition: number): number {
 	const start = isAtCurrentWordEnd(text, cursorPosition)
-		? cursorPosition + 1
+		? nextTextBoundary(text, cursorPosition)
 		: cursorPosition;
 	return skipNonWhitespaceForward(text, skipWhitespaceForward(text, start));
 }
 
 function isAtCurrentWordEnd(text: string, cursorPosition: number): boolean {
-	const currentChar = text[cursorPosition];
+	const currentChar = textGraphemeAt(text, cursorPosition);
+	const nextPosition = nextTextBoundary(text, cursorPosition);
 	const nextChar =
-		cursorPosition + 1 < text.length ? text[cursorPosition + 1] : "";
+		nextPosition < text.length ? textGraphemeAt(text, nextPosition) : "";
 	return (
 		!isWhitespace(currentChar) &&
-		(cursorPosition === text.length - 1 || isWhitespace(nextChar))
+		(nextPosition === text.length || isWhitespace(nextChar))
 	);
 }
 
 function skipWhitespaceForward(text: string, position: number): number {
 	let nextPosition = position;
-	while (nextPosition < text.length && isWhitespace(text[nextPosition])) {
-		nextPosition++;
+	while (
+		nextPosition < text.length &&
+		isWhitespace(textGraphemeAt(text, nextPosition))
+	) {
+		nextPosition = nextTextBoundary(text, nextPosition);
 	}
 	return nextPosition;
 }
 
 function skipNonWhitespaceForward(text: string, position: number): number {
 	let nextPosition = position;
-	while (nextPosition < text.length && !isWhitespace(text[nextPosition])) {
-		nextPosition++;
+	while (
+		nextPosition < text.length &&
+		!isWhitespace(textGraphemeAt(text, nextPosition))
+	) {
+		nextPosition = nextTextBoundary(text, nextPosition);
 	}
 	return nextPosition;
 }

@@ -38,13 +38,18 @@ export type ToolPermissionResolver = (
 	params: ToolPermissionParams,
 ) => Promise<ToolPermissionResult>;
 
-export type ToolRunParams = {
+export type ToolRunParams = ToolRunBaseParams & ToolRunContextParams;
+
+type ToolRunBaseParams = {
 	toolName: string;
 	cwd: string;
 	toolCallId: string;
 	toolCall: unknown;
 	parsed: unknown;
 	transport?: unknown;
+};
+
+type ToolRunContextParams = {
 	modelContext?: number;
 	mcpServers?: unknown;
 	lsp?: unknown;

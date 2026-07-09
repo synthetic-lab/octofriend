@@ -5,7 +5,7 @@ import {
 	linkTrajectoryHistory,
 	mergeTrajectoryFinishHistory,
 	rejectedToolHistoryForUserMessage,
-} from "../../../app/state/agent-runner.ts";
+} from "../../../app/state/agent-runner-history.ts";
 import { useAppStore } from "../../../app/state/store.ts";
 
 const ASSISTANT_MESSAGE_ID_PREFIX = /^assistant-/;
@@ -195,6 +195,130 @@ test("tool rejection history links the rejection to the user message that reject
 			rejectedByUserMessageId: "user-1",
 		},
 	});
+});
+
+test("tool rejection history skips later tool calls from the same assistant turn", () => {
+	const firstToolCall = {
+		type: "tool-call" as const,
+		name: "read",
+		toolCallId: "call-1",
+		assistantMessageId: "assistant-1",
+		original: { filePath: "README.md" },
+		parsed: { filePath: "README.md" },
+	};
+	const secondToolCall = {
+		type: "tool-call" as const,
+		name: "read",
+		toolCallId: "call-2",
+		assistantMessageId: "assistant-1",
+		original: { filePath: "package.json" },
+		parsed: { filePath: "package.json" },
+	};
+
+	expect(
+		rejectedToolHistoryForUserMessage(
+			[
+				{
+					type: "llm-ir",
+					ir: {
+						role: "assistant",
+						content: "",
+						messageId: "assistant-1",
+						usage: {
+							input: { cached: 0, uncached: 0, total: 0 },
+							output: 0,
+						},
+						toolCalls: [firstToolCall, secondToolCall],
+					},
+				},
+			],
+			firstToolCall,
+			"user-1",
+		).map((item) => (item.type === "llm-ir" ? item.ir.role : item.type)),
+	).toEqual(["tool-reject", "tool-skip-output"]);
+});
+
+test("empty request-tool finish reasons keep object identity", () => {
+	const reason = { type: "request-tool" as const, toolCalls: [] };
+
+	expect(linkFinishReasonToolCalls(reason, [])).toBe(reason);
+});
+
+test("request-tool finish reasons without linked tool calls keep object identity", () => {
+	const reason = {
+		type: "request-tool" as const,
+		toolCalls: [
+			{
+				type: "tool-call" as const,
+				name: "read",
+				toolCallId: "call-1",
+				original: { filePath: "README.md" },
+				parsed: { filePath: "README.md" },
+			},
+		],
+	};
+
+	expect(linkFinishReasonToolCalls(reason, [])).toBe(reason);
+});
+
+test("request-tool finish reasons prefer newest linked tool call", () => {
+	const olderToolCall = {
+		type: "tool-call" as const,
+		name: "read",
+		toolCallId: "call-1",
+		assistantMessageId: "assistant-old",
+		original: { filePath: "old.md" },
+		parsed: { filePath: "old.md" },
+	};
+	const newerToolCall = {
+		type: "tool-call" as const,
+		name: "read",
+		toolCallId: "call-1",
+		assistantMessageId: "assistant-new",
+		original: { filePath: "new.md" },
+		parsed: { filePath: "new.md" },
+	};
+
+	const reason = linkFinishReasonToolCalls(
+		{
+			type: "request-tool",
+			toolCalls: [
+				{
+					type: "tool-call",
+					name: "read",
+					toolCallId: "call-1",
+					original: { filePath: "raw.md" },
+					parsed: { filePath: "raw.md" },
+				},
+			],
+		},
+		[
+			{
+				type: "llm-ir",
+				ir: {
+					role: "assistant",
+					messageId: "assistant-old",
+					content: "",
+					usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
+					toolCalls: [olderToolCall],
+				},
+			},
+			{
+				type: "llm-ir",
+				ir: {
+					role: "assistant",
+					messageId: "assistant-new",
+					content: "",
+					usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
+					toolCalls: [newerToolCall],
+				},
+			},
+		],
+	);
+
+	expect(reason.type).toBe("request-tool");
+	if (reason.type !== "request-tool") return;
+	expect(reason.toolCalls[0]).toBe(newerToolCall);
 });
 
 test("request-tool finish reasons reuse linked tool calls from finished history", () => {

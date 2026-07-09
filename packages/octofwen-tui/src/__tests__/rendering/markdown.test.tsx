@@ -1,6 +1,14 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { Markdown } from "../../rendering/markdown.tsx";
+import type { Tokens } from "marked";
+import stringWidth from "string-width";
+import { TerminalSizeProvider } from "../../layout/viewport.tsx";
+import { renderPlainCodeLines } from "../../rendering/highlight-code-lines.tsx";
+import {
+	isPlainMarkdownFastPath,
+	Markdown,
+} from "../../rendering/markdown.tsx";
+import { TableRenderer } from "../../rendering/markdown-table.tsx";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const ANSI_TEST_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`);
@@ -90,6 +98,30 @@ describe("renderToString", () => {
 			expect(stripAnsi(result)).toContain("plain code");
 			expect(hasFormatting(result)).toBe(true);
 		});
+
+		it("keeps indented code blocks out of the plain-text fast path", () => {
+			const result = renderToString("    plain code");
+
+			expect(isPlainMarkdownFastPath("    plain code")).toBe(false);
+			expect(stripAnsi(result)).toContain("plain code");
+			expect(hasFormatting(result)).toBe(true);
+		});
+
+		it("does not add copyable spaces for blank lines inside code blocks", () => {
+			const result = stripAnsi(renderToString("```\nalpha\n\nbeta\n```"));
+
+			expect(result).toContain("  alpha\n\n  beta");
+			expect(result).not.toContain("  alpha\n  \n  beta");
+		});
+
+		it("does not add copyable spaces for blank lines in plain code fallback", () => {
+			const { lastFrame } = render(
+				<>{renderPlainCodeLines("alpha\n\nbeta")}</>,
+			);
+			const result = stripAnsi(lastFrame() || "");
+
+			expect(result).toBe("alpha\n\nbeta");
+		});
 	});
 
 	describe("links and images", () => {
@@ -99,6 +131,15 @@ describe("renderToString", () => {
 			expect(stripped).toContain("link text");
 			expect(stripped).toContain("https://example.com");
 			expect(hasFormatting(result)).toBe(true);
+		});
+
+		it("renders link label and target once", () => {
+			const result = stripAnsi(
+				renderToString("[link text](https://example.com)"),
+			);
+
+			expect(countOccurrences(result, "link text")).toBe(1);
+			expect(countOccurrences(result, "https://example.com")).toBe(1);
 		});
 
 		it("preserves image alt text", () => {
@@ -133,6 +174,8 @@ describe("renderToString", () => {
 			const stripped = stripAnsi(result);
 			expect(stripped).toContain("Todo");
 			expect(stripped).toContain("Done");
+			expect(countOccurrences(stripped, "[ ]")).toBe(1);
+			expect(countOccurrences(stripped, "[✓]")).toBe(1);
 			expect(hasFormatting(result)).toBe(true);
 		});
 
@@ -180,11 +223,25 @@ describe("renderToString", () => {
 			expect(hasFormatting(result)).toBe(true);
 		});
 
+		it("does not add fake spaces around inline code inside tables", () => {
+			const markdown = [
+				"| Key | Value |",
+				"|-----|-------|",
+				"| env | `OPENAI_API_KEY` |",
+			].join("\n");
+
+			const stripped = stripAnsi(renderToString(markdown));
+
+			expect(stripped).toContain("│ env │ OPENAI_API_KEY │");
+			expect(stripped).not.toContain(" OPENAI_API_KEY  │");
+		});
+
 		it("handles tables with emojis and multi-width characters", () => {
 			const markdown = [
 				"| Feature | Status |",
 				"|---------|--------|",
 				"| Test    | ✅     |",
+				"| Warn    | ⚠️ x   |",
 			].join("\n");
 
 			const result = renderToString(markdown);
@@ -193,7 +250,79 @@ describe("renderToString", () => {
 			expect(stripped).toContain("Status");
 			expect(stripped).toContain("Test");
 			expect(stripped).toContain("✅");
+			expect(stripped).toContain("⚠️ x");
+			expect(tableLineWidths(stripped)).toEqual([20, 20, 20, 20]);
 			expect(hasFormatting(result)).toBe(true);
+		});
+
+		it("keeps rows aligned when table cells are missing", () => {
+			const token: Tokens.Table = {
+				type: "table",
+				raw: "",
+				align: [null, null],
+				header: [tableCell("Key", true), tableCell("Value", true)],
+				rows: [[tableCell("only", false)]],
+			};
+
+			const { lastFrame } = render(<TableRenderer token={token} />);
+			const stripped = stripAnsi(lastFrame() || "");
+			const tableLines = stripped
+				.split("\n")
+				.filter((line) => line.includes("│") || line.includes("├"));
+
+			expect(tableLines).toHaveLength(3);
+			expect(tableLineWidths(stripped)).toEqual([16, 16, 16]);
+			expect(tableLines[2]).toContain("│ only │       │");
+		});
+
+		it("normalizes tabs inside table cells to copy-safe spaces", () => {
+			const token: Tokens.Table = {
+				type: "table",
+				raw: "",
+				align: [null, null],
+				header: [tableCell("Key", true), tableCell("Value", true)],
+				rows: [[tableCell("alpha\tbeta", false), tableCell("ok", false)]],
+			};
+
+			const { lastFrame } = render(<TableRenderer token={token} />);
+			const stripped = stripAnsi(lastFrame() || "");
+
+			expect(stripped).toContain("alpha beta");
+			expect(stripped).not.toContain("\t");
+		});
+
+		it("keeps hard breaks inside table cells on one rendered row", () => {
+			const token: Tokens.Table = {
+				type: "table",
+				raw: "",
+				align: [null, null],
+				header: [tableCell("Key", true), tableCell("Value", true)],
+				rows: [
+					[
+						{
+							text: "alpha\nbeta",
+							tokens: [
+								{ type: "text", raw: "alpha", text: "alpha" },
+								{ type: "br", raw: "  \n" },
+								{ type: "text", raw: "beta", text: "beta" },
+							],
+							header: false,
+							align: null,
+						},
+						tableCell("ok", false),
+					],
+				],
+			};
+
+			const { lastFrame } = render(<TableRenderer token={token} />);
+			const stripped = stripAnsi(lastFrame() || "");
+			const tableLines = stripped
+				.split("\n")
+				.filter((line) => line.includes("│") || line.includes("├"));
+
+			expect(stripped).toContain("│ alpha beta │ ok");
+			expect(stripped).not.toContain("alpha\nbeta");
+			expect(tableLines).toHaveLength(3);
 		});
 	});
 
@@ -202,6 +331,15 @@ describe("renderToString", () => {
 			const result = renderToString("---");
 			expect(hasFormatting(result)).toBe(true);
 			expect(stripAnsi(result)).toMatch(HORIZONTAL_RULE_PATTERN);
+		});
+
+		it("uses terminal size context for horizontal rule width", () => {
+			const result = renderToString("---", { width: 20, height: 10 });
+			const rule = stripAnsi(result)
+				.split("\n")
+				.find((line) => line.includes("─"));
+
+			expect(rule).toBe("─".repeat(20));
 		});
 	});
 
@@ -277,14 +415,49 @@ describe("renderToString", () => {
 	});
 });
 
-function renderToString(markdown: string): string {
-	const component = Markdown({ markdown });
-	const { lastFrame } = render(component);
+function renderToString(
+	markdown: string,
+	size?: { width: number; height: number },
+): string {
+	const element = size ? (
+		<TerminalSizeProvider size={size}>
+			<Markdown markdown={markdown} />
+		</TerminalSizeProvider>
+	) : (
+		<Markdown markdown={markdown} />
+	);
+	const { lastFrame } = render(element);
 	return lastFrame() || "";
+}
+
+function tableCell(text: string, header: boolean): Tokens.TableCell {
+	return {
+		text,
+		tokens: [{ type: "text", raw: text, text }],
+		header,
+		align: null,
+	};
 }
 
 function stripAnsi(str: string): string {
 	return str.replace(ANSI_PATTERN, "");
+}
+
+function countOccurrences(value: string, search: string): number {
+	let count = 0;
+	let index = value.indexOf(search);
+	while (index !== -1) {
+		count += 1;
+		index = value.indexOf(search, index + search.length);
+	}
+	return count;
+}
+
+function tableLineWidths(value: string): number[] {
+	return value
+		.split("\n")
+		.filter((line) => line.includes("│") || line.includes("├"))
+		.map((line) => stringWidth(line));
 }
 
 function hasFormatting(str: string): boolean {

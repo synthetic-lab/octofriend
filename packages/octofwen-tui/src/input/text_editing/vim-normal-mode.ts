@@ -1,14 +1,12 @@
 import type { Key } from "ink";
-import type {
-	VimHandlerActions,
-	VimHandlerState,
-} from "./vim-handler-state.ts";
-import { createNormalCommands } from "./vim-normal-commands.ts";
+import type { VimHandlerState } from "./vim-handler-state.ts";
+import {
+	runNormalCommand,
+	type VimNormalCommandContext,
+} from "./vim-normal-commands.ts";
 import { operators } from "./vim-operators.ts";
 import { handlePendingCommand } from "./vim-pending-command.ts";
 import type { VimKeyHandlerResult } from "./vim-types.ts";
-
-type NormalCommands = Record<string, () => VimKeyHandlerResult>;
 
 function handleRedo(
 	currentValue: string,
@@ -26,31 +24,25 @@ function handleRedo(
 	};
 }
 
-function commandForKey(
-	key: Key,
-	commands: NormalCommands,
-): (() => VimKeyHandlerResult) | null {
-	if (key.ctrl && key.leftArrow) return commands["b"];
-	if (key.ctrl && key.rightArrow) return commands["e"];
-	if (key.leftArrow) return commands["h"];
-	if (key.rightArrow) return commands["l"];
-	if (key.upArrow) return commands["k"];
-	if (key.downArrow) return commands["j"];
-	if (key.home) return commands["0"];
-	if (key.end) return commands["$"];
+function commandInputForKey(key: Key): string | null {
+	if (key.ctrl && key.leftArrow) return "b";
+	if (key.ctrl && key.rightArrow) return "e";
+	if (key.leftArrow) return "h";
+	if (key.rightArrow) return "l";
+	if (key.upArrow) return "k";
+	if (key.downArrow) return "j";
+	if (key.home) return "0";
+	if (key.end) return "$";
 	return null;
 }
 
 export function handleNormalMode(
 	input: string,
 	key: Key,
-	cursorPosition: number,
-	valueLength: number,
-	currentValue: string,
-	state: VimHandlerState,
-	actions: VimHandlerActions,
+	context: VimNormalCommandContext,
 ): VimKeyHandlerResult {
 	if (key.return) return { consumed: false };
+	const { currentValue, cursorPosition, state, actions } = context;
 
 	const pendingResult = handlePendingCommand(
 		input,
@@ -73,20 +65,14 @@ export function handleNormalMode(
 		return { consumed: true };
 	}
 
-	const commands = createNormalCommands({
-		currentValue,
-		cursorPosition,
-		valueLength,
-		state,
-		actions,
-	});
-
-	const keyCommand = commandForKey(key, commands);
-	if (keyCommand) return keyCommand();
-
-	if (input in commands) {
-		return commands[input]();
+	const keyCommandInput = commandInputForKey(key);
+	if (keyCommandInput) {
+		const result = runNormalCommand(keyCommandInput, context);
+		if (result) return result;
 	}
+
+	const result = runNormalCommand(input, context);
+	if (result) return result;
 
 	return { consumed: true };
 }

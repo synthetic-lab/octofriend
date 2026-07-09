@@ -1,5 +1,50 @@
 import type { AppStateGet, AppStateSet, RunArgs, UiState } from "./types.ts";
 
+type AppHistory = ReturnType<AppStateGet>["history"];
+type AppHistoryItem = AppHistory[number];
+type UserTextContent = Extract<
+	AppHistoryItem,
+	{ type: "llm-ir" }
+>["ir"] extends infer Ir
+	? Ir extends { role: "user"; content: infer Content }
+		? Content
+		: never
+	: never;
+
+function historyBeforeIndex(history: AppHistory, endIndex: number): AppHistory {
+	const filtered: AppHistory = [];
+	let index = 0;
+	let writeIndex = 0;
+	while (index < endIndex && index < history.length) {
+		const item = history[index];
+		if (item !== undefined) {
+			filtered[writeIndex] = item;
+			writeIndex += 1;
+		}
+		index += 1;
+	}
+	return filtered;
+}
+
+function historyWithNotification(
+	history: AppHistory,
+	content: string,
+): AppHistory {
+	const nextHistory = historyBeforeIndex(history, history.length);
+	nextHistory[nextHistory.length] = { type: "notification", content };
+	return nextHistory;
+}
+
+function firstUserTextContent(content: UserTextContent): string {
+	let index = 0;
+	while (index < content.length) {
+		const part = content[index];
+		if (part?.type === "text") return part.content;
+		index += 1;
+	}
+	return "";
+}
+
 export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 	return {
 		setQuery: (query: string) => {
@@ -9,13 +54,7 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 		setModelOverride: (model: string) => {
 			set({
 				modelOverride: model,
-				history: [
-					...get().history,
-					{
-						type: "notification",
-						content: `Model: ${model}`,
-					},
-				],
+				history: historyWithNotification(get().history, `Model: ${model}`),
 			});
 		},
 
@@ -62,18 +101,11 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 				return;
 			}
 
-			const filteredHistory = history.slice(0, lastUserPromptIndex);
-			const textPart = lastUserItem.ir.content.find(
-				(
-					part,
-				): part is Extract<
-					(typeof lastUserItem.ir.content)[number],
-					{ type: "text" }
-				> => part.type === "text",
-			);
+			const filteredHistory = historyBeforeIndex(history, lastUserPromptIndex);
+			const query = firstUserTextContent(lastUserItem.ir.content);
 			set((state) => ({
 				history: filteredHistory,
-				query: textPart?.content ?? "",
+				query,
 				pendingRejectedToolCall: null,
 				byteCount: 0,
 				clearNonce: state.clearNonce + 1,

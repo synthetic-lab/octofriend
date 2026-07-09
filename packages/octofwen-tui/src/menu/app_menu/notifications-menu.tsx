@@ -1,11 +1,12 @@
-import { useInput } from "ink";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "../../app/state/store.ts";
+import type { UiState } from "../../app/state/types.ts";
+import { useLatestInput, useLatestRef } from "../../input/latest_input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
-	type Keymap,
+	type ShortcutArray,
 } from "../../input/shortcuts.tsx";
 import {
 	useConfig,
@@ -13,11 +14,59 @@ import {
 } from "../../internal/configuration/react-context.ts";
 import type { Config } from "../../internal/configuration/schemas.ts";
 
+const notificationsMenuStateSelector = (state: UiState) => ({
+	sessionAutoNotify: state.sessionAutoNotify,
+	notifyOnce: state.notifyOnce,
+	toggleMenu: state.toggleMenu,
+	setNotifyOnce: state.setNotifyOnce,
+	setNotifySession: state.setNotifySession,
+});
+
 type NotificationValue =
 	| "always-notify"
 	| "session-notify"
 	| "notify-once"
 	| "back";
+
+export function buildNotificationShortcutItems({
+	alwaysNotify,
+	sessionAutoNotify,
+	notifyOnce,
+}: {
+	alwaysNotify: boolean | undefined;
+	sessionAutoNotify: boolean;
+	notifyOnce: boolean;
+}): ShortcutArray<NotificationValue> {
+	return [
+		{
+			type: "key",
+			mapping: {
+				o: {
+					label: notifyOnce
+						? "Do not notify the next time Octo needs input"
+						: "Notify the next time Octo needs input",
+					value: "notify-once",
+				},
+				s: {
+					label: sessionAutoNotify
+						? "Stop auto-notifying this session"
+						: "Auto-notify for the rest of this session",
+					value: "session-notify",
+				},
+				a: {
+					label: alwaysNotify
+						? "Stop always auto-notifying"
+						: "Always auto-notify",
+					value: "always-notify",
+				},
+				b: {
+					label: "Back",
+					value: "back",
+				},
+			},
+		},
+	];
+}
 
 export function NotificationsMenu({ onBack }: { onBack: () => void }) {
 	const config = useConfig();
@@ -28,78 +77,73 @@ export function NotificationsMenu({ onBack }: { onBack: () => void }) {
 		toggleMenu,
 		setNotifyOnce,
 		setNotifySession,
-	} = useAppStore(
-		useShallow((state) => ({
-			sessionAutoNotify: state.sessionAutoNotify,
-			notifyOnce: state.notifyOnce,
-			toggleMenu: state.toggleMenu,
-			setNotifyOnce: state.setNotifyOnce,
-			setNotifySession: state.setNotifySession,
-		})),
-	);
-
-	useInput((_, key) => {
-		if (key.escape) onBack();
-	});
+	} = useAppStore(useShallow(notificationsMenuStateSelector));
 
 	const alwaysNotify = config.notifications?.alwaysNotify;
-	const items: Keymap<NotificationValue> = {
-		o: {
-			label: notifyOnce
-				? "Do not notify the next time Octo needs input"
-				: "Notify the next time Octo needs input",
-			value: "notify-once" as const,
-		},
-		s: {
-			label: sessionAutoNotify
-				? "Stop auto-notifying this session"
-				: "Auto-notify for the rest of this session",
-			value: "session-notify" as const,
-		},
-		a: {
-			label: alwaysNotify ? "Stop always auto-notifying" : "Always auto-notify",
-			value: "always-notify" as const,
-		},
-		b: {
-			label: "Back",
-			value: "back" as const,
-		},
-	};
+	const configRef = useLatestRef(config);
+	const setConfigRef = useLatestRef(setConfig);
+	const onBackRef = useLatestRef(onBack);
+	const sessionAutoNotifyRef = useLatestRef(sessionAutoNotify);
+	const notifyOnceRef = useLatestRef(notifyOnce);
+	const toggleMenuRef = useLatestRef(toggleMenu);
+	const setNotifyOnceRef = useLatestRef(setNotifyOnce);
+	const setNotifySessionRef = useLatestRef(setNotifySession);
+
+	useLatestInput(
+		useCallback(
+			(_, key) => {
+				if (key.escape) onBackRef.current();
+			},
+			[onBackRef],
+		),
+	);
+
+	const shortcutItems = useMemo(
+		() =>
+			buildNotificationShortcutItems({
+				alwaysNotify,
+				sessionAutoNotify,
+				notifyOnce,
+			}),
+		[alwaysNotify, sessionAutoNotify, notifyOnce],
+	);
 
 	const onSelect = useCallback(
 		async (item: Item<NotificationValue>) => {
 			if (item.value === "always-notify") {
-				await setConfig({
-					...config,
+				const currentConfig = configRef.current;
+				await setConfigRef.current({
+					...currentConfig,
 					notifications: {
-						...config.notifications,
-						alwaysNotify: !alwaysNotify,
+						...currentConfig.notifications,
+						alwaysNotify: !currentConfig.notifications?.alwaysNotify,
 					} as Config["notifications"],
 				});
 			} else if (item.value === "session-notify") {
-				setNotifySession(!sessionAutoNotify);
+				setNotifySessionRef.current(!sessionAutoNotifyRef.current);
 			} else if (item.value === "notify-once") {
-				setNotifyOnce(!notifyOnce);
-				toggleMenu();
+				setNotifyOnceRef.current(!notifyOnceRef.current);
+				toggleMenuRef.current();
 			} else if (item.value === "back") {
-				onBack();
+				onBackRef.current();
 			}
 		},
 		[
-			config,
-			setConfig,
-			alwaysNotify,
-			sessionAutoNotify,
-			notifyOnce,
-			toggleMenu,
-			onBack,
+			configRef,
+			setConfigRef,
+			sessionAutoNotifyRef,
+			notifyOnceRef,
+			toggleMenuRef,
+			onBackRef,
+			setNotifyOnceRef,
+			setNotifySessionRef,
 		],
 	);
 
 	return (
 		<KbShortcutPanel
 			title="Notifications"
-			shortcutItems={[{ type: "key" as const, mapping: items }]}
+			shortcutItems={shortcutItems}
 			onSelect={onSelect}
 		/>
 	);

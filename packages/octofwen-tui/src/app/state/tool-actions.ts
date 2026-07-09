@@ -42,41 +42,31 @@ export function createToolActions(set: AppStateSet, get: AppStateGet) {
 			});
 
 			const result = tools.success
-				? await runTool(
-						abortController.signal,
-						transport,
-						tools.data,
-						toolReq,
-						config,
-						toolRun,
-					)
+				? await runTool({
+						abortSignal: abortController.signal,
+						transport: transport,
+						loaded: tools.data,
+						call: toolReq,
+						config: config,
+						toolRun: toolRun,
+					})
 				: err(tools.error);
 			const toolIr = result.success
 				? toolRunResultToIR(result.data, toolReq)
 				: result;
 			if (toolIr.success) {
-				set({
-					history: [
-						...get().history,
-						{
-							type: "llm-ir",
-							ir: toolIr.data,
-						},
-					],
+				appendToolHistoryItem(set, get, {
+					type: "llm-ir",
+					ir: toolIr.data,
 				});
 			} else {
-				set({
-					history: [
-						...get().history,
-						{
-							type: "llm-ir",
-							ir: {
-								role: "tool-runtime-error",
-								error: toolIr.error,
-								toolCall: toolReq,
-							},
-						},
-					],
+				appendToolHistoryItem(set, get, {
+					type: "llm-ir",
+					ir: {
+						role: "tool-runtime-error",
+						error: toolIr.error,
+						toolCall: toolReq,
+					},
 				});
 			}
 
@@ -100,23 +90,36 @@ function shouldRejectConcurrentToolRun(modeData: UiState["modeData"]): boolean {
 	);
 }
 
+function appendToolHistoryItem(
+	set: AppStateSet,
+	get: AppStateGet,
+	item: ReturnType<AppStateGet>["history"][number],
+): void {
+	const history = get().history;
+	const nextHistory = new Array<ReturnType<AppStateGet>["history"][number]>(
+		history.length + 1,
+	);
+	for (let index = 0; index < history.length; index += 1) {
+		nextHistory[index] = history[
+			index
+		] as ReturnType<AppStateGet>["history"][number];
+	}
+	nextHistory[history.length] = item;
+	set({ history: nextHistory });
+}
+
 function appendToolRuntimeError(
 	set: AppStateSet,
 	get: AppStateGet,
 	toolReq: Parameters<UiState["runTool"]>[0]["toolReq"],
 	error: string,
 ) {
-	set({
-		history: [
-			...get().history,
-			{
-				type: "llm-ir",
-				ir: {
-					role: "tool-runtime-error",
-					error,
-					toolCall: toolReq,
-				},
-			},
-		],
+	appendToolHistoryItem(set, get, {
+		type: "llm-ir",
+		ir: {
+			role: "tool-runtime-error",
+			error,
+			toolCall: toolReq,
+		},
 	});
 }

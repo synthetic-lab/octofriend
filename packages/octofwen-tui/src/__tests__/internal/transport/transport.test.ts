@@ -183,6 +183,41 @@ describe("findFiles", () => {
 		expect(cappedResults).toEqual(["a.ts"]);
 	});
 
+	it("matches exact filenames without requiring wildcard patterns", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await mkdir(path.join(root, "src"), { recursive: true });
+		await writeFile(path.join(root, "src/Exact.TS"), "", "utf8");
+		await writeFile(path.join(root, "src/other.ts"), "", "utf8");
+
+		await expect(
+			findFiles(signal, transport, {
+				includeName: "exact.ts",
+				caseInsensitive: true,
+			}),
+		).resolves.toEqual(["src/Exact.TS"]);
+	});
+
+	it("matches single-star filename patterns without generic wildcard scan", async () => {
+		const root = await makeTempDirectory();
+		const signal = new AbortController().signal;
+		const transport = new LocalTransport(root);
+
+		await mkdir(path.join(root, "src"), { recursive: true });
+		await writeFile(path.join(root, "src/octofwen-agent.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/octofwen.test.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/other.ts"), "", "utf8");
+
+		await expect(
+			findFiles(signal, transport, {
+				includeName: "octofwen*.ts",
+				excludeName: "*.test.ts",
+			}),
+		).resolves.toEqual(["src/octofwen-agent.ts"]);
+	});
+
 	it("finds files through the remote shell for SSH transports", async () => {
 		const shellCalls: unknown[] = [];
 		const transport = {
@@ -203,10 +238,13 @@ describe("findFiles", () => {
 				await Promise.resolve();
 				shellCalls.push({ aborted: signal.aborted, command, timeout });
 				return [
+					"",
 					"./src/a.ts",
 					"./src/b.test.ts",
 					"./src/nested/c.ts",
+					"./src/build/generated.ts",
 					"./node_modules/pkg/hidden.ts",
+					"",
 				].join("\n");
 			},
 			close: async () => undefined,
@@ -214,8 +252,11 @@ describe("findFiles", () => {
 
 		await expect(
 			findFiles(new AbortController().signal, transport, {
-				includeName: "*.ts",
+				includeName: "*.TS",
+				includePath: "src/*",
 				excludeName: "*.test.ts",
+				excludePath: "*/build/*",
+				caseInsensitive: true,
 				maxResults: 10,
 			}),
 		).resolves.toEqual(["src/a.ts", "src/nested/c.ts"]);
@@ -247,18 +288,8 @@ describe("getEnvVar", () => {
 			),
 		).toBe("");
 
-		process.env["OCTOFWEN_TRANSPORT_TEST_VALUE"] = "abc";
-		try {
-			expect(
-				await getEnvVar(
-					new AbortController().signal,
-					transport,
-					"OCTOFWEN_TRANSPORT_TEST_VALUE",
-					5000,
-				),
-			).toBe("abc");
-		} finally {
-			delete process.env["OCTOFWEN_TRANSPORT_TEST_VALUE"];
-		}
+		expect(
+			await getEnvVar(new AbortController().signal, transport, "PATH", 5000),
+		).toBe(process.env.PATH ?? "");
 	});
 });

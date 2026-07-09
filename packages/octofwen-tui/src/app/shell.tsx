@@ -1,7 +1,8 @@
-import { Box, Static, useInput } from "ink";
+import { Box, Static } from "ink";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { ExitOnDoubleCtrlC } from "../input/ctrl_c.tsx";
+import { useLatestInput } from "../input/latest_input.ts";
 import {
 	InputPriorityProvider,
 	UNCHAINED_PRIORITY,
@@ -24,15 +25,16 @@ import {
 } from "../menu/quota.tsx";
 import { MessageDisplay } from "../rendering/messages.tsx";
 import {
+	appendHistoryStaticItems,
 	StaticItemRenderer,
-	toStaticItems,
+	staticItemKey,
 } from "../rendering/static_items.tsx";
 import type { StaticItem } from "../rendering/types.ts";
 import { TerminalUnchainedContext } from "../theme/branding.tsx";
 import { BottomBar } from "./bottom_bar.tsx";
 import type { InputHistory } from "./input_history.ts";
 import { useAppStore } from "./state/store.ts";
-import type { RunArgs } from "./state/types.ts";
+import type { RunArgs, UiState } from "./state/types.ts";
 import {
 	attachTokenUsageMirror,
 	type TokenUsageCounts,
@@ -69,6 +71,74 @@ const CHAINED_NOTIF =
 
 export function terminalUnchainedNotification(unchained: boolean): string {
 	return unchained ? UNCHAINED_NOTIF : CHAINED_NOTIF;
+}
+
+export function selectAppShellState(state: UiState) {
+	return {
+		history: state.history,
+		inflightResponse:
+			(state.modeData.mode === "responding" ||
+				state.modeData.mode === "compacting") &&
+			(state.modeData.inflightResponse.reasoningContent ||
+				state.modeData.inflightResponse.content)
+				? state.modeData.inflightResponse
+				: null,
+		isInputInsertMode:
+			state.modeData.mode === "input" && state.modeData.vimMode === "INSERT",
+		setVimMode: state.setVimMode,
+		clearNonce: state.clearNonce,
+		cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
+	};
+}
+
+type BuildAppStaticItemsInput = {
+	metadata: Metadata;
+	config: Config;
+	bootSkills: readonly string[];
+	updates: string | null;
+	history: UiState["history"];
+};
+
+export function buildAppStaticItems({
+	metadata,
+	config,
+	bootSkills,
+	updates,
+	history,
+}: BuildAppStaticItemsInput): StaticItem[] {
+	const items: StaticItem[] = [
+		{ type: "header" },
+		{ type: "version", metadata, config },
+	];
+	let writeIndex = items.length;
+	if (bootSkills.length > 0) {
+		items[writeIndex] = { type: "boot-notification", content: " " };
+		writeIndex += 1;
+		items[writeIndex] = {
+			type: "boot-notification",
+			content: "Configured skills:",
+		};
+		writeIndex += 1;
+		let index = 0;
+		while (index < bootSkills.length) {
+			const skill = bootSkills[index];
+			if (skill !== undefined) {
+				items[writeIndex] = {
+					type: "boot-notification",
+					content: `- ${skill}`,
+				};
+				writeIndex += 1;
+			}
+			index += 1;
+		}
+	}
+	if (updates) {
+		items[writeIndex] = { type: "updates", updates };
+		writeIndex += 1;
+	}
+	items[writeIndex] = { type: "slogan" };
+	appendHistoryStaticItems(items, history);
+	return items;
 }
 
 function UnchainedShiftTabHandler({
@@ -117,23 +187,14 @@ export function App({
 	);
 	const {
 		history,
-		modeData,
+		inflightResponse,
+		isInputInsertMode,
 		setVimMode,
 		clearNonce,
 		cancelNotifyReadyForInput,
-	} = useAppStore(
-		useShallow((state) => ({
-			history: state.history,
-			modeData: state.modeData,
-			setVimMode: state.setVimMode,
-			clearNonce: state.clearNonce,
-			cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
-		})),
-	);
+	} = useAppStore(useShallow(selectAppShellState));
 
-	useInput(() => {
-		cancelNotifyReadyForInput();
-	});
+	useLatestInput(cancelNotifyReadyForInput);
 
 	useEffect(() => {
 		if (!tokenUsageCounts) return;
@@ -145,28 +206,17 @@ export function App({
 		if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
 	}, []);
 
-	const skillNotifs: string[] = [];
-	if (bootSkills.length > 0) {
-		skillNotifs.push(" ");
-		skillNotifs.push("Configured skills:");
-		skillNotifs.push(...bootSkills.map((s) => `- ${s}`));
-	}
-
-	const staticItems: StaticItem[] = useMemo(() => {
-		const items = [
-			{ type: "header" as const },
-			{ type: "version" as const, metadata, config: currConfig },
-			...skillNotifs.map((s) => ({
-				type: "boot-notification" as const,
-				content: s,
-			})),
-			...(updates ? [{ type: "updates" as const, updates }] : []),
-			{ type: "slogan" as const },
-			...toStaticItems(history),
-		];
-
-		return items;
-	}, [history, currConfig, skillNotifs, updates]);
+	const staticItems: StaticItem[] = useMemo(
+		() =>
+			buildAppStaticItems({
+				metadata,
+				config: currConfig,
+				bootSkills,
+				updates,
+				history,
+			}),
+		[history, currConfig, metadata, bootSkills, updates],
+	);
 
 	return (
 		<ModelConnectionTestContext.Provider value={modelConnectionTest}>
@@ -185,8 +235,7 @@ export function App({
 											<ExitOnDoubleCtrlC
 												isInputInsertMode={
 													!!currConfig.vimEmulation?.enabled &&
-													modeData.mode === "input" &&
-													modeData.vimMode === "INSERT"
+													isInputInsertMode
 												}
 											>
 												<TerminalSizeTracker>
@@ -199,18 +248,13 @@ export function App({
 															{(item, index) => (
 																<StaticItemRenderer
 																	item={item}
-																	key={`static-${index}`}
+																	key={staticItemKey(item, index)}
 																/>
 															)}
 														</Static>
-														{(modeData.mode === "responding" ||
-															modeData.mode === "compacting") &&
-															(modeData.inflightResponse.reasoningContent ||
-																modeData.inflightResponse.content) && (
-																<MessageDisplay
-																	item={modeData.inflightResponse}
-																/>
-															)}
+														{inflightResponse && (
+															<MessageDisplay item={inflightResponse} />
+														)}
 														<BottomBar
 															inputHistory={inputHistory}
 															metadata={metadata}

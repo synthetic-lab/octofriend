@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
+import { TerminalSizeProvider } from "../../layout/viewport.tsx";
 import { MenuHeader, MenuPanel } from "../../menu/root.tsx";
 
 describe("MenuHeader", () => {
@@ -10,6 +11,22 @@ describe("MenuHeader", () => {
 		const output = lastFrame() || "";
 		expect(output).toContain("🐙");
 		expect(output).toContain("Settings");
+	});
+	it("wraps body content to narrow terminal width", () => {
+		const { lastFrame } = render(
+			<TerminalSizeProvider size={{ width: 20, height: 10 }}>
+				<MenuPanel
+					title="Models"
+					items={[{ label: "Fast", value: "fast" }]}
+					onSelect={() => undefined}
+				>
+					<Text wrap="wrap">123456789012345678901234567890</Text>
+				</MenuPanel>
+			</TerminalSizeProvider>,
+		);
+
+		expect(lastFrame()).toContain("12345678901234567890\n");
+		expect(lastFrame()).toContain("1234567890");
 	});
 });
 

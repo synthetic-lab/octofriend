@@ -1,84 +1,146 @@
 import { Box, Text } from "ink";
-import { type MarkedToken, marked, type Token, type Tokens } from "marked";
+import { marked, type Token, type Tokens } from "marked";
 import React from "react";
-import stringWidth from "string-width";
+import { useTerminalSize } from "../layout/viewport.tsx";
 import { HighlightedCode } from "./highlight-code.tsx";
+import { normalizeRenderedLineBreaks } from "./line_splitting.ts";
 import {
-	isCodespanToken,
-	isDelToken,
-	isEmToken,
-	isImageToken,
-	isLinkToken,
-	isStrongToken,
-	isTextToken,
-} from "./markdown_tokens.ts";
+	isMarkedToken,
+	renderTokenAsPlaintext,
+	renderTokensAsPlaintext,
+} from "./markdown-plaintext.ts";
+import { TableRenderer } from "./markdown-table.tsx";
+
+type MarkdownRenderModel =
+	| { kind: "plain"; text: string }
+	| { kind: "tokens"; nodes: React.ReactNode[] };
 
 export function Markdown({ markdown }: { markdown: string }) {
-	const tokens = marked.lexer(markdown);
+	const model = React.useMemo<MarkdownRenderModel>(() => {
+		if (isPlainMarkdownFastPath(markdown)) {
+			return { kind: "plain", text: normalizeRenderedLineBreaks(markdown) };
+		}
+		return { kind: "tokens", nodes: renderTokenNodes(marked.lexer(markdown)) };
+	}, [markdown]);
+
 	return (
 		<Box flexDirection="column">
-			{tokens.map((token, index) => (
-				<TokenRenderer key={index} token={token} />
-			))}
+			{model.kind === "plain" ? <Text>{model.text}</Text> : model.nodes}
 		</Box>
 	);
 }
 
+export function isPlainMarkdownFastPath(markdown: string): boolean {
+	const state = {
+		lineStart: true,
+		leadingSpaces: 0,
+		hasContent: false,
+		skipNextLf: false,
+	};
+	for (let index = 0; index < markdown.length; index += 1) {
+		if (state.skipNextLf) {
+			state.skipNextLf = false;
+			continue;
+		}
+		if (!scanPlainMarkdownCharacter(markdown, index, state)) return false;
+	}
+	return state.hasContent || markdown.length === 0;
+}
+
+type PlainMarkdownScanState = {
+	lineStart: boolean;
+	leadingSpaces: number;
+	hasContent: boolean;
+	skipNextLf: boolean;
+};
+
+function scanPlainMarkdownCharacter(
+	markdown: string,
+	index: number,
+	state: PlainMarkdownScanState,
+): boolean {
+	const code = markdown.charCodeAt(index);
+	if (isRenderedLineBreak(code)) {
+		state.lineStart = true;
+		state.leadingSpaces = 0;
+		state.skipNextLf = code === 13 && markdown.charCodeAt(index + 1) === 10;
+		return true;
+	}
+	if (state.lineStart && isIndentedCodeStart(code, state)) return false;
+	if (state.lineStart && code === 32) return true;
+	if (state.lineStart && isMarkdownLineStart(markdown, index)) return false;
+	state.lineStart = false;
+	state.hasContent = true;
+	return !isMarkdownInlineSyntax(code);
+}
+
+function isRenderedLineBreak(code: number): boolean {
+	return code === 10 || code === 13;
+}
+
+function isIndentedCodeStart(
+	code: number,
+	state: PlainMarkdownScanState,
+): boolean {
+	if (code === 9) return true;
+	if (code !== 32) return false;
+	state.leadingSpaces += 1;
+	return state.leadingSpaces >= 4;
+}
+
+function isMarkdownLineStart(markdown: string, index: number): boolean {
+	const code = markdown.charCodeAt(index);
+	if (code === 35 || code === 62 || code === 43 || code === 45) return true;
+	if (code < 48 || code > 57) return false;
+	let cursor = index + 1;
+	while (cursor < markdown.length) {
+		const nextCode = markdown.charCodeAt(cursor);
+		if (nextCode < 48 || nextCode > 57) break;
+		cursor += 1;
+	}
+	return markdown.charCodeAt(cursor) === 46;
+}
+
+function isMarkdownInlineSyntax(code: number): boolean {
+	return (
+		code === 33 ||
+		code === 42 ||
+		code === 60 ||
+		code === 91 ||
+		code === 92 ||
+		code === 95 ||
+		code === 96 ||
+		code === 124 ||
+		code === 126
+	);
+}
+
 function renderChildren(tokens: Token[]): React.ReactNode {
-	return tokens.map((token, index) => (
-		<TokenRenderer key={index} token={token} />
-	));
+	return renderTokenNodes(tokens);
+}
+
+function renderTokenNodes(tokens: readonly Token[]): React.ReactNode[] {
+	const nodes: React.ReactNode[] = [];
+	let writeIndex = 0;
+	for (let index = 0; index < tokens.length; index += 1) {
+		const token = tokens[index];
+		if (token === undefined) continue;
+		nodes[writeIndex] = <TokenRenderer key={index} token={token} />;
+		writeIndex += 1;
+	}
+	return nodes;
 }
 
 function TokenRenderer({ token }: { token: Token }): React.ReactNode {
 	if (!isMarkedToken(token)) {
-		return <Text>{renderTokensAsPlaintext([token])}</Text>;
+		return <Text>{renderTokenAsPlaintext(token)}</Text>;
 	}
-
-	switch (token.type) {
-		case "blockquote":
-			return <BlockquoteRenderer token={token} />;
-		case "br":
-			return <BrRenderer />;
-		case "code":
-			return <CodeRenderer token={token} />;
-		case "codespan":
-			return <CodespanRenderer token={token} />;
-		case "def":
-			return <DefRenderer />;
-		case "del":
-			return <DelRenderer token={token} />;
-		case "em":
-			return <EmRenderer token={token} />;
-		case "escape":
-			return <EscapeRenderer token={token} />;
-		case "heading":
-			return <HeadingRenderer token={token} />;
-		case "hr":
-			return <HrRenderer />;
-		case "html":
-			return <HtmlRenderer token={token} />;
-		case "image":
-			return <ImageRenderer token={token} />;
-		case "link":
-			return <LinkRenderer token={token} />;
-		case "list":
-			return <ListRenderer token={token} />;
-		case "list_item":
-			return <ListItemRenderer token={token} />;
-		case "paragraph":
-			return <ParagraphRenderer token={token} />;
-		case "strong":
-			return <StrongRenderer token={token} />;
-		case "table":
-			return <TableRenderer token={token} />;
-		case "text":
-			return <TextRenderer token={token} />;
-		case "space":
-			return <SpaceRenderer />;
-		default:
-			return <Text>{renderTokensAsPlaintext([token])}</Text>;
-	}
+	const Renderer = MARKDOWN_TOKEN_RENDERERS[token.type];
+	return Renderer === undefined ? (
+		<Text>{renderTokenAsPlaintext(token)}</Text>
+	) : (
+		Renderer(token as never)
+	);
 }
 
 function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
@@ -162,7 +224,8 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
 }
 
 function HrRenderer() {
-	const width = Math.min(process.stdout.columns || 80, 80);
+	const terminalSize = useTerminalSize();
+	const width = Math.min(terminalSize.width, 80);
 	return (
 		<Box marginTop={1} marginBottom={1}>
 			<Text color="gray">{"─".repeat(width)}</Text>
@@ -179,11 +242,9 @@ function ImageRenderer({ token }: { token: Tokens.Image }) {
 }
 
 function LinkRenderer({ token }: { token: Tokens.Link }) {
-	// For now, combine link text and URL in a single text element
-	const linkText = renderTokensAsPlaintext(token.tokens);
 	return (
 		<Text color="blue">
-			{linkText} ({token.href}){renderChildren(token.tokens)} ({token.href})
+			{renderChildren(token.tokens)} ({token.href})
 		</Text>
 	);
 }
@@ -191,18 +252,27 @@ function LinkRenderer({ token }: { token: Tokens.Link }) {
 function ListRenderer({ token }: { token: Tokens.List }) {
 	return (
 		<Box flexDirection="column" paddingLeft={0} marginBottom={1}>
-			{token.items.map((item, index) => (
-				<Box key={index} flexDirection="row">
-					<Text color="cyan">
-						{token.ordered
-							? `${(typeof token.start === "number" ? token.start : 1) + index}. `
-							: "• "}
-					</Text>
-					<ListItemRenderer token={item} />
-				</Box>
-			))}
+			{renderListItems(token)}
 		</Box>
 	);
+}
+
+function renderListItems(token: Tokens.List): React.ReactNode[] {
+	const items: React.ReactNode[] = [];
+	const start = typeof token.start === "number" ? token.start : 1;
+	let writeIndex = 0;
+	for (let index = 0; index < token.items.length; index += 1) {
+		const item = token.items[index];
+		if (item === undefined) continue;
+		items[writeIndex] = (
+			<Box key={index} flexDirection="row">
+				<Text color="cyan">{token.ordered ? `${start + index}. ` : "• "}</Text>
+				<ListItemRenderer token={item} />
+			</Box>
+		);
+		writeIndex += 1;
+	}
+	return items;
 }
 
 function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
@@ -215,22 +285,7 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
 						{token.checked ? "[✓]" : "[ ]"}{" "}
 					</Text>
 					<Box flexDirection="column" flexGrow={1}>
-						{token.tokens
-							.filter((childToken) => childToken.type !== "checkbox")
-							.map((childToken, index) => (
-								<Box
-									key={index}
-									paddingLeft={
-										childToken.type === "list" ||
-										childToken.type === "code" ||
-										childToken.type === "blockquote"
-											? 1
-											: 0
-									}
-								>
-									<TokenRenderer token={childToken} />
-								</Box>
-							))}
+						{renderListItemChildren(token.tokens, true)}
 					</Box>
 				</Box>
 			</Box>
@@ -241,23 +296,37 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
 	return (
 		<Box flexDirection="column" flexGrow={1}>
 			<Box flexDirection="column">
-				{token.tokens.map((childToken, index) => (
-					<Box
-						key={index}
-						paddingLeft={
-							childToken.type === "list" ||
-							childToken.type === "code" ||
-							childToken.type === "blockquote"
-								? 1
-								: 0
-						}
-					>
-						<TokenRenderer token={childToken} />
-					</Box>
-				))}
+				{renderListItemChildren(token.tokens, false)}
 			</Box>
 		</Box>
 	);
+}
+
+function renderListItemChildren(
+	tokens: Token[],
+	skipCheckbox: boolean,
+): React.ReactNode[] {
+	const children: React.ReactNode[] = [];
+	let writeIndex = 0;
+	for (let index = 0; index < tokens.length; index += 1) {
+		const childToken = tokens[index];
+		if (skipCheckbox && childToken.type === "checkbox") continue;
+		children[writeIndex] = (
+			<Box key={index} paddingLeft={listChildPaddingLeft(childToken)}>
+				<TokenRenderer token={childToken} />
+			</Box>
+		);
+		writeIndex += 1;
+	}
+	return children;
+}
+
+function listChildPaddingLeft(token: Token): number {
+	return token.type === "list" ||
+		token.type === "code" ||
+		token.type === "blockquote"
+		? 1
+		: 0;
 }
 
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
@@ -272,73 +341,6 @@ function StrongRenderer({ token }: { token: Tokens.Strong }) {
 	return <Text bold={true}>{renderChildren(token.tokens)}</Text>;
 }
 
-function TableRenderer({ token }: { token: Tokens.Table }) {
-	// Calculate column widths by measuring display width of all content
-	const allRows = [token.header, ...token.rows];
-	const columnWidths = token.header.map((_, colIndex) => {
-		const maxWidth = Math.max(
-			...allRows.map((row) => {
-				const cell = row[colIndex];
-				if (cell) {
-					const cellText = renderTokensAsPlaintext(cell.tokens);
-					return stringWidth(cellText);
-				}
-				return 0;
-			}),
-		);
-		return Math.max(maxWidth, 3); // Minimum width of 3
-	});
-
-	const separator = `├${columnWidths.map((w) => "─".repeat(w + 2)).join("┼")}┤`;
-
-	return (
-		<Box flexDirection="column" marginTop={1} marginBottom={1}>
-			<TableRowRenderer
-				cells={token.header}
-				columnWidths={columnWidths}
-				isHeader={true}
-			/>
-			<Text color="gray">{separator}</Text>
-			{token.rows.map((row, index) => (
-				<TableRowRenderer
-					key={index}
-					cells={row}
-					columnWidths={columnWidths}
-					isHeader={false}
-				/>
-			))}
-		</Box>
-	);
-}
-
-function TableRowRenderer({
-	cells,
-	columnWidths,
-	isHeader,
-}: {
-	cells: Tokens.TableCell[];
-	columnWidths: number[];
-	isHeader: boolean;
-}) {
-	return (
-		<Box flexDirection="row">
-			<Text color="gray">│ </Text>
-			{cells.map((cell, index) => {
-				const cellText = renderTokensAsPlaintext(cell.tokens);
-				const paddedText = cellText.padEnd(columnWidths[index]);
-				return (
-					<React.Fragment key={index}>
-						<Text color={isHeader ? "cyan" : "white"} bold={isHeader}>
-							{paddedText}
-						</Text>
-						<Text color="gray"> │ </Text>
-					</React.Fragment>
-				);
-			})}
-		</Box>
-	);
-}
-
 function TextRenderer({ token }: { token: Tokens.Text }) {
 	if (token.tokens) {
 		return <Text>{renderChildren(token.tokens)}</Text>;
@@ -350,55 +352,28 @@ function SpaceRenderer() {
 	return null;
 }
 
-function renderTokensAsPlaintext(tokens: Token[]): string {
-	return tokens.map(renderTokenAsPlaintext).join("");
-}
+type MarkdownTokenRenderer = (token: never) => React.ReactNode;
 
-function renderTokenAsPlaintext(token: Token): string {
-	if (isTextToken(token)) return token.text;
-	if (isLinkToken(token))
-		return `${renderTokensAsPlaintext(token.tokens)} (${token.href})`;
-	if (isImageToken(token)) return `[Image: ${token.text}]`;
-	if (isStrongToken(token) || isEmToken(token) || isDelToken(token)) {
-		return renderTokensAsPlaintext(token.tokens);
-	}
-	if (isCodespanToken(token)) return ` ${token.text} `;
-	if ("tokens" in token && Array.isArray(token.tokens)) {
-		return renderTokensAsPlaintext(token.tokens);
-	}
-	if ("text" in token) return token.text;
-	return "";
-}
-
-const MARKED_TOKEN_TYPES = [
-	"blockquote",
-	"br",
-	"code",
-	"codespan",
-	"def",
-	"del",
-	"em",
-	"escape",
-	"heading",
-	"hr",
-	"html",
-	"image",
-	"link",
-	"list",
-	"list_item",
-	"paragraph",
-	"space",
-	"strong",
-	"table",
-	"text",
-];
-
-/**
- * Marked provides a `Tokens.Generic` interface that accepts any string for `type`, which breaks
- * type narrowing for `Token`. We check that the token is not generic (ie. a `MarkedToken`) before
- * filtering for token types to preserve type narrowing.
- * https://github.com/markedjs/marked/issues/2938
- */
-function isMarkedToken(token: Token): token is MarkedToken {
-	return MARKED_TOKEN_TYPES.includes(token.type);
-}
+const MARKDOWN_TOKEN_RENDERERS: Partial<Record<string, MarkdownTokenRenderer>> =
+	{
+		blockquote: (token) => <BlockquoteRenderer token={token} />,
+		br: () => <BrRenderer />,
+		code: (token) => <CodeRenderer token={token} />,
+		codespan: (token) => <CodespanRenderer token={token} />,
+		def: () => <DefRenderer />,
+		del: (token) => <DelRenderer token={token} />,
+		em: (token) => <EmRenderer token={token} />,
+		escape: (token) => <EscapeRenderer token={token} />,
+		heading: (token) => <HeadingRenderer token={token} />,
+		hr: () => <HrRenderer />,
+		html: (token) => <HtmlRenderer token={token} />,
+		image: (token) => <ImageRenderer token={token} />,
+		link: (token) => <LinkRenderer token={token} />,
+		list: (token) => <ListRenderer token={token} />,
+		list_item: (token) => <ListItemRenderer token={token} />,
+		paragraph: (token) => <ParagraphRenderer token={token} />,
+		strong: (token) => <StrongRenderer token={token} />,
+		table: (token) => <TableRenderer token={token} />,
+		text: (token) => <TextRenderer token={token} />,
+		space: () => <SpaceRenderer />,
+	};

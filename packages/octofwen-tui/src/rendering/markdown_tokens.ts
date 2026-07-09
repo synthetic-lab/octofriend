@@ -27,3 +27,7 @@ export function isDelToken(token: Token): token is Tokens.Del {
 export function isCodespanToken(token: Token): token is Tokens.Codespan {
 	return token.type === "codespan";
 }
+
+export function isBrToken(token: Token): token is Tokens.Br {
+	return token.type === "br";
+}

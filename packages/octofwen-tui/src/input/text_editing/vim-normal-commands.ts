@@ -1,3 +1,4 @@
+import { nextTextBoundary, previousTextBoundary } from "./text-boundaries.ts";
 import type {
 	VimHandlerActions,
 	VimHandlerState,
@@ -13,8 +14,7 @@ import {
 	getLineStart,
 	getLineText,
 	getTargetPosition,
-	isWhitespace,
-	isWordChar,
+	hasLineAfter,
 	vimCommandResult,
 	vimEarlyExit,
 } from "./vim-text-navigation.ts";
@@ -28,265 +28,252 @@ export type VimNormalCommandContext = {
 	actions: VimHandlerActions;
 };
 
-export function createNormalCommands({
-	currentValue,
-	cursorPosition,
-	valueLength,
-	state,
-	actions,
-}: VimNormalCommandContext): Record<string, () => VimKeyHandlerResult> {
-	return {
-		u: () => {
-			if (state.undoStack.length === 0) return { consumed: true };
-			const previousState = state.undoStack.pop();
-			if (previousState === undefined) return { consumed: true };
-			state.redoStack.push({ text: currentValue, cursorPosition });
-			return {
-				consumed: true,
-				newValue: previousState.text,
-				newCursorPosition: previousState.cursorPosition,
-			};
-		},
-		i: () => {
+type NormalCommandRunner = (
+	context: VimNormalCommandContext,
+) => VimKeyHandlerResult;
+
+function backMotionResult(
+	currentValue: string,
+	cursorPosition: number,
+	valueLength: number,
+	motion: "b" | "B",
+): VimKeyHandlerResult {
+	const earlyExit = vimEarlyExit(cursorPosition === 0);
+	if (earlyExit) return earlyExit;
+	return vimCommandResult(
+		motions[motion](currentValue, cursorPosition).start,
+		valueLength,
+	);
+}
+
+const NORMAL_COMMANDS: Record<string, NormalCommandRunner> = {
+	u: ({ currentValue, cursorPosition, state }) => {
+		if (state.undoStack.length === 0) return { consumed: true };
+		const previousState = state.undoStack.pop();
+		if (previousState === undefined) return { consumed: true };
+		state.redoStack.push({ text: currentValue, cursorPosition });
+		return {
+			consumed: true,
+			newValue: previousState.text,
+			newCursorPosition: previousState.cursorPosition,
+		};
+	},
+	i: ({ currentValue, cursorPosition, actions }) => {
+		actions.enterInsertMode(currentValue, cursorPosition);
+		return { consumed: true };
+	},
+	a: ({ currentValue, cursorPosition, actions }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+
+		if (currentLine.length === 0) {
 			actions.enterInsertMode(currentValue, cursorPosition);
 			return { consumed: true };
-		},
-		a: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
+		}
 
-			if (currentLine.length === 0) {
-				actions.enterInsertMode(currentValue, cursorPosition);
-				return { consumed: true };
-			}
-
-			const newCursorPosition = Math.min(valueLength, cursorPosition + 1);
-			actions.enterInsertMode(currentValue, cursorPosition);
-			return { consumed: true, newCursorPosition };
-		},
-		h: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-			if (cursorPosition > lineStart) {
-				return vimCommandResult(cursorPosition - 1, valueLength);
-			}
-			return vimCommandResult(cursorPosition, valueLength);
-		},
-		l: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
-
-			if (cursorPosition < lineEnd) {
-				return vimCommandResult(cursorPosition + 1, valueLength);
-			}
-			return vimCommandResult(cursorPosition, valueLength);
-		},
-		k: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-
-			if (currentLineInfo.lineIndex > 0) {
-				const targetLineIndex = currentLineInfo.lineIndex - 1;
-				const newCursorPosition = getTargetPosition(
-					currentValue,
-					targetLineIndex,
-					currentLineInfo.columnIndex,
-				);
-				return vimCommandResult(newCursorPosition, valueLength);
-			}
-
-			return vimCommandResult(cursorPosition, valueLength);
-		},
-		j: () => {
-			const lines = currentValue.split("\n");
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-
-			if (currentLineInfo.lineIndex < lines.length - 1) {
-				const targetLineIndex = currentLineInfo.lineIndex + 1;
-				const newCursorPosition = getTargetPosition(
-					currentValue,
-					targetLineIndex,
-					currentLineInfo.columnIndex,
-				);
-				return vimCommandResult(newCursorPosition, valueLength);
-			}
-
-			return vimCommandResult(cursorPosition, valueLength);
-		},
-		o: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const insertPosition = getLineStart(
-				currentValue,
-				currentLineInfo.lineIndex + 1,
-			);
-			actions.saveState(currentValue, cursorPosition);
-
-			const newValue = [
-				currentValue.slice(0, insertPosition),
-				currentValue.slice(insertPosition),
-			].join("\n");
-			actions.enterInsertMode(currentValue, cursorPosition);
-
-			return {
-				consumed: true,
-				newCursorPosition: insertPosition,
-				newValue,
-			};
-		},
-		O: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const insertPosition = getLineStart(
-				currentValue,
-				currentLineInfo.lineIndex,
-			);
-			actions.saveState(currentValue, cursorPosition);
-
-			const newValue = [
-				currentValue.slice(0, insertPosition),
-				currentValue.slice(insertPosition),
-			].join("\n");
-			actions.enterInsertMode(currentValue, cursorPosition);
-
-			return {
-				consumed: true,
-				newCursorPosition: insertPosition,
-				newValue,
-			};
-		},
-		x: () => {
-			if (valueLength > 0) {
-				actions.saveState(currentValue, cursorPosition);
-				const beforeCursor = currentValue.slice(0, cursorPosition);
-				const afterCursor = currentValue.slice(cursorPosition + 1);
-				const newValue = beforeCursor + afterCursor;
-
-				let newCursorPosition = cursorPosition;
-				if (newValue.length === 0) {
-					newCursorPosition = 0;
-				} else if (cursorPosition >= newValue.length) {
-					newCursorPosition = newValue.length - 1;
-				}
-
-				return { consumed: true, newValue, newCursorPosition };
-			}
-			return { consumed: true };
-		},
-		w: () => {
-			const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
-			if (earlyExit) return earlyExit;
+		const newCursorPosition = nextTextBoundary(currentValue, cursorPosition);
+		actions.enterInsertMode(currentValue, cursorPosition);
+		return { consumed: true, newCursorPosition };
+	},
+	h: ({ currentValue, cursorPosition, valueLength }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+		if (cursorPosition > lineStart) {
 			return vimCommandResult(
-				motions.w(currentValue, cursorPosition).end,
+				previousTextBoundary(currentValue, cursorPosition),
 				valueLength,
 			);
-		},
-		W: () => {
-			const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
-			if (earlyExit) return earlyExit;
+		}
+		return vimCommandResult(cursorPosition, valueLength);
+	},
+	l: ({ currentValue, cursorPosition, valueLength }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
+
+		if (cursorPosition < lineEnd) {
 			return vimCommandResult(
-				motions.W(currentValue, cursorPosition).end,
+				nextTextBoundary(currentValue, cursorPosition),
 				valueLength,
 			);
-		},
-		b: () => {
-			const earlyExit = vimEarlyExit(cursorPosition === 0);
-			if (earlyExit) return earlyExit;
+		}
+		return vimCommandResult(cursorPosition, valueLength);
+	},
+	k: ({ currentValue, cursorPosition, valueLength }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
 
-			let wordStart = cursorPosition;
-
-			while (wordStart > 0 && isWhitespace(currentValue[wordStart - 1])) {
-				wordStart--;
-			}
-
-			if (wordStart === 0) {
-				return vimCommandResult(0, valueLength);
-			}
-
-			const firstNonWsChar = currentValue[wordStart - 1];
-			const firstCharIsWord = isWordChar(firstNonWsChar);
-
-			while (wordStart > 0 && !isWhitespace(currentValue[wordStart - 1])) {
-				const currentChar = currentValue[wordStart - 1];
-				const currentCharIsWord = isWordChar(currentChar);
-				if (currentCharIsWord !== firstCharIsWord) {
-					break;
-				}
-				wordStart--;
-			}
-
-			return vimCommandResult(wordStart, valueLength);
-		},
-		B: () => {
-			const earlyExit = vimEarlyExit(cursorPosition === 0);
-			if (earlyExit) return earlyExit;
-
-			let wordStart = cursorPosition;
-
-			while (wordStart > 0 && isWhitespace(currentValue[wordStart - 1])) {
-				wordStart--;
-			}
-
-			while (wordStart > 0 && !isWhitespace(currentValue[wordStart - 1])) {
-				wordStart--;
-			}
-
-			return vimCommandResult(wordStart, valueLength);
-		},
-		e: () => {
-			const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
-			if (earlyExit) return earlyExit;
-			const motion = motions.e(currentValue, cursorPosition);
-			return vimCommandResult(motion.end - 1, valueLength);
-		},
-		"0": () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
-			return { consumed: true, newCursorPosition: lineStart };
-		},
-		$: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
-			return { consumed: true, newCursorPosition: lineEnd };
-		},
-		"^": () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const position = getFirstNonWhitespacePosition(
+		if (currentLineInfo.lineIndex > 0) {
+			const targetLineIndex = currentLineInfo.lineIndex - 1;
+			const newCursorPosition = getTargetPosition(
 				currentValue,
-				currentLineInfo.lineIndex,
+				targetLineIndex,
+				currentLineInfo.columnIndex,
 			);
-			return { consumed: true, newCursorPosition: position };
-		},
-		I: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			const position = getFirstNonWhitespacePosition(
+			return vimCommandResult(newCursorPosition, valueLength);
+		}
+
+		return vimCommandResult(cursorPosition, valueLength);
+	},
+	j: ({ currentValue, cursorPosition, valueLength }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+
+		if (hasLineAfter(currentValue, currentLineInfo.lineIndex)) {
+			const targetLineIndex = currentLineInfo.lineIndex + 1;
+			const newCursorPosition = getTargetPosition(
 				currentValue,
-				currentLineInfo.lineIndex,
+				targetLineIndex,
+				currentLineInfo.columnIndex,
 			);
-			actions.enterInsertMode(currentValue, cursorPosition);
-			return { consumed: true, newCursorPosition: position };
-		},
-		A: () => {
-			const currentLineInfo = getLineInfo(currentValue, cursorPosition);
-			actions.enterInsertMode(currentValue, cursorPosition);
-			return {
-				consumed: true,
-				newCursorPosition: getLineInsertEnd(
-					currentValue,
-					currentLineInfo.lineIndex,
-				),
-			};
-		},
-		D: () => {
+			return vimCommandResult(newCursorPosition, valueLength);
+		}
+
+		return vimCommandResult(cursorPosition, valueLength);
+	},
+	o: ({ currentValue, cursorPosition, actions }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const insertPosition = getLineStart(
+			currentValue,
+			currentLineInfo.lineIndex + 1,
+		);
+		actions.saveState(currentValue, cursorPosition);
+
+		const newValue =
+			currentValue.slice(0, insertPosition) +
+			"\n" +
+			currentValue.slice(insertPosition);
+		actions.enterInsertMode(currentValue, cursorPosition);
+
+		return {
+			consumed: true,
+			newCursorPosition: insertPosition,
+			newValue,
+		};
+	},
+	O: ({ currentValue, cursorPosition, actions }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const insertPosition = getLineStart(
+			currentValue,
+			currentLineInfo.lineIndex,
+		);
+		actions.saveState(currentValue, cursorPosition);
+
+		const newValue =
+			currentValue.slice(0, insertPosition) +
+			"\n" +
+			currentValue.slice(insertPosition);
+		actions.enterInsertMode(currentValue, cursorPosition);
+
+		return {
+			consumed: true,
+			newCursorPosition: insertPosition,
+			newValue,
+		};
+	},
+	x: ({ currentValue, cursorPosition, valueLength, actions }) => {
+		if (valueLength > 0) {
 			actions.saveState(currentValue, cursorPosition);
-			const range = motions["$"](currentValue, cursorPosition);
-			const result = operators["d"](currentValue, range, "$");
+			const deleteEnd = nextTextBoundary(currentValue, cursorPosition);
+			const beforeCursor = currentValue.slice(0, cursorPosition);
+			const afterCursor = currentValue.slice(deleteEnd);
+			const newValue = beforeCursor + afterCursor;
 
-			return {
-				consumed: true,
-				newValue: result.newText,
-				newCursorPosition: clampToVimBounds(
-					result.newCursorPosition ?? cursorPosition,
-					result.newText.length,
-				),
-			};
-		},
-	};
+			let newCursorPosition = cursorPosition;
+			if (newValue.length === 0) {
+				newCursorPosition = 0;
+			} else if (cursorPosition >= newValue.length) {
+				newCursorPosition = previousTextBoundary(newValue, newValue.length);
+			}
+
+			return { consumed: true, newValue, newCursorPosition };
+		}
+		return { consumed: true };
+	},
+	w: ({ currentValue, cursorPosition, valueLength }) => {
+		const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
+		if (earlyExit) return earlyExit;
+		return vimCommandResult(
+			motions.w(currentValue, cursorPosition).end,
+			valueLength,
+		);
+	},
+	W: ({ currentValue, cursorPosition, valueLength }) => {
+		const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
+		if (earlyExit) return earlyExit;
+		return vimCommandResult(
+			motions.W(currentValue, cursorPosition).end,
+			valueLength,
+		);
+	},
+	b: ({ currentValue, cursorPosition, valueLength }) =>
+		backMotionResult(currentValue, cursorPosition, valueLength, "b"),
+	B: ({ currentValue, cursorPosition, valueLength }) =>
+		backMotionResult(currentValue, cursorPosition, valueLength, "B"),
+	e: ({ currentValue, cursorPosition, valueLength }) => {
+		const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
+		if (earlyExit) return earlyExit;
+		const motion = motions.e(currentValue, cursorPosition);
+		return vimCommandResult(
+			previousTextBoundary(currentValue, motion.end),
+			valueLength,
+		);
+	},
+	"0": ({ currentValue, cursorPosition }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
+		return { consumed: true, newCursorPosition: lineStart };
+	},
+	$: ({ currentValue, cursorPosition }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const lineEnd = getLineEnd(currentValue, currentLineInfo.lineIndex);
+		return { consumed: true, newCursorPosition: lineEnd };
+	},
+	"^": ({ currentValue, cursorPosition }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const position = getFirstNonWhitespacePosition(
+			currentValue,
+			currentLineInfo.lineIndex,
+		);
+		return { consumed: true, newCursorPosition: position };
+	},
+	I: ({ currentValue, cursorPosition, actions }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		const position = getFirstNonWhitespacePosition(
+			currentValue,
+			currentLineInfo.lineIndex,
+		);
+		actions.enterInsertMode(currentValue, cursorPosition);
+		return { consumed: true, newCursorPosition: position };
+	},
+	A: ({ currentValue, cursorPosition, actions }) => {
+		const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+		actions.enterInsertMode(currentValue, cursorPosition);
+		return {
+			consumed: true,
+			newCursorPosition: getLineInsertEnd(
+				currentValue,
+				currentLineInfo.lineIndex,
+			),
+		};
+	},
+	D: ({ currentValue, cursorPosition, actions }) => {
+		actions.saveState(currentValue, cursorPosition);
+		const range = motions["$"](currentValue, cursorPosition);
+		const result = operators["d"](currentValue, range, "$");
+
+		return {
+			consumed: true,
+			newValue: result.newText,
+			newCursorPosition: clampToVimBounds(
+				result.newCursorPosition ?? cursorPosition,
+				result.newText.length,
+			),
+		};
+	},
+};
+
+export function runNormalCommand(
+	input: string,
+	context: VimNormalCommandContext,
+): VimKeyHandlerResult | null {
+	const command = NORMAL_COMMANDS[input];
+	return command === undefined ? null : command(context);
 }

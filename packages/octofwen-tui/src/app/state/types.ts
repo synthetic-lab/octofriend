@@ -95,38 +95,65 @@ export type AppModeData =
 			mode: "menu";
 	  };
 
-export type UiState = {
+type UiModeState = {
 	preMenuModeData: AppModeData | null;
+	modeData: AppModeData;
+	setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
+	resetPreMenuVimMode: () => void;
+};
+
+type UiNotificationState = {
 	_notifyTimer: NodeJS.Timeout | null;
 	sessionAutoNotify: boolean;
 	notifyOnce: boolean;
-	modeData: AppModeData;
-	modelOverride: string | null;
-	quotaData: QuotaData | null;
-	byteCount: number;
+	notifyReadyForInput: (config: Config) => void;
+	cancelNotifyReadyForInput: () => void;
+	setNotifyOnce: (notifyOnce: boolean) => void;
+	setNotifySession: (notifySession: boolean) => void;
+	notify: (notif: string) => void;
+};
+
+type UiConversationState = {
 	query: string;
 	history: HistoryItem<OctoIR>[];
 	clearNonce: number;
 	lastUserPromptIndex: number | null;
 	pendingRejectedToolCall: ToolCallRequest | null;
+	setQuery: (query: string) => void;
+	clearHistory: () => void;
+};
+
+type UiToolState = {
 	whitelist: Set<string>;
-	notifyReadyForInput: (config: Config) => void;
-	cancelNotifyReadyForInput: () => void;
-	setNotifyOnce: (notifyOnce: boolean) => void;
-	setNotifySession: (notifySession: boolean) => void;
-	input: (
-		args: RunArgs & { query: string; images?: ImageInfo[] },
-	) => Promise<void>;
 	runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
 	rejectTool: (toolCall: ToolCallRequest) => void;
-	abortResponse: () => void;
+	addToWhitelist: (whitelistKey: string) => Promise<void>;
+	isWhitelisted: (whitelistKey: string) => Promise<boolean>;
+};
+
+type UiModelState = {
+	modelOverride: string | null;
+	quotaData: QuotaData | null;
+	byteCount: number;
+	setModelOverride: (m: string) => void;
+};
+
+type UiMenuActions = {
 	toggleMenu: () => void;
 	openMenu: () => void;
 	closeMenu: () => void;
-	setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
-	resetPreMenuVimMode: () => void;
-	setModelOverride: (m: string) => void;
-	setQuery: (query: string) => void;
+};
+
+type UiRunActions = {
+	input: (
+		args: RunArgs & { query: string; images?: ImageInfo[] },
+	) => Promise<void>;
+	abortResponse: () => void;
+	_maybeHandleAbort: (signal: AbortSignal) => boolean;
+	runAgent: (args: RunArgs) => Promise<void>;
+};
+
+type UiRetryActions = {
 	retryFrom: (
 		mode:
 			| "auth-error"
@@ -140,13 +167,16 @@ export type UiState = {
 		mode: "request-error" | "compaction-error",
 		args: RunArgs,
 	) => void;
-	notify: (notif: string) => void;
-	addToWhitelist: (whitelistKey: string) => Promise<void>;
-	isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-	clearHistory: () => void;
-	_maybeHandleAbort: (signal: AbortSignal) => boolean;
-	runAgent: (args: RunArgs) => Promise<void>;
 };
+
+export type UiState = UiModeState &
+	UiNotificationState &
+	UiConversationState &
+	UiToolState &
+	UiModelState &
+	UiMenuActions &
+	UiRunActions &
+	UiRetryActions;
 
 export type AppStateSet = (
 	partial: Partial<UiState> | ((state: UiState) => Partial<UiState>),

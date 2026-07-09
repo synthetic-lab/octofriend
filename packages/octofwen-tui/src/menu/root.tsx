@@ -1,5 +1,7 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
+import { useTerminalContentWidth } from "../layout/viewport.tsx";
+import { normalizeRenderedLineBreaks } from "../rendering/line_splitting.ts";
 import { Octo } from "../theme/branding.tsx";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
@@ -24,12 +26,14 @@ export type MenuPanelProps<V> = {
 };
 
 export function MenuHeader({ title }: MenuHeaderProps) {
+	const width = useTerminalContentWidth();
+
 	return (
 		<Box justifyContent="center" marginBottom={1}>
-			<Box justifyContent="center" width={80}>
+			<Box justifyContent="center" width={width}>
 				<Octo />
 				<Box marginLeft={1}>
-					<Text>{title}</Text>
+					<Text>{normalizeRenderedLineBreaks(title)}</Text>
 				</Box>
 			</Box>
 		</Box>
@@ -42,12 +46,14 @@ export function MenuPanel<V>({
 	title,
 	children,
 }: MenuPanelProps<V>) {
+	const width = useTerminalContentWidth();
+
 	return (
 		<Box flexDirection="column">
 			<MenuHeader title={title} />
 			{children && (
 				<Box justifyContent="center" alignItems="center" marginBottom={1}>
-					<Box flexDirection="column" width={80}>
+					<Box flexDirection="column" width={width}>
 						{children}
 					</Box>
 				</Box>

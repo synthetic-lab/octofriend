@@ -58,11 +58,11 @@ describe("MCP tool orchestration", () => {
 			};
 		};
 
-		const result = await runTool(
-			new AbortController().signal,
-			fakeTransport,
-			tools,
-			{
+		const result = await runTool({
+			abortSignal: new AbortController().signal,
+			transport: fakeTransport,
+			loaded: tools,
+			call: {
 				type: "tool-call",
 				toolCallId: "mcp-1",
 				name: "mcp",
@@ -77,7 +77,7 @@ describe("MCP tool orchestration", () => {
 					arguments: { path: "README.md" },
 				},
 			},
-			{
+			config: {
 				...baseConfig,
 				mcpServers: {
 					filesystem: {
@@ -87,8 +87,8 @@ describe("MCP tool orchestration", () => {
 					},
 				},
 			},
-			toolRun,
-		);
+			toolRun: toolRun,
+		});
 
 		expect(result.success).toBe(true);
 		expect(runnerCalls).toEqual([

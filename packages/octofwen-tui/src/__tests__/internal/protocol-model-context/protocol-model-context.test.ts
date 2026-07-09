@@ -25,6 +25,7 @@ function expectOk<T, E>(result: Result<T, E>): T {
 
 const baseConfig: Config = {
 	yourName: "Octo",
+	defaultApiKeyOverrides: { synthetic: "MISSING_SYNTHETIC_TEST_KEY" },
 	models: [
 		{
 			nickname: "main",

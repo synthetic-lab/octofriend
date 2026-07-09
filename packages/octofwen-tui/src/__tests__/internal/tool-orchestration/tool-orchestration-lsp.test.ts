@@ -62,18 +62,18 @@ describe("tool orchestration LSP delegation", () => {
 			};
 		};
 
-		const result = await runTool(
-			new AbortController().signal,
-			fakeTransport,
-			tools,
-			{
+		const result = await runTool({
+			abortSignal: new AbortController().signal,
+			transport: fakeTransport,
+			loaded: tools,
+			call: {
 				type: "tool-call",
 				toolCallId: "lsp-1",
 				name: "lsp-definition",
 				original: { filePath: "src/main.ts", line: 7, character: 3 },
 				parsed: { filePath: "src/main.ts", line: 7, character: 3 },
 			},
-			{
+			config: {
 				...baseConfig,
 				lsp: {
 					testserver: {
@@ -83,8 +83,8 @@ describe("tool orchestration LSP delegation", () => {
 					},
 				},
 			},
-			toolRun,
-		);
+			toolRun: toolRun,
+		});
 
 		expect(result.success).toBe(true);
 		expect(runnerCalls).toEqual([

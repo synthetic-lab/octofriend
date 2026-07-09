@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test";
 import {
 	sleep,
 	ThrottledBuffer,
+	ThrottledMergeBuffer,
 	throttledBuffer,
+	throttledMergeBuffer,
 	timeout,
 } from "../../../app/state/scheduling.ts";
 
@@ -51,5 +53,38 @@ describe("throttled buffer", () => {
 		expect(values).toEqual([1]);
 		await sleep(30);
 		expect(values).toEqual([1]);
+	});
+});
+
+describe("throttled merge buffer", () => {
+	it("coalesces emitted partials into one callback", async () => {
+		const values: Array<{ count?: number; label?: string }> = [];
+		const buffer = throttledMergeBuffer<{ count?: number; label?: string }>(
+			10,
+			(value) => values.push(value),
+		);
+
+		buffer.emit({ count: 1 });
+		buffer.emit({ label: "ready" });
+		buffer.emit({ count: 2 });
+
+		expect(values).toEqual([]);
+		await sleep(20);
+		expect(values).toEqual([{ count: 2, label: "ready" }]);
+	});
+
+	it("flushes immediately and cancels the scheduled merge", async () => {
+		const values: Array<{ count: number }> = [];
+		const buffer = new ThrottledMergeBuffer<{ count: number }>(20, (value) =>
+			values.push(value),
+		);
+
+		buffer.emit({ count: 1 });
+		buffer.emit({ count: 2 });
+		buffer.flush();
+
+		expect(values).toEqual([{ count: 2 }]);
+		await sleep(30);
+		expect(values).toEqual([{ count: 2 }]);
 	});
 });

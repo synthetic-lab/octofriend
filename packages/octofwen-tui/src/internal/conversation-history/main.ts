@@ -23,16 +23,30 @@ export type HistoryItem<TIr> =
 	| NotificationHistoryItem;
 
 export function outputToHistory<TIr>(output: TIr[]): HistoryItem<TIr>[] {
-	return output.map((ir) => ({
-		type: "llm-ir",
-		ir,
-	}));
+	const history = new Array<HistoryItem<TIr>>(output.length);
+	let index = 0;
+	while (index < output.length) {
+		history[index] = {
+			type: "llm-ir",
+			ir: output[index] as TIr,
+		};
+		index += 1;
+	}
+	return history;
 }
 
 export function toLlmIR<TIr>(history: HistoryItem<TIr>[]): TIr[] {
-	const irs: TIr[] = [];
-	for (const item of history) {
-		if (item.type === "llm-ir") irs.push(item.ir);
+	const irs = new Array<TIr>(history.length);
+	let index = 0;
+	let writeIndex = 0;
+	while (index < history.length) {
+		const item = history[index];
+		if (item?.type === "llm-ir") {
+			irs[writeIndex] = item.ir;
+			writeIndex += 1;
+		}
+		index += 1;
 	}
+	if (writeIndex < irs.length) irs.length = writeIndex;
 	return irs;
 }

@@ -1,5 +1,5 @@
-import { parseQuotaJson } from "../../app/state/quota.ts";
-import { trackTokens } from "../../app/token_usage.ts";
+import { normalizeQuotaData } from "../../app/state/quota.ts";
+import { trackTokenUsage } from "../../app/token_usage.ts";
 import { readSearchConfig } from "../configuration/keys.ts";
 import type { Config, ModelConfig } from "../configuration/schemas.ts";
 import type { Transport } from "../transport/common.ts";
@@ -60,11 +60,13 @@ export type TrajectoryArcRunner = (
 			skills?: { paths?: readonly string[] };
 			defaultApiKeyOverrides?: Record<string, string>;
 			authModels?: Array<{
+				type?: Config["models"][number]["type"];
 				baseUrl: string;
 				apiEnvVar?: string;
 				auth?: unknown;
 			}>;
 			fixJson?: {
+				type?: Config["models"][number]["type"];
 				baseUrl: string;
 				apiEnvVar?: string;
 				auth?: unknown;
@@ -180,7 +182,7 @@ function emitTrajectoryArcEvents(
 				handler.autofixingDiff(null);
 				break;
 			case "quota-updated": {
-				const quota = parseQuotaJson(JSON.stringify(event.quota));
+				const quota = normalizeQuotaData(event.quota);
 				if (quota) handler.onQuotaUpdated(quota);
 				break;
 			}
@@ -188,8 +190,7 @@ function emitTrajectoryArcEvents(
 				handler.retryTool({ irs: event.irs as TrajectoryOutputIR[] });
 				break;
 			case "token-usage":
-				trackTokens(model, "input", event.input);
-				trackTokens(model, "output", event.output);
+				trackTokenUsage(model, event.input, event.output);
 				break;
 			default:
 				break;
@@ -201,23 +202,27 @@ function stripNullValues<T extends Record<string, string | null | undefined>>(
 	value: T,
 ): { [K in keyof T]?: string } {
 	const output: Partial<Record<keyof T, string>> = {};
-	for (const [key, entry] of Object.entries(value) as [
-		keyof T,
-		string | null | undefined,
-	][]) {
+	for (const key in value) {
+		if (!Object.hasOwn(value, key)) continue;
+		const entry = value[key];
 		if (typeof entry === "string") output[key] = entry;
 	}
 	return output as { [K in keyof T]?: string };
 }
 
-function fixJsonConfig(
-	config: Config,
-):
-	| { baseUrl: string; apiEnvVar?: string; auth?: unknown; model: string }
+function fixJsonConfig(config: Config):
+	| {
+			type?: Config["models"][number]["type"];
+			baseUrl: string;
+			apiEnvVar?: string;
+			auth?: unknown;
+			model: string;
+	  }
 	| undefined {
 	const model = config.fixJson;
 	if (!model) return undefined;
 	return {
+		type: model.type,
 		baseUrl: model.baseUrl,
 		apiEnvVar: model.apiEnvVar,
 		auth: model.auth,
@@ -225,16 +230,57 @@ function fixJsonConfig(
 	};
 }
 
-function authModelsConfig(
-	config: Config,
-): Array<{ baseUrl: string; apiEnvVar?: string; auth?: unknown }> {
-	return [
-		...config.models,
-		...(config.diffApply ? [config.diffApply] : []),
-		...(config.fixJson ? [config.fixJson] : []),
-	].map((model) => ({
+function authModelsConfig(config: Config): Array<{
+	type?: Config["models"][number]["type"];
+	baseUrl: string;
+	apiEnvVar?: string;
+	auth?: unknown;
+}> {
+	const totalLength =
+		config.models.length +
+		(config.diffApply ? 1 : 0) +
+		(config.fixJson ? 1 : 0);
+	const models = new Array<{
+		type?: Config["models"][number]["type"];
+		baseUrl: string;
+		apiEnvVar?: string;
+		auth?: unknown;
+	}>(totalLength);
+	let writeIndex = 0;
+	let modelIndex = 0;
+	while (modelIndex < config.models.length) {
+		const model = config.models[modelIndex];
+		if (model !== undefined) {
+			models[writeIndex] = authModelConfig(model);
+			writeIndex += 1;
+		}
+		modelIndex += 1;
+	}
+	if (config.diffApply) {
+		models[writeIndex] = authModelConfig(config.diffApply);
+		writeIndex += 1;
+	}
+	if (config.fixJson) {
+		models[writeIndex] = authModelConfig(config.fixJson);
+	}
+	return models;
+}
+
+function authModelConfig(model: {
+	type?: Config["models"][number]["type"];
+	baseUrl: string;
+	apiEnvVar?: string;
+	auth?: unknown;
+}): {
+	type?: Config["models"][number]["type"];
+	baseUrl: string;
+	apiEnvVar?: string;
+	auth?: unknown;
+} {
+	return {
+		type: model.type,
 		baseUrl: model.baseUrl,
 		apiEnvVar: model.apiEnvVar,
 		auth: model.auth,
-	}));
+	};
 }

@@ -1,12 +1,14 @@
 import { Box, Text } from "ink";
-import { useCallback, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 import type { InputHistory } from "../../app/input_history.ts";
+import { hasNonWhitespace } from "../../app/text_processing.ts";
 import {
 	canDisplayImage,
 	DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
 	type MultimodalConfig,
 } from "../../internal/model-provider-catalog/main.ts";
 import type { Transport } from "../../internal/transport/common.ts";
+import { normalizeRenderedLineBreaks } from "../../rendering/line_splitting.ts";
 import { useCtrlC } from "../ctrl_c.tsx";
 import { type ImageInfo, loadImageFromPath } from "../image_attachments.ts";
 import { InputWithHistory } from "./input-with-history.tsx";
@@ -39,97 +41,156 @@ export function shouldSubmitMultimediaInput(
 	value: string,
 	attachedImages: readonly unknown[],
 ): boolean {
-	return value.trim().length > 0 || attachedImages.length > 0;
+	return hasNonWhitespace(value) || attachedImages.length > 0;
 }
 
-export function MultimediaInput(props: MultimediaInputProps) {
+export function MultimediaInput({
+	inputHistory,
+	transport,
+	value,
+	onChange,
+	onSubmit,
+	vimEnabled,
+	vimMode,
+	setVimMode,
+	modalities,
+}: MultimediaInputProps) {
 	const [attachedImages, setAttachedImages] = useState<ImageInfo[]>([]);
 	const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
 	const [errorMessages, setErrorMessages] = useState<string[]>([]);
 
-	useCtrlC(() => {
-		if (props.vimEnabled) return;
-		setAttachedImages([]);
-		setErrorMessages([]);
-	});
+	useCtrlC(
+		useCallback(() => {
+			if (vimEnabled) return;
+			setAttachedImages([]);
+			setErrorMessages([]);
+		}, [vimEnabled]),
+	);
 
 	const tryLoadImage = useCallback(
 		async (inputPath: string): Promise<ImageInfo | null> => {
 			const image = await loadImageFromPath(inputPath);
 			if (!image.success) {
-				setErrorMessages((prev) => [
-					...prev,
-					formatImageLoadError(inputPath, image.error),
-				]);
+				setErrorMessages((prev) =>
+					appendString(prev, formatImageLoadError(inputPath, image.error)),
+				);
 				return null;
 			}
-			const imageCheck = canDisplayImage(props.modalities, image.data);
+			const imageCheck = canDisplayImage(modalities, image.data);
 			if (!imageCheck.ok) {
-				setErrorMessages((prev) => [...prev, imageCheck.reason]);
+				setErrorMessages((prev) => appendString(prev, imageCheck.reason));
 				return null;
 			}
 			return image.data;
 		},
-		[props.modalities],
+		[modalities],
 	);
 
 	const handleRemoveLastImage = useCallback(() => {
-		setAttachedImages((prev) => prev.slice(0, -1));
+		setAttachedImages(dropLastImage);
 	}, []);
 
 	const handleImagePathsAttached = useCallback(
 		async (imagePaths: string[]) => {
-			if (!props.modalities?.image?.enabled) {
-				setErrorMessages((prev) => [
-					...prev,
-					getUnsupportedImageAttachmentsMessage(),
-				]);
+			if (!modalities?.image?.enabled) {
+				setErrorMessages((prev) =>
+					appendString(prev, getUnsupportedImageAttachmentsMessage()),
+				);
 				return;
 			}
+			if (imagePaths.length === 0) return;
 
-			for (const imagePath of imagePaths) {
-				setShowLoadingImageBadge(true);
-				const imageInfo = await tryLoadImage(imagePath);
-
-				setShowLoadingImageBadge(false);
-				if (imageInfo) {
-					setAttachedImages((prev) => [...prev, imageInfo]);
+			setShowLoadingImageBadge(true);
+			try {
+				for (const imagePath of imagePaths) {
+					const imageInfo = await tryLoadImage(imagePath);
+					if (imageInfo) {
+						setAttachedImages((prev) => appendImageInfo(prev, imageInfo));
+					}
 				}
+			} finally {
+				setShowLoadingImageBadge(false);
 			}
 		},
-		[tryLoadImage, props.modalities],
+		[modalities, tryLoadImage],
 	);
 
 	const handleSubmit = useCallback(() => {
-		if (shouldSubmitMultimediaInput(props.value, attachedImages)) {
-			props.onSubmit(props.value, attachedImages);
+		if (shouldSubmitMultimediaInput(value, attachedImages)) {
+			onSubmit(value, attachedImages);
 			setAttachedImages([]);
 			setErrorMessages([]);
 		}
-	}, [props, attachedImages]);
+	}, [attachedImages, onSubmit, value]);
 
 	return (
 		<Box flexDirection="column" width="100%">
-			{errorMessages.map((errorMessage, index) => (
-				<Box marginBottom={1} key={index}>
-					<Text color="red">{errorMessage}</Text>
-				</Box>
-			))}
+			{renderInputErrorMessages(errorMessages)}
 			<InputWithHistory
 				attachedImages={attachedImages}
 				showLoadingImageBadge={showLoadingImageBadge}
-				inputHistory={props.inputHistory}
-				transport={props.transport}
-				value={props.value}
-				onChange={props.onChange}
+				inputHistory={inputHistory}
+				transport={transport}
+				value={value}
+				onChange={onChange}
 				onImagePathsAttached={handleImagePathsAttached}
 				onSubmit={handleSubmit}
 				onRemoveLastImage={handleRemoveLastImage}
-				vimEnabled={props.vimEnabled}
-				vimMode={props.vimMode}
-				setVimMode={props.setVimMode}
-				modalities={props.modalities}
+				vimEnabled={vimEnabled}
+				vimMode={vimMode}
+				setVimMode={setVimMode}
+				modalities={modalities}
 			/>
 		</Box>
 	);
+}
+
+function renderInputErrorMessages(
+	errorMessages: readonly string[],
+): ReactNode[] {
+	const nodes = new Array<ReactNode>(errorMessages.length);
+	for (let index = 0; index < errorMessages.length; index += 1) {
+		const errorMessage = errorMessages[index];
+		if (errorMessage === undefined) continue;
+		nodes[index] = (
+			<Box marginBottom={1} key={index}>
+				<Text color="red">{normalizeRenderedLineBreaks(errorMessage)}</Text>
+			</Box>
+		);
+	}
+	return nodes;
+}
+
+function appendString(values: readonly string[], value: string): string[] {
+	const next = new Array<string>(values.length + 1);
+	for (let index = 0; index < values.length; index += 1) {
+		const item = values[index];
+		if (item !== undefined) next[index] = item;
+	}
+	next[values.length] = value;
+	return next;
+}
+
+function appendImageInfo(
+	values: readonly ImageInfo[],
+	value: ImageInfo,
+): ImageInfo[] {
+	const next = new Array<ImageInfo>(values.length + 1);
+	for (let index = 0; index < values.length; index += 1) {
+		const item = values[index];
+		if (item !== undefined) next[index] = item;
+	}
+	next[values.length] = value;
+	return next;
+}
+
+function dropLastImage(values: readonly ImageInfo[]): ImageInfo[] {
+	const nextLength = values.length - 1;
+	if (nextLength <= 0) return [];
+	const next = new Array<ImageInfo>(nextLength);
+	for (let index = 0; index < nextLength; index += 1) {
+		const item = values[index];
+		if (item !== undefined) next[index] = item;
+	}
+	return next;
 }

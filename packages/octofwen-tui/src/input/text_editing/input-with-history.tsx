@@ -1,15 +1,24 @@
-import { Box, Text, useInput } from "ink";
-import { useCallback, useState } from "react";
+import { Box, Text } from "ink";
+import { useCallback, useRef, useState } from "react";
 import type { InputHistory } from "../../app/input_history.ts";
+import { trimWhitespace } from "../../app/text_processing.ts";
 import type { MultimodalConfig } from "../../internal/model-provider-catalog/main.ts";
 import type { Transport } from "../../internal/transport/common.ts";
 import { useTerminalThemeColor } from "../../theme/branding.tsx";
 import { FileSuggestionBox } from "../file_suggestions.tsx";
 import type { ImageInfo } from "../image_attachments.ts";
+import {
+	type InkInputKey,
+	useLatestInput,
+	useLatestRef,
+} from "../latest_input.ts";
+import {
+	fileSuggestionTrigger,
+	pruneSelectedMentions,
+	replaceSelectedMentions,
+} from "./mentions.ts";
 import { TextInput } from "./text-input.tsx";
 import type { VimMode } from "./vim.tsx";
-
-const FILE_SUGGESTION_QUERY_REGEX = /^[a-zA-Z0-9_./-]*$/;
 
 export type InputWithHistoryProps = {
 	attachedImages: ImageInfo[];
@@ -36,69 +45,80 @@ export function InputWithHistory(props: InputWithHistoryProps) {
 		triggerPosition: number;
 		query: string;
 	} | null>(null);
-	const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(
-		new Set(),
-	);
+	const inputHistoryRef = useLatestRef(props.inputHistory);
+	const onChangeRef = useLatestRef(props.onChange);
+	const onSubmitRef = useLatestRef(props.onSubmit);
+	const selectedSuggestionsRef = useRef(new Set<string>());
 
-	useInput((input, key) => {
-		handleHistoryNavigationInput({
-			input,
-			key,
-			isSuggestionVisible: suggestionState?.isVisible === true,
+	const historyInputHandler = useCallback(
+		(input: string, key: InkInputKey) => {
+			handleHistoryNavigationInput({
+				input,
+				key,
+				isSuggestionVisible: suggestionState?.isVisible === true,
+				currentIndex,
+				originalInput,
+				value: props.value,
+				inputHistory: inputHistoryRef.current,
+				onChange: onChangeRef.current,
+				setCurrentIndex,
+				setOriginalInput,
+			});
+		},
+		[
 			currentIndex,
 			originalInput,
-			value: props.value,
-			inputHistory: props.inputHistory,
-			onChange: props.onChange,
-			setCurrentIndex,
-			setOriginalInput,
-		});
-	});
+			inputHistoryRef,
+			onChangeRef,
+			props.value,
+			suggestionState?.isVisible,
+		],
+	);
+	useLatestInput(historyInputHandler);
 
-	const handleSubmit = () => {
+	const handleSubmit = useCallback(() => {
 		if (suggestionState?.isVisible) {
 			return;
 		}
 
 		const transformedValue = replaceSelectedMentions(
 			props.value,
-			selectedSuggestions,
+			selectedSuggestionsRef.current,
 		);
+		const historyValue = trimWhitespace(props.value);
 
-		if (props.value.trim()) {
-			props.inputHistory.appendToInputHistory(props.value.trim());
+		if (historyValue) {
+			inputHistoryRef.current.appendToInputHistory(historyValue);
 		}
 
 		setCurrentIndex(-1);
 		setOriginalInput("");
-		setSelectedSuggestions(new Set());
-		props.onSubmit(transformedValue);
-	};
+		selectedSuggestionsRef.current.clear();
+		onSubmitRef.current(transformedValue);
+	}, [inputHistoryRef, onSubmitRef, props.value, suggestionState?.isVisible]);
 
-	const handleChange = (value: string) => {
-		if (currentIndex !== -1) {
-			setCurrentIndex(-1);
-			setOriginalInput("");
-		}
-		props.onChange(value);
+	const handleChange = useCallback(
+		(value: string) => {
+			pruneSelectedMentions(value, selectedSuggestionsRef.current);
+			if (currentIndex !== -1) {
+				setCurrentIndex(-1);
+				setOriginalInput("");
+			}
+			onChangeRef.current(value);
 
-		const atIndex = value.lastIndexOf("@");
-		if (atIndex === -1) {
-			setSuggestionState(null);
-			return;
-		}
-
-		const query = value.slice(atIndex + 1);
-		if (FILE_SUGGESTION_QUERY_REGEX.test(query)) {
+			const suggestion = fileSuggestionTrigger(value);
+			if (suggestion === null) {
+				setSuggestionState(null);
+				return;
+			}
 			setSuggestionState({
 				isVisible: true,
-				triggerPosition: atIndex,
-				query,
+				triggerPosition: suggestion.triggerPosition,
+				query: suggestion.query,
 			});
-		} else {
-			setSuggestionState(null);
-		}
-	};
+		},
+		[currentIndex, onChangeRef],
+	);
 
 	const handleSuggestionSelect = useCallback(
 		(filename: string) => {
@@ -110,16 +130,14 @@ export function InputWithHistory(props: InputWithHistoryProps) {
 			);
 			const newValue = `${before}@${filename} ${after}`;
 
-			props.onChange(newValue);
-			setSelectedSuggestions((prev) => {
-				const next = new Set(prev);
-				next.add(filename);
-				return next;
-			});
+			onChangeRef.current(newValue);
+			selectedSuggestionsRef.current.add(filename);
 			setSuggestionState(null);
 		},
-		[props.value, props.onChange, suggestionState],
+		[onChangeRef, props.value, suggestionState],
 	);
+
+	const dismissSuggestions = useCallback(() => setSuggestionState(null), []);
 
 	return (
 		<Box flexDirection="column">
@@ -134,7 +152,7 @@ export function InputWithHistory(props: InputWithHistoryProps) {
 						isVisible={suggestionState.isVisible}
 						transport={props.transport}
 						onSelect={handleSuggestionSelect}
-						onDismiss={() => setSuggestionState(null)}
+						onDismiss={dismissSuggestions}
 					/>
 				)}
 			</Box>
@@ -166,41 +184,6 @@ export function InputWithHistory(props: InputWithHistoryProps) {
 	);
 }
 
-export function replaceSelectedMentions(
-	input: string,
-	selectedSuggestions: Set<string>,
-): string {
-	let output = input;
-
-	for (const filename of selectedSuggestions) {
-		const normalizedPath =
-			filename.startsWith("/") ||
-			filename.startsWith("./") ||
-			filename.startsWith("../")
-				? filename
-				: `./${filename}`;
-
-		const escapedFilename = filename.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		const mentionRegex = new RegExp(
-			`(^|[^\\w@])@${escapedFilename}(?=$|[^\\w./-])`,
-			"g",
-		);
-
-		output = output.replace(mentionRegex, `$1${normalizedPath}`);
-	}
-
-	return output;
-}
-
-type InkInputKey = {
-	upArrow?: boolean;
-	downArrow?: boolean;
-	return?: boolean;
-	escape?: boolean;
-	backspace?: boolean;
-	delete?: boolean;
-};
-
 type HistoryNavigationInput = {
 	input: string;
 	key: InkInputKey;
@@ -230,9 +213,9 @@ function handleHistoryNavigationInput(input: HistoryNavigationInput): void {
 }
 
 function selectPreviousHistoryItem(input: HistoryNavigationInput): void {
-	if (input.currentIndex === -1) input.setOriginalInput(input.value);
 	const history = input.inputHistory.getCurrentHistory();
 	if (history.length === 0) return;
+	if (input.currentIndex === -1) input.setOriginalInput(input.value);
 	const newIndex =
 		input.currentIndex === -1
 			? history.length - 1

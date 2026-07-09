@@ -44,6 +44,10 @@ describe("image path parsing", () => {
 			"/b.png",
 			"/c.png",
 		]);
+		expect(separateFilePaths("/tmp/😀.png /b.png")).toEqual([
+			"/tmp/😀.png",
+			"/b.png",
+		]);
 	});
 
 	it("keeps escaped spaces inside one path", () => {
@@ -51,6 +55,16 @@ describe("image path parsing", () => {
 			"/path/to/my\\ file.png",
 			"/other.png",
 		]);
+	});
+
+	it("separates newline-delimited paths without split allocation", () => {
+		expect(separateFilePaths("/a.png\n/b.jpg\n")).toEqual(["/a.png", "/b.jpg"]);
+	});
+
+	it("separates paths across repeated spaces and CRLF without dropping characters", () => {
+		expect(separateFilePaths("/a.png  /b.jpg")).toEqual(["/a.png", "/b.jpg"]);
+		expect(separateFilePaths("/a.png\r\n/b.jpg")).toEqual(["/a.png", "/b.jpg"]);
+		expect(parseImagePaths("/a.png\r\n/b.jpg")).toEqual(["/a.png", "/b.jpg"]);
 	});
 
 	it("replaces non-separator characters with placeholders for safe shell parsing", () => {
@@ -71,6 +85,9 @@ describe("image path parsing", () => {
 		expect(parseImagePaths('"/path/to/file.png"')).toEqual([
 			"/path/to/file.png",
 		]);
+		expect(parseImagePaths('"/path/to/my file.png"')).toEqual([
+			"/path/to/my file.png",
+		]);
 		expect(parseImagePaths("/path/to/my\\ file.png")).toEqual([
 			"/path/to/my file.png",
 		]);
@@ -88,6 +105,7 @@ describe("image path parsing", () => {
 
 describe("image MIME helpers", () => {
 	it("detects supported image paths and MIME types", () => {
+		expect(isImagePath(" \t/tmp/a.png\n")).toBe(true);
 		expect(isImagePath("/tmp/a.png")).toBe(true);
 		expect(isImagePath("/tmp/a.PNG")).toBe(true);
 		expect(isImagePath("/tmp/a.txt")).toBe(false);

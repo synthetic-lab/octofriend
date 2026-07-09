@@ -1,4 +1,3 @@
-import { useInput } from "ink";
 import React, {
 	useCallback,
 	useContext,
@@ -6,6 +5,7 @@ import React, {
 	useMemo,
 	useRef,
 } from "react";
+import { type InkInputHandler, useLatestInput } from "./latest_input.ts";
 
 declare const priorityBrand: unique symbol;
 export type Priority = number & { [priorityBrand]: never };
@@ -26,23 +26,42 @@ export type InputPriorityRegistry = {
 
 export function createInputPriorityRegistry(): InputPriorityRegistry {
 	const registrations = new Map<number, InputPriorityRegistration>();
+	let activePriority = Number.NEGATIVE_INFINITY;
+	let activeId: number | null = null;
+
+	function recomputeActiveId(): void {
+		activePriority = Number.NEGATIVE_INFINITY;
+		activeId = null;
+		for (const registration of registrations.values()) {
+			if (registration.priority > activePriority) {
+				activePriority = registration.priority;
+				activeId = registration.id;
+			}
+		}
+	}
 
 	return {
 		register(priority: number, id: number) {
 			registrations.set(id, { priority, id });
+			if (activeId === id) {
+				if (priority >= activePriority) {
+					activePriority = priority;
+				} else {
+					recomputeActiveId();
+				}
+				return;
+			}
+
+			if (priority > activePriority) {
+				activePriority = priority;
+				activeId = id;
+			}
 		},
 		unregister(id: number) {
-			registrations.delete(id);
+			if (!registrations.delete(id)) return;
+			if (activeId === id) recomputeActiveId();
 		},
 		getActiveId() {
-			let maxPriority = Number.NEGATIVE_INFINITY;
-			let activeId: number | null = null;
-			for (const registration of registrations.values()) {
-				if (registration.priority > maxPriority) {
-					maxPriority = registration.priority;
-					activeId = registration.id;
-				}
-			}
 			return activeId;
 		},
 	};
@@ -95,7 +114,7 @@ export function InputPriorityProvider({
 
 export function usePriorityInput(
 	priority: Priority,
-	callback: Parameters<typeof useInput>[0],
+	callback: InkInputHandler,
 ) {
 	const context = useContext(InputPriorityContext);
 	const idRef = useRef(nextId++);
@@ -108,16 +127,21 @@ export function usePriorityInput(
 		};
 	}, [priority, context]);
 
-	useInput((input, key) => {
-		if (key.shift && key.tab) {
-			const activeId = context?.getActiveId();
-			const myId = idRef.current;
-			const willFire = !context || myId === activeId;
-			if (willFire) {
-				callback(input, key);
-			}
-		} else {
-			callback(input, key);
-		}
-	});
+	useLatestInput(
+		useCallback(
+			(input, key) => {
+				if (!(key.shift && key.tab)) {
+					callback(input, key);
+					return;
+				}
+
+				const activeId = context?.getActiveId();
+				const myId = idRef.current;
+				if (!context || myId === activeId) {
+					callback(input, key);
+				}
+			},
+			[callback, context],
+		),
+	);
 }

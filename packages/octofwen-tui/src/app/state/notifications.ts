@@ -24,10 +24,9 @@ export function createNotificationActions(set: AppStateSet, get: AppStateGet) {
 				return;
 			}
 
-			const notifyTimeout = (() => {
-				if (notifyOnce) return 0;
-				return config.notifications?.notifyTimeoutMs ?? 10_000;
-			})();
+			const notifyTimeout = notifyOnce
+				? 0
+				: (config.notifications?.notifyTimeoutMs ?? 10_000);
 
 			if (_notifyTimer) clearTimeout(_notifyTimer);
 			const timer = setTimeout(async () => {

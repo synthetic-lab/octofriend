@@ -13,6 +13,8 @@ import type {
 	ToolValidator,
 } from "./bridge-types.ts";
 
+type UnknownRecord = Record<string, unknown>;
+
 export type AgentdToolDefinition = {
 	name: string;
 	description: string;
@@ -40,7 +42,7 @@ export type ToolCall = {
 	name: string;
 	toolCallId: string;
 	assistantMessageId?: string;
-	parsed: Record<string, unknown>;
+	parsed: UnknownRecord;
 	original: unknown;
 };
 
@@ -64,17 +66,29 @@ function homeDir() {
 	return process.env["HOME"] ?? process.env["USERPROFILE"] ?? homedir();
 }
 
+function hasConfiguredMcpServers(
+	mcpServers: Config["mcpServers"] | undefined,
+): boolean {
+	if (mcpServers == null) return false;
+	for (const key in mcpServers) {
+		if (Object.hasOwn(mcpServers, key)) return true;
+	}
+	return false;
+}
+
 export async function loadTools(
 	transport: Transport,
-	_signal: AbortSignal,
+	abortSignal: AbortSignal,
 	config: Config,
 	options: LoadToolsOptions = {},
 ): Promise<Result<Partial<LoadedTools>, string>> {
 	if (!options.toolDefinitions) {
 		return err("Tool definitions bridge is required");
 	}
+	if (abortSignal.aborted) return err("Tool load aborted");
 	const loaded: Partial<LoadedTools> = {};
 	const searchConfig = await readSearchConfig(config);
+	if (abortSignal.aborted) return err("Tool load aborted");
 	const discoveredSkills = options.skillDiscover
 		? (
 				await options.skillDiscover({
@@ -84,12 +98,13 @@ export async function loadTools(
 				})
 			).skills
 		: [];
+	if (abortSignal.aborted) return err("Tool load aborted");
 	const definitions = await options.toolDefinitions({
-		hasMcpServers:
-			config.mcpServers != null && Object.keys(config.mcpServers).length > 0,
+		hasMcpServers: hasConfiguredMcpServers(config.mcpServers),
 		hasWebSearch: searchConfig != null,
 		skills: discoveredSkills,
 	});
+	if (abortSignal.aborted) return err("Tool load aborted");
 
 	for (const definition of definitions.tools) {
 		const tool = agentdToolDefinition(definition);
@@ -134,22 +149,24 @@ export async function preflightToolCall(
 	return ok({ ...call, parsed });
 }
 
-function stringField(
-	value: Record<string, unknown>,
-	key: string,
-): string | null {
+function stringField(value: UnknownRecord, key: string): string | null {
 	const field = value[key];
 	return typeof field === "string" ? field : null;
 }
 
+export type RunToolRequest = {
+	abortSignal: AbortSignal;
+	transport: Transport;
+	loaded: Partial<LoadedTools>;
+	call: ToolCall;
+	config: Config;
+	toolRun?: ToolRunner;
+};
+
 export async function runTool(
-	abortSignal: AbortSignal,
-	transport: Transport,
-	loaded: Partial<LoadedTools>,
-	call: ToolCall,
-	config: Config,
-	toolRun?: ToolRunner,
+	request: RunToolRequest,
 ): Promise<Result<ToolRunResult, string>> {
+	const { abortSignal, transport, loaded, call, config, toolRun } = request;
 	const def = lookup(loaded, call);
 	if (!def.success) return def;
 	if (!toolRun) return err(`Tool runner is required for ${call.name}`);
@@ -263,9 +280,9 @@ async function agentdToolRunContext(
 	return ok({});
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+function asRecord(value: unknown): UnknownRecord {
 	if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-		return value as Record<string, unknown>;
+		return value as UnknownRecord;
 	}
 	return {};
 }

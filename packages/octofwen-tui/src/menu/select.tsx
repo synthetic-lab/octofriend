@@ -1,15 +1,30 @@
-import { isDeepStrictEqual } from "node:util";
 import figures from "figures";
-import { Box, Text, useInput } from "ink";
-import React, {
+import { Box, Text } from "ink";
+import {
 	type FC,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
-import arrayToRotated from "to-rotated";
+import {
+	type InkInputKey,
+	useLatestInput,
+	useLatestRef,
+} from "../input/latest_input.ts";
+import { normalizeRenderedLineBreaks } from "../rendering/line_splitting.ts";
 import { useTerminalThemeColor } from "../theme/branding.tsx";
+import {
+	initialRotateIndex,
+	initialSelectedIndex,
+	normalizedSelectLimit,
+	numberInputIndex,
+	renderVisibleSelectItems,
+	selectMove,
+	selectValuesEqual,
+	visibleItemAt,
+} from "./select_helpers.tsx";
 
 export type SelectIndicatorProps = {
 	readonly isSelected?: boolean;
@@ -55,7 +70,11 @@ export function DefaultSelectItem({
 	isSelected = false,
 	label,
 }: SelectItemProps) {
-	return <Text color={isSelected ? "blue" : undefined}>{label}</Text>;
+	return (
+		<Text color={isSelected ? "blue" : undefined}>
+			{normalizeRenderedLineBreaks(label)}
+		</Text>
+	);
 }
 
 export function ThemedSelectIndicator({
@@ -78,10 +97,12 @@ export function ThemedSelectItem({
 	label,
 }: SelectItemProps) {
 	const themeColor = useTerminalThemeColor();
-	return <Text color={isSelected ? themeColor : undefined}>{label}</Text>;
+	return (
+		<Text color={isSelected ? themeColor : undefined}>
+			{normalizeRenderedLineBreaks(label)}
+		</Text>
+	);
 }
-
-const NUMBER_INPUT_REGEX = /^[1-9]$/;
 
 export function SelectInput<V>({
 	items = [],
@@ -93,130 +114,146 @@ export function SelectInput<V>({
 	onSelect,
 	onHighlight,
 }: SelectInputProps<V>) {
+	const normalizedLimit = normalizedSelectLimit(customLimit);
 	const hasLimit =
-		typeof customLimit === "number" && items.length > customLimit;
-	const limit = hasLimit ? Math.min(customLimit, items.length) : items.length;
+		normalizedLimit !== undefined && items.length > normalizedLimit;
+	const limit = hasLimit ? normalizedLimit : items.length;
 	const lastIndex = limit - 1;
 	const [rotateIndex, setRotateIndex] = useState(
-		initialIndex > lastIndex ? lastIndex - initialIndex : 0,
+		initialRotateIndex(initialIndex, lastIndex),
 	);
 	const [selectedIndex, setSelectedIndex] = useState(
-		initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
+		initialSelectedIndex(initialIndex, lastIndex),
 	);
+	const onHighlightRef = useLatestRef(onHighlight);
+	const onSelectRef = useLatestRef(onSelect);
 	const previousItems = useRef<SelectItem<V>[]>(items);
+	const itemsChanged = !selectValuesEqual(previousItems.current, items);
+	const renderedRotateIndex = itemsChanged ? 0 : rotateIndex;
+	const renderedSelectedIndex = itemsChanged ? 0 : selectedIndex;
 
 	useEffect(() => {
-		if (
-			!isDeepStrictEqual(
-				previousItems.current.map((item) => item.value),
-				items.map((item) => item.value),
-			)
-		) {
-			setRotateIndex(0);
-			setSelectedIndex(0);
-		}
-
+		if (!itemsChanged) return;
 		previousItems.current = items;
-	}, [items]);
-
-	const visibleItems = useCallback(
-		(nextRotateIndex: number) =>
-			hasLimit ? arrayToRotated(items, nextRotateIndex).slice(0, limit) : items,
-		[hasLimit, items, limit],
-	);
+		if (rotateIndex !== 0) setRotateIndex(0);
+		if (selectedIndex !== 0) setSelectedIndex(0);
+	}, [items, itemsChanged, rotateIndex, selectedIndex]);
 
 	const highlightAt = useCallback(
-		(slicedItems: SelectItem<V>[], nextSelectedIndex: number) => {
-			const item = slicedItems[nextSelectedIndex];
-			if (item && typeof onHighlight === "function") {
-				onHighlight(item);
+		(nextRotateIndex: number, nextSelectedIndex: number) => {
+			const item = visibleItemAt(
+				items,
+				nextSelectedIndex,
+				hasLimit,
+				limit,
+				nextRotateIndex,
+			);
+			const onHighlightValue = onHighlightRef.current;
+			if (item && typeof onHighlightValue === "function") {
+				onHighlightValue(item);
 			}
 		},
-		[onHighlight],
+		[hasLimit, items, limit, onHighlightRef],
 	);
 
 	const selectAt = useCallback(
-		(slicedItems: SelectItem<V>[], nextSelectedIndex: number) => {
-			const item = slicedItems[nextSelectedIndex];
-			if (item && typeof onSelect === "function") {
-				onSelect(item);
+		(nextRotateIndex: number, nextSelectedIndex: number) => {
+			const item = visibleItemAt(
+				items,
+				nextSelectedIndex,
+				hasLimit,
+				limit,
+				nextRotateIndex,
+			);
+			const onSelectValue = onSelectRef.current;
+			if (item && typeof onSelectValue === "function") {
+				onSelectValue(item);
 			}
 		},
-		[onSelect],
+		[hasLimit, items, limit, onSelectRef],
 	);
 
 	const applyMove = useCallback(
 		(nextRotateIndex: number, nextSelectedIndex: number) => {
 			setRotateIndex(nextRotateIndex);
 			setSelectedIndex(nextSelectedIndex);
-			highlightAt(visibleItems(nextRotateIndex), nextSelectedIndex);
+			highlightAt(nextRotateIndex, nextSelectedIndex);
 		},
-		[highlightAt, visibleItems],
+		[highlightAt],
 	);
 
-	const moveUp = useCallback(() => {
-		const lastVisibleIndex = (hasLimit ? limit : items.length) - 1;
-		if (selectedIndex === 0) {
-			applyMove(rotateIndex + 1, hasLimit ? selectedIndex : lastVisibleIndex);
-			return;
-		}
-
-		applyMove(rotateIndex, selectedIndex - 1);
-	}, [applyMove, hasLimit, items.length, limit, rotateIndex, selectedIndex]);
-
-	const moveDown = useCallback(() => {
-		const lastVisibleIndex = (hasLimit ? limit : items.length) - 1;
-		if (selectedIndex === lastVisibleIndex) {
-			applyMove(rotateIndex - 1, hasLimit ? selectedIndex : 0);
-			return;
-		}
-
-		applyMove(rotateIndex, selectedIndex + 1);
-	}, [applyMove, hasLimit, items.length, limit, rotateIndex, selectedIndex]);
-
-	useInput(
-		useCallback(
-			(input, key) => {
-				if (input === "k" || key.upArrow) {
-					moveUp();
-					return;
-				}
-
-				if (input === "j" || key.downArrow) {
-					moveDown();
-					return;
-				}
-
-				if (NUMBER_INPUT_REGEX.test(input)) {
-					selectAt(visibleItems(rotateIndex), Number.parseInt(input, 10) - 1);
-					return;
-				}
-
-				if (key.return) {
-					selectAt(visibleItems(rotateIndex), selectedIndex);
-				}
-			},
-			[moveDown, moveUp, rotateIndex, selectAt, selectedIndex, visibleItems],
-		),
-		{ isActive: isFocused },
+	const moveSelection = useCallback(
+		(direction: -1 | 1) => {
+			const move = selectMove(
+				direction,
+				items.length,
+				hasLimit,
+				limit,
+				renderedRotateIndex,
+				renderedSelectedIndex,
+			);
+			if (move === null) return;
+			applyMove(move.rotateIndex, move.selectedIndex);
+		},
+		[
+			applyMove,
+			hasLimit,
+			items.length,
+			limit,
+			renderedRotateIndex,
+			renderedSelectedIndex,
+		],
 	);
 
-	const slicedItems: SelectItem<V>[] = hasLimit
-		? arrayToRotated(items, rotateIndex).slice(0, limit)
-		: items;
+	const handleInput = useCallback(
+		(input: string, key: InkInputKey) => {
+			if (input === "k" || key.upArrow) {
+				moveSelection(-1);
+				return;
+			}
 
-	return (
-		<Box flexDirection="column">
-			{slicedItems.map((item, index) => {
-				const isSelected = index === selectedIndex;
+			if (input === "j" || key.downArrow) {
+				moveSelection(1);
+				return;
+			}
 
-				return (
-					<Box key={item.key ?? String(item.value)}>
-						{React.createElement(indicatorComponent, { isSelected })}
-						{React.createElement(itemComponent, { ...item, isSelected })}
-					</Box>
-				);
-			})}
-		</Box>
+			const numberedIndex = numberInputIndex(input);
+			if (numberedIndex !== -1) {
+				selectAt(renderedRotateIndex, numberedIndex);
+				return;
+			}
+
+			if (key.return) {
+				selectAt(renderedRotateIndex, renderedSelectedIndex);
+			}
+		},
+		[moveSelection, renderedRotateIndex, renderedSelectedIndex, selectAt],
 	);
+
+	const inputOptions = useMemo(() => ({ isActive: isFocused }), [isFocused]);
+	const visibleItems = useMemo(
+		() =>
+			renderVisibleSelectItems(
+				items,
+				renderedSelectedIndex,
+				hasLimit,
+				limit,
+				renderedRotateIndex,
+				indicatorComponent,
+				itemComponent,
+			),
+		[
+			hasLimit,
+			indicatorComponent,
+			itemComponent,
+			items,
+			limit,
+			renderedRotateIndex,
+			renderedSelectedIndex,
+		],
+	);
+
+	useLatestInput(handleInput, inputOptions);
+
+	return <Box flexDirection="column">{visibleItems}</Box>;
 }

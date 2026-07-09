@@ -1,7 +1,4 @@
-import type {
-	VimHandlerActions,
-	VimHandlerState,
-} from "./vim-handler-state.ts";
+import type { VimHandlerRuntime } from "./vim-handler-state.ts";
 import { handleInsertMode } from "./vim-insert-mode.ts";
 import { handleNormalMode } from "./vim-normal-mode.ts";
 import type {
@@ -13,20 +10,17 @@ import type {
 export function createVimKeyHandler(
 	setVimMode: (mode: VimMode) => void,
 ): VimKeyHandler {
-	const state: VimHandlerState = {
+	const runtime: VimHandlerRuntime = {
 		pendingCommand: null,
 		undoStack: [],
 		redoStack: [],
 		insertStartState: null,
-	};
-
-	const actions: VimHandlerActions = {
 		saveState(text: string, cursorPosition: number) {
-			state.undoStack.push({ text, cursorPosition });
-			state.redoStack = [];
+			runtime.undoStack.push({ text, cursorPosition });
+			runtime.redoStack.length = 0;
 		},
 		enterInsertMode(text: string, cursorPosition: number) {
-			state.insertStartState = { text, cursorPosition };
+			runtime.insertStartState = { text, cursorPosition };
 			setVimMode("INSERT");
 		},
 		setVimMode,
@@ -47,20 +41,17 @@ export function createVimKeyHandler(
 					key,
 					cursorPosition,
 					currentValue,
-					state,
-					actions,
+					runtime,
 				);
 			}
 
-			return handleNormalMode(
-				input,
-				key,
+			return handleNormalMode(input, key, {
+				currentValue,
 				cursorPosition,
 				valueLength,
-				currentValue,
-				state,
-				actions,
-			);
+				state: runtime,
+				actions: runtime,
+			});
 		},
 	};
 }

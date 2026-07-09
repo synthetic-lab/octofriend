@@ -30,4 +30,15 @@ describe("createInputPriorityRegistry", () => {
 
 		expect(registry.getActiveId()).toBe(10);
 	});
+
+	it("updates the active handler when an existing registration changes priority", () => {
+		const registry = createInputPriorityRegistry();
+
+		registry.register(FILE_SUGGESTIONS_PRIORITY, 10);
+		registry.register(UNCHAINED_PRIORITY, 20);
+		expect(registry.getActiveId()).toBe(10);
+
+		registry.register(-1, 10);
+		expect(registry.getActiveId()).toBe(20);
+	});
 });

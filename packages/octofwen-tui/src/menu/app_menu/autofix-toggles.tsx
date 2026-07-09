@@ -1,17 +1,49 @@
-import { Text, useInput } from "ink";
+import { Text } from "ink";
 import type React from "react";
+import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "../../app/state/store.ts";
+import type { UiState } from "../../app/state/types.ts";
+import { useLatestInput, useLatestRef } from "../../input/latest_input.ts";
 import { ConfirmDialog } from "../../input/shortcuts.tsx";
+import { mergeDefaultApiKeyOverrides } from "../../internal/configuration/api-key-overrides.ts";
 import {
 	useConfig,
 	useSetConfig,
 } from "../../internal/configuration/react-context.ts";
+import type { Config } from "../../internal/configuration/schemas.ts";
 import {
 	keyFromName,
 	SYNTHETIC_PROVIDER,
 } from "../../internal/model-provider-catalog/main.ts";
 import { AutofixModelMenu } from "../model_setup/autofix-model-menu.tsx";
+
+const autofixToggleStateSelector = (state: UiState) => ({
+	toggleMenu: state.toggleMenu,
+	notify: state.notify,
+});
+
+export function mergeAutofixCompletionConfig<K extends "diffApply" | "fixJson">(
+	config: Config,
+	configKey: K,
+	setting: NonNullable<Config[K]>,
+): Config {
+	let defaultApiKeyOverrides = config.defaultApiKeyOverrides;
+	if (setting.auth?.type === "env" && SYNTHETIC_PROVIDER) {
+		const key = keyFromName(SYNTHETIC_PROVIDER.name);
+		if (key.success) {
+			defaultApiKeyOverrides = mergeDefaultApiKeyOverrides(
+				defaultApiKeyOverrides,
+				{ [key.data]: setting.auth.name },
+			);
+		}
+	}
+	return {
+		...config,
+		defaultApiKeyOverrides,
+		[configKey]: setting,
+	};
+}
 
 function AutofixToggle({
 	configKey,
@@ -33,31 +65,87 @@ function AutofixToggle({
 	const config = useConfig();
 	const setConfig = useSetConfig();
 	const { toggleMenu, notify } = useAppStore(
-		useShallow((state) => ({
-			toggleMenu: state.toggleMenu,
-			notify: state.notify,
-		})),
+		useShallow(autofixToggleStateSelector),
+	);
+	const configRef = useLatestRef(config);
+	const setConfigRef = useLatestRef(setConfig);
+	const toggleMenuRef = useLatestRef(toggleMenu);
+	const notifyRef = useLatestRef(notify);
+	const onBackRef = useLatestRef(onBack);
+
+	useLatestInput(
+		useCallback(
+			(_, key) => {
+				if (key.escape) onBackRef.current();
+			},
+			[onBackRef],
+		),
 	);
 
-	useInput((_, key) => {
-		if (key.escape) onBack();
-	});
+	const handleReject = useCallback(async () => {
+		const config = configRef.current;
+		const newconf = { ...config };
+		delete newconf[configKey];
+		await setConfigRef.current(newconf);
+		toggleMenuRef.current();
+		notifyRef.current(disableNotification);
+	}, [
+		configKey,
+		configRef,
+		disableNotification,
+		notifyRef,
+		setConfigRef,
+		toggleMenuRef,
+	]);
+
+	const handleConfirm = useCallback(() => {
+		onBackRef.current();
+	}, [onBackRef]);
+
+	const handleOverrideDefaultApiKey = useCallback(
+		async (apiEnvVar: string) => {
+			if (!SYNTHETIC_PROVIDER) return;
+			const key = keyFromName(SYNTHETIC_PROVIDER.name);
+			if (!key.success) return;
+			const config = configRef.current;
+			const defaultApiKeyOverrides = mergeDefaultApiKeyOverrides(
+				config.defaultApiKeyOverrides,
+				{ [key.data]: apiEnvVar },
+			);
+			if (defaultApiKeyOverrides === config.defaultApiKeyOverrides) return;
+			await setConfigRef.current({
+				...config,
+				defaultApiKeyOverrides,
+			});
+		},
+		[configRef, setConfigRef],
+	);
+
+	const handleComplete = useCallback(
+		async (setting: NonNullable<(typeof config)[typeof configKey]>) => {
+			await setConfigRef.current(
+				mergeAutofixCompletionConfig(configRef.current, configKey, setting),
+			);
+			toggleMenuRef.current();
+			notifyRef.current(enableNotification);
+		},
+		[
+			configKey,
+			configRef,
+			enableNotification,
+			notifyRef,
+			setConfigRef,
+			toggleMenuRef,
+		],
+	);
 
 	if (config[configKey]) {
 		return (
 			<ConfirmDialog
 				rejectLabel={`Disable ${modelNickname}`}
 				confirmLabel={`Keep ${modelNickname} on (recommended)`}
-				onReject={async () => {
-					const newconf = { ...config };
-					delete newconf[configKey];
-					await setConfig(newconf);
-					toggleMenu();
-					notify(disableNotification);
-				}}
-				onConfirm={() => {
-					onBack();
-				}}
+				onReject={handleReject}
+				onConfirm={handleConfirm}
 			/>
 		);
 	}
@@ -66,29 +154,9 @@ function AutofixToggle({
 			defaultModel={defaultModel}
 			modelNickname={modelNickname}
 			config={config}
-			onOverrideDefaultApiKey={async (apiEnvVar) => {
-				if (!SYNTHETIC_PROVIDER) return;
-				const key = keyFromName(SYNTHETIC_PROVIDER.name);
-				if (!key.success) return;
-				await setConfig({
-					...config,
-					defaultApiKeyOverrides: {
-						...(config.defaultApiKeyOverrides || {}),
-						[key.data]: apiEnvVar,
-					},
-				});
-			}}
-			onComplete={async (setting) => {
-				await setConfig({
-					...config,
-					[configKey]: setting,
-				});
-				toggleMenu();
-				notify(enableNotification);
-			}}
-			onCancel={() => {
-				onBack();
-			}}
+			onOverrideDefaultApiKey={handleOverrideDefaultApiKey}
+			onComplete={handleComplete}
+			onCancel={handleConfirm}
 		>
 			{children}
 		</AutofixModelMenu>

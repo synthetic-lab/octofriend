@@ -1,7 +1,14 @@
 import clipboardy from "clipboardy";
-import { Box, Text, useApp, useInput } from "ink";
-import { useCallback, useContext, useState } from "react";
+import { Box, Text, useApp } from "ink";
+import {
+	type ReactNode,
+	useCallback,
+	useContext,
+	useMemo,
+	useState,
+} from "react";
 import { useShallow } from "zustand/react/shallow";
+import { useLatestInput } from "../input/latest_input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
@@ -9,7 +16,10 @@ import {
 } from "../input/shortcuts.tsx";
 import { useConfig } from "../internal/configuration/react-context.ts";
 import { CenteredBox } from "../layout/boxes.tsx";
+import { normalizeRenderedLineBreaks } from "../rendering/line_splitting.ts";
+import { errorToString } from "./result.ts";
 import { useAppStore } from "./state/store.ts";
+import type { UiState } from "./state/types.ts";
 import { TransportContext } from "./transport_context.tsx";
 
 export type RequestErrorMode = "request-error" | "compaction-error";
@@ -19,6 +29,7 @@ export type RequestErrorScreenProps = {
 	contextualMessage: string;
 	error: string;
 	curlCommand: string | null;
+	clipboardWriteSync?: (text: string) => void;
 };
 
 export type AuthErrorScreenProps = {
@@ -33,82 +44,131 @@ export type PaymentErrorScreenProps = {
 	error: string;
 };
 
+type RequestErrorAction =
+	| "view"
+	| "copy-curl"
+	| "retry"
+	| "edit-retry"
+	| "quit";
+
+type RetryOnInputErrorMode =
+	| "auth-error"
+	| "rate-limit-error"
+	| "payment-error";
+
+type RetryOnInputErrorScreenProps = {
+	mode: RetryOnInputErrorMode;
+	error: string;
+	children: ReactNode;
+};
+
+const VIEW_ERROR_ITEM: Item<RequestErrorAction> = {
+	label: "View error",
+	value: "view",
+};
+const COPY_CURL_ITEM: Item<RequestErrorAction> = {
+	label: "Copy failed request as cURL",
+	value: "copy-curl",
+};
+const COPIED_CURL_ITEM: Item<RequestErrorAction> = {
+	label: "Copied cURL!",
+	value: "copy-curl",
+};
+const RETRY_ITEM: Item<RequestErrorAction> = {
+	label: "Retry",
+	value: "retry",
+};
+const EDIT_RETRY_ITEM: Item<RequestErrorAction> = {
+	label: "Edit & retry",
+	value: "edit-retry",
+};
+const QUIT_ITEM: Item<RequestErrorAction> = {
+	label: "Quit Octo",
+	value: "quit",
+};
+
+const requestRetryActionsSelector = (state: UiState) => ({
+	retryFrom: state.retryFrom,
+	editAndRetryFrom: state.editAndRetryFrom,
+});
+
+const retryFromSelector = (state: UiState) => ({
+	retryFrom: state.retryFrom,
+});
+
+function requestErrorShortcutItems({
+	viewError,
+	curlCommand,
+	copiedCurl,
+}: {
+	viewError: boolean;
+	curlCommand: string | null;
+	copiedCurl: boolean;
+}): ShortcutArray<RequestErrorAction> {
+	const mapping: Record<string, Item<RequestErrorAction>> = {};
+	if (!viewError) mapping.v = VIEW_ERROR_ITEM;
+	if (curlCommand) mapping.c = copiedCurl ? COPIED_CURL_ITEM : COPY_CURL_ITEM;
+	mapping.r = RETRY_ITEM;
+	mapping.e = EDIT_RETRY_ITEM;
+	mapping.q = QUIT_ITEM;
+	return [
+		{
+			type: "key",
+			mapping,
+		},
+	];
+}
+
 export function RequestErrorScreen({
 	mode,
 	contextualMessage,
 	error,
 	curlCommand,
+	clipboardWriteSync = clipboardy.writeSync,
 }: RequestErrorScreenProps) {
 	const config = useConfig();
 	const transport = useContext(TransportContext);
 	const { retryFrom, editAndRetryFrom } = useAppStore(
-		useShallow((state) => ({
-			retryFrom: state.retryFrom,
-			editAndRetryFrom: state.editAndRetryFrom,
-		})),
+		useShallow(requestRetryActionsSelector),
 	);
 	const { exit } = useApp();
 
 	const [viewError, setViewError] = useState(false);
-	const [copiedCurl, setCopiedCurl] = useState(false);
-	const [clipboardError, setClipboardError] = useState<string | null>(null);
+	const [copiedCurlCommand, setCopiedCurlCommand] = useState<string | null>(
+		null,
+	);
+	const [clipboardError, setClipboardError] = useState<{
+		command: string;
+		message: string;
+	} | null>(null);
+	const copiedCurl = curlCommand !== null && copiedCurlCommand === curlCommand;
+	const activeClipboardError =
+		curlCommand !== null && clipboardError?.command === curlCommand
+			? clipboardError.message
+			: null;
 
-	const mapping: Record<
-		string,
-		Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">
-	> = {};
-
-	if (!viewError) {
-		mapping["v"] = {
-			label: "View error",
-			value: "view",
-		};
-	}
-
-	if (curlCommand) {
-		mapping["c"] = {
-			label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
-			value: "copy-curl",
-		};
-	}
-
-	mapping["r"] = {
-		label: "Retry",
-		value: "retry",
-	};
-
-	mapping["e"] = {
-		label: "Edit & retry",
-		value: "edit-retry",
-	};
-
-	mapping["q"] = {
-		label: "Quit Octo",
-		value: "quit",
-	};
-
-	const shortcutItems: ShortcutArray<
-		"view" | "copy-curl" | "retry" | "edit-retry" | "quit"
-	> = [
-		{
-			type: "key" as const,
-			mapping,
-		},
-	];
+	const shortcutItems = useMemo(
+		() => requestErrorShortcutItems({ viewError, curlCommand, copiedCurl }),
+		[copiedCurl, curlCommand, viewError],
+	);
 
 	const copyCurlCommand = useCallback(() => {
+		if (!curlCommand) return;
 		try {
-			clipboardy.writeSync(curlCommand || "Failed to generate cURL command");
-			setCopiedCurl(true);
+			clipboardWriteSync(curlCommand);
+			setClipboardError(null);
+			setCopiedCurlCommand(curlCommand);
 		} catch (error) {
-			setClipboardError(
-				error instanceof Error ? error.message : "Failed to copy to clipboard",
-			);
+			setCopiedCurlCommand(null);
+			setClipboardError({
+				command: curlCommand,
+				message: errorToString(error) || "Failed to copy to clipboard",
+			});
 		}
-	}, [curlCommand]);
+	}, [clipboardWriteSync, curlCommand]);
 
 	const onSelect = useCallback(
-		(item: Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">) => {
+		(item: Item<RequestErrorAction>) => {
 			switch (item.value) {
 				case "view":
 					setViewError(true);
@@ -129,25 +189,35 @@ export function RequestErrorScreen({
 					return;
 			}
 		},
-		[copyCurlCommand, mode, config, transport],
+		[
+			config,
+			copyCurlCommand,
+			editAndRetryFrom,
+			exit,
+			mode,
+			retryFrom,
+			transport,
+		],
 	);
 
 	return (
 		<KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
-			<Text color="red">{contextualMessage}</Text>
+			<Text color="red">{normalizeRenderedLineBreaks(contextualMessage)}</Text>
 			{viewError && (
 				<Box marginY={1}>
-					<Text>{error}</Text>
+					<Text>{normalizeRenderedLineBreaks(error)}</Text>
 				</Box>
 			)}
 			{copiedCurl && (
 				<Box marginY={1}>
-					<Text>{curlCommand}</Text>
+					<Text color="green">cURL command copied to clipboard.</Text>
 				</Box>
 			)}
-			{clipboardError && (
+			{activeClipboardError && (
 				<Box marginY={1}>
-					<Text color="red">{clipboardError}</Text>
+					<Text color="red">
+						{normalizeRenderedLineBreaks(activeClipboardError)}
+					</Text>
 				</Box>
 			)}
 		</KbShortcutPanel>
@@ -155,72 +225,56 @@ export function RequestErrorScreen({
 }
 
 export function AuthErrorScreen({ error }: AuthErrorScreenProps) {
-	const config = useConfig();
-	const transport = useContext(TransportContext);
-	const { retryFrom } = useAppStore(
-		useShallow((state) => ({
-			retryFrom: state.retryFrom,
-		})),
-	);
-
-	useInput(() => {
-		retryFrom("auth-error", { config, transport });
-	});
-
 	return (
-		<CenteredBox>
+		<RetryOnInputErrorScreen mode="auth-error" error={error}>
 			<Text color="red">Authentication error:</Text>
-			<Text>{error}</Text>
 			<Text color="gray">
 				Update your API key, then press any key to retry.
 			</Text>
-		</CenteredBox>
+		</RetryOnInputErrorScreen>
 	);
 }
 
 export function RateLimitErrorScreen({ error }: RateLimitErrorScreenProps) {
-	const config = useConfig();
-	const transport = useContext(TransportContext);
-	const { retryFrom } = useAppStore(
-		useShallow((state) => ({
-			retryFrom: state.retryFrom,
-		})),
-	);
-
-	useInput(() => {
-		retryFrom("rate-limit-error", { config, transport });
-	});
-
 	return (
-		<CenteredBox>
+		<RetryOnInputErrorScreen mode="rate-limit-error" error={error}>
 			<Text color="red">
 				It looks like you've hit a rate limit! Here's the error from the
 				backend:
 			</Text>
-			<Text>{error}</Text>
 			<Text color="gray">Press any key when you're ready to retry.</Text>
-		</CenteredBox>
+		</RetryOnInputErrorScreen>
 	);
 }
 
 export function PaymentErrorScreen({ error }: PaymentErrorScreenProps) {
+	return (
+		<RetryOnInputErrorScreen mode="payment-error" error={error}>
+			<Text color="red">Payment error:</Text>
+			<Text color="gray">Once you've paid, press any key to continue.</Text>
+		</RetryOnInputErrorScreen>
+	);
+}
+
+function RetryOnInputErrorScreen({
+	mode,
+	error,
+	children,
+}: RetryOnInputErrorScreenProps) {
 	const config = useConfig();
 	const transport = useContext(TransportContext);
-	const { retryFrom } = useAppStore(
-		useShallow((state) => ({
-			retryFrom: state.retryFrom,
-		})),
-	);
+	const { retryFrom } = useAppStore(useShallow(retryFromSelector));
 
-	useInput(() => {
-		retryFrom("payment-error", { config, transport });
-	});
+	const onInput = useCallback(() => {
+		retryFrom(mode, { config, transport });
+	}, [config, mode, retryFrom, transport]);
+
+	useLatestInput(onInput);
 
 	return (
 		<CenteredBox>
-			<Text color="red">Payment error:</Text>
-			<Text>{error}</Text>
-			<Text color="gray">Once you've paid, press any key to continue.</Text>
+			{children}
+			<Text>{normalizeRenderedLineBreaks(error)}</Text>
 		</CenteredBox>
 	);
 }

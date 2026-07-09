@@ -19,6 +19,13 @@ describe("xml markup helpers", () => {
 		);
 	});
 
+	it("ignores inherited attributes when building tags", () => {
+		const attrs = Object.create({ leaked: "yes" }) as Record<string, string>;
+		attrs.name = "read";
+
+		expect(openTag("tool", attrs)).toBe('<tool name="read">');
+	});
+
 	it("escapes XML-sensitive characters", () => {
 		expect(xmlEscape(`A&B <tag attr="'">`)).toBe(
 			"A&amp;B &lt;tag attr=&quot;&apos;&quot;&gt;",
@@ -27,7 +34,7 @@ describe("xml markup helpers", () => {
 });
 
 describe("StreamingXMLParser", () => {
-	it("emits text and tag events across partial chunks", () => {
+	it("emits contiguous text and tag events across partial chunks", () => {
 		const events: XMLEvent[] = [];
 		const parser = new StreamingXMLParser({
 			handlers: {
@@ -42,18 +49,9 @@ describe("StreamingXMLParser", () => {
 		parser.close();
 
 		expect(events).toEqual([
-			{ type: "text", content: "h" },
-			{ type: "text", content: "e" },
-			{ type: "text", content: "l" },
-			{ type: "text", content: "l" },
-			{ type: "text", content: "o" },
-			{ type: "text", content: " " },
+			{ type: "text", content: "hello " },
 			{ type: "openTag", name: "tool", attributes: {} },
-			{ type: "text", content: "w" },
-			{ type: "text", content: "o" },
-			{ type: "text", content: "r" },
-			{ type: "text", content: "l" },
-			{ type: "text", content: "d" },
+			{ type: "text", content: "world" },
 			{ type: "closeTag", name: "tool" },
 		]);
 	});
@@ -74,16 +72,74 @@ describe("StreamingXMLParser", () => {
 
 		expect(events).toEqual([
 			{ type: "text", content: "<b" },
-			{ type: "text", content: "l" },
-			{ type: "text", content: "o" },
-			{ type: "text", content: "c" },
-			{ type: "text", content: "k" },
-			{ type: "text", content: "e" },
-			{ type: "text", content: "d" },
-			{ type: "text", content: ">" },
+			{ type: "text", content: "locked>" },
 			{ type: "openTag", name: "allowed", attributes: {} },
 			{ type: "closeTag", name: "allowed" },
 		]);
+	});
+
+	it("allows whitespace before opening and self-closing tag ends", () => {
+		const events: XMLEvent[] = [];
+		const parser = new StreamingXMLParser({
+			handlers: {
+				onOpenTag: (event) => events.push(event),
+				onCloseTag: (event) => events.push(event),
+				onText: (event) => events.push(event),
+			},
+		});
+
+		parser.write("<tool >body<next />");
+		parser.close();
+
+		expect(events).toEqual([
+			{ type: "openTag", name: "tool", attributes: {} },
+			{ type: "text", content: "body" },
+			{ type: "openTag", name: "next", attributes: {} },
+			{ type: "closeTag", name: "next" },
+		]);
+	});
+
+	it("keeps XML tag-name character support without regex parsing", () => {
+		const events: XMLEvent[] = [];
+		const parser = new StreamingXMLParser({
+			handlers: {
+				onOpenTag: (event) => events.push(event),
+				onCloseTag: (event) => events.push(event),
+			},
+		});
+
+		parser.write("<tool-call.v1:_x></tool-call.v1:_x>");
+		parser.close();
+
+		expect(events).toEqual([
+			{ type: "openTag", name: "tool-call.v1:_x", attributes: {} },
+			{ type: "closeTag", name: "tool-call.v1:_x" },
+		]);
+	});
+
+	it("keeps surrogate pairs intact inside text runs", () => {
+		const events: XMLEvent[] = [];
+		const parser = new StreamingXMLParser({
+			handlers: { onText: (event) => events.push(event) },
+		});
+
+		parser.write("a😀b");
+		parser.close();
+
+		expect(events).toEqual([{ type: "text", content: "a😀b" }]);
+	});
+
+	it("keeps surrogate pairs intact across stream chunk boundaries", () => {
+		const events: Extract<XMLEvent, { type: "text" }>[] = [];
+		const parser = new StreamingXMLParser({
+			handlers: { onText: (event) => events.push(event) },
+		});
+
+		parser.write("a\ud83d");
+		parser.write("\ude00b");
+		parser.close();
+
+		expect(events.map((event) => event.content).join("")).toBe("a😀b");
 	});
 
 	it("ignores writes after close", () => {

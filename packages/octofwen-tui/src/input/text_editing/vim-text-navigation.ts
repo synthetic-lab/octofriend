@@ -1,13 +1,28 @@
 import type { VimKeyHandlerResult } from "./vim-types.ts";
 
 const WHITESPACE_PATTERN = /\s/;
-const WORD_CHARACTER_PATTERN = /[a-zA-Z0-9_]/;
 
-export const isWhitespace = (char: string): boolean =>
-	WHITESPACE_PATTERN.test(char);
-export const isNewline = (char: string): boolean => char === "\n";
-export const isWordChar = (char: string): boolean =>
-	WORD_CHARACTER_PATTERN.test(char);
+export function isWhitespace(char: string): boolean {
+	if (char.length === 0) return false;
+	const code = char.charCodeAt(0);
+	if (code === 32 || (code >= 9 && code <= 13)) return true;
+	if (code < 128) return false;
+	return WHITESPACE_PATTERN.test(char);
+}
+
+export const isNewline = (char: string): boolean =>
+	char === "\n" || char === "\r";
+
+export function isWordChar(char: string): boolean {
+	if (char.length === 0) return false;
+	const code = char.charCodeAt(0);
+	return (
+		code === 95 ||
+		(code >= 48 && code <= 57) ||
+		(code >= 65 && code <= 90) ||
+		(code >= 97 && code <= 122)
+	);
+}
 
 export const trimNewlinesFromEnd = (
 	text: string,
@@ -16,7 +31,8 @@ export const trimNewlinesFromEnd = (
 ): number => {
 	let trimmedEnd = end;
 	for (; trimmedEnd > start; trimmedEnd--) {
-		if (!isNewline(text[trimmedEnd - 1])) break;
+		const code = text.charCodeAt(trimmedEnd - 1);
+		if (code !== 10 && code !== 13) break;
 	}
 	return trimmedEnd;
 };
@@ -42,48 +58,112 @@ export const getLineInfo = (
 	text: string,
 	position: number,
 ): { lineIndex: number; columnIndex: number } => {
-	const lines = text.split("\n");
-	let currentPos = 0;
-
-	for (let i = 0; i < lines.length; i++) {
-		const lineLength = lines[i].length;
-		if (position >= currentPos && position <= currentPos + lineLength) {
+	let lineStart = 0;
+	let lineIndex = 0;
+	let index = lineBreakIndex(text, 0);
+	while (index !== -1) {
+		const breakLength = lineBreakLengthAt(text, index);
+		if (position >= lineStart && position <= index) {
 			return {
-				lineIndex: i,
-				columnIndex: position - currentPos,
+				lineIndex,
+				columnIndex: Math.min(position, index) - lineStart,
 			};
 		}
-		currentPos += lineLength + 1; // +1 for the newline
+		lineStart = index + breakLength;
+		lineIndex++;
+		index = lineBreakIndex(text, lineStart);
 	}
 
-	// If position is at the very end (after last newline), return last line
+	if (position >= lineStart && position <= text.length) {
+		return {
+			lineIndex,
+			columnIndex: Math.min(position, text.length) - lineStart,
+		};
+	}
+
 	return {
-		lineIndex: lines.length - 1,
-		columnIndex: lines[lines.length - 1]?.length || 0,
+		lineIndex: Math.max(0, lineIndex),
+		columnIndex: 0,
 	};
 };
 
 export const getLineStart = (text: string, lineIndex: number): number => {
-	const lines = text.split("\n");
-	let position = 0;
-
-	for (let i = 0; i < lineIndex && i < lines.length; i++) {
-		position += lines[i].length + 1; // +1 for the newline
+	if (lineIndex <= 0) return 0;
+	let currentLine = 0;
+	let index = lineBreakIndex(text, 0);
+	while (index !== -1) {
+		const breakLength = lineBreakLengthAt(text, index);
+		currentLine++;
+		if (currentLine === lineIndex) return index + breakLength;
+		index = lineBreakIndex(text, index + breakLength);
 	}
-
-	return position;
+	return text.length + 1;
 };
 
 export const getLineEnd = (text: string, lineIndex: number): number => {
 	const lineStart = getLineStart(text, lineIndex);
-	const lines = text.split("\n");
-	const lineLength = lines[lineIndex]?.length || 0;
+	const lineLength = getLineTextLength(text, lineIndex);
 	return lineStart + Math.max(0, lineLength - 1);
 };
 
 export const getLineText = (text: string, lineIndex: number): string => {
-	const lines = text.split("\n");
-	return lines[lineIndex] || "";
+	const line = getLineBounds(text, lineIndex);
+	return line === null ? "" : text.slice(line.start, line.end);
+};
+
+function getLineTextLength(text: string, lineIndex: number): number {
+	const line = getLineBounds(text, lineIndex);
+	return line === null ? 0 : line.end - line.start;
+}
+
+type LineBounds = { start: number; end: number; breakEnd: number };
+
+function getLineBounds(
+	text: string,
+	targetLineIndex: number,
+): LineBounds | null {
+	let lineStart = 0;
+	let lineIndex = 0;
+	let index = lineBreakIndex(text, 0);
+	while (index !== -1) {
+		const breakLength = lineBreakLengthAt(text, index);
+		if (lineIndex === targetLineIndex) {
+			return {
+				start: lineStart,
+				end: index,
+				breakEnd: index + breakLength,
+			};
+		}
+		lineStart = index + breakLength;
+		lineIndex++;
+		index = lineBreakIndex(text, lineStart);
+	}
+	return lineIndex === targetLineIndex
+		? { start: lineStart, end: text.length, breakEnd: text.length }
+		: null;
+}
+
+export const hasLineAfter = (text: string, lineIndex: number): boolean => {
+	let currentLine = 0;
+	let index = lineBreakIndex(text, 0);
+	while (index !== -1) {
+		const breakLength = lineBreakLengthAt(text, index);
+		if (currentLine === lineIndex) return true;
+		currentLine++;
+		index = lineBreakIndex(text, index + breakLength);
+	}
+	return false;
+};
+
+export const getLineCount = (text: string): number => {
+	let lineCount = 1;
+	let index = lineBreakIndex(text, 0);
+	while (index !== -1) {
+		const breakLength = lineBreakLengthAt(text, index);
+		lineCount++;
+		index = lineBreakIndex(text, index + breakLength);
+	}
+	return lineCount;
 };
 
 export const getLineInsertEnd = (text: string, lineIndex: number): number => {
@@ -124,12 +204,24 @@ export const getLineRange = (
 	cursorPosition: number,
 ): { start: number; end: number } => {
 	const currentLineInfo = getLineInfo(text, cursorPosition);
-	const start = getLineStart(text, currentLineInfo.lineIndex);
-	const lines = text.split("\n");
-	const line = getLineText(text, currentLineInfo.lineIndex);
-	let end = start + line.length;
-	if (currentLineInfo.lineIndex < lines.length - 1) {
-		end += 1; // Include the newline character
-	}
-	return { start, end };
+	const line = getLineBounds(text, currentLineInfo.lineIndex);
+	if (line === null) return { start: 0, end: 0 };
+	return {
+		start: line.start,
+		end: line.breakEnd > line.end ? line.breakEnd : line.end,
+	};
 };
+
+function lineBreakLengthAt(text: string, index: number): number {
+	const code = text.charCodeAt(index);
+	if (code === 13) return text.charCodeAt(index + 1) === 10 ? 2 : 1;
+	return code === 10 ? 1 : 0;
+}
+
+function lineBreakIndex(text: string, start: number): number {
+	const lfIndex = text.indexOf("\n", start);
+	const crIndex = text.indexOf("\r", start);
+	if (lfIndex === -1) return crIndex;
+	if (crIndex === -1) return lfIndex;
+	return lfIndex < crIndex ? lfIndex : crIndex;
+}

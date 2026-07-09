@@ -1,205 +1,29 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { parse } from "shell-quote";
-import { err, errorToString, ok, type Result } from "../app/result.ts";
+import {
+	extractBase64FromDataUrl as extractBase64FromDataUrlImpl,
+	getMimeTypeFromDataUrl as getMimeTypeFromDataUrlImpl,
+	getMimeTypeFromPath as getMimeTypeFromPathImpl,
+	loadImageFromPath as loadImageFromPathImpl,
+} from "./image-loading.ts";
+import {
+	isImagePath as isImagePathImpl,
+	parseImagePaths as parseImagePathsImpl,
+	replaceInputWithSafeCharacters as replaceInputWithSafeCharactersImpl,
+	separateFilePaths as separateFilePathsImpl,
+} from "./image-path-parsing.ts";
+import type {
+	ImageInfo as ImageInfoType,
+	ImageMimeType as ImageMimeTypeType,
+} from "./image-types.ts";
 
-const CHARACTER_PLACEHOLDER = "_";
+export type ImageMimeType = ImageMimeTypeType;
+export type ImageInfo = ImageInfoType;
 
-const IMAGE_MIME_TYPES = [
-	"image/png",
-	"image/jpeg",
-	"image/webp",
-	"image/gif",
-] as const;
-
-export type ImageMimeType = (typeof IMAGE_MIME_TYPES)[number];
-
-export type ImageInfo = {
-	mimeType: ImageMimeType;
-	base64Data: string;
-	dataUrl: string;
-	filePath: string;
-	sizeBytes: number;
-};
-
-const IMAGE_EXTENSIONS: Record<string, ImageMimeType> = {
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-	".webp": "image/webp",
-	".gif": "image/gif",
-};
-
-export function isImagePath(filePath: string): boolean {
-	if (!isFilePath(filePath)) return false;
-	const ext = path.extname(filePath).toLowerCase();
-	return ext in IMAGE_EXTENSIONS;
-}
-
-export function replaceInputWithSafeCharacters(input: string): string {
-	let escaped = false;
-	let sanitized = "";
-	for (const char of input) {
-		if (char === "\n" || char === "\r") {
-			sanitized += char;
-		} else if (char === "\\") {
-			escaped = !escaped;
-			sanitized += CHARACTER_PLACEHOLDER;
-		} else if (char === " " && !escaped) {
-			sanitized += " ";
-			escaped = false;
-		} else {
-			sanitized += CHARACTER_PLACEHOLDER;
-			escaped = false;
-		}
-	}
-	return sanitized;
-}
-
-export function separateFilePaths(input: string): string[] {
-	const placeholderInput = replaceInputWithSafeCharacters(input);
-	const parsedPlaceholderInput = parse(placeholderInput);
-	const filePaths: string[] = [];
-	let cursor = 0;
-
-	for (const separatedPlaceholderPath of parsedPlaceholderInput) {
-		if (typeof separatedPlaceholderPath === "string") {
-			filePaths.push(
-				input.slice(cursor, cursor + separatedPlaceholderPath.length),
-			);
-			cursor += separatedPlaceholderPath.length + 1;
-		}
-	}
-
-	return filePaths.flatMap((filePath) => filePath.split("\n"));
-}
-
-export function parseImagePaths(input: string): string[] | null {
-	const filePaths = separateFilePaths(dequote(input));
-	const imagePaths: string[] = [];
-
-	for (const filePath of filePaths.map((candidate) =>
-		sanitizeFilePath(candidate),
-	)) {
-		if (isImagePath(filePath)) {
-			imagePaths.push(filePath);
-		} else {
-			return null;
-		}
-	}
-
-	return imagePaths;
-}
-
-export function getMimeTypeFromPath(
-	filePath: string,
-): Result<ImageMimeType, string> {
-	const ext = path.extname(filePath).toLowerCase();
-	const mimeType = IMAGE_EXTENSIONS[ext];
-	if (!mimeType) return err(`Unsupported image format for file: ${filePath}`);
-	return ok(mimeType);
-}
-
-export async function loadImageFromPath(
-	filePath: string,
-): Promise<Result<ImageInfo, string>> {
-	const mimeType = getMimeTypeFromPath(filePath);
-	if (!mimeType.success) return mimeType;
-	const buffer = await readImageFile(filePath);
-	if (!buffer.success) return buffer;
-	const base64Data = buffer.data.toString("base64");
-	const dataUrl = `data:${mimeType.data};base64,${base64Data}`;
-
-	return ok({
-		mimeType: mimeType.data,
-		base64Data,
-		dataUrl,
-		filePath: path.resolve(filePath),
-		sizeBytes: buffer.data.length,
-	});
-}
-
-export function getMimeTypeFromDataUrl(
-	dataUrl: string,
-): ImageMimeType | undefined {
-	const marker = ";base64,";
-	const idx = dataUrl.indexOf(marker);
-	if (idx === -1) return undefined;
-	const mimeType = dataUrl.slice("data:".length, idx);
-	return isSupportedImageMimeType(mimeType) ? mimeType : undefined;
-}
-
-export function extractBase64FromDataUrl(dataUrl: string): string {
-	const marker = ";base64,";
-	const idx = dataUrl.indexOf(marker);
-	if (idx === -1) return dataUrl;
-	return dataUrl.slice(idx + marker.length);
-}
-
-function isFilePath(input: string): boolean {
-	const trimmed = input.trim();
-	const parsed = path.parse(trimmed);
-	return parsed.dir !== "" || parsed.ext !== "";
-}
-
-function sanitizeFilePath(filePath: string): string {
-	const trimmed = filePath.trim();
-	return trimmed.replace(/\\(.)/g, "$1");
-}
-
-function dequote(input: string): string {
-	return dequoteType(dequoteType(input, "'"), '"');
-}
-
-function dequoteType(input: string, quoteType: string): string {
-	let inQuote = false;
-	const chars: string[] = [];
-
-	for (const char of input) {
-		if (char === quoteType) {
-			inQuote = !inQuote;
-			continue;
-		}
-
-		if (!inQuote) {
-			chars.push(char);
-			continue;
-		}
-
-		pushQuotedCharacter(chars, char);
-	}
-
-	return chars.join("");
-}
-
-function pushQuotedCharacter(chars: string[], char: string): void {
-	switch (char) {
-		case " ":
-			chars.push("\\", " ");
-			break;
-		case "\n":
-			chars.push("\\", "n");
-			break;
-		case "\r":
-			chars.push("\\", "\r");
-			break;
-		default:
-			chars.push(char);
-	}
-}
-
-async function readImageFile(
-	filePath: string,
-): Promise<Result<Buffer, string>> {
-	try {
-		return ok(await fs.readFile(filePath));
-	} catch (error) {
-		return err(
-			`Failed to read image file ${filePath}: ${errorToString(error)}`,
-		);
-	}
-}
-
-function isSupportedImageMimeType(mimeType: string): mimeType is ImageMimeType {
-	return (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
-}
+export const isImagePath = isImagePathImpl;
+export const replaceInputWithSafeCharacters =
+	replaceInputWithSafeCharactersImpl;
+export const separateFilePaths = separateFilePathsImpl;
+export const parseImagePaths = parseImagePathsImpl;
+export const getMimeTypeFromPath = getMimeTypeFromPathImpl;
+export const loadImageFromPath = loadImageFromPathImpl;
+export const getMimeTypeFromDataUrl = getMimeTypeFromDataUrlImpl;
+export const extractBase64FromDataUrl = extractBase64FromDataUrlImpl;

@@ -1,16 +1,20 @@
-import { useShallow } from "zustand/shallow";
+import { useMemo } from "react";
 import { getModelFromConfig } from "../../internal/configuration/model-selection.ts";
 import { useConfig } from "../../internal/configuration/react-context.ts";
 import type { ModelConfig } from "../../internal/configuration/schemas.ts";
 import { useAppStore } from "./store.ts";
+import type { UiState } from "./types.ts";
+
+const selectModelOverride = (state: UiState) => {
+	return state.modelOverride;
+};
 
 export function useModel(): ModelConfig {
-	const { modelOverride } = useAppStore(
-		useShallow((state) => ({
-			modelOverride: state.modelOverride,
-		})),
-	);
+	const modelOverride = useAppStore(selectModelOverride);
 	const config = useConfig();
 
-	return getModelFromConfig(config, modelOverride);
+	return useMemo(
+		() => getModelFromConfig(config, modelOverride),
+		[config, modelOverride],
+	);
 }

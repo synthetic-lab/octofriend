@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { trajectoryArc } from "../../../internal/agent-trajectory-runtime/main.ts";
 import type { Transport } from "../../../internal/transport/common.ts";
 
+const CURRENT_CONFIG_VERSION = 6;
+
+function echoCommand(value: string): string[] {
+	return [process.execPath, "--eval", `console.log(${JSON.stringify(value)})`];
+}
+
 describe("agent trajectory runtime", () => {
 	test("delegates trajectory execution to trajectory arc bridge", async () => {
 		const calls: unknown[] = [];
@@ -19,9 +25,10 @@ describe("agent trajectory runtime", () => {
 				{ role: "user", content: [{ type: "text", content: "hello" }] },
 			],
 			config: {
-				configVersion: 2,
+				configVersion: CURRENT_CONFIG_VERSION,
 				yourName: "Test User",
 				models: [],
+				defaultApiKeyOverrides: { synthetic: "MISSING_SYNTHETIC_TEST_KEY" },
 			},
 			transport: fakeTransport(),
 			abortSignal: new AbortController().signal,
@@ -61,7 +68,9 @@ describe("agent trajectory runtime", () => {
 					search: undefined,
 					hasWebSearch: false,
 					skills: undefined,
-					defaultApiKeyOverrides: undefined,
+					defaultApiKeyOverrides: {
+						synthetic: "MISSING_SYNTHETIC_TEST_KEY",
+					},
 					authModels: [],
 					fixJson: undefined,
 				},
@@ -94,7 +103,7 @@ describe("agent trajectory runtime", () => {
 			},
 			messages: [],
 			config: {
-				configVersion: 2,
+				configVersion: CURRENT_CONFIG_VERSION,
 				yourName: "Test User",
 				models: [],
 			},
@@ -134,7 +143,7 @@ describe("agent trajectory runtime", () => {
 			},
 			messages: [],
 			config: {
-				configVersion: 2,
+				configVersion: CURRENT_CONFIG_VERSION,
 				yourName: "Test User",
 				models: [],
 			},
@@ -183,6 +192,37 @@ describe("agent trajectory runtime", () => {
 		expect(finish.reason).toEqual({ type: "needs-response" });
 	});
 
+	test("ignores malformed quota arc events without breaking finish", async () => {
+		const circularQuota: Record<string, unknown> = {};
+		circularQuota["self"] = circularQuota;
+		const finish = await trajectoryArc({
+			apiKey: "test-key",
+			model: {
+				nickname: "test-model",
+				model: "trajectory-token-test-model",
+				baseUrl: "https://api.example.test/v1",
+				context: 1000,
+			},
+			messages: [],
+			config: {
+				configVersion: CURRENT_CONFIG_VERSION,
+				yourName: "Test User",
+				models: [],
+			},
+			transport: fakeTransport(),
+			abortSignal: new AbortController().signal,
+			trajectoryArcRun: async () => ({
+				type: "finish",
+				irs: [assistantMessage("done")],
+				reason: { type: "needs-response" },
+				events: [{ type: "quota-updated", quota: circularQuota }],
+			}),
+			handler: quietHandler(),
+		});
+
+		expect(finish.reason).toEqual({ type: "needs-response" });
+	});
+
 	test("records trajectory token usage for the active model", async () => {
 		const { tokenCounts } = await import("../../../app/token_usage.ts");
 		await trajectoryArc({
@@ -195,7 +235,7 @@ describe("agent trajectory runtime", () => {
 			},
 			messages: [],
 			config: {
-				configVersion: 2,
+				configVersion: CURRENT_CONFIG_VERSION,
 				yourName: "Test User",
 				models: [],
 			},
@@ -217,71 +257,66 @@ describe("agent trajectory runtime", () => {
 	});
 
 	test("forwards fixJson auth metadata and default web-search availability", async () => {
-		const previousSynthetic = process.env["SYNTHETIC_API_KEY"];
-		const previousFix = process.env["FIX_JSON_KEY"];
-		process.env["SYNTHETIC_API_KEY"] = "synthetic-key";
-		process.env["FIX_JSON_KEY"] = "fix-key";
-		try {
-			const calls: unknown[] = [];
-			await trajectoryArc({
-				apiKey: "test-key",
-				model: {
-					nickname: "test-model",
-					model: "gpt-test",
-					baseUrl: "https://api.example.test/v1",
-					context: 1000,
+		const calls: unknown[] = [];
+		await trajectoryArc({
+			apiKey: "test-key",
+			model: {
+				nickname: "test-model",
+				model: "gpt-test",
+				baseUrl: "https://api.example.test/v1",
+				context: 1000,
+			},
+			messages: [],
+			config: {
+				configVersion: CURRENT_CONFIG_VERSION,
+				yourName: "Test User",
+				models: [],
+				search: {
+					url: "https://search.example",
+					auth: { type: "command", command: echoCommand("search-key") },
 				},
-				messages: [],
-				config: {
-					configVersion: 2,
-					yourName: "Test User",
-					models: [],
-					fixJson: {
-						baseUrl: "https://fix.example/v1",
-						apiEnvVar: "FIX_JSON_KEY",
-						model: "fix-model",
-					},
+				fixJson: {
+					type: "gemini",
+					baseUrl: "https://fix.example/v1",
+					auth: { type: "env", name: "FIX_JSON_KEY" },
+					model: "fix-model",
 				},
-				transport: fakeTransport(),
-				abortSignal: new AbortController().signal,
-				trajectoryArcRun: async (params) => {
-					await Promise.resolve();
-					calls.push(params.config);
-					return {
-						type: "finish",
-						irs: [],
-						reason: { type: "needs-response" },
-						events: [],
-					};
-				},
-				handler: quietHandler(),
-			});
+			},
+			transport: fakeTransport(),
+			abortSignal: new AbortController().signal,
+			trajectoryArcRun: async (params) => {
+				await Promise.resolve();
+				calls.push(params.config);
+				return {
+					type: "finish",
+					irs: [],
+					reason: { type: "needs-response" },
+					events: [],
+				};
+			},
+			handler: quietHandler(),
+		});
 
-			expect(calls[0]).toEqual(
-				expect.objectContaining({
-					hasWebSearch: true,
-					authModels: [
-						{
-							baseUrl: "https://fix.example/v1",
-							apiEnvVar: "FIX_JSON_KEY",
-							auth: undefined,
-						},
-					],
-					fixJson: {
+		expect(calls[0]).toEqual(
+			expect.objectContaining({
+				hasWebSearch: true,
+				authModels: [
+					{
+						type: "gemini",
 						baseUrl: "https://fix.example/v1",
-						apiEnvVar: "FIX_JSON_KEY",
-						auth: undefined,
-						model: "fix-model",
+						apiEnvVar: undefined,
+						auth: { type: "env", name: "FIX_JSON_KEY" },
 					},
-				}),
-			);
-		} finally {
-			if (previousSynthetic === undefined)
-				delete process.env["SYNTHETIC_API_KEY"];
-			else process.env["SYNTHETIC_API_KEY"] = previousSynthetic;
-			if (previousFix === undefined) delete process.env["FIX_JSON_KEY"];
-			else process.env["FIX_JSON_KEY"] = previousFix;
-		}
+				],
+				fixJson: {
+					type: "gemini",
+					baseUrl: "https://fix.example/v1",
+					apiEnvVar: undefined,
+					auth: { type: "env", name: "FIX_JSON_KEY" },
+					model: "fix-model",
+				},
+			}),
+		);
 	});
 });
 

@@ -1,8 +1,6 @@
 import type { Key } from "ink";
-import type {
-	VimHandlerActions,
-	VimHandlerState,
-} from "./vim-handler-state.ts";
+import { previousTextBoundary } from "./text-boundaries.ts";
+import type { VimHandlerRuntime } from "./vim-handler-state.ts";
 import {
 	getLineInfo,
 	getLineStart,
@@ -15,8 +13,7 @@ export function handleInsertMode(
 	key: Key,
 	cursorPosition: number,
 	currentValue: string,
-	state: VimHandlerState,
-	actions: VimHandlerActions,
+	runtime: VimHandlerRuntime,
 ): VimKeyHandlerResult {
 	if (key.escape || (key.ctrl && input === "c")) {
 		let newCursorPosition = cursorPosition;
@@ -25,22 +22,22 @@ export function handleInsertMode(
 			const lineStart = getLineStart(currentValue, currentLineInfo.lineIndex);
 			const currentLine = getLineText(currentValue, currentLineInfo.lineIndex);
 			if (!(cursorPosition === lineStart && currentLine.length === 0)) {
-				newCursorPosition = cursorPosition - 1;
+				newCursorPosition = previousTextBoundary(currentValue, cursorPosition);
 			}
 		}
-		if (state.insertStartState !== null) {
-			actions.saveState(
-				state.insertStartState.text,
-				state.insertStartState.cursorPosition,
+		if (runtime.insertStartState !== null) {
+			runtime.saveState(
+				runtime.insertStartState.text,
+				runtime.insertStartState.cursorPosition,
 			);
-			state.insertStartState = null;
+			runtime.insertStartState = null;
 		}
-		actions.setVimMode("NORMAL");
+		runtime.setVimMode("NORMAL");
 		return { consumed: true, newCursorPosition };
 	}
 
-	if (state.insertStartState === null) {
-		state.insertStartState = { text: currentValue, cursorPosition };
+	if (runtime.insertStartState === null) {
+		runtime.insertStartState = { text: currentValue, cursorPosition };
 	}
 
 	if (key.return) {

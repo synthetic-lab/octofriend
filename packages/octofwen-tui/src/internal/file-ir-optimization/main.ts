@@ -68,14 +68,22 @@ export function optimizeFiles<TBaseMessage, TToolCall extends ToolCallLike>(
 	messages: FileOptimizerInputIR<TBaseMessage, TToolCall>[],
 	modalities?: MultimodalConfig,
 ): OptimizedFileIR<TBaseMessage, TToolCall>[] {
-	const output: OptimizedFileIR<TBaseMessage, TToolCall>[] = [];
+	const output = new Array<OptimizedFileIR<TBaseMessage, TToolCall>>(
+		messages.length,
+	);
 	const seenPaths = new Set<string>();
 
-	for (const ir of [...messages].reverse()) {
-		output.push(optimizeFileIR(ir, seenPaths, modalities));
+	let index = messages.length - 1;
+	while (index >= 0) {
+		output[index] = optimizeFileIR(
+			messages[index] as FileOptimizerInputIR<TBaseMessage, TToolCall>,
+			seenPaths,
+			modalities,
+		);
+		index -= 1;
 	}
 
-	return output.reverse();
+	return output;
 }
 
 export function canDisplayImage(
@@ -85,7 +93,9 @@ export function canDisplayImage(
 	if (!modalities?.image?.enabled) {
 		return { ok: false, reason: "Your model does not support image viewing." };
 	}
-	if (!modalities.image.acceptedMimeTypes.includes(image.mimeType)) {
+	if (
+		!hasAcceptedMimeType(modalities.image.acceptedMimeTypes, image.mimeType)
+	) {
 		return {
 			ok: false,
 			reason: `Your model does not support ${image.mimeType} images. Supported formats: ${modalities.image.acceptedMimeTypes.join(", ")}.`,
@@ -102,6 +112,18 @@ export function canDisplayImage(
 		};
 	}
 	return { ok: true };
+}
+
+function hasAcceptedMimeType(
+	acceptedMimeTypes: readonly string[],
+	mimeType: string,
+): boolean {
+	let index = 0;
+	while (index < acceptedMimeTypes.length) {
+		if (acceptedMimeTypes[index] === mimeType) return true;
+		index += 1;
+	}
+	return false;
 }
 
 function optimizeFileIR<TBaseMessage, TToolCall extends ToolCallLike>(

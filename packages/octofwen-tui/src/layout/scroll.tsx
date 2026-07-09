@@ -5,6 +5,7 @@ import {
 	measureElement,
 	Text,
 	useStdin,
+	useStdout,
 } from "ink";
 import {
 	createContext,
@@ -15,14 +16,13 @@ import {
 	useState,
 } from "react";
 import { useTerminalThemeColor } from "../theme/branding.tsx";
+import { useStdoutResize } from "./stdout-resize.ts";
 
-const ESCAPE_SEQUENCE = String.fromCharCode(27);
-
-const MOUSE_PATTERNS = {
-	URXVT: new RegExp(`${ESCAPE_SEQUENCE}\\[(\\d+);(\\d+);(\\d+)M`),
-	SGR: new RegExp(`${ESCAPE_SEQUENCE}\\[<(\\d+);(\\d+);(\\d+)([Mm])`),
-	UTF8: new RegExp(`${ESCAPE_SEQUENCE}\\[M(.)(.)(.)`),
-} as const;
+const ASCII_ESCAPE = 27;
+const ASCII_OPEN_BRACKET = 91;
+const ASCII_LESS_THAN = 60;
+const ASCII_SEMICOLON = 59;
+const ASCII_CAPITAL_M = 77;
 
 const SCROLL_DIRECTIONS = {
 	SCROLL_UP: "SCROLL_UP",
@@ -55,23 +55,62 @@ export type ScrollViewProps = {
 
 export const IsScrollableContext = createContext(false);
 
-function parseMouseScrollDirection(str: string): ScrollDirection | undefined {
-	const urxvtMatch = str.match(MOUSE_PATTERNS.URXVT);
-	if (urxvtMatch) {
-		return parseUrXvtButton(Number.parseInt(urxvtMatch[1], 10));
+export function parseMouseScrollDirection(
+	data: string | Uint8Array,
+): ScrollDirection | undefined {
+	return typeof data === "string"
+		? parseMouseScrollDirectionString(data)
+		: parseMouseScrollDirectionBytes(data);
+}
+
+function parseMouseScrollDirectionString(
+	data: string,
+): ScrollDirection | undefined {
+	if (data.length < 4) return undefined;
+	const bytes = new Uint8Array(data.length);
+	for (let index = 0; index < data.length; index += 1) {
+		bytes[index] = data.charCodeAt(index);
+	}
+	return parseMouseScrollDirectionBytes(bytes);
+}
+
+function parseMouseScrollDirectionBytes(
+	data: Uint8Array,
+): ScrollDirection | undefined {
+	if (
+		data.length < 4 ||
+		data[0] !== ASCII_ESCAPE ||
+		data[1] !== ASCII_OPEN_BRACKET
+	) {
+		return undefined;
 	}
 
-	const sgrMatch = str.match(MOUSE_PATTERNS.SGR);
-	if (sgrMatch) {
-		return parseSgrButton(Number.parseInt(sgrMatch[1], 10));
+	if (data[2] === ASCII_CAPITAL_M) {
+		return data.length >= 6 ? parseUrXvtButton(data[3]) : undefined;
 	}
 
-	const utf8Match = str.match(MOUSE_PATTERNS.UTF8);
-	if (utf8Match) {
-		return parseUrXvtButton(utf8Match[1].charCodeAt(0));
-	}
+	const buttonStart = data[2] === ASCII_LESS_THAN ? 3 : 2;
+	const button = parseLeadingMouseButton(data, buttonStart);
+	if (button === null) return undefined;
+	return data[2] === ASCII_LESS_THAN
+		? parseSgrButton(button)
+		: parseUrXvtButton(button);
+}
 
-	return undefined;
+function parseLeadingMouseButton(
+	data: Uint8Array,
+	start: number,
+): number | null {
+	let button = 0;
+	let index = start;
+	while (index < data.length) {
+		const code = data[index];
+		if (code === ASCII_SEMICOLON) return index === start ? null : button;
+		if (code < 48 || code > 57) return null;
+		button = button * 10 + code - 48;
+		index += 1;
+	}
+	return null;
 }
 
 function parseUrXvtButton(button: number): ScrollDirection | undefined {
@@ -122,6 +161,7 @@ export function ScrollView({ height, children }: ScrollViewProps) {
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 	const innerRef = useRef<DOMElement>(null);
 	const { stdin, setRawMode } = useStdin();
+	const { stdout } = useStdout();
 
 	const handleElementSize = useCallback(() => {
 		if (!innerRef.current) return;
@@ -153,16 +193,7 @@ export function ScrollView({ height, children }: ScrollViewProps) {
 		[innerHeight, height],
 	);
 
-	useEffect(() => {
-		const handleResize = () => {
-			setTimeout(handleElementSize, 0);
-		};
-		process.stdout.on("resize", handleResize);
-
-		return () => {
-			process.stdout.off("resize", handleResize);
-		};
-	}, [handleElementSize]);
+	useStdoutResize(handleElementSize);
 
 	useEffect(() => {
 		if (!(stdin && isScrollable)) {
@@ -170,10 +201,10 @@ export function ScrollView({ height, children }: ScrollViewProps) {
 		}
 
 		setRawMode(true);
-		process.stdout.write(MOUSE_TRACKING.ENABLE);
+		stdout.write(MOUSE_TRACKING.ENABLE);
 
 		const handleData = (data: Buffer) => {
-			const direction = parseMouseScrollDirection(data.toString());
+			const direction = parseMouseScrollDirection(data);
 			if (direction) {
 				handleScroll(direction);
 			}
@@ -182,21 +213,16 @@ export function ScrollView({ height, children }: ScrollViewProps) {
 		stdin.on("data", handleData);
 
 		return () => {
-			process.stdout.write(MOUSE_TRACKING.DISABLE);
+			stdout.write(MOUSE_TRACKING.DISABLE);
 			stdin.off("data", handleData);
 			setRawMode(false);
 		};
-	}, [stdin, setRawMode, isScrollable, handleScroll]);
+	}, [stdin, stdout, setRawMode, isScrollable, handleScroll]);
 
 	useEffect(() => {
 		const timer = setTimeout(handleElementSize, 0);
 		return () => clearTimeout(timer);
-	}, [height, handleElementSize]);
-
-	useEffect(() => {
-		const timer = setTimeout(handleElementSize, 0);
-		return () => clearTimeout(timer);
-	}, [children, handleElementSize]);
+	}, [height, children, handleElementSize]);
 
 	const scrollUiColor = useTerminalThemeColor();
 	const scrollableStyles: BoxProps = {

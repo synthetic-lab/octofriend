@@ -1,4 +1,5 @@
 import { resolveAgentdCommand } from "./command.ts";
+import { firstNonEmptyStdoutLine } from "./stdout.ts";
 
 let nextRequestId = 1;
 
@@ -39,7 +40,7 @@ export async function agentdTransportRequestRaw(
 				new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
 			);
 		}
-		const firstLine = stdout.split("\n").find((line) => line.trim() !== "");
+		const firstLine = firstNonEmptyStdoutLine(stdout);
 		if (!firstLine) {
 			return Promise.reject(new Error("octofwen-agentd returned no response"));
 		}
