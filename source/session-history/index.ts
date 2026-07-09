@@ -57,8 +57,12 @@ export function loadSession(sessionId: string): LoadedSession | null {
   const nodesById = new Map<number, SessionTreeNode>();
   for (const node of tree.nodes) {
     nodesById.set(node.id, node);
-    if (node.isLeaf && (mostRecentLeaf == null || node.id > mostRecentLeaf.id)) {
-      // todo should we add a created at field to the tree nodes to find most recent leaf instead of relying on the autoincrementing id?
+    if (
+      node.isLeaf &&
+      (mostRecentLeaf == null ||
+        node.createdAt > mostRecentLeaf.createdAt ||
+        (node.createdAt === mostRecentLeaf.createdAt && node.id > mostRecentLeaf.id))
+    ) {
       mostRecentLeaf = node;
     }
   }

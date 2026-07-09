@@ -118,6 +118,9 @@ export const treeNodes = sqliteTable(
     launchId: integer()
       .notNull()
       .references(() => launches.id),
+    createdAt: integer()
+      .notNull()
+      .$defaultFn(() => Date.now()),
   },
   table => [
     index("tree_nodes_tree_id_idx").on(table.treeId),
