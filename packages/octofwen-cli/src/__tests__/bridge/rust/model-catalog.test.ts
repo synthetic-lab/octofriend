@@ -35,7 +35,15 @@ const catalogResponse: AgentdModelProviderCatalogResult = {
 			name: "Synthetic",
 			envVar: "SYNTHETIC_API_KEY",
 			baseUrl: "https://api.synthetic.new/v1",
+			baseUrlAliases: [
+				"https://api.synthetic.new/openai/v1",
+				"https://synthetic.new/api/openai/v1",
+				"https://api.glhf.chat/v1",
+				"https://glhf.chat/api/v1",
+				"https://glhf.chat/api/openai/v1",
+			],
 			apiKeyUrl: "https://dev.synthetic.new/",
+			authMethods: ["api-key"],
 			models: [
 				{
 					model: "hf:moonshotai/Kimi-K2.5",
@@ -63,7 +71,9 @@ const catalogResponse: AgentdModelProviderCatalogResult = {
 			name: "Google Gemini",
 			envVar: "GEMINI_API_KEY",
 			baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+			baseUrlAliases: [],
 			apiKeyUrl: "https://aistudio.google.com/apikey",
+			authMethods: ["api-key"],
 			models: [
 				{
 					model: "gemini-3.5-flash",
@@ -75,6 +85,8 @@ const catalogResponse: AgentdModelProviderCatalogResult = {
 		},
 	},
 };
+
+const CURRENT_CONFIG_VERSION = 6;
 
 describe("AgentdRustBridge model provider catalog", () => {
 	it("requests the agentd model provider catalog", async () => {
@@ -102,11 +114,15 @@ describe("AgentdRustBridge model provider catalog", () => {
 describe("AgentdRustBridge config ownership", () => {
 	it("requests agentd config migration and sanitization", async () => {
 		const migrated = {
-			config: { configVersion: 2, yourName: "Ada", models: [] },
+			config: {
+				configVersion: CURRENT_CONFIG_VERSION,
+				yourName: "Ada",
+				models: [],
+			},
 		};
 		const sanitized = {
 			config: {
-				configVersion: 2,
+				configVersion: CURRENT_CONFIG_VERSION,
 				yourName: "Ada",
 				models: [{ baseUrl: "https://api.openai.com/v1" }],
 			},

@@ -14,6 +14,7 @@ export type Auth =
 	| {
 			type: "env";
 			name: string;
+			credential?: "api-key" | "chatgpt-oauth";
 	  }
 	| {
 			type: "command";
@@ -54,18 +55,25 @@ export type ModelConfig = {
 };
 
 export type AutofixModelConfig = {
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
 	baseUrl: string;
 	apiEnvVar?: string;
 	auth?: Auth;
 	model: string;
 };
 
-export type Config = {
+export type ConfigIdentity = {
 	configVersion?: number;
 	yourName: string;
+};
+
+export type ConfigModels = {
 	models: ModelConfig[];
 	diffApply?: AutofixModelConfig;
 	fixJson?: AutofixModelConfig;
+};
+
+export type ConfigEditing = {
 	vimEmulation?: {
 		enabled: boolean;
 	};
@@ -74,6 +82,9 @@ export type Config = {
 		apiEnvVar?: string;
 		auth?: Auth;
 	};
+};
+
+export type ConfigIntegrations = {
 	defaultApiKeyOverrides?: Record<string, string>;
 	mcpServers?: Record<string, McpServerConfig>;
 	lsp?: false | Record<string, LspEntry>;
@@ -86,3 +97,8 @@ export type Config = {
 		alwaysNotify?: boolean;
 	};
 };
+
+export type Config = ConfigIdentity &
+	ConfigModels &
+	ConfigEditing &
+	ConfigIntegrations;

@@ -41,13 +41,23 @@ export type AgentdProviderModelConfig = {
 	modalities?: AgentdMultimodalConfig;
 };
 
+export type AgentdProviderAuthMethod = "api-key" | "chatgpt-oauth";
+
+export type AgentdProviderType =
+	| "standard"
+	| "openai-responses"
+	| "anthropic"
+	| "gemini";
+
 export type AgentdProviderConfig = {
 	shortcut: AgentdProviderShortcut;
-	type: "standard" | "openai-responses" | "anthropic" | "gemini";
+	type: AgentdProviderType;
 	name: string;
 	envVar: string;
 	baseUrl: string;
+	baseUrlAliases: string[];
 	apiKeyUrl: string;
+	authMethods: AgentdProviderAuthMethod[];
 	models: AgentdProviderModelConfig[];
 	testModel: string;
 };
@@ -72,6 +82,12 @@ function isProviderShortcut(value: unknown): value is AgentdProviderShortcut {
 		value !== "k" &&
 		value !== "l"
 	);
+}
+
+function isProviderAuthMethod(
+	value: unknown,
+): value is AgentdProviderAuthMethod {
+	return value === "api-key" || value === "chatgpt-oauth";
 }
 
 function isProviderType(value: unknown): value is AgentdProviderConfig["type"] {
@@ -140,7 +156,11 @@ function isProviderConfig(value: unknown): value is AgentdProviderConfig {
 		typeof value["name"] === "string" &&
 		typeof value["envVar"] === "string" &&
 		typeof value["baseUrl"] === "string" &&
+		Array.isArray(value["baseUrlAliases"]) &&
+		value["baseUrlAliases"].every((entry) => typeof entry === "string") &&
 		typeof value["apiKeyUrl"] === "string" &&
+		Array.isArray(value["authMethods"]) &&
+		value["authMethods"].every(isProviderAuthMethod) &&
 		Array.isArray(value["models"]) &&
 		value["models"].every(isProviderModelConfig) &&
 		typeof value["testModel"] === "string"

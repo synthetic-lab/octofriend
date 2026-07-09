@@ -35,6 +35,12 @@ export function invalidAgentdConfigResponseError(): Error {
 	);
 }
 
+export function invalidAgentdConfigAutofixKeysResponseError(): Error {
+	return new AgentdBridgeResponseError(
+		"Invalid octofwen-agentd autofix keys result",
+	);
+}
+
 export function invalidAgentdModelConnectionTestResponseError(): Error {
 	return new Error("Invalid octofwen-agentd model connection test response");
 }

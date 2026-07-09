@@ -1,7 +1,7 @@
-import fs from "node:fs/promises";
 import path from "node:path";
+import { readPackageJson } from "@octofwen/octofwen-shared";
 import { PACKAGE_DIR } from "./configuration/paths.ts";
-import { err, errorToString, ok, type Result } from "./result.ts";
+import { err, ok, type Result } from "./result.ts";
 
 export type Metadata = {
 	version: string;
@@ -19,27 +19,6 @@ async function readMetadata(): Promise<Metadata> {
 	return {
 		version: typeof version === "string" ? version : "0.0.0",
 	};
-}
-
-async function readPackageJson(
-	packageFile: string,
-): Promise<Result<Record<string, unknown>, string>> {
-	try {
-		const packageJson = JSON.parse(await fs.readFile(packageFile, "utf8"));
-		return typeof packageJson === "object" && packageJson !== null
-			? ok(packageJson as Record<string, unknown>)
-			: err(`Invalid package metadata in ${packageFile}`);
-	} catch (error) {
-		if (
-			error &&
-			typeof error === "object" &&
-			"code" in error &&
-			error.code === "ENOENT"
-		) {
-			return err("ENOENT");
-		}
-		return err(errorToString(error));
-	}
 }
 
 async function findWorkspacePackageJson(

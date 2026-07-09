@@ -1,10 +1,16 @@
-export type AgentdToolRunParams = {
+export type AgentdToolRunParams = AgentdToolRunBaseParams &
+	AgentdToolRunContextParams;
+
+type AgentdToolRunBaseParams = {
 	toolName: string;
 	cwd: string;
 	toolCallId: string;
 	toolCall: unknown;
 	parsed: unknown;
 	transport?: unknown;
+};
+
+type AgentdToolRunContextParams = {
 	modelContext?: number;
 	mcpServers?: unknown;
 	lsp?: unknown;

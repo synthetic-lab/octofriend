@@ -67,6 +67,10 @@ export type AgentdConfigHasExistingKeyResult = {
 
 export type AgentdConfigWriteKeyResult = Record<string, never>;
 
+export type AgentdConfigAutofixKeysResult = {
+	keys: Array<"diffApply" | "fixJson">;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -119,4 +123,14 @@ export function isAgentdConfigWriteKeyResult(
 	value: unknown,
 ): value is AgentdConfigWriteKeyResult {
 	return isRecord(value);
+}
+
+export function isAgentdConfigAutofixKeysResult(
+	value: unknown,
+): value is AgentdConfigAutofixKeysResult {
+	return (
+		isRecord(value) &&
+		Array.isArray(value["keys"]) &&
+		value["keys"].every((key) => key === "diffApply" || key === "fixJson")
+	);
 }

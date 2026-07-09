@@ -4,6 +4,13 @@ import {
 } from "../bridge/rust/agent.ts";
 import type { Auth, Config, KeyResult } from "./schemas.ts";
 
+type KeyedModel = {
+	baseUrl: string;
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
+	apiEnvVar?: string;
+	auth?: Auth;
+};
+
 export async function readSearchConfig(config: Config | null) {
 	return await withConfigBridge(async (bridge) => {
 		return (await bridge.configSearch({ config })).search;
@@ -16,7 +23,7 @@ export async function findSyntheticKey(config: Config | null) {
 }
 
 export async function assertKeyForModel(
-	model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
+	model: KeyedModel,
 	config: Config | null,
 ): Promise<string> {
 	const result = await readKeyForModelWithDetails(model, config);
@@ -25,7 +32,7 @@ export async function assertKeyForModel(
 }
 
 export async function readKeyForModel(
-	model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
+	model: KeyedModel,
 	config: Config | null,
 ): Promise<string | null> {
 	const result = await readKeyForModelWithDetails(model, config);
@@ -33,7 +40,7 @@ export async function readKeyForModel(
 }
 
 export async function readKeyForModelWithDetails(
-	model: { baseUrl: string; apiEnvVar?: string; auth?: Auth },
+	model: KeyedModel,
 	config: Config | null,
 ): Promise<KeyResult> {
 	return await withConfigBridge(async (bridge) => {

@@ -6,6 +6,7 @@ import {
 	AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD,
 	AGENTD_COMPACTION_DECISION_METHOD,
 	AGENTD_COMPACTION_PREPARE_METHOD,
+	AGENTD_CONFIG_AUTOFIX_KEYS_METHOD,
 	AGENTD_INITIALIZE_METHOD,
 	AGENTD_MODEL_CONNECTION_TEST_METHOD,
 	AGENTD_OCTO_LOWER_METHOD,
@@ -271,6 +272,20 @@ describe("AgentdRustBridge", () => {
 				method: AGENTD_AUTOFIX_JSON_METHOD,
 				params,
 			},
+		]);
+	});
+
+	it("requests agentd config autofix keys", async () => {
+		const processClient = new FakeProcessClient([
+			{ keys: ["diffApply", "fixJson"] },
+		]);
+		const bridge = new AgentdRustBridge(processClient);
+
+		await expect(bridge.configAutofixKeys()).resolves.toEqual({
+			keys: ["diffApply", "fixJson"],
+		});
+		expect(processClient.requests).toEqual([
+			{ method: AGENTD_CONFIG_AUTOFIX_KEYS_METHOD },
 		]);
 	});
 

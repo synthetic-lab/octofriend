@@ -4,11 +4,15 @@ import type {
 	AgentdAssistantOutputUsage,
 	AgentdProviderStreamState,
 } from "./assistant-output.ts";
+import type { AgentdProviderType } from "./model-catalog.ts";
+import * as streamValidation from "./provider-stream-validation.ts";
 
 export type { AgentdProviderStreamState } from "./assistant-output.ts";
 
-export type AgentdProviderCompilerCompleteParams = {
-	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
+type UnknownRecord = Record<string, unknown>;
+
+export type AgentdProviderModelParams = {
+	type?: AgentdProviderType;
 	baseUrl: string;
 	model: string;
 	context: number;
@@ -16,16 +20,39 @@ export type AgentdProviderCompilerCompleteParams = {
 	thinkingBudgetTokens?: number;
 	modalities?: unknown;
 	apiKey: string;
+};
+
+export type AgentdProviderPromptParams = {
 	irs: readonly unknown[];
 	system?: string;
 	tools?: readonly AgentdProviderToolDefinition[];
+};
+
+export type AgentdProviderRuntimeParams = {
 	cwd: string;
 	aborted?: boolean;
-	autofixJson?: {
+	fixJson?: AgentdProviderFixJsonConfig;
+	autofixJson?: AgentdProviderFixJsonConfig;
+};
+
+export type AgentdProviderCompilerCompleteParams = AgentdProviderModelParams &
+	AgentdProviderPromptParams &
+	AgentdProviderRuntimeParams;
+
+export type AgentdProviderFixJsonConfig = {
+	type?: AgentdProviderType;
+	baseUrl: string;
+	apiKey?: string;
+	apiEnvVar?: string;
+	auth?: unknown;
+	model: string;
+	defaultApiKeyOverrides?: Record<string, string>;
+	authModels?: Array<{
+		type?: AgentdProviderType;
 		baseUrl: string;
-		apiKey: string;
-		model: string;
-	};
+		apiEnvVar?: string;
+		auth?: unknown;
+	}>;
 };
 
 export type AgentdProviderToolDefinition = {
@@ -109,7 +136,7 @@ export type AgentdProviderCompilerCompleteResult =
 			};
 	  });
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is UnknownRecord {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -158,8 +185,8 @@ function isAgentdProviderCompilerStreamResult(
 		isRecord(value) &&
 		typeof value["provider"] === "string" &&
 		Array.isArray(value["events"]) &&
-		value["events"].every(isAgentdProviderStreamEvent) &&
-		isAgentdProviderStreamState(value["state"]) &&
+		value["events"].every(streamValidation.isAgentdProviderStreamEvent) &&
+		streamValidation.isAgentdProviderStreamState(value["state"]) &&
 		typeof value["unexpectedToolCall"] === "boolean" &&
 		isAgentdAssistantOutput(value["output"]) &&
 		isAgentdAssistantOutputUsage(value["usage"]) &&
@@ -173,7 +200,7 @@ function isAgentdProviderCompilerCompletionBase(
 	if (!isRecord(value)) return false;
 	return (
 		isAgentdProviderCompilerStreamResult(value) &&
-		typeof (value as Record<string, unknown>)["curl"] === "string"
+		typeof (value as UnknownRecord)["curl"] === "string"
 	);
 }
 
@@ -183,7 +210,7 @@ export function isAgentdProviderCompilerCompleteResult(
 	if (!(isRecord(value) && isAgentdProviderCompilerCompletionBase(value))) {
 		return false;
 	}
-	const record = value as Record<string, unknown>;
+	const record = value as UnknownRecord;
 	if (record["status"] === "finished") return true;
 	if (record["status"] !== "error") return false;
 	const error = record["error"];
@@ -200,185 +227,7 @@ export function isAgentdProviderCompilerCompleteResult(
 	);
 }
 
-function isAgentdProviderStreamEvent(
-	value: unknown,
-): value is AgentdProviderStreamEvent {
-	if (!isRecord(value) || typeof value["type"] !== "string") return false;
-
-	switch (value["type"]) {
-		case "token":
-			return isAgentdProviderStreamTokenEvent(value);
-		case "tool-delta":
-			return isAgentdProviderStreamToolDeltaEvent(value);
-		case "usage":
-			return isAgentdProviderStreamUsageEvent(value);
-		case "openai-responses-metadata":
-			return isAgentdOpenAiResponsesMetadataEvent(value);
-		case "gemini-thought-signature":
-			return isAgentdGeminiThoughtSignatureEvent(value);
-		case "anthropic-thinking-delta":
-			return isAgentdAnthropicThinkingDeltaEvent(value);
-		case "anthropic-redacted-thinking":
-			return typeof value["data"] === "string";
-		default:
-			return false;
-	}
-}
-
-function isAgentdProviderStreamTokenEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		(value["kind"] === "content" ||
-			value["kind"] === "reasoning" ||
-			value["kind"] === "tool") &&
-		typeof value["text"] === "string"
-	);
-}
-
-function isAgentdProviderStreamToolDeltaEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		typeof value["index"] === "number" &&
-		isOptionalString(value["id"]) &&
-		isOptionalString(value["name"]) &&
-		isOptionalString(value["arguments"])
-	);
-}
-
-function isAgentdProviderStreamUsageEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		typeof value["input"] === "number" &&
-		typeof value["cachedInput"] === "number" &&
-		typeof value["output"] === "number" &&
-		typeof value["reasoningOutput"] === "number"
-	);
-}
-
-function isAgentdOpenAiResponsesMetadataEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		isOptionalString(value["reasoningId"]) &&
-		isOptionalString(value["encryptedReasoningContent"]) &&
-		isOptionalString(value["reasoningText"])
-	);
-}
-
-function isAgentdGeminiThoughtSignatureEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		typeof value["partIndex"] === "number" &&
-		isOptionalString(value["toolCallId"]) &&
-		typeof value["thoughtSignature"] === "string"
-	);
-}
-
-function isAgentdAnthropicThinkingDeltaEvent(
-	value: Record<string, unknown>,
-): boolean {
-	return (
-		typeof value["index"] === "number" &&
-		isOptionalString(value["thinking"]) &&
-		isOptionalString(value["signature"])
-	);
-}
-
-export function isAgentdProviderStreamState(
-	value: unknown,
-): value is AgentdProviderStreamState {
-	if (!isRecord(value)) return false;
-	const reasoningContent = value["reasoningContent"];
-	const tools = value["tools"];
-	return (
-		typeof value["content"] === "string" &&
-		(reasoningContent === undefined ||
-			reasoningContent === null ||
-			typeof reasoningContent === "string") &&
-		isAgentdProviderStreamUsage(value["usage"]) &&
-		Array.isArray(tools) &&
-		tools.every(isAgentdProviderStreamTool) &&
-		isAgentdProviderOpenAiState(value["openai"]) &&
-		isAgentdProviderAnthropicState(value["anthropic"]) &&
-		isAgentdProviderGeminiState(value["gemini"])
-	);
-}
-
-function isAgentdProviderStreamUsage(value: unknown): boolean {
-	return (
-		isRecord(value) &&
-		typeof value["input"] === "number" &&
-		typeof value["cachedInput"] === "number" &&
-		typeof value["output"] === "number" &&
-		typeof value["reasoningOutput"] === "number"
-	);
-}
-
-function isAgentdProviderStreamTool(value: unknown): boolean {
-	return (
-		isRecord(value) &&
-		typeof value["index"] === "number" &&
-		isOptionalString(value["id"]) &&
-		isOptionalString(value["name"]) &&
-		isOptionalString(value["arguments"])
-	);
-}
-
-function isOptionalString(value: unknown): boolean {
-	return value === undefined || value === null || typeof value === "string";
-}
-
-function isAgentdProviderOpenAiState(value: unknown): boolean {
-	return (
-		isRecord(value) &&
-		isOptionalString(value["reasoningId"]) &&
-		isOptionalString(value["encryptedReasoningContent"])
-	);
-}
-
-function isAgentdProviderAnthropicState(value: unknown): boolean {
-	if (!isRecord(value)) return false;
-	const thinkingBlocks = value["thinkingBlocks"];
-	return (
-		Array.isArray(thinkingBlocks) &&
-		thinkingBlocks.every(isAgentdProviderAnthropicThinkingBlock)
-	);
-}
-
-function isAgentdProviderAnthropicThinkingBlock(value: unknown): boolean {
-	if (!isRecord(value)) return false;
-	if (value["type"] === "thinking") {
-		return (
-			typeof value["index"] === "number" &&
-			typeof value["thinking"] === "string" &&
-			isOptionalString(value["signature"])
-		);
-	}
-	if (value["type"] === "redacted_thinking") {
-		return typeof value["data"] === "string";
-	}
-	return false;
-}
-
-function isAgentdProviderGeminiState(value: unknown): boolean {
-	if (value === undefined) return true;
-	if (!isRecord(value)) return false;
-	const thoughtSignatures = value["thoughtSignatures"];
-	return (
-		Array.isArray(thoughtSignatures) &&
-		thoughtSignatures.every(isAgentdGeminiThoughtSignature)
-	);
-}
-
-function isAgentdGeminiThoughtSignature(value: unknown): boolean {
-	return (
-		isRecord(value) &&
-		typeof value["partIndex"] === "number" &&
-		isOptionalString(value["toolCallId"]) &&
-		typeof value["thoughtSignature"] === "string"
-	);
-}
+export const isAgentdProviderStreamEvent =
+	streamValidation.isAgentdProviderStreamEvent;
+export const isAgentdProviderStreamState =
+	streamValidation.isAgentdProviderStreamState;

@@ -79,6 +79,12 @@ describe("AgentdRustBridge provider compiler bridge", () => {
 			context: 128000,
 			apiKey: "test-key",
 			irs: [{ role: "user", content: [{ type: "text", content: "hello" }] }],
+			fixJson: {
+				type: "gemini",
+				baseUrl: "http://127.0.0.1:8080/v1beta",
+				apiEnvVar: "GEMINI_API_KEY",
+				model: "gemini-test",
+			},
 			system: "system prompt",
 			tools: [
 				{
@@ -184,7 +190,22 @@ describe("AgentdRustBridge provider compiler bridge", () => {
 				context: 128000,
 			},
 			messages: [],
-			config: { yourName: "Test User" },
+			config: {
+				yourName: "Test User",
+				authModels: [
+					{
+						type: "anthropic" as const,
+						baseUrl: "http://127.0.0.1:8080",
+						apiEnvVar: "ANTHROPIC_API_KEY",
+					},
+				],
+				fixJson: {
+					type: "gemini" as const,
+					baseUrl: "http://127.0.0.1:8080/v1beta",
+					apiEnvVar: "GEMINI_API_KEY",
+					model: "gemini-test",
+				},
+			},
 			aborted: true,
 		};
 

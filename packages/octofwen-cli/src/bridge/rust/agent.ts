@@ -1,128 +1,90 @@
-import {
-	type AgentdAutofixEditParams,
-	type AgentdAutofixEditResult,
-	type AgentdAutofixJsonParams,
-	type AgentdAutofixJsonResult,
-	isAgentdAutofixEditResult,
-	isAgentdAutofixJsonResult,
+import type {
+	AgentdAutofixEditParams,
+	AgentdAutofixEditResult,
+	AgentdAutofixJsonParams,
+	AgentdAutofixJsonResult,
 } from "./autofix.ts";
-import {
-	type AgentdCompactionCheckpointContentParams,
-	type AgentdCompactionCheckpointContentResult,
-	type AgentdCompactionDecisionParams,
-	type AgentdCompactionDecisionResult,
-	type AgentdCompactionPrepareParams,
-	type AgentdCompactionPrepareResult,
-	isAgentdCompactionCheckpointContentResult,
-	isAgentdCompactionDecisionResult,
-	isAgentdCompactionPrepareResult,
+import type {
+	AgentdCompactionCheckpointContentParams,
+	AgentdCompactionCheckpointContentResult,
+	AgentdCompactionDecisionParams,
+	AgentdCompactionDecisionResult,
+	AgentdCompactionPrepareParams,
+	AgentdCompactionPrepareResult,
 } from "./compaction-decision.ts";
-import {
-	type AgentdConfigHasExistingKeyResult,
-	type AgentdConfigKeyForBaseUrlParams,
-	type AgentdConfigKeyForModelParams,
-	type AgentdConfigKeyResultEnvelope,
-	type AgentdConfigParams,
-	type AgentdConfigResult,
-	type AgentdConfigSearchParams,
-	type AgentdConfigSearchResult,
-	type AgentdConfigWriteKeyParams,
-	type AgentdConfigWriteKeyResult,
-	isAgentdConfigHasExistingKeyResult,
-	isAgentdConfigKeyResultEnvelope,
-	isAgentdConfigResult,
-	isAgentdConfigSearchResult,
-	isAgentdConfigWriteKeyResult,
+import type {
+	AgentdConfigAutofixKeysResult,
+	AgentdConfigHasExistingKeyResult,
+	AgentdConfigKeyForBaseUrlParams,
+	AgentdConfigKeyForModelParams,
+	AgentdConfigKeyResultEnvelope,
+	AgentdConfigParams,
+	AgentdConfigResult,
+	AgentdConfigSearchParams,
+	AgentdConfigSearchResult,
+	AgentdConfigWriteKeyParams,
+	AgentdConfigWriteKeyResult,
 } from "./config.ts";
-import {
-	type AgentdConversationHistoryAppendParams,
-	type AgentdConversationHistoryAppendResult,
-	type AgentdConversationHistoryLlmPayloadsResult,
-	type AgentdConversationHistoryParams,
-	type AgentdConversationHistoryRecordsResult,
-	isAgentdConversationHistoryAppendResult,
-	isAgentdConversationHistoryLlmPayloadsResult,
-	isAgentdConversationHistoryRecordsResult,
+import type {
+	AgentdConversationHistoryAppendParams,
+	AgentdConversationHistoryAppendResult,
+	AgentdConversationHistoryLlmPayloadsResult,
+	AgentdConversationHistoryParams,
+	AgentdConversationHistoryRecordsResult,
 } from "./conversation-history.ts";
-import {
-	type AgentdInitializeResult,
-	isAgentdInitializeResult,
-} from "./initialize.ts";
-import {
-	type AgentdInputHistoryAppendParams,
-	type AgentdInputHistoryLoadParams,
-	type AgentdInputHistoryResult,
-	isAgentdInputHistoryResult,
+import type { AgentdInitializeResult } from "./initialize.ts";
+import type {
+	AgentdInputHistoryAppendParams,
+	AgentdInputHistoryLoadParams,
+	AgentdInputHistoryResult,
 } from "./input-history.ts";
-import {
-	type AgentdModelProviderCatalogResult,
-	isAgentdModelProviderCatalogResult,
-} from "./model-catalog.ts";
-import {
-	type AgentdModelConnectionTestParams,
-	type AgentdModelConnectionTestResult,
-	isAgentdModelConnectionTestResult,
+import type { AgentdModelProviderCatalogResult } from "./model-catalog.ts";
+import type {
+	AgentdModelConnectionTestParams,
+	AgentdModelConnectionTestResult,
 } from "./model-connection.ts";
-import {
-	type AgentdOctoLowerParams,
-	type AgentdOctoLowerResult,
-	isAgentdOctoLowerResult,
+import type {
+	AgentdOctoLowerParams,
+	AgentdOctoLowerResult,
 } from "./octo-lower.ts";
-import {
-	type AgentdSkillDiscoverParams,
-	type AgentdSkillDiscoverResult,
-	isAgentdSkillDiscoverResult,
+import type {
+	AgentdSkillDiscoverParams,
+	AgentdSkillDiscoverResult,
 } from "./skill-discovery.ts";
-import {
-	type AgentdSyntheticQuotaFetchParams,
-	type AgentdSyntheticQuotaFetchResult,
-	isAgentdSyntheticQuotaFetchResult,
+import type {
+	AgentdSyntheticQuotaFetchParams,
+	AgentdSyntheticQuotaFetchResult,
 } from "./synthetic-quota.ts";
-import {
-	type AgentdSystemPromptParams,
-	type AgentdSystemPromptResult,
-	isAgentdSystemPromptResult,
+import type {
+	AgentdSystemPromptParams,
+	AgentdSystemPromptResult,
 } from "./system-prompt.ts";
-import {
-	type AgentdToolDefinitionsParams,
-	type AgentdToolDefinitionsResult,
-	isAgentdToolDefinitionsResult,
+import type {
+	AgentdToolDefinitionsParams,
+	AgentdToolDefinitionsResult,
 } from "./tool-definitions.ts";
-import {
-	type AgentdToolPermissionParams,
-	type AgentdToolPermissionResult,
-	isAgentdToolPermissionResult,
+import type {
+	AgentdToolPermissionParams,
+	AgentdToolPermissionResult,
 } from "./tool-permission.ts";
-import {
-	type AgentdToolRenderModel,
-	isAgentdToolRenderModel,
-} from "./tool-render.ts";
-import {
-	type AgentdToolRunParams,
-	type AgentdToolRunResult,
-	isAgentdToolRunResult,
-} from "./tool-run.ts";
-import {
-	type AgentdToolValidateParams,
-	type AgentdToolValidateResult,
-	isAgentdToolValidateResult,
+import type { AgentdToolRenderModel } from "./tool-render.ts";
+import type { AgentdToolRunParams, AgentdToolRunResult } from "./tool-run.ts";
+import type {
+	AgentdToolValidateParams,
+	AgentdToolValidateResult,
 } from "./tool-validate.ts";
-import {
-	type AgentdTrajectoryArcParams,
-	type AgentdTrajectoryArcResult,
-	isAgentdTrajectoryArcResult,
+import type {
+	AgentdTrajectoryArcParams,
+	AgentdTrajectoryArcResult,
 } from "./trajectory-arc.ts";
-import {
-	type AgentdTrajectoryFinishParams,
-	type AgentdTrajectoryFinishResult,
-	isAgentdTrajectoryFinishResult,
+import type {
+	AgentdTrajectoryFinishParams,
+	AgentdTrajectoryFinishResult,
 } from "./trajectory-finish.ts";
-import {
-	type AgentdUpdateNotificationsMarkSeenResult,
-	type AgentdUpdateNotificationsParams,
-	type AgentdUpdateNotificationsReadResult,
-	isAgentdUpdateNotificationsMarkSeenResult,
-	isAgentdUpdateNotificationsReadResult,
+import type {
+	AgentdUpdateNotificationsMarkSeenResult,
+	AgentdUpdateNotificationsParams,
+	AgentdUpdateNotificationsReadResult,
 } from "./update-notifications.ts";
 
 export type {
@@ -154,7 +116,6 @@ import type {
 	AgentdProviderCompilerCompleteParams,
 	AgentdProviderCompilerCompleteResult,
 } from "./provider-runtime.ts";
-import { isAgentdProviderCompilerCompleteResult } from "./provider-runtime.ts";
 
 export type {
 	AgentdAutofixEditParams,
@@ -195,95 +156,85 @@ export type {
 	AgentdSystemPromptResult,
 } from "./system-prompt.ts";
 
-import { err, ok, type Result } from "../../result.ts";
 import {
 	type AgentdSpawnOptions,
 	spawnAgentdProcess,
 } from "../node/platform.ts";
 import type { AgentdRequestOptions } from "../process/client.ts";
 import { AgentdProcessClient } from "../process/client.ts";
-import {
-	invalidAgentdAutofixEditResponseError,
-	invalidAgentdAutofixJsonResponseError,
-	invalidAgentdCompactionCheckpointContentResponseError,
-	invalidAgentdCompactionDecisionResponseError,
-	invalidAgentdCompactionPrepareResponseError,
-	invalidAgentdConfigResponseError,
-	invalidAgentdConversationHistoryAppendResponseError,
-	invalidAgentdConversationHistoryLlmPayloadsResponseError,
-	invalidAgentdConversationHistoryRecordsResponseError,
-	invalidAgentdInitializeResponseError,
-	invalidAgentdInputHistoryResponseError,
-	invalidAgentdModelConnectionTestResponseError,
-	invalidAgentdModelProviderCatalogResponseError,
-	invalidAgentdOctoLowerResponseError,
-	invalidAgentdProviderCompilerCompleteResponseError,
-	invalidAgentdSkillDiscoverResponseError,
-	invalidAgentdSyntheticQuotaFetchResponseError,
-	invalidAgentdSystemPromptResponseError,
-	invalidAgentdToolDefinitionsResponseError,
-	invalidAgentdToolPermissionResponseError,
-	invalidAgentdToolRenderResponseError,
-	invalidAgentdToolRunResponseError,
-	invalidAgentdToolValidateResponseError,
-	invalidAgentdTrajectoryArcResponseError,
-	invalidAgentdTrajectoryFinishResponseError,
-	invalidAgentdUpdateNotificationsMarkSeenResponseError,
-	invalidAgentdUpdateNotificationsReadResponseError,
-} from "./errors.ts";
+import * as configRequests from "./agent-config-requests.ts";
+import * as historyRequests from "./agent-history-requests.ts";
+import * as agentMethods from "./agent-methods.ts";
+import * as runRequests from "./agent-run-requests.ts";
+import * as toolRequests from "./agent-tool-requests.ts";
 
-export const AGENTD_INITIALIZE_METHOD = "octofwen.agentd/initialize";
+export const AGENTD_INITIALIZE_METHOD = agentMethods.AGENTD_INITIALIZE_METHOD;
 export const AGENTD_INPUT_HISTORY_LOAD_METHOD =
-	"octofwen.agentd/inputHistoryLoad";
+	agentMethods.AGENTD_INPUT_HISTORY_LOAD_METHOD;
 export const AGENTD_INPUT_HISTORY_APPEND_METHOD =
-	"octofwen.agentd/inputHistoryAppend";
+	agentMethods.AGENTD_INPUT_HISTORY_APPEND_METHOD;
 export const AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD =
-	"octofwen.agentd/updateNotificationsRead";
+	agentMethods.AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD;
 export const AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD =
-	"octofwen.agentd/updateNotificationsMarkSeen";
+	agentMethods.AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD;
 export const AGENTD_CONVERSATION_HISTORY_APPEND_METHOD =
-	"octofwen.agentd/conversationHistoryAppend";
+	agentMethods.AGENTD_CONVERSATION_HISTORY_APPEND_METHOD;
 export const AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD =
-	"octofwen.agentd/conversationHistoryRecords";
+	agentMethods.AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD;
 export const AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD =
-	"octofwen.agentd/conversationHistoryLlmPayloads";
-export const AGENTD_TRAJECTORY_ARC_METHOD = "octofwen.agentd/trajectoryArc";
+	agentMethods.AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD;
+export const AGENTD_TRAJECTORY_ARC_METHOD =
+	agentMethods.AGENTD_TRAJECTORY_ARC_METHOD;
 export const AGENTD_TRAJECTORY_FINISH_METHOD =
-	"octofwen.agentd/trajectoryFinish";
-export const AGENTD_SYSTEM_PROMPT_METHOD = "octofwen.agentd/systemPrompt";
+	agentMethods.AGENTD_TRAJECTORY_FINISH_METHOD;
+export const AGENTD_SYSTEM_PROMPT_METHOD =
+	agentMethods.AGENTD_SYSTEM_PROMPT_METHOD;
 export const AGENTD_COMPACTION_DECISION_METHOD =
-	"octofwen.agentd/compactionDecision";
+	agentMethods.AGENTD_COMPACTION_DECISION_METHOD;
 export const AGENTD_COMPACTION_PREPARE_METHOD =
-	"octofwen.agentd/compactionPrepare";
+	agentMethods.AGENTD_COMPACTION_PREPARE_METHOD;
 export const AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD =
-	"octofwen.agentd/compactionCheckpointContent";
-export const AGENTD_CONFIG_MIGRATE_METHOD = "octofwen.agentd/configMigrate";
-export const AGENTD_CONFIG_SANITIZE_METHOD = "octofwen.agentd/configSanitize";
+	agentMethods.AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD;
+export const AGENTD_CONFIG_MIGRATE_METHOD =
+	agentMethods.AGENTD_CONFIG_MIGRATE_METHOD;
+export const AGENTD_CONFIG_SANITIZE_METHOD =
+	agentMethods.AGENTD_CONFIG_SANITIZE_METHOD;
 export const AGENTD_CONFIG_KEY_FOR_MODEL_METHOD =
-	"octofwen.agentd/configKeyForModel";
+	agentMethods.AGENTD_CONFIG_KEY_FOR_MODEL_METHOD;
 export const AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD =
-	"octofwen.agentd/configKeyForBaseUrl";
-export const AGENTD_CONFIG_SEARCH_METHOD = "octofwen.agentd/configSearch";
+	agentMethods.AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD;
+export const AGENTD_CONFIG_SEARCH_METHOD =
+	agentMethods.AGENTD_CONFIG_SEARCH_METHOD;
 export const AGENTD_CONFIG_HAS_EXISTING_KEY_METHOD =
-	"octofwen.agentd/configHasExistingKey";
-export const AGENTD_CONFIG_WRITE_KEY_METHOD = "octofwen.agentd/configWriteKey";
-export const AGENTD_AUTOFIX_JSON_METHOD = "octofwen.agentd/autofixJson";
-export const AGENTD_AUTOFIX_EDIT_METHOD = "octofwen.agentd/autofixEdit";
-export const AGENTD_OCTO_LOWER_METHOD = "octofwen.agentd/octoLower";
-export const AGENTD_RENDER_TOOL_CALL_METHOD = "octofwen.agentd/renderToolCall";
-export const AGENTD_TOOL_DEFINITIONS_METHOD = "octofwen.agentd/toolDefinitions";
-export const AGENTD_TOOL_RUN_METHOD = "octofwen.agentd/toolRun";
-export const AGENTD_TOOL_PERMISSION_METHOD = "octofwen.agentd/toolPermission";
-export const AGENTD_TOOL_VALIDATE_METHOD = "octofwen.agentd/toolValidate";
+	agentMethods.AGENTD_CONFIG_HAS_EXISTING_KEY_METHOD;
+export const AGENTD_CONFIG_WRITE_KEY_METHOD =
+	agentMethods.AGENTD_CONFIG_WRITE_KEY_METHOD;
+export const AGENTD_CONFIG_AUTOFIX_KEYS_METHOD =
+	agentMethods.AGENTD_CONFIG_AUTOFIX_KEYS_METHOD;
+export const AGENTD_AUTOFIX_JSON_METHOD =
+	agentMethods.AGENTD_AUTOFIX_JSON_METHOD;
+export const AGENTD_AUTOFIX_EDIT_METHOD =
+	agentMethods.AGENTD_AUTOFIX_EDIT_METHOD;
+export const AGENTD_OCTO_LOWER_METHOD = agentMethods.AGENTD_OCTO_LOWER_METHOD;
+export const AGENTD_RENDER_TOOL_CALL_METHOD =
+	agentMethods.AGENTD_RENDER_TOOL_CALL_METHOD;
+export const AGENTD_TOOL_DEFINITIONS_METHOD =
+	agentMethods.AGENTD_TOOL_DEFINITIONS_METHOD;
+export const AGENTD_TOOL_RUN_METHOD = agentMethods.AGENTD_TOOL_RUN_METHOD;
+export const AGENTD_TOOL_PERMISSION_METHOD =
+	agentMethods.AGENTD_TOOL_PERMISSION_METHOD;
+export const AGENTD_TOOL_VALIDATE_METHOD =
+	agentMethods.AGENTD_TOOL_VALIDATE_METHOD;
 export const AGENTD_PROVIDER_COMPILER_COMPLETE_METHOD =
-	"octofwen.agentd/providerCompilerComplete";
+	agentMethods.AGENTD_PROVIDER_COMPILER_COMPLETE_METHOD;
 export const AGENTD_MODEL_PROVIDER_CATALOG_METHOD =
-	"octofwen.agentd/modelProviderCatalog";
+	agentMethods.AGENTD_MODEL_PROVIDER_CATALOG_METHOD;
 export const AGENTD_MODEL_CONNECTION_TEST_METHOD =
-	"octofwen.agentd/modelConnectionTest";
+	agentMethods.AGENTD_MODEL_CONNECTION_TEST_METHOD;
 export const AGENTD_SYNTHETIC_QUOTA_FETCH_METHOD =
-	"octofwen.agentd/syntheticQuotaFetch";
-export const AGENTD_SKILL_DISCOVER_METHOD = "octofwen.agentd/skillDiscover";
+	agentMethods.AGENTD_SYNTHETIC_QUOTA_FETCH_METHOD;
+export const AGENTD_SKILL_DISCOVER_METHOD =
+	agentMethods.AGENTD_SKILL_DISCOVER_METHOD;
 
 export type {
 	AgentdConversationHistoryAppendParams,
@@ -321,21 +272,6 @@ type CreateAgentdRustBridgeOptions = AgentdSpawnOptions & {
 	createClient?: () => AgentdClientLike;
 };
 
-function validateAgentdResult<T>(
-	result: unknown,
-	isExpected: (value: unknown) => value is T,
-	invalidResponseError: () => Error,
-): Result<T, Error> {
-	return isExpected(result) ? ok(result) : err(invalidResponseError());
-}
-
-function unwrapAgentdResult<T>(
-	validation: Result<T, Error>,
-): T | Promise<never> {
-	if (!validation.success) return Promise.reject(validation.error);
-	return validation.data;
-}
-
 export class AgentdRustBridge {
 	readonly #client: AgentdClientLike;
 
@@ -346,112 +282,54 @@ export class AgentdRustBridge {
 	async inputHistoryLoad(
 		params: AgentdInputHistoryLoadParams = {},
 	): Promise<AgentdInputHistoryResult> {
-		const result = await this.#client.request(
-			AGENTD_INPUT_HISTORY_LOAD_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdInputHistoryResult,
-				invalidAgentdInputHistoryResponseError,
-			),
-		);
+		return await historyRequests.inputHistoryLoad(this.#client, params);
 	}
 
 	async inputHistoryAppend(
 		params: AgentdInputHistoryAppendParams,
 	): Promise<AgentdInputHistoryResult> {
-		const result = await this.#client.request(
-			AGENTD_INPUT_HISTORY_APPEND_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdInputHistoryResult,
-				invalidAgentdInputHistoryResponseError,
-			),
-		);
+		return await historyRequests.inputHistoryAppend(this.#client, params);
 	}
 
 	async conversationHistoryAppend(
 		params: AgentdConversationHistoryAppendParams,
 	): Promise<AgentdConversationHistoryAppendResult> {
-		const result = await this.#client.request(
-			AGENTD_CONVERSATION_HISTORY_APPEND_METHOD,
+		return await historyRequests.conversationHistoryAppend(
+			this.#client,
 			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConversationHistoryAppendResult,
-				invalidAgentdConversationHistoryAppendResponseError,
-			),
 		);
 	}
 
 	async conversationHistoryRecords(
 		params: AgentdConversationHistoryParams = {},
 	): Promise<AgentdConversationHistoryRecordsResult> {
-		const result = await this.#client.request(
-			AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD,
+		return await historyRequests.conversationHistoryRecords(
+			this.#client,
 			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConversationHistoryRecordsResult,
-				invalidAgentdConversationHistoryRecordsResponseError,
-			),
 		);
 	}
 
 	async conversationHistoryLlmPayloads(
 		params: AgentdConversationHistoryParams = {},
 	): Promise<AgentdConversationHistoryLlmPayloadsResult> {
-		const result = await this.#client.request(
-			AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD,
+		return await historyRequests.conversationHistoryLlmPayloads(
+			this.#client,
 			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConversationHistoryLlmPayloadsResult,
-				invalidAgentdConversationHistoryLlmPayloadsResponseError,
-			),
 		);
 	}
 
 	async updateNotificationsRead(
 		params: AgentdUpdateNotificationsParams = {},
 	): Promise<AgentdUpdateNotificationsReadResult> {
-		const result = await this.#client.request(
-			AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdUpdateNotificationsReadResult,
-				invalidAgentdUpdateNotificationsReadResponseError,
-			),
-		);
+		return await historyRequests.updateNotificationsRead(this.#client, params);
 	}
 
 	async updateNotificationsMarkSeen(
 		params: AgentdUpdateNotificationsParams = {},
 	): Promise<AgentdUpdateNotificationsMarkSeenResult> {
-		const result = await this.#client.request(
-			AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD,
+		return await historyRequests.updateNotificationsMarkSeen(
+			this.#client,
 			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdUpdateNotificationsMarkSeenResult,
-				invalidAgentdUpdateNotificationsMarkSeenResponseError,
-			),
 		);
 	}
 
@@ -459,428 +337,169 @@ export class AgentdRustBridge {
 		params: AgentdTrajectoryArcParams,
 		options: AgentdRequestOptions = {},
 	): Promise<AgentdTrajectoryArcResult> {
-		const result = await this.#client.request(
-			AGENTD_TRAJECTORY_ARC_METHOD,
-			params,
-			options,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdTrajectoryArcResult,
-				invalidAgentdTrajectoryArcResponseError,
-			),
-		);
+		return await runRequests.trajectoryArc(this.#client, params, options);
 	}
 
 	async trajectoryFinish(
 		params: AgentdTrajectoryFinishParams,
 	): Promise<AgentdTrajectoryFinishResult> {
-		const result = await this.#client.request(
-			AGENTD_TRAJECTORY_FINISH_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdTrajectoryFinishResult,
-				invalidAgentdTrajectoryFinishResponseError,
-			),
-		);
+		return await runRequests.trajectoryFinish(this.#client, params);
 	}
 
 	async systemPrompt(
 		params: AgentdSystemPromptParams,
 	): Promise<AgentdSystemPromptResult> {
-		const result = await this.#client.request(
-			AGENTD_SYSTEM_PROMPT_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdSystemPromptResult,
-				invalidAgentdSystemPromptResponseError,
-			),
-		);
+		return await runRequests.systemPrompt(this.#client, params);
 	}
 
 	async compactionDecision(
 		params: AgentdCompactionDecisionParams,
 	): Promise<AgentdCompactionDecisionResult> {
-		const result = await this.#client.request(
-			AGENTD_COMPACTION_DECISION_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdCompactionDecisionResult,
-				invalidAgentdCompactionDecisionResponseError,
-			),
-		);
+		return await runRequests.compactionDecision(this.#client, params);
 	}
 
 	async compactionPrepare(
 		params: AgentdCompactionPrepareParams,
 	): Promise<AgentdCompactionPrepareResult> {
-		const result = await this.#client.request(
-			AGENTD_COMPACTION_PREPARE_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdCompactionPrepareResult,
-				invalidAgentdCompactionPrepareResponseError,
-			),
-		);
+		return await runRequests.compactionPrepare(this.#client, params);
 	}
 
 	async compactionCheckpointContent(
 		params: AgentdCompactionCheckpointContentParams,
 	): Promise<AgentdCompactionCheckpointContentResult> {
-		const result = await this.#client.request(
-			AGENTD_COMPACTION_CHECKPOINT_CONTENT_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdCompactionCheckpointContentResult,
-				invalidAgentdCompactionCheckpointContentResponseError,
-			),
-		);
+		return await runRequests.compactionCheckpointContent(this.#client, params);
 	}
 
 	async autofixJson(
 		params: AgentdAutofixJsonParams,
 	): Promise<AgentdAutofixJsonResult> {
-		const result = await this.#client.request(
-			AGENTD_AUTOFIX_JSON_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdAutofixJsonResult,
-				invalidAgentdAutofixJsonResponseError,
-			),
-		);
+		return await runRequests.autofixJson(this.#client, params);
 	}
 
 	async autofixEdit(
 		params: AgentdAutofixEditParams,
 	): Promise<AgentdAutofixEditResult> {
-		const result = await this.#client.request(
-			AGENTD_AUTOFIX_EDIT_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdAutofixEditResult,
-				invalidAgentdAutofixEditResponseError,
-			),
-		);
+		return await runRequests.autofixEdit(this.#client, params);
 	}
 
 	async octoLower(
 		params: AgentdOctoLowerParams,
 	): Promise<AgentdOctoLowerResult> {
-		const result = await this.#client.request(AGENTD_OCTO_LOWER_METHOD, params);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdOctoLowerResult,
-				invalidAgentdOctoLowerResponseError,
-			),
-		);
+		return await runRequests.octoLower(this.#client, params);
 	}
 
 	async initialize(): Promise<AgentdInitializeResult> {
-		const result = await this.#client.request(AGENTD_INITIALIZE_METHOD);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdInitializeResult,
-				invalidAgentdInitializeResponseError,
-			),
-		);
+		return await runRequests.initialize(this.#client);
 	}
 
 	async renderToolCall(
 		name: string,
 		args: Record<string, unknown>,
 	): Promise<AgentdToolRenderModel> {
-		const result = await this.#client.request(AGENTD_RENDER_TOOL_CALL_METHOD, {
-			name,
-			arguments: args,
-		});
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdToolRenderModel,
-				invalidAgentdToolRenderResponseError,
-			),
-		);
+		return await toolRequests.renderToolCall(this.#client, name, args);
 	}
 
 	async toolDefinitions(
 		params: AgentdToolDefinitionsParams,
 	): Promise<AgentdToolDefinitionsResult> {
-		const result = await this.#client.request(
-			AGENTD_TOOL_DEFINITIONS_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdToolDefinitionsResult,
-				invalidAgentdToolDefinitionsResponseError,
-			),
-		);
+		return await toolRequests.toolDefinitions(this.#client, params);
 	}
 
 	async toolRun(
 		params: AgentdToolRunParams,
 		options: AgentdRequestOptions = {},
 	): Promise<AgentdToolRunResult> {
-		const result = await this.#client.request(
-			AGENTD_TOOL_RUN_METHOD,
-			params,
-			options,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdToolRunResult,
-				invalidAgentdToolRunResponseError,
-			),
-		);
+		return await toolRequests.toolRun(this.#client, params, options);
 	}
 
 	async toolPermission(
 		params: AgentdToolPermissionParams,
 	): Promise<AgentdToolPermissionResult> {
-		const result = await this.#client.request(
-			AGENTD_TOOL_PERMISSION_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdToolPermissionResult,
-				invalidAgentdToolPermissionResponseError,
-			),
-		);
+		return await toolRequests.toolPermission(this.#client, params);
 	}
 
 	async skillDiscover(
 		params: AgentdSkillDiscoverParams,
 	): Promise<AgentdSkillDiscoverResult> {
-		const result = await this.#client.request(
-			AGENTD_SKILL_DISCOVER_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdSkillDiscoverResult,
-				invalidAgentdSkillDiscoverResponseError,
-			),
-		);
+		return await toolRequests.skillDiscover(this.#client, params);
 	}
 
 	async toolValidate(
 		params: AgentdToolValidateParams,
 		options: AgentdRequestOptions = {},
 	): Promise<AgentdToolValidateResult> {
-		const result = await this.#client.request(
-			AGENTD_TOOL_VALIDATE_METHOD,
-			params,
-			options,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdToolValidateResult,
-				invalidAgentdToolValidateResponseError,
-			),
-		);
+		return await toolRequests.toolValidate(this.#client, params, options);
 	}
 
 	async providerCompilerComplete(
 		params: AgentdProviderCompilerCompleteParams,
 		options: AgentdRequestOptions = {},
 	): Promise<AgentdProviderCompilerCompleteResult> {
-		const result = await this.#client.request(
-			AGENTD_PROVIDER_COMPILER_COMPLETE_METHOD,
+		return await runRequests.providerCompilerComplete(
+			this.#client,
 			params,
 			options,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdProviderCompilerCompleteResult,
-				invalidAgentdProviderCompilerCompleteResponseError,
-			),
 		);
 	}
 
 	async modelProviderCatalog(): Promise<AgentdModelProviderCatalogResult> {
-		const result = await this.#client.request(
-			AGENTD_MODEL_PROVIDER_CATALOG_METHOD,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdModelProviderCatalogResult,
-				invalidAgentdModelProviderCatalogResponseError,
-			),
-		);
+		return await runRequests.modelProviderCatalog(this.#client);
 	}
 
 	async configMigrate(params: AgentdConfigParams): Promise<AgentdConfigResult> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_MIGRATE_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigResult,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configMigrate(this.#client, params);
 	}
 
 	async configSanitize(
 		params: AgentdConfigParams,
 	): Promise<AgentdConfigResult> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_SANITIZE_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigResult,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configSanitize(this.#client, params);
+	}
+
+	async configAutofixKeys(): Promise<AgentdConfigAutofixKeysResult> {
+		return await configRequests.configAutofixKeys(this.#client);
 	}
 
 	async configKeyForModel(
 		params: AgentdConfigKeyForModelParams,
 	): Promise<AgentdConfigKeyResultEnvelope> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigKeyResultEnvelope,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configKeyForModel(this.#client, params);
 	}
 
 	async configKeyForBaseUrl(
 		params: AgentdConfigKeyForBaseUrlParams,
 	): Promise<AgentdConfigKeyResultEnvelope> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_KEY_FOR_BASE_URL_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigKeyResultEnvelope,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configKeyForBaseUrl(this.#client, params);
 	}
 
 	async configSearch(
 		params: AgentdConfigSearchParams,
 	): Promise<AgentdConfigSearchResult> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_SEARCH_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigSearchResult,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configSearch(this.#client, params);
 	}
 
 	async configHasExistingKey(
 		params: AgentdConfigKeyForBaseUrlParams,
 	): Promise<AgentdConfigHasExistingKeyResult> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_HAS_EXISTING_KEY_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigHasExistingKeyResult,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configHasExistingKey(this.#client, params);
 	}
 
 	async configWriteKey(
 		params: AgentdConfigWriteKeyParams,
 	): Promise<AgentdConfigWriteKeyResult> {
-		const result = await this.#client.request(
-			AGENTD_CONFIG_WRITE_KEY_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdConfigWriteKeyResult,
-				invalidAgentdConfigResponseError,
-			),
-		);
+		return await configRequests.configWriteKey(this.#client, params);
 	}
 
 	async modelConnectionTest(
 		params: AgentdModelConnectionTestParams,
 	): Promise<AgentdModelConnectionTestResult> {
-		const result = await this.#client.request(
-			AGENTD_MODEL_CONNECTION_TEST_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdModelConnectionTestResult,
-				invalidAgentdModelConnectionTestResponseError,
-			),
-		);
+		return await runRequests.modelConnectionTest(this.#client, params);
 	}
 
 	async syntheticQuotaFetch(
 		params: AgentdSyntheticQuotaFetchParams,
 	): Promise<AgentdSyntheticQuotaFetchResult> {
-		const result = await this.#client.request(
-			AGENTD_SYNTHETIC_QUOTA_FETCH_METHOD,
-			params,
-		);
-		return unwrapAgentdResult(
-			validateAgentdResult(
-				result,
-				isAgentdSyntheticQuotaFetchResult,
-				invalidAgentdSyntheticQuotaFetchResponseError,
-			),
-		);
+		return await runRequests.syntheticQuotaFetch(this.#client, params);
 	}
 
 	close(): void {

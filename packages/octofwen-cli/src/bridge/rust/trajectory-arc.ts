@@ -1,8 +1,10 @@
+import type { AgentdProviderType } from "./model-catalog.ts";
+
 export type AgentdTrajectoryArcParams = {
 	cwd: string;
 	apiKey: string;
 	model: {
-		type?: "standard" | "openai-responses" | "anthropic" | "gemini";
+		type?: AgentdProviderType;
 		baseUrl: string;
 		model: string;
 		context: number;
@@ -17,8 +19,14 @@ export type AgentdTrajectoryArcParams = {
 		search?: unknown;
 		skills?: { paths?: readonly string[] };
 		defaultApiKeyOverrides?: Record<string, string>;
-		authModels?: Array<{ baseUrl: string; apiEnvVar?: string; auth?: unknown }>;
+		authModels?: Array<{
+			type?: AgentdProviderType;
+			baseUrl: string;
+			apiEnvVar?: string;
+			auth?: unknown;
+		}>;
 		fixJson?: {
+			type?: AgentdProviderType;
 			baseUrl: string;
 			apiKey?: string;
 			apiEnvVar?: string;

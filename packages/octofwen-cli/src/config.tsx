@@ -1,6 +1,4 @@
 import { render } from "ink";
-import { spawnAgentdProcess } from "./bridge/node/platform.ts";
-import { AgentdProcessClient } from "./bridge/process/client.ts";
 import {
 	type AgentdRustBridge,
 	createAgentdRustBridge,
@@ -21,32 +19,20 @@ import {
 export const CONFIG_STANDARD_DIR = CONFIG_DIR;
 export const CONFIG_JSON5_FILE = CONFIG_FILE;
 
-async function configAutofixKeys(): Promise<
-	Result<Array<"diffApply" | "fixJson">, string>
-> {
-	const client = new AgentdProcessClient(spawnAgentdProcess());
+async function configAutofixKeys(
+	bridge: AgentdRustBridge,
+): Promise<Result<Array<"diffApply" | "fixJson">, string>> {
 	try {
-		const result = await client.request("octofwen.agentd/configAutofixKeys");
-		if (!isAutofixKeysResult(result)) {
-			return err("Invalid octofwen-agentd autofix keys result");
+		return ok((await bridge.configAutofixKeys()).keys);
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			error.message === "Invalid octofwen-agentd autofix keys result"
+		) {
+			return err(error.message);
 		}
-		return ok(result.keys);
-	} finally {
-		client.close();
+		throw error;
 	}
-}
-
-function isAutofixKeysResult(
-	value: unknown,
-): value is { keys: Array<"diffApply" | "fixJson"> } {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		Array.isArray((value as { keys?: unknown }).keys) &&
-		(value as { keys: unknown[] }).keys.every(
-			(key) => key === "diffApply" || key === "fixJson",
-		)
-	);
 }
 
 export type LoadedConfig = {
@@ -104,22 +90,32 @@ async function ensureAutofixModelAuth(
 	options: LoadConfigOptions,
 ): Promise<LoadedConfig> {
 	let { config, configPath } = loaded;
-	const autofixKeys = await configAutofixKeys();
-	if (!autofixKeys.success) {
-		console.error(autofixKeys.error);
+	const ownedBridge = options.bridge ? null : await createAgentdRustBridge();
+	const bridge = options.bridge ?? ownedBridge;
+	if (bridge == null) {
+		console.error("Missing octofwen-agentd bridge");
 		process.exit(1);
 	}
-	for (const key of autofixKeys.data) {
-		const reloaded = await ensureOneAutofixModelAuth(
-			{ config, configPath },
-			key,
-			path,
-			options,
-		);
-		config = reloaded.config;
-		configPath = reloaded.configPath;
+	try {
+		const autofixKeys = await configAutofixKeys(bridge);
+		if (!autofixKeys.success) {
+			console.error(autofixKeys.error);
+			process.exit(1);
+		}
+		for (const key of autofixKeys.data) {
+			const reloaded = await ensureOneAutofixModelAuth(
+				{ config, configPath },
+				key,
+				path,
+				options,
+			);
+			config = reloaded.config;
+			configPath = reloaded.configPath;
+		}
+		return { config, configPath };
+	} finally {
+		ownedBridge?.close();
 	}
-	return { config, configPath };
 }
 
 async function ensureOneAutofixModelAuth(
@@ -157,12 +153,17 @@ export async function loadConfigWithoutReauth(
 	configPath?: string,
 	options: LoadConfigOptions = {},
 ): Promise<LoadedConfig> {
-	if (configPath) return { configPath, config: await readConfig(configPath) };
+	if (configPath) {
+		return {
+			configPath,
+			config: await readConfig(configPath, { bridge: options.bridge }),
+		};
+	}
 
 	if (await fileExists(CONFIG_JSON5_FILE)) {
 		return {
 			configPath: CONFIG_JSON5_FILE,
-			config: await readConfig(CONFIG_JSON5_FILE),
+			config: await readConfig(CONFIG_JSON5_FILE, { bridge: options.bridge }),
 		};
 	}
 
@@ -185,15 +186,14 @@ export async function loadConfigWithoutReauth(
 			/>,
 		);
 		await waitUntilExit();
+		if (await fileExists(CONFIG_JSON5_FILE)) {
+			return {
+				configPath: CONFIG_JSON5_FILE,
+				config: await readConfig(CONFIG_JSON5_FILE, { bridge }),
+			};
+		}
 	} finally {
 		ownedBridge?.close();
-	}
-
-	if (await fileExists(CONFIG_JSON5_FILE)) {
-		return {
-			configPath: CONFIG_JSON5_FILE,
-			config: await readConfig(CONFIG_JSON5_FILE),
-		};
 	}
 
 	process.exit(1);
