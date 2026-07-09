@@ -1,4 +1,5 @@
 import { err, errorToString, ok, type Result } from "../../app/result.ts";
+import { nonEmptyTrimmedText } from "../../app/text_processing.ts";
 import { configRunNotify } from "./agentd-config.ts";
 import type { Config } from "./schemas.ts";
 
@@ -22,7 +23,7 @@ export async function runNotifyCommand(
 ): Promise<Result<null, string>> {
 	const notifyCommand = config.notifications?.notifyCommand;
 	try {
-		if (notifyCommand != null && notifyCommand.trim() !== "") {
+		if (notifyCommand != null && nonEmptyTrimmedText(notifyCommand) !== null) {
 			await configRunNotify(config);
 			return ok(null);
 		}

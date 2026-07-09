@@ -1,4 +1,5 @@
 import { resolveAgentdCommand } from "../agentd/command.ts";
+import { firstNonEmptyStdoutLine } from "../agentd/stdout.ts";
 
 export type ConfigKeyResult =
 	| { ok: true; key: string }
@@ -166,7 +167,7 @@ async function agentdRequest(
 			new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
 		);
 	}
-	const firstLine = stdout.split("\n").find((line) => line.trim() !== "");
+	const firstLine = firstNonEmptyStdoutLine(stdout);
 	if (!firstLine) {
 		return Promise.reject(new Error("octofwen-agentd returned no response"));
 	}

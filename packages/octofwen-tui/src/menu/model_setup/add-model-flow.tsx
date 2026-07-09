@@ -1,73 +1,150 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { hasExistingKeyForBaseUrl } from "../../internal/configuration/keys.ts";
+import { useCallback, useMemo, useState } from "react";
+import { useLatestRef } from "../../input/latest_input.ts";
 import type { Auth, Config } from "../../internal/configuration/schemas.ts";
+import type { ProviderConfig } from "../../internal/model-provider-catalog/main.ts";
+import { CustomAutofixFlow as CustomAutofixFlowImpl } from "./add-model-autofix-flow.tsx";
 import { errorContext } from "./add-model-error-context.tsx";
+import { baseUrl, fullFlow, nickname } from "./add-model-route-builders.tsx";
 import {
-	apiKey,
-	baseUrl,
-	command,
-	envVar,
-	fullFlow,
-	nickname,
-} from "./add-model-route-builders.tsx";
-import {
-	AuthAsk,
 	Context,
 	Model,
-	PostAuth,
 	TestConnection,
 } from "./add-model-route-components.tsx";
 import type {
 	FullFlowRouteData,
+	ModelMetadata,
 	Model as SetupModel,
 } from "./add-model-types.ts";
-import { router } from "./primitives.tsx";
+import {
+	apiKey,
+	chatGptOAuth,
+	command,
+	envVar,
+} from "./auth-route-builders.tsx";
+import {
+	AuthAsk,
+	type AuthChoiceRoute,
+	PostAuth,
+} from "./auth-route-components.tsx";
+import { router, type ToRoute } from "./setup-router.tsx";
+
+type FullFlowToRoute = ToRoute<FullFlowRouteData>;
+
+function AuthAskRoute({
+	to,
+	...props
+}: FullFlowRouteData["authAsk"] & { to: FullFlowToRoute }) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleSelect = useCallback(
+		(route: AuthChoiceRoute) => toRef.current[route](propsRef.current),
+		[propsRef, toRef],
+	);
+	const handleBack = useCallback(
+		() => toRef.current.baseUrl(propsRef.current),
+		[propsRef, toRef],
+	);
+	return <AuthAsk {...props} onSelect={handleSelect} back={handleBack} />;
+}
+
+function PostAuthRoute({
+	to,
+	...props
+}: FullFlowRouteData["postAuth"] & { to: Pick<FullFlowToRoute, "model"> }) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleAuth = useCallback(
+		() => toRef.current.model(propsRef.current),
+		[propsRef, toRef],
+	);
+	return <PostAuth {...props} handleAuth={handleAuth} />;
+}
+
+function FullModelRoute({
+	to,
+	...props
+}: FullFlowRouteData["model"] & {
+	to: Pick<FullFlowToRoute, "authAsk" | "testConnection">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(
+		() => toRef.current.authAsk(propsRef.current),
+		[propsRef, toRef],
+	);
+	const handleSubmit = useCallback(
+		(model: string) =>
+			toRef.current.testConnection({ ...propsRef.current, model }),
+		[propsRef, toRef],
+	);
+	return <Model {...props} back={handleBack} onSubmit={handleSubmit} />;
+}
+
+function FullTestConnectionRoute({
+	to,
+	...props
+}: FullFlowRouteData["testConnection"] & {
+	to: Pick<FullFlowToRoute, "baseUrl" | "model" | "nickname">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(
+		() => toRef.current.model(propsRef.current),
+		[propsRef, toRef],
+	);
+	const handleErrorNav = useCallback(
+		() => toRef.current.baseUrl(propsRef.current),
+		[propsRef, toRef],
+	);
+	const handleSubmit = useCallback(
+		(metadata: ModelMetadata) =>
+			toRef.current.nickname({ ...propsRef.current, metadata }),
+		[propsRef, toRef],
+	);
+	return (
+		<TestConnection
+			{...props}
+			back={handleBack}
+			errorNav={handleErrorNav}
+			onSubmit={handleSubmit}
+		/>
+	);
+}
+
+function NicknameBackContextRoute({
+	to,
+	...props
+}: FullFlowRouteData["context"] & {
+	to: Pick<FullFlowToRoute, "nickname">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(
+		() => toRef.current.nickname(propsRef.current),
+		[propsRef, toRef],
+	);
+	return <Context {...props} back={handleBack} />;
+}
 
 const fullFlowRoutes = fullFlow.route({
 	baseUrl,
+	chatGptOAuth,
 	envVar,
 	command,
 	apiKey,
 	nickname,
 
-	authAsk: (to) => (props) => {
-		return (
-			<AuthAsk
-				{...props}
-				onSelect={(route) => to[route](props)}
-				back={() => to.baseUrl(props)}
-			/>
-		);
-	},
+	authAsk: (to) => (props) => <AuthAskRoute {...props} to={to} />,
 
-	postAuth: (to) => (props) => {
-		return <PostAuth {...props} handleAuth={() => to.model(props)} />;
-	},
+	postAuth: (to) => (props) => <PostAuthRoute {...props} to={to} />,
 
-	model: (to) => (props) => {
-		return (
-			<Model
-				{...props}
-				back={() => to.authAsk(props)}
-				onSubmit={(model) => to.testConnection({ ...props, model })}
-			/>
-		);
-	},
+	model: (to) => (props) => <FullModelRoute {...props} to={to} />,
 
-	testConnection: (to) => (props) => {
-		return (
-			<TestConnection
-				{...props}
-				back={() => to.model(props)}
-				errorNav={() => to.baseUrl(props)}
-				onSubmit={(metadata) => to.nickname({ ...props, metadata })}
-			/>
-		);
-	},
+	testConnection: (to) => (props) => (
+		<FullTestConnectionRoute {...props} to={to} />
+	),
 
-	context: (to) => (props) => {
-		return <Context {...props} back={() => to.nickname(props)} />;
-	},
+	context: (to) => (props) => <NicknameBackContextRoute {...props} to={to} />,
 });
 
 export function FullAddModelFlow({
@@ -80,17 +157,29 @@ export function FullAddModelFlow({
 	config: Config | null;
 }) {
 	const [errorMessage, setErrorMessage] = useState("");
+	const onCancelRef = useLatestRef(onCancel);
+	const onCompleteRef = useLatestRef(onComplete);
+	const cancel = useCallback(() => onCancelRef.current(), [onCancelRef]);
+	const done = useCallback(
+		(args: SetupModel) => onCompleteRef.current(args),
+		[onCompleteRef],
+	);
+	const errorContextValue = useMemo(
+		() => ({ errorMessage, setErrorMessage }),
+		[errorMessage],
+	);
+	const routeProps = useMemo(
+		() => ({
+			renderExamples: true,
+			done,
+			cancel,
+			config,
+		}),
+		[cancel, config, done],
+	);
 	return (
-		<errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-			<fullFlowRoutes.Root
-				route="baseUrl"
-				props={{
-					renderExamples: true,
-					done: onComplete,
-					cancel: onCancel,
-					config: config,
-				}}
-			/>
+		<errorContext.Provider value={errorContextValue}>
+			<fullFlowRoutes.Root route="baseUrl" props={routeProps} />
 		</errorContext.Provider>
 	);
 }
@@ -100,223 +189,123 @@ type CustomModelFlowRouteData = Pick<
 	"model" | "testConnection" | "nickname" | "context"
 >;
 const customModelFlow = router<CustomModelFlowRouteData>();
-const customModelFlowRoutes = customModelFlow.route({
-	model: (to) => (props) => {
-		return (
-			<Model
-				{...props}
-				back={() => props.cancel()}
-				onSubmit={(model) => to.testConnection({ ...props, model })}
-			/>
-		);
-	},
+type CustomModelFlowToRoute = ToRoute<CustomModelFlowRouteData>;
 
-	testConnection: (to) => (props) => {
-		return (
-			<TestConnection
-				{...props}
-				back={() => to.model(props)}
-				errorNav={() => to.model(props)}
-				onSubmit={(metadata) => to.nickname({ ...props, metadata })}
-			/>
-		);
-	},
+function CustomModelRoute({
+	to,
+	...props
+}: CustomModelFlowRouteData["model"] & {
+	to: Pick<CustomModelFlowToRoute, "testConnection">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(() => propsRef.current.cancel(), [propsRef]);
+	const handleSubmit = useCallback(
+		(model: string) =>
+			toRef.current.testConnection({ ...propsRef.current, model }),
+		[propsRef, toRef],
+	);
+	return <Model {...props} back={handleBack} onSubmit={handleSubmit} />;
+}
+
+function CustomModelTestConnectionRoute({
+	to,
+	...props
+}: CustomModelFlowRouteData["testConnection"] & {
+	to: Pick<CustomModelFlowToRoute, "model" | "nickname">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(
+		() => toRef.current.model(propsRef.current),
+		[propsRef, toRef],
+	);
+	const handleSubmit = useCallback(
+		(metadata: ModelMetadata) =>
+			toRef.current.nickname({ ...propsRef.current, metadata }),
+		[propsRef, toRef],
+	);
+	return (
+		<TestConnection
+			{...props}
+			back={handleBack}
+			errorNav={handleBack}
+			onSubmit={handleSubmit}
+		/>
+	);
+}
+
+function CustomModelContextRoute({
+	to,
+	...props
+}: CustomModelFlowRouteData["context"] & {
+	to: Pick<CustomModelFlowToRoute, "nickname">;
+}) {
+	const propsRef = useLatestRef(props);
+	const toRef = useLatestRef(to);
+	const handleBack = useCallback(
+		() => toRef.current.nickname(propsRef.current),
+		[propsRef, toRef],
+	);
+	return <Context {...props} back={handleBack} />;
+}
+
+const customModelFlowRoutes = customModelFlow.route({
+	model: (to) => (props) => <CustomModelRoute {...props} to={to} />,
+
+	testConnection: (to) => (props) => (
+		<CustomModelTestConnectionRoute {...props} to={to} />
+	),
 
 	nickname,
 
-	context: (to) => (props) => {
-		return <Context {...props} back={() => to.nickname(props)} />;
-	},
+	context: (to) => (props) => <CustomModelContextRoute {...props} to={to} />,
 });
 
 export function CustomModelFlow({
 	onComplete,
 	onCancel,
 	baseUrl,
+	provider,
 	auth,
 	config,
 }: {
 	onComplete: (args: SetupModel) => unknown;
 	onCancel: () => unknown;
 	baseUrl: string;
+	provider?: ProviderConfig;
 	auth?: Auth;
 	config: Config | null;
 }) {
 	const [errorMessage, setErrorMessage] = useState("");
+	const onCancelRef = useLatestRef(onCancel);
+	const onCompleteRef = useLatestRef(onComplete);
+	const cancel = useCallback(() => onCancelRef.current(), [onCancelRef]);
+	const done = useCallback(
+		(args: SetupModel) => onCompleteRef.current(args),
+		[onCompleteRef],
+	);
+	const errorContextValue = useMemo(
+		() => ({ errorMessage, setErrorMessage }),
+		[errorMessage],
+	);
+	const routeProps = useMemo(
+		() => ({
+			renderExamples: false,
+			done,
+			cancel,
+			baseUrl,
+			provider,
+			auth,
+			config,
+		}),
+		[auth, baseUrl, cancel, config, done, provider],
+	);
 	return (
-		<errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-			<customModelFlowRoutes.Root
-				route="model"
-				props={{
-					renderExamples: false,
-					done: onComplete,
-					cancel: onCancel,
-					baseUrl,
-					auth,
-					config,
-				}}
-			/>
+		<errorContext.Provider value={errorContextValue}>
+			<customModelFlowRoutes.Root route="model" props={routeProps} />
 		</errorContext.Provider>
 	);
 }
 
-const customAuthDoneCtx = createContext<(auth?: Auth) => unknown>(
-	() => undefined,
-);
-type CustomAuthFlowData = Pick<
-	FullFlowRouteData,
-	"authAsk" | "envVar" | "command" | "apiKey" | "postAuth"
->;
-const customAuthFlow = router<CustomAuthFlowData>();
-const customAuthRoutes = customAuthFlow.route({
-	authAsk: (to) => (props) => {
-		return (
-			<AuthAsk
-				{...props}
-				onSelect={(route) => to[route](props)}
-				back={() => props.cancel()}
-			/>
-		);
-	},
-	envVar,
-	command,
-	apiKey,
-	postAuth: (_) => (props) => {
-		const done = useContext(customAuthDoneCtx);
-		return <PostAuth {...props} handleAuth={() => done(props.auth)} />;
-	},
-});
-
-export function CustomAuthFlow({
-	onComplete,
-	onCancel,
-	baseUrl,
-	config,
-}: {
-	onComplete: (auth?: Auth) => unknown;
-	onCancel: () => unknown;
-	baseUrl: string;
-	config: Config | null;
-}) {
-	const [errorMessage, setErrorMessage] = useState("");
-	const [hasCheckedExistingKey, setHasCheckedExistingKey] = useState(false);
-
-	useEffect(() => {
-		if (!hasCheckedExistingKey) {
-			hasExistingKeyForBaseUrl(baseUrl, config).then((hasKey) => {
-				if (hasKey) {
-					onComplete();
-				}
-				setHasCheckedExistingKey(true);
-			});
-		}
-	}, [hasCheckedExistingKey, baseUrl, config, onComplete]);
-
-	// Show nothing while checking for existing key (will auto-complete if found)
-	if (!hasCheckedExistingKey) {
-		return null;
-	}
-
-	return (
-		<errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-			<customAuthDoneCtx.Provider value={onComplete}>
-				<customAuthRoutes.Root
-					route="authAsk"
-					props={{
-						renderExamples: false,
-						done: () => undefined,
-						cancel: onCancel,
-						baseUrl,
-						config,
-					}}
-				/>
-			</customAuthDoneCtx.Provider>
-		</errorContext.Provider>
-	);
-}
-
-type CustomAutofixFlowRouteData = Pick<
-	FullFlowRouteData,
-	| "baseUrl"
-	| "authAsk"
-	| "envVar"
-	| "command"
-	| "apiKey"
-	| "postAuth"
-	| "model"
-	| "testConnection"
-	| "context"
->;
-const customAutofixFlow = router<CustomAutofixFlowRouteData>();
-const customAutofixRoutes = customAutofixFlow.route({
-	baseUrl,
-	envVar,
-	command,
-	apiKey,
-
-	authAsk: (to) => (props) => {
-		return (
-			<AuthAsk
-				{...props}
-				onSelect={(route) => to[route](props)}
-				back={() => to.baseUrl(props)}
-			/>
-		);
-	},
-
-	postAuth: (to) => (props) => {
-		return <PostAuth {...props} handleAuth={() => to.model(props)} />;
-	},
-
-	model: (to) => (props) => {
-		return (
-			<Model
-				{...props}
-				back={() => props.cancel()}
-				onSubmit={(model) => to.testConnection({ ...props, model })}
-			/>
-		);
-	},
-
-	testConnection: (to) => (props) => {
-		return (
-			<TestConnection
-				{...props}
-				back={() => to.model(props)}
-				errorNav={() => to.model(props)}
-				onSubmit={(metadata) =>
-					to.context({ ...props, nickname: "custom-autofix", metadata })
-				}
-			/>
-		);
-	},
-
-	context: (to) => (props) => {
-		return <Context {...props} back={() => to.model(props)} />;
-	},
-});
-
-export function CustomAutofixFlow({
-	onComplete,
-	onCancel,
-	config,
-}: {
-	onComplete: (args: SetupModel) => unknown;
-	onCancel: () => unknown;
-	config: Config | null;
-}) {
-	const [errorMessage, setErrorMessage] = useState("");
-	return (
-		<errorContext.Provider value={{ errorMessage, setErrorMessage }}>
-			<customAutofixRoutes.Root
-				route="baseUrl"
-				props={{
-					renderExamples: false,
-					done: onComplete,
-					cancel: onCancel,
-					config,
-				}}
-			/>
-		</errorContext.Provider>
-	);
-}
+export const CustomAutofixFlow = CustomAutofixFlowImpl;

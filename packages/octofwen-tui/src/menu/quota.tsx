@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
 	formatTimeUntil,
 	normalizeQuotaData,
@@ -10,7 +10,10 @@ import {
 import { assertKeyForModel } from "../internal/configuration/keys.ts";
 import type { Config, ModelConfig } from "../internal/configuration/schemas.ts";
 
-export type QuotaModel = Pick<ModelConfig, "apiEnvVar" | "auth" | "baseUrl">;
+export type QuotaModel = Pick<
+	ModelConfig,
+	"apiEnvVar" | "auth" | "baseUrl" | "type"
+>;
 
 export type SyntheticQuotaFetcher = (params: {
 	apiKey: string;
@@ -19,11 +22,33 @@ export type SyntheticQuotaFetcher = (params: {
 export const SyntheticQuotaFetchContext =
 	createContext<SyntheticQuotaFetcher | null>(null);
 
+type QuotaKeyReader = (
+	model: QuotaModel,
+	config: Config | null,
+) => Promise<string>;
+
 export type MenuQuotaIndicatorProps = {
 	config?: Config | null;
+	keyReader?: QuotaKeyReader;
 	model?: QuotaModel;
 	quota: QuotaData | null | undefined;
 };
+
+const defaultQuotaKeyReader: QuotaKeyReader = (model, config) =>
+	assertKeyForModel(model, config);
+
+function authSignature(auth: QuotaModel["auth"]): string {
+	if (!auth) return "";
+	if (auth.type === "env") {
+		return `env:${auth.name}:${auth.credential ?? ""}`;
+	}
+	return `command:${auth.command.join("\0")}`;
+}
+
+function quotaModelSignature(model: QuotaModel | undefined): string {
+	if (!model) return "";
+	return `${model.type ?? ""}:${model.baseUrl}:${model.apiEnvVar ?? ""}:${authSignature(model.auth)}`;
+}
 
 export function formatQuotaNumber(value: number): string {
 	if (Number.isInteger(value)) return value.toString();
@@ -71,22 +96,28 @@ function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
 
 export function MenuQuotaIndicator({
 	config = null,
+	keyReader = defaultQuotaKeyReader,
 	model,
 	quota: storeQuota,
 }: MenuQuotaIndicatorProps) {
 	const [fetchedQuota, setFetchedQuota] = useState<QuotaData | null>(null);
 	const syntheticQuotaFetch = useContext(SyntheticQuotaFetchContext);
+	const modelSignature = useMemo(() => quotaModelSignature(model), [model]);
 
 	// Used when the menu opens before the agent has received quota headers.
 	// Otherwise the caller-provided quota should come from the app store.
 	useEffect(() => {
-		if (storeQuota || !model || !syntheticQuotaFetch) return;
+		if (storeQuota || !model || !syntheticQuotaFetch) {
+			setFetchedQuota(null);
+			return;
+		}
 		let cancelled = false;
-		assertKeyForModel(model, config)
+		setFetchedQuota(null);
+		keyReader(model, config)
 			.then((apiKey) => syntheticQuotaFetch({ apiKey }))
 			.then((result) => {
 				const quota = normalizeQuotaData(result.quota);
-				if (!cancelled) setFetchedQuota((prev) => prev ?? quota ?? null);
+				if (!cancelled) setFetchedQuota(quota ?? null);
 			})
 			.catch(() => {
 				// Quota fetch failures are intentionally not surfaced in the menu.
@@ -94,7 +125,7 @@ export function MenuQuotaIndicator({
 		return () => {
 			cancelled = true;
 		};
-	}, [storeQuota, model, config, syntheticQuotaFetch]);
+	}, [storeQuota, modelSignature, config, syntheticQuotaFetch, keyReader]);
 
 	const quota = storeQuota ?? fetchedQuota;
 

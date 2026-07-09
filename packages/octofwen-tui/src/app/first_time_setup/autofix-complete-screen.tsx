@@ -1,4 +1,6 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text } from "ink";
+import { useCallback } from "react";
+import { useLatestInput, useLatestRef } from "../../input/latest_input.ts";
 import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../../menu/root.tsx";
 import { TERMINAL_THEME_COLOR } from "../../theme/branding.tsx";
@@ -8,9 +10,15 @@ export function AutofixCompleteScreen({
 }: {
 	onContinue: () => void;
 }) {
-	useInput((_, key) => {
-		if (key.return) onContinue();
-	});
+	const onContinueRef = useLatestRef(onContinue);
+	useLatestInput(
+		useCallback(
+			(_, key) => {
+				if (key.return) onContinueRef.current();
+			},
+			[onContinueRef],
+		),
+	);
 
 	return (
 		<CenteredBox>

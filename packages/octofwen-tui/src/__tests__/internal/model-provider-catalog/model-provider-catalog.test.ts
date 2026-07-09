@@ -5,8 +5,10 @@ import {
 	keyFromName,
 	PROVIDERS,
 	type ProviderConfig,
+	providerBaseUrlEnvVar,
 	providerEntries,
 	providerForBaseUrl,
+	providerForModelConfig,
 	recommendedModel,
 	SYNTHETIC_PROVIDER,
 } from "../../../internal/model-provider-catalog/main.ts";
@@ -47,9 +49,15 @@ describe("provider catalog", () => {
 		expect(expectPresent(PROVIDERS.openai).apiKeyUrl).toBe(
 			"https://platform.openai.com/api-keys",
 		);
+		expect(expectPresent(PROVIDERS.openai).authMethods).toEqual([
+			"chatgpt-oauth",
+			"api-key",
+		]);
 		expect(expectPresent(PROVIDERS.gemini).apiKeyUrl).toBe(
 			"https://aistudio.google.com/apikey",
 		);
+		expect(expectPresent(PROVIDERS.anthropic).authMethods).toEqual(["api-key"]);
+		expect(expectPresent(PROVIDERS.gemini).authMethods).toEqual(["api-key"]);
 		expect(expectPresent(PROVIDERS.grok).envVar).toBe("XAI_API_KEY");
 		expect(expectPresent(PROVIDERS.grok).apiKeyUrl).toBe(
 			"https://console.x.ai/",
@@ -60,6 +68,18 @@ describe("provider catalog", () => {
 		expect(expectOk(keyFromName("Synthetic"))).toBe("synthetic");
 		expect(expectOk(keyFromName("OpenAI"))).toBe("openai");
 		expect(providerForBaseUrl("https://api.synthetic.new/v1")).toEqual(
+			expectPresent(PROVIDERS.synthetic),
+		);
+		expect(providerForBaseUrl("https://api.synthetic.new/openai/v1")).toEqual(
+			expectPresent(PROVIDERS.synthetic),
+		);
+		expect(providerForBaseUrl(" https://api.openai.com/v1/ ")).toEqual(
+			expectPresent(PROVIDERS.openai),
+		);
+		expect(providerForBaseUrl(" https://api.openai.com/v1/// ")).toEqual(
+			expectPresent(PROVIDERS.openai),
+		);
+		expect(providerForBaseUrl("https://api.synthetic.new/openai/v1/")).toEqual(
 			expectPresent(PROVIDERS.synthetic),
 		);
 		expect(providerForBaseUrl("https://api.anthropic.com")).toEqual(
@@ -75,6 +95,65 @@ describe("provider catalog", () => {
 			expect(missingProvider.error).toBe(
 				"No provider named Missing Provider found",
 			);
+		}
+	});
+
+	it("maps provider models with local base URL overrides by provider type", () => {
+		expect(
+			providerForModelConfig({
+				type: "openai-responses",
+				baseUrl: "http://127.0.0.1:8080/v1",
+			}),
+		).toEqual(expectPresent(PROVIDERS.openai));
+		expect(
+			providerForModelConfig({
+				type: "anthropic",
+				baseUrl: "http://127.0.0.1:8080",
+			}),
+		).toEqual(expectPresent(PROVIDERS.anthropic));
+		expect(
+			providerForModelConfig({
+				type: "gemini",
+				baseUrl: "http://127.0.0.1:8080/v1beta",
+			}),
+		).toEqual(expectPresent(PROVIDERS.gemini));
+		expect(
+			providerForModelConfig({
+				type: "anthropic",
+				baseUrl: "https://api.openai.com/v1",
+			}),
+		).toEqual(expectPresent(PROVIDERS.anthropic));
+		expect(
+			providerForModelConfig({
+				type: "standard",
+				baseUrl: "http://127.0.0.1:8080/v1",
+				model: "hf:moonshotai/Kimi-K2.5",
+			}),
+		).toEqual(expectPresent(PROVIDERS.synthetic));
+		expect(
+			providerForModelConfig({
+				type: "standard",
+				baseUrl: "http://127.0.0.1:8080/v1",
+			}),
+		).toBeNull();
+	});
+
+	it("keeps local proxy env template aligned with API-key provider setup", async () => {
+		const template = await Bun.file(
+			new URL("../../../../../../.env.template", import.meta.url),
+		).text();
+
+		for (const providerKey of [
+			"openai",
+			"anthropic",
+			"gemini",
+			"synthetic",
+		] as const) {
+			const provider = expectPresent(PROVIDERS[providerKey]);
+			const baseUrlEnvVar = expectPresent(providerBaseUrlEnvVar(providerKey));
+
+			expect(template).toContain(`${baseUrlEnvVar}=http://127.0.0.1:8080`);
+			expect(template).toContain(`${provider.envVar}=pwd`);
 		}
 	});
 
@@ -104,7 +183,9 @@ describe("provider catalog", () => {
 			name: "Local",
 			envVar: "LOCAL_API_KEY",
 			baseUrl: "https://local.invalid/v1",
+			baseUrlAliases: [],
 			apiKeyUrl: "https://local.invalid/keys",
+			authMethods: ["api-key"],
 			models: [
 				{
 					model: "local-model",

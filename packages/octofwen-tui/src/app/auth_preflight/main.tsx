@@ -1,5 +1,5 @@
-import { Box, Text, useApp, useInput } from "ink";
-import { useState } from "react";
+import { Box, Text, useApp } from "ink";
+import { useCallback, useMemo, useState } from "react";
 import {
 	configMergeAutofixEnvVar,
 	configMergeEnvVar,
@@ -14,36 +14,19 @@ import type {
 	Config,
 } from "../../internal/configuration/schemas.ts";
 import { HeightlessCenteredBox } from "../../layout/boxes.tsx";
-import { CustomAuthFlow } from "../../menu/model_setup/add-model-flow.tsx";
-
-export function resolveModelFromConfig(
-	config: Config,
-	model: Config["models"][number],
-): Config["models"][number] {
-	const exact = config.models.find(
-		(candidate) =>
-			candidate.nickname === model.nickname &&
-			candidate.baseUrl === model.baseUrl,
-	);
-	if (exact) return exact;
-	const fallback = config.models.find(
-		(candidate) => candidate.baseUrl === model.baseUrl,
-	);
-	return fallback ?? model;
-}
-
-export function resolveAutofixModelFromConfig<
-	K extends "diffApply" | "fixJson",
->(
-	config: Config,
-	model: Exclude<Config[K], undefined>,
-	key: K,
-): Exclude<Config[K], undefined> {
-	const candidate = config[key];
-	if (candidate && candidate.baseUrl === model.baseUrl)
-		return candidate as Exclude<Config[K], undefined>;
-	return (candidate ?? model) as Exclude<Config[K], undefined>;
-}
+import { CustomAuthFlow } from "../../menu/model_setup/custom-auth-flow.tsx";
+import { normalizeRenderedLineBreaks } from "../../rendering/line_splitting.ts";
+import { AuthCommandErrorPanel } from "./auth-command-error-panel.tsx";
+import {
+	applyAutofixAuthToConfig,
+	applyModelAuthToConfig,
+	indexOfModel,
+	providerForPreflightModel,
+	resolveAutofixModelFromConfig,
+	resolveModelFromConfig,
+	shouldMergeEnvAuthAsDefaultApiKey,
+} from "./model-resolution.ts";
+import { useAuthPreflightInput } from "./use-auth-preflight-input.ts";
 
 export function PreflightModelAuth({
 	model,
@@ -56,30 +39,17 @@ export function PreflightModelAuth({
 	configPath: string;
 	error?: string;
 }) {
-	const app = useApp();
+	const { exit } = useApp();
 	const [exitMessage, setExitMessage] = useState<string | null>(null);
 	const [authError, setAuthError] = useState<AuthError | null>(null);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [currentModel, setCurrentModel] = useState(model);
+	const currentProvider = useMemo(
+		() => providerForPreflightModel(currentModel) ?? undefined,
+		[currentModel.baseUrl, currentModel.type],
+	);
 
-	useInput(async (input, key) => {
-		if (key.escape && authError) {
-			setAuthError(null);
-			setIsRetrying(false);
-		} else if (
-			input === "r" &&
-			authError &&
-			authError.type === "command_failed"
-		) {
-			setIsRetrying(true);
-			const valid = await validateAuth();
-			if (valid) {
-				app.exit();
-			}
-		} else if (!key.escape) setExitMessage(null);
-	});
-
-	const validateAuth = async () => {
+	const validateAuth = useCallback(async () => {
 		const reloadedConfig = await readConfig(configPath);
 		const resolvedModel = resolveModelFromConfig(reloadedConfig, currentModel);
 		setCurrentModel(resolvedModel);
@@ -93,85 +63,84 @@ export function PreflightModelAuth({
 			return false;
 		}
 		return true;
-	};
+	}, [configPath, currentModel]);
+
+	useAuthPreflightInput({
+		authError,
+		exit,
+		isRetrying,
+		setAuthError,
+		setExitMessage,
+		setIsRetrying,
+		validateAuth,
+	});
+
+	const cancelAuthSetup = useCallback(() => {
+		setExitMessage("Press CTRL-C to exit");
+	}, []);
+
+	const completeAuthSetup = useCallback(
+		async (auth?: Config["models"][number]["auth"]) => {
+			let updatedConfig = await readConfig(configPath);
+			let updatedModel = resolveModelFromConfig(updatedConfig, currentModel);
+			const index = indexOfModel(updatedConfig.models, updatedModel);
+			if (index >= 0 && auth) {
+				if (shouldMergeEnvAuthAsDefaultApiKey(auth)) {
+					updatedConfig = (await configMergeEnvVar(
+						updatedConfig,
+						updatedModel,
+						auth.name,
+					)) as Config;
+					await writeConfig(updatedConfig, configPath);
+				} else {
+					const applied = applyModelAuthToConfig(
+						updatedConfig,
+						updatedModel,
+						auth,
+					);
+					if (applied) {
+						updatedConfig = applied.config;
+						updatedModel = applied.model;
+						await writeConfig(updatedConfig, configPath);
+					}
+				}
+			}
+			const resolvedModel = resolveModelFromConfig(updatedConfig, updatedModel);
+			setCurrentModel(resolvedModel);
+			const result = await readKeyForModelWithDetails(
+				resolvedModel,
+				updatedConfig,
+			);
+			if (result.ok) {
+				exit();
+			} else {
+				setAuthError(result.error);
+			}
+		},
+		[configPath, currentModel, exit],
+	);
 
 	return (
 		<Box flexDirection="column" gap={1}>
 			{error && (
 				<HeightlessCenteredBox>
 					<Box justifyContent="center">
-						<Text color="red">{error}</Text>
+						<Text color="red">{normalizeRenderedLineBreaks(error)}</Text>
 					</Box>
 				</HeightlessCenteredBox>
 			)}
 
 			{authError && authError.type === "command_failed" && (
-				<HeightlessCenteredBox>
-					<Box flexDirection="column" gap={1}>
-						<Box justifyContent="center">
-							<Text color="red">Your auth command failed</Text>
-						</Box>
-						<Box justifyContent="center">
-							<Text color="yellow">{authError.message}</Text>
-						</Box>
-						{authError.stderr && (
-							<Box justifyContent="center">
-								<Text color="gray">stderr: {authError.stderr}</Text>
-							</Box>
-						)}
-						<Box justifyContent="center" marginTop={1}>
-							<Text dimColor={true}>
-								[R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
-							</Text>
-						</Box>
-					</Box>
-				</HeightlessCenteredBox>
+				<AuthCommandErrorPanel authError={authError} isRetrying={isRetrying} />
 			)}
 
 			{!authError && (
 				<CustomAuthFlow
 					config={config}
-					baseUrl={model.baseUrl}
-					onCancel={() => {
-						setExitMessage("Press CTRL-C to exit");
-					}}
-					onComplete={async (auth) => {
-						const index = config.models.indexOf(model);
-						let updatedModel = model;
-						if (index >= 0 && auth) {
-							if (auth.type === "env") {
-								await writeConfig(
-									(await configMergeEnvVar(config, model, auth.name)) as Config,
-									configPath,
-								);
-							} else {
-								const updatedModels = [...config.models];
-								updatedModel = { ...model, auth };
-								updatedModels[index] = updatedModel;
-								await writeConfig(
-									{ ...config, models: updatedModels },
-									configPath,
-								);
-							}
-						}
-						setCurrentModel(updatedModel);
-						// Reload config to ensure we validate against the updated state
-						const reloadedConfig = await readConfig(configPath);
-						const resolvedModel = resolveModelFromConfig(
-							reloadedConfig,
-							updatedModel,
-						);
-						setCurrentModel(resolvedModel);
-						const result = await readKeyForModelWithDetails(
-							resolvedModel,
-							reloadedConfig,
-						);
-						if (result.ok) {
-							app.exit();
-						} else {
-							setAuthError(result.error);
-						}
-					}}
+					baseUrl={currentModel.baseUrl}
+					provider={currentProvider}
+					onCancel={cancelAuthSetup}
+					onComplete={completeAuthSetup}
 				/>
 			)}
 
@@ -181,9 +150,9 @@ export function PreflightModelAuth({
 				</HeightlessCenteredBox>
 			)}
 
-			{!authError && exitMessage && (
+			{exitMessage && (
 				<HeightlessCenteredBox>
-					<Text color="gray">{exitMessage}</Text>
+					<Text color="gray">{normalizeRenderedLineBreaks(exitMessage)}</Text>
 				</HeightlessCenteredBox>
 			)}
 		</Box>
@@ -201,30 +170,17 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 	config: Config;
 	configPath: string;
 }) {
-	const app = useApp();
+	const { exit } = useApp();
 	const [exitMessage, setExitMessage] = useState<string | null>(null);
 	const [authError, setAuthError] = useState<AuthError | null>(null);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const [currentModel, setCurrentModel] = useState(model);
+	const currentProvider = useMemo(
+		() => providerForPreflightModel(currentModel) ?? undefined,
+		[currentModel.baseUrl, currentModel.type],
+	);
 
-	useInput(async (input, key) => {
-		if (key.escape && authError) {
-			setAuthError(null);
-			setIsRetrying(false);
-		} else if (
-			input === "r" &&
-			authError &&
-			authError.type === "command_failed"
-		) {
-			setIsRetrying(true);
-			const valid = await validateAuth();
-			if (valid) {
-				app.exit();
-			}
-		} else if (!key.escape) setExitMessage(null);
-	});
-
-	const validateAuth = async () => {
+	const validateAuth = useCallback(async () => {
 		const reloadedConfig = await readConfig(configPath);
 		const resolvedModel = resolveAutofixModelFromConfig(
 			reloadedConfig,
@@ -242,7 +198,69 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 			return false;
 		}
 		return true;
-	};
+	}, [autofixKey, configPath, currentModel]);
+
+	useAuthPreflightInput({
+		authError,
+		exit,
+		isRetrying,
+		setAuthError,
+		setExitMessage,
+		setIsRetrying,
+		validateAuth,
+	});
+
+	const cancelAuthSetup = useCallback(() => {
+		setExitMessage("Press CTRL-C to exit");
+	}, []);
+
+	const completeAuthSetup = useCallback(
+		async (auth?: Config["models"][number]["auth"]) => {
+			let updatedConfig = await readConfig(configPath);
+			let updatedModel = resolveAutofixModelFromConfig(
+				updatedConfig,
+				currentModel,
+				autofixKey,
+			);
+			if (auth) {
+				if (shouldMergeEnvAuthAsDefaultApiKey(auth)) {
+					updatedConfig = (await configMergeAutofixEnvVar(
+						updatedConfig,
+						autofixKey,
+						updatedModel,
+						auth.name,
+					)) as Config;
+					await writeConfig(updatedConfig, configPath);
+				} else {
+					const applied = applyAutofixAuthToConfig(
+						updatedConfig,
+						updatedModel,
+						autofixKey,
+						auth,
+					);
+					updatedConfig = applied.config;
+					updatedModel = applied.model;
+					await writeConfig(updatedConfig, configPath);
+				}
+			}
+			const resolvedModel = resolveAutofixModelFromConfig(
+				updatedConfig,
+				updatedModel,
+				autofixKey,
+			);
+			setCurrentModel(resolvedModel);
+			const result = await readKeyForModelWithDetails(
+				resolvedModel,
+				updatedConfig,
+			);
+			if (result.ok) {
+				exit();
+			} else {
+				setAuthError(result.error);
+			}
+		},
+		[autofixKey, configPath, currentModel, exit],
+	);
 
 	const modelName = (() => {
 		if (autofixKey === "diffApply") return "diff-apply";
@@ -253,26 +271,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 	return (
 		<Box flexDirection="column" gap={1}>
 			{authError && authError.type === "command_failed" && (
-				<HeightlessCenteredBox>
-					<Box flexDirection="column" gap={1}>
-						<Box justifyContent="center">
-							<Text color="red">Your auth command failed</Text>
-						</Box>
-						<Box justifyContent="center">
-							<Text color="yellow">{authError.message}</Text>
-						</Box>
-						{authError.stderr && (
-							<Box justifyContent="center">
-								<Text color="gray">stderr: {authError.stderr}</Text>
-							</Box>
-						)}
-						<Box justifyContent="center" marginTop={1}>
-							<Text dimColor={true}>
-								[R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
-							</Text>
-						</Box>
-					</Box>
-				</HeightlessCenteredBox>
+				<AuthCommandErrorPanel authError={authError} isRetrying={isRetrying} />
 			)}
 
 			{!authError && (
@@ -287,49 +286,10 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 
 					<CustomAuthFlow
 						config={config}
-						baseUrl={model.baseUrl}
-						onCancel={() => {
-							setExitMessage("Press CTRL-C to exit");
-						}}
-						onComplete={async (auth) => {
-							let updatedModel = model;
-							if (auth) {
-								if (auth.type === "env") {
-									await writeConfig(
-										(await configMergeAutofixEnvVar(
-											config,
-											autofixKey,
-											model,
-											auth.name,
-										)) as Config,
-										configPath,
-									);
-								} else {
-									const merged = { ...config };
-									updatedModel = { ...model, auth };
-									merged[autofixKey] = updatedModel;
-									await writeConfig(merged, configPath);
-								}
-							}
-							setCurrentModel(updatedModel);
-							// Reload config to ensure we validate against the updated state
-							const reloadedConfig = await readConfig(configPath);
-							const resolvedModel = resolveAutofixModelFromConfig(
-								reloadedConfig,
-								updatedModel,
-								autofixKey,
-							);
-							setCurrentModel(resolvedModel);
-							const result = await readKeyForModelWithDetails(
-								resolvedModel,
-								reloadedConfig,
-							);
-							if (result.ok) {
-								app.exit();
-							} else {
-								setAuthError(result.error);
-							}
-						}}
+						baseUrl={currentModel.baseUrl}
+						provider={currentProvider}
+						onCancel={cancelAuthSetup}
+						onComplete={completeAuthSetup}
 					/>
 				</>
 			)}
@@ -340,9 +300,9 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 				</HeightlessCenteredBox>
 			)}
 
-			{!authError && exitMessage && (
+			{exitMessage && (
 				<HeightlessCenteredBox>
-					<Text color="gray">{exitMessage}</Text>
+					<Text color="gray">{normalizeRenderedLineBreaks(exitMessage)}</Text>
 				</HeightlessCenteredBox>
 			)}
 		</Box>

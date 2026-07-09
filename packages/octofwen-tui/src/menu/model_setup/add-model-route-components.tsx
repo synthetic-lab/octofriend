@@ -1,11 +1,13 @@
 import { Box, Text } from "ink";
-import { useCallback, useContext, useEffect } from "react";
+import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useLatestRef } from "../../input/latest_input.ts";
 import {
-	type Item,
-	KbShortcutPanel,
-	type ShortcutArray,
-} from "../../input/shortcuts.tsx";
-import { providerForBaseUrl } from "../../internal/model-provider-catalog/main.ts";
+	keyFromName,
+	type ProviderConfig,
+	providerForBaseUrl,
+	SYNTHETIC_PROVIDER,
+} from "../../internal/model-provider-catalog/main.ts";
+import { useTerminalContentWidth } from "../../layout/viewport.tsx";
 import { useTerminalThemeColor } from "../../theme/branding.tsx";
 import {
 	testConnection,
@@ -18,98 +20,57 @@ import type {
 	ModelMetadata,
 	Transitions,
 } from "./add-model-types.ts";
-import { Back } from "./primitives.tsx";
+import { Back } from "./setup-router.tsx";
 
-const K_FORMAT_NUMBER = /^\d+$/;
-
-export function AuthAsk(
-	props: FullFlowRouteData["authAsk"] &
-		Pick<Transitions<void>, "back"> & {
-			onSelect: (route: "apiKey" | "envVar" | "command") => void;
-		},
-) {
-	const provider = providerForBaseUrl(props.baseUrl);
-
-	const shortcutItems = [
-		{
-			type: "key" as const,
-			mapping: {
-				a: {
-					label: "Enter an API key",
-					value: "apiKey",
-				},
-				e: {
-					label: "I have an existing environment variable I use...",
-					value: "envVar",
-				},
-				c: {
-					label: "Use a command (e.g. pass, op, gopass)...",
-					value: "command",
-				},
-				b: {
-					label: "Back",
-					value: "back",
-				},
-			} as const,
-		},
-	] satisfies ShortcutArray<"apiKey" | "envVar" | "command" | "back">;
-	const onSelect = useCallback(
-		(item: Item<"apiKey" | "envVar" | "command" | "back">) => {
-			if (item.value === "back") props.back();
-			else props.onSelect(item.value);
-		},
-		[],
-	);
-
-	return (
-		<Back go={props.back}>
-			<KbShortcutPanel
-				title="How do you want to authenticate?"
-				shortcutItems={shortcutItems}
-				onSelect={onSelect}
-			>
-				{provider && (
-					<Text>
-						It looks like you don't have the default {provider.envVar}{" "}
-						environment variable defined in your current shell. How do you want
-						to authenticate with {provider.name}?
-					</Text>
-				)}
-			</KbShortcutPanel>
-		</Back>
-	);
+export function requiresSyntheticModelPrefix({
+	baseUrl,
+	provider,
+}: {
+	baseUrl: string;
+	provider?: Pick<ProviderConfig, "name">;
+}): boolean {
+	if (!SYNTHETIC_PROVIDER) return false;
+	if (provider && keyFromName(provider.name).success) {
+		return provider.name === SYNTHETIC_PROVIDER.name;
+	}
+	return providerForBaseUrl(baseUrl)?.name === SYNTHETIC_PROVIDER.name;
 }
 
-export function PostAuth(
-	props: FullFlowRouteData["postAuth"] & {
-		handleAuth: () => void;
-	},
+function parseModelInput(value: string): string {
+	return value;
+}
+
+function modelInputIsValid(
+	value: string,
+	props: Pick<FullFlowRouteData["model"], "baseUrl" | "provider">,
 ) {
-	useEffect(() => {
-		props.handleAuth();
-	}, []);
-	return null;
+	if (requiresSyntheticModelPrefix(props) && !value.startsWith("hf:")) {
+		return {
+			valid: false as const,
+			error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
+		};
+	}
+	return { valid: true as const };
 }
 
 export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
+	const propsRef = useLatestRef(props);
+	const validateModelInput = useCallback(
+		(value: string) => modelInputIsValid(value, propsRef.current),
+		[propsRef],
+	);
+	const handleSubmit = useCallback(
+		(model: string) => propsRef.current.onSubmit(model),
+		[propsRef],
+	);
 	return (
 		<Back go={props.back}>
 			<Step<string>
 				title="What's the model string for the API you're using?"
 				prompt="Model string:"
-				parse={(val) => val}
-				validate={(val) => {
-					if (props.baseUrl === "https://synthetic.new") {
-						if (!val.startsWith("hf:")) {
-							return {
-								valid: false,
-								error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
-							};
-						}
-					}
-					return { valid: true };
-				}}
-				onSubmit={props.onSubmit}
+				parse={parseModelInput}
+				validate={validateModelInput}
+				onSubmit={handleSubmit}
 			>
 				{props.renderExamples && (
 					<Box marginBottom={1}>
@@ -135,22 +96,53 @@ export function TestConnection(
 ) {
 	const { setErrorMessage } = useContext(errorContext);
 	const modelConnectionTest = useModelConnectionTest();
+	const { auth, baseUrl, config, env, errorNav, model, onSubmit, provider } =
+		props;
+	const errorNavRef = useLatestRef(errorNav);
+	const onSubmitRef = useLatestRef(onSubmit);
+	const setErrorMessageRef = useLatestRef(setErrorMessage);
+	const authKey = useMemo(() => authConnectionKey(auth), [auth]);
+	const configAuthKey = useMemo(
+		() => configAuthConnectionKey(config),
+		[config],
+	);
+	const envKey = useMemo(() => envConnectionKey(env), [env]);
+	const providerKey = useMemo(
+		() => providerConnectionKey(provider),
+		[provider],
+	);
+	const width = useTerminalContentWidth();
 	useEffect(() => {
+		let alive = true;
 		testConnection({
-			model: props.model,
-			auth: props.auth,
-			baseUrl: props.baseUrl,
-			config: props.config,
+			model,
+			auth,
+			baseUrl,
+			provider,
+			config,
 			modelConnectionTest,
+			env,
 		}).then((result) => {
+			if (!alive) return;
 			if (result.valid) {
-				props.onSubmit(result.metadata);
+				onSubmitRef.current(result.metadata);
 				return;
 			}
-			setErrorMessage(result.errorMessage ?? "Connection failed.");
-			props.errorNav();
+			setErrorMessageRef.current(result.errorMessage ?? "Connection failed.");
+			errorNavRef.current();
 		});
-	}, [props, modelConnectionTest]);
+		return () => {
+			alive = false;
+		};
+	}, [
+		authKey,
+		baseUrl,
+		configAuthKey,
+		envKey,
+		model,
+		modelConnectionTest,
+		providerKey,
+	]);
 
 	return (
 		<Back go={props.back}>
@@ -160,7 +152,7 @@ export function TestConnection(
 				alignItems="center"
 				marginTop={1}
 			>
-				<Box flexDirection="column" width={80}>
+				<Box flexDirection="column" width={width}>
 					<Text color="yellow" bold={true}>
 						Testing connection...
 					</Text>
@@ -170,46 +162,119 @@ export function TestConnection(
 	);
 }
 
+function authConnectionKey(auth: FullFlowRouteData["testConnection"]["auth"]) {
+	if (!auth) return "";
+	if (auth.type === "env") {
+		return `env\u001f${auth.name}\u001f${auth.credential ?? ""}`;
+	}
+	return `command\u001f${auth.command.join("\u001f")}`;
+}
+
+function configAuthConnectionKey(
+	config: FullFlowRouteData["testConnection"]["config"],
+): string {
+	return sortedRecordConnectionKey(config?.defaultApiKeyOverrides);
+}
+
+function envConnectionKey(
+	env: FullFlowRouteData["testConnection"]["env"],
+): string {
+	return sortedRecordConnectionKey(env);
+}
+
+function sortedRecordConnectionKey(
+	record: Record<string, string | undefined> | undefined,
+): string {
+	if (!record) return "";
+	const keys = Object.keys(record).sort();
+	const parts = new Array<string>(keys.length);
+	for (let index = 0; index < keys.length; index += 1) {
+		const key = keys[index];
+		parts[index] = `${key}\u001f${record[key] ?? ""}\u001e`;
+	}
+	return parts.join("");
+}
+
+function providerConnectionKey(
+	provider: FullFlowRouteData["testConnection"]["provider"],
+) {
+	if (!provider) return "";
+	return `${provider.name}\u001f${provider.type ?? ""}\u001f${provider.baseUrl}`;
+}
+
 export function formatContextTokens(tokens: number): string {
 	const halfTokens = tokens / 2;
 	const kValue = Math.round(halfTokens / 1024);
 	return `${kValue}k`;
 }
 
+function parseContextTokens(value: string): number {
+	let tokens = 0;
+	for (let index = 0; index < value.length; index += 1) {
+		const code = value.charCodeAt(index);
+		if (code === 107) continue;
+		tokens = tokens * 10 + code - 48;
+	}
+	return tokens * 1024;
+}
+
+function isContextTokenInput(value: string): boolean {
+	let removedK = false;
+	let digitCount = 0;
+	let index = 0;
+	while (index < value.length) {
+		const code = value.charCodeAt(index);
+		if (code === 107 && !removedK) {
+			removedK = true;
+			index += 1;
+			continue;
+		}
+		if (code < 48 || code > 57) return false;
+		digitCount += 1;
+		index += 1;
+	}
+	return digitCount > 0;
+}
+
+function validateContextTokenInput(value: string) {
+	if (isContextTokenInput(value)) return { valid: true as const };
+	return {
+		valid: false as const,
+		error: "Couldn't parse your input as a number: please try again",
+	};
+}
+
 export function Context(
 	props: FullFlowRouteData["context"] & Pick<Transitions<number>, "back">,
 ) {
 	const color = useTerminalThemeColor();
-	const { baseUrl, auth, model, nickname, done, metadata } = props;
+	const { metadata } = props;
+	const propsRef = useLatestRef(props);
 	const defaultContext = metadata.contextLength
 		? formatContextTokens(metadata.contextLength)
 		: "";
+	const handleSubmit = useCallback(
+		(context: number) => {
+			const { auth, baseUrl, done, model, nickname } = propsRef.current;
+			done({
+				baseUrl,
+				model,
+				nickname,
+				context,
+				auth,
+			});
+		},
+		[propsRef],
+	);
 	return (
 		<Back go={props.back}>
 			<Step<number>
 				title="What's the maximum number of tokens Octo should use per request?"
 				prompt="Maximum tokens:"
 				defaultValue={defaultContext}
-				parse={(val) => {
-					return Number.parseInt(val.replace("k", ""), 10) * 1024;
-				}}
-				validate={(value) => {
-					if (K_FORMAT_NUMBER.test(value.replace("k", "")))
-						return { valid: true };
-					return {
-						valid: false,
-						error: "Couldn't parse your input as a number: please try again",
-					};
-				}}
-				onSubmit={(context) =>
-					done({
-						baseUrl,
-						model,
-						nickname,
-						context,
-						auth,
-					})
-				}
+				parse={parseContextTokens}
+				validate={validateContextTokenInput}
+				onSubmit={handleSubmit}
 			>
 				<Box flexDirection="column">
 					<Text>

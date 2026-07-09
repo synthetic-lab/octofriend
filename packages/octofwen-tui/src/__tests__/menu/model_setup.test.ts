@@ -1,13 +1,5 @@
 import { describe, expect, it } from "bun:test";
-
-type TestResult<T, E> =
-	| { success: true; data: T }
-	| { success: false; error: E };
-
-function expectOk<T, E>(result: TestResult<T, E>): T {
-	if (result.success) return result.data;
-	throw new Error(String(result.error));
-}
+import type { Config } from "../../internal/configuration/schemas.ts";
 
 function expectPresent<T>(value: T): NonNullable<T> {
 	if (value === null || value === undefined) {
@@ -16,18 +8,37 @@ function expectPresent<T>(value: T): NonNullable<T> {
 	return value;
 }
 
+function deferred<T>() {
+	let resolve: (value: T) => void = () => undefined;
+	const promise = new Promise<T>((nextResolve) => {
+		resolve = nextResolve;
+	});
+	return { promise, resolve };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		if (predicate()) return;
+		await Bun.sleep(1);
+	}
+	throw new Error("Timed out waiting for condition");
+}
+
 describe("terminal model setup helpers", () => {
 	it("uses a known provider name for matching base URLs", async () => {
 		const { getProviderDisplayName } = await import(
-			"../../menu/model_setup/primitives.tsx"
+			"../../menu/model_setup/provider-helpers.ts"
 		);
 
 		expect(getProviderDisplayName("https://api.openai.com/v1")).toBe("OpenAI");
+		expect(getProviderDisplayName("https://api.synthetic.new/openai/v1")).toBe(
+			"Synthetic",
+		);
 	});
 
 	it("falls back to the base URL for unknown providers", async () => {
 		const { getProviderDisplayName } = await import(
-			"../../menu/model_setup/primitives.tsx"
+			"../../menu/model_setup/provider-helpers.ts"
 		);
 
 		expect(getProviderDisplayName("https://models.example.test/v1")).toBe(
@@ -35,11 +46,25 @@ describe("terminal model setup helpers", () => {
 		);
 	});
 
+	it("derives default nicknames from model names without char-concat loops", async () => {
+		const { defaultNicknameFromModelName } = await import(
+			"../../menu/model_setup/add-model-route-builders.tsx"
+		);
+
+		expect(defaultNicknameFromModelName(undefined)).toBe("");
+		expect(defaultNicknameFromModelName("openai/gpt-4.1-mini")).toBe(
+			"gpt 4.1 mini",
+		);
+		expect(defaultNicknameFromModelName("gpt-5")).toBe("gpt 5");
+		expect(defaultNicknameFromModelName("provider/")).toBe("");
+		expect(defaultNicknameFromModelName("provider/claude")).toBe("claude");
+	});
+
 	it("renders custom base URL auth choices without requiring every catalog provider", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { AuthAsk } = await import(
-			"../../menu/model_setup/add-model-route-components.tsx"
+			"../../menu/model_setup/auth-route-components.tsx"
 		);
 
 		const { lastFrame } = render(
@@ -54,15 +79,238 @@ describe("terminal model setup helpers", () => {
 			}),
 		);
 
-		expect(lastFrame()).toContain("How do you want to authenticate?");
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("How do you want to authenticate?");
+		expect(frame).toContain("This custom endpoint can use an API key");
+		expect(frame).toContain("Use an existing environment variable");
+	});
+
+	it("derives provider auth choices without per-render shortcut rebuilding", async () => {
+		const { authChoicesForProvider } = await import(
+			"../../menu/model_setup/provider-auth.ts"
+		);
+		const { PROVIDERS } = await import(
+			"../../internal/model-provider-catalog/main.ts"
+		);
+
+		expect(authChoicesForProvider(expectPresent(PROVIDERS.openai))).toEqual({
+			supportsApiKey: true,
+			supportsChatGptOAuth: true,
+		});
+		expect(authChoicesForProvider(expectPresent(PROVIDERS.anthropic))).toEqual({
+			supportsApiKey: true,
+			supportsChatGptOAuth: false,
+		});
+		expect(authChoicesForProvider(expectPresent(PROVIDERS.gemini))).toEqual({
+			supportsApiKey: true,
+			supportsChatGptOAuth: false,
+		});
+		expect(authChoicesForProvider(expectPresent(PROVIDERS.synthetic))).toEqual({
+			supportsApiKey: true,
+			supportsChatGptOAuth: false,
+		});
+		expect(authChoicesForProvider(null)).toEqual({
+			supportsApiKey: false,
+			supportsChatGptOAuth: false,
+		});
+	});
+
+	it("surfaces provider-specific OpenAI OAuth metadata without hiding API-key setup", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { AuthAsk } = await import(
+			"../../menu/model_setup/auth-route-components.tsx"
+		);
+
+		const { lastFrame } = render(
+			React.createElement(AuthAsk, {
+				baseUrl: "https://api.openai.com/v1/",
+				renderExamples: false,
+				config: null,
+				done: () => undefined,
+				cancel: () => undefined,
+				back: () => undefined,
+				onSelect: () => undefined,
+			}),
+		);
+
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("OPENAI_API_KEY");
+		expect(frame).toContain("CODEX_ACCESS_TOKEN");
+		expect(frame).toContain("OpenAI can use ChatGPT OAuth or API key");
+		expect(frame.replace(/\s+/g, " ")).toContain(
+			"Neither CODEX_ACCESS_TOKEN or legacy OPENAI_CODEX_ACCESS_TOKEN nor the default API-key environment variable OPENAI_API_KEY",
+		);
+		expect(frame).toContain("ChatGPT OAuth");
+		expect(frame).toContain("Use ChatGPT OAuth access token");
+		expect(frame).toContain("Enter OpenAI API key");
+		expect(frame).toContain(
+			"Use OPENAI_API_KEY or another environment variable",
+		);
+	});
+
+	it("does not advertise OAuth for Anthropic API-key-only setup", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { AuthAsk } = await import(
+			"../../menu/model_setup/auth-route-components.tsx"
+		);
+
+		const { lastFrame } = render(
+			React.createElement(AuthAsk, {
+				baseUrl: "https://api.anthropic.com",
+				renderExamples: false,
+				config: null,
+				done: () => undefined,
+				cancel: () => undefined,
+				back: () => undefined,
+				onSelect: () => undefined,
+			}),
+		);
+
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("ANTHROPIC_API_KEY");
+		expect(frame).toContain(
+			"It looks like you don't have the default ANTHROPIC_API_KEY environment variable",
+		);
+		expect(frame).not.toContain("can use ChatGPT OAuth or an API key");
+		expect(frame).not.toContain("ChatGPT OAuth");
+		expect(frame).not.toContain("Use ChatGPT OAuth access token");
+		expect(frame).toContain("Enter Anthropic API key");
+	});
+
+	it("does not advertise OAuth for Synthetic API-key-only setup", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { AuthAsk } = await import(
+			"../../menu/model_setup/auth-route-components.tsx"
+		);
+
+		const { lastFrame } = render(
+			React.createElement(AuthAsk, {
+				baseUrl: "https://api.synthetic.new/openai/v1",
+				renderExamples: false,
+				config: null,
+				done: () => undefined,
+				cancel: () => undefined,
+				back: () => undefined,
+				onSelect: () => undefined,
+			}),
+		);
+
+		const frame = lastFrame() ?? "";
+		expect(frame).toContain("SYNTHETIC_API_KEY");
+		expect(frame).toContain(
+			"It looks like you don't have the default SYNTHETIC_API_KEY environment variable",
+		);
+		expect(frame).not.toContain("ChatGPT OAuth");
+		expect(frame).not.toContain("Use ChatGPT OAuth access token");
+		expect(frame).toContain("Enter Synthetic API key");
+	});
+
+	it("requires hf-prefixed model names for Synthetic base URLs and overrides", async () => {
+		const { requiresSyntheticModelPrefix } = await import(
+			"../../menu/model_setup/add-model-route-components.tsx"
+		);
+		const { PROVIDERS } = await import(
+			"../../internal/model-provider-catalog/main.ts"
+		);
+
+		expect(
+			requiresSyntheticModelPrefix({
+				baseUrl: "https://api.synthetic.new/v1",
+			}),
+		).toBe(true);
+		expect(
+			requiresSyntheticModelPrefix({
+				baseUrl: "https://api.synthetic.new/openai/v1",
+			}),
+		).toBe(true);
+		expect(
+			requiresSyntheticModelPrefix({
+				baseUrl: "http://127.0.0.1:8080/v1",
+				provider: expectPresent(PROVIDERS.synthetic),
+			}),
+		).toBe(true);
+		expect(
+			requiresSyntheticModelPrefix({
+				baseUrl: "https://api.openai.com/v1",
+			}),
+		).toBe(false);
+	});
+
+	it("does not retest model connections for equivalent config props", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { errorContext } = await import(
+			"../../menu/model_setup/add-model-error-context.tsx"
+		);
+		const { ModelConnectionTestContext } = await import(
+			"../../menu/model_setup/add-model-connection.ts"
+		);
+		const { TestConnection } = await import(
+			"../../menu/model_setup/add-model-route-components.tsx"
+		);
+		let connectionCalls = 0;
+		const tester = () => {
+			connectionCalls += 1;
+			return Promise.resolve({
+				valid: true as const,
+				metadata: { contextLength: 128_000 },
+			});
+		};
+		const command = [process.execPath, "--eval", "console.log('test-api-key')"];
+		const props = {
+			renderExamples: false,
+			done: () => undefined,
+			cancel: () => undefined,
+			baseUrl: "https://api.openai.com/v1",
+			auth: { type: "command" as const, command },
+			model: "gpt-4o",
+			back: () => undefined,
+			errorNav: () => undefined,
+			onSubmit: () => undefined,
+		};
+		const tree = (config: Config) =>
+			React.createElement(
+				errorContext.Provider,
+				{ value: { errorMessage: "", setErrorMessage: () => undefined } },
+				React.createElement(
+					ModelConnectionTestContext.Provider,
+					{ value: tester },
+					React.createElement(TestConnection, { ...props, config }),
+				),
+			);
+		const rendered = render(
+			tree({
+				yourName: "Octo",
+				models: [],
+				defaultApiKeyOverrides: { openai: "OPENAI_API_KEY" },
+			}),
+		);
+
+		await waitFor(() => connectionCalls === 1);
+		rendered.rerender(
+			tree({
+				yourName: "Octo",
+				models: [],
+				defaultApiKeyOverrides: { openai: "OPENAI_API_KEY" },
+			}),
+		);
+		await Bun.sleep(20);
+
+		expect(connectionCalls).toBe(1);
 	});
 
 	it("returns API key URLs for known providers", async () => {
 		const { getProviderApiKeyUrl } = await import(
-			"../../menu/model_setup/primitives.tsx"
+			"../../menu/model_setup/provider-helpers.ts"
 		);
 
 		expect(getProviderApiKeyUrl("https://api.synthetic.new/v1")).toBe(
+			"https://dev.synthetic.new/",
+		);
+		expect(getProviderApiKeyUrl("https://api.synthetic.new/openai/v1")).toBe(
 			"https://dev.synthetic.new/",
 		);
 		expect(getProviderApiKeyUrl("https://api.openai.com/v1")).toBe(
@@ -82,7 +330,7 @@ describe("terminal model setup helpers", () => {
 
 	it("formats API key URLs as OSC 8 terminal hyperlinks", async () => {
 		const { terminalHyperlink } = await import(
-			"../../menu/model_setup/primitives.tsx"
+			"../../menu/model_setup/provider-helpers.ts"
 		);
 
 		expect(terminalHyperlink("https://platform.openai.com/api-keys")).toBe(
@@ -97,83 +345,24 @@ describe("terminal model setup helpers", () => {
 
 	it("rejects empty API keys with the legacy validation message", async () => {
 		const { validateApiKeyValue } = await import(
-			"../../menu/model_setup/primitives.tsx"
+			"../../menu/model_setup/set-api-key.tsx"
 		);
 
 		expect(validateApiKeyValue("")).toEqual({
 			valid: false,
 			error: "API key can't be empty",
 		});
+		expect(validateApiKeyValue(" \n\t ")).toEqual({
+			valid: false,
+			error: "API key can't be empty",
+		});
 		expect(validateApiKeyValue("sk-test")).toEqual({ valid: true });
-	});
-
-	it("returns provider error text from failed connection tests", async () => {
-		const { testConnection } = await import(
-			"../../menu/model_setup/add-model-connection.ts"
-		);
-
-		const oldKey = process.env["MODEL_SETUP_TEST_KEY"];
-		process.env["MODEL_SETUP_TEST_KEY"] = "test-key";
-		try {
-			const result = await testConnection({
-				baseUrl: "https://api.example.test/v1",
-				model: "example-model",
-				config: null,
-				auth: { type: "env", name: "MODEL_SETUP_TEST_KEY" },
-				modelConnectionTest: async () =>
-					Promise.reject(new Error("invalid key or billing required")),
-			});
-
-			expect(result).toEqual({
-				valid: false,
-				errorMessage: "invalid key or billing required",
-			});
-		} finally {
-			if (oldKey === undefined) delete process.env["MODEL_SETUP_TEST_KEY"];
-			else process.env["MODEL_SETUP_TEST_KEY"] = oldKey;
-		}
-	});
-
-	it("passes native provider type to connection tests for known Gemini base URLs", async () => {
-		const { testConnection } = await import(
-			"../../menu/model_setup/add-model-connection.ts"
-		);
-		const requests: unknown[] = [];
-
-		const oldKey = process.env["MODEL_SETUP_GEMINI_TEST_KEY"];
-		process.env["MODEL_SETUP_GEMINI_TEST_KEY"] = "test-key";
-		try {
-			const result = await testConnection({
-				baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-				model: "gemini-3.5-flash",
-				config: null,
-				auth: { type: "env", name: "MODEL_SETUP_GEMINI_TEST_KEY" },
-				modelConnectionTest: (params) => {
-					requests.push(params);
-					return Promise.resolve({ valid: true, metadata: {} });
-				},
-			});
-
-			expect(result).toEqual({ valid: true, metadata: {} });
-			expect(requests).toEqual([
-				{
-					type: "gemini",
-					baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-					apiKey: "test-key",
-					model: "gemini-3.5-flash",
-				},
-			]);
-		} finally {
-			if (oldKey === undefined)
-				delete process.env["MODEL_SETUP_GEMINI_TEST_KEY"];
-			else process.env["MODEL_SETUP_GEMINI_TEST_KEY"] = oldKey;
-		}
 	});
 });
 
 describe("terminal model setup routing", () => {
 	it("returns typed route builders unchanged", async () => {
-		const { router } = await import("../../menu/model_setup/primitives.tsx");
+		const { router } = await import("../../menu/model_setup/setup-router.tsx");
 		type Routes = {
 			first: { value: string };
 			second: { count: number };
@@ -187,494 +376,83 @@ describe("terminal model setup routing", () => {
 		expect(typeof first).toBe("function");
 		expect(typeof second).toBe("function");
 	});
-});
 
-describe("model setup state helpers", () => {
-	it("resolves provider env vars from explicit override, config override, then provider default", async () => {
-		const { resolveProviderEnvVar } = await import(
-			"../../menu/model_setup/primitives.tsx"
+	it("ignores duplicate async step submissions while the first submit is pending", async () => {
+		const React = await import("react");
+		const { render } = await import("ink-testing-library");
+		const { Step } = await import("../../menu/model_setup/add-model-step.tsx");
+		const { errorContext } = await import(
+			"../../menu/model_setup/add-model-error-context.tsx"
 		);
-		const { keyFromName, PROVIDERS } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const openaiKey = expectOk(
-			keyFromName(expectPresent(PROVIDERS.openai).name),
-		);
-		const config = {
-			defaultApiKeyOverrides: {
-				[openaiKey]: "OPENAI_FROM_CONFIG",
-			},
-		};
+		const submit = deferred<void>();
+		const submitted: string[] = [];
 
-		expect(
-			resolveProviderEnvVar(
-				expectPresent(PROVIDERS.openai),
-				config,
-				"OPENAI_EXPLICIT",
-			),
-		).toBe("OPENAI_EXPLICIT");
-		expect(
-			resolveProviderEnvVar(expectPresent(PROVIDERS.openai), config, null),
-		).toBe("OPENAI_FROM_CONFIG");
-		expect(
-			resolveProviderEnvVar(expectPresent(PROVIDERS.openai), null, null),
-		).toBe(expectPresent(PROVIDERS.openai).envVar);
-	});
-
-	it("keeps stale step transitions from replacing the current setup state", async () => {
-		const { reduceModelSetupStep } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { PROVIDERS } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-
-		expect(
-			reduceModelSetupStep(
-				{ step: "missing", provider: { ...expectPresent(PROVIDERS.openai) } },
-				{ from: "found", to: { step: "initial" } },
-			),
-		).toEqual({
-			step: "missing",
-			provider: { ...expectPresent(PROVIDERS.openai) },
-		});
-		expect(
-			reduceModelSetupStep(
-				{ step: "missing", provider: { ...expectPresent(PROVIDERS.openai) } },
-				{ force: true, to: { step: "initial" } },
-			),
-		).toEqual({ step: "initial" });
-	});
-});
-
-describe("autofix model setup helpers", () => {
-	it("resolves Synthetic autofix from configured env var overrides", async () => {
-		const { resolveSyntheticAutofixSelection } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const syntheticKey = expectOk(
-			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
-		);
-
-		const result = await resolveSyntheticAutofixSelection({
-			config: {
-				defaultApiKeyOverrides: {
-					[syntheticKey]: "SYNTHETIC_OVERRIDE",
-				},
-			},
-			defaultModel: "synthetic-diff",
-			env: { SYNTHETIC_OVERRIDE: "present" },
-			readKeyForModel: () =>
-				Promise.reject(
-					new Error("key file should not be read when env auth exists"),
+		const instance = render(
+			React.createElement(
+				errorContext.Provider,
+				{ value: { errorMessage: "", setErrorMessage: () => undefined } },
+				React.createElement(
+					Step<string>,
+					{
+						title: "Async setup step",
+						prompt: "Value:",
+						parse: (value) => value,
+						validate: () => ({ valid: true as const }),
+						children: null,
+						onSubmit: (value) => {
+							submitted.push(value);
+							return submit.promise;
+						},
+					},
+					null,
 				),
-		});
+			),
+		);
 
-		expect(result).toEqual({
-			step: "complete",
-			diffApply: {
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiEnvVar: "SYNTHETIC_OVERRIDE",
-				model: "synthetic-diff",
-			},
-		});
+		await Bun.sleep(1);
+		instance.stdin.write("  hello  ");
+		await waitFor(() => (instance.lastFrame() ?? "").includes("hello"));
+		instance.stdin.write("\r");
+		await waitFor(() => submitted.length === 1);
+		instance.stdin.write("\r");
+		await Bun.sleep(1);
+
+		expect(submitted).toEqual(["hello"]);
+
+		submit.resolve();
+		await waitFor(() => !(instance.lastFrame() ?? "").includes("Working..."));
+		instance.stdin.write("\r");
+		await waitFor(() => submitted.length === 2);
+
+		expect(submitted).toEqual(["hello", "hello"]);
 	});
 
-	it("tests Synthetic autofix model connectivity before completing env auth selection", async () => {
-		const { resolveSyntheticAutofixSelection } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const syntheticKey = expectOk(
-			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
-		);
-		const calls: unknown[] = [];
-
-		const result = await resolveSyntheticAutofixSelection({
-			config: {
-				defaultApiKeyOverrides: {
-					[syntheticKey]: "SYNTHETIC_OVERRIDE",
-				},
-			},
-			defaultModel: "synthetic-diff",
-			env: { SYNTHETIC_OVERRIDE: "present" },
-			modelConnectionTest: (params) => {
-				calls.push(params);
-				return Promise.resolve({ valid: false });
-			},
-		});
-
-		expect(calls).toEqual([
-			{
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiKey: "present",
-				model: "synthetic-diff",
-			},
-		]);
-		expect(result).toEqual({
-			step: "connection-failed",
-			errorMessage: "Connection failed.",
-		});
-	});
-
-	it("tests both default Synthetic autofix models before completing setup", async () => {
-		const { resolveSyntheticAutofixConfig } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const syntheticKey = expectOk(
-			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
-		);
-		const calls: unknown[] = [];
-
-		const result = await resolveSyntheticAutofixConfig({
-			config: {
-				defaultApiKeyOverrides: {
-					[syntheticKey]: "SYNTHETIC_OVERRIDE",
-				},
-			},
-			env: { SYNTHETIC_OVERRIDE: "present" },
-			modelConnectionTest: (params) => {
-				calls.push(params);
-				return Promise.resolve({ valid: true, metadata: {} });
-			},
-		});
-
-		expect(calls).toEqual([
-			{
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiKey: "present",
-				model: "hf:syntheticlab/diff-apply",
-			},
-			{
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiKey: "present",
-				model: "hf:syntheticlab/fix-json",
-			},
-		]);
-		expect(result).toEqual({
-			step: "complete",
-			config: {
-				diffApply: {
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-					apiEnvVar: "SYNTHETIC_OVERRIDE",
-					model: "hf:syntheticlab/diff-apply",
-				},
-				fixJson: {
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-					apiEnvVar: "SYNTHETIC_OVERRIDE",
-					model: "hf:syntheticlab/fix-json",
-				},
-			},
-		});
-	});
-
-	it("uses a stored Synthetic key before asking for missing auth", async () => {
-		const { resolveSyntheticAutofixSelection } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-
-		const result = await resolveSyntheticAutofixSelection({
-			config: null,
-			defaultModel: "synthetic-diff",
-			env: {},
-			readKeyForModel: (model) => {
-				expect(model).toEqual({
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				});
-				return Promise.resolve("stored-key");
-			},
-		});
-
-		expect(result).toEqual({
-			step: "complete",
-			diffApply: {
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				model: "synthetic-diff",
-			},
-		});
-	});
-
-	it("tests Synthetic autofix model connectivity with stored key auth", async () => {
-		const { resolveSyntheticAutofixSelection } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const calls: unknown[] = [];
-
-		const result = await resolveSyntheticAutofixSelection({
-			config: null,
-			defaultModel: "synthetic-diff",
-			env: {},
-			readKeyForModel: async () => "stored-key",
-			modelConnectionTest: (params) => {
-				calls.push(params);
-				return Promise.reject(new Error("billing required"));
-			},
-		});
-
-		expect(calls).toEqual([
-			{
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiKey: "stored-key",
-				model: "synthetic-diff",
-			},
-		]);
-		expect(result).toEqual({
-			step: "connection-failed",
-			errorMessage: "billing required",
-		});
-	});
-
-	it("returns missing auth when Synthetic env and stored key are absent", async () => {
-		const { resolveSyntheticAutofixSelection } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-
-		const result = await resolveSyntheticAutofixSelection({
-			config: null,
-			defaultModel: "synthetic-diff",
-			env: {},
-			readKeyForModel: async () => null,
-		});
-
-		expect(result).toEqual({ step: "missing-auth" });
-	});
-
-	it("tests Synthetic autofix custom env auth before completing a single model", async () => {
-		const { resolveSyntheticAutofixSelectionFromAuth } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const oldKey = process.env["SYNTHETIC_CUSTOM_AUTH_TEST_KEY"];
-		process.env["SYNTHETIC_CUSTOM_AUTH_TEST_KEY"] = "custom-env-key";
-		const calls: unknown[] = [];
-
-		try {
-			const result = await resolveSyntheticAutofixSelectionFromAuth({
-				config: null,
-				defaultModel: "synthetic-diff",
-				auth: { type: "env", name: "SYNTHETIC_CUSTOM_AUTH_TEST_KEY" },
-				modelConnectionTest: (params) => {
-					calls.push(params);
-					return Promise.resolve({ valid: false });
-				},
-			});
-
-			expect(calls).toEqual([
-				{
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-					apiKey: "custom-env-key",
-					model: "synthetic-diff",
-				},
-			]);
-			expect(result).toEqual({
-				step: "connection-failed",
-				errorMessage: "Connection failed.",
-			});
-		} finally {
-			if (oldKey === undefined)
-				delete process.env["SYNTHETIC_CUSTOM_AUTH_TEST_KEY"];
-			else process.env["SYNTHETIC_CUSTOM_AUTH_TEST_KEY"] = oldKey;
-		}
-	});
-
-	it("tests Synthetic autofix custom command auth before completing a single model", async () => {
-		const { resolveSyntheticAutofixSelectionFromAuth } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const calls: unknown[] = [];
-
-		const result = await resolveSyntheticAutofixSelectionFromAuth({
-			config: null,
-			defaultModel: "synthetic-diff",
-			auth: { type: "command", command: ["printf", "custom-command-key"] },
-			modelConnectionTest: (params) => {
-				calls.push(params);
-				return Promise.resolve({ valid: true, metadata: {} });
-			},
-		});
-
-		expect(calls).toEqual([
-			{
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				apiKey: "custom-command-key",
-				model: "synthetic-diff",
-			},
-		]);
-		expect(result).toEqual({
-			step: "complete",
-			diffApply: {
-				baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-				auth: { type: "command", command: ["printf", "custom-command-key"] },
-				model: "synthetic-diff",
-			},
-		});
-	});
-
-	it("tests both Synthetic autofix models for custom auth before completing setup", async () => {
-		const { resolveSyntheticAutofixConfigFromAuth } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const oldKey = process.env["SYNTHETIC_CUSTOM_SETUP_KEY"];
-		process.env["SYNTHETIC_CUSTOM_SETUP_KEY"] = "custom-setup-key";
-		const calls: unknown[] = [];
-
-		try {
-			const result = await resolveSyntheticAutofixConfigFromAuth({
-				config: null,
-				auth: { type: "env", name: "SYNTHETIC_CUSTOM_SETUP_KEY" },
-				modelConnectionTest: (params) => {
-					calls.push(params);
-					if (params.model === "hf:syntheticlab/fix-json") {
-						return Promise.reject(new Error("payment required"));
-					}
-					return Promise.resolve({ valid: true, metadata: {} });
-				},
-			});
-
-			expect(calls).toEqual([
-				{
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-					apiKey: "custom-setup-key",
-					model: "hf:syntheticlab/diff-apply",
-				},
-				{
-					baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-					apiKey: "custom-setup-key",
-					model: "hf:syntheticlab/fix-json",
-				},
-			]);
-			expect(result).toEqual({
-				step: "connection-failed",
-				errorMessage: "payment required",
-			});
-		} finally {
-			if (oldKey === undefined)
-				delete process.env["SYNTHETIC_CUSTOM_SETUP_KEY"];
-			else process.env["SYNTHETIC_CUSTOM_SETUP_KEY"] = oldKey;
-		}
-	});
-
-	it("builds Synthetic autofix config from custom auth results", async () => {
-		const { syntheticAutofixDiffApplyFromAuth } = await import(
-			"../../menu/model_setup/primitives.tsx"
-		);
-		const { SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-
-		expect(syntheticAutofixDiffApplyFromAuth("synthetic-diff")).toEqual({
-			baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-			model: "synthetic-diff",
-		});
-		expect(
-			syntheticAutofixDiffApplyFromAuth("synthetic-diff", {
-				type: "command",
-				command: ["op", "read", "secret"],
-			}),
-		).toEqual({
-			baseUrl: expectPresent(SYNTHETIC_PROVIDER).baseUrl,
-			model: "synthetic-diff",
-			auth: {
-				type: "command",
-				command: ["op", "read", "secret"],
-			},
-		});
-	});
-});
-
-describe("terminal model setup UI flows", () => {
-	it("renders Synthetic autofix connection errors in the per-model menu", async () => {
+	it("does not rerender the initial route when registering route listeners", async () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../internal/model-provider-catalog/main.ts"
-		);
-		const { ModelConnectionTestContext } = await import(
-			"../../menu/model_setup/add-model-connection.ts"
-		);
-		const { AutofixModelMenu } = await import(
-			"../../menu/model_setup/autofix-model-menu.tsx"
-		);
-		const syntheticKey = expectOk(
-			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
-		);
-		const oldKey = process.env["SYNTHETIC_UI_ERROR_KEY"];
-		process.env["SYNTHETIC_UI_ERROR_KEY"] = "ui-key";
+		const { router } = await import("../../menu/model_setup/setup-router.tsx");
+		type Routes = {
+			first: { value: string };
+			second: { count: number };
+		};
+		let renderCount = 0;
+		const routes = router<Routes>().route({
+			first: () => (props) => {
+				renderCount += 1;
+				return React.createElement(Text, null, props.value);
+			},
+			second: () => (props) => React.createElement(Text, null, props.count),
+		});
 
-		try {
-			const instance = render(
-				React.createElement(
-					ModelConnectionTestContext.Provider,
-					{
-						value: async () => Promise.reject(new Error("billing required")),
-					},
-					React.createElement(AutofixModelMenu, {
-						config: {
-							yourName: "Test User",
-							models: [],
-							defaultApiKeyOverrides: {
-								[syntheticKey]: "SYNTHETIC_UI_ERROR_KEY",
-							},
-						},
-						defaultModel: "hf:syntheticlab/diff-apply",
-						modelNickname: "diff-apply",
-						onCancel: () => undefined,
-						onComplete: () => undefined,
-						onOverrideDefaultApiKey: async () => undefined,
-						children: React.createElement(Text, null, "diff apply setup"),
-					}),
-				),
-			);
-
-			instance.stdin.write("e");
-			await new Promise((resolve) => setTimeout(resolve, 25));
-
-			expect(instance.lastFrame() ?? "").toContain("billing required");
-		} finally {
-			if (oldKey === undefined) delete process.env["SYNTHETIC_UI_ERROR_KEY"];
-			else process.env["SYNTHETIC_UI_ERROR_KEY"] = oldKey;
-		}
-	});
-
-	it("exports the model setup flow components from their owning module", async () => {
-		const flowModule = await import(
-			"../../menu/model_setup/add-model-flow.tsx"
+		render(
+			React.createElement(routes.Root, {
+				route: "first",
+				props: { value: "ready" },
+			}),
 		);
-		const setupModule = await import(
-			"../../menu/model_setup/auto-detect-models.tsx"
-		);
-		const autofixModule = await import(
-			"../../menu/model_setup/autofix-model-menu.tsx"
-		);
+		await Bun.sleep(1);
 
-		expect(typeof flowModule.FullAddModelFlow).toBe("function");
-		expect(typeof flowModule.CustomModelFlow).toBe("function");
-		expect(typeof flowModule.CustomAuthFlow).toBe("function");
-		expect(typeof flowModule.CustomAutofixFlow).toBe("function");
-		expect(typeof setupModule.ModelSetup).toBe("function");
-		expect(typeof autofixModule.AutofixModelMenu).toBe("function");
+		expect(renderCount).toBe(1);
 	});
 });

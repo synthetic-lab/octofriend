@@ -1,3 +1,4 @@
+import { mergeDefaultApiKeyOverrides } from "../../internal/configuration/api-key-overrides.ts";
 import { writeConfig } from "../../internal/configuration/config-file.ts";
 import type { Config } from "../../internal/configuration/schemas.ts";
 import type { AutofixConfig } from "./types.ts";
@@ -10,24 +11,31 @@ export type WriteFirstTimeConfigInput = {
 	autofixConfig?: AutofixConfig;
 };
 
-export async function writeFirstTimeConfig({
-	configPath,
-	yourName,
-	models,
-	defaultApiKeyOverrides,
-	autofixConfig,
-}: WriteFirstTimeConfigInput): Promise<void> {
+export function buildFirstTimeConfig(
+	input: Omit<WriteFirstTimeConfigInput, "configPath">,
+): Config {
 	const config: Config = {
-		yourName,
-		models,
+		yourName: input.yourName,
+		models: input.models,
 	};
-	if (defaultApiKeyOverrides) {
-		config.defaultApiKeyOverrides = defaultApiKeyOverrides;
+	const { defaultApiKeyOverrides, autofixConfig } = input;
+	const normalizedOverrides = mergeDefaultApiKeyOverrides(
+		undefined,
+		defaultApiKeyOverrides,
+	);
+	if (normalizedOverrides) {
+		config.defaultApiKeyOverrides = normalizedOverrides;
 	}
 	if (autofixConfig) {
 		config.diffApply = autofixConfig.diffApply;
 		config.fixJson = autofixConfig.fixJson;
 	}
+	return config;
+}
 
-	await writeConfig(config, configPath);
+export async function writeFirstTimeConfig(
+	input: WriteFirstTimeConfigInput,
+): Promise<void> {
+	const config = buildFirstTimeConfig(input);
+	await writeConfig(config, input.configPath);
 }

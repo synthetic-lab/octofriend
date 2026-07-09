@@ -1,22 +1,36 @@
-import { Box, Text, useInput } from "ink";
+import { Box, Text } from "ink";
+import { useCallback } from "react";
+import { useLatestInput, useLatestRef } from "../../input/latest_input.ts";
 import { recommendedModel } from "../../internal/model-provider-catalog/main.ts";
 import { CenteredBox } from "../../layout/boxes.tsx";
 import { MenuHeader } from "../../menu/root.tsx";
 import { TERMINAL_THEME_COLOR } from "../../theme/branding.tsx";
-export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
-	const syntheticModel = recommendedModel("synthetic")?.nickname ?? "Synthetic";
-	const closedSourceExamples = [
-		recommendedModel("openai")?.nickname,
-		recommendedModel("anthropic")?.nickname,
-	].filter((model): model is string => model !== undefined);
-	const closedSourceText =
-		closedSourceExamples.length === 0
-			? null
-			: ` You can also add closed-source models from OpenAI and Anthropic, like ${closedSourceExamples.join(" and ")}.`;
 
-	useInput((_, key) => {
-		if (key.return) onContinue();
-	});
+const SYNTHETIC_MODEL = recommendedModel("synthetic")?.nickname ?? "Synthetic";
+const CLOSED_SOURCE_TEXT = closedSourceSetupText();
+
+function closedSourceSetupText(): string | null {
+	let examples = "";
+	for (const provider of ["openai", "anthropic", "gemini"] as const) {
+		const nickname = recommendedModel(provider)?.nickname;
+		if (nickname === undefined) continue;
+		examples = examples.length === 0 ? nickname : `${examples}, ${nickname}`;
+	}
+	return examples.length === 0
+		? null
+		: ` You can also add closed-source models from OpenAI, Anthropic, and Gemini, like ${examples}.`;
+}
+
+export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+	const onContinueRef = useLatestRef(onContinue);
+	useLatestInput(
+		useCallback(
+			(_, key) => {
+				if (key.return) onContinueRef.current();
+			},
+			[onContinueRef],
+		),
+	);
 
 	return (
 		<CenteredBox>
@@ -30,9 +44,9 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 			<Box marginTop={1}>
 				<Text>
 					Octo lets you choose the LLM that powers it. Currently our recommended
-					day-to-day coding model to use with Octo is {syntheticModel}, an
+					day-to-day coding model to use with Octo is {SYNTHETIC_MODEL}, an
 					open-source coding model you can use via Synthetic, a privacy-focused
-					inference company (that we run!).{closedSourceText}
+					inference company (that we run!).{CLOSED_SOURCE_TEXT}
 				</Text>
 			</Box>
 
@@ -51,7 +65,14 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 					models mid-conversation as needed to handle different problems. It's
 					often helpful to add a couple of strong models; if one gets stuck,
 					another may often be able to solve your problem. Octo works with any
-					OpenAI- or Anthropic-compatible API.
+					OpenAI-, Anthropic-, Gemini-, or Synthetic-compatible API.
+				</Text>
+			</Box>
+
+			<Box marginTop={1}>
+				<Text>
+					OpenAI setup supports ChatGPT OAuth or an API key. Anthropic, Gemini,
+					and Synthetic setup use API keys.
 				</Text>
 			</Box>
 

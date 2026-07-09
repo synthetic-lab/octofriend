@@ -18,8 +18,11 @@ export function useSetConfig() {
 	const set = React.useContext(SetConfigContext);
 	const configPath = React.useContext(ConfigPathContext);
 
-	return async (c: Config) => {
-		await writeConfig(c, configPath);
-		set(c);
-	};
+	return React.useCallback(
+		async (c: Config) => {
+			await writeConfig(c, configPath);
+			set(c);
+		},
+		[configPath, set],
+	);
 }

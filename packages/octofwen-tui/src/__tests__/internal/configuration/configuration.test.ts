@@ -1,8 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { render } from "ink-testing-library";
 import json5 from "json5";
+import React from "react";
+import { useModel } from "../../../app/state/model-hook.ts";
+import { useAppStore } from "../../../app/state/store.ts";
 import {
 	readConfig,
 	writeConfig,
@@ -11,6 +15,8 @@ import { fileExists } from "../../../internal/configuration/filesystem.ts";
 import {
 	assertKeyForModel,
 	hasExistingKeyForBaseUrl,
+	hasExistingKeyForModel,
+	normalizeApiKeyForWrite,
 	readKeyForBaseUrl,
 	readKeyForModelWithDetails,
 	readSearchConfig,
@@ -20,29 +26,16 @@ import {
 	withServerDisabled,
 } from "../../../internal/configuration/lsp-config.ts";
 import { getModelFromConfig } from "../../../internal/configuration/model-selection.ts";
+import { ConfigContext } from "../../../internal/configuration/react-context.ts";
 import type { Config } from "../../../internal/configuration/schemas.ts";
 
-const ENV_KEYS = [
-	"SYNTHETIC_API_KEY",
-	"OPENAI_API_KEY",
-	"CUSTOM_API_KEY",
-	"SEARCH_API_KEY",
-] as const;
+const CURRENT_CONFIG_VERSION = 6;
 
-let savedEnv: Record<string, string | undefined>;
+const PATH_ENV_VALUE = process.env.PATH ?? "";
 
-beforeEach(() => {
-	savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
-	for (const key of ENV_KEYS) delete process.env[key];
-});
-
-afterEach(() => {
-	for (const key of ENV_KEYS) {
-		const value = savedEnv[key];
-		if (value === undefined) delete process.env[key];
-		else process.env[key] = value;
-	}
-});
+function echoCommand(value: string): string[] {
+	return [process.execPath, "--eval", `console.log(${JSON.stringify(value)})`];
+}
 
 describe("configuration", () => {
 	it("reads old config files, applies migrations, and persists the current version", async () => {
@@ -67,14 +60,58 @@ describe("configuration", () => {
 
 			const config = await readConfig(configPath);
 
-			expect(config.configVersion).toBe(2);
+			expect(config.configVersion).toBe(CURRENT_CONFIG_VERSION);
 			expect(config.notifications?.notifyCommand).toBe("say done");
 			expect(config.models[0].modalities?.image?.acceptedMimeTypes).toContain(
 				"image/webp",
 			);
 			const persisted = json5.parse(await readFile(configPath, "utf8"));
-			expect(persisted.configVersion).toBe(2);
+			expect(persisted.configVersion).toBe(CURRENT_CONFIG_VERSION);
 			expect(persisted.notifyFinishCommand).toBeUndefined();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("migrates legacy octofriend Codex subscription models through readConfig", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		try {
+			const configPath = join(dir, "config.json5");
+			await writeFile(
+				configPath,
+				json5.stringify({
+					yourName: "Ada",
+					models: [
+						{
+							type: "codex",
+							nickname: "OpenAI Codex Subscription",
+							auth: { type: "codex" },
+							model: "gpt-5.5",
+							context: 200 * 1024,
+							reasoning: "xhigh",
+						},
+					],
+				}),
+			);
+
+			const config = await readConfig(configPath);
+
+			expect(config.models[0]).toMatchObject({
+				type: "openai-responses",
+				baseUrl: "https://api.openai.com/v1",
+				auth: {
+					type: "env",
+					name: "CODEX_ACCESS_TOKEN",
+					credential: "chatgpt-oauth",
+				},
+			});
+			const persisted = json5.parse(await readFile(configPath, "utf8"));
+			expect(persisted.models[0].type).toBe("openai-responses");
+			expect(persisted.models[0].auth).toEqual({
+				type: "env",
+				name: "CODEX_ACCESS_TOKEN",
+				credential: "chatgpt-oauth",
+			});
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
@@ -167,6 +204,7 @@ describe("configuration", () => {
 					},
 				],
 				diffApply: {
+					type: "openai-responses",
 					baseUrl: "https://api.openai.com/v1",
 					apiEnvVar: "OPENAI_API_KEY",
 					model: "gpt-5-mini",
@@ -178,19 +216,35 @@ describe("configuration", () => {
 			const persisted = json5.parse(await readFile(configPath, "utf8"));
 			expect(persisted.models[0].apiEnvVar).toBeUndefined();
 			expect(persisted.diffApply.apiEnvVar).toBeUndefined();
-			expect(persisted.configVersion).toBe(2);
+			expect(persisted.diffApply.type).toBe("openai-responses");
+			expect(persisted.configVersion).toBe(CURRENT_CONFIG_VERSION);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("resolves environment, command, provider override, and missing auth results", async () => {
-		process.env["SYNTHETIC_API_KEY"] = "synthetic-key";
-		process.env["CUSTOM_API_KEY"] = "custom-key";
+	it("normalizes API keys before writing them to agentd", () => {
+		expect(normalizeApiKeyForWrite(" sk-test ")).toBe("sk-test");
+		expect(normalizeApiKeyForWrite(" \n\t ")).toBeNull();
+	});
 
+	it("resolves environment, command, provider override, and missing auth results", async () => {
 		await expect(
-			readKeyForBaseUrl("https://api.synthetic.new/v1", null),
-		).resolves.toBe("synthetic-key");
+			readKeyForBaseUrl("https://api.synthetic.new/v1", {
+				yourName: "Ada",
+				models: [],
+				defaultApiKeyOverrides: { synthetic: "PATH" },
+			}),
+		).resolves.toBe(PATH_ENV_VALUE);
+		await expect(
+			readKeyForModelWithDetails(
+				{
+					baseUrl: "https://api.example.invalid/v1",
+					auth: { type: "command", command: echoCommand("custom-key") },
+				},
+				null,
+			),
+		).resolves.toEqual({ ok: true, key: "custom-key" });
 		await expect(
 			readKeyForModelWithDetails({ baseUrl: "https://missing.invalid" }, null),
 		).resolves.toEqual({
@@ -201,16 +255,13 @@ describe("configuration", () => {
 			},
 		});
 	});
-
 	it("uses configured search auth or falls back to Synthetic auth", async () => {
-		process.env["SEARCH_API_KEY"] = "search-key";
-		process.env["SYNTHETIC_API_KEY"] = "synthetic-key";
 		const configured: Config = {
 			yourName: "Ada",
 			models: [],
 			search: {
 				url: "https://search.invalid",
-				auth: { type: "env", name: "SEARCH_API_KEY" },
+				auth: { type: "command", command: echoCommand("search-key") },
 			},
 		};
 
@@ -219,17 +270,21 @@ describe("configuration", () => {
 			key: "search-key",
 		});
 		await expect(
-			readSearchConfig({ yourName: "Ada", models: [] }),
+			readSearchConfig({
+				yourName: "Ada",
+				models: [],
+				defaultApiKeyOverrides: { synthetic: "PATH" },
+			}),
 		).resolves.toEqual({
 			url: "https://api.synthetic.new/v2/search",
-			key: "synthetic-key",
+			key: PATH_ENV_VALUE,
 		});
 	});
 
 	it("supports LSP disable helpers, model fallback, and key assertions", async () => {
-		process.env["OPENAI_API_KEY"] = "openai-key";
 		const config: Config = {
 			yourName: "Ada",
+			defaultApiKeyOverrides: { openai: "PATH" },
 			models: [
 				{
 					nickname: "GPT-5 Mini",
@@ -248,8 +303,87 @@ describe("configuration", () => {
 		await expect(
 			hasExistingKeyForBaseUrl("https://api.openai.com/v1", config),
 		).resolves.toBe(true);
+		await expect(
+			hasExistingKeyForModel(
+				{
+					baseUrl: "https://api.openai.com/v1",
+					type: "openai-responses",
+				},
+				config,
+			),
+		).resolves.toBe(true);
 		await expect(assertKeyForModel(config.models[0], config)).resolves.toBe(
-			"openai-key",
+			PATH_ENV_VALUE,
 		);
+	});
+
+	it("memoizes selected model lookup across unrelated component rerenders", async () => {
+		const originalSpawnSync = Bun.spawnSync;
+		const previousState = useAppStore.getState();
+		const config: Config = {
+			yourName: "Ada",
+			models: [
+				{
+					nickname: "default",
+					baseUrl: "https://api.openai.com/v1",
+					model: "gpt-memo-proof",
+					context: 200000,
+				},
+			],
+		};
+		let spawnCalls = 0;
+		let rerenderParent: () => void = () => undefined;
+		function Wrapper() {
+			const [, setNonce] = React.useState(0);
+			rerenderParent = () => setNonce((nonce) => nonce + 1);
+			return React.createElement(
+				ConfigContext.Provider,
+				{ value: config },
+				React.createElement(ModelProbe),
+			);
+		}
+		function ModelProbe() {
+			useModel();
+			return null;
+		}
+
+		Bun.spawnSync = ((...args: Parameters<typeof Bun.spawnSync>) => {
+			const stdin =
+				typeof args[1]?.stdin === "string"
+					? args[1].stdin
+					: args[1]?.stdin instanceof Uint8Array
+						? new TextDecoder().decode(args[1].stdin)
+						: "";
+			if (!stdin.includes("gpt-memo-proof")) {
+				return originalSpawnSync(...args);
+			}
+			spawnCalls += 1;
+			return {
+				exitCode: 0,
+				stderr: Buffer.from(""),
+				stdout: Buffer.from(
+					`${JSON.stringify({
+						jsonrpc: "2.0",
+						id: 1,
+						result: { model: config.models[0] },
+					})}\n`,
+				),
+			};
+		}) as unknown as typeof Bun.spawnSync;
+
+		try {
+			useAppStore.setState({ modelOverride: null });
+			const instance = render(React.createElement(Wrapper));
+			await Bun.sleep(1);
+			spawnCalls = 0;
+			rerenderParent();
+			await Bun.sleep(1);
+
+			expect(spawnCalls).toBe(0);
+			instance.unmount();
+		} finally {
+			Bun.spawnSync = originalSpawnSync;
+			useAppStore.setState(previousState, true);
+		}
 	});
 });

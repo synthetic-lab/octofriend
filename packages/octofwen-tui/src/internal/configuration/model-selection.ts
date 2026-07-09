@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "../../app/result.ts";
 import { resolveAgentdCommand } from "../agentd/command.ts";
+import { firstNonEmptyStdoutLine } from "../agentd/stdout.ts";
 import type { Config } from "./schemas.ts";
 
 export function getModelFromConfig(
@@ -11,9 +12,22 @@ export function getModelFromConfig(
 		modelOverride,
 	});
 	if (!(result.success && isRecord(result.data))) {
-		return config.models[0];
+		return selectModelFromConfig(config, modelOverride);
 	}
 	return result.data["model"] as Config["models"][number];
+}
+
+export function selectModelFromConfig(
+	config: Config,
+	modelOverride: string | null,
+) {
+	return (
+		config.models.find(
+			(candidate) =>
+				candidate.nickname === modelOverride ||
+				candidate.model === modelOverride,
+		) ?? config.models[0]
+	);
 }
 
 function agentdRequestSync(
@@ -35,10 +49,7 @@ function agentdRequestSync(
 			`octofwen-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
 		);
 	}
-	const line = subprocess.stdout
-		.toString()
-		.split("\n")
-		.find((entry) => entry.trim() !== "");
+	const line = firstNonEmptyStdoutLine(subprocess.stdout.toString());
 	if (!line) return err("octofwen-agentd returned no response");
 	const response = parseResponse(line);
 	if (!response.success) return response;
