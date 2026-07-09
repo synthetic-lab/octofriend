@@ -7,14 +7,14 @@ use octofwen_transport::local::{DirectoryEntry, LocalTransport, TransportError, 
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
-fn temp_dir(name: &str) -> PathBuf {
+fn temp_dir(name: &str) -> std::io::Result<PathBuf> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
         "octofwen-transport-{name}-{}-{id}",
         std::process::id()
     ));
-    fs::create_dir_all(&dir).unwrap_or_else(|error| panic!("failed to create temp dir: {error}"));
-    dir
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 fn remove_dir(path: &Path) {
@@ -72,8 +72,8 @@ fn home_env_var_name() -> &'static str {
 }
 
 #[test]
-fn reads_writes_resolves_lists_and_stats_local_filesystem_entries() {
-    let root = temp_dir("filesystem");
+fn reads_writes_resolves_lists_and_stats_local_filesystem_entries() -> std::io::Result<()> {
+    let root = temp_dir("filesystem")?;
     let transport = LocalTransport::new(&root);
     let dir = root.join("dir");
     let file = dir.join("file.txt");
@@ -118,11 +118,12 @@ fn reads_writes_resolves_lists_and_stats_local_filesystem_entries() {
     }));
 
     remove_dir(&root);
+    Ok(())
 }
 
 #[test]
-fn runs_shell_commands_from_transport_cwd_and_reports_command_failures() {
-    let root = temp_dir("shell");
+fn runs_shell_commands_from_transport_cwd_and_reports_command_failures() -> std::io::Result<()> {
+    let root = temp_dir("shell")?;
     let transport = LocalTransport::new(&root);
     fs::write(root.join("marker.txt"), "ok")
         .unwrap_or_else(|error| panic!("failed to write marker: {error}"));
@@ -158,11 +159,12 @@ fn runs_shell_commands_from_transport_cwd_and_reports_command_failures() {
     }
 
     remove_dir(&root);
+    Ok(())
 }
 
 #[test]
-fn maps_shell_timeouts_to_command_failed_errors() {
-    let root = temp_dir("timeout");
+fn maps_shell_timeouts_to_command_failed_errors() -> std::io::Result<()> {
+    let root = temp_dir("timeout")?;
     let transport = LocalTransport::new(&root);
 
     let error = transport
@@ -177,11 +179,12 @@ fn maps_shell_timeouts_to_command_failed_errors() {
     }
 
     remove_dir(&root);
+    Ok(())
 }
 
 #[test]
-fn wraps_missing_file_mtime_failures_in_transport_error() {
-    let root = temp_dir("mtime");
+fn wraps_missing_file_mtime_failures_in_transport_error() -> std::io::Result<()> {
+    let root = temp_dir("mtime")?;
     let transport = LocalTransport::new(&root);
     let error = transport
         .mod_time(root.join("missing.txt"))
@@ -198,11 +201,12 @@ fn wraps_missing_file_mtime_failures_in_transport_error() {
     }
 
     remove_dir(&root);
+    Ok(())
 }
 
 #[test]
-fn reads_environment_variables_from_local_process_environment() {
-    let root = temp_dir("env");
+fn reads_environment_variables_from_local_process_environment() -> std::io::Result<()> {
+    let root = temp_dir("env")?;
     let transport = LocalTransport::new(&root);
 
     let missing = get_env_var(
@@ -220,4 +224,5 @@ fn reads_environment_variables_from_local_process_environment() {
     assert_eq!(value, home);
 
     remove_dir(&root);
+    Ok(())
 }

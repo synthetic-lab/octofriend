@@ -27,11 +27,10 @@ fn parse_file_mutation_arguments(original: Value) -> Result<ToolArgumentParseRes
     let object = original
         .as_object()
         .ok_or_else(|| "tool arguments must be an object".to_owned())?;
-    let mut parsed = Map::from_iter(
-        object
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone())),
-    );
+    let mut parsed = object
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Map<_, _>>();
     parsed.remove("originalFileContents");
     let normalized = Value::Object(parsed);
     Ok(ToolArgumentParseResult {

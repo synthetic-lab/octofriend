@@ -5,6 +5,11 @@ use std::process::{ChildStdin, ChildStdout, Command, Stdio};
 
 use serde_json::{Map, Value, json};
 
+type JsonObject = Map<String, Value>;
+type StringMapResult = Result<BTreeMap<String, String>, String>;
+type StringVecResult = Result<Vec<String>, String>;
+type McpReader<'a> = &'a mut BufReader<ChildStdout>;
+
 use crate::mcp::{
     ModelContextResourceContents, ModelContextToolResult, ModelContextToolResultContent,
     RenderedModelContextToolResult, model_context_error_message, render_model_context_tool_result,
@@ -17,11 +22,7 @@ pub(crate) fn run_mcp(cwd: &Path, parsed: &Value) -> Result<Value, String> {
     let tool_name = required_string(parsed, "tool")?;
     let server_config = resolve_mcp_server_config(server_name, parsed)?;
     let arguments = optional_string_map(parsed, "arguments")?;
-    let max_content_bytes = parsed
-        .get("modelContext")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| "mcp tool argument modelContext must be a number".to_owned())?
-        as usize;
+    let max_content_bytes = required_usize(parsed, "modelContext")?;
 
     let mut child = Command::new(&server_config.command)
         .args(&server_config.args)
@@ -31,7 +32,7 @@ pub(crate) fn run_mcp(cwd: &Path, parsed: &Value) -> Result<Value, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| model_context_error_message(error))?;
+        .map_err(model_context_error_message)?;
 
     let mut stdin = child
         .stdin
@@ -46,10 +47,12 @@ pub(crate) fn run_mcp(cwd: &Path, parsed: &Value) -> Result<Value, String> {
     let run_result = run_mcp_session(
         &mut stdin,
         &mut reader,
-        server_name,
-        tool_name,
-        &arguments,
-        max_content_bytes,
+        McpSessionRequest {
+            server_name,
+            tool_name,
+            arguments: &arguments,
+            max_content_bytes,
+        },
     );
 
     drop(stdin);
@@ -57,6 +60,21 @@ pub(crate) fn run_mcp(cwd: &Path, parsed: &Value) -> Result<Value, String> {
     let _ = child.wait();
 
     run_result
+}
+
+fn required_usize(value: &Value, key: &str) -> Result<usize, String> {
+    let number = value
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("mcp tool argument {key} must be a number"))?;
+    usize::try_from(number).map_err(|_| format!("mcp tool argument {key} is too large: {number}"))
+}
+
+struct McpSessionRequest<'a> {
+    server_name: &'a str,
+    tool_name: &'a str,
+    arguments: &'a BTreeMap<String, String>,
+    max_content_bytes: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -106,12 +124,15 @@ fn resolve_mcp_server_config(
 
 fn run_mcp_session(
     stdin: &mut ChildStdin,
-    reader: &mut BufReader<ChildStdout>,
-    server_name: &str,
-    tool_name: &str,
-    arguments: &BTreeMap<String, String>,
-    max_content_bytes: usize,
+    reader: McpReader<'_>,
+    request: McpSessionRequest<'_>,
 ) -> Result<Value, String> {
+    let McpSessionRequest {
+        server_name,
+        tool_name,
+        arguments,
+        max_content_bytes,
+    } = request;
     let _ = send_request(
         stdin,
         reader,
@@ -160,7 +181,7 @@ fn run_mcp_session(
 
 fn send_request(
     stdin: &mut ChildStdin,
-    reader: &mut BufReader<ChildStdout>,
+    reader: McpReader<'_>,
     id: u64,
     method: &str,
     params: Value,
@@ -174,7 +195,7 @@ fn send_request(
         let mut line = String::new();
         let bytes = reader
             .read_line(&mut line)
-            .map_err(|error| model_context_error_message(error))?;
+            .map_err(model_context_error_message)?;
         if bytes == 0 {
             return Err("MCP error: server closed stdout before responding".to_owned());
         }
@@ -205,9 +226,9 @@ fn write_json_line(stdin: &mut ChildStdin, message: &Value) -> Result<(), String
         .map_err(|error| format!("MCP error: failed to encode JSON-RPC message: {error}"))?;
     stdin
         .write_all(line.as_bytes())
-        .and_then(|_| stdin.write_all(b"\n"))
-        .and_then(|_| stdin.flush())
-        .map_err(|error| model_context_error_message(error))
+        .and_then(|()| stdin.write_all(b"\n"))
+        .and_then(|()| stdin.flush())
+        .map_err(model_context_error_message)
 }
 
 fn model_context_tool_result_from_json(value: &Value) -> Result<ModelContextToolResult, String> {
@@ -279,10 +300,7 @@ fn optional_string<'a>(value: &'a Value, key: &str) -> Result<Option<&'a str>, S
     }
 }
 
-fn optional_object_string_array(
-    object: &Map<String, Value>,
-    key: &str,
-) -> Result<Vec<String>, String> {
+fn optional_object_string_array(object: &JsonObject, key: &str) -> StringVecResult {
     match object.get(key) {
         None => Ok(Vec::new()),
         Some(Value::Array(values)) => values
@@ -297,26 +315,11 @@ fn optional_object_string_array(
     }
 }
 
-fn optional_object_string_map(
-    object: &Map<String, Value>,
-    key: &str,
-) -> Result<BTreeMap<String, String>, String> {
-    match object.get(key) {
-        None => Ok(BTreeMap::new()),
-        Some(Value::Object(values)) => values
-            .iter()
-            .map(|(entry_key, entry_value)| {
-                entry_value
-                    .as_str()
-                    .map(|entry_value| (entry_key.clone(), entry_value.to_owned()))
-                    .ok_or_else(|| format!("mcp server config {key}.{entry_key} must be a string"))
-            })
-            .collect(),
-        Some(_) => Err(format!("mcp server config {key} must be an object")),
-    }
+fn optional_object_string_map(object: &JsonObject, key: &str) -> StringMapResult {
+    optional_string_map_from(object.get(key), key, "mcp server config")
 }
 
-fn optional_string_array(value: &Value, key: &str) -> Result<Vec<String>, String> {
+fn optional_string_array(value: &Value, key: &str) -> StringVecResult {
     match value.get(key) {
         None => Ok(Vec::new()),
         Some(Value::Array(values)) => values
@@ -331,8 +334,12 @@ fn optional_string_array(value: &Value, key: &str) -> Result<Vec<String>, String
     }
 }
 
-fn optional_string_map(value: &Value, key: &str) -> Result<BTreeMap<String, String>, String> {
-    match value.get(key) {
+fn optional_string_map(value: &Value, key: &str) -> StringMapResult {
+    optional_string_map_from(value.get(key), key, "mcp tool argument")
+}
+
+fn optional_string_map_from(value: Option<&Value>, key: &str, context: &str) -> StringMapResult {
+    match value {
         None => Ok(BTreeMap::new()),
         Some(Value::Object(object)) => object
             .iter()
@@ -340,10 +347,10 @@ fn optional_string_map(value: &Value, key: &str) -> Result<BTreeMap<String, Stri
                 entry_value
                     .as_str()
                     .map(|entry_value| (entry_key.clone(), entry_value.to_owned()))
-                    .ok_or_else(|| format!("mcp tool argument {key}.{entry_key} must be a string"))
+                    .ok_or_else(|| format!("{context} {key}.{entry_key} must be a string"))
             })
             .collect(),
-        Some(_) => Err(format!("mcp tool argument {key} must be an object")),
+        Some(_) => Err(format!("{context} {key} must be an object")),
     }
 }
 
@@ -362,7 +369,7 @@ fn optional_json_string(value: &Value, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn required_object_string(object: &Map<String, Value>, key: &str) -> Result<String, String> {
+fn required_object_string(object: &JsonObject, key: &str) -> Result<String, String> {
     object
         .get(key)
         .and_then(Value::as_str)
@@ -370,7 +377,7 @@ fn required_object_string(object: &Map<String, Value>, key: &str) -> Result<Stri
         .ok_or_else(|| format!("MCP error: resource content missing {key}"))
 }
 
-fn optional_object_string(object: &Map<String, Value>, key: &str) -> Option<String> {
+fn optional_object_string(object: &JsonObject, key: &str) -> Option<String> {
     object
         .get(key)
         .and_then(Value::as_str)

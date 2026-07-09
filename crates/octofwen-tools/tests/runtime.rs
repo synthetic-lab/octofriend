@@ -1,3 +1,11 @@
+#![expect(
+    clippy::expect_used,
+    reason = "test fixtures assert setup must succeed"
+)]
+#![expect(
+    clippy::module_inception,
+    reason = "test module mirrors runtime module path"
+)]
 use html2text as _;
 use jsonschema as _;
 use octofwen_transport as _;

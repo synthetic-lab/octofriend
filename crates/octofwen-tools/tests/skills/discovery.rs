@@ -147,6 +147,10 @@ fn discovers_valid_skills_from_default_and_configured_paths() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single scenario documents full skill discovery rejection order"
+)]
 fn skips_unparsable_invalid_duplicate_unreadable_and_missing_skill_paths() {
     let mut host = MemorySkillHost {
         cwd: "/workspace/project".into(),

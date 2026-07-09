@@ -7,14 +7,14 @@ use octofwen_transport::workspace::{FindFilesOptions, find_files};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
-fn temp_dir(name: &str) -> PathBuf {
+fn temp_dir(name: &str) -> std::io::Result<PathBuf> {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
         "octofwen-transport-workspace-{name}-{}-{id}",
         std::process::id()
     ));
-    fs::create_dir_all(&dir).unwrap_or_else(|error| panic!("failed to create temp dir: {error}"));
-    dir
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 fn remove_dir(path: &Path) {
@@ -22,8 +22,8 @@ fn remove_dir(path: &Path) {
 }
 
 #[test]
-fn finds_relative_files_with_pruning_filters_max_depth_and_result_caps() {
-    let root = temp_dir("find");
+fn finds_relative_files_with_pruning_filters_max_depth_and_result_caps() -> std::io::Result<()> {
+    let root = temp_dir("find")?;
     let transport = LocalTransport::new(&root);
     fs::create_dir_all(root.join("src/nested"))
         .unwrap_or_else(|error| panic!("failed to create src dirs: {error}"));
@@ -65,4 +65,5 @@ fn finds_relative_files_with_pruning_filters_max_depth_and_result_caps() {
     assert_eq!(capped, ["a.ts"]);
 
     remove_dir(&root);
+    Ok(())
 }

@@ -194,10 +194,10 @@ fn glob_match(pattern: &str, value: &str, case_insensitive: bool) -> bool {
     } else {
         value.to_owned()
     };
-    wildcard_match(pattern.as_bytes(), value.as_bytes())
+    wildcard_matches_bytes(pattern.as_bytes(), value.as_bytes())
 }
 
-fn wildcard_match(pattern: &[u8], value: &[u8]) -> bool {
+pub fn wildcard_matches_bytes(pattern: &[u8], value: &[u8]) -> bool {
     let (mut pattern_index, mut value_index) = (0, 0);
     let mut star_index = None;
     let mut match_index = 0;

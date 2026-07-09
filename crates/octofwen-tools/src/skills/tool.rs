@@ -41,7 +41,7 @@ fn skill_tool_description(skills: &[AgentSkill]) -> String {
         .collect::<Vec<_>>();
     format!(
         "Loads and displays the instructions for a skill. Available skills: {}",
-        serde_json::to_string(&descriptions).expect("skill descriptions should serialize")
+        Value::Array(descriptions)
     )
 }
 

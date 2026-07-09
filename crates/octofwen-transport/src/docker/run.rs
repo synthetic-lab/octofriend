@@ -1,10 +1,12 @@
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::local::filesystem::{DirectoryEntry, TransportError, TransportResult};
+use crate::local::filesystem::{TransportError, TransportResult};
+use crate::process_output::{join_output, read_output_in_thread};
+use crate::remote_files::{readdir_with_shell, write_file_with_shell};
 use crate::shell::{shell_quote, shell_quote_path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,18 +18,18 @@ pub struct DockerTransport {
 
 impl DockerTransport {
     pub fn new(container: impl Into<String>, cwd: impl Into<String>) -> Self {
-        Self::with_command(container, cwd, PathBuf::from("docker"))
+        Self::with_command(
+            container.into(),
+            PathBuf::from(cwd.into()),
+            PathBuf::from("docker"),
+        )
     }
 
-    fn with_command(
-        container: impl Into<String>,
-        cwd: impl Into<String>,
-        command: impl Into<PathBuf>,
-    ) -> Self {
+    fn with_command(container: String, cwd: PathBuf, command: PathBuf) -> Self {
         Self {
-            container: container.into(),
-            cwd: PathBuf::from(cwd.into()),
-            command: command.into(),
+            container,
+            cwd,
+            command,
         }
     }
 
@@ -47,37 +49,16 @@ impl DockerTransport {
     }
 
     pub fn write_file(&self, file: &str, contents: &str) -> TransportResult<()> {
-        let parent = Path::new(file)
-            .parent()
-            .and_then(Path::to_str)
-            .filter(|parent| !parent.is_empty());
-        let mkdir = parent
-            .map(|parent| format!("mkdir -p -- {} && ", shell_quote(parent)))
-            .unwrap_or_default();
-        self.exec_shell(
-            &format!("{mkdir}cat > {}", shell_quote(file)),
-            Duration::from_secs(10),
-            Some(contents),
-        )?;
-        Ok(())
+        write_file_with_shell(file, contents, |command, timeout, stdin_contents| {
+            self.exec_shell(command, timeout, stdin_contents)
+        })
     }
 
-    pub fn readdir(&self, dir: &str) -> TransportResult<Vec<DirectoryEntry>> {
-        let script = format!(
-            "for entry in {0}/* {0}/.[!.]* {0}/..?*; do [ -e \"$entry\" ] || continue; name=$(basename \"$entry\"); if [ -d \"$entry\" ]; then printf 'd\\t%s\\n' \"$name\"; else printf 'f\\t%s\\n' \"$name\"; fi; done",
-            shell_quote(dir)
-        );
-        let output = self.shell(&script, Duration::from_secs(10))?;
-        Ok(output
-            .lines()
-            .filter_map(|line| {
-                let (kind, entry) = line.split_once('\t')?;
-                Some(DirectoryEntry {
-                    entry: entry.to_string(),
-                    is_directory: kind == "d",
-                })
-            })
-            .collect())
+    pub fn readdir(
+        &self,
+        dir: &str,
+    ) -> TransportResult<Vec<crate::local::filesystem::DirectoryEntry>> {
+        readdir_with_shell(dir, |command, timeout| self.shell(command, timeout))
     }
 
     pub fn path_exists(&self, file: &str) -> bool {
@@ -162,29 +143,4 @@ impl DockerTransport {
             })
         }
     }
-}
-
-fn read_output_in_thread<T>(mut stream: T) -> thread::JoinHandle<String>
-where
-    T: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut output = String::new();
-        let _ = stream.read_to_string(&mut output);
-        output
-    })
-}
-
-fn join_output(
-    stdout: Option<thread::JoinHandle<String>>,
-    stderr: Option<thread::JoinHandle<String>>,
-) -> String {
-    let mut output = String::new();
-    if let Some(stdout) = stdout {
-        output.push_str(&stdout.join().unwrap_or_default());
-    }
-    if let Some(stderr) = stderr {
-        output.push_str(&stderr.join().unwrap_or_default());
-    }
-    output
 }

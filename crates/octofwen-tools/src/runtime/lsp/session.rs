@@ -4,6 +4,9 @@ use std::process::{ChildStdin, ChildStdout};
 
 use serde_json::{Map, Value, json};
 
+type JsonObject = Map<String, Value>;
+type CallHierarchyItemsResult = Result<Vec<CallHierarchyItem>, String>;
+
 use crate::lsp::{
     CallHierarchyDirection, CallHierarchyItem, Diagnostic, DiagnosticSeverity, DocumentSymbol,
     HoverContent, Location, Position, Range, SymbolKind, format_call_hierarchy, format_diagnostics,
@@ -18,6 +21,15 @@ pub(super) struct LspRuntimeSession {
     next_id: u64,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct LspRunToolRequest<'a> {
+    pub tool_name: &'a str,
+    pub parsed: &'a Value,
+    pub root_path: &'a str,
+    pub resolved_file_path: &'a str,
+    pub file_content: &'a str,
+}
+
 impl LspRuntimeSession {
     pub(super) fn new(stdin: ChildStdin, stdout: ChildStdout) -> Self {
         Self {
@@ -27,14 +39,14 @@ impl LspRuntimeSession {
         }
     }
 
-    pub(super) fn run_tool(
-        &mut self,
-        tool_name: &str,
-        parsed: &Value,
-        root_path: &str,
-        resolved_file_path: &str,
-        file_content: &str,
-    ) -> Result<Value, String> {
+    pub(super) fn run_tool(&mut self, request: LspRunToolRequest<'_>) -> Result<Value, String> {
+        let LspRunToolRequest {
+            tool_name,
+            parsed,
+            root_path,
+            resolved_file_path,
+            file_content,
+        } = request;
         let root_uri = file_uri(root_path);
         let file_uri = file_uri(resolved_file_path);
         let _ = self.request(
@@ -224,8 +236,8 @@ impl LspRuntimeSession {
         let body = serde_json::to_vec(message)
             .map_err(|error| format!("LSP message encoding failed: {error}"))?;
         write!(self.stdin, "Content-Length: {}\r\n\r\n", body.len())
-            .and_then(|_| self.stdin.write_all(&body))
-            .and_then(|_| self.stdin.flush())
+            .and_then(|()| self.stdin.write_all(&body))
+            .and_then(|()| self.stdin.flush())
             .map_err(|error| format!("LSP server write failed: {error}"))
     }
 
@@ -443,7 +455,7 @@ fn diagnostic_from_value(value: &Value) -> Result<Diagnostic, String> {
     })
 }
 
-fn call_hierarchy_items_from_value(value: &Value) -> Result<Vec<CallHierarchyItem>, String> {
+fn call_hierarchy_items_from_value(value: &Value) -> CallHierarchyItemsResult {
     value
         .as_array()
         .ok_or_else(|| "LSP call hierarchy result must be an array".to_owned())?
@@ -455,7 +467,7 @@ fn call_hierarchy_items_from_value(value: &Value) -> Result<Vec<CallHierarchyIte
 fn call_hierarchy_result_items_from_value(
     value: &Value,
     direction: CallHierarchyDirection,
-) -> Result<Vec<CallHierarchyItem>, String> {
+) -> CallHierarchyItemsResult {
     value
         .as_array()
         .ok_or_else(|| "LSP call hierarchy call result must be an array".to_owned())?
@@ -493,18 +505,23 @@ fn call_hierarchy_item_json(item: &CallHierarchyItem) -> Value {
     })
 }
 
-fn range_from_object(object: &Map<String, Value>) -> Result<Range, String> {
+fn range_from_object(object: &JsonObject) -> Result<Range, String> {
     Ok(Range {
         start: position_from_object(object_field_map(object, "start")?)?,
         end: position_from_object(object_field_map(object, "end")?)?,
     })
 }
 
-fn position_from_object(object: &Map<String, Value>) -> Result<Position, String> {
+fn position_from_object(object: &JsonObject) -> Result<Position, String> {
     Ok(Position {
-        line: required_object_u64(object, "line")? as u32,
-        character: required_object_u64(object, "character")? as u32,
+        line: required_object_u32(object, "line")?,
+        character: required_object_u32(object, "character")?,
     })
+}
+
+fn required_object_u32(object: &JsonObject, key: &str) -> Result<u32, String> {
+    let value = required_object_u64(object, key)?;
+    u32::try_from(value).map_err(|_| format!("LSP position {key} is too large: {value}"))
 }
 
 fn range_json(range: Range) -> Value {
@@ -539,7 +556,7 @@ fn required_value_string(value: &Value, key: &str) -> Result<String, String> {
         .ok_or_else(|| format!("LSP object missing string {key}"))
 }
 
-fn required_object_string(object: &Map<String, Value>, key: &str) -> Result<String, String> {
+fn required_object_string(object: &JsonObject, key: &str) -> Result<String, String> {
     object
         .get(key)
         .and_then(Value::as_str)
@@ -547,7 +564,7 @@ fn required_object_string(object: &Map<String, Value>, key: &str) -> Result<Stri
         .ok_or_else(|| format!("LSP object missing string {key}"))
 }
 
-fn required_object_u64(object: &Map<String, Value>, key: &str) -> Result<u64, String> {
+fn required_object_u64(object: &JsonObject, key: &str) -> Result<u64, String> {
     object
         .get(key)
         .and_then(Value::as_u64)
@@ -582,64 +599,12 @@ fn lsp_code_to_string(value: &Value) -> Result<String, String> {
 }
 
 fn symbol_kind_from_value(value: Option<&Value>) -> Result<SymbolKind, String> {
-    match value.and_then(Value::as_u64) {
-        Some(1) => Ok(SymbolKind::File),
-        Some(2) => Ok(SymbolKind::Module),
-        Some(3) => Ok(SymbolKind::Namespace),
-        Some(4) => Ok(SymbolKind::Package),
-        Some(5) => Ok(SymbolKind::Class),
-        Some(6) => Ok(SymbolKind::Method),
-        Some(7) => Ok(SymbolKind::Property),
-        Some(8) => Ok(SymbolKind::Field),
-        Some(9) => Ok(SymbolKind::Constructor),
-        Some(10) => Ok(SymbolKind::Enum),
-        Some(11) => Ok(SymbolKind::Interface),
-        Some(12) => Ok(SymbolKind::Function),
-        Some(13) => Ok(SymbolKind::Variable),
-        Some(14) => Ok(SymbolKind::Constant),
-        Some(15) => Ok(SymbolKind::String),
-        Some(16) => Ok(SymbolKind::Number),
-        Some(17) => Ok(SymbolKind::Boolean),
-        Some(18) => Ok(SymbolKind::Array),
-        Some(19) => Ok(SymbolKind::Object),
-        Some(20) => Ok(SymbolKind::Key),
-        Some(21) => Ok(SymbolKind::Null),
-        Some(22) => Ok(SymbolKind::EnumMember),
-        Some(23) => Ok(SymbolKind::Struct),
-        Some(24) => Ok(SymbolKind::Event),
-        Some(25) => Ok(SymbolKind::Operator),
-        Some(26) => Ok(SymbolKind::TypeParameter),
-        _ => Err("LSP symbol kind must be between 1 and 26".to_owned()),
-    }
+    value
+        .and_then(Value::as_u64)
+        .and_then(SymbolKind::from_lsp_number)
+        .ok_or_else(|| "LSP symbol kind must be between 1 and 26".to_owned())
 }
 
 fn symbol_kind_number(kind: SymbolKind) -> u8 {
-    match kind {
-        SymbolKind::File => 1,
-        SymbolKind::Module => 2,
-        SymbolKind::Namespace => 3,
-        SymbolKind::Package => 4,
-        SymbolKind::Class => 5,
-        SymbolKind::Method => 6,
-        SymbolKind::Property => 7,
-        SymbolKind::Field => 8,
-        SymbolKind::Constructor => 9,
-        SymbolKind::Enum => 10,
-        SymbolKind::Interface => 11,
-        SymbolKind::Function => 12,
-        SymbolKind::Variable => 13,
-        SymbolKind::Constant => 14,
-        SymbolKind::String => 15,
-        SymbolKind::Number => 16,
-        SymbolKind::Boolean => 17,
-        SymbolKind::Array => 18,
-        SymbolKind::Object => 19,
-        SymbolKind::Key => 20,
-        SymbolKind::Null => 21,
-        SymbolKind::EnumMember => 22,
-        SymbolKind::Struct => 23,
-        SymbolKind::Event => 24,
-        SymbolKind::Operator => 25,
-        SymbolKind::TypeParameter => 26,
-    }
+    kind.lsp_number()
 }

@@ -151,29 +151,77 @@ pub fn built_in_tool_definitions(input: BuiltInToolDefinitionsInput) -> Vec<Tool
                 )],
             ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-definition",
             "Find the definition location of a symbol at the given position. Use this when you need to see where a symbol was originally defined.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-implementation",
             "Find implementation locations, jumping past interfaces and abstract classes to the code that implements them.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-references",
             "Find all references to a symbol at the given position.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-hover",
             "Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-incoming-calls",
             "Find all callers of a symbol at the given position.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
-        position_lsp_tool(
+        tool(
             "lsp-outgoing-calls",
             "Find all callees of a symbol at the given position.",
+            object(
+                &[
+                    required_string("filePath", "Path to the file to query"),
+                    required_number("line", "1-indexed line number"),
+                    required_number("character", "1-indexed column number"),
+                ],
+                &[],
+            ),
         ),
         file_lsp_tool(
             "lsp-diagnostics",
@@ -216,21 +264,6 @@ const SHELL_DESCRIPTION: &str = "Runs a shell command in the cwd using the platf
 const GLOB_DESCRIPTION: &str = "Finds files on the filesystem, using a safe subset of Unix find syntax. Prefer this to shelling out to find. Keep glob terms scoped and specific.";
 const WEB_SEARCH_DESCRIPTION: &str = "Searches the web. Use this to find information you're not sure about, to look up documentation, or to find data that was created after your training knowledge date cutoff.";
 const MCP_DESCRIPTION: &str = "Interact with Model Context Protocol (MCP) servers to access external tools and resources. MCP servers provide specialized tools like filesystem access, database queries, web scraping, or integration with external services.";
-
-fn position_lsp_tool(name: &str, description: &str) -> ToolDefinition {
-    tool(
-        name,
-        description,
-        object(
-            &[
-                required_string("filePath", "Path to the file to query"),
-                required_number("line", "1-indexed line number"),
-                required_number("character", "1-indexed column number"),
-            ],
-            &[],
-        ),
-    )
-}
 
 fn file_lsp_tool(name: &str, description: &str) -> ToolDefinition {
     tool(

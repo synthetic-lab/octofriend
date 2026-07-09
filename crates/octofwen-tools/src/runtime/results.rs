@@ -1,12 +1,12 @@
 use serde_json::Value;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolContent {
     Text { content: String },
     Image { mime_type: String, data: String },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ToolReturn {
     Output {
         content: Vec<ToolContent>,
@@ -20,7 +20,7 @@ pub enum ToolReturn {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolRunResult {
     pub value: ToolReturn,
 }

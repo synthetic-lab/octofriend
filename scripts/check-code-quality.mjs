@@ -42,6 +42,10 @@ const TYPESCRIPT_TYPED_PARAMETER_PATTERN =
 	/^(?:\.\.\.)?([A-Za-z_$][\w$]*)\??\s*:\s*(.+)$/u;
 const TYPESCRIPT_DEFAULT_PARAMETER_PATTERN =
 	/^(?:\.\.\.)?([A-Za-z_$][\w$]*)\??\s*(?:=.*)?$/u;
+const TYPESCRIPT_FALLBACK_TYPED_PARAMETER_NAME_PATTERN =
+	/^(?:\.\.\.)?[A-Za-z_$][\w$]*\??$/u;
+const TYPESCRIPT_REST_PARAMETER_PREFIX_PATTERN = /^\.\.\./u;
+const TYPESCRIPT_OPTIONAL_PARAMETER_SUFFIX_PATTERN = /\?$/u;
 const RUST_RETURN_TYPE_PATTERN = /->\s*([^{}]+)$/u;
 const TYPESCRIPT_RETURN_TYPE_PATTERN = /^\s*:\s*([^={]+)$/u;
 const RUST_FIELD_PATTERN =
@@ -161,6 +165,24 @@ function rustCharLiteralEnd(source, startIndex) {
 		return source[startIndex + 3] === "'" ? startIndex + 3 : -1;
 	}
 	return source[startIndex + 2] === "'" ? startIndex + 2 : -1;
+}
+
+function previousNonWhitespaceChar(source, beforeIndex) {
+	for (let index = beforeIndex - 1; index >= 0; index -= 1) {
+		const char = source[index];
+		const code = char.charCodeAt(0);
+		if (!(code === 32 || (code >= 9 && code <= 13))) return char;
+	}
+	return "";
+}
+
+function nextNonWhitespaceChar(source, afterIndex) {
+	for (let index = afterIndex; index < source.length; index += 1) {
+		const char = source[index];
+		const code = char.charCodeAt(0);
+		if (!(code === 32 || (code >= 9 && code <= 13))) return char;
+	}
+	return "";
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: delimiter matching is a small state machine.
@@ -313,6 +335,18 @@ function parseParameters(parameterText, language) {
 			if (tsMatch) {
 				return { name: tsMatch[1], typeText: normalizeType(tsMatch[2]) };
 			}
+			const colonIndex = parameter.indexOf(":");
+			if (colonIndex > 0) {
+				const name = parameter.slice(0, colonIndex).trim();
+				if (TYPESCRIPT_FALLBACK_TYPED_PARAMETER_NAME_PATTERN.test(name)) {
+					return {
+						name: name
+							.replace(TYPESCRIPT_REST_PARAMETER_PREFIX_PATTERN, "")
+							.replace(TYPESCRIPT_OPTIONAL_PARAMETER_SUFFIX_PATTERN, ""),
+						typeText: normalizeType(parameter.slice(colonIndex + 1)),
+					};
+				}
+			}
 
 			const tsDefaultMatch = parameter.match(
 				TYPESCRIPT_DEFAULT_PARAMETER_PATTERN,
@@ -323,11 +357,75 @@ function parseParameters(parameterText, language) {
 		});
 }
 
-function returnTypeAfter(source, parameterCloseIndex, language) {
-	const between = source.slice(
-		parameterCloseIndex + 1,
-		source.indexOf("{", parameterCloseIndex),
-	);
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: scans TypeScript return types and expression bodies without a parser dependency.
+function functionBodyOpenIndex(source, parameterCloseIndex, language) {
+	if (language === "rust") {
+		for (
+			let index = parameterCloseIndex + 1;
+			index < source.length;
+			index += 1
+		) {
+			const char = source[index];
+			if (char === ";") return -1;
+			if (char === "{") return index;
+		}
+		return -1;
+	}
+	let angleDepth = 0;
+	let braceDepth = 0;
+	let bracketDepth = 0;
+	let parenDepth = 0;
+	let quote = "";
+	for (let index = parameterCloseIndex + 1; index < source.length; index += 1) {
+		const char = source[index];
+		const previous = source[index - 1];
+
+		if (quote) {
+			if (char === quote && previous !== "\\") quote = "";
+			continue;
+		}
+
+		if (isQuote(char)) {
+			quote = char;
+			continue;
+		}
+
+		if (char === "<") angleDepth += 1;
+		if (char === ">" && angleDepth > 0) angleDepth -= 1;
+		if (char === "}" && braceDepth > 0) {
+			braceDepth -= 1;
+			continue;
+		}
+		if (char === "[") bracketDepth += 1;
+		if (char === "]" && bracketDepth > 0) bracketDepth -= 1;
+		if (char === "(") parenDepth += 1;
+		if (char === ")" && parenDepth > 0) parenDepth -= 1;
+
+		if (
+			char === "{" &&
+			angleDepth === 0 &&
+			braceDepth === 0 &&
+			bracketDepth === 0 &&
+			parenDepth === 0
+		) {
+			const previousNonWhitespace = previousNonWhitespaceChar(source, index);
+			const closeIndex = matchingIndex(source, index, "{", "}");
+			if (
+				previousNonWhitespace === ":" ||
+				previousNonWhitespace === "|" ||
+				nextNonWhitespaceChar(source, closeIndex + 1) === "{"
+			) {
+				braceDepth = 1;
+				continue;
+			}
+			return index;
+		}
+	}
+	return -1;
+}
+
+function returnTypeAfter(source, parameterCloseIndex, bodyOpenIndex, language) {
+	const between = source.slice(parameterCloseIndex + 1, bodyOpenIndex);
 	if (language === "rust") {
 		const match = between.match(RUST_RETURN_TYPE_PATTERN);
 		return match ? normalizeType(match[1]) : "";
@@ -362,7 +460,11 @@ function extractFunctions(file) {
 				continue;
 			}
 
-			const bodyOpenIndex = file.source.indexOf("{", parameterCloseIndex);
+			const bodyOpenIndex = functionBodyOpenIndex(
+				file.source,
+				parameterCloseIndex,
+				file.language,
+			);
 			if (bodyOpenIndex < 0) {
 				continue;
 			}
@@ -395,6 +497,7 @@ function extractFunctions(file) {
 				returnType: returnTypeAfter(
 					file.source,
 					parameterCloseIndex,
+					bodyOpenIndex,
 					file.language,
 				),
 				body,
@@ -691,7 +794,10 @@ function collectSuppressedAndUnusedParameters(functions) {
 		for (const parameter of fn.parameters) {
 			if (
 				!parameter.name ||
+				parameter.name.startsWith("{") ||
+				parameter.name.startsWith("[") ||
 				parameter.name === "self" ||
+				parameter.name === "mut self" ||
 				parameter.name === "&self" ||
 				parameter.name === "&mut self"
 			) {
@@ -705,6 +811,7 @@ function collectSuppressedAndUnusedParameters(functions) {
 					functionName: fn.name,
 					parameterName: parameter.name,
 				});
+				continue;
 			}
 
 			const usableName = parameter.name.replace(
@@ -739,8 +846,9 @@ function collectPassThroughWrappers(functions, options = {}) {
 		.filter(
 			(fn) =>
 				!(
-					options.ignoreTestFilesForPassThrough &&
-					(isTestPath(fn.path) || fn.isTestOnly)
+					(options.ignoreTestFilesForPassThrough &&
+						(isTestPath(fn.path) || fn.isTestOnly)) ||
+					isEntrypointMain(fn)
 				),
 		)
 		.map((fn) => {
@@ -748,6 +856,9 @@ function collectPassThroughWrappers(functions, options = {}) {
 				.trim()
 				.replace(TRAILING_SEMICOLON_PATTERN, "")
 				.trim();
+			if (tokenCount(normalizeBody(body)) < 8) {
+				return undefined;
+			}
 			const rustMatch = body.match(RUST_PASS_THROUGH_PATTERN);
 			const tsMatch = body.match(TYPESCRIPT_PASS_THROUGH_PATTERN);
 			const match = fn.language === "rust" ? rustMatch : tsMatch;
@@ -772,6 +883,14 @@ function collectPassThroughWrappers(functions, options = {}) {
 			};
 		})
 		.filter(Boolean);
+}
+
+function isEntrypointMain(fn) {
+	return (
+		fn.name === "main" &&
+		(fn.path.includes(`${path.sep}bin${path.sep}`) ||
+			fn.path.endsWith(`${path.sep}main.rs`))
+	);
 }
 
 function isSingleCallBody(body, callee) {

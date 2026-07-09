@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::runtime::results::ToolReturn;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolCall {
     pub tool_call_id: String,
     pub name: String,
@@ -10,13 +10,13 @@ pub struct ToolCall {
     pub parsed: Value,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParseResult {
     pub original: Value,
     pub parsed: Value,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -25,7 +25,7 @@ pub struct ToolDefinition {
     pub required_subagents: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeTool {
     pub definition: ToolDefinition,
 }
@@ -49,17 +49,19 @@ impl RuntimeTool {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DeclaredTool {
     definition: ToolDefinition,
 }
 
 impl DeclaredTool {
+    #[must_use]
     pub fn with_parsed_schema(mut self, parsed_schema: Value) -> Self {
         self.definition.parsed_schema = parsed_schema;
         self
     }
 
+    #[must_use]
     pub fn with_subagents(
         mut self,
         subagents: impl IntoIterator<Item = impl Into<String>>,
@@ -97,11 +99,13 @@ impl ToolBuilder {
         }
     }
 
+    #[must_use]
     pub const fn with_data<T>(self) -> Self {
         let _ = std::marker::PhantomData::<T>;
         self
     }
 
+    #[must_use]
     pub const fn with_transport<T>(self) -> Self {
         let _ = std::marker::PhantomData::<T>;
         self

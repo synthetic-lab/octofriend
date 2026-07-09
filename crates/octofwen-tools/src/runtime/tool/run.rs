@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use octofwen_transport::workspace::wildcard_matches_bytes;
 use serde_json::{Value, json};
 
 use crate::skills::AgentSkill;
@@ -17,21 +19,22 @@ use super::validation::validate_runtime_tool_call;
 pub fn run_runtime_tool_call(
     tool_name: &str,
     cwd: impl AsRef<Path>,
-    _tool_call_id: &str,
+    tool_call_id: &str,
     tool_call: &Value,
     parsed: &Value,
 ) -> Result<Value, String> {
     let transport = RuntimeToolTransport::local(cwd);
-    run_runtime_tool_call_with_transport(tool_name, transport, _tool_call_id, tool_call, parsed)
+    run_runtime_tool_call_with_transport(tool_name, transport, tool_call_id, tool_call, parsed)
 }
 
 pub fn run_runtime_tool_call_with_transport(
     tool_name: &str,
     transport: RuntimeToolTransport,
-    _tool_call_id: &str,
+    tool_call_id: &str,
     tool_call: &Value,
     parsed: &Value,
 ) -> Result<Value, String> {
+    let _ = tool_call_id;
     match tool_name {
         "shell" => run_shell(&transport, parsed),
         "glob" => run_glob(&transport, parsed),
@@ -161,6 +164,10 @@ fn run_web_search(parsed: &Value) -> Result<Value, String> {
     Ok(output_text(lines.join("\n"), None))
 }
 
+#[expect(
+    clippy::option_option,
+    reason = "wire output distinguishes missing fields from explicit JSON null"
+)]
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WebSearchResultLine<'a> {
@@ -182,6 +189,10 @@ fn web_search_result_line(entry: &Value) -> Result<String, String> {
     serde_json::to_string(&line).map_err(|error| format!("failed to render search result: {error}"))
 }
 
+#[expect(
+    clippy::option_option,
+    reason = "wire output distinguishes missing fields from explicit JSON null"
+)]
 fn optional_string_or_null<'a>(
     value: &'a Value,
     key: &str,
@@ -351,7 +362,8 @@ fn run_remote_glob(
     let entry_type = optional_string(parsed, "type")?.unwrap_or("f");
     let mut command = format!("find {} -mindepth 1", shell_quote(search_root));
     if let Some(max_depth) = max_depth {
-        command.push_str(&format!(" -maxdepth {}", max_depth + 1));
+        write!(command, " -maxdepth {}", max_depth + 1)
+            .map_err(|error| format!("failed to build remote glob command: {error}"))?;
     }
     command.push_str(if entry_type == "d" {
         " -type d -print | sort"
@@ -444,7 +456,7 @@ fn collect_glob_results(
         .map_err(|error| format!("Could not read directory {}: {error}", current.display()))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-    entries.sort_by_key(|entry| entry.file_name());
+    entries.sort_by_key(std::fs::DirEntry::file_name);
 
     for entry in entries {
         if options.max_results.is_some_and(|max| results.len() >= max) {
@@ -556,34 +568,6 @@ fn wildcard_matches(pattern: &str, value: &str, case_insensitive: bool) -> bool 
         value.to_string()
     };
     wildcard_matches_bytes(pattern.as_bytes(), value.as_bytes())
-}
-
-fn wildcard_matches_bytes(pattern: &[u8], value: &[u8]) -> bool {
-    let (mut pattern_index, mut value_index) = (0, 0);
-    let mut star_index = None;
-    let mut match_index = 0;
-    while value_index < value.len() {
-        if pattern_index < pattern.len()
-            && (pattern[pattern_index] == b'?' || pattern[pattern_index] == value[value_index])
-        {
-            pattern_index += 1;
-            value_index += 1;
-        } else if pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-            star_index = Some(pattern_index);
-            match_index = value_index;
-            pattern_index += 1;
-        } else if let Some(star) = star_index {
-            pattern_index = star + 1;
-            match_index += 1;
-            value_index = match_index;
-        } else {
-            return false;
-        }
-    }
-    while pattern_index < pattern.len() && pattern[pattern_index] == b'*' {
-        pattern_index += 1;
-    }
-    pattern_index == pattern.len()
 }
 
 fn run_list(transport: &RuntimeToolTransport, parsed: &Value) -> Result<Value, String> {

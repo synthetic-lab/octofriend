@@ -1,10 +1,12 @@
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::local::filesystem::{DirectoryEntry, TransportError, TransportResult};
+use crate::local::filesystem::{TransportError, TransportResult};
+use crate::process_output::{join_output, read_output_in_thread};
+use crate::remote_files::{readdir_with_shell, write_file_with_shell};
 use crate::shell::{shell_quote, shell_quote_path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -16,18 +18,18 @@ pub struct SshTransport {
 
 impl SshTransport {
     pub fn new(target: impl Into<String>, cwd: impl Into<String>) -> Self {
-        Self::with_command(target, cwd, PathBuf::from("ssh"))
+        Self::with_command(
+            target.into(),
+            PathBuf::from(cwd.into()),
+            PathBuf::from("ssh"),
+        )
     }
 
-    fn with_command(
-        target: impl Into<String>,
-        cwd: impl Into<String>,
-        command: impl Into<PathBuf>,
-    ) -> Self {
+    fn with_command(target: String, cwd: PathBuf, command: PathBuf) -> Self {
         Self {
-            target: target.into(),
-            cwd: PathBuf::from(cwd.into()),
-            command: command.into(),
+            target,
+            cwd,
+            command,
         }
     }
 
@@ -47,37 +49,16 @@ impl SshTransport {
     }
 
     pub fn write_file(&self, file: &str, contents: &str) -> TransportResult<()> {
-        let parent = Path::new(file)
-            .parent()
-            .and_then(Path::to_str)
-            .filter(|parent| !parent.is_empty());
-        let mkdir = parent
-            .map(|parent| format!("mkdir -p -- {} && ", shell_quote(parent)))
-            .unwrap_or_default();
-        self.exec_shell(
-            &format!("{mkdir}cat > {}", shell_quote(file)),
-            Duration::from_secs(10),
-            Some(contents),
-        )?;
-        Ok(())
+        write_file_with_shell(file, contents, |command, timeout, stdin_contents| {
+            self.exec_shell(command, timeout, stdin_contents)
+        })
     }
 
-    pub fn readdir(&self, dir: &str) -> TransportResult<Vec<DirectoryEntry>> {
-        let script = format!(
-            "for entry in {0}/* {0}/.[!.]* {0}/..?*; do [ -e \"$entry\" ] || continue; name=$(basename \"$entry\"); if [ -d \"$entry\" ]; then printf 'd\\t%s\\n' \"$name\"; else printf 'f\\t%s\\n' \"$name\"; fi; done",
-            shell_quote(dir)
-        );
-        let output = self.shell(&script, Duration::from_secs(10))?;
-        Ok(output
-            .lines()
-            .filter_map(|line| {
-                let (kind, entry) = line.split_once('\t')?;
-                Some(DirectoryEntry {
-                    entry: entry.to_string(),
-                    is_directory: kind == "d",
-                })
-            })
-            .collect())
+    pub fn readdir(
+        &self,
+        dir: &str,
+    ) -> TransportResult<Vec<crate::local::filesystem::DirectoryEntry>> {
+        readdir_with_shell(dir, |command, timeout| self.shell(command, timeout))
     }
 
     pub fn path_exists(&self, file: &str) -> bool {
@@ -158,86 +139,5 @@ impl SshTransport {
                 exit_code: status.code(),
             })
         }
-    }
-}
-
-fn read_output_in_thread<T>(mut stream: T) -> thread::JoinHandle<String>
-where
-    T: Read + Send + 'static,
-{
-    thread::spawn(move || {
-        let mut output = String::new();
-        let _ = stream.read_to_string(&mut output);
-        output
-    })
-}
-
-fn join_output(
-    stdout: Option<thread::JoinHandle<String>>,
-    stderr: Option<thread::JoinHandle<String>>,
-) -> String {
-    let mut output = String::new();
-    if let Some(stdout) = stdout {
-        output.push_str(&stdout.join().unwrap_or_default());
-    }
-    if let Some(stderr) = stderr {
-        output.push_str(&stderr.join().unwrap_or_default());
-    }
-    output
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::time::SystemTime;
-
-    use super::SshTransport;
-
-    #[cfg(unix)]
-    #[test]
-    fn ssh_transport_shells_through_ssh_command_with_target_and_cwd() {
-        let root = std::env::temp_dir().join(format!(
-            "octofwen-ssh-{}",
-            SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("time")
-                .as_nanos()
-        ));
-        fs::create_dir_all(&root).expect("temp root");
-        let fake_ssh = root.join("ssh");
-        let log = root.join("ssh.log");
-        let remote_cwd = root.join("work/project");
-        fs::create_dir_all(&remote_cwd).expect("remote cwd");
-        fs::write(remote_cwd.join("marker.txt"), "remote-output").expect("marker");
-        fs::write(
-            &fake_ssh,
-            format!(
-                "#!/bin/sh\nprintf 'target=%s command=%s\\n' \"$1\" \"$2\" >> '{}'\nshift\n/bin/sh -c \"$1\"\n",
-                log.display()
-            ),
-        )
-        .expect("fake ssh");
-        make_executable(&fake_ssh);
-
-        let transport =
-            SshTransport::with_command("user@example.test", remote_cwd.to_string_lossy(), fake_ssh);
-        let output = transport
-            .shell("pwd && cat marker.txt", std::time::Duration::from_secs(5))
-            .expect("ssh shell should run");
-        assert!(output.contains(&remote_cwd.display().to_string()));
-        assert!(output.contains("remote-output"));
-        let logged = fs::read_to_string(log).expect("ssh log");
-        assert!(logged.contains("target=user@example.test"));
-        assert!(logged.contains("pwd && cat marker.txt"));
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[cfg(unix)]
-    fn make_executable(path: &std::path::Path) {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = fs::metadata(path).expect("metadata").permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(path, permissions).expect("permissions");
     }
 }

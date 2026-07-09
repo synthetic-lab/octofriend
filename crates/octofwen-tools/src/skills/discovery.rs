@@ -25,6 +25,13 @@ pub trait AgentSkillHost {
     fn read_dir(&self, path: &str) -> Result<Vec<DirectoryEntry>, String>;
 }
 
+#[derive(Default)]
+struct SkillDiscoveryState {
+    skills: Vec<AgentSkill>,
+    seen_file_paths: HashSet<String>,
+    seen_names: HashSet<String>,
+}
+
 pub fn discover_skills(
     host: &impl AgentSkillHost,
     configured_skill_paths: &[String],
@@ -33,22 +40,13 @@ pub fn discover_skills(
     let mut skill_paths = default_skill_paths(host);
     skill_paths.extend(configured_skill_paths.iter().cloned());
 
-    let mut skills = Vec::new();
-    let mut seen_file_paths = HashSet::new();
-    let mut seen_names = HashSet::new();
+    let mut state = SkillDiscoveryState::default();
 
     for base_path in skill_paths {
-        append_skills_from_path(
-            host,
-            &base_path,
-            &mut seen_file_paths,
-            &mut seen_names,
-            &mut skills,
-            &mut logger,
-        );
+        append_skills_from_path(host, &base_path, &mut state, &mut logger);
     }
 
-    skills
+    state.skills
 }
 
 fn default_skill_paths(host: &impl AgentSkillHost) -> Vec<String> {
@@ -62,9 +60,7 @@ fn default_skill_paths(host: &impl AgentSkillHost) -> Vec<String> {
 fn append_skills_from_path(
     host: &impl AgentSkillHost,
     base_path: &str,
-    seen_file_paths: &mut HashSet<String>,
-    seen_names: &mut HashSet<String>,
-    skills: &mut Vec<AgentSkill>,
+    state: &mut SkillDiscoveryState,
     logger: &mut impl FnMut(&str),
 ) {
     if !host.path_exists(base_path) {
@@ -72,16 +68,16 @@ fn append_skills_from_path(
     }
 
     for file_path in walk_skill_files(host, base_path) {
-        if !seen_file_paths.insert(file_path.clone()) {
+        if !state.seen_file_paths.insert(file_path.clone()) {
             continue;
         }
 
-        let Some(skill) = read_valid_skill(host, &file_path, seen_names, logger) else {
+        let Some(skill) = read_valid_skill(host, &file_path, &state.seen_names, logger) else {
             continue;
         };
 
-        seen_names.insert(skill.name.clone());
-        skills.push(skill);
+        state.seen_names.insert(skill.name.clone());
+        state.skills.push(skill);
     }
 }
 

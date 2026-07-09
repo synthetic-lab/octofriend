@@ -12,15 +12,18 @@ use octofwen_tools::mcp::{
 use octofwen_tools::runtime::{ToolContent, ToolReturn, flatten_tool_call};
 use serde_json::json;
 
+type RecordedCalls = Rc<RefCell<Vec<(String, Vec<(String, String)>)>>>;
+type ToolSummaries = Vec<ModelContextToolSummary>;
+
 #[derive(Clone, Default)]
 struct RecordingModelContextClient {
-    tools: Vec<ModelContextToolSummary>,
-    called: Rc<RefCell<Vec<(String, Vec<(String, String)>)>>>,
+    tools: ToolSummaries,
+    called: RecordedCalls,
     result: ModelContextToolResult,
 }
 
 impl ModelContextToolClient for RecordingModelContextClient {
-    fn list_tools(&self) -> Vec<ModelContextToolSummary> {
+    fn list_tools(&self) -> ToolSummaries {
         self.tools.clone()
     }
 
@@ -133,7 +136,7 @@ fn call_model_context_tool_wraps_client_call_errors_as_mcp_errors() {
     struct FailingClient;
 
     impl ModelContextToolClient for FailingClient {
-        fn list_tools(&self) -> Vec<ModelContextToolSummary> {
+        fn list_tools(&self) -> ToolSummaries {
             vec![ModelContextToolSummary {
                 name: "read_file".into(),
                 description: None,
@@ -142,9 +145,10 @@ fn call_model_context_tool_wraps_client_call_errors_as_mcp_errors() {
 
         fn call_tool(
             &self,
-            _name: &str,
-            _arguments: &[(String, String)],
+            name: &str,
+            arguments: &[(String, String)],
         ) -> Result<ModelContextToolResult, String> {
+            let _ = (name, arguments);
             Err("transport failed".into())
         }
     }

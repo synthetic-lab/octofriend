@@ -1,10 +1,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+
+type PathBufIterator<'a> = Box<dyn Iterator<Item = PathBuf> + 'a>;
+type StringVecResult = Result<Vec<String>, String>;
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-use super::session::LspRuntimeSession;
+use super::session::{LspRunToolRequest, LspRuntimeSession};
 
 use super::super::tool::required_string;
 
@@ -28,13 +31,13 @@ pub(crate) fn run_lsp(cwd: &Path, tool_name: &str, parsed: &Value) -> Result<Val
         .take()
         .ok_or_else(|| "LSP server has no stdout".to_owned())?;
     let mut session = LspRuntimeSession::new(stdin, stdout);
-    let result = session.run_tool(
+    let result = session.run_tool(LspRunToolRequest {
         tool_name,
         parsed,
-        run_config.root_path.to_string_lossy().as_ref(),
-        run_config.resolved_file_path.to_string_lossy().as_ref(),
-        &run_config.file_content,
-    );
+        root_path: run_config.root_path.to_string_lossy().as_ref(),
+        resolved_file_path: run_config.resolved_file_path.to_string_lossy().as_ref(),
+        file_content: &run_config.file_content,
+    });
 
     drop(session);
     let _ = child.kill();
@@ -170,6 +173,10 @@ fn detect_lsp_server(
     Ok(None)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "static recommended LSP table is clearer inline"
+)]
 fn recommended_lsp_servers() -> Vec<LspServerConfig> {
     vec![
         lsp_server(
@@ -394,7 +401,7 @@ fn has_path_separator(command: &str) -> bool {
 }
 
 #[cfg(windows)]
-fn executable_candidates(path: &Path) -> Box<dyn Iterator<Item = PathBuf> + '_> {
+fn executable_candidates(path: &Path) -> PathBufIterator<'_> {
     if path.extension().is_some() {
         return Box::new(std::iter::once(path.to_path_buf()));
     }
@@ -413,11 +420,11 @@ fn executable_candidates(path: &Path) -> Box<dyn Iterator<Item = PathBuf> + '_> 
 }
 
 #[cfg(not(windows))]
-fn executable_candidates(path: &Path) -> Box<dyn Iterator<Item = PathBuf> + '_> {
+fn executable_candidates(path: &Path) -> PathBufIterator<'_> {
     Box::new(std::iter::once(path.to_path_buf()))
 }
 
-fn required_config_string_array(value: &Value, key: &str) -> Result<Vec<String>, String> {
+fn required_config_string_array(value: &Value, key: &str) -> StringVecResult {
     value
         .get(key)
         .and_then(Value::as_array)
@@ -431,7 +438,7 @@ fn required_config_string_array(value: &Value, key: &str) -> Result<Vec<String>,
         .collect()
 }
 
-fn optional_string_array(value: &Value, key: &str) -> Result<Vec<String>, String> {
+fn optional_string_array(value: &Value, key: &str) -> StringVecResult {
     match value.get(key) {
         None => Ok(Vec::new()),
         Some(Value::Array(values)) => values

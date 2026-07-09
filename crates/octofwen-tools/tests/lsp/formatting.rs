@@ -89,7 +89,10 @@ fn formats_call_hierarchy_items_by_direction() {
     };
 
     assert_eq!(
-        format_call_hierarchy(&[item.clone()], CallHierarchyDirection::Incoming),
+        format_call_hierarchy(
+            std::slice::from_ref(&item),
+            CallHierarchyDirection::Incoming
+        ),
         "handleRequest (Function) /repo/src/server.ts:15:5"
     );
     assert_eq!(

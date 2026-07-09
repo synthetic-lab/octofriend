@@ -1,11 +1,12 @@
 use std::collections::HashSet;
+use std::hash::BuildHasher;
 
 use super::{AgentSkill, AgentSkillHost, parse_skill_content, validate_skill};
 
-pub fn read_valid_skill(
+pub fn read_valid_skill<S: BuildHasher>(
     host: &impl AgentSkillHost,
     file_path: &str,
-    seen_names: &HashSet<String>,
+    seen_names: &HashSet<String, S>,
     logger: &mut impl FnMut(&str),
 ) -> Option<AgentSkill> {
     let content = match host.read_file(file_path) {
