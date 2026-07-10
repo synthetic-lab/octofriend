@@ -218,10 +218,7 @@ export function insertHistoryItems(
 function createTree(tx: DbTransaction, metadata: SessionMetadata): number {
   const sessionId = metadata.sessionId;
   if (sessionId == null) throw new Error("Cannot create a tree without a session id.");
-  tx.insert(trees)
-    .values({ name: sessionId, cwd: metadata.cwd, updatedAt: Date.now() })
-    .onConflictDoNothing()
-    .run();
+  tx.insert(trees).values({ name: sessionId, cwd: metadata.cwd }).onConflictDoNothing().run();
 
   const tree = tx
     .select({ id: trees.id, cwd: trees.cwd })

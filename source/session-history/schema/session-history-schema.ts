@@ -14,7 +14,9 @@ export const trees = sqliteTable("trees", {
   id: integer().primaryKey({ autoIncrement: true }),
   name: text().notNull().unique(),
   cwd: text().notNull(),
-  updatedAt: integer().notNull(),
+  updatedAt: integer()
+    .notNull()
+    .$onUpdate(() => Date.now()),
 });
 
 export const localLaunches = sqliteTable("local_launches", {
