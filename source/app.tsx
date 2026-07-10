@@ -72,7 +72,9 @@ import {
   usePriorityInput,
   UNCHAINED_PRIORITY,
 } from "./hooks/use-priority-input.tsx";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
+import os from "os";
+import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
@@ -647,6 +649,7 @@ function RequestErrorScreen({
 }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
+  const themeColor = useColor();
   const { retryFrom, editAndRetryFrom } = useAppStore(
     useShallow(state => ({
       retryFrom: state.retryFrom,
@@ -658,8 +661,14 @@ function RequestErrorScreen({
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
+  const [wroteCurl, setWroteCurl] = useState(false);
+  const [curlFilePath, setCurlFilePath] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
 
-  const mapping: Record<string, Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">> = {};
+  const mapping: Record<
+    string,
+    Item<"view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit">
+  > = {};
 
   if (!viewError) {
     mapping["v"] = {
@@ -672,6 +681,10 @@ function RequestErrorScreen({
     mapping["c"] = {
       label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
       value: "copy-curl",
+    };
+    mapping["w"] = {
+      label: wroteCurl ? "Wrote cURL to file!" : "Write cURL to file",
+      value: "write-curl",
     };
   }
 
@@ -690,7 +703,9 @@ function RequestErrorScreen({
     value: "quit",
   };
 
-  const shortcutItems: ShortcutArray<"view" | "copy-curl" | "retry" | "edit-retry" | "quit"> = [
+  const shortcutItems: ShortcutArray<
+    "view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit"
+  > = [
     {
       type: "key" as const,
       mapping,
@@ -698,7 +713,7 @@ function RequestErrorScreen({
   ];
 
   const onSelect = useCallback(
-    (item: Item<"view" | "copy-curl" | "retry" | "edit-retry" | "quit">) => {
+    (item: Item<"view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit">) => {
       if (item.value === "view") {
         setViewError(true);
       } else if (item.value === "copy-curl") {
@@ -707,6 +722,15 @@ function RequestErrorScreen({
           setCopiedCurl(true);
         } catch (error) {
           setClipboardError(error instanceof Error ? error.message : "Failed to copy to clipboard");
+        }
+      } else if (item.value === "write-curl") {
+        try {
+          const filePath = path.join(os.tmpdir(), "octo-curl-request.sh");
+          writeFileSync(filePath, curlCommand || "Failed to generate cURL command");
+          setCurlFilePath(filePath);
+          setWroteCurl(true);
+        } catch (error) {
+          setWriteError(error instanceof Error ? error.message : "Failed to write cURL to file");
         }
       } else if (item.value === "retry") {
         retryFrom(mode, { config, transport });
@@ -736,6 +760,18 @@ function RequestErrorScreen({
       {clipboardError && (
         <Box marginY={1}>
           <Text color="red">{clipboardError}</Text>
+        </Box>
+      )}
+      {wroteCurl && curlFilePath && (
+        <Box marginY={1}>
+          <Text>
+            Wrote cURL to <Text color={themeColor}>{curlFilePath}</Text>
+          </Text>
+        </Box>
+      )}
+      {writeError && (
+        <Box marginY={1}>
+          <Text color="red">{writeError}</Text>
         </Box>
       )}
     </KbShortcutPanel>
