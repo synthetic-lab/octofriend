@@ -151,7 +151,11 @@ function appendAndPersistHistory(
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
 ): HistoryNode[] {
-  if (useAppStore.getState().getSession() !== session) return [...prevHistory];
+  if (useAppStore.getState().getSession() !== session) {
+    throw new Error(
+      `Stale session detected. To recover, quit & resume with \`octo --resume ${session.metadata.sessionId ?? "<session-id>"}\``,
+    );
+  }
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
