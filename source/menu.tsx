@@ -3,6 +3,8 @@ import { create } from "zustand";
 import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useModel } from "./state.ts";
+import { useSession } from "./session-context.ts";
+import type { Session } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
@@ -39,7 +41,7 @@ const useMenuState = create<MenuState>((set, _) => ({
   },
 }));
 
-export function Menu() {
+export function Menu({ onSessionChange }: { onSessionChange: (session: Session) => void }) {
   const { menuMode } = useMenuState(
     useShallow(state => ({
       menuMode: state.menuMode,
@@ -51,7 +53,8 @@ export function Menu() {
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
-  if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
+  if (menuMode === "clear-confirm")
+    return <ClearConversationConfirm onSessionChange={onSessionChange} />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
@@ -88,6 +91,7 @@ function AutofixToggle({
       notify: state.notify,
     })),
   );
+  const session = useSession();
 
   useInput((_, key) => {
     if (key.escape) setMenuMode("main-menu");
@@ -104,7 +108,7 @@ function AutofixToggle({
           await setConfig(newconf);
           setMenuMode("main-menu");
           toggleMenu();
-          notify(disableNotification);
+          notify(disableNotification, session);
         }}
         onConfirm={() => {
           setMenuMode("main-menu");
@@ -133,7 +137,7 @@ function AutofixToggle({
         });
         setMenuMode("main-menu");
         toggleMenu();
-        notify(enableNotification);
+        notify(enableNotification, session);
       }}
       onCancel={() => {
         setMenuMode("main-menu");
@@ -193,6 +197,7 @@ function SwitchModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
+  const session = useSession();
 
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -224,11 +229,11 @@ function SwitchModelMenu() {
         return;
       }
 
-      setModelOverride(target);
+      setModelOverride(target, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config, setMenuMode, setModelOverride, toggleMenu],
+    [config, setMenuMode, setModelOverride, toggleMenu, session],
   );
 
   if (pendingModel) {
@@ -257,7 +262,7 @@ function SwitchModelMenu() {
               await setConfig({ ...config, models });
             }
           }
-          setModelOverride(pendingModel.nickname);
+          setModelOverride(pendingModel.nickname, session);
           setPendingModel(null);
           setMenuMode("main-menu");
           toggleMenu();
@@ -357,6 +362,7 @@ function MainMenu() {
       resetPreMenuVimMode: state.resetPreMenuVimMode,
     })),
   );
+  const session = useSession();
 
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -487,12 +493,12 @@ function MainMenu() {
         }
 
         // Notify user
-        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
+        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`, session);
         return;
       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
       else setMenuMode(item.value);
     },
-    [config, setConfig, notify],
+    [config, setConfig, notify, session],
   );
 
   return (
@@ -644,31 +650,39 @@ function QuitConfirm() {
   );
 }
 
-function ClearConversationConfirm() {
+function ClearConversationConfirm({
+  onSessionChange,
+}: {
+  onSessionChange: (session: Session) => void;
+}) {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { startNewSession, toggleMenu, notify, getSession } = useAppStore(
+  const { startNewSession, notify } = useAppStore(
     useShallow(state => ({
       startNewSession: state.startNewSession,
-      toggleMenu: state.toggleMenu,
       notify: state.notify,
-      getSession: state.getSession,
     })),
   );
+  const session = useSession();
 
   return (
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
       onConfirm={async () => {
-        const { cwd, cliArgs } = getSession().metadata;
-        startNewSession(cwd, cliArgs);
+        const { cwd, cliArgs } = session.metadata;
+        const oldSessionId = session.metadata.sessionId;
+        const newSession = startNewSession(cwd, cliArgs);
+        onSessionChange(newSession);
         setMenuMode("main-menu");
-        toggleMenu();
-        notify("New conversation started");
+        const resumeHint =
+          oldSessionId != null
+            ? ` To resume the previous session, run \`octo --resume ${oldSessionId}\``
+            : "";
+        notify(`New conversation started.${resumeHint}`, newSession);
       }}
       onReject={() => setMenuMode("main-menu")}
     />
@@ -682,6 +696,7 @@ function SetDefaultModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
+  const session = useSession();
 
   const config = useConfig();
   const setConfig = useSetConfig();
@@ -731,11 +746,11 @@ function SetDefaultModelMenu() {
         ...config,
         models: [model, ...rest],
       });
-      setModelOverride(target);
+      setModelOverride(target, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config],
+    [config, setModelOverride, toggleMenu, session],
   );
 
   return (
@@ -754,6 +769,7 @@ function RemoveModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
+  const session = useSession();
 
   const config = useConfig();
   const setConfig = useSetConfig();
@@ -803,11 +819,11 @@ function RemoveModelMenu() {
         models: [...rest],
       });
       const current = rest[0];
-      setModelOverride(current.nickname);
+      setModelOverride(current.nickname, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config],
+    [config, setModelOverride, toggleMenu, session],
   );
 
   return (

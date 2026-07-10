@@ -31,7 +31,7 @@ import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
 import { loadSession } from "../session-history/index.ts";
-import type { LoadedSession } from "../session-history/index.ts";
+import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { THEME_COLOR } from "../theme.ts";
 
@@ -194,14 +194,15 @@ async function runMain(opts: {
   transport: Transport;
   loadedSession?: LoadedSession | null;
 }) {
+  let session: Session;
   if (opts.loadedSession != null) {
-    const session = {
+    session = {
       ...opts.loadedSession.session,
       metadata: { ...opts.loadedSession.session.metadata, cliArgs: opts.parsedCliArgs },
     };
-    useAppStore.getState().hydrateSession(session, opts.loadedSession.history);
+    useAppStore.getState().hydrateSession(opts.loadedSession.history);
   } else {
-    useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
+    session = useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
   }
 
   try {
@@ -242,6 +243,10 @@ async function runMain(opts: {
         metadata={APP_METADATA}
         unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
+        session={session}
+        onSessionChange={nextSession => {
+          session = nextSession;
+        }}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
       />,
@@ -254,9 +259,8 @@ async function runMain(opts: {
     );
 
     await waitUntilExit();
-    const { history, getSession } = useAppStore.getState();
+    const { history } = useAppStore.getState();
     if (history.some(item => item.type === "llm-ir")) {
-      const session = getSession();
       const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
       console.log(`\nResume this session with ${resumeCommand}`);
     }

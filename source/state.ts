@@ -33,6 +33,7 @@ import type { OctoIR } from "./ir/octo-ir.ts";
 export type RunArgs = {
   config: Config;
   transport: Transport;
+  session: Session;
 };
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
@@ -113,8 +114,6 @@ export type UiState = {
   readonly history: readonly HistoryNode[];
   clearNonce: number;
   lastUserPromptIndex: number | null;
-  _session: Session | null;
-  getSession: () => Session;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -122,14 +121,14 @@ export type UiState = {
   setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCall: ToolCallRequest) => void;
+  rejectTool: (toolCall: ToolCallRequest, session: Session) => void;
   abortResponse: () => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   resetPreMenuVimMode: () => void;
-  setModelOverride: (m: string) => void;
+  setModelOverride: (m: string, session: Session) => void;
   setQuery: (query: string) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
@@ -137,11 +136,11 @@ export type UiState = {
   ) => Promise<void>;
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
-  notify: (notif: string) => void;
+  notify: (notif: string, session: Session) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
-  hydrateSession: (session: Session, history: readonly HistoryNode[]) => void;
-  startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => void;
+  hydrateSession: (history: readonly HistoryNode[]) => void;
+  startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
@@ -151,11 +150,6 @@ function appendAndPersistHistory(
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
 ): HistoryNode[] {
-  if (useAppStore.getState().getSession() !== session) {
-    throw new Error(
-      `Stale session detected. To recover, quit & resume with \`octo --resume ${session.metadata.sessionId ?? "<session-id>"}\``,
-    );
-  }
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
@@ -176,12 +170,6 @@ export const useAppStore = create<UiState>((set, get) => ({
   query: "",
   clearNonce: 0,
   lastUserPromptIndex: null,
-  _session: null,
-  getSession: () => {
-    const session = get()._session;
-    if (session == null) throw new Error("Session is not initialized.");
-    return session;
-  },
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -224,7 +212,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  input: async ({ config, query, transport, images }) => {
+  input: async ({ config, query, transport, session, images }) => {
     const userMessage: HistoryItem = {
       type: "llm-ir",
       ir: {
@@ -236,9 +224,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     };
 
-    const history = appendAndPersistHistory(get().getSession(), get().history, [userMessage]);
+    const history = appendAndPersistHistory(session, get().history, [userMessage]);
     set({ history, lastUserPromptIndex: history.length - 1 });
-    await get().runAgent({ config, transport });
+    await get().runAgent({ config, transport, session });
   },
 
   retryFrom: async (mode, args) => {
@@ -289,7 +277,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  rejectTool: toolCall => {
+  rejectTool: (toolCall, session) => {
     const history = get().history;
 
     // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
@@ -330,7 +318,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       }
     }
     set({
-      history: appendAndPersistHistory(get().getSession(), get().history, [
+      history: appendAndPersistHistory(session, get().history, [
         {
           type: "llm-ir",
           ir: {
@@ -415,10 +403,10 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ query });
   },
 
-  setModelOverride: model => {
+  setModelOverride: (model, session) => {
     set({
       modelOverride: model,
-      history: appendAndPersistHistory(get().getSession(), get().history, [
+      history: appendAndPersistHistory(session, get().history, [
         {
           type: "notification",
           content: `Model: ${model}`,
@@ -427,9 +415,9 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  notify: notif => {
+  notify: (notif, session) => {
     set({
-      history: appendAndPersistHistory(get().getSession(), get().history, [
+      history: appendAndPersistHistory(session, get().history, [
         {
           type: "notification",
           content: notif,
@@ -438,9 +426,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  hydrateSession: (session, history) => {
+  hydrateSession: history => {
     set(state => ({
-      _session: session,
       history,
       lastUserPromptIndex: null,
       byteCount: 0,
@@ -451,8 +438,11 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   startNewSession: (cwd, cliArgs) => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { abortResponse } = get();
-    abortResponse();
+    const { modeData, preMenuModeData } = get();
+    const activeMode = modeData.mode === "menu" ? preMenuModeData : modeData;
+    if (activeMode != null && "abortController" in activeMode) {
+      activeMode.abortController.abort();
+    }
 
     set(state => ({
       history: [],
@@ -460,8 +450,10 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      _session: createSession(cwd, cliArgs),
+      modeData: { mode: "input", vimMode: "INSERT" },
+      preMenuModeData: null,
     }));
+    return createSession(cwd, cliArgs);
   },
 
   addToWhitelist: async (whitelistKey: string) => {
@@ -475,9 +467,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     return get().whitelist.has(whitelistKey);
   },
 
-  runTool: async ({ config, toolReq, transport }) => {
+  runTool: async ({ config, toolReq, transport, session }) => {
     let { modeData } = get();
-    const session = get().getSession();
     if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
@@ -529,9 +520,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  runAgent: async ({ config, transport }) => {
+  runAgent: async ({ config, transport, session }) => {
     const historyCopy = [...get().history];
-    const session = get().getSession();
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -643,7 +633,9 @@ export const useAppStore = create<UiState>((set, get) => ({
               type: "llm-ir",
               ir: event.checkpoint,
             };
-            set({ history: appendAndPersistHistory(session, historyCopy, [checkpointItem]) });
+            set({
+              history: appendAndPersistHistory(session, historyCopy, [checkpointItem]),
+            });
           },
 
           autofixingJson: () => {
