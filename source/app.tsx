@@ -131,13 +131,6 @@ type StaticItem =
       content: string;
     };
 
-function toStaticItems(messages: readonly HistoryNode[]): Array<StaticItem> {
-  return messages.map(message => ({
-    type: "history-item",
-    item: message,
-  }));
-}
-
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
 
@@ -225,11 +218,10 @@ export default function App({
       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
       ...(updates ? [{ type: "updates" as const, updates }] : []),
       { type: "slogan" as const },
-      ...toStaticItems(history),
     ];
 
     return items;
-  }, [history, currConfig, skillNotifs, updates]);
+  }, [currConfig, skillNotifs, updates]);
 
   return (
     <InputPriorityProvider>
@@ -247,11 +239,19 @@ export default function App({
                     <ExitOnDoubleCtrlC>
                       <TerminalSizeTracker>
                         <Box flexDirection="column" width="100%" height="100%">
-                          <Static items={staticItems} key={clearNonce}>
+                          <Static items={staticItems}>
                             {(item, index) => (
                               <StaticItemRenderer item={item} key={`static-${index}`} />
                             )}
                           </Static>
+                          <Box key={clearNonce} flexDirection="column">
+                            {history.map((item, index) => (
+                              <StaticItemRenderer
+                                item={{ type: "history-item", item }}
+                                key={`history-${index}`}
+                              />
+                            ))}
+                          </Box>
                           {(modeData.mode === "responding" || modeData.mode === "compacting") &&
                             (modeData.inflightResponse.reasoningContent ||
                               modeData.inflightResponse.content) && (
