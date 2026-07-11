@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import hljs from "highlight.js";
 import { render } from "ink-testing-library";
-import { HighlightedCode } from "../../src/render/highlight";
+import { HighlightedCode } from "../../src/render/highlight.tsx";
 
 describe("HighlightedCode", () => {
 	it("renders no-language code blocks as plain text without auto highlighting", () => {
@@ -34,7 +34,7 @@ describe("HighlightedCode", () => {
 			const { lastFrame } = render(
 				<HighlightedCode
 					code={"<not-a-language>"}
-					language="octofwen-missing"
+					language="octofriend-missing"
 				/>,
 			);
 

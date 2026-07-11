@@ -1,14 +1,14 @@
 # To opt into canary builds, source this file in your config.fish
 # Usage: source /path/to/canary.fish
 #
-# This creates a canary-octofwen function that runs this checkout directly with
-# OCTOFWEN_CHANNEL=canary, instead of using the published normal channel.
+# This creates a canary-octofriend function that runs this checkout directly with
+# octofriend_CHANNEL=canary, instead of using the published normal channel.
 
-set -g _OCTOFWEN_DIR (status dirname)
+set -g _octofriend_DIR (status dirname)
 
-function canary-octofwen
+function canary-octofriend
     set -l old_dir (pwd)
-    cd "$_OCTOFWEN_DIR"
+    cd "$_octofriend_DIR"
     set -l cd_status $status
     if test $cd_status -ne 0
         return $cd_status
@@ -23,24 +23,24 @@ function canary-octofwen
 
     set -l had_channel 0
     set -l old_channel
-    if set -q OCTOFWEN_CHANNEL
+    if set -q octofriend_CHANNEL
         set had_channel 1
-        set old_channel $OCTOFWEN_CHANNEL
+        set old_channel $octofriend_CHANNEL
     end
 
-    set -gx OCTOFWEN_CHANNEL canary
-    bun "$_OCTOFWEN_DIR/packages/octofwen-cli/src/bin.ts" $argv
+    set -gx octofriend_CHANNEL canary
+    bun "$_octofriend_DIR/packages/octofriend-cli/src/bin.ts" $argv
     set -l canary_status $status
 
     if test "$had_channel" = 1
-        set -gx OCTOFWEN_CHANNEL $old_channel
+        set -gx octofriend_CHANNEL $old_channel
     else
-        set -e OCTOFWEN_CHANNEL
+        set -e octofriend_CHANNEL
     end
 
     return $canary_status
 end
 
 function canary-octo
-    canary-octofwen $argv
+    canary-octofriend $argv
 end

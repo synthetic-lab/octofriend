@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 async function createSearchFixture(): Promise<Transport> {
-	const root = await mkdtemp(join(tmpdir(), "octofwen-file-suggestions-"));
+	const root = await mkdtemp(join(tmpdir(), "octofriend-file-suggestions-"));
 	tempRoots.push(root);
 	await mkdir(join(root, "src/components"), { recursive: true });
 	await mkdir(join(root, "ignored"), { recursive: true });
@@ -116,7 +116,7 @@ describe("searchFiles", () => {
 	});
 
 	it("does not reuse an aborted pending file list for the next query", async () => {
-		const root = await mkdtemp(join(tmpdir(), "octofwen-file-suggestions-"));
+		const root = await mkdtemp(join(tmpdir(), "octofriend-file-suggestions-"));
 		tempRoots.push(root);
 		let shellCalls = 0;
 		const transport: Transport = {
@@ -154,7 +154,7 @@ describe("searchFiles", () => {
 	});
 
 	it("matches non-ASCII file paths case-insensitively", async () => {
-		const root = await mkdtemp(join(tmpdir(), "octofwen-file-suggestions-"));
+		const root = await mkdtemp(join(tmpdir(), "octofriend-file-suggestions-"));
 		tempRoots.push(root);
 		await writeFile(join(root, "CaféMenu.ts"), "export {};\n");
 
@@ -168,7 +168,7 @@ describe("searchFiles", () => {
 	});
 
 	it("caps matches without resorting the cached file list on every query", async () => {
-		const root = await mkdtemp(join(tmpdir(), "octofwen-file-suggestions-"));
+		const root = await mkdtemp(join(tmpdir(), "octofriend-file-suggestions-"));
 		tempRoots.push(root);
 		for (let index = 0; index < 12; index += 1) {
 			await writeFile(join(root, `file-${index}.ts`), "export {};\n");
@@ -370,7 +370,7 @@ describe("useFileSearch", () => {
 	});
 
 	it("keeps selection index non-negative when navigating an empty result list", async () => {
-		const root = await mkdtemp(join(tmpdir(), "octofwen-file-suggestions-"));
+		const root = await mkdtemp(join(tmpdir(), "octofriend-file-suggestions-"));
 		tempRoots.push(root);
 		const instance = render(
 			<FileSearchProbe transport={new LocalTransport(root)} />,

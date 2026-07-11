@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createOctofwenCommand } from "@octofwen/cli";
+import { createoctofriendCommand } from "@octofriend/cli";
 
 function runCliCommand(...args: string[]) {
 	return Bun.spawnSync({
@@ -32,7 +32,7 @@ function expectSuccessfulHelp(args: string[], expectedSnippets: string[]) {
 
 describe("cli", () => {
 	it("exports the command factory", () => {
-		expect(createOctofwenCommand).toBeFunction();
+		expect(createoctofriendCommand).toBeFunction();
 	});
 
 	it("preserves legacy and renamed npm bins", () => {
@@ -40,9 +40,8 @@ describe("cli", () => {
 
 		expect(packageJson.bin).toEqual({
 			octofriend: "packages/cli/src/bin.ts",
-			octofwen: "packages/cli/src/bin.ts",
 			octo: "packages/cli/src/bin.ts",
-			"octofwen-agentd": "packages/cli/bin/octofwen-agentd.js",
+			"octofriend-agentd": "packages/cli/bin/octofriend-agentd.js",
 		});
 		expect(packageJson.bundledDependencies).toBeUndefined();
 	});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Key } from "ink";
-import { useEmacsKeyHandler } from "../../src/input/text";
+import { useEmacsKeyHandler } from "../../src/input/text.ts";
 
 const key = (overrides: Partial<Key> = {}): Key =>
 	({
@@ -26,13 +26,13 @@ describe("useEmacsKeyHandler", () => {
 		const handler = useEmacsKeyHandler();
 
 		expect(
-			handler.handle("a", key({ ctrl: true }), 4, 9, "octofwen", true),
+			handler.handle("a", key({ ctrl: true }), 4, 9, "octofriend", true),
 		).toEqual({
 			consumed: true,
 			newCursorPosition: 0,
 		});
 		expect(
-			handler.handle("e", key({ ctrl: true }), 4, 9, "octofwen", true),
+			handler.handle("e", key({ ctrl: true }), 4, 9, "octofriend", true),
 		).toEqual({
 			consumed: true,
 			newCursorPosition: 9,
@@ -162,7 +162,7 @@ describe("createVimKeyHandler", () => {
 			hasLineAfter,
 			isWhitespace,
 			isWordChar,
-		} = await import("../../src/input/editor/vim-nav");
+		} = await import("../../src/input/editor/vim-nav.ts");
 
 		const value = "alpha\n  beta\n";
 		expect(getLineInfo(value, 0)).toEqual({ lineIndex: 0, columnIndex: 0 });
@@ -192,7 +192,7 @@ describe("createVimKeyHandler", () => {
 			getLineText,
 			hasLineAfter,
 			trimNewlinesFromEnd,
-		} = await import("../../src/input/editor/vim-nav");
+		} = await import("../../src/input/editor/vim-nav.ts");
 
 		const value = "alpha\r\n  beta\r\ngamma";
 		expect(getLineInfo(value, 0)).toEqual({ lineIndex: 0, columnIndex: 0 });
@@ -209,7 +209,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("moves in normal mode with h, l, w, b, and line commands", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const modeChanges: string[] = [];
 		const handler = createVimKeyHandler((mode) => modeChanges.push(mode));
 		const value = "alpha beta\n  gamma";
@@ -248,7 +248,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("keeps vim normal cursor off CRLF separator bytes", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const handler = createVimKeyHandler(() => undefined);
 		const value = "alpha\r\nbeta";
 
@@ -280,7 +280,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("moves and deletes full graphemes in vim normal mode", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const handler = createVimKeyHandler(() => undefined);
 		const value = "a👩🏽‍💻b";
 		const emojiStart = 1;
@@ -314,7 +314,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("keeps vim word motions on grapheme boundaries", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const handler = createVimKeyHandler(() => undefined);
 		const value = "a 👩🏽‍💻 b";
 		const emojiStart = 2;
@@ -353,7 +353,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("treats non-breaking spaces as whitespace in vim word motions", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const handler = createVimKeyHandler(() => undefined);
 		const value = "foo\u00a0bar";
 		const secondWordStart = 4;
@@ -380,7 +380,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("edits with x, dd, dw, cw, undo, and redo", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const modeChanges: string[] = [];
 		const handler = createVimKeyHandler((mode) => modeChanges.push(mode));
 
@@ -434,7 +434,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("clears redo history after saving a new vim edit", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const handler = createVimKeyHandler(() => undefined);
 
 		expect(handler.handle("x", key(), 1, 3, "abc", "NORMAL")).toEqual({
@@ -460,7 +460,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("leaves insert mode on a grapheme boundary", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const modeChanges: string[] = [];
 		const handler = createVimKeyHandler((mode) => modeChanges.push(mode));
 		const value = "a👩🏽‍💻";
@@ -482,7 +482,7 @@ describe("createVimKeyHandler", () => {
 	});
 
 	it("handles insert-mode escape and newline insertion", async () => {
-		const { createVimKeyHandler } = await import("../../src/input/text");
+		const { createVimKeyHandler } = await import("../../src/input/text.ts");
 		const modeChanges: string[] = [];
 		const handler = createVimKeyHandler((mode) => modeChanges.push(mode));
 
@@ -504,7 +504,7 @@ describe("createVimKeyHandler", () => {
 
 describe("computeImageBadgeLayout", () => {
 	it("keeps image badges and loading badge on the same row when they fit", async () => {
-		const { computeImageBadgeLayout } = await import("../../src/input/text");
+		const { computeImageBadgeLayout } = await import("../../src/input/text.ts");
 
 		expect(computeImageBadgeLayout(1, true, 80)).toEqual({
 			badgeRows: [
@@ -518,7 +518,7 @@ describe("computeImageBadgeLayout", () => {
 	});
 
 	it("wraps badges to a new row when the current row is full", async () => {
-		const { computeImageBadgeLayout } = await import("../../src/input/text");
+		const { computeImageBadgeLayout } = await import("../../src/input/text.ts");
 
 		expect(computeImageBadgeLayout(2, false, 30)).toEqual({
 			badgeRows: [
@@ -532,7 +532,9 @@ describe("computeImageBadgeLayout", () => {
 
 describe("multimedia input helpers", () => {
 	it("submits when text is non-empty or images are attached", async () => {
-		const { shouldSubmitMultimediaInput } = await import("../../src/input/text");
+		const { shouldSubmitMultimediaInput } = await import(
+			"../../src/input/text.ts"
+		);
 
 		expect(shouldSubmitMultimediaInput(" ask ", [])).toBe(true);
 		expect(shouldSubmitMultimediaInput("   ", [{ path: "one.png" }])).toBe(
@@ -543,7 +545,7 @@ describe("multimedia input helpers", () => {
 
 	it("formats the unsupported image attachment message with the model example", async () => {
 		const { getUnsupportedImageAttachmentsMessage } = await import(
-			"../../src/input/text"
+			"../../src/input/text.ts"
 		);
 
 		expect(getUnsupportedImageAttachmentsMessage()).toContain(

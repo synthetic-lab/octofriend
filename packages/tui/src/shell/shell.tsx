@@ -17,7 +17,8 @@ import {
 import type { Config } from "../runtime/config/schemas";
 import type { Transport } from "../runtime/workspace/common";
 import { TerminalSizeTracker } from "../layout/viewport";
-import type { ModelConnectionTester } from "../menu/models/connection";
+import { ModelDiscoveryContext } from "../menu/models/connection";
+import type { ModelConnectionTester, ModelDiscoveryTester } from "../menu/models/connection";
 import { ModelConnectionTestContext } from "../menu/models/connection";
 import {
 	SyntheticQuotaFetchContext,
@@ -54,6 +55,7 @@ export type TerminalAppShellProps = {
 	inputHistory: InputHistory;
 	bootSkills: string[];
 	modelConnectionTest: ModelConnectionTester;
+	modelDiscover?: ModelDiscoveryTester;
 	syntheticQuotaFetch: SyntheticQuotaFetcher;
 	tokenUsageCounts?: TokenUsageCounts;
 } & Pick<
@@ -172,6 +174,7 @@ export function App({
 	inputHistory,
 	bootSkills,
 	modelConnectionTest,
+	modelDiscover,
 	syntheticQuotaFetch,
 	tokenUsageCounts,
 	trajectoryArcRun,
@@ -219,7 +222,8 @@ export function App({
 	);
 
 	return (
-		<ModelConnectionTestContext.Provider value={modelConnectionTest}>
+		<ModelDiscoveryContext.Provider value={modelDiscover ?? (async () => ({ models: [] }))}>
+			<ModelConnectionTestContext.Provider value={modelConnectionTest}>
 			<SyntheticQuotaFetchContext.Provider value={syntheticQuotaFetch}>
 				<InputPriorityProvider>
 					<UnchainedShiftTabHandler
@@ -276,6 +280,7 @@ export function App({
 					</SetConfigContext.Provider>
 				</InputPriorityProvider>
 			</SyntheticQuotaFetchContext.Provider>
-		</ModelConnectionTestContext.Provider>
+			</ModelConnectionTestContext.Provider>
+		</ModelDiscoveryContext.Provider>
 	);
 }

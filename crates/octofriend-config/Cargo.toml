@@ -1,0 +1,23 @@
+[package]
+name = "octofriend-config"
+description = "Configuration, auth, paths, and model catalog domain for octofriend"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofriend_config"
+path = "src/lib.rs"
+
+[dependencies]
+json5.workspace = true
+env.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

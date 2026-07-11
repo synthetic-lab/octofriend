@@ -1,6 +1,6 @@
-import { resolveAgentdCommand } from "./bridge/platform/platform";
-import type { Config } from "./config/schemas";
-import { err, ok, type Result } from "./result";
+import { resolveAgentdCommand } from "./bridge/platform/platform.ts";
+import type { Config } from "./config/schemas.ts";
+import { err, ok, type Result } from "./result.ts";
 
 type ModelName = {
 	nickname: string;
@@ -33,7 +33,7 @@ function configSelectModel(
 	config: Config,
 	modelOverride: string | null,
 ): Config["models"][number] | undefined {
-	const result = agentdRequestSync("octofwen.agentd/configSelectModel", {
+	const result = agentdRequestSync("octofriend.agentd/configSelectModel", {
 		config,
 		modelOverride,
 	});
@@ -59,18 +59,20 @@ function agentdRequestSync(
 	});
 	if (subprocess.exitCode !== 0) {
 		return err(
-			`octofwen-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
+			`octofriend-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
 		);
 	}
 	const line = subprocess.stdout
 		.toString()
 		.split("\n")
 		.find((entry) => entry.trim() !== "");
-	if (!line) return err("octofwen-agentd returned no response");
+	if (!line) return err("octofriend-agentd returned no response");
 	const response = parseResponse(line);
 	if (!response.success) return response;
 	if (response.data.error) {
-		return err(response.data.error.message ?? "octofwen-agentd request failed");
+		return err(
+			response.data.error.message ?? "octofriend-agentd request failed",
+		);
 	}
 	return ok(response.data.result);
 }

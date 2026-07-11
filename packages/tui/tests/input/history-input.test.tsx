@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 
 async function createFileMentionFixture(): Promise<Transport> {
-	const root = await mkdtemp(join(tmpdir(), "octofwen-input-history-"));
+	const root = await mkdtemp(join(tmpdir(), "octofriend-input-history-"));
 	tempRoots.push(root);
 	await mkdir(join(root, "src"), { recursive: true });
 	await writeFile(join(root, "src/app.ts"), "export {};\n");

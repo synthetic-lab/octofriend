@@ -1,0 +1,23 @@
+[package]
+name = "octofriend-store"
+description = "SQLite records and repositories for octofriend"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofriend_store"
+path = "src/lib.rs"
+
+[dependencies]
+octofriend-config.workspace = true
+
+rusqlite.workspace = true
+
+[lints]
+workspace = true

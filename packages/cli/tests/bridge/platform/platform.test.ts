@@ -5,21 +5,23 @@ import {
 	resolveAgentdCommand,
 	resolveAgentdExecutable,
 	spawnAgentdProcess,
-} from "../../../src/bridge/platform/platform";
+} from "../../../src/bridge/platform/platform.ts";
 
 describe("resolveAgentdExecutable", () => {
 	it("uses an explicitly configured executable before environment values", () => {
 		expect(
 			resolveAgentdExecutable({
 				executable: "/tmp/configured-agentd",
-				env: { OCTOFWEN_AGENTD: "/tmp/env-agentd" },
+				env: { octofriend_AGENTD: "/tmp/env-agentd" },
 			}),
 		).toBe("/tmp/configured-agentd");
 	});
 
-	it("uses OCTOFWEN_AGENTD from the provided environment", () => {
+	it("uses octofriend_AGENTD from the provided environment", () => {
 		expect(
-			resolveAgentdExecutable({ env: { OCTOFWEN_AGENTD: "/tmp/env-agentd" } }),
+			resolveAgentdExecutable({
+				env: { octofriend_AGENTD: "/tmp/env-agentd" },
+			}),
 		).toBe("/tmp/env-agentd");
 	});
 
@@ -33,7 +35,7 @@ describe("resolveAgentdExecutable", () => {
 describe("resolveAgentdCommand", () => {
 	it("runs configured executables directly", () => {
 		expect(
-			resolveAgentdCommand({ env: { OCTOFWEN_AGENTD: "/tmp/env-agentd" } }),
+			resolveAgentdCommand({ env: { octofriend_AGENTD: "/tmp/env-agentd" } }),
 		).toEqual(["/tmp/env-agentd"]);
 	});
 
@@ -52,7 +54,7 @@ describe("spawnAgentdProcess", () => {
 		const stderr = new ReadableStream<Uint8Array>();
 
 		const process = spawnAgentdProcess({
-			executable: "/tmp/octofwen-agentd",
+			executable: "/tmp/octofriend-agentd",
 			spawn(command, options) {
 				calls.push([command, options]);
 				return {
@@ -72,7 +74,7 @@ describe("spawnAgentdProcess", () => {
 
 		expect(calls).toEqual([
 			[
-				["/tmp/octofwen-agentd"],
+				["/tmp/octofriend-agentd"],
 				{ stdin: "pipe", stdout: "pipe", stderr: "pipe" },
 			],
 		]);
@@ -86,7 +88,7 @@ describe("spawnAgentdProcess", () => {
 		let ended = false;
 
 		const process = spawnAgentdProcess({
-			executable: "/tmp/octofwen-agentd",
+			executable: "/tmp/octofriend-agentd",
 			spawn() {
 				return {
 					stdin: {
@@ -123,10 +125,7 @@ describe("spawnAgentdProcess", () => {
 describe("packaged agent daemon startup", () => {
 	it("keeps the workspace CLI package publishable and includes the agent daemon launcher", () => {
 		const packageJson = JSON.parse(
-			readFileSync(
-				new URL("../../../package.json", import.meta.url),
-				"utf8",
-			),
+			readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
 		) as {
 			private?: boolean;
 			bin?: Record<string, string>;
@@ -136,14 +135,13 @@ describe("packaged agent daemon startup", () => {
 		expect(packageJson.private).toBeUndefined();
 		expect(packageJson.bin).toMatchObject({
 			octofriend: "./src/bin.ts",
-			octofwen: "./src/bin.ts",
 			octo: "./src/bin.ts",
-			"octofwen-agentd": "./bin/octofwen-agentd.js",
+			"octofriend-agentd": "./bin/octofriend-agentd.js",
 		});
 		expect(packageJson.files).toContain("bin");
 
 		const launcher = readFileSync(
-			new URL("../../../bin/octofwen-agentd.js", import.meta.url),
+			new URL("../../../bin/octofriend-agentd.js", import.meta.url),
 			"utf8",
 		);
 		expect(launcher.startsWith("#!/usr/bin/env bun\n")).toBe(true);

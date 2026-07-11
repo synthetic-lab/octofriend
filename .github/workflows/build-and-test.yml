@@ -30,19 +30,19 @@ jobs:
       - name: Smoke test packaged agentd launcher
         shell: pwsh
         run: |
-          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | bun packages/octofwen-cli/bin/octofwen-agentd.js | Select-Object -First 1
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | bun packages/octofriend-cli/bin/octofriend-agentd.js | Select-Object -First 1
 
       - name: Smoke test PowerShell canary
         shell: pwsh
         run: |
           . ./canary.ps1
-          Invoke-CanaryOctofwen --help | Out-Null
+          Invoke-Canaryoctofriend --help | Out-Null
 
       - name: Smoke test packed global install
         shell: pwsh
         run: |
-          $packDir = Join-Path $env:RUNNER_TEMP "octofwen-pack"
-          $installPrefix = Join-Path $env:RUNNER_TEMP "octofwen-install"
+          $packDir = Join-Path $env:RUNNER_TEMP "octofriend-pack"
+          $installPrefix = Join-Path $env:RUNNER_TEMP "octofriend-install"
           New-Item -ItemType Directory -Force $packDir, $installPrefix | Out-Null
           $packOutput = npm pack --json --pack-destination $packDir | Out-String
           if ($packOutput -notmatch '(?s)(\[\s*\{.*\]\s*)$') {
@@ -53,10 +53,10 @@ jobs:
           npm install --global --prefix $installPrefix $tarball
           $binDir = if ($IsWindows) { $installPrefix } else { Join-Path $installPrefix "bin" }
           $env:PATH = "$binDir$([IO.Path]::PathSeparator)$env:PATH"
-          octofwen --help | Out-Null
+          octofriend --help | Out-Null
           octo --help | Out-Null
           octofriend --help | Out-Null
-          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | octofwen-agentd | Select-Object -First 1
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | octofriend-agentd | Select-Object -First 1
 
       - name: Validate Unix canary syntax
         if: runner.os != 'Windows'

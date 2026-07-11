@@ -3,7 +3,7 @@ import {
 	AgentdBridgeResponseError,
 	invalidAgentdInitializeResponseError,
 	invalidAgentdToolRenderResponseError,
-} from "../../../src/bridge/agent/errors";
+} from "../../../src/bridge/agent/errors.ts";
 
 describe("AgentdBridgeResponseError", () => {
 	it("names invalid bridge response errors", () => {
@@ -17,14 +17,14 @@ describe("AgentdBridgeResponseError", () => {
 	it("creates initialize validation errors with the existing message", () => {
 		expect(invalidAgentdInitializeResponseError()).toMatchObject({
 			name: "AgentdBridgeResponseError",
-			message: "Invalid octofwen-agentd initialize response",
+			message: "Invalid octofriend-agentd initialize response",
 		});
 	});
 
 	it("creates tool render validation errors with the existing message", () => {
 		expect(invalidAgentdToolRenderResponseError()).toMatchObject({
 			name: "AgentdBridgeResponseError",
-			message: "Invalid octofwen-agentd tool render response",
+			message: "Invalid octofriend-agentd tool render response",
 		});
 	});
 });

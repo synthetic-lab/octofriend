@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { CwdContext } from "../../src/shell/workspace-context";
 import {
 	McpToolRenderer,
 	ShellToolRenderer,
 	ToolMessageRenderer,
 	WebSearchToolRenderer,
 	WhitelistAllowDescription,
-} from "../../src/render/tools";
+} from "../../src/render/tools.tsx";
+import { CwdContext } from "../../src/shell/workspace-context.tsx";
 
 describe("terminal tool rendering", () => {
 	it("renders shell tool commands", () => {
@@ -64,7 +64,7 @@ describe("terminal tool rendering", () => {
 	it("renders web search tool activity", () => {
 		const { lastFrame } = render(
 			<WebSearchToolRenderer
-				item={{ name: "web-search", arguments: { query: "octofwen" } }}
+				item={{ name: "web-search", arguments: { query: "octofriend" } }}
 			/>,
 		);
 

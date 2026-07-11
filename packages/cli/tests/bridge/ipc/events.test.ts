@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { createAgentdRequest } from "../../../src/bridge/ipc/events";
+import { createAgentdRequest } from "../../../src/bridge/ipc/events.ts";
 
 describe("createAgentdRequest", () => {
 	it("creates JSON-RPC requests without params", () => {
-		expect(createAgentdRequest(7, "octofwen.agentd/initialize")).toEqual({
+		expect(createAgentdRequest(7, "octofriend.agentd/initialize")).toEqual({
 			jsonrpc: "2.0",
 			id: 7,
-			method: "octofwen.agentd/initialize",
+			method: "octofriend.agentd/initialize",
 		});
 	});
 
@@ -22,7 +22,7 @@ describe("createAgentdRequest", () => {
 
 describe("process client exports", () => {
 	it("does not re-export JSON-RPC event helpers from the client owner", async () => {
-		const clientModule = await import("../../../src/bridge/ipc/client");
+		const clientModule = await import("../../../src/bridge/ipc/client.ts");
 
 		expect("createAgentdRequest" in clientModule).toBe(false);
 	});

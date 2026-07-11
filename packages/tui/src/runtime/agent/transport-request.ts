@@ -1,5 +1,5 @@
-import { resolveAgentdCommand } from "./command";
-import { firstNonEmptyStdoutLine } from "./stdout";
+import { resolveAgentdCommand } from "./command.ts";
+import { firstNonEmptyStdoutLine } from "./stdout.ts";
 
 let nextRequestId = 1;
 
@@ -37,12 +37,14 @@ export async function agentdTransportRequestRaw(
 		if (aborted) return Promise.reject(new Error("agentd request aborted"));
 		if (exitCode !== 0) {
 			return Promise.reject(
-				new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
+				new Error(`octofriend-agentd exited with code ${exitCode}: ${stderr}`),
 			);
 		}
 		const firstLine = firstNonEmptyStdoutLine(stdout);
 		if (!firstLine) {
-			return Promise.reject(new Error("octofwen-agentd returned no response"));
+			return Promise.reject(
+				new Error("octofriend-agentd returned no response"),
+			);
 		}
 		const response = JSON.parse(firstLine) as {
 			result?: unknown;
@@ -50,7 +52,7 @@ export async function agentdTransportRequestRaw(
 		};
 		if (response.error) {
 			const error = new Error(
-				response.error.message ?? "octofwen-agentd request failed",
+				response.error.message ?? "octofriend-agentd request failed",
 			);
 			(error as Error & { data?: unknown }).data = response.error.data;
 			return Promise.reject(error);

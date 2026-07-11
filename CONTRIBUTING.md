@@ -1,6 +1,6 @@
-# Contributing to Octofwen
+# Contributing to octofriend
 
-Thank you for your interest in contributing to Octofwen! We welcome contributions in many forms: code, bug reports, and documentation improvements. Before diving in, please take a moment to read through these guidelines so we can keep the project healthy and the review process smooth for everyone.
+Thank you for your interest in contributing to octofriend! We welcome contributions in many forms: code, bug reports, and documentation improvements. Before diving in, please take a moment to read through these guidelines so we can keep the project healthy and the review process smooth for everyone.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Octofwen! We welcome contribution
 
 ## Before You Start
 
-- Check existing [issues](https://github.com/synthetic-lab/octofwen/issues) and [pull requests](https://github.com/synthetic-lab/octofwen/pulls) to avoid duplicating work.
+- Check existing [issues](https://github.com/synthetic-lab/octofriend/issues) and [pull requests](https://github.com/synthetic-lab/octofriend/pulls) to avoid duplicating work.
 - For new features, discuss your approach in a [#feature-request](https://discord.com/channels/1315627714056687706/1476772316401893407) post in our [Discord](https://synthetic.new/discord) or in a Github issue. We may have opinions on the direction, and it's better to align early than after you've put in the work.
 - If you want to work on an open issue or feature, comment on it (either on Discord or GH Issues) to let others know.
 
@@ -27,8 +27,8 @@ Thank you for your interest in contributing to Octofwen! We welcome contribution
 
 ```bash
 # Fork the repo on GitHub, then clone your fork:
-git clone https://github.com/your-username/octofwen.git
-cd octofwen
+git clone https://github.com/your-username/octofriend.git
+cd octofriend
 
 # Install dependencies:
 bun install
@@ -43,25 +43,25 @@ If you ever want to run your local checkout directly instead of a published rele
 
 ```bash
 # Add this to your ~/.zshrc or ~/.bashrc:
-source /path/to/octofwen/canary.sh
+source /path/to/octofriend/canary.sh
 
 # Or for fish, add this to ~/.config/fish/config.fish:
-source /path/to/octofwen/canary.fish
+source /path/to/octofriend/canary.fish
 ```
 
 ```powershell
 # Add this to your PowerShell profile:
-. /path/to/octofwen/canary.ps1
+. /path/to/octofriend/canary.ps1
 ```
 
-The bash and fish scripts define a `canary-octofwen` command. The PowerShell script defines `Invoke-CanaryOctofwen` and a `canary-octo` alias. Each command builds your current checkout and runs it on the spot. Useful for testing your changes without a full publish cycle:
+The bash and fish scripts define a `canary-octofriend` command. The PowerShell script defines `Invoke-Canaryoctofriend` and a `canary-octo` alias. Each command builds your current checkout and runs it on the spot. Useful for testing your changes without a full publish cycle:
 
 ```bash
-canary-octofwen
+canary-octofriend
 ```
 
 ```powershell
-Invoke-CanaryOctofwen
+Invoke-Canaryoctofriend
 ```
 
 ---
@@ -116,7 +116,7 @@ A good bug report makes it much easier to reproduce and fix the issue. Please in
 - **What actually happened**
 - **Steps to reproduce**: as minimal and specific as possible. For request errors, use Copy request as cURL to give us more information.
 - **Your environment**: OS, terminal, LLM provider/model, etc.
-- **Relevant logs**: run with `OCTO_VERBOSE=1 octofwen` to get more detailed output
+- **Relevant logs**: run with `OCTO_VERBOSE=1 octofriend` to get more detailed output
 - **Screenshots or recordings**: especially if the issue is visual or involves terminal rendering
 
 Please search existing issues before opening a new one.
@@ -140,4 +140,4 @@ If you submit a PR that looks vibecoded, we may close it. This isn't about gatek
 
 ---
 
-Thank you for contributing. Now go build something cool with Octofwen! 🐙
+Thank you for contributing. Now go build something cool with octofriend! 🐙

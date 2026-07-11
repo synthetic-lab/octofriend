@@ -15,8 +15,8 @@ If the working directory is a git repository, include `.gitignore`-aware directo
 - Verify:
 
 ```sh
-cargo test -p octofwen-agent --test agentd system_prompt_discovers_gitignore_aware_directory_hierarchy -- --nocapture
-cargo test -p octofwen-llm --test prompts system_prompt_renders_identity_workspace_listing_and_instruction_context -- --nocapture
+cargo test -p octofriend-agent --test agentd system_prompt_discovers_gitignore_aware_directory_hierarchy -- --nocapture
+cargo test -p octofriend-llm --test prompts system_prompt_renders_identity_workspace_listing_and_instruction_context -- --nocapture
 ```
 
 #### [x] Add a forgotten-work check before returning input
@@ -28,8 +28,8 @@ Before returning control to the user, run a short internal check for missed test
 - Verify:
 
 ```sh
-cargo test -p octofwen-agent --test agentd trajectory_arc_runs_forgotten_check_before_returning_input -- --nocapture
-cargo test -p octofwen-agent --test agentd trajectory -- --nocapture
+cargo test -p octofriend-agent --test agentd trajectory_arc_runs_forgotten_check_before_returning_input -- --nocapture
+cargo test -p octofriend-agent --test agentd trajectory -- --nocapture
 cargo fmt --all --check
 ```
 
@@ -44,11 +44,11 @@ Gemini's OpenAI-compatible endpoint was not complete enough for Octo.
 - Verify:
 
 ```sh
-cargo test -p octofwen-llm --test providers
-cargo test -p octofwen-llm --test compiler assistant_output
-cargo test -p octofwen-agent --test agentd model_connection
-cargo test -p octofwen-agent --test agentd provider
-OCTOFWEN_AGENTD=target/debug/octofwen-agentd bun test packages/octofwen-cli/src/__tests__/bridge/rust/model-catalog.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/agent-provider.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/agent.test.ts packages/octofwen-tui/src/__tests__/internal/model-provider-catalog/model-provider-catalog.test.ts packages/octofwen-tui/src/__tests__/menu/model_setup.test.ts
+cargo test -p octofriend-llm --test providers
+cargo test -p octofriend-llm --test compiler assistant_output
+cargo test -p octofriend-agent --test agentd model_connection
+cargo test -p octofriend-agent --test agentd provider
+octofriend_AGENTD=target/debug/octofriend-agentd bun test packages/octofriend-cli/src/__tests__/bridge/rust/model-catalog.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/agent-provider.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/agent.test.ts packages/octofriend-tui/src/__tests__/internal/model-provider-catalog/model-provider-catalog.test.ts packages/octofriend-tui/src/__tests__/menu/model_setup.test.ts
 ```
 
 #### [x] Configure Anthropic thinking budget by token count
@@ -60,8 +60,8 @@ Anthropic models can use explicit token budgets instead of only `minimal`/`low`/
 - Verify:
 
 ```sh
-cargo test -p octofwen-agent --test agentd anthropic -- --nocapture
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/provider-run.test.ts packages/octofwen-tui/src/__tests__/internal/agent-trajectory-runtime/agent-trajectory-runtime.test.ts
+cargo test -p octofriend-agent --test agentd anthropic -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-cli/src/__tests__/provider-run.test.ts packages/octofriend-tui/src/__tests__/internal/agent-trajectory-runtime/agent-trajectory-runtime.test.ts
 ```
 
 #### [x] Handle missing auth during model switching
@@ -73,8 +73,8 @@ Model switching should not silently select a model whose configured auth is miss
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/menu/app_menu.test.tsx
-cargo test -p octofwen-agent --test agentd config_select_model_reports_missing_configured_env_auth -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/menu/app_menu.test.tsx
+cargo test -p octofriend-agent --test agentd config_select_model_reports_missing_configured_env_auth -- --nocapture
 ```
 
 #### [x] Add API-key links for known inference hosts
@@ -86,10 +86,10 @@ Model setup should show clickable API-key URLs for known providers, including wa
 - Verify:
 
 ```sh
-cargo test -p octofwen-agent --test agentd model_provider_catalog_request_returns_agentd_provider_catalog -- --nocapture
-cargo build -p octofwen-agent --bin octofwen-agentd
-OCTOFWEN_AGENTD=target/debug/octofwen-agentd PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/menu/model_setup.test.ts packages/octofwen-tui/src/__tests__/internal/model-provider-catalog/model-provider-catalog.test.ts
-OCTOFWEN_AGENTD=target/debug/octofwen-agentd PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/bridge/rust/model-catalog.test.ts
+cargo test -p octofriend-agent --test agentd model_provider_catalog_request_returns_agentd_provider_catalog -- --nocapture
+cargo build -p octofriend-agent --bin octofriend-agentd
+octofriend_AGENTD=target/debug/octofriend-agentd PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/menu/model_setup.test.ts packages/octofriend-tui/src/__tests__/internal/model-provider-catalog/model-provider-catalog.test.ts
+octofriend_AGENTD=target/debug/octofriend-agentd PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-cli/src/__tests__/bridge/rust/model-catalog.test.ts
 ```
 
 #### [x] Test autofix model connections before accepting setup
@@ -101,22 +101,22 @@ Autofix setup should test all supported auth sources and show billing/auth error
 - Verify:
 
 ```sh
-cargo build -p octofwen-agent --bin octofwen-agentd
-OCTOFWEN_AGENTD="$(pwd)/target/debug/octofwen-agentd" PATH="$HOME/.bun/bin:$PATH" bun test --timeout 30000 packages/octofwen-tui/src/__tests__/menu/model_setup.test.ts
+cargo build -p octofriend-agent --bin octofriend-agentd
+octofriend_AGENTD="$(pwd)/target/debug/octofriend-agentd" PATH="$HOME/.bun/bin:$PATH" bun test --timeout 30000 packages/octofriend-tui/src/__tests__/menu/model_setup.test.ts
 ```
 
 ### CLI prompt command
 
-#### [x] Support Anthropic and OpenAI Responses in `octofwen prompt`
+#### [x] Support Anthropic and OpenAI Responses in `octofriend prompt`
 
 - Outcome: the prompt command resolves the selected model and delegates completion to `runCliProviderCompletion`.
 - Behavior: the command forwards model `type`, reasoning settings, modalities, system prompt, API key, and prompt IR to agentd's provider compiler. Agentd supports `anthropic`, `openai-responses`, and standard OpenAI-compatible provider plans.
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/provider-run.test.ts
-cargo test -p octofwen-agent --test agentd provider_compiler_complete_passes_openai_responses_xhigh_reasoning -- --nocapture
-cargo test -p octofwen-agent --test agentd anthropic -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-cli/src/__tests__/provider-run.test.ts
+cargo test -p octofriend-agent --test agentd provider_compiler_complete_passes_openai_responses_xhigh_reasoning -- --nocapture
+cargo test -p octofriend-agent --test agentd anthropic -- --nocapture
 ```
 
 #### [x] Stream reasoning tokens to stderr
@@ -127,7 +127,7 @@ Reasoning output should not mix with content output.
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/prompt.test.ts packages/octofwen-cli/src/__tests__/provider-run.test.ts
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-cli/src/__tests__/prompt.test.ts packages/octofriend-cli/src/__tests__/provider-run.test.ts
 ```
 
 ### TUI routing and setup flows
@@ -139,9 +139,9 @@ PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/prompt.
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/menu/app_menu.test.tsx
-PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofwen-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
-grep -R "useMenuState\|setMenuMode\|menuMode\|MenuMode\|MenuState" -n packages/octofwen-tui/src/menu/app_menu packages/octofwen-tui/src/__tests__/menu || true
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/menu/app_menu.test.tsx
+PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofriend-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
+grep -R "useMenuState\|setMenuMode\|menuMode\|MenuMode\|MenuState" -n packages/octofriend-tui/src/menu/app_menu packages/octofriend-tui/src/__tests__/menu || true
 ```
 
 #### [x] Move first-time setup to shared Router/Back primitives
@@ -151,9 +151,9 @@ grep -R "useMenuState\|setMenuMode\|menuMode\|MenuMode\|MenuState" -n packages/o
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/app/first_time_setup/main.test.tsx
-PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofwen-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
-grep -R "SetupStep\|AutofixStates\|setAutofixStep\|setStep" -n packages/octofwen-tui/src/app/first_time_setup packages/octofwen-tui/src/__tests__/app/first_time_setup || true
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/app/first_time_setup/main.test.tsx
+PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofriend-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
+grep -R "SetupStep\|AutofixStates\|setAutofixStep\|setStep" -n packages/octofriend-tui/src/app/first_time_setup packages/octofriend-tui/src/__tests__/app/first_time_setup || true
 ```
 
 ### History, IR, and tool execution
@@ -167,9 +167,9 @@ Tool calls, tool outputs, assistant messages, and rejection prompts need type-sa
 - Verify:
 
 ```sh
-./node_modules/.bin/biome check --no-errors-on-unmatched packages/octofwen-tui/src/app/state/agent-runner.ts packages/octofwen-tui/src/app/state/history-actions.ts packages/octofwen-tui/src/app/state/types.ts packages/octofwen-tui/src/app/state/store.ts packages/octofwen-tui/src/internal/llm-ir/main.ts packages/octofwen-tui/src/internal/octo-agent-ir/main.ts packages/octofwen-tui/src/internal/tool-orchestration/main.ts packages/octofwen-tui/src/__tests__/app/state/main.test.ts packages/octofwen-tui/src/__tests__/internal/octo-agent-ir/octo-agent-ir.test.ts
+./node_modules/.bin/biome check --no-errors-on-unmatched packages/octofriend-tui/src/app/state/agent-runner.ts packages/octofriend-tui/src/app/state/history-actions.ts packages/octofriend-tui/src/app/state/types.ts packages/octofriend-tui/src/app/state/store.ts packages/octofriend-tui/src/internal/llm-ir/main.ts packages/octofriend-tui/src/internal/octo-agent-ir/main.ts packages/octofriend-tui/src/internal/tool-orchestration/main.ts packages/octofriend-tui/src/__tests__/app/state/main.test.ts packages/octofriend-tui/src/__tests__/internal/octo-agent-ir/octo-agent-ir.test.ts
 ./node_modules/.bin/tsc --noEmit -p tsconfig.json --pretty false
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/app/state/main.test.ts packages/octofwen-tui/src/__tests__/internal/agent-trajectory-runtime/agent-trajectory-runtime.test.ts packages/octofwen-tui/src/__tests__/internal/octo-agent-ir/octo-agent-ir.test.ts packages/octofwen-tui/src/__tests__/internal/conversation-history/conversation-history.test.ts packages/octofwen-tui/src/__tests__/app/tool_requests.test.tsx packages/octofwen-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts packages/octofwen-tui/src/__tests__/internal/tool-orchestration/tool-orchestration-mcp.test.ts packages/octofwen-tui/src/__tests__/internal/tool-orchestration/tool-orchestration-lsp.test.ts
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/app/state/main.test.ts packages/octofriend-tui/src/__tests__/internal/agent-trajectory-runtime/agent-trajectory-runtime.test.ts packages/octofriend-tui/src/__tests__/internal/octo-agent-ir/octo-agent-ir.test.ts packages/octofriend-tui/src/__tests__/internal/conversation-history/conversation-history.test.ts packages/octofriend-tui/src/__tests__/app/tool_requests.test.tsx packages/octofriend-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts packages/octofriend-tui/src/__tests__/internal/tool-orchestration/tool-orchestration-mcp.test.ts packages/octofriend-tui/src/__tests__/internal/tool-orchestration/tool-orchestration-lsp.test.ts
 ```
 
 #### [x] Move edit/rewrite file reads from parse time to preflight/runtime
@@ -181,10 +181,10 @@ Parallel tool calls can make parse-time `originalFileContents` stale.
 - Verify:
 
 ```sh
-cargo test -p octofwen-tools --test runtime -- --nocapture
-cargo test -p octofwen-agent --test agentd tool -- --nocapture
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts packages/octofwen-tui/src/__tests__/app/tool_requests.test.tsx --timeout 30000
-node_modules/.bin/tsc --noEmit -p packages/octofwen-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
+cargo test -p octofriend-tools --test runtime -- --nocapture
+cargo test -p octofriend-agent --test agentd tool -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts packages/octofriend-tui/src/__tests__/app/tool_requests.test.tsx --timeout 30000
+node_modules/.bin/tsc --noEmit -p packages/octofriend-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
 ```
 
 #### [x] Return structured tool errors for missing files
@@ -196,8 +196,8 @@ Loading a non-existent file should not crash Octo.
 - Verify:
 
 ```sh
-cargo test -p octofwen-tools --test runtime
-cargo test -p octofwen-agent --test agentd trajectory_finish_request_returns_agentd_validation_retry
+cargo test -p octofriend-tools --test runtime
+cargo test -p octofriend-agent --test agentd trajectory_finish_request_returns_agentd_validation_retry
 ```
 
 ### Error handling and notifications
@@ -212,7 +212,7 @@ cargo test -p octofwen-agent --test agentd trajectory_finish_request_returns_age
 ```sh
 rg -n "\bthrow\b" --glob '!target/**' --glob '!node_modules/**' --glob '!benchmark/polyglot/.polyglot/**' --glob '!TODO.md' .
 ./node_modules/.bin/tsc --noEmit -p tsconfig.json --pretty false
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/bridge/rust/agent.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/input-history.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/update-notifications.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/conversation-history.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/tool-run.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/tool-permission.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/tool-validate.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/skill-discovery.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/agent-provider.test.ts packages/octofwen-cli/src/__tests__/bridge/rust/model-catalog.test.ts packages/octofwen-cli/src/__tests__/input-history.test.ts packages/octofwen-cli/src/__tests__/update-notifications.test.ts packages/octofwen-cli/tests/cli.test.ts packages/octofwen-tui/src/__tests__/internal/transport/transport.test.ts packages/octofwen-tui/src/__tests__/internal/configuration/notify.test.ts packages/octofwen-tui/src/__tests__/internal/configuration/configuration.test.ts
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-cli/src/__tests__/bridge/rust/agent.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/input-history.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/update-notifications.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/conversation-history.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/tool-run.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/tool-permission.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/tool-validate.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/skill-discovery.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/agent-provider.test.ts packages/octofriend-cli/src/__tests__/bridge/rust/model-catalog.test.ts packages/octofriend-cli/src/__tests__/input-history.test.ts packages/octofriend-cli/src/__tests__/update-notifications.test.ts packages/octofriend-cli/tests/cli.test.ts packages/octofriend-tui/src/__tests__/internal/transport/transport.test.ts packages/octofriend-tui/src/__tests__/internal/configuration/notify.test.ts packages/octofriend-tui/src/__tests__/internal/configuration/configuration.test.ts
 ```
 
 #### [x] Show dedicated auth, payment, and rate-limit errors
@@ -223,10 +223,10 @@ PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-cli/src/__tests__/bridge/
 - Verify:
 
 ```sh
-cargo test -p octofwen-agent --test agentd provider_compiler_complete_returns_structured_auth_errors -- --nocapture
-cargo test -p octofwen-agent --test agentd provider_compiler_complete_maps_auth_errors_for_anthropic_providers -- --nocapture
-cargo test -p octofwen-agent --test agentd provider_compiler_complete_maps_payment_required_for_standard_and_anthropic_providers -- --nocapture
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/app/error_screens.test.tsx
+cargo test -p octofriend-agent --test agentd provider_compiler_complete_returns_structured_auth_errors -- --nocapture
+cargo test -p octofriend-agent --test agentd provider_compiler_complete_maps_auth_errors_for_anthropic_providers -- --nocapture
+cargo test -p octofriend-agent --test agentd provider_compiler_complete_maps_payment_required_for_standard_and_anthropic_providers -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/app/error_screens.test.tsx
 ```
 
 Covered cases:
@@ -247,9 +247,9 @@ Ready-for-input notifications should use a configurable debounce and the upstrea
 - Verify:
 
 ```sh
-cargo test -p octofwen-config --test schema validates_notifications_without_custom_notify_command -- --nocapture
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/internal/configuration/notify.test.ts packages/octofwen-tui/src/__tests__/app/state/main.test.ts
-PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofwen-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
+cargo test -p octofriend-config --test schema validates_notifications_without_custom_notify_command -- --nocapture
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/internal/configuration/notify.test.ts packages/octofriend-tui/src/__tests__/app/state/main.test.ts
+PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofriend-tui/tsconfig.json --lib ES2023,DOM,DOM.Iterable
 ```
 
 ### Transports and benchmarks
@@ -257,33 +257,33 @@ PATH="$HOME/.bun/bin:$PATH" bunx tsc --noEmit -p packages/octofwen-tui/tsconfig.
 #### [x] Add SSH transport
 
 - Outcome: OpenSSH-backed `SshTransport` exists alongside local and Docker transports.
-- Implementation: agentd exposes SSH through `octofwen.agentd/transportSsh`; runtime tool execution receives `{ type: "ssh", target }`; CLI and TUI transport contracts have TypeScript SSH wrappers; the CLI exposes `octofwen ssh <target>`.
+- Implementation: agentd exposes SSH through `octofriend.agentd/transportSsh`; runtime tool execution receives `{ type: "ssh", target }`; CLI and TUI transport contracts have TypeScript SSH wrappers; the CLI exposes `octofriend ssh <target>`.
 - Verify:
 
 ```sh
-cargo test -p octofwen-transport -- --nocapture
-cargo test -p octofwen-agent --test agentd transport -- --nocapture
-cargo test -p octofwen-agent --test agentd tool::run -- --nocapture
-cargo check -p octofwen-agent
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/internal/transport/transport.test.ts packages/octofwen-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts --timeout 30000
-node_modules/.bin/tsc --ignoreConfig --noEmit --target ES2023 --module ESNext --moduleResolution bundler --allowImportingTsExtensions --types bun,node --jsx react-jsx packages/octofwen-cli/src/transport/ssh.ts packages/octofwen-tui/src/internal/transport/ssh.ts packages/octofwen-cli/src/transport/common.ts packages/octofwen-tui/src/internal/transport/common.ts
+cargo test -p octofriend-transport -- --nocapture
+cargo test -p octofriend-agent --test agentd transport -- --nocapture
+cargo test -p octofriend-agent --test agentd tool::run -- --nocapture
+cargo check -p octofriend-agent
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/internal/transport/transport.test.ts packages/octofriend-tui/src/__tests__/internal/tool-orchestration/tool-orchestration.test.ts --timeout 30000
+node_modules/.bin/tsc --ignoreConfig --noEmit --target ES2023 --module ESNext --moduleResolution bundler --allowImportingTsExtensions --types bun,node --jsx react-jsx packages/octofriend-cli/src/transport/ssh.ts packages/octofriend-tui/src/internal/transport/ssh.ts packages/octofriend-cli/src/transport/common.ts packages/octofriend-tui/src/internal/transport/common.ts
 ```
 
 #### [x] Port Aider Polyglot benchmarks to Octo
 
 Run Aider Polyglot benchmark cases through Octo inside a container.
 
-- Outcome: added `benchmark/polyglot/docker.sh`, `benchmark/polyglot/Dockerfile`, and `benchmark/polyglot/octofwen-polyglot.ts`.
-- Docker behavior: builds a Linux `octofwen-agentd`, clones `Aider-AI/polyglot-benchmark` into container-local `/tmp`, snapshots selected exercises in memory, deletes the source checkout before non-dry-run solving, and writes benchmark outputs under `/benchmarks`.
+- Outcome: added `benchmark/polyglot/docker.sh`, `benchmark/polyglot/Dockerfile`, and `benchmark/polyglot/octofriend-polyglot.ts`.
+- Docker behavior: builds a Linux `octofriend-agentd`, clones `Aider-AI/polyglot-benchmark` into container-local `/tmp`, snapshots selected exercises in memory, deletes the source checkout before non-dry-run solving, and writes benchmark outputs under `/benchmarks`.
 - Harness behavior: hides tests/examples/metadata/invalidators from the agent workdir; restores original tests only in a separate scoring directory after each attempt; copies back only solution files; runs upstream-style language test commands; records per-case and cumulative JSON results; continues after case errors; supports config-free dry-run selection; applies separate request/tool and test timeouts.
 - Verify:
 
 ```sh
-env -i PATH="$HOME/.bun/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$HOME" /Users/krystian/.bun/bin/bun benchmark/polyglot/octofwen-polyglot.ts --help
-env -i PATH="$HOME/.bun/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$HOME" /Users/krystian/.bun/bin/bun benchmark/polyglot/octofwen-polyglot.ts --dry-run --exercises-dir "$POLYGLOT_BENCHMARK_CHECKOUT" --languages go --num-tests 2
-node_modules/.bin/tsc --ignoreConfig --noEmit --target ES2023 --module ESNext --moduleResolution bundler --allowImportingTsExtensions --types bun,node --jsx react-jsx benchmark/polyglot/octofwen-polyglot.ts packages/octofwen-tui/src/types/toasted-notifier.d.ts
+env -i PATH="$HOME/.bun/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$HOME" /Users/krystian/.bun/bin/bun benchmark/polyglot/octofriend-polyglot.ts --help
+env -i PATH="$HOME/.bun/bin:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$HOME" /Users/krystian/.bun/bin/bun benchmark/polyglot/octofriend-polyglot.ts --dry-run --exercises-dir "$POLYGLOT_BENCHMARK_CHECKOUT" --languages go --num-tests 2
+node_modules/.bin/tsc --ignoreConfig --noEmit --target ES2023 --module ESNext --moduleResolution bundler --allowImportingTsExtensions --types bun,node --jsx react-jsx benchmark/polyglot/octofriend-polyglot.ts packages/octofriend-tui/src/types/toasted-notifier.d.ts
 bash -n benchmark/polyglot/docker.sh
-OCTOFWEN_BENCHMARK_DIR="$(mktemp -d)" benchmark/polyglot/docker.sh --dry-run --languages go --num-tests 1
+octofriend_BENCHMARK_DIR="$(mktemp -d)" benchmark/polyglot/docker.sh --dry-run --languages go --num-tests 1
 ```
 
 Run a scored case with a configured model/API key:
@@ -301,5 +301,5 @@ benchmark/polyglot/docker.sh --model <model-nickname> --languages go --num-tests
 - Verify:
 
 ```sh
-PATH="$HOME/.bun/bin:$PATH" bun test packages/octofwen-tui/src/__tests__/rendering/code.test.tsx
+PATH="$HOME/.bun/bin:$PATH" bun test packages/octofriend-tui/src/__tests__/rendering/code.test.tsx
 ```

@@ -1,5 +1,5 @@
-import { spawnAgentdProcess } from "../bridge/platform/platform";
-import { AgentdProcessClient } from "../bridge/ipc/client";
+import { AgentdProcessClient } from "../bridge/ipc/client.ts";
+import { spawnAgentdProcess } from "../bridge/platform/platform.ts";
 
 const paths = await configDefaultPaths();
 
@@ -15,10 +15,10 @@ async function configDefaultPaths(): Promise<{
 }> {
 	const client = new AgentdProcessClient(spawnAgentdProcess());
 	try {
-		const result = await client.request("octofwen.agentd/configDefaultPaths");
+		const result = await client.request("octofriend.agentd/configDefaultPaths");
 		if (!isDefaultPathsResult(result)) {
 			return Promise.reject(
-				new Error("Invalid octofwen-agentd config paths result"),
+				new Error("Invalid octofriend-agentd config paths result"),
 			);
 		}
 		return result;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Result } from "../../src/shell/result";
-import { isWhitespaceCode } from "../../src/shell/text-characters";
+import type { Result } from "../../src/shell/result.ts";
+import { isWhitespaceCode } from "../../src/shell/text-characters.ts";
 import {
 	countLines,
 	cutIndex,
@@ -14,7 +14,7 @@ import {
 	numWidth,
 	trimWhitespace,
 	wrapTextWithMapping,
-} from "../../src/shell/text-processing";
+} from "../../src/shell/text-processing.ts";
 
 function expectOk<T, E>(result: Result<T, E>): T {
 	if (result.success) return result.data;
@@ -45,7 +45,7 @@ describe("text processing", () => {
 		]);
 		expect(trimWhitespace(" \t\n")).toBe("");
 		expect(hasNonWhitespace(" \t\n")).toBe(false);
-		expect(hasNonWhitespace(" \t octofwen")).toBe(true);
+		expect(hasNonWhitespace(" \t octofriend")).toBe(true);
 	});
 
 	it("recognizes JavaScript whitespace code units without allocating strings", () => {

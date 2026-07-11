@@ -2,7 +2,7 @@ import {
 	agentdTransportRequest,
 	type Transport,
 	type TransportDirectoryEntry,
-} from "./common";
+} from "./common.ts";
 
 const internalSignal = new AbortController().signal;
 
@@ -22,7 +22,7 @@ export class SshTransport implements Transport {
 	static async create(target: string): Promise<SshTransport> {
 		const result = await agentdTransportRequest(
 			internalSignal,
-			"octofwen.agentd/transportSsh",
+			"octofriend.agentd/transportSsh",
 			{ target, operation: "cwd" },
 		);
 		return new SshTransport(target, (result["cwd"] as string).trim());
@@ -116,7 +116,7 @@ export class SshTransport implements Transport {
 	}
 
 	private request(signal: AbortSignal, params: Record<string, unknown>) {
-		return agentdTransportRequest(signal, "octofwen.agentd/transportSsh", {
+		return agentdTransportRequest(signal, "octofriend.agentd/transportSsh", {
 			target: this.target,
 			cwd: this.cwd,
 			...params,

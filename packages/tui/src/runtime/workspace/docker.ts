@@ -2,7 +2,7 @@ import {
 	agentdTransportRequest,
 	type Transport,
 	type TransportDirectoryEntry,
-} from "./common";
+} from "./common.ts";
 
 export type ManagedDockerContainer = {
 	container: string;
@@ -17,7 +17,7 @@ export async function manageContainer(
 	console.log("Spawning Docker container...");
 	const result = await agentdTransportRequest(
 		internalSignal,
-		"octofwen.agentd/transportDockerRun",
+		"octofriend.agentd/transportDockerRun",
 		{ args },
 	);
 	const container = result["container"] as string;
@@ -26,7 +26,7 @@ export async function manageContainer(
 		close: async () => {
 			await agentdTransportRequest(
 				internalSignal,
-				"octofwen.agentd/transportDockerKill",
+				"octofriend.agentd/transportDockerKill",
 				{ container },
 			);
 		},
@@ -65,7 +65,7 @@ export class DockerTransport implements Transport {
 			target.type === "image" ? target.image.container : target.container;
 		const result = await agentdTransportRequest(
 			internalSignal,
-			"octofwen.agentd/transportDocker",
+			"octofriend.agentd/transportDocker",
 			{ container, operation: "cwd" },
 		);
 		return new DockerTransport(target, (result["cwd"] as string).trim());
@@ -159,7 +159,7 @@ export class DockerTransport implements Transport {
 	}
 
 	private request(signal: AbortSignal, params: Record<string, unknown>) {
-		return agentdTransportRequest(signal, "octofwen.agentd/transportDocker", {
+		return agentdTransportRequest(signal, "octofriend.agentd/transportDocker", {
 			container: this._container,
 			cwd: this.cwd,
 			...params,

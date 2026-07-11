@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { runNotifyCommand } from "../../../src/runtime/config/notify";
-import type { Config } from "../../../src/runtime/config/schemas";
+import { runNotifyCommand } from "../../../src/runtime/config/notify.ts";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
 
 describe("notification configuration", () => {
 	const baseConfig: Config = {
@@ -27,7 +27,7 @@ describe("notification configuration", () => {
 
 		expect(result.success).toBe(true);
 		expect(notifications).toEqual([
-			{ title: "Octofwen", message: "Octo is waiting for input." },
+			{ title: "octofriend", message: "Octo is waiting for input." },
 		]);
 	});
 
@@ -51,7 +51,7 @@ describe("notification configuration", () => {
 
 		expect(result.success).toBe(true);
 		expect(notifications).toEqual([
-			{ title: "Octofwen", message: "Octo is waiting for input." },
+			{ title: "octofriend", message: "Octo is waiting for input." },
 		]);
 	});
 

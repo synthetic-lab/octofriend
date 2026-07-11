@@ -7,7 +7,7 @@ import type {
 	ProviderKey,
 	ProviderModelConfig,
 	ProviderShortcut,
-} from "@octofwen/tui";
+} from "@octofriend/tui";
 import {
 	DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE as TUI_DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
 	PROVIDERS as TUI_PROVIDERS,
@@ -18,7 +18,7 @@ import {
 	providerForModelConfig as tuiProviderForModelConfig,
 	providerValues as tuiProviderValues,
 	recommendedModel as tuiRecommendedModel,
-} from "@octofwen/tui";
+} from "@octofriend/tui";
 
 export type {
 	CanDisplayImageResult,

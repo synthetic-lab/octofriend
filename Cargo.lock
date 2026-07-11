@@ -1301,26 +1301,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-agent"
+name = "octofriend-agent"
 version = "0.0.0"
 dependencies = [
  "env",
  "ignore",
  "json5",
- "octofwen-config",
- "octofwen-models",
- "octofwen-store",
- "octofwen-text",
- "octofwen-tools",
- "octofwen-wire",
- "octofwen-workspace",
+ "octofriend-config",
+ "octofriend-models",
+ "octofriend-store",
+ "octofriend-text",
+ "octofriend-tools",
+ "octofriend-wire",
+ "octofriend-workspace",
  "reqwest",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "octofwen-config"
+name = "octofriend-config"
 version = "0.0.0"
 dependencies = [
  "env",
@@ -1329,7 +1329,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-core"
+name = "octofriend-core"
 version = "0.0.0"
 dependencies = [
  "serde",
@@ -1337,7 +1337,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-models"
+name = "octofriend-models"
 version = "0.0.0"
 dependencies = [
  "comrak",
@@ -1348,35 +1348,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-store"
+name = "octofriend-store"
 version = "0.0.0"
 dependencies = [
- "octofwen-config",
+ "octofriend-config",
  "rusqlite",
 ]
 
 [[package]]
-name = "octofwen-text"
+name = "octofriend-text"
 version = "0.0.0"
 dependencies = [
- "octofwen-core",
+ "octofriend-core",
  "unicode-width",
 ]
 
 [[package]]
-name = "octofwen-tools"
+name = "octofriend-tools"
 version = "0.0.0"
 dependencies = [
  "html2text",
  "jsonschema",
- "octofwen-workspace",
+ "octofriend-workspace",
  "reqwest",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "octofwen-wire"
+name = "octofriend-wire"
 version = "0.0.0"
 dependencies = [
  "a2a-lf",
@@ -1387,7 +1387,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "octofwen-workspace"
+name = "octofriend-workspace"
 version = "0.0.0"
 
 [[package]]

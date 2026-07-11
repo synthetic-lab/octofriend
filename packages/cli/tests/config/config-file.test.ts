@@ -6,9 +6,9 @@ import {
 	AGENTD_CONFIG_MIGRATE_METHOD,
 	AGENTD_CONFIG_SANITIZE_METHOD,
 	AgentdRustBridge,
-} from "../../src/bridge/agent/agent";
-import { readConfig } from "../../src/config/config-file";
-import type { Config } from "../../src/config/schemas";
+} from "../../src/bridge/agent/agent.ts";
+import { readConfig } from "../../src/config/config-file.ts";
+import type { Config } from "../../src/config/schemas.ts";
 
 type RecordedRequest = {
 	method: string;
@@ -36,7 +36,9 @@ class FakeProcessClient {
 
 describe("config file bridge reuse", () => {
 	it("uses a supplied bridge for migration writeback", async () => {
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "octofwen-config-"));
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "octofriend-config-"),
+		);
 		const configPath = path.join(tmpDir, "config.json5");
 		const originalConfig: Config = {
 			configVersion: 5,

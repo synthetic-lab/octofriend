@@ -1,10 +1,8 @@
-type TuiModule = typeof import("@octofwen/tui");
+type TuiModule = typeof import("@octofriend/tui");
 
-const TUI_PACKAGE_NAME = "@octofwen/tui";
-const TUI_INCLUDED_SOURCE = new URL(
-	"../../tui/src/index.tsx",
-	import.meta.url,
-).href;
+const TUI_PACKAGE_NAME = "@octofriend/tui";
+const TUI_INCLUDED_SOURCE = new URL("../../tui/src/index.tsx", import.meta.url)
+	.href;
 
 let tuiModule: Promise<TuiModule> | undefined;
 

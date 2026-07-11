@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { AgentdProcessClient } from "../../../src/bridge/ipc/client";
-import { AgentdJsonRpcError } from "../../../src/bridge/ipc/errors";
-import { createAgentdRequest } from "../../../src/bridge/ipc/events";
+import { AgentdProcessClient } from "../../../src/bridge/ipc/client.ts";
+import { AgentdJsonRpcError } from "../../../src/bridge/ipc/errors.ts";
+import { createAgentdRequest } from "../../../src/bridge/ipc/events.ts";
 
 type FakeProcess = {
 	stdin: WritableStream<Uint8Array>;
@@ -60,10 +60,10 @@ function createFakeAgentdProcess(
 
 describe("AgentdProcessClient", () => {
 	it("creates JSON-RPC requests with incrementing numeric ids", () => {
-		expect(createAgentdRequest(7, "octofwen.agentd/initialize")).toEqual({
+		expect(createAgentdRequest(7, "octofriend.agentd/initialize")).toEqual({
 			jsonrpc: "2.0",
 			id: 7,
-			method: "octofwen.agentd/initialize",
+			method: "octofriend.agentd/initialize",
 		});
 		expect(createAgentdRequest(8, "method", { ok: true })).toEqual({
 			jsonrpc: "2.0",
@@ -81,15 +81,15 @@ describe("AgentdProcessClient", () => {
 		}));
 		const client = new AgentdProcessClient(process);
 
-		await expect(client.request("octofwen.agentd/initialize")).resolves.toEqual(
-			{
-				method: "octofwen.agentd/initialize",
-			},
-		);
 		await expect(
-			client.request("octofwen.agentd/renderToolCall"),
+			client.request("octofriend.agentd/initialize"),
 		).resolves.toEqual({
-			method: "octofwen.agentd/renderToolCall",
+			method: "octofriend.agentd/initialize",
+		});
+		await expect(
+			client.request("octofriend.agentd/renderToolCall"),
+		).resolves.toEqual({
+			method: "octofriend.agentd/renderToolCall",
 		});
 
 		client.close();

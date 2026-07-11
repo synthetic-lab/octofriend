@@ -1,16 +1,16 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import { shallow } from "zustand/shallow";
-import type { InputHistory } from "../../src/shell/input";
+import type { Config } from "../../src/runtime/config/schemas.ts";
+import type { Transport } from "../../src/runtime/workspace/common.ts";
+import type { InputHistory } from "../../src/shell/input.ts";
 import {
 	App,
 	buildAppStaticItems,
 	selectAppShellState,
 	terminalUnchainedNotification,
-} from "../../src/shell/shell";
-import { useAppStore } from "../../src/shell/state/store";
-import type { Config } from "../../src/runtime/config/schemas";
-import type { Transport } from "../../src/runtime/workspace/common";
+} from "../../src/shell/shell.tsx";
+import { useAppStore } from "../../src/shell/state/store.ts";
 
 const shellConfig: Config = {
 	yourName: "Octo",
@@ -98,7 +98,7 @@ describe("terminal app shell", () => {
 			const instance = render(
 				<App
 					config={shellConfig}
-					configPath="/tmp/octofwen.json5"
+					configPath="/tmp/octofriend.json5"
 					cwd="/repo"
 					metadata={{ version: "0.0.1" }}
 					updates={null}

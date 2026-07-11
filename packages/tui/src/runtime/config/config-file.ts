@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import json5 from "json5";
-import { configMigrate, configSanitize } from "./agentd-config";
-import type { Config } from "./schemas";
+import { configMigrate, configSanitize } from "./agentd-config.ts";
+import type { Config } from "./schemas.ts";
 
 export async function writeConfig(c: Config, configPath: string) {
 	const dir = path.dirname(configPath);
@@ -34,7 +34,7 @@ async function sanitizedConfig(
 		Array.isArray(sanitized)
 	) {
 		return Promise.reject(
-			new Error("Invalid octofwen-agentd config sanitize result"),
+			new Error("Invalid octofriend-agentd config sanitize result"),
 		);
 	}
 	return sanitized as Record<string, unknown>;

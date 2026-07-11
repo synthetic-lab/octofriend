@@ -1,16 +1,16 @@
-Octofwen is the Bun-first TypeScript and Rust rewrite of Octofriend.
+octofriend is the Bun-first TypeScript and Rust rewrite of Octofriend.
 Octo is still your friend.
 
 ## Get Started
 
 ```bash
-bun install --global octofwen
+bun install --global octofriend
 ```
 
 And then:
 
 ```bash
-octofwen
+octofriend
 # or, for short:
 octo
 ```
@@ -30,7 +30,7 @@ with `pwd` API keys so a local codex-proxy can exercise every provider path.
 
 ## About
 
-Octofwen is a small, helpful, cephalopod-flavored coding assistant that works with
+octofriend is a small, helpful, cephalopod-flavored coding assistant that works with
 OpenAI, Anthropic, Gemini, Synthetic, and compatible LLM APIs, and allows you to
 switch models at will mid-conversation when a particular model gets stuck. OpenAI
 setup supports ChatGPT OAuth or `OPENAI_API_KEY`; Anthropic, Gemini, and
@@ -120,7 +120,7 @@ installed.
 
 ## Rules
 
-Octofwen looks for active instruction files named like so:
+octofriend looks for active instruction files named like so:
 
 - `AGENTS.md`
 - `.agents/AGENTS.md`
@@ -129,7 +129,7 @@ Octofwen looks for active instruction files named like so:
 `OCTO.md` is legacy documentation only and is not loaded as an active
 instruction source.
 
-Octofwen searches from general to specific: the user config file, then each
+octofriend searches from general to specific: the user config file, then each
 parent directory down to the current directory. Directory-level `AGENTS.md`,
 `.agents/AGENTS.md`, and `CLAUDE.md` files are merged in that order.
 
@@ -203,7 +203,7 @@ skills: {
 Octo can do a lot out of the box — pretty much anything is possible with enough
 Bash — but if you want access to rich data from an MCP server, it'll help Octo
 out a lot to just provide the MCP server directly instead of trying to contort
-its tentacles into crafting the right Bash-isms. After you run `octofwen` for
+its tentacles into crafting the right Bash-isms. After you run `octofriend` for
 the first time, you'll end up with a config file in
 `~/.config/octofriend/octofriend.json5`. To hook Octo up to your favorite MCP
 server, add the following to the config file:
@@ -244,7 +244,7 @@ environment variable to use as a credential; just use any non-empty environment
 variable and it should work (since most local LLM server ignore credentials
 anyway).
 
-You can also edit the Octofwen config directly in
+You can also edit the octofriend config directly in
 `~/.config/octofriend/octofriend.json5`. The file path is kept for Octofriend
 compatibility. Add the following to your list of models:
 
@@ -264,7 +264,7 @@ underlying error messages from APIs or tool calls, run Octo with the
 `OCTO_VERBOSE` environment variable set to any truthy string; for example:
 
 ```bash
-OCTO_VERBOSE=1 octofwen
+OCTO_VERBOSE=1 octofriend
 ```
 
 ## Desktop notifications
@@ -310,8 +310,8 @@ notifications: {
 
 ## Opting into canary versions
 
-If you want to use unreleased versions of Octofwen, clone this repo and source
+If you want to use unreleased versions of octofriend, clone this repo and source
 `canary.sh`, `canary.fish`, or `canary.ps1`. Bash and fish install
-`canary-octofwen`, with `canary-octo` retained as a shell alias. PowerShell
-installs `Invoke-CanaryOctofwen` and a `canary-octo` alias. All three run the
-checkout directly with `OCTOFWEN_CHANNEL=canary`.
+`canary-octofriend`, with `canary-octo` retained as a shell alias. PowerShell
+installs `Invoke-Canaryoctofriend` and a `canary-octo` alias. All three run the
+checkout directly with `octofriend_CHANNEL=canary`.

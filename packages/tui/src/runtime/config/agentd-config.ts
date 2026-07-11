@@ -1,5 +1,5 @@
-import { resolveAgentdCommand } from "../agent/command";
-import { firstNonEmptyStdoutLine } from "../agent/stdout";
+import { resolveAgentdCommand } from "../agent/command.ts";
+import { firstNonEmptyStdoutLine } from "../agent/stdout.ts";
 
 export type ConfigKeyResult =
 	| { ok: true; key: string }
@@ -21,13 +21,13 @@ export type ConfigSearchResult = { url: string; key: string } | null;
 let nextRequestId = 1;
 
 export async function configMigrate(config: unknown): Promise<unknown> {
-	return (await agentdRequest("octofwen.agentd/configMigrate", { config }))[
+	return (await agentdRequest("octofriend.agentd/configMigrate", { config }))[
 		"config"
 	];
 }
 
 export async function configSanitize(config: unknown): Promise<unknown> {
-	return (await agentdRequest("octofwen.agentd/configSanitize", { config }))[
+	return (await agentdRequest("octofriend.agentd/configSanitize", { config }))[
 		"config"
 	];
 }
@@ -37,7 +37,10 @@ export async function configKeyForModel(
 	config: unknown,
 ): Promise<ConfigKeyResult> {
 	return (
-		await agentdRequest("octofwen.agentd/configKeyForModel", { model, config })
+		await agentdRequest("octofriend.agentd/configKeyForModel", {
+			model,
+			config,
+		})
 	)["result"] as ConfigKeyResult;
 }
 
@@ -46,7 +49,7 @@ export async function configKeyForBaseUrl(
 	config: unknown,
 ): Promise<ConfigKeyResult> {
 	return (
-		await agentdRequest("octofwen.agentd/configKeyForBaseUrl", {
+		await agentdRequest("octofriend.agentd/configKeyForBaseUrl", {
 			baseUrl,
 			config,
 		})
@@ -56,7 +59,7 @@ export async function configKeyForBaseUrl(
 export async function configSearch(
 	config: unknown,
 ): Promise<ConfigSearchResult> {
-	return (await agentdRequest("octofwen.agentd/configSearch", { config }))[
+	return (await agentdRequest("octofriend.agentd/configSearch", { config }))[
 		"search"
 	] as ConfigSearchResult;
 }
@@ -67,7 +70,7 @@ export async function configHasExistingKey(
 ): Promise<boolean> {
 	return Boolean(
 		(
-			await agentdRequest("octofwen.agentd/configHasExistingKey", {
+			await agentdRequest("octofriend.agentd/configHasExistingKey", {
 				baseUrl,
 				config,
 			})
@@ -75,7 +78,7 @@ export async function configHasExistingKey(
 	);
 }
 export async function configRunNotify(config: unknown): Promise<void> {
-	await agentdRequest("octofwen.agentd/configRunNotify", { config });
+	await agentdRequest("octofriend.agentd/configRunNotify", { config });
 }
 
 export async function configDefaultPaths(): Promise<{
@@ -83,14 +86,17 @@ export async function configDefaultPaths(): Promise<{
 	configFile: string;
 	keyFile: string;
 }> {
-	const result = await agentdRequest("octofwen.agentd/configDefaultPaths", {});
+	const result = await agentdRequest(
+		"octofriend.agentd/configDefaultPaths",
+		{},
+	);
 	if (
 		typeof result["configDir"] !== "string" ||
 		typeof result["configFile"] !== "string" ||
 		typeof result["keyFile"] !== "string"
 	) {
 		return Promise.reject(
-			new Error("Invalid octofwen-agentd config paths result"),
+			new Error("Invalid octofriend-agentd config paths result"),
 		);
 	}
 	return {
@@ -106,7 +112,7 @@ export async function configMergeEnvVar(
 	apiEnvVar: string,
 ): Promise<unknown> {
 	return (
-		await agentdRequest("octofwen.agentd/configMergeEnvVar", {
+		await agentdRequest("octofriend.agentd/configMergeEnvVar", {
 			config,
 			model,
 			apiEnvVar,
@@ -121,7 +127,7 @@ export async function configMergeAutofixEnvVar(
 	apiEnvVar: string,
 ): Promise<unknown> {
 	return (
-		await agentdRequest("octofwen.agentd/configMergeAutofixEnvVar", {
+		await agentdRequest("octofriend.agentd/configMergeAutofixEnvVar", {
 			config,
 			key,
 			model,
@@ -131,14 +137,14 @@ export async function configMergeAutofixEnvVar(
 }
 
 export async function modelProviderCatalog(): Promise<Record<string, unknown>> {
-	return await agentdRequest("octofwen.agentd/modelProviderCatalog", {});
+	return await agentdRequest("octofriend.agentd/modelProviderCatalog", {});
 }
 
 export async function configWriteKey(
 	baseUrl: string,
 	apiKey: string,
 ): Promise<void> {
-	await agentdRequest("octofwen.agentd/configWriteKey", { baseUrl, apiKey });
+	await agentdRequest("octofriend.agentd/configWriteKey", { baseUrl, apiKey });
 }
 
 async function agentdRequest(
@@ -164,12 +170,12 @@ async function agentdRequest(
 	const exitCode = await subprocess.exited;
 	if (exitCode !== 0) {
 		return Promise.reject(
-			new Error(`octofwen-agentd exited with code ${exitCode}: ${stderr}`),
+			new Error(`octofriend-agentd exited with code ${exitCode}: ${stderr}`),
 		);
 	}
 	const firstLine = firstNonEmptyStdoutLine(stdout);
 	if (!firstLine) {
-		return Promise.reject(new Error("octofwen-agentd returned no response"));
+		return Promise.reject(new Error("octofriend-agentd returned no response"));
 	}
 	const response = JSON.parse(firstLine) as {
 		id?: unknown;
@@ -178,12 +184,12 @@ async function agentdRequest(
 	};
 	if (response.error) {
 		return Promise.reject(
-			new Error(response.error.message ?? "octofwen-agentd request failed"),
+			new Error(response.error.message ?? "octofriend-agentd request failed"),
 		);
 	}
 	if (!isRecord(response.result)) {
 		return Promise.reject(
-			new Error("octofwen-agentd returned invalid config response"),
+			new Error("octofriend-agentd returned invalid config response"),
 		);
 	}
 	return response.result;

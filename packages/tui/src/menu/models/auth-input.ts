@@ -6,6 +6,7 @@ import {
 } from "../../runtime/models/catalog/main";
 import type { FullFlowRouteData } from "./types";
 import { nonEmptyEnvValue, nonEmptyTrimmedValue } from "./providers";
+import { CHATGPT_OAUTH_ENV_VARS } from "./auth";
 
 export function envVarExampleForBaseUrl(
 	baseUrl: string,
@@ -64,6 +65,8 @@ export function validateChatGptOAuthEnvVar(
 		};
 	}
 	if (nonEmptyEnvValue(envVarName, env) !== null)
+		return { valid: true as const };
+	if ((CHATGPT_OAUTH_ENV_VARS as readonly string[]).includes(envVarName))
 		return { valid: true as const };
 
 	return {

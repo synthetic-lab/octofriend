@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	AutofixSetup,
 	autofixSetupFlow,
-} from "../../../src/shell/setup/autofix";
-import { AutofixSetupChooseRoute } from "../../../src/shell/setup/autofix-choice";
+} from "../../../src/shell/setup/autofix.tsx";
+import { AutofixSetupChooseRoute } from "../../../src/shell/setup/autofix-choice.tsx";
 import {
 	FirstTimeSetup,
 	firstTimeSetupFlow,
-} from "../../../src/shell/setup/main";
+} from "../../../src/shell/setup/main.tsx";
 
 function deferred<T>() {
 	let resolve: (value: T) => void = () => undefined;
@@ -41,7 +41,7 @@ describe("terminal first-time setup", () => {
 
 		const instance = render(
 			React.createElement(FirstTimeSetup, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				modelConnectionTest: () =>
 					Promise.resolve({ valid: true, metadata: {} }),
 			}),
@@ -67,7 +67,7 @@ describe("terminal first-time setup", () => {
 		const { render } = await import("ink-testing-library");
 		const instance = render(
 			React.createElement(FirstTimeSetup, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				modelConnectionTest: () =>
 					Promise.resolve({ valid: true, metadata: {} }),
 				env: { OPENAI_API_KEY: "sk-test" },
@@ -105,7 +105,7 @@ describe("terminal first-time setup", () => {
 
 		const instance = render(
 			React.createElement(FirstTimeSetup, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				modelConnectionTest: firstTester,
 			}),
 		);
@@ -121,21 +121,21 @@ describe("terminal first-time setup", () => {
 
 		instance.rerender(
 			React.createElement(FirstTimeSetup, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				modelConnectionTest: secondTester,
 			}),
 		);
 
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("choose the coding model provider");
-		expect(frame).not.toContain("Welcome to Octofwen");
+		expect(frame).not.toContain("Welcome to octofriend");
 	});
 
 	test("explains Synthetic autofix authentication choices", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection"
+			"../../../src/menu/models/connection.ts"
 		);
 
 		const instance = render(
@@ -161,7 +161,7 @@ describe("terminal first-time setup", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection"
+			"../../../src/menu/models/connection.ts"
 		);
 		const calls: unknown[] = [];
 		const completed: unknown[] = [];
@@ -323,7 +323,7 @@ describe("terminal first-time setup", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection"
+			"../../../src/menu/models/connection.ts"
 		);
 		const noExistingKey = async () => false;
 		const env = {};
@@ -377,7 +377,7 @@ describe("terminal first-time setup", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection"
+			"../../../src/menu/models/connection.ts"
 		);
 		const connection = deferred<{
 			valid: true;

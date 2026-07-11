@@ -490,6 +490,12 @@ export class AgentdRustBridge {
 		return await configRequests.configWriteKey(this.#client, params);
 	}
 
+	async modelDiscover(
+		params: import("./connection").AgentdModelDiscoverParams,
+	): Promise<import("./connection").AgentdModelDiscoverResult> {
+		return await runRequests.modelDiscover(this.#client, params);
+	}
+
 	async modelConnectionTest(
 		params: AgentdModelConnectionTestParams,
 	): Promise<AgentdModelConnectionTestResult> {

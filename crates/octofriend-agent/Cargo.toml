@@ -1,0 +1,38 @@
+[package]
+name = "octofriend-agent"
+description = "Agent orchestration and octofriend-agentd bridge binary for octofriend"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+
+[lib]
+name = "octofriend_agent"
+path = "src/lib.rs"
+
+[[bin]]
+name = "octofriend-agentd"
+path = "src/bin/agentd.rs"
+
+[dependencies]
+octofriend-text.workspace = true
+octofriend-config.workspace = true
+octofriend-wire.workspace = true
+octofriend-store.workspace = true
+octofriend-workspace.workspace = true
+octofriend-models.workspace = true
+octofriend-tools.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+json5.workspace = true
+reqwest.workspace = true
+ignore.workspace = true
+env.workspace = true
+
+
+[lints]
+workspace = true

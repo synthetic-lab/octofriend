@@ -3,10 +3,11 @@ import figlet from "figlet";
 import { render } from "ink-testing-library";
 import {
 	getTerminalThemeColor,
-	OCTOFWEN_HEADER_FONT,
 	Octo,
+	octofriend_HEADER_FONT,
+	octofriend_SUBHEADER_FONT,
 	TerminalHeader,
-} from "../../src/theme/branding";
+} from "../../src/theme/branding.tsx";
 
 function trimRightByLine(value: string): string {
 	return value
@@ -21,11 +22,13 @@ describe("TerminalHeader", () => {
 		const output = trimRightByLine(lastFrame() || "");
 
 		expect(output).toContain(
-			trimRightByLine(figlet.textSync("Octo", { font: OCTOFWEN_HEADER_FONT })),
+			trimRightByLine(
+				figlet.textSync("Octo", { font: octofriend_HEADER_FONT }),
+			),
 		);
 		expect(output).toContain(
 			trimRightByLine(
-				figlet.textSync("Friend", { font: OCTOFWEN_HEADER_FONT }),
+				figlet.textSync("Friend", { font: octofriend_SUBHEADER_FONT }),
 			),
 		);
 	});

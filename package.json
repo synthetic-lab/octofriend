@@ -1,13 +1,12 @@
 {
-	"name": "octofwen",
+	"name": "octofriend",
 	"version": "0.0.53",
 	"license": "MIT",
-	"repository": "github:synthetic-lab/octofwen",
+	"repository": "github:synthetic-lab/octofriend",
 	"bin": {
 		"octofriend": "packages/cli/src/bin.ts",
-		"octofwen": "packages/cli/src/bin.ts",
 		"octo": "packages/cli/src/bin.ts",
-		"octofwen-agentd": "packages/cli/bin/octofwen-agentd.js"
+		"octofriend-agentd": "packages/cli/bin/octofriend-agentd.js"
 	},
 	"type": "module",
 	"preferGlobal": true,
@@ -23,9 +22,9 @@
 		"exec": "bun packages/cli/src/bin.ts",
 		"test": "bun test",
 		"test:run": "bun test",
-		"typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter \"@octofwen/*\" typecheck",
+		"typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter \"@octofriend/*\" typecheck",
 		"prepublishOnly": "bun run build",
-		"prepack": "bun run --filter \"@octofwen/cli\" build:agentd"
+		"prepack": "bun run --filter \"@octofriend/cli\" build:agentd"
 	},
 	"files": [
 		"packages",
@@ -45,11 +44,11 @@
 		"clipboardy": "^5.3.1",
 		"commander": "^15.0.0",
 		"diff": "^9.0.0",
-		"figlet": "^1.11.0",
+		"figlet": "^1.11.1",
 		"figures": "^6.1.0",
 		"highlight.js": "^11.11.1",
 		"html-to-text": "^10.0.0",
-		"ignore": "^7.0.5",
+		"ignore": "^7.0.6",
 		"ink": "^7.1.0",
 		"json5": "^2.2.3",
 		"marked": "^18.0.6",

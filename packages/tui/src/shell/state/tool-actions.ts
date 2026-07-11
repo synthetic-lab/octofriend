@@ -1,7 +1,7 @@
-import { loadTools, runTool } from "../../runtime/tools/main";
-import { err } from "../result";
-import { toolRunResultToIR } from "./tool-results";
-import type { AppStateGet, AppStateSet, UiState } from "./types";
+import { loadTools, runTool } from "../../runtime/tools/main.ts";
+import { err } from "../result.ts";
+import { toolRunResultToIR } from "./tool-results.ts";
+import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
 export function createToolActions(set: AppStateSet, get: AppStateGet) {
 	return {
@@ -86,7 +86,7 @@ function shouldRejectConcurrentToolRun(modeData: UiState["modeData"]): boolean {
 	return (
 		modeData.mode === "tool-call" &&
 		modeData.runningToolCallId != null &&
-		process.env["OCTOFWEN_CHANNEL"] === "canary"
+		process.env["octofriend_CHANNEL"] === "canary"
 	);
 }
 

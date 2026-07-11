@@ -1,13 +1,13 @@
-import { spawnAgentdProcess } from "../bridge/platform/platform";
-import { AgentdProcessClient } from "../bridge/ipc/client";
-import type { Config } from "./schemas";
+import { AgentdProcessClient } from "../bridge/ipc/client.ts";
+import { spawnAgentdProcess } from "../bridge/platform/platform.ts";
+import type { Config } from "./schemas.ts";
 
 export async function mergeEnvVar(
 	config: Config,
 	model: Config["models"][number],
 	apiEnvVar: string,
 ): Promise<Config> {
-	return (await requestConfigMerge("octofwen.agentd/configMergeEnvVar", {
+	return (await requestConfigMerge("octofriend.agentd/configMergeEnvVar", {
 		config,
 		model,
 		apiEnvVar,
@@ -20,12 +20,15 @@ export async function mergeAutofixEnvVar<K extends "diffApply" | "fixJson">(
 	model: Exclude<Config[K], undefined>,
 	apiEnvVar: string,
 ): Promise<Config> {
-	return (await requestConfigMerge("octofwen.agentd/configMergeAutofixEnvVar", {
-		config,
-		key,
-		model,
-		apiEnvVar,
-	})) as Config;
+	return (await requestConfigMerge(
+		"octofriend.agentd/configMergeAutofixEnvVar",
+		{
+			config,
+			key,
+			model,
+			apiEnvVar,
+		},
+	)) as Config;
 }
 
 async function requestConfigMerge(
@@ -37,7 +40,7 @@ async function requestConfigMerge(
 		const result = await client.request(method, params);
 		if (!(isRecord(result) && "config" in result)) {
 			return Promise.reject(
-				new Error("Invalid octofwen-agentd config merge result"),
+				new Error("Invalid octofriend-agentd config merge result"),
 			);
 		}
 		return result["config"];

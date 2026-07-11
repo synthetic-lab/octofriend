@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import type { BunPipeProcess } from "../../../src/bridge/platform/platform";
 import {
 	AGENTD_AUTOFIX_EDIT_METHOD,
 	AGENTD_AUTOFIX_JSON_METHOD,
@@ -18,8 +17,9 @@ import {
 	AgentdRustBridge,
 	createAgentdRustBridge,
 	spawnAgentdProcessClient,
-} from "../../../src/bridge/agent/agent";
-import type { AgentdTrajectoryFinishResult } from "../../../src/bridge/agent/run-finish";
+} from "../../../src/bridge/agent/agent.ts";
+import type { AgentdTrajectoryFinishResult } from "../../../src/bridge/agent/run-finish.ts";
+import type { BunPipeProcess } from "../../../src/bridge/platform/platform.ts";
 
 type RecordedRequest = {
 	method: string;
@@ -63,14 +63,14 @@ describe("AgentdRustBridge", () => {
 	it("initializes the agent daemon through the process client", async () => {
 		const processClient = new FakeProcessClient([
 			{
-				serverInfo: { name: "octofwen-agentd", version: "0.0.0" },
+				serverInfo: { name: "octofriend-agentd", version: "0.0.0" },
 				capabilities: { renderModels: true },
 			},
 		]);
 		const bridge = new AgentdRustBridge(processClient);
 
 		await expect(bridge.initialize()).resolves.toEqual({
-			serverInfo: { name: "octofwen-agentd", version: "0.0.0" },
+			serverInfo: { name: "octofriend-agentd", version: "0.0.0" },
 			capabilities: { renderModels: true },
 		});
 		expect(processClient.requests).toEqual([
@@ -427,7 +427,9 @@ describe("AgentdRustBridge", () => {
 
 		await expect(
 			bridge.syntheticQuotaFetch({ apiKey: "test-key" }),
-		).rejects.toThrow("Invalid octofwen-agentd Synthetic quota fetch response");
+		).rejects.toThrow(
+			"Invalid octofriend-agentd Synthetic quota fetch response",
+		);
 	});
 
 	it("requests agentd trajectory finish decisions", async () => {
@@ -552,7 +554,7 @@ describe("AgentdRustBridge", () => {
 	it("spawns the configured agentd executable as a stdio process client", () => {
 		const calls: unknown[][] = [];
 		const client = spawnAgentdProcessClient({
-			executable: "/tmp/octofwen-agentd",
+			executable: "/tmp/octofriend-agentd",
 			spawn(command, options) {
 				calls.push([command, options]);
 				return inertProcess();
@@ -562,7 +564,7 @@ describe("AgentdRustBridge", () => {
 		client.close();
 		expect(calls).toEqual([
 			[
-				["/tmp/octofwen-agentd"],
+				["/tmp/octofriend-agentd"],
 				{ stdin: "pipe", stdout: "pipe", stderr: "pipe" },
 			],
 		]);
@@ -571,7 +573,7 @@ describe("AgentdRustBridge", () => {
 	it("creates an initialized bridge using the process factory", async () => {
 		const processClient = new FakeProcessClient([
 			{
-				serverInfo: { name: "octofwen-agentd", version: "0.0.0" },
+				serverInfo: { name: "octofriend-agentd", version: "0.0.0" },
 				capabilities: { renderModels: true },
 			},
 		]);
@@ -595,7 +597,7 @@ describe("AgentdRustBridge response validation", () => {
 		);
 
 		await expect(bridge.initialize()).rejects.toThrow(
-			"Invalid octofwen-agentd initialize response",
+			"Invalid octofriend-agentd initialize response",
 		);
 	});
 
@@ -610,7 +612,7 @@ describe("AgentdRustBridge response validation", () => {
 				hasWebSearch: false,
 				skills: [],
 			}),
-		).rejects.toThrow("Invalid octofwen-agentd tool definitions response");
+		).rejects.toThrow("Invalid octofriend-agentd tool definitions response");
 	});
 
 	it("rejects malformed tool render models", async () => {
@@ -620,6 +622,6 @@ describe("AgentdRustBridge response validation", () => {
 
 		await expect(
 			bridge.renderToolCall("shell", { cmd: "pwd" }),
-		).rejects.toThrow("Invalid octofwen-agentd tool render response");
+		).rejects.toThrow("Invalid octofriend-agentd tool render response");
 	});
 });

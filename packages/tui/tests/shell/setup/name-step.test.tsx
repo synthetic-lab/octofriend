@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { NameStep } from "../../../src/shell/setup/name-step";
+import { NameStep } from "../../../src/shell/setup/name-step.tsx";
 
 function waitFor(predicate: () => boolean): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -34,13 +34,11 @@ describe("first-time setup name step", () => {
 	test("summarizes the config before saving", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [
 					{
 						nickname: "GPT",
@@ -87,13 +85,11 @@ describe("first-time setup name step", () => {
 	test("normalizes CR line breaks in setup summary and save errors", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [
 					{
 						nickname: "GPT\r\nModel",
@@ -130,9 +126,7 @@ describe("first-time setup name step", () => {
 	test("summarizes only own API-key override properties", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 		const overrides = Object.create({
 			openai: "INHERITED_OPENAI_KEY",
 			custom: "INHERITED_CUSTOM_KEY",
@@ -141,7 +135,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: overrides,
 				onDone: () => undefined,
@@ -164,13 +158,11 @@ describe("first-time setup name step", () => {
 	test("trims and skips blank API-key overrides in setup summary", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {
 					openai: " OPENAI_API_KEY ",
@@ -197,13 +189,11 @@ describe("first-time setup name step", () => {
 	test("summarizes missing model auth as none when no models were configured", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onDone: () => undefined,
@@ -224,13 +214,11 @@ describe("first-time setup name step", () => {
 	test("summarizes model-level auth without treating ChatGPT OAuth as an API-key override", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [
 					{
 						nickname: "OpenAI OAuth",
@@ -288,9 +276,7 @@ describe("first-time setup name step", () => {
 	test("uses latest callbacks and config props after rerender", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 		const writes: unknown[] = [];
 		const doneCalls: string[] = [];
 		const backCalls: string[] = [];
@@ -367,9 +353,7 @@ describe("first-time setup name step", () => {
 	test("uses latest back callback after rerender", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { NameStep } = await import(
-			"../../../src/shell/setup/name-step"
-		);
+		const { NameStep } = await import("../../../src/shell/setup/name-step.tsx");
 		const backCalls: string[] = [];
 		const instance = render(
 			React.createElement(NameStep, {
@@ -408,7 +392,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onDone: () => {
@@ -447,7 +431,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onBack: () => {
@@ -472,7 +456,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onBack: () => {
@@ -505,7 +489,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onDone: () => {
@@ -536,7 +520,7 @@ describe("first-time setup name step", () => {
 
 		const instance = render(
 			React.createElement(NameStep, {
-				configPath: "/tmp/octofwen-test-config.json",
+				configPath: "/tmp/octofriend-test-config.json",
 				models: [],
 				defaultApiKeyOverrides: {},
 				onDone: () => {

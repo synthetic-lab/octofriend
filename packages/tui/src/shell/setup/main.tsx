@@ -3,8 +3,8 @@ import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { type LatestRef, useLatestRef } from "../../input/latest-input";
 import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys";
 import type { Config } from "../../runtime/config/schemas";
-import type { ModelConnectionTester } from "../../menu/models/connection";
-import { ModelConnectionTestContext } from "../../menu/models/connection";
+import type { ModelConnectionTester, ModelDiscoveryTester } from "../../menu/models/connection";
+import { ModelConnectionTestContext, ModelDiscoveryContext } from "../../menu/models/connection";
 import { ModelSetup } from "../../menu/models/detect-models";
 import {
 	Back,
@@ -176,10 +176,12 @@ function NameRoute({
 export function FirstTimeSetup({
 	configPath,
 	modelConnectionTest,
+	modelDiscover,
 	env,
 }: {
 	configPath: string;
 	modelConnectionTest: ModelConnectionTester;
+	modelDiscover?: ModelDiscoveryTester;
 	env?: Record<string, string | undefined>;
 }) {
 	const [defaultApiKeyOverrides, setDefaultApiKeyOverrides] = useState<
@@ -251,5 +253,9 @@ export function FirstTimeSetup({
 		[addOverride],
 	);
 
-	return <routes.Root route="welcome" props={EMPTY_ROUTE_PROPS} />;
+	return (
+		<ModelDiscoveryContext.Provider value={modelDiscover ?? (async () => ({ models: [] }))}>
+			<routes.Root route="welcome" props={EMPTY_ROUTE_PROPS} />
+		</ModelDiscoveryContext.Provider>
+	);
 }

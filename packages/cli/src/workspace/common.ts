@@ -1,7 +1,7 @@
-import { spawnAgentdProcess } from "../bridge/platform/platform";
-import { AgentdProcessClient } from "../bridge/ipc/client";
-import { AgentdJsonRpcError } from "../bridge/ipc/errors";
-import { findFilesWithRemoteShell } from "./remote-find";
+import { AgentdProcessClient } from "../bridge/ipc/client.ts";
+import { AgentdJsonRpcError } from "../bridge/ipc/errors.ts";
+import { spawnAgentdProcess } from "../bridge/platform/platform.ts";
+import { findFilesWithRemoteShell } from "./remote-find.ts";
 
 export type TransportDirectoryEntry = {
 	entry: string;
@@ -94,7 +94,7 @@ export async function findFiles(
 	}
 	const result = await agentdTransportRequest(
 		signal,
-		"octofwen.agentd/transportFindFiles",
+		"octofriend.agentd/transportFindFiles",
 		{
 			cwd: transport.cwd,
 			options,
@@ -111,7 +111,7 @@ export async function getEnvVar(
 ): Promise<string> {
 	const result = await agentdTransportRequest(
 		signal,
-		"octofwen.agentd/transportGetEnv",
+		"octofriend.agentd/transportGetEnv",
 		{
 			cwd: transport.cwd,
 			name: envVarName,

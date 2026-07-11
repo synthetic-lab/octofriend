@@ -1,5 +1,5 @@
 {
-	"name": "@octofwen/cli",
+	"name": "@octofriend/cli",
 	"version": "0.0.0",
 	"type": "module",
 	"exports": {
@@ -7,9 +7,8 @@
 	},
 	"bin": {
 		"octofriend": "./src/bin.ts",
-		"octofwen": "./src/bin.ts",
 		"octo": "./src/bin.ts",
-		"octofwen-agentd": "./bin/octofwen-agentd.js"
+		"octofriend-agentd": "./bin/octofriend-agentd.js"
 	},
 	"scripts": {
 		"test": "bun test tests",
@@ -21,9 +20,9 @@
 		"@commander-js/extra-typings": "^15.0.0",
 		"commander": "^15.0.0",
 		"ink": "^7.1.0",
-		"@octofwen/tui": "workspace:*",
+		"@octofriend/tui": "workspace:*",
 		"json5": "^2.2.3",
-		"@octofwen/shared": "workspace:*"
+		"@octofriend/shared": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.3.14",

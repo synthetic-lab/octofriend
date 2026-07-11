@@ -11,7 +11,7 @@ import {
 	parseImagePaths,
 	replaceInputWithSafeCharacters,
 	separateFilePaths,
-} from "../../src/input/images";
+} from "../../src/input/images.ts";
 
 type TestResult<T, E> =
 	| { success: true; data: T }
@@ -139,7 +139,9 @@ describe("image MIME helpers", () => {
 
 describe("loadImageFromPath", () => {
 	it("loads an image as base64 and a data URL", async () => {
-		const directory = await mkdtemp(path.join(os.tmpdir(), "octofwen-image-"));
+		const directory = await mkdtemp(
+			path.join(os.tmpdir(), "octofriend-image-"),
+		);
 		const imagePath = path.join(directory, "tiny.png");
 		await writeFile(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 

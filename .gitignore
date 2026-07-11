@@ -6,14 +6,14 @@ dist/
 packages/*/dist/
 target/
 *.tsbuildinfo
-packages/octofwen-cli/bin/octofwen-agentd
-packages/octofwen-cli/bin/octofwen-agentd.exe
+packages/octofriend-cli/bin/octofriend-agentd
+packages/octofriend-cli/bin/octofriend-agentd.exe
 
 # local/generated state
 .env
 .codebase-memory/
 .octofriend
-.octofwen
+.octofriend
 *.log
 
 # training outputs

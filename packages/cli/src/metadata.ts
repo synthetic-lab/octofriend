@@ -1,7 +1,7 @@
 import path from "node:path";
-import { readPackageJson } from "@octofwen/shared";
-import { PACKAGE_DIR } from "./config/paths";
-import { err, ok, type Result } from "./result";
+import { readPackageJson } from "@octofriend/shared";
+import { PACKAGE_DIR } from "./config/paths.ts";
+import { err, ok, type Result } from "./result.ts";
 
 export type Metadata = {
 	version: string;
@@ -28,7 +28,7 @@ async function findWorkspacePackageJson(
 	while (true) {
 		const packageFile = path.join(currentDir, "package.json");
 		const packageJson = await readPackageJson(packageFile);
-		if (packageJson.success && packageJson.data["name"] === "octofwen") {
+		if (packageJson.success && packageJson.data["name"] === "octofriend") {
 			return ok(packageFile);
 		}
 		if (!packageJson.success && packageJson.error !== "ENOENT") {
@@ -37,7 +37,7 @@ async function findWorkspacePackageJson(
 
 		const parentDir = path.dirname(currentDir);
 		if (parentDir === currentDir) {
-			return err("Could not locate octofwen package metadata");
+			return err("Could not locate octofriend package metadata");
 		}
 		currentDir = parentDir;
 	}

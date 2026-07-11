@@ -2,12 +2,12 @@
 import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import type { AgentdRustBridge } from "../../../packages/cli/src/bridge/agent/agent";
+import type { AgentdRustBridge } from "../../../packages/cli/src/bridge/agent/agent.ts";
 import type {
 	Config,
 	ModelConfig,
-} from "../../../packages/cli/src/config/schemas";
-import type { Transport } from "../../../packages/cli/src/workspace/common";
+} from "../../../packages/cli/src/config/schemas.ts";
+import type { Transport } from "../../../packages/cli/src/workspace/common.ts";
 
 type Args = {
 	benchmarksDir: string;
@@ -80,7 +80,7 @@ const DEFAULT_ARGS: Args = {
 	dryRun: false,
 	exercisesDir: "tmp.benchmarks/polyglot-benchmark",
 	maxToolIterations: 80,
-	name: "octofwen-polyglot",
+	name: "octofriend-polyglot",
 	numTests: -1,
 	purgeExercisesDirBeforeRun: false,
 	requestTimeoutMs: 1_800_000,
@@ -106,13 +106,13 @@ const [
 	{ readKeyForModelWithDetails },
 	{ selectModel },
 ] = await Promise.all([
-	import("../../../packages/cli/src/bridge/agent/agent"),
-	import("../../../packages/cli/src/config-screen"),
-	import("../../../packages/cli/src/config/keys"),
-	import("../../../packages/cli/src/model-selection"),
+	import("../../../packages/cli/src/bridge/agent/agent.ts"),
+	import("../../../packages/cli/src/config-screen.tsx"),
+	import("../../../packages/cli/src/config/keys.ts"),
+	import("../../../packages/cli/src/model-selection.ts"),
 ]);
 const loaded = await loadConfigWithoutReauth(
-	args.config ?? process.env["OCTOFWEN_CONFIG"],
+	args.config ?? process.env["octofriend_CONFIG"],
 );
 const config = loaded.config;
 const model = selectModel(config, args.model);
@@ -247,17 +247,17 @@ function positiveInt(flag: string, value: string): number {
 }
 
 function printHelp() {
-	console.log(`Usage: bun benchmark/polyglot/octofwen-polyglot.ts [options]
+	console.log(`Usage: bun benchmark/polyglot/octofriend-polyglot.ts [options]
 
 Options:
   --benchmarks-dir <path>       Directory for benchmark run outputs
-  --config <path>               Octofwen config path
+  --config <path>               octofriend config path
   --dry-run                     Print selected exercises without LLM/tool execution
   --exercises-dir <path>        Aider-AI/polyglot-benchmark checkout
   --keywords <text[,text]>      Keep exercises whose relative path contains any keyword
   --languages <lang[,lang]>     Keep language directories, e.g. rust,go
   --max-tool-iterations <n>     Tool-call loop limit per model turn
-  --model <nickname>            Octofwen model nickname
+  --model <nickname>            octofriend model nickname
   --name <name>                 Run name suffix
   --num-tests <n>               Limit selected exercises after filtering
   --purge-exercises-dir-before-run
@@ -494,7 +494,7 @@ async function runExerciseSafely(params: {
 			tests_outcomes: [false],
 			test_outputs: [message],
 			duration: 0,
-			command: `octofwen polyglot ${params.model.nickname}`,
+			command: `octofriend polyglot ${params.model.nickname}`,
 		};
 	}
 }
@@ -513,7 +513,7 @@ function failedCaseResult(
 		tests_outcomes: [false],
 		test_outputs: [message],
 		duration: 0,
-		command: `octofwen polyglot ${model.nickname}`,
+		command: `octofriend polyglot ${model.nickname}`,
 	};
 }
 
@@ -608,10 +608,10 @@ async function runExercise({
 		tests_outcomes: testsOutcomes,
 		test_outputs: testOutputs,
 		duration: (performance.now() - start) / 1000,
-		command: `octofwen polyglot ${model.nickname}`,
+		command: `octofriend polyglot ${model.nickname}`,
 	};
 	await writeFile(
-		path.join(caseDir, ".octofwen.results.json"),
+		path.join(caseDir, ".octofriend.results.json"),
 		JSON.stringify(result, null, 2),
 	);
 	return result;
@@ -623,7 +623,7 @@ function exercisePrompt(
 	workDir: string,
 ): string {
 	const instructions = exerciseDocs(filesSnapshot);
-	return `You are solving an Exercism benchmark exercise for the Aider Polyglot benchmark, using Octofwen tools.
+	return `You are solving an Exercism benchmark exercise for the Aider Polyglot benchmark, using octofriend tools.
 
 Exercise: ${exercise.relativePath}
 Working directory: ${workDir}
@@ -675,7 +675,7 @@ async function runAgentTurn({
 	model: ModelConfig;
 }): Promise<unknown[]> {
 	const { LocalTransport } = await import(
-		"../../../packages/cli/src/workspace/local"
+		"../../../packages/cli/src/workspace/local.ts"
 	);
 	const transport = new LocalTransport(caseDir);
 	try {
@@ -715,7 +715,7 @@ async function runAgentTurn({
 					content: [
 						{
 							type: "text",
-							content: `Octofwen stopped with ${finish.reason.type}. Continue if possible, otherwise explain the blocker precisely.`,
+							content: `octofriend stopped with ${finish.reason.type}. Continue if possible, otherwise explain the blocker precisely.`,
 						},
 					],
 				});

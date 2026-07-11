@@ -2,7 +2,7 @@ import {
 	agentdTransportRequest,
 	type Transport,
 	type TransportDirectoryEntry,
-} from "./common";
+} from "./common.ts";
 
 export class LocalTransport implements Transport {
 	readonly cwd: string;
@@ -93,7 +93,7 @@ export class LocalTransport implements Transport {
 	}
 
 	private request(signal: AbortSignal, params: Record<string, unknown>) {
-		return agentdTransportRequest(signal, "octofwen.agentd/transportLocal", {
+		return agentdTransportRequest(signal, "octofriend.agentd/transportLocal", {
 			cwd: this.cwd,
 			...params,
 		});

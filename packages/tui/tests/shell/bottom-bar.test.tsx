@@ -2,16 +2,16 @@ import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import { Profiler } from "react";
 import { shallow } from "zustand/shallow";
+import { ConfigContext } from "../../src/runtime/config/react-context.ts";
+import type { Config } from "../../src/runtime/config/schemas.ts";
 import {
 	BottomBar,
 	BottomBarContent,
 	bottomBarVersionMessage,
 	selectBottomBarContentState,
-} from "../../src/shell/bottom-bar";
-import type { InputHistory } from "../../src/shell/input";
-import { useAppStore } from "../../src/shell/state/store";
-import { ConfigContext } from "../../src/runtime/config/react-context";
-import type { Config } from "../../src/runtime/config/schemas";
+} from "../../src/shell/bottom-bar.tsx";
+import type { InputHistory } from "../../src/shell/input.ts";
+import { useAppStore } from "../../src/shell/state/store.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 500; attempt += 1) {
@@ -41,7 +41,7 @@ describe("terminal bottom bar", () => {
 
 	it("formats version-check status messages", () => {
 		expect(bottomBarVersionMessage("0.0.1", "0.0.2")).toBe(
-			"New version released! Run `bun install --global octofwen` to update.",
+			"New version released! Run `bun install --global octofriend` to update.",
 		);
 		expect(bottomBarVersionMessage("0.0.2", "0.0.2")).toBe(
 			"Octo is up-to-date.",
@@ -51,10 +51,10 @@ describe("terminal bottom bar", () => {
 			"Octo is up-to-date.",
 		);
 		expect(bottomBarVersionMessage("0.9.9", "0.10.0")).toBe(
-			"New version released! Run `bun install --global octofwen` to update.",
+			"New version released! Run `bun install --global octofriend` to update.",
 		);
 		expect(bottomBarVersionMessage("v0.9.9", "v0.10.0")).toBe(
-			"New version released! Run `bun install --global octofwen` to update.",
+			"New version released! Run `bun install --global octofriend` to update.",
 		);
 		expect(bottomBarVersionMessage("1.0.0-beta", "1.0.0")).toBe(
 			"Octo is up-to-date.",

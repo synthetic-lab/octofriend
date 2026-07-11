@@ -1,18 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
-import { runBenchmarkCommand } from "../benchmark";
+import { runBenchmarkCommand } from "../benchmark.ts";
 import {
 	CONFIG_JSON5_FILE,
 	loadConfig,
 	loadConfigWithoutReauth,
-} from "../config-screen";
-import { runMain } from "../main";
-import { APP_METADATA } from "../metadata";
-import { runPromptCommand } from "../prompt-files";
-import { DockerTransport, manageContainer } from "../workspace/docker";
-import { LocalTransport } from "../workspace/local";
-import { SshTransport } from "../workspace/ssh";
+} from "../config-screen.tsx";
+import { runMain } from "../main.tsx";
+import { APP_METADATA } from "../metadata.ts";
+import { runPromptCommand } from "../prompt-files.ts";
+import { DockerTransport, manageContainer } from "../workspace/docker.ts";
+import { LocalTransport } from "../workspace/local.ts";
+import { SshTransport } from "../workspace/ssh.ts";
 
 const CHANGELOG_PATH = path.join(
 	import.meta.dirname,
@@ -142,10 +142,10 @@ function registerBasicCommands(cli: Command) {
 		.description("Create a fresh config file for Octo")
 		.action(async () => {
 			const { render } = await import("ink");
-			const { loadTui } = await import("../launch-tui");
+			const { loadTui } = await import("../launch-tui.ts");
 			const { FirstTimeSetup } = await loadTui();
 			const { createAgentdRustBridge } = await import(
-				"../bridge/agent/agent"
+				"../bridge/agent/agent.ts"
 			);
 			const bridge = await createAgentdRustBridge();
 			try {
@@ -226,7 +226,7 @@ function registerPromptCommand(cli: Command) {
 		});
 }
 
-export function createOctofwenCommand(): Command {
+export function createoctofriendCommand(): Command {
 	const cli = new Command()
 		.description("If run with no subcommands, runs Octo interactively.")
 		.option("--config <path>")
@@ -245,5 +245,5 @@ export function createOctofwenCommand(): Command {
 }
 
 export function runCli(argv = process.argv) {
-	createOctofwenCommand().parse(argv);
+	createoctofriendCommand().parse(argv);
 }

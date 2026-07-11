@@ -1,13 +1,13 @@
-import { err, ok, type Result } from "../../shell/result";
-import { resolveAgentdCommand } from "../agent/command";
-import { firstNonEmptyStdoutLine } from "../agent/stdout";
-import type { Config } from "./schemas";
+import { err, ok, type Result } from "../../shell/result.ts";
+import { resolveAgentdCommand } from "../agent/command.ts";
+import { firstNonEmptyStdoutLine } from "../agent/stdout.ts";
+import type { Config } from "./schemas.ts";
 
 export function getModelFromConfig(
 	config: Config,
 	modelOverride: string | null,
 ) {
-	const result = agentdRequestSync("octofwen.agentd/configSelectModel", {
+	const result = agentdRequestSync("octofriend.agentd/configSelectModel", {
 		config,
 		modelOverride,
 	});
@@ -46,15 +46,17 @@ function agentdRequestSync(
 	});
 	if (subprocess.exitCode !== 0) {
 		return err(
-			`octofwen-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
+			`octofriend-agentd exited with code ${subprocess.exitCode}: ${subprocess.stderr.toString()}`,
 		);
 	}
 	const line = firstNonEmptyStdoutLine(subprocess.stdout.toString());
-	if (!line) return err("octofwen-agentd returned no response");
+	if (!line) return err("octofriend-agentd returned no response");
 	const response = parseResponse(line);
 	if (!response.success) return response;
 	if (response.data.error) {
-		return err(response.data.error.message ?? "octofwen-agentd request failed");
+		return err(
+			response.data.error.message ?? "octofriend-agentd request failed",
+		);
 	}
 	return ok(response.data.result);
 }

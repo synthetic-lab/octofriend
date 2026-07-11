@@ -1,7 +1,7 @@
-import { err, errorToString, ok, type Result } from "../../shell/result";
-import { nonEmptyTrimmedText } from "../../shell/text-processing";
-import { configRunNotify } from "./agentd-config";
-import type { Config } from "./schemas";
+import { err, errorToString, ok, type Result } from "../../shell/result.ts";
+import { nonEmptyTrimmedText } from "../../shell/text-processing.ts";
+import { configRunNotify } from "./agentd-config.ts";
+import type { Config } from "./schemas.ts";
 
 export type DesktopNotification = {
 	title: string;
@@ -29,7 +29,7 @@ export async function runNotifyCommand(
 		}
 
 		await notifyDesktop({
-			title: "Octofwen",
+			title: "octofriend",
 			message: "Octo is waiting for input.",
 		});
 		return ok(null);

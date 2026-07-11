@@ -1,3 +1,3 @@
-import { createOctofwenCommand, runCli } from "./commands/root";
+import { createoctofriendCommand, runCli } from "./commands/root.tsx";
 
-export { createOctofwenCommand, runCli };
+export { createoctofriendCommand, runCli };

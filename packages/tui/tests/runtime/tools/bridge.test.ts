@@ -1,10 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { Config } from "../../../src/runtime/config/schemas";
-import {
-	runTool,
-	validateTool,
-} from "../../../src/runtime/tools/main";
-import type { Transport } from "../../../src/runtime/workspace/common";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
+import { runTool, validateTool } from "../../../src/runtime/tools/main.ts";
+import type { Transport } from "../../../src/runtime/workspace/common.ts";
 
 const baseConfig: Config = {
 	yourName: "Octo",
@@ -143,8 +140,8 @@ describe("tool orchestration bridge runs", () => {
 				type: "tool-call",
 				toolCallId: "search-1",
 				name: "web-search",
-				original: { query: "octofwen" },
-				parsed: { query: "octofwen" },
+				original: { query: "octofriend" },
+				parsed: { query: "octofriend" },
 			},
 			config: config,
 			toolRun: toolRun,
@@ -160,11 +157,11 @@ describe("tool orchestration bridge runs", () => {
 					type: "tool-call",
 					toolCallId: "search-1",
 					name: "web-search",
-					original: { query: "octofwen" },
-					parsed: { query: "octofwen" },
+					original: { query: "octofriend" },
+					parsed: { query: "octofriend" },
 				},
 				parsed: {
-					query: "octofwen",
+					query: "octofriend",
 				},
 				modelContext: 200,
 				webSearch: {

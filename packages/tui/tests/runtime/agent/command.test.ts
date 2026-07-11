@@ -2,12 +2,12 @@ import { describe, expect, it } from "bun:test";
 import {
 	PACKAGED_AGENTD_LAUNCHER_PATH,
 	resolveAgentdCommand,
-} from "../../../src/runtime/agent/command";
+} from "../../../src/runtime/agent/command.ts";
 
 describe("resolveAgentdCommand", () => {
 	it("runs configured executables directly", () => {
 		expect(
-			resolveAgentdCommand({ OCTOFWEN_AGENTD: "/tmp/env-agentd" }),
+			resolveAgentdCommand({ octofriend_AGENTD: "/tmp/env-agentd" }),
 		).toEqual(["/tmp/env-agentd"]);
 	});
 

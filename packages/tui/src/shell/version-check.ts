@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const VERSION_CHECK_CLEAR_DELAY = 5000;
 const NEW_VERSION_MESSAGE =
-	"New version released! Run `bun install --global octofwen` to update.";
+	"New version released! Run `bun install --global octofriend` to update.";
 const CURRENT_VERSION_MESSAGE = "Octo is up-to-date.";
 
 export function useVersionCheck(currentVersion: string): string {
@@ -105,7 +105,7 @@ function parseVersionPart(
 
 export async function getLatestVersion() {
 	try {
-		const response = await fetch("https://registry.npmjs.com/octofwen");
+		const response = await fetch("https://registry.npmjs.com/octofriend");
 		const contents = await response.json();
 		return packageLatestVersion(contents);
 	} catch {

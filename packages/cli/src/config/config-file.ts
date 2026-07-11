@@ -4,8 +4,8 @@ import json5 from "json5";
 import {
 	AgentdRustBridge,
 	spawnAgentdProcessClient,
-} from "../bridge/agent/agent";
-import type { Config } from "./schemas";
+} from "../bridge/agent/agent.ts";
+import type { Config } from "./schemas.ts";
 
 type ConfigFileOptions = {
 	bridge?: AgentdRustBridge;
@@ -75,7 +75,7 @@ async function sanitizeConfig(
 			Array.isArray(sanitized)
 		) {
 			return Promise.reject(
-				new Error("Invalid octofwen-agentd config sanitize result"),
+				new Error("Invalid octofriend-agentd config sanitize result"),
 			);
 		}
 		return sanitized as Record<string, unknown>;

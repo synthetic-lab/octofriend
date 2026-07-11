@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { AgentdProcessLike } from "../ipc/client";
+import type { AgentdProcessLike } from "../ipc/client.ts";
 
 export type AgentdExecutableResolutionOptions = {
 	executable?: string;
@@ -8,7 +8,7 @@ export type AgentdExecutableResolutionOptions = {
 
 export const PACKAGED_AGENTD_EXECUTABLE_PATH = resolve(
 	import.meta.dirname,
-	"../../../bin/octofwen-agentd.js",
+	"../../../bin/octofriend-agentd.js",
 );
 
 export type AgentdSpawnOptions = {
@@ -38,7 +38,7 @@ export function resolveAgentdExecutable(
 ): string {
 	return (
 		options.executable ??
-		(options.env ?? process.env)["OCTOFWEN_AGENTD"] ??
+		(options.env ?? process.env)["octofriend_AGENTD"] ??
 		PACKAGED_AGENTD_EXECUTABLE_PATH
 	);
 }
@@ -47,7 +47,7 @@ export function resolveAgentdCommand(
 	options: AgentdExecutableResolutionOptions = {},
 ): string[] {
 	const executable =
-		options.executable ?? (options.env ?? process.env)["OCTOFWEN_AGENTD"];
+		options.executable ?? (options.env ?? process.env)["octofriend_AGENTD"];
 	return executable
 		? [executable]
 		: [process.execPath, PACKAGED_AGENTD_EXECUTABLE_PATH];

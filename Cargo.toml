@@ -1,14 +1,14 @@
 [workspace]
 members = [
-    "crates/octofwen-core",
-    "crates/octofwen-text",
-    "crates/octofwen-config",
-    "crates/octofwen-wire",
-    "crates/octofwen-store",
-    "crates/octofwen-workspace",
-    "crates/octofwen-models",
-    "crates/octofwen-tools",
-    "crates/octofwen-agent",
+    "crates/octofriend-core",
+    "crates/octofriend-text",
+    "crates/octofriend-config",
+    "crates/octofriend-wire",
+    "crates/octofriend-store",
+    "crates/octofriend-workspace",
+    "crates/octofriend-models",
+    "crates/octofriend-tools",
+    "crates/octofriend-agent",
 ]
 resolver = "3"
 
@@ -16,22 +16,22 @@ resolver = "3"
 edition = "2024"
 rust-version = "1.96"
 license = "MIT"
-repository = "https://github.com/xsyetopz/octofwen.git"
+repository = "https://github.com/xsyetopz/octofriend.git"
 readme = "README.md"
-keywords = ["octofwen", "octofriend", "agents", "sdk"]
+keywords = ["octofriend", "octofriend", "agents", "sdk"]
 categories = ["development-tools"]
 version = "0.0.0"
 
 [workspace.dependencies]
-octofwen-agent = { path = "crates/octofwen-agent" }
-octofwen-config = { path = "crates/octofwen-config" }
-octofwen-core = { path = "crates/octofwen-core" }
-octofwen-text = { path = "crates/octofwen-text" }
-octofwen-models = { path = "crates/octofwen-models" }
-octofwen-wire = { path = "crates/octofwen-wire" }
-octofwen-store = { path = "crates/octofwen-store" }
-octofwen-tools = { path = "crates/octofwen-tools" }
-octofwen-workspace = { path = "crates/octofwen-workspace" }
+octofriend-agent = { path = "crates/octofriend-agent" }
+octofriend-config = { path = "crates/octofriend-config" }
+octofriend-core = { path = "crates/octofriend-core" }
+octofriend-text = { path = "crates/octofriend-text" }
+octofriend-models = { path = "crates/octofriend-models" }
+octofriend-wire = { path = "crates/octofriend-wire" }
+octofriend-store = { path = "crates/octofriend-store" }
+octofriend-tools = { path = "crates/octofriend-tools" }
+octofriend-workspace = { path = "crates/octofriend-workspace" }
 
 base64 = "0.22.1"
 a2a-lf = "0.3.0"

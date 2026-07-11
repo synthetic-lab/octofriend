@@ -7,7 +7,8 @@ export const TERMINAL_UNCHAINED_COLOR = "#AA0A0A";
 export const DIFF_REMOVED_COLOR = "#880808";
 export const DIFF_ADDED_COLOR = "#405e35";
 export const CODE_GUTTER_COLOR = "gray";
-export const OCTOFWEN_HEADER_FONT = "Delta Corps Priest 1";
+export const octofriend_HEADER_FONT = "Delta Corps Priest 1";
+export const octofriend_SUBHEADER_FONT = "Delta Corps Priest 1";
 
 export type TerminalHeaderProps = {
 	unchained: boolean;
@@ -44,8 +45,8 @@ export function getTerminalThemeColor(unchained: boolean): string {
 }
 
 export function TerminalHeader({ unchained }: TerminalHeaderProps) {
-	const top = figlet.textSync("Octo", { font: OCTOFWEN_HEADER_FONT });
-	const bottom = figlet.textSync("Friend", { font: OCTOFWEN_HEADER_FONT });
+	const top = figlet.textSync("Octo", { font: octofriend_HEADER_FONT });
+	const bottom = figlet.textSync("Friend", { font: octofriend_SUBHEADER_FONT });
 	const themeColor = getTerminalThemeColor(unchained);
 
 	return (

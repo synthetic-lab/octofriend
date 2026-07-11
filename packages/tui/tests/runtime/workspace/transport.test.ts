@@ -15,8 +15,8 @@ import {
 	findFiles,
 	getEnvVar,
 	TransportError,
-} from "../../../src/runtime/workspace/common";
-import { LocalTransport } from "../../../src/runtime/workspace/local";
+} from "../../../src/runtime/workspace/common.ts";
+import { LocalTransport } from "../../../src/runtime/workspace/local.ts";
 
 const temporaryDirectories: string[] = [];
 const isWindows = process.platform === "win32";
@@ -38,7 +38,7 @@ function normalizeShellOutput(output: string) {
 }
 
 async function makeTempDirectory() {
-	const dir = await mkdtemp(path.join(tmpdir(), "octofwen-transport-"));
+	const dir = await mkdtemp(path.join(tmpdir(), "octofriend-transport-"));
 	temporaryDirectories.push(dir);
 	return dir;
 }
@@ -206,16 +206,16 @@ describe("findFiles", () => {
 		const transport = new LocalTransport(root);
 
 		await mkdir(path.join(root, "src"), { recursive: true });
-		await writeFile(path.join(root, "src/octofwen-agent.ts"), "", "utf8");
-		await writeFile(path.join(root, "src/octofwen.test.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/octofriend-agent.ts"), "", "utf8");
+		await writeFile(path.join(root, "src/octofriend.test.ts"), "", "utf8");
 		await writeFile(path.join(root, "src/other.ts"), "", "utf8");
 
 		await expect(
 			findFiles(signal, transport, {
-				includeName: "octofwen*.ts",
+				includeName: "octofriend*.ts",
 				excludeName: "*.test.ts",
 			}),
-		).resolves.toEqual(["src/octofwen-agent.ts"]);
+		).resolves.toEqual(["src/octofriend-agent.ts"]);
 	});
 
 	it("finds files through the remote shell for SSH transports", async () => {
@@ -283,7 +283,7 @@ describe("getEnvVar", () => {
 			await getEnvVar(
 				new AbortController().signal,
 				transport,
-				"OCTOFWEN_TRANSPORT_TEST_VALUE",
+				"octofriend_TRANSPORT_TEST_VALUE",
 				5000,
 			),
 		).toBe("");

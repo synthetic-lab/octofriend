@@ -5,13 +5,11 @@ import { join } from "node:path";
 import { render } from "ink-testing-library";
 import json5 from "json5";
 import React from "react";
-import { useModel } from "../../../src/shell/state/model-hook";
-import { useAppStore } from "../../../src/shell/state/store";
 import {
 	readConfig,
 	writeConfig,
-} from "../../../src/runtime/config/config-file";
-import { fileExists } from "../../../src/runtime/config/filesystem";
+} from "../../../src/runtime/config/config-file.ts";
+import { fileExists } from "../../../src/runtime/config/filesystem.ts";
 import {
 	assertKeyForModel,
 	hasExistingKeyForBaseUrl,
@@ -20,14 +18,16 @@ import {
 	readKeyForBaseUrl,
 	readKeyForModelWithDetails,
 	readSearchConfig,
-} from "../../../src/runtime/config/keys";
+} from "../../../src/runtime/config/keys.ts";
 import {
 	withAllServersDisabled,
 	withServerDisabled,
-} from "../../../src/runtime/config/lsp-config";
-import { getModelFromConfig } from "../../../src/runtime/config/model-selection";
-import { ConfigContext } from "../../../src/runtime/config/react-context";
-import type { Config } from "../../../src/runtime/config/schemas";
+} from "../../../src/runtime/config/lsp-config.ts";
+import { getModelFromConfig } from "../../../src/runtime/config/model-selection.ts";
+import { ConfigContext } from "../../../src/runtime/config/react-context.ts";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
+import { useModel } from "../../../src/shell/state/model-hook.ts";
+import { useAppStore } from "../../../src/shell/state/store.ts";
 
 const CURRENT_CONFIG_VERSION = 6;
 
@@ -39,7 +39,7 @@ function echoCommand(value: string): string[] {
 
 describe("configuration", () => {
 	it("reads old config files, applies migrations, and persists the current version", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			const configPath = join(dir, "config.json5");
 			await writeFile(
@@ -74,7 +74,7 @@ describe("configuration", () => {
 	});
 
 	it("migrates legacy octofriend Codex subscription models through readConfig", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			const configPath = join(dir, "config.json5");
 			await writeFile(
@@ -118,7 +118,7 @@ describe("configuration", () => {
 	});
 
 	it("rejects unknown keys in exact configuration shapes", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			for (const [index, config] of (
 				[
@@ -152,7 +152,7 @@ describe("configuration", () => {
 	});
 
 	it("rejects mixed disabled LSP entries", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			const configPath = join(dir, "invalid-lsp.json5");
 			await writeFile(
@@ -177,7 +177,7 @@ describe("configuration", () => {
 	});
 
 	it("checks whether a config path exists", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			const configPath = join(dir, "config.json5");
 			await expect(fileExists(configPath)).resolves.toBe(false);
@@ -189,7 +189,7 @@ describe("configuration", () => {
 	});
 
 	it("writes config without redundant built-in provider env vars", async () => {
-		const dir = await mkdtemp(join(tmpdir(), "octofwen-config-"));
+		const dir = await mkdtemp(join(tmpdir(), "octofriend-config-"));
 		try {
 			const configPath = join(dir, "config.json5");
 			const config: Config = {

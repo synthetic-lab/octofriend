@@ -1,5 +1,5 @@
-import { agentdTransportRequestRaw } from "../agent/transport-request";
-import { findFilesWithRemoteShell } from "./remote-find";
+import { agentdTransportRequestRaw } from "../agent/transport-request.ts";
+import { findFilesWithRemoteShell } from "./remote-find.ts";
 
 export type TransportDirectoryEntry = {
 	entry: string;
@@ -96,7 +96,7 @@ export async function findFiles(
 	}
 	const result = await agentdTransportRequest(
 		signal,
-		"octofwen.agentd/transportFindFiles",
+		"octofriend.agentd/transportFindFiles",
 		{
 			cwd: transport.cwd,
 			options,
@@ -113,7 +113,7 @@ export async function getEnvVar(
 ): Promise<string> {
 	const result = await agentdTransportRequest(
 		signal,
-		"octofwen.agentd/transportGetEnv",
+		"octofriend.agentd/transportGetEnv",
 		{
 			cwd: transport.cwd,
 			name: envVarName,
