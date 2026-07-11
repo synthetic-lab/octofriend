@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLatestRef } from "../../input/latest-input";
 import { Step } from "./step";
 import type { FullFlowRouteData } from "./types";
@@ -20,6 +20,7 @@ import {
 } from "./auth";
 import { SetApiKey } from "./api-key";
 import { Back, type ToRoute } from "./router";
+import { authorizeCodexOAuth, type CodexOAuthStatus } from "./codex-oauth";
 
 type FullFlowToRoute = ToRoute<FullFlowRouteData>;
 
@@ -93,51 +94,38 @@ export function ChatGptOAuthRoute({
 }: FullFlowRouteData["chatGptOAuth"] & {
 	to: Pick<FullFlowToRoute, "authAsk" | "postAuth">;
 }) {
-	const propsRef = useLatestRef(props);
 	const toRef = useLatestRef(to);
-	const handleBack = useCallback(() => {
-		toRef.current.authAsk(propsRef.current);
-	}, [propsRef, toRef]);
-	const handleSubmit = useCallback(
-		(envVar: string) =>
-			toRef.current.postAuth({
-				...propsRef.current,
-				auth: chatGptOAuthEnvAuth(envVar),
-			}),
-		[propsRef, toRef],
-	);
-	const validateEnvVar = useCallback(
-		(value: string) => validateChatGptOAuthEnvVar(value, propsRef.current.env),
-		[propsRef],
-	);
+	const propsRef = useLatestRef(props);
+	const [status, setStatus] = useState<CodexOAuthStatus>({ type: "starting" });
+	const configuredEnv = props.env ?? process.env;
+	const existingEnvVar = configuredEnv[CHATGPT_OAUTH_ENV_VAR] ? CHATGPT_OAUTH_ENV_VAR : configuredEnv.OPENAI_CODEX_ACCESS_TOKEN ? "OPENAI_CODEX_ACCESS_TOKEN" : null;
+	useEffect(() => {
+		if (existingEnvVar) return;
+		const controller = new AbortController();
+		authorizeCodexOAuth(setStatus, controller.signal)
+			.then(() => toRef.current.postAuth({ ...propsRef.current, auth: chatGptOAuthEnvAuth(CHATGPT_OAUTH_ENV_VAR) }))
+			.catch((error: unknown) => {
+				if (!controller.signal.aborted) setStatus({ type: "error", message: error instanceof Error ? error.message : String(error) });
+			});
+		return () => controller.abort();
+	}, [existingEnvVar, propsRef, toRef]);
+	if (existingEnvVar) {
+		return (
+			<Back go={() => toRef.current.authAsk(propsRef.current)}>
+				<Step<string> title="What environment variable contains your ChatGPT OAuth access token?" prompt="OAuth token environment variable:" defaultValue={existingEnvVar} parse={normalizeEnvVarName} validate={() => ({ valid: true as const })} onSubmit={(envVar) => toRef.current.postAuth({ ...propsRef.current, auth: chatGptOAuthEnvAuth(envVar) })}>
+					<Text>Using the existing OAuth token from {existingEnvVar}.</Text>
+				</Step>
+			</Back>
+		);
+	}
 	return (
-		<Back go={handleBack}>
-			<Step<string>
-				title="What environment variable contains your ChatGPT OAuth access token?"
-				prompt="OAuth token environment variable:"
-				defaultValue={CHATGPT_OAUTH_ENV_VAR}
-				parse={normalizeEnvVarName}
-				validate={validateEnvVar}
-				onSubmit={handleSubmit}
-			>
-				<Box flexDirection="column">
-					<Text>
-						OpenAI can authenticate with a ChatGPT OAuth access token. Octo will
-						read the token from this environment variable and send it as a
-						bearer token to the OpenAI-compatible endpoint.
-					</Text>
-					{props.renderExamples && (
-						<>
-							<Text>For Codex CLI users, authenticate first:</Text>
-							<Text bold={true}>codex login --device-auth</Text>
-							<Text>
-								Then expose a non-empty OAuth access token as
-								{` ${CHATGPT_OAUTH_ENV_VAR} before starting Octo.`}
-							</Text>
-						</>
-					)}
-				</Box>
-			</Step>
+		<Back go={() => toRef.current.authAsk(propsRef.current)}>
+			<Box flexDirection="column">
+				<Text bold={true}>ChatGPT OAuth authorization</Text>
+				{status.type === "starting" && <Text>Requesting an authorization code...</Text>}
+				{status.type === "waiting" && <><Text>Open {status.url}</Text><Text>Enter code: {status.code}</Text><Text>Waiting for browser authorization...</Text></>}
+				{status.type === "error" && <Text color="red">{status.message}</Text>}
+			</Box>
 		</Back>
 	);
 }

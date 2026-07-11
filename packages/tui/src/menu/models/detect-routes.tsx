@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Auth, Config } from "../../runtime/config/schemas";
+import { assertKeyForModel } from "../../runtime/config/keys";
 import type {
 	ProviderConfig,
 	ProviderKey,
@@ -16,6 +17,7 @@ import {
 import { ImportModelsFrom } from "./import-screen";
 import { modelSetupStepForProviderChoice } from "./provider-select";
 import { FastProviderList } from "./provider-screen";
+import { ModelDiscoveryContext } from "./connection";
 import type {
 	ModelSetupStepAction,
 	ModelSetupStepData,
@@ -114,6 +116,28 @@ export function ModelSetupFoundRoute({
 	stepData: FoundStepData;
 }) {
 	const { provider, overrideAuth, useEnvVar } = stepData;
+	const modelDiscover = useContext(ModelDiscoveryContext);
+	const [discoveredModels, setDiscoveredModels] = useState<ProviderConfig["models"] | null>(null);
+	useEffect(() => {
+		let active = true;
+		const auth = overrideAuth ?? (useEnvVar ? { type: "env" as const, name: provider.envVar } : undefined);
+		if (auth?.type === "env" && auth.credential === "chatgpt-oauth") {
+			return () => { active = false; };
+		}
+		assertKeyForModel({ baseUrl: provider.baseUrl, type: provider.type, auth }, config)
+			.then((apiKey) => modelDiscover({ type: provider.type, baseUrl: provider.baseUrl, apiKey }))
+			.then((result) => {
+				const models = result.models.map((model) => ({
+					model: model.id,
+					nickname: model.name ?? model.id,
+					context: model.context_length ?? 0,
+				}));
+				if (active && models.length > 0) setDiscoveredModels(models);
+			})
+			.catch(() => undefined);
+		return () => { active = false; };
+	}, [config, modelDiscover, overrideAuth, provider, useEnvVar]);
+	const importProvider = useMemo(() => discoveredModels ? { ...provider, models: discoveredModels } : provider, [discoveredModels, provider]);
 	const authSummaryText = useMemo(
 		() =>
 			providerImportAuthText({
@@ -129,14 +153,14 @@ export function ModelSetupFoundRoute({
 			onComplete(
 				buildImportedProviderModels({
 					models,
-					provider,
+					provider: importProvider,
 					config,
 					overrideAuth,
 					useEnvVar,
 				}),
 			);
 		},
-		[config, onComplete, overrideAuth, provider, useEnvVar],
+		[config, importProvider, onComplete, overrideAuth, useEnvVar],
 	);
 
 	const cancelProviderImport = useCallback(() => {
@@ -165,7 +189,7 @@ export function ModelSetupFoundRoute({
 	return (
 		<ImportModelsFrom
 			config={config}
-			provider={provider}
+			provider={importProvider}
 			onImport={importProviderModels}
 			onCancel={cancelProviderImport}
 			onCustomModel={chooseCustomProviderModel}
@@ -218,6 +242,7 @@ export function ModelSetupMissingAuthRoute({
 	return (
 		<CustomAuthFlow
 			config={config}
+			hasExistingKey={async () => false}
 			onComplete={completeMissingAuth}
 			onCancel={cancelMissingAuth}
 			baseUrl={provider.baseUrl}

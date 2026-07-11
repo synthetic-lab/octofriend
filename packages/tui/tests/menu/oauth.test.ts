@@ -68,3 +68,18 @@ describe("provider OAuth auto-detection", () => {
 		).toBeNull();
 	});
 });
+
+describe("ChatGPT OAuth errors", () => {
+	it("formats structured provider errors instead of displaying [object Object]", async () => {
+		const { formatCodexOAuthError } = await import(
+			"../../src/menu/models/codex-oauth"
+		);
+
+		expect(formatCodexOAuthError({ error: { message: "authorization expired" } })).toBe(
+			"authorization expired",
+		);
+		expect(formatCodexOAuthError({ code: "access_denied" })).toBe(
+			'{"code":"access_denied"}',
+		);
+	});
+});

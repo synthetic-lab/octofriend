@@ -28,6 +28,7 @@ export type ModelStepRoute<T> = T & {
 export type ModelMetadata = {
 	name?: string;
 	contextLength?: number;
+	models?: Array<{ model: string; nickname: string; context?: number }>;
 };
 
 export type ProviderAuthRouteState = {

@@ -8,7 +8,7 @@ export type AgentdTrajectoryArcParams = {
 		baseUrl: string;
 		model: string;
 		context: number;
-		reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+		reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 		thinkingBudgetTokens?: number;
 		modalities?: unknown;
 	};

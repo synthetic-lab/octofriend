@@ -1,22 +1,22 @@
 import { Text } from "ink";
 import { useCallback, useContext, useEffect, useMemo, useRef } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { type Item, KbShortcutPanel } from "../../input/shortcuts";
-import { providerForBaseUrl } from "../../runtime/models/catalog/main";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { errorContext } from "./error-context";
-import type { FullFlowRouteData, Transitions } from "./types";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { type Item, KbShortcutPanel } from "../../input/shortcuts.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import { providerForBaseUrl } from "../../runtime/models/catalog/main.ts";
+import { authChoicesForProvider } from "./auth.ts";
 import {
 	type AuthChoiceRoute,
 	authPromptText,
 	authShortcutItemsForSupport,
 	authSupportDetailText,
-} from "./auth-options";
-import { authChoicesForProvider } from "./auth";
-import { resolveProviderEnvVar } from "./providers";
-import { Back } from "./router";
+} from "./auth-options.ts";
+import { errorContext } from "./error-context.tsx";
+import { resolveProviderEnvVar } from "./providers.ts";
+import { Back } from "./router.tsx";
+import type { FullFlowRouteData, Transitions } from "./types.ts";
 
-export type { AuthChoiceRoute } from "./auth-options";
+export type { AuthChoiceRoute } from "./auth-options.ts";
 
 export function AuthAsk(
 	props: FullFlowRouteData["authAsk"] &
@@ -104,8 +104,8 @@ export function AuthAsk(
 				) : (
 					<Text>
 						This custom endpoint can use an API key, an existing environment
-						variable, or a secret command. Choose the source Octofwen should use
-						for this model.
+						variable, or a secret command. Choose the source octofriend should
+						use for this model.
 					</Text>
 				)}
 				{supportsChatGptOAuth && (
@@ -131,14 +131,21 @@ export function AuthAsk(
 
 export function PostAuth(
 	props: FullFlowRouteData["postAuth"] & {
-		handleAuth: () => void;
+		handleAuth: () => unknown;
 	},
 ) {
+	const { errorMessage, setErrorMessage } = useContext(errorContext);
 	const handledRef = useRef(false);
 	useEffect(() => {
 		if (handledRef.current) return;
 		handledRef.current = true;
-		props.handleAuth();
-	}, [props.handleAuth]);
-	return null;
+		Promise.resolve(props.handleAuth()).catch((error: unknown) => {
+			setErrorMessage(error instanceof Error ? error.message : String(error));
+		});
+	}, [props.handleAuth, setErrorMessage]);
+	return (
+		<>
+			{errorMessage ? <Text color="red">{errorMessage}</Text> : <Text>Saving authentication...</Text>}
+		</>
+	);
 }

@@ -2,19 +2,16 @@ import { render } from "ink";
 import {
 	type AgentdRustBridge,
 	createAgentdRustBridge,
-} from "./bridge/agent/agent";
-import { readConfig } from "./config/config-file";
-import { fileExists } from "./config/filesystem";
-import { readKeyForModel } from "./config/keys";
-import { CONFIG_DIR, CONFIG_FILE } from "./config/paths";
-import type { Config } from "./config/schemas";
-import { selectModel } from "./model-selection";
-import { err, ok, type Result } from "./result";
-import { loadTui } from "./launch-tui";
-import {
-	markUpdatesSeen,
-	type UpdateNotificationsMarker,
-} from "./updates";
+} from "./bridge/agent/agent.ts";
+import { readConfig, writeConfig } from "./config/config-file.ts";
+import { fileExists } from "./config/filesystem.ts";
+import { readKeyForModel } from "./config/keys.ts";
+import { CONFIG_DIR, CONFIG_FILE } from "./config/paths.ts";
+import type { Config } from "./config/schemas.ts";
+import { loadTui } from "./launch-tui.ts";
+import { selectModel } from "./model-selection.ts";
+import { err, ok, type Result } from "./result.ts";
+import { markUpdatesSeen, type UpdateNotificationsMarker } from "./updates.ts";
 
 export const CONFIG_STANDARD_DIR = CONFIG_DIR;
 export const CONFIG_JSON5_FILE = CONFIG_FILE;
@@ -27,7 +24,7 @@ async function configAutofixKeys(
 	} catch (error) {
 		if (
 			error instanceof Error &&
-			error.message === "Invalid octofwen-agentd autofix keys result"
+			error.message === "Invalid octofriend-agentd autofix keys result"
 		) {
 			return err(error.message);
 		}
@@ -93,7 +90,7 @@ async function ensureAutofixModelAuth(
 	const ownedBridge = options.bridge ? null : await createAgentdRustBridge();
 	const bridge = options.bridge ?? ownedBridge;
 	if (bridge == null) {
-		console.error("Missing octofwen-agentd bridge");
+		console.error("Missing octofriend-agentd bridge");
 		process.exit(1);
 	}
 	try {
@@ -127,6 +124,21 @@ async function ensureOneAutofixModelAuth(
 	const autofixModel = loaded.config[key];
 	if (!autofixModel) return loaded;
 	if (await readKeyForModel(autofixModel, loaded.config)) return loaded;
+
+	const inheritedOAuthModel = loaded.config.models.find(
+		(model) =>
+			model.model === autofixModel.model &&
+			model.auth?.type === "env" &&
+			model.auth.credential === "chatgpt-oauth",
+	);
+	if (inheritedOAuthModel?.auth) {
+		const updatedConfig = {
+			...loaded.config,
+			[key]: { ...autofixModel, auth: inheritedOAuthModel.auth },
+		};
+		await writeConfig(updatedConfig, loaded.configPath, { bridge: options.bridge });
+		return { ...loaded, config: updatedConfig };
+	}
 
 	const { PreflightAutofixAuth } = await loadTui();
 	const { waitUntilExit } = render(
@@ -174,7 +186,7 @@ export async function loadConfigWithoutReauth(
 	const ownedBridge = options.bridge ? null : await createAgentdRustBridge();
 	const bridge = options.bridge ?? ownedBridge;
 	if (bridge == null) {
-		console.error("Missing octofwen-agentd bridge");
+		console.error("Missing octofriend-agentd bridge");
 		process.exit(1);
 	}
 	try {
@@ -183,6 +195,7 @@ export async function loadConfigWithoutReauth(
 			<FirstTimeSetup
 				configPath={CONFIG_JSON5_FILE}
 				modelConnectionTest={(params) => bridge.modelConnectionTest(params)}
+				modelDiscover={(params) => bridge.modelDiscover(params)}
 			/>,
 		);
 		await waitUntilExit();

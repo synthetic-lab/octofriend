@@ -1,4 +1,4 @@
-import { Box, Text } from "ink";
+import { Box, Text, useApp } from "ink";
 import { useCallback, useContext, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useCtrlC } from "../input/ctrl-c";
@@ -18,6 +18,7 @@ import { useModel } from "./state/model-hook";
 import { useAppStore } from "./state/store";
 import type { RunArgs, UiState } from "./state/types";
 import { ToolRequestsRenderer } from "./tool-requests";
+import { isSlashCommand, matchingSlashCommands, slashCommandName, SLASH_COMMANDS } from "./slash-commands";
 import { TransportContext } from "./transport-context";
 
 const COMPACTING_LOADING_STRINGS = [
@@ -121,6 +122,7 @@ export function BottomBarContent({
 	toolRun,
 }: BottomBarContentProps) {
 	const config = useConfig();
+	const { exit } = useApp();
 	const transport = useContext(TransportContext);
 	const vimEnabled = !!config.vimEmulation?.enabled;
 	const {
@@ -136,7 +138,9 @@ export function BottomBarContent({
 		setVimMode,
 		query,
 		setQuery,
-	} = useAppStore(useShallow(selectBottomBarContentState));
+		clearHistory,
+		notify,
+	} = useAppStore(useShallow((state) => ({ ...selectBottomBarContentState(state), clearHistory: state.clearHistory, notify: state.notify })));
 
 	const vimMode = vimEnabled ? storeVimMode : "NORMAL";
 	const queryRef = useRef(query);
@@ -173,6 +177,29 @@ export function BottomBarContent({
 		async (submittedQuery?: string, images?: ImageInfo[]) => {
 			if (!input) return;
 			const finalQuery = submittedQuery ?? queryRef.current;
+			const command = slashCommandName(finalQuery);
+			if (command === "/clear") {
+				clearHistory();
+				notify("Conversation cleared.");
+				setQuery("");
+				return;
+			}
+			if (command === "/help") {
+				notify(SLASH_COMMANDS.map(({ name, description }) => `${name}: ${description}`).join("\n"));
+				setQuery("");
+				return;
+			}
+			if (command === "/quit") {
+				abortResponse();
+				exit();
+				setQuery("");
+				return;
+			}
+			if (command === "/model") {
+				openMenu();
+				setQuery("");
+				return;
+			}
 			setQuery("");
 			await input({
 				query: finalQuery,
@@ -191,6 +218,8 @@ export function BottomBarContent({
 			transport,
 			input,
 			setQuery,
+			clearHistory,
+			notify,
 			skillDiscover,
 			trajectoryArcRun,
 			toolDefinitions,
@@ -281,8 +310,16 @@ function BottomBarInputControls({
 	setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
 }) {
 	const model = useModel();
+	const slashCommands = matchingSlashCommands(query);
 	return (
 		<Box flexDirection="column">
+			{slashCommands.length > 0 && (
+				<Box flexDirection="column" marginLeft={1}>
+					{slashCommands.map((command) => (
+						<Text key={command.name} color="gray">{command.name} — {command.description}</Text>
+					))}
+				</Box>
+			)}
 			<Box marginLeft={1} justifyContent="flex-end">
 				<Text color="gray">(Ctrl+p to enter the menu)</Text>
 			</Box>

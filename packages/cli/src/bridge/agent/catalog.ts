@@ -36,7 +36,7 @@ export type AgentdProviderModelConfig = {
 	model: string;
 	nickname: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: AgentdMultimodalConfig;
 };
@@ -101,7 +101,7 @@ function isProviderType(value: unknown): value is AgentdProviderConfig["type"] {
 
 function isReasoning(
 	value: unknown,
-): value is "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
+): value is "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" {
 	return (
 		value === "none" ||
 		value === "minimal" ||

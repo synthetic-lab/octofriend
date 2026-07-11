@@ -43,7 +43,7 @@ export type ModelConfig = {
 	auth?: Auth;
 	model: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: {
 		image?: {

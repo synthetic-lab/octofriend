@@ -6,18 +6,18 @@ import { spawn } from "bun";
 const profileIndex = process.argv.indexOf("--profile");
 const profile = profileIndex >= 0 ? process.argv[profileIndex + 1] : "release";
 if (profile !== "debug" && profile !== "release") {
-	console.error(`Unsupported octofwen-agentd build profile: ${profile}`);
+	console.error(`Unsupported octofriend-agentd build profile: ${profile}`);
 	process.exit(1);
 }
 
-const repoRoot = resolve(import.meta.dirname, "../../..");
-const manifestPath = resolve(repoRoot, "crates/octofwen-agent/Cargo.toml");
+const repoRoot = resolve(import.meta.dirname, "../../../..");
+const manifestPath = resolve(repoRoot, "crates/octofriend-agent/Cargo.toml");
 const cargoArgs = [
 	"build",
 	"--manifest-path",
 	manifestPath,
 	"--bin",
-	"octofwen-agentd",
+	"octofriend-agentd",
 ];
 if (profile === "release") cargoArgs.push("--release");
 
@@ -30,7 +30,7 @@ const exitCode = await cargo.exited;
 if (exitCode !== 0) process.exit(exitCode);
 
 const executableName =
-	process.platform === "win32" ? "octofwen-agentd.exe" : "octofwen-agentd";
+	process.platform === "win32" ? "octofriend-agentd.exe" : "octofriend-agentd";
 const targetProfile = profile === "release" ? "release" : "debug";
 const builtExecutable = resolve(
 	repoRoot,

@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLatestRef } from "../../input/latest-input";
 import {
 	keyFromName,
@@ -7,14 +7,17 @@ import {
 	providerForBaseUrl,
 	SYNTHETIC_PROVIDER,
 } from "../../runtime/models/catalog/main";
+import { assertKeyForModel } from "../../runtime/config/keys";
 import { useTerminalContentWidth } from "../../layout/viewport";
 import { useTerminalThemeColor } from "../../theme/branding";
 import {
 	testConnection,
 	useModelConnectionTest,
+	ModelDiscoveryContext,
 } from "./connection";
 import { errorContext } from "./error-context";
 import { Step } from "./step";
+import { SelectInput } from "../../menu/select";
 import type {
 	FullFlowRouteData,
 	ModelMetadata,
@@ -55,6 +58,23 @@ function modelInputIsValid(
 
 export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 	const propsRef = useLatestRef(props);
+	const modelDiscover = useContext(ModelDiscoveryContext);
+	const [discoveredModels, setDiscoveredModels] = useState<string[]>([]);
+	const [manualEntry, setManualEntry] = useState(false);
+	useEffect(() => {
+		let active = true;
+		if (!props.auth) return;
+		if (props.auth.type === "env" && props.auth.credential === "chatgpt-oauth") {
+			return () => { active = false; };
+		}
+		assertKeyForModel({ baseUrl: props.baseUrl, auth: props.auth, type: props.provider?.type }, props.config)
+			.then((apiKey) => modelDiscover({ type: props.provider?.type, baseUrl: props.baseUrl, apiKey }))
+			.then((result) => {
+				if (active) setDiscoveredModels(result.models.map((model) => model.id));
+			})
+			.catch(() => undefined);
+		return () => { active = false; };
+	}, [modelDiscover, props.auth, props.baseUrl, props.config, props.provider?.type]);
 	const validateModelInput = useCallback(
 		(value: string) => modelInputIsValid(value, propsRef.current),
 		[propsRef],
@@ -63,27 +83,27 @@ export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 		(model: string) => propsRef.current.onSubmit(model),
 		[propsRef],
 	);
+	if (discoveredModels.length > 0 && !manualEntry) {
+		return (
+			<Back go={props.back}>
+				<Box flexDirection="column" alignItems="center" marginTop={1}>
+					<Text>Choose a model from this provider:</Text>
+					<SelectInput
+						items={[
+							...discoveredModels.map((model) => ({ label: model, value: model })),
+							{ label: "Enter a custom model string...", value: "__custom__" },
+						]}
+						onSelect={({ value }) => value === "__custom__" ? setManualEntry(true) : handleSubmit(value)}
+					/>
+				</Box>
+			</Back>
+		);
+	}
 	return (
 		<Back go={props.back}>
-			<Step<string>
-				title="What's the model string for the API you're using?"
-				prompt="Model string:"
-				parse={parseModelInput}
-				validate={validateModelInput}
-				onSubmit={handleSubmit}
-			>
-				{props.renderExamples && (
-					<Box marginBottom={1}>
-						<Text>
-							(For example, to use Kimi K2 with the Moonshot API, you would use
-							kimi-k2-0711-preview)
-						</Text>
-					</Box>
-				)}
-				<Text>
-					This varies by inference provider: you can typically find this
-					information in your inference provider's documentation.
-				</Text>
+			<Step<string> title="What's the model string for the API you're using?" prompt="Model string:" parse={parseModelInput} validate={validateModelInput} onSubmit={handleSubmit}>
+				{props.renderExamples && <Text>(For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)</Text>}
+				<Text>This varies by inference provider: you can typically find this information in your inference provider's documentation.</Text>
 			</Step>
 		</Back>
 	);

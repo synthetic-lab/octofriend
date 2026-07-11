@@ -28,9 +28,13 @@ export type ModelConnectionTestResult =
 	  }
 	| { valid: false };
 
+export type ModelDiscoveryTester = (params: { type?: "standard" | "openai-responses" | "anthropic" | "gemini"; baseUrl: string; apiKey: string }) => Promise<{ models: Array<{ id: string; name?: string; context_length?: number }> }>;
+
 export type ModelConnectionTester = (
 	params: ModelConnectionTestParams,
 ) => Promise<ModelConnectionTestResult>;
+
+export const ModelDiscoveryContext = createContext<ModelDiscoveryTester>(async () => ({ models: [] }));
 
 export const ModelConnectionTestContext = createContext<ModelConnectionTester>(
 	async () => ({ valid: false }),
@@ -56,6 +60,15 @@ async function resolveConnectionApiKey({
 	resolvedProvider: ReturnType<typeof providerForBaseUrl> | undefined;
 }): Promise<ApiKeyResolution> {
 	if (auth?.type !== "env") {
+		return {
+			valid: true,
+			apiKey: await assertKeyForModel(
+				{ baseUrl, auth, type: providerType },
+				config,
+			),
+		};
+	}
+	if (auth.credential === "chatgpt-oauth") {
 		return {
 			valid: true,
 			apiKey: await assertKeyForModel(
@@ -119,9 +132,13 @@ export async function testConnection({
 		});
 		if (!apiKey.valid) return apiKey;
 
+		const oauthBaseUrl =
+			auth?.type === "env" && auth.credential === "chatgpt-oauth"
+				? "https://chatgpt.com/backend-api/codex"
+				: baseUrl;
 		const result = await modelConnectionTest({
 			...(providerType ? { type: providerType } : {}),
-			baseUrl,
+			baseUrl: oauthBaseUrl,
 			apiKey: apiKey.apiKey,
 			model,
 		});

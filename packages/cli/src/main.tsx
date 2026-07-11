@@ -95,6 +95,7 @@ export async function runMain(opts: RunMainOptions) {
 				}}
 				inputHistory={inputHistory.data}
 				modelConnectionTest={(params) => bridge.modelConnectionTest(params)}
+				modelDiscover={(params) => bridge.modelDiscover(params)}
 				syntheticQuotaFetch={(params) => bridge.syntheticQuotaFetch(params)}
 				tokenUsageCounts={tokenUsageCounts}
 				trajectoryArcRun={async (params, options) => {

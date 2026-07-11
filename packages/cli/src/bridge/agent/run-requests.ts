@@ -51,6 +51,9 @@ import {
 	type AgentdModelConnectionTestParams,
 	type AgentdModelConnectionTestResult,
 	isAgentdModelConnectionTestResult,
+	isAgentdModelDiscoverResult,
+	type AgentdModelDiscoverParams,
+	type AgentdModelDiscoverResult,
 } from "./connection";
 import {
 	type AgentdOctoLowerParams,
@@ -238,6 +241,19 @@ export async function modelProviderCatalog(
 		undefined,
 		isAgentdModelProviderCatalogResult,
 		invalidAgentdModelProviderCatalogResponseError,
+	);
+}
+
+export async function modelDiscover(
+	client: AgentdRequestClient,
+	params: AgentdModelDiscoverParams,
+): Promise<AgentdModelDiscoverResult> {
+	return await requestAgentdResult(
+		client,
+		agentMethods.AGENTD_MODEL_DISCOVER_METHOD,
+		params,
+		isAgentdModelDiscoverResult,
+		invalidAgentdModelConnectionTestResponseError,
 	);
 }
 
