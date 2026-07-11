@@ -54,7 +54,7 @@ const cli = withOctoFlags(
     }
     let runConfig = null;
     if (resumeSessionId != null) {
-      runConfig = await buildSessionContext(resumeSessionId, {
+      runConfig = await buildConfigForResuming(resumeSessionId, {
         config: opts.config,
         unchained: opts.unchained,
         dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
@@ -132,7 +132,7 @@ withOctoFlags(docker.command("run"))
     }
   });
 
-async function buildSessionContext(
+async function buildConfigForResuming(
   resumeSessionId: string,
   overrides: { config?: string; unchained?: boolean; dockerRunArgs?: string[] },
 ): Promise<{
