@@ -1,9 +1,6 @@
 import type { ImageInfo } from "../../input/images";
 import type { TrajectoryArcRunner } from "../../runtime/run-log/main";
-import type {
-	Config,
-	ModelConfig,
-} from "../../runtime/config/schemas";
+import type { Config, ModelConfig } from "../../runtime/config/schemas";
 import type { HistoryItem } from "../../runtime/history/main";
 import type { ToolCall } from "../../runtime/models/ir/main";
 import type {
@@ -115,12 +112,14 @@ type UiNotificationState = {
 
 type UiConversationState = {
 	query: string;
+	sessionId: string;
 	history: HistoryItem<OctoIR>[];
 	clearNonce: number;
 	lastUserPromptIndex: number | null;
 	pendingRejectedToolCall: ToolCallRequest | null;
 	setQuery: (query: string) => void;
 	clearHistory: () => void;
+	hydrateSession: (sessionId: string, history: HistoryItem<OctoIR>[]) => void;
 };
 
 type UiToolState = {
@@ -150,7 +149,8 @@ type UiRunActions = {
 	) => Promise<void>;
 	abortResponse: () => void;
 	_maybeHandleAbort: (signal: AbortSignal) => boolean;
-	runAgent: (args: RunArgs) => Promise<void>;
+	runAgent: (args: RunArgs & { compactOnly?: boolean }) => Promise<void>;
+	compactHistory: (args: RunArgs) => Promise<void>;
 };
 
 type UiRetryActions = {

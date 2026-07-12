@@ -64,7 +64,19 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 			abortResponse();
 
 			set((state) => ({
+				sessionId: crypto.randomUUID(),
 				history: [],
+				lastUserPromptIndex: null,
+				pendingRejectedToolCall: null,
+				byteCount: 0,
+				clearNonce: state.clearNonce + 1,
+			}));
+		},
+
+		hydrateSession: (sessionId: string, history: AppHistory) => {
+			set((state) => ({
+				sessionId,
+				history: historyBeforeIndex(history, history.length),
 				lastUserPromptIndex: null,
 				pendingRejectedToolCall: null,
 				byteCount: 0,
@@ -127,6 +139,7 @@ export function createHistoryActions(set: AppStateSet, get: AppStateGet) {
 		| "setQuery"
 		| "setModelOverride"
 		| "clearHistory"
+		| "hydrateSession"
 		| "editAndRetryFrom"
 		| "rejectTool"
 	>;

@@ -86,3 +86,65 @@ export function isAgentdConversationHistoryLlmPayloadsResult(
 		value["payloads"].every((payload) => typeof payload === "string")
 	);
 }
+
+export type AgentdConversationSessionMetadata = {
+	sessionId: string;
+	cwd: string;
+	launchJson: string;
+	createdAt: number;
+	updatedAt: number;
+};
+
+export type AgentdConversationSessionCreateParams = {
+	databasePath: string;
+	sessionId: string;
+	cwd: string;
+	launchJson: string;
+	timestamp: number;
+};
+
+export type AgentdConversationSessionReplaceParams = {
+	databasePath: string;
+	records: AgentdConversationHistoryEntry[];
+	parentRevisionId: number | null;
+	timestamp: number;
+};
+
+export type AgentdConversationSessionEmptyResult = Record<string, never>;
+
+export type AgentdConversationSessionReplaceResult = { revisionId: number };
+
+export type AgentdConversationSessionLoadResult = {
+	metadata: AgentdConversationSessionMetadata;
+	revisionId: number | null;
+	records: AgentdConversationHistoryRecord[];
+};
+
+export function isAgentdConversationSessionEmptyResult(
+	value: unknown,
+): value is AgentdConversationSessionEmptyResult {
+	return isRecord(value) && Object.keys(value).length === 0;
+}
+
+export function isAgentdConversationSessionReplaceResult(
+	value: unknown,
+): value is AgentdConversationSessionReplaceResult {
+	return isRecord(value) && typeof value["revisionId"] === "number";
+}
+
+export function isAgentdConversationSessionLoadResult(
+	value: unknown,
+): value is AgentdConversationSessionLoadResult {
+	if (!isRecord(value) || !isRecord(value["metadata"])) return false;
+	const metadata = value["metadata"];
+	return (
+		typeof metadata["sessionId"] === "string" &&
+		typeof metadata["cwd"] === "string" &&
+		typeof metadata["launchJson"] === "string" &&
+		typeof metadata["createdAt"] === "number" &&
+		typeof metadata["updatedAt"] === "number" &&
+		(value["revisionId"] === null || typeof value["revisionId"] === "number") &&
+		Array.isArray(value["records"]) &&
+		value["records"].every(isConversationHistoryRecord)
+	);
+}

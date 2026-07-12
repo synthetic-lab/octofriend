@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { formatProviderMetrics } from "../../../src/shell/state/runner";
 import {
 	linkFinishReasonToolCalls,
 	linkTrajectoryHistory,
@@ -9,6 +10,19 @@ import {
 import { useAppStore } from "../../../src/shell/state/store";
 
 const ASSISTANT_MESSAGE_ID_PREFIX = /^assistant-/;
+
+describe("provider metrics formatting", () => {
+	test("reports TTFT and post-first-token throughput", () => {
+		expect(
+			formatProviderMetrics({
+				phase: "response",
+				ttftMs: 125,
+				durationMs: 1125,
+				outputTokens: 20,
+			}),
+		).toBe("Provider response: TTFT 0.125s · 20.00 tok/s · 20 output tokens");
+	});
+});
 
 describe("terminal app state", () => {
 	test("debounces ready-for-input notifications by replacing pending timers", () => {
@@ -55,6 +69,41 @@ describe("terminal app state", () => {
 			globalThis.clearTimeout = originalClearTimeout;
 			useAppStore.setState({ _notifyTimer: null });
 		}
+	});
+
+	test("hydrates saved history and rotates session ids when clearing", () => {
+		useAppStore
+			.getState()
+			.hydrateSession("session-123", [
+				{ type: "notification", content: "restored" },
+			]);
+		expect(useAppStore.getState().sessionId).toBe("session-123");
+		expect(useAppStore.getState().history).toEqual([
+			{ type: "notification", content: "restored" },
+		]);
+
+		useAppStore.getState().clearHistory();
+		expect(useAppStore.getState().sessionId).not.toBe("session-123");
+		expect(useAppStore.getState().history).toEqual([]);
+	});
+
+	test("manual compaction forces a compact-only agent run when history exists", async () => {
+		const calls: unknown[] = [];
+		const originalRunAgent = useAppStore.getState().runAgent;
+		useAppStore.setState({
+			history: [{ type: "notification", content: "history" }],
+			runAgent: async (args) => {
+				calls.push(args);
+			},
+		});
+
+		const args = { config: { yourName: "Test", models: [] }, transport: {} };
+		await useAppStore.getState().compactHistory(args as never);
+		expect(calls).toEqual([{ ...args, compactOnly: true }]);
+
+		useAppStore.setState({ history: [], runAgent: originalRunAgent });
+		await useAppStore.getState().compactHistory(args as never);
+		expect(calls).toHaveLength(1);
 	});
 
 	test("aborted responses return to input mode and reset vim mode", () => {

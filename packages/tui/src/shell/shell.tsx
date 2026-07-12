@@ -18,7 +18,10 @@ import type { Config } from "../runtime/config/schemas";
 import type { Transport } from "../runtime/workspace/common";
 import { TerminalSizeTracker } from "../layout/viewport";
 import { ModelDiscoveryContext } from "../menu/models/connection";
-import type { ModelConnectionTester, ModelDiscoveryTester } from "../menu/models/connection";
+import type {
+	ModelConnectionTester,
+	ModelDiscoveryTester,
+} from "../menu/models/connection";
 import { ModelConnectionTestContext } from "../menu/models/connection";
 import {
 	SyntheticQuotaFetchContext,
@@ -36,10 +39,7 @@ import { BottomBar } from "./bottom-bar";
 import type { InputHistory } from "./input";
 import { useAppStore } from "./state/store";
 import type { RunArgs, UiState } from "./state/types";
-import {
-	attachTokenUsageMirror,
-	type TokenUsageCounts,
-} from "./token-usage";
+import { attachTokenUsageMirror, type TokenUsageCounts } from "./token-usage";
 import { TransportContext } from "./transport-context";
 import { CwdContext } from "./workspace-context";
 
@@ -58,6 +58,13 @@ export type TerminalAppShellProps = {
 	modelDiscover?: ModelDiscoveryTester;
 	syntheticQuotaFetch: SyntheticQuotaFetcher;
 	tokenUsageCounts?: TokenUsageCounts;
+	initialSessionId: string;
+	initialHistory: UiState["history"];
+	initialPrompt?: string;
+	saveConversationSession: (
+		sessionId: string,
+		history: UiState["history"],
+	) => Promise<void>;
 } & Pick<
 	RunArgs,
 	| "trajectoryArcRun"
@@ -77,6 +84,7 @@ export function terminalUnchainedNotification(unchained: boolean): string {
 
 export function selectAppShellState(state: UiState) {
 	return {
+		sessionId: state.sessionId,
 		history: state.history,
 		inflightResponse:
 			(state.modeData.mode === "responding" ||
@@ -98,6 +106,7 @@ type BuildAppStaticItemsInput = {
 	config: Config;
 	bootSkills: readonly string[];
 	updates: string | null;
+	sessionId: string;
 	history: UiState["history"];
 };
 
@@ -106,6 +115,7 @@ export function buildAppStaticItems({
 	config,
 	bootSkills,
 	updates,
+	sessionId,
 	history,
 }: BuildAppStaticItemsInput): StaticItem[] {
 	const items: StaticItem[] = [
@@ -138,6 +148,11 @@ export function buildAppStaticItems({
 		items[writeIndex] = { type: "updates", updates };
 		writeIndex += 1;
 	}
+	items[writeIndex] = {
+		type: "boot-notification",
+		content: `Session: ${sessionId}`,
+	};
+	writeIndex += 1;
 	items[writeIndex] = { type: "slogan" };
 	appendHistoryStaticItems(items, history);
 	return items;
@@ -177,6 +192,10 @@ export function App({
 	modelDiscover,
 	syntheticQuotaFetch,
 	tokenUsageCounts,
+	initialSessionId,
+	initialHistory,
+	initialPrompt,
+	saveConversationSession,
 	trajectoryArcRun,
 	toolPermission,
 	skillDiscover,
@@ -189,6 +208,7 @@ export function App({
 		terminalUnchainedNotification(isUnchained),
 	);
 	const {
+		sessionId,
 		history,
 		inflightResponse,
 		isInputInsertMode,
@@ -196,8 +216,30 @@ export function App({
 		clearNonce,
 		cancelNotifyReadyForInput,
 	} = useAppStore(useShallow(selectAppShellState));
+	const hydrateSession = useAppStore((state) => state.hydrateSession);
 
 	useLatestInput(cancelNotifyReadyForInput);
+
+	useEffect(() => {
+		hydrateSession(initialSessionId, initialHistory);
+		if (initialPrompt !== undefined)
+			useAppStore.getState().setQuery(initialPrompt);
+		const unsubscribe = useAppStore.subscribe((state, previous) => {
+			if (
+				state.sessionId === previous.sessionId &&
+				state.history === previous.history
+			) {
+				return;
+			}
+			saveConversationSession(state.sessionId, state.history).catch(
+				(error: unknown) => {
+					const detail = error instanceof Error ? error.message : String(error);
+					setTempNotification(`Could not save session: ${detail}`);
+				},
+			);
+		});
+		return unsubscribe;
+	}, []);
 
 	useEffect(() => {
 		if (!tokenUsageCounts) return;
@@ -216,70 +258,73 @@ export function App({
 				config: currConfig,
 				bootSkills,
 				updates,
+				sessionId,
 				history,
 			}),
-		[history, currConfig, metadata, bootSkills, updates],
+		[history, sessionId, currConfig, metadata, bootSkills, updates],
 	);
 
 	return (
-		<ModelDiscoveryContext.Provider value={modelDiscover ?? (async () => ({ models: [] }))}>
+		<ModelDiscoveryContext.Provider
+			value={modelDiscover ?? (async () => ({ models: [] }))}
+		>
 			<ModelConnectionTestContext.Provider value={modelConnectionTest}>
-			<SyntheticQuotaFetchContext.Provider value={syntheticQuotaFetch}>
-				<InputPriorityProvider>
-					<UnchainedShiftTabHandler
-						setIsUnchained={setIsUnchained}
-						setTempNotification={setTempNotification}
-					/>
-					<SetConfigContext.Provider value={setCurrConfig}>
-						<ConfigPathContext.Provider value={configPath}>
-							<ConfigContext.Provider value={currConfig}>
-								<TerminalUnchainedContext.Provider value={isUnchained}>
-									<TransportContext.Provider value={transport}>
-										<CwdContext.Provider value={cwd}>
-											<ExitOnDoubleCtrlC
-												isInputInsertMode={
-													!!currConfig.vimEmulation?.enabled &&
-													isInputInsertMode
-												}
-											>
-												<TerminalSizeTracker>
-													<Box
-														flexDirection="column"
-														width="100%"
-														height="100%"
-													>
-														<Static items={staticItems} key={clearNonce}>
-															{(item, index) => (
-																<StaticItemRenderer
-																	item={item}
-																	key={staticItemKey(item, index)}
-																/>
+				<SyntheticQuotaFetchContext.Provider value={syntheticQuotaFetch}>
+					<InputPriorityProvider>
+						<UnchainedShiftTabHandler
+							setIsUnchained={setIsUnchained}
+							setTempNotification={setTempNotification}
+						/>
+						<SetConfigContext.Provider value={setCurrConfig}>
+							<ConfigPathContext.Provider value={configPath}>
+								<ConfigContext.Provider value={currConfig}>
+									<TerminalUnchainedContext.Provider value={isUnchained}>
+										<TransportContext.Provider value={transport}>
+											<CwdContext.Provider value={cwd}>
+												<ExitOnDoubleCtrlC
+													isInputInsertMode={
+														!!currConfig.vimEmulation?.enabled &&
+														isInputInsertMode
+													}
+												>
+													<TerminalSizeTracker>
+														<Box
+															flexDirection="column"
+															width="100%"
+															height="100%"
+														>
+															<Static items={staticItems} key={clearNonce}>
+																{(item, index) => (
+																	<StaticItemRenderer
+																		item={item}
+																		key={staticItemKey(item, index)}
+																	/>
+																)}
+															</Static>
+															{inflightResponse && (
+																<MessageDisplay item={inflightResponse} />
 															)}
-														</Static>
-														{inflightResponse && (
-															<MessageDisplay item={inflightResponse} />
-														)}
-														<BottomBar
-															inputHistory={inputHistory}
-															metadata={metadata}
-															tempNotification={tempNotification}
-															trajectoryArcRun={trajectoryArcRun}
-															toolPermission={toolPermission}
-															skillDiscover={skillDiscover}
-															toolDefinitions={toolDefinitions}
-															toolRun={toolRun}
-														/>
-													</Box>
-												</TerminalSizeTracker>
-											</ExitOnDoubleCtrlC>
-										</CwdContext.Provider>
-									</TransportContext.Provider>
-								</TerminalUnchainedContext.Provider>
-							</ConfigContext.Provider>
-						</ConfigPathContext.Provider>
-					</SetConfigContext.Provider>
-				</InputPriorityProvider>
-			</SyntheticQuotaFetchContext.Provider>
+															<BottomBar
+																inputHistory={inputHistory}
+																metadata={metadata}
+																tempNotification={tempNotification}
+																trajectoryArcRun={trajectoryArcRun}
+																toolPermission={toolPermission}
+																skillDiscover={skillDiscover}
+																toolDefinitions={toolDefinitions}
+																toolRun={toolRun}
+															/>
+														</Box>
+													</TerminalSizeTracker>
+												</ExitOnDoubleCtrlC>
+											</CwdContext.Provider>
+										</TransportContext.Provider>
+									</TerminalUnchainedContext.Provider>
+								</ConfigContext.Provider>
+							</ConfigPathContext.Provider>
+						</SetConfigContext.Provider>
+					</InputPriorityProvider>
+				</SyntheticQuotaFetchContext.Provider>
 			</ModelConnectionTestContext.Provider>
 		</ModelDiscoveryContext.Provider>
 	);

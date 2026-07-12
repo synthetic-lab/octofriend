@@ -65,6 +65,7 @@ describe("terminal app shell", () => {
 				config: shellConfig,
 				bootSkills: ["alpha", "beta"],
 				updates: "1.2.3",
+				sessionId: "session-test",
 				history: [],
 			}),
 		).toEqual([
@@ -75,8 +76,39 @@ describe("terminal app shell", () => {
 			{ type: "boot-notification", content: "- alpha" },
 			{ type: "boot-notification", content: "- beta" },
 			{ type: "updates", updates: "1.2.3" },
+			{ type: "boot-notification", content: "Session: session-test" },
 			{ type: "slogan" },
 		]);
+	});
+
+	it("hydrates an initial prompt without submitting it", async () => {
+		const previousState = useAppStore.getState();
+		const instance = render(
+			<App
+				config={shellConfig}
+				configPath="/tmp/octofriend.json5"
+				cwd="/repo"
+				metadata={{ version: "0.0.1" }}
+				updates={null}
+				markUpdatesSeen={() => Promise.resolve()}
+				unchained={false}
+				transport={shellTransport}
+				initialSessionId="session-prefill"
+				initialHistory={[]}
+				initialPrompt="Investigate the failing test"
+				saveConversationSession={() => Promise.resolve()}
+				inputHistory={shellInputHistory}
+				bootSkills={[]}
+				modelConnectionTest={async () => ({ valid: false })}
+				syntheticQuotaFetch={async () => ({ quota: null })}
+			/>,
+		);
+
+		await Bun.sleep(1);
+		expect(useAppStore.getState().query).toBe("Investigate the failing test");
+		expect(useAppStore.getState().history).toEqual([]);
+		instance.unmount();
+		useAppStore.setState(previousState);
 	});
 
 	it("uses the latest ready-notification cancellation after store rerender", async () => {
@@ -105,6 +137,9 @@ describe("terminal app shell", () => {
 					markUpdatesSeen={() => Promise.resolve()}
 					unchained={false}
 					transport={shellTransport}
+					initialSessionId="session-test"
+					initialHistory={[]}
+					saveConversationSession={() => Promise.resolve()}
 					inputHistory={shellInputHistory}
 					bootSkills={[]}
 					modelConnectionTest={async () => ({ valid: false })}

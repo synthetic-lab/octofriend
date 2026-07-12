@@ -1,22 +1,30 @@
 import * as agentMethods from "./methods";
-import {
-	type AgentdRequestClient,
-	requestAgentdResult,
-} from "./agent-check";
+import { type AgentdRequestClient, requestAgentdResult } from "./agent-check";
 import {
 	type AgentdConversationHistoryAppendParams,
 	type AgentdConversationHistoryAppendResult,
 	type AgentdConversationHistoryLlmPayloadsResult,
 	type AgentdConversationHistoryParams,
 	type AgentdConversationHistoryRecordsResult,
+	type AgentdConversationSessionCreateParams,
+	type AgentdConversationSessionEmptyResult,
+	type AgentdConversationSessionLoadResult,
+	type AgentdConversationSessionReplaceParams,
+	type AgentdConversationSessionReplaceResult,
 	isAgentdConversationHistoryAppendResult,
 	isAgentdConversationHistoryLlmPayloadsResult,
 	isAgentdConversationHistoryRecordsResult,
+	isAgentdConversationSessionEmptyResult,
+	isAgentdConversationSessionLoadResult,
+	isAgentdConversationSessionReplaceResult,
 } from "./history";
 import {
 	invalidAgentdConversationHistoryAppendResponseError,
 	invalidAgentdConversationHistoryLlmPayloadsResponseError,
 	invalidAgentdConversationHistoryRecordsResponseError,
+	invalidAgentdConversationSessionCreateResponseError,
+	invalidAgentdConversationSessionLoadResponseError,
+	invalidAgentdConversationSessionReplaceResponseError,
 	invalidAgentdInputHistoryResponseError,
 	invalidAgentdUpdateNotificationsMarkSeenResponseError,
 	invalidAgentdUpdateNotificationsReadResponseError,
@@ -58,6 +66,45 @@ export async function inputHistoryAppend(
 		params,
 		isAgentdInputHistoryResult,
 		invalidAgentdInputHistoryResponseError,
+	);
+}
+
+export async function conversationSessionCreate(
+	client: AgentdRequestClient,
+	params: AgentdConversationSessionCreateParams,
+): Promise<AgentdConversationSessionEmptyResult> {
+	return await requestAgentdResult(
+		client,
+		agentMethods.AGENTD_CONVERSATION_SESSION_CREATE_METHOD,
+		params,
+		isAgentdConversationSessionEmptyResult,
+		invalidAgentdConversationSessionCreateResponseError,
+	);
+}
+
+export async function conversationSessionLoad(
+	client: AgentdRequestClient,
+	params: AgentdConversationHistoryParams,
+): Promise<AgentdConversationSessionLoadResult> {
+	return await requestAgentdResult(
+		client,
+		agentMethods.AGENTD_CONVERSATION_SESSION_LOAD_METHOD,
+		params,
+		isAgentdConversationSessionLoadResult,
+		invalidAgentdConversationSessionLoadResponseError,
+	);
+}
+
+export async function conversationSessionReplace(
+	client: AgentdRequestClient,
+	params: AgentdConversationSessionReplaceParams,
+): Promise<AgentdConversationSessionReplaceResult> {
+	return await requestAgentdResult(
+		client,
+		agentMethods.AGENTD_CONVERSATION_SESSION_REPLACE_METHOD,
+		params,
+		isAgentdConversationSessionReplaceResult,
+		invalidAgentdConversationSessionReplaceResponseError,
 	);
 }
 

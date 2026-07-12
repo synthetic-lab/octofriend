@@ -8,6 +8,8 @@ import {
 	loadConfigWithoutReauth,
 } from "../config-screen.tsx";
 import { runMain } from "../main.tsx";
+import { createAgentdRustBridge } from "../bridge/agent/agent.ts";
+import { loadConversationSessionLaunch } from "../session.ts";
 import { APP_METADATA } from "../metadata.ts";
 import { runPromptCommand } from "../prompt-files.ts";
 import { DockerTransport, manageContainer } from "../workspace/docker.ts";
@@ -22,12 +24,21 @@ const CHANGELOG_PATH = path.join(
 async function runWithLocalTransport(
 	config: string | undefined,
 	unchained: boolean | undefined,
+	resume: string | undefined,
+	initialPrompt?: string,
 ) {
 	const transport = new LocalTransport();
 	try {
 		process.title = "\\_o_O.//";
 		process.stdout.write("\x1b]0;\\\\_o_O.//\x07");
-		await runMain({ config, unchained, transport });
+		await runMain({
+			config,
+			unchained,
+			resume,
+			initialPrompt,
+			launch: { kind: "local", config, unchained: !!unchained },
+			transport,
+		});
 	} finally {
 		await transport.close();
 	}
@@ -35,7 +46,7 @@ async function runWithLocalTransport(
 
 async function runWithDockerContainer(
 	target: string,
-	opts: { config?: string; unchained?: boolean },
+	opts: { config?: string; unchained?: boolean; resume?: string },
 ) {
 	const transport = await DockerTransport.create({
 		type: "container",
@@ -45,6 +56,13 @@ async function runWithDockerContainer(
 		await runMain({
 			config: opts.config,
 			unchained: opts.unchained,
+			resume: opts.resume,
+			launch: {
+				kind: "docker-connect",
+				config: opts.config,
+				unchained: !!opts.unchained,
+				target,
+			},
 			transport,
 		});
 	} finally {
@@ -54,7 +72,7 @@ async function runWithDockerContainer(
 
 async function runWithDockerImage(
 	args: string[],
-	opts: { config?: string; unchained?: boolean },
+	opts: { config?: string; unchained?: boolean; resume?: string },
 ) {
 	const transport = await DockerTransport.create({
 		type: "image",
@@ -64,6 +82,13 @@ async function runWithDockerImage(
 		await runMain({
 			config: opts.config,
 			unchained: opts.unchained,
+			resume: opts.resume,
+			launch: {
+				kind: "docker-run",
+				config: opts.config,
+				unchained: !!opts.unchained,
+				args,
+			},
 			transport,
 		});
 	} finally {
@@ -73,17 +98,68 @@ async function runWithDockerImage(
 
 async function runWithSshTransport(
 	target: string,
-	opts: { config?: string; unchained?: boolean },
+	opts: { config?: string; unchained?: boolean; resume?: string },
 ) {
 	const transport = await SshTransport.create(target);
 	try {
 		await runMain({
 			config: opts.config,
 			unchained: opts.unchained,
+			resume: opts.resume,
+			launch: {
+				kind: "ssh",
+				config: opts.config,
+				unchained: !!opts.unchained,
+				target,
+			},
 			transport,
 		});
 	} finally {
 		await transport.close();
+	}
+}
+
+async function runInteractive(opts: {
+	config?: string;
+	unchained?: boolean;
+	resume?: string;
+	prefill?: string;
+}) {
+	if (!opts.resume) {
+		await runWithLocalTransport(
+			opts.config,
+			opts.unchained,
+			undefined,
+			opts.prefill,
+		);
+		return;
+	}
+
+	const bridge = await createAgentdRustBridge();
+	let launch;
+	try {
+		launch = await loadConversationSessionLaunch(bridge, opts.resume);
+	} finally {
+		bridge.close();
+	}
+
+	const resumeOptions = { resume: opts.resume };
+	switch (launch.kind) {
+		case "local":
+			await runWithLocalTransport(undefined, undefined, opts.resume);
+			return;
+		case "docker-connect":
+			if (!launch.target)
+				throw new Error("Saved Docker session has no container target");
+			await runWithDockerContainer(launch.target, resumeOptions);
+			return;
+		case "docker-run":
+			await runWithDockerImage(launch.args ?? [], resumeOptions);
+			return;
+		case "ssh":
+			if (!launch.target) throw new Error("Saved SSH session has no target");
+			await runWithSshTransport(launch.target, resumeOptions);
+			return;
 	}
 }
 
@@ -95,6 +171,7 @@ function registerDockerCommands(cli: Command) {
 		.command("connect")
 		.description("Sandbox Octo inside an already-running container")
 		.option("--config <path>")
+		.option("--resume <session-id>", "Resume a saved session")
 		.option(
 			"--unchained",
 			"Skips confirmation for all tools, running them immediately. Dangerous.",
@@ -108,6 +185,7 @@ function registerDockerCommands(cli: Command) {
 			"Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
 		)
 		.option("--config <path>")
+		.option("--resume <session-id>", "Resume a saved session")
 		.option(
 			"--unchained",
 			"Skips confirmation for all tools, running them immediately. Dangerous.",
@@ -121,6 +199,7 @@ function registerSshCommands(cli: Command) {
 		.command("ssh")
 		.description("Run Octo over SSH on a remote host")
 		.option("--config <path>")
+		.option("--resume <session-id>", "Resume a saved session")
 		.option(
 			"--unchained",
 			"Skips confirmation for all tools, running them immediately. Dangerous.",
@@ -230,11 +309,16 @@ export function createoctofriendCommand(): Command {
 	const cli = new Command()
 		.description("If run with no subcommands, runs Octo interactively.")
 		.option("--config <path>")
+		.option("--resume <session-id>", "Resume a saved session")
+		.option(
+			"--prefill <prompt>",
+			"Pre-fill the interactive prompt without submitting it",
+		)
 		.option(
 			"--unchained",
 			"Skips confirmation for all tools, running them immediately. Dangerous.",
 		)
-		.action((opts) => runWithLocalTransport(opts.config, opts.unchained));
+		.action(runInteractive);
 
 	registerDockerCommands(cli);
 	registerSshCommands(cli);

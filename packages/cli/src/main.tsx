@@ -8,6 +8,10 @@ import { loadConfig } from "./config-screen";
 import type { Config } from "./config/schemas";
 import { loadInputHistory } from "./input";
 import { APP_METADATA } from "./metadata";
+import {
+	type ConversationSessionLaunch,
+	prepareConversationSession,
+} from "./session";
 import type { Transport } from "./workspace/common";
 import { loadTui } from "./launch-tui";
 import { markUpdatesSeen, readUpdates } from "./updates";
@@ -22,6 +26,9 @@ function homeDir() {
 export type RunMainOptions = {
 	config?: string;
 	unchained?: boolean;
+	resume?: string;
+	initialPrompt?: string;
+	launch: ConversationSessionLaunch;
 	transport: Transport;
 };
 
@@ -56,7 +63,17 @@ export async function runMain(opts: RunMainOptions) {
 	const bridge = await createAgentdRustBridge();
 	const tokenUsageCounts: TokenUsageCounts = {};
 	try {
-		const { config, configPath } = await loadConfig(opts.config, {
+		const session = await prepareConversationSession(bridge, {
+			resumeId: opts.resume,
+			cwd: opts.transport.cwd,
+			launch: opts.launch,
+		});
+		if (session.launch.kind !== opts.launch.kind) {
+			throw new Error(
+				`Session ${session.sessionId} was launched as ${session.launch.kind}; resume it with the matching command`,
+			);
+		}
+		const { config, configPath } = await loadConfig(session.launch.config, {
 			bridge,
 			markUpdatesSeen: (params) => bridge.updateNotificationsMarkSeen(params),
 		});
@@ -84,8 +101,12 @@ export async function runMain(opts: RunMainOptions) {
 				configPath={configPath}
 				cwd={opts.transport.cwd}
 				metadata={APP_METADATA}
-				unchained={!!opts.unchained}
+				unchained={session.launch.unchained}
 				transport={opts.transport}
+				initialSessionId={session.sessionId}
+				initialHistory={session.history}
+				initialPrompt={opts.initialPrompt}
+				saveConversationSession={session.save}
 				updates={updates.data}
 				markUpdatesSeen={async () => {
 					const result = await markUpdatesSeen({
@@ -123,6 +144,7 @@ export async function runMain(opts: RunMainOptions) {
 		);
 
 		await waitUntilExit();
+		await session.flush();
 		printTokenUsage(tokenUsageCounts);
 	} finally {
 		bridge.close();

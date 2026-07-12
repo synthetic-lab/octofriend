@@ -33,6 +33,10 @@ import {
 } from "./runtime/models/catalog/main";
 
 export type {
+	ConversationSessionHistory,
+	SaveConversationSession,
+} from "./shell/session";
+export type {
 	CanDisplayImageResult,
 	ImageModalityConfig,
 	MultimodalConfig,

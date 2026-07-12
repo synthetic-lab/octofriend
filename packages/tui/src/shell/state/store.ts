@@ -16,6 +16,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 		mode: "input" as const,
 		vimMode: "INSERT" as const,
 	},
+	sessionId: crypto.randomUUID(),
 	history: [],
 	modelOverride: null,
 	quotaData: null,

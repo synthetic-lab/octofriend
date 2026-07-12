@@ -7,6 +7,12 @@ export const AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD =
 	"octofriend.agentd/updateNotificationsRead";
 export const AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD =
 	"octofriend.agentd/updateNotificationsMarkSeen";
+export const AGENTD_CONVERSATION_SESSION_CREATE_METHOD =
+	"octofriend.agentd/conversationSessionCreate";
+export const AGENTD_CONVERSATION_SESSION_LOAD_METHOD =
+	"octofriend.agentd/conversationSessionLoad";
+export const AGENTD_CONVERSATION_SESSION_REPLACE_METHOD =
+	"octofriend.agentd/conversationSessionReplace";
 export const AGENTD_CONVERSATION_HISTORY_APPEND_METHOD =
 	"octofriend.agentd/conversationHistoryAppend";
 export const AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD =
