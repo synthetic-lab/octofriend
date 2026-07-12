@@ -2,9 +2,9 @@ name: Build and Run Unit Tests
 
 on:
   push:
-    branches: [main]
+    branches: [rewrite]
   pull_request:
-    branches: [main]
+    branches: [rewrite]
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.0
 
       - uses: oven-sh/setup-bun@v2.2.0
         with:
@@ -30,7 +30,9 @@ jobs:
       - name: Smoke test packaged agentd launcher
         shell: pwsh
         run: |
-          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | bun packages/octofriend-cli/bin/octofriend-agentd.js | Select-Object -First 1
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' |
+            bun packages/cli/bin/octofriend-agentd.js |
+            Select-Object -First 1
 
       - name: Smoke test PowerShell canary
         shell: pwsh
@@ -45,18 +47,54 @@ jobs:
           $installPrefix = Join-Path $env:RUNNER_TEMP "octofriend-install"
           New-Item -ItemType Directory -Force $packDir, $installPrefix | Out-Null
           $packOutput = npm pack --json --pack-destination $packDir | Out-String
-          if ($packOutput -notmatch '(?s)(\[\s*\{.*\]\s*)$') {
+          $jsonStart = [regex]::Match($packOutput, '(?m)^[{\[]')
+          if (-not $jsonStart.Success) {
             throw "npm pack did not return trailing JSON output: $packOutput"
           }
-          $packInfo = ($Matches[1] | ConvertFrom-Json)[0]
+          $packData = $packOutput.Substring($jsonStart.Index) | ConvertFrom-Json
+          if ($packData -is [array]) {
+            $packInfo = $packData[0]
+          } elseif ($packData.filename) {
+            $packInfo = $packData
+          } else {
+            $packInfo = $packData.PSObject.Properties.Value | Select-Object -First 1
+          }
+          if (-not $packInfo.filename) { throw "npm pack JSON omitted filename" }
           $tarball = Join-Path $packDir $packInfo.filename
           npm install --global --prefix $installPrefix $tarball
           $binDir = if ($IsWindows) { $installPrefix } else { Join-Path $installPrefix "bin" }
           $env:PATH = "$binDir$([IO.Path]::PathSeparator)$env:PATH"
           octofriend --help | Out-Null
           octo --help | Out-Null
-          octofriend --help | Out-Null
-          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | octofriend-agentd | Select-Object -First 1
+          $config = Join-Path $env:RUNNER_TEMP "octofriend-acp-smoke.json5"
+          '{"configVersion":6,"yourName":"CI","models":[{"type":"standard","nickname":"Smoke","baseUrl":"https://example.invalid/v1","model":"smoke","context":1000}]}' |
+            Set-Content -Encoding utf8 $config
+          $acpOutput = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' |
+            octofriend-acp --config $config
+          if (-not (($acpOutput | Select-Object -First 1) | ConvertFrom-Json).result.agentInfo.version) {
+            throw "ACP smoke test returned no version"
+          }
+          '{"jsonrpc":"2.0","id":1,"method":"initialize"}' |
+            octofriend-agentd |
+            Select-Object -First 1 | Out-Null
+
+      - name: Validate installer syntax
+        shell: pwsh
+        run: |
+          if (-not $IsWindows) { bash -n install.sh }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "install.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+
+      - name: Test PowerShell 5.1 installer
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-install.ps1
 
       - name: Validate Unix canary syntax
         if: runner.os != 'Windows'
