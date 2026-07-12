@@ -3,8 +3,8 @@ import type {
 	AgentdConversationSessionCreateParams,
 	AgentdConversationSessionReplaceParams,
 	AgentdRustBridge,
-} from "../src/bridge/agent/agent";
-import { prepareConversationSession } from "../src/session";
+} from "../src/bridge/agent/agent.ts";
+import { prepareConversationSession } from "../src/session.ts";
 
 type LoadResult = Awaited<
 	ReturnType<AgentdRustBridge["conversationSessionLoad"]>
@@ -41,6 +41,8 @@ function bridge(fake: FakeSessionBridge): AgentdRustBridge {
 	return fake as unknown as AgentdRustBridge;
 }
 
+const SESSION_ID_PATTERN = /^[a-f0-9-]+$/u;
+
 describe("conversation sessions", () => {
 	it("creates a session and serializes queued history snapshots", async () => {
 		const fake = new FakeSessionBridge();
@@ -49,7 +51,7 @@ describe("conversation sessions", () => {
 			launch: { kind: "local", unchained: false },
 		});
 
-		expect(session.sessionId).toMatch(/^[a-f0-9-]+$/u);
+		expect(session.sessionId).toMatch(SESSION_ID_PATTERN);
 		expect(fake.creates).toHaveLength(1);
 		expect(fake.creates[0]).toMatchObject({
 			sessionId: session.sessionId,
@@ -57,7 +59,7 @@ describe("conversation sessions", () => {
 			launchJson: '{"kind":"local","unchained":false}',
 		});
 
-		void session.save(session.sessionId, [
+		session.save(session.sessionId, [
 			{
 				type: "llm-ir",
 				ir: {
@@ -168,7 +170,7 @@ describe("conversation sessions", () => {
 			{ type: "request-failed" },
 		]);
 		expect(fake.creates).toHaveLength(0);
-		void session.save(session.sessionId, session.history);
+		session.save(session.sessionId, session.history);
 		await session.flush();
 		expect(fake.replaces[0]?.parentRevisionId).toBe(7);
 	});

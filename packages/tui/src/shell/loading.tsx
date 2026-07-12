@@ -2,8 +2,8 @@ import spinners, { type SpinnerName } from "cli-spinners";
 import { Box, Text } from "ink";
 import React, { useEffect, useMemo, useState } from "react";
 import stringWidth from "string-width";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { useTerminalThemeColor } from "../theme/branding";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
 
 const LOADING_DOTS = ["", ".", "..", "..."] as const;
 const LONGEST_LOADING_DOTS = LOADING_DOTS[LOADING_DOTS.length - 1];
@@ -101,8 +101,8 @@ export function loadingStringsOrDefault(
 	}
 	let sanitized: string[] | undefined;
 	let writeIndex = 0;
-	for (let index = 0; index < overrideStrings.length; index += 1) {
-		const label = overrideStrings[index] ?? "";
+	for (const rawLabel of overrideStrings) {
+		const label = rawLabel ?? "";
 		const trimmed = normalizeRenderedLineBreaks(label.trim());
 		if (trimmed.length === 0) {
 			sanitized ??= overrideStrings.slice(0, writeIndex);

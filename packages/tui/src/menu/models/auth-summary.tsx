@@ -1,21 +1,21 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useMemo } from "react";
-import type { Config } from "../../runtime/config/schemas";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
 import {
 	type ProviderConfig,
 	type ProviderKey,
 	providerBaseUrlEnvVar,
 	providerEntries,
 	resolveProviderBaseUrl,
-} from "../../runtime/models/catalog/main";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
+} from "../../runtime/models/catalog/main.ts";
 import {
 	authChoicesForProvider,
 	CHATGPT_OAUTH_ENV_VAR,
 	detectedChatGptOAuthEnvVar,
-} from "./auth";
-import { nonEmptyEnvValue, resolveProviderEnvVar } from "./providers";
+} from "./auth.ts";
+import { nonEmptyEnvValue, resolveProviderEnvVar } from "./providers.ts";
 
 type ProviderEntry = readonly [ProviderKey, ProviderConfig];
 
@@ -82,8 +82,7 @@ export function providerSetupSummaryLines(
 ): string[] {
 	const lines = new Array<string>(entries.length);
 	let writeIndex = 0;
-	for (let index = 0; index < entries.length; index += 1) {
-		const entry = entries[index];
+	for (const entry of entries) {
 		if (entry === undefined) continue;
 		const providerKey = entry[0];
 		const provider = entry[1];
@@ -106,8 +105,7 @@ function buildProviderSetupSummaryItems(
 ): React.ReactNode[] {
 	const items = new Array<React.ReactNode>(entries.length);
 	let writeIndex = 0;
-	for (let index = 0; index < entries.length; index += 1) {
-		const entry = entries[index];
+	for (const entry of entries) {
 		if (entry === undefined) continue;
 		const providerKey = entry[0];
 		const provider = entry[1];

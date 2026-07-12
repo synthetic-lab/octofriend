@@ -3,6 +3,8 @@ export type SlashCommand = {
 	description: string;
 };
 
+const COMMAND_TOKEN_SEPARATOR = /\s/u;
+
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
 	{ name: "/help", description: "Show available slash commands" },
 	{ name: "/init", description: "Create or update project OCTO.md guidance" },
@@ -20,7 +22,7 @@ export function slashCommandMatches(
 	command: SlashCommand,
 	query: string,
 ): boolean {
-	const token = query.trim().split(/\s/u, 1)[0] ?? "";
+	const token = query.trim().split(COMMAND_TOKEN_SEPARATOR, 1)[0] ?? "";
 	return token.startsWith("/") && command.name.startsWith(token);
 }
 
@@ -32,7 +34,7 @@ export function matchingSlashCommands(query: string): readonly SlashCommand[] {
 }
 
 export function slashCommandName(query: string): string | null {
-	const token = query.trim().split(/\s/u, 1)[0] ?? "";
+	const token = query.trim().split(COMMAND_TOKEN_SEPARATOR, 1)[0] ?? "";
 	return token.startsWith("/") ? token : null;
 }
 

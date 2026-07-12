@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
-import { formatProviderMetrics } from "../../../src/shell/state/runner";
+import { formatProviderMetrics } from "../../../src/shell/state/runner.ts";
 import {
 	linkFinishReasonToolCalls,
 	linkTrajectoryHistory,
 	mergeTrajectoryFinishHistory,
 	rejectedToolHistoryForUserMessage,
-} from "../../../src/shell/state/runner-history";
-import { useAppStore } from "../../../src/shell/state/store";
+} from "../../../src/shell/state/runner-history.ts";
+import { useAppStore } from "../../../src/shell/state/store.ts";
 
 const ASSISTANT_MESSAGE_ID_PREFIX = /^assistant-/;
 
@@ -92,8 +92,9 @@ describe("terminal app state", () => {
 		const originalRunAgent = useAppStore.getState().runAgent;
 		useAppStore.setState({
 			history: [{ type: "notification", content: "history" }],
-			runAgent: async (args) => {
+			runAgent: (args) => {
 				calls.push(args);
+				return Promise.resolve();
 			},
 		});
 

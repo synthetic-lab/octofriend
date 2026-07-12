@@ -8,8 +8,8 @@ import type {
 	AgentdConversationHistoryRecord,
 	AgentdConversationSessionLoadResult,
 	AgentdRustBridge,
-} from "./bridge/agent/agent";
-import { CONFIG_DIR } from "./config/paths";
+} from "./bridge/agent/agent.ts";
+import { CONFIG_DIR } from "./config/paths.ts";
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 
@@ -185,6 +185,8 @@ function recordsToHistory(
 				return { type: "request-failed" };
 			case "compaction-failed":
 				return { type: "compaction-failed" };
+			default:
+				throw new Error("Stored history item has an unsupported kind");
 		}
 	});
 }
@@ -202,6 +204,8 @@ function historyToEntries(
 				return { kind: "request-failed" };
 			case "compaction-failed":
 				return { kind: "compaction-failed" };
+			default:
+				throw new Error("Conversation history item has an unsupported type");
 		}
 	});
 }

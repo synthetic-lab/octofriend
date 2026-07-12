@@ -1,14 +1,14 @@
-import type { Auth, Config } from "../../runtime/config/schemas";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
 import type {
 	ProviderAuthMethod,
 	ProviderConfig,
-} from "../../runtime/models/catalog/main";
-import { keyFromName } from "../../runtime/models/catalog/main";
+} from "../../runtime/models/catalog/main.ts";
+import { keyFromName } from "../../runtime/models/catalog/main.ts";
 import {
 	nonEmptyEnvValue,
 	nonEmptyTrimmedValue,
 	resolveProviderEnvVar,
-} from "./providers";
+} from "./providers.ts";
 
 export type AuthChoiceSupport = {
 	readonly supportsApiKey: boolean;
@@ -125,9 +125,8 @@ export type DetectedProviderAuth = {
 export function detectedChatGptOAuthEnvVar(
 	env: Record<string, string | undefined> = process.env,
 ): string | null {
-	for (let index = 0; index < CHATGPT_OAUTH_ENV_VARS.length; index += 1) {
-		const envVar = CHATGPT_OAUTH_ENV_VARS[index];
-		if (envVar !== undefined && nonEmptyEnvValue(envVar, env) !== null) {
+	for (const envVar of CHATGPT_OAUTH_ENV_VARS) {
+		if (nonEmptyEnvValue(envVar, env) !== null) {
 			return envVar;
 		}
 	}

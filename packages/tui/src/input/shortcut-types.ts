@@ -102,8 +102,8 @@ export function countRenderableShortcutItems<V>(
 	items: readonly Item<V>[],
 ): number {
 	let count = 0;
-	for (let index = 0; index < items.length; index += 1) {
-		if (isRenderableShortcutItem(items[index])) count += 1;
+	for (const item of items) {
+		if (isRenderableShortcutItem(item)) count += 1;
 	}
 	return count;
 }

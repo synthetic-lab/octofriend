@@ -1,10 +1,10 @@
-import type { Item, ShortcutArray } from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
+import type { Item, ShortcutArray } from "../../input/shortcuts.tsx";
+import type { Config } from "../../runtime/config/schemas.ts";
 import {
 	normalizeProviderBaseUrl,
 	type ProviderConfig,
 	providerForModelConfig,
-} from "../../runtime/models/catalog/main";
+} from "../../runtime/models/catalog/main.ts";
 
 export type ImportModelValue =
 	| `provider-model:${string}`
@@ -238,8 +238,8 @@ function storedProviderModelNames(
 function providerBaseUrlSet(provider: ProviderConfig): MutableProviderModelSet {
 	const baseUrls: MutableProviderModelSet = new Set();
 	baseUrls.add(normalizeProviderBaseUrl(provider.baseUrl));
-	for (let index = 0; index < provider.baseUrlAliases.length; index += 1) {
-		baseUrls.add(normalizeProviderBaseUrl(provider.baseUrlAliases[index]));
+	for (const alias of provider.baseUrlAliases) {
+		baseUrls.add(normalizeProviderBaseUrl(alias));
 	}
 	return baseUrls;
 }

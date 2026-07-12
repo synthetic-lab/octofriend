@@ -1,14 +1,15 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import type { Tokens } from "marked";
+import { Fragment } from "react";
 import stringWidth from "string-width";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
-import { renderPlainCodeLines } from "../../src/render/line-highlight";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
+import { renderPlainCodeLines } from "../../src/render/line-highlight.tsx";
 import {
 	isPlainMarkdownFastPath,
 	Markdown,
-} from "../../src/render/markdown";
-import { TableRenderer } from "../../src/render/table";
+} from "../../src/render/markdown.tsx";
+import { TableRenderer } from "../../src/render/table.tsx";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const ANSI_TEST_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`);
@@ -116,7 +117,9 @@ describe("renderToString", () => {
 
 		it("does not add copyable spaces for blank lines in plain code fallback", () => {
 			const { lastFrame } = render(
-				<>{renderPlainCodeLines("alpha\n\nbeta")}</>,
+				<Fragment key="plain-code">
+					{renderPlainCodeLines("alpha\n\nbeta")}
+				</Fragment>,
 			);
 			const result = stripAnsi(lastFrame() || "");
 

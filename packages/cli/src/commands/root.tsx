@@ -2,16 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
 import { runBenchmarkCommand } from "../benchmark.ts";
+import { createAgentdRustBridge } from "../bridge/agent/agent.ts";
 import {
 	CONFIG_JSON5_FILE,
 	loadConfig,
 	loadConfigWithoutReauth,
 } from "../config-screen.tsx";
 import { runMain } from "../main.tsx";
-import { createAgentdRustBridge } from "../bridge/agent/agent.ts";
-import { loadConversationSessionLaunch } from "../session.ts";
 import { APP_METADATA } from "../metadata.ts";
 import { runPromptCommand } from "../prompt-files.ts";
+import {
+	type ConversationSessionLaunch,
+	loadConversationSessionLaunch,
+} from "../session.ts";
 import { DockerTransport, manageContainer } from "../workspace/docker.ts";
 import { LocalTransport } from "../workspace/local.ts";
 import { SshTransport } from "../workspace/ssh.ts";
@@ -136,7 +139,7 @@ async function runInteractive(opts: {
 	}
 
 	const bridge = await createAgentdRustBridge();
-	let launch;
+	let launch: ConversationSessionLaunch;
 	try {
 		launch = await loadConversationSessionLaunch(bridge, opts.resume);
 	} finally {
@@ -160,6 +163,8 @@ async function runInteractive(opts: {
 			if (!launch.target) throw new Error("Saved SSH session has no target");
 			await runWithSshTransport(launch.target, resumeOptions);
 			return;
+		default:
+			throw new Error("Saved session has an unsupported launch type");
 	}
 }
 

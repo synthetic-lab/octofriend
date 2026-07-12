@@ -1,13 +1,13 @@
-import { err, ok, type Result } from "../../../shell/result";
-import { modelProviderCatalog } from "../../config/agentd-config";
-import type { MultimodalConfig } from "../../edit-ir/main";
-import { canDisplayImage } from "../../edit-ir/main";
+import { err, ok, type Result } from "../../../shell/result.ts";
+import { modelProviderCatalog } from "../../config/agentd-config.ts";
+import type { MultimodalConfig } from "../../edit-ir/main.ts";
+import { canDisplayImage } from "../../edit-ir/main.ts";
 
 export type {
 	CanDisplayImageResult,
 	ImageModalityConfig,
 	MultimodalConfig,
-} from "../../edit-ir/main";
+} from "../../edit-ir/main.ts";
 export { canDisplayImage };
 
 export type ProviderShortcut =
@@ -150,19 +150,10 @@ function collectProvidersByBaseUrl(
 	entries: ProviderEntry[],
 ): ProviderBaseUrlMap {
 	const providersByBaseUrl: ProviderBaseUrlMap = new Map();
-	for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
-		const provider = entries[entryIndex][1];
+	for (const [, provider] of entries) {
 		setProviderBaseUrl(providersByBaseUrl, provider.baseUrl, provider);
-		for (
-			let aliasIndex = 0;
-			aliasIndex < provider.baseUrlAliases.length;
-			aliasIndex += 1
-		) {
-			setProviderBaseUrl(
-				providersByBaseUrl,
-				provider.baseUrlAliases[aliasIndex],
-				provider,
-			);
+		for (const alias of provider.baseUrlAliases) {
+			setProviderBaseUrl(providersByBaseUrl, alias, provider);
 		}
 	}
 	return providersByBaseUrl;
@@ -181,8 +172,7 @@ function setProviderBaseUrl(
 
 function collectProvidersByType(entries: ProviderEntry[]): ProviderTypeMap {
 	const providersByType: ProviderTypeMap = {};
-	for (let index = 0; index < entries.length; index += 1) {
-		const provider = entries[index][1];
+	for (const [, provider] of entries) {
 		if (
 			provider.type !== undefined &&
 			providersByType[provider.type] === undefined
@@ -238,10 +228,8 @@ function providerBaseUrlAliasesWithCanonical(
 ): string[] {
 	const aliases = provider.baseUrlAliases;
 	const canonicalBaseUrl = normalizeProviderBaseUrl(provider.baseUrl);
-	for (let index = 0; index < aliases.length; index += 1) {
-		if (normalizeProviderBaseUrl(aliases[index]) === canonicalBaseUrl) {
-			return aliases;
-		}
+	for (const alias of aliases) {
+		if (normalizeProviderBaseUrl(alias) === canonicalBaseUrl) return aliases;
 	}
 	return [provider.baseUrl, ...aliases];
 }
@@ -298,8 +286,8 @@ function providerForModelName(
 ): ProviderConfig | null {
 	if (modelName === undefined) return null;
 	for (const provider of DEFAULT_PROVIDER_VALUES) {
-		for (let index = 0; index < provider.models.length; index += 1) {
-			if (provider.models[index].model === modelName) return provider;
+		for (const model of provider.models) {
+			if (model.model === modelName) return provider;
 		}
 	}
 	return null;

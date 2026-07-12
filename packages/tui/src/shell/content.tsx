@@ -1,30 +1,30 @@
 import { Box, Text, useApp } from "ink";
 import { useCallback, useContext, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useCtrlC } from "../input/ctrl-c";
-import type { ImageInfo } from "../input/images";
-import { type InkInputKey, useLatestInput } from "../input/latest-input";
-import { MultimediaInput, VimModeIndicator } from "../input/text";
-import { useConfig, useSetConfig } from "../runtime/config/react-context";
-import type { Transport } from "../runtime/workspace/common";
-import { useTerminalThemeColor } from "../theme/branding";
+import { useCtrlC } from "../input/ctrl-c.tsx";
+import type { ImageInfo } from "../input/images.ts";
+import { type InkInputKey, useLatestInput } from "../input/latest-input.ts";
+import { MultimediaInput, VimModeIndicator } from "../input/text.ts";
+import { useConfig, useSetConfig } from "../runtime/config/react-context.ts";
+import type { Transport } from "../runtime/workspace/common.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
 import {
 	isBottomBarErrorModeData,
 	renderBottomBarErrorContent,
-} from "./errors";
-import type { InputHistory } from "./input";
-import { Loading } from "./loading";
-import { useModel } from "./state/model-hook";
-import { useAppStore } from "./state/store";
-import type { RunArgs, UiState } from "./state/types";
-import { ToolRequestsRenderer } from "./tool-requests";
+} from "./errors.tsx";
+import type { InputHistory } from "./input.ts";
+import { Loading } from "./loading.tsx";
 import {
 	matchingSlashCommands,
 	projectInitializationPrompt,
-	slashCommandName,
 	SLASH_COMMANDS,
-} from "./slash-commands";
-import { TransportContext } from "./transport-context";
+	slashCommandName,
+} from "./slash-commands.ts";
+import { useModel } from "./state/model-hook.ts";
+import { useAppStore } from "./state/store.ts";
+import type { RunArgs, UiState } from "./state/types.ts";
+import { ToolRequestsRenderer } from "./tool-requests.tsx";
+import { TransportContext } from "./transport-context.tsx";
 
 const COMPACTING_LOADING_STRINGS = [
 	"Compacting history to save context tokens",
@@ -118,6 +118,75 @@ function handleBottomBarKeyboardInput({
 	}
 }
 
+type BottomBarCommandContext = RunArgs & {
+	command: string | null;
+	finalQuery: string;
+	images?: ImageInfo[];
+	runInput: NonNullable<
+		ReturnType<typeof selectBottomBarContentState>["input"]
+	>;
+	setConfig: ReturnType<typeof useSetConfig>;
+	clearHistory: UiState["clearHistory"];
+	compactHistory: UiState["compactHistory"];
+	notify: UiState["notify"];
+	setQuery: UiState["setQuery"];
+	abortResponse: UiState["abortResponse"];
+	openMenu: UiState["openMenu"];
+	exit: () => void;
+};
+
+async function handleBottomBarCommand(
+	context: BottomBarCommandContext,
+): Promise<boolean> {
+	const { command, setQuery, notify } = context;
+	if (command === null) return false;
+	setQuery("");
+	switch (command) {
+		case "/clear":
+			context.clearHistory();
+			notify("Conversation cleared.");
+			return true;
+		case "/init":
+			await context.runInput({
+				...context,
+				query: projectInitializationPrompt(context.finalQuery),
+			});
+			return true;
+		case "/compact":
+			if (useAppStore.getState().history.length === 0) {
+				notify("Nothing to compact.");
+				return true;
+			}
+			await context.compactHistory(context);
+			return true;
+		case "/help":
+			notify(
+				SLASH_COMMANDS.map(
+					({ name, description }) => `${name}: ${description}`,
+				).join("\n"),
+			);
+			return true;
+		case "/quit":
+			context.abortResponse();
+			context.exit();
+			return true;
+		case "/metrics": {
+			const enabled = context.config.showProviderMetrics !== true;
+			await context.setConfig({
+				...context.config,
+				showProviderMetrics: enabled,
+			});
+			notify(`Provider metrics ${enabled ? "enabled" : "disabled"}.`);
+			return true;
+		}
+		case "/model":
+			context.openMenu();
+			return true;
+		default:
+			return false;
+	}
+}
+
 export function BottomBarContent({
 	inputHistory,
 	trajectoryArcRun,
@@ -191,72 +260,28 @@ export function BottomBarContent({
 		async (submittedQuery?: string, images?: ImageInfo[]) => {
 			if (!input) return;
 			const finalQuery = submittedQuery ?? queryRef.current;
-			const command = slashCommandName(finalQuery);
-			if (command === "/clear") {
-				clearHistory();
-				notify("Conversation cleared.");
-				setQuery("");
-				return;
-			}
-			if (command === "/init") {
-				setQuery("");
-				await input({
-					query: projectInitializationPrompt(finalQuery),
-					config,
-					transport,
-					images,
-					trajectoryArcRun,
-					toolPermission,
-					skillDiscover,
-					toolDefinitions,
-					toolRun,
-				});
-				return;
-			}
-			if (command === "/compact") {
-				setQuery("");
-				if (useAppStore.getState().history.length === 0) {
-					notify("Nothing to compact.");
-					return;
-				}
-				await compactHistory({
-					config,
-					transport,
-					trajectoryArcRun,
-					toolPermission,
-					skillDiscover,
-					toolDefinitions,
-					toolRun,
-				});
-				return;
-			}
-			if (command === "/help") {
-				notify(
-					SLASH_COMMANDS.map(
-						({ name, description }) => `${name}: ${description}`,
-					).join("\n"),
-				);
-				setQuery("");
-				return;
-			}
-			if (command === "/quit") {
-				abortResponse();
-				exit();
-				setQuery("");
-				return;
-			}
-			if (command === "/metrics") {
-				const enabled = config.showProviderMetrics !== true;
-				await setConfig({ ...config, showProviderMetrics: enabled });
-				notify(`Provider metrics ${enabled ? "enabled" : "disabled"}.`);
-				setQuery("");
-				return;
-			}
-			if (command === "/model") {
-				openMenu();
-				setQuery("");
-				return;
-			}
+			const handled = await handleBottomBarCommand({
+				command: slashCommandName(finalQuery),
+				finalQuery,
+				images,
+				runInput: input,
+				config,
+				transport,
+				trajectoryArcRun,
+				toolPermission,
+				skillDiscover,
+				toolDefinitions,
+				toolRun,
+				setConfig,
+				clearHistory,
+				compactHistory,
+				notify,
+				setQuery,
+				abortResponse,
+				openMenu,
+				exit,
+			});
+			if (handled) return;
 			setQuery("");
 			await input({
 				query: finalQuery,
@@ -271,19 +296,22 @@ export function BottomBarContent({
 			});
 		},
 		[
-			config,
-			transport,
-			input,
-			setQuery,
-			setConfig,
+			abortResponse,
 			clearHistory,
 			compactHistory,
+			config,
+			exit,
+			input,
 			notify,
+			openMenu,
+			setConfig,
+			setQuery,
 			skillDiscover,
-			trajectoryArcRun,
 			toolDefinitions,
 			toolPermission,
 			toolRun,
+			trajectoryArcRun,
+			transport,
 		],
 	);
 

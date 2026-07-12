@@ -8,7 +8,7 @@ import {
 	PAGE_SIZE,
 	type RenderedShortcutItem,
 	type ShortcutArray,
-} from "./shortcut-types";
+} from "./shortcut-types.ts";
 
 const PREVIOUS_PAGE_SHORTCUT_ITEM: RenderedShortcutItem<never> = {
 	item: { label: "Previous page", value: "prev-page" },
@@ -56,8 +56,7 @@ function renderAutoListShortcutItems<V>(
 	const pageStart = page * PAGE_SIZE;
 	const pageEnd = pageStart + PAGE_SIZE;
 	let renderableIndex = 0;
-	for (let itemIndex = 0; itemIndex < order.length; itemIndex += 1) {
-		const item = order[itemIndex];
+	for (const item of order) {
 		if (!isRenderableShortcutItem(item)) continue;
 		if (renderableIndex >= pageStart && renderableIndex < pageEnd) {
 			const shortcut = NUMERIC_SHORTCUTS[renderableIndex - pageStart] as string;

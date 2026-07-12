@@ -1,10 +1,10 @@
-import { AgentdJsonRpcError } from "./errors";
+import { AgentdJsonRpcError } from "./errors.ts";
 import {
 	type AgentdJsonRpcId,
 	type AgentdNotification,
 	type AgentdResponse,
 	createAgentdRequest,
-} from "./events";
+} from "./events.ts";
 
 type PendingRequest = {
 	resolve: (value: unknown) => void;
@@ -29,6 +29,7 @@ export type AgentdProcessLike = {
 
 export class AgentdProcessClient {
 	readonly #process: AgentdProcessLike;
+	readonly #options: AgentdProcessClientOptions;
 	readonly #encoder = new TextEncoder();
 	readonly #decoder = new TextDecoder();
 	readonly #pending = new Map<AgentdJsonRpcId, PendingRequest>();
@@ -40,9 +41,10 @@ export class AgentdProcessClient {
 
 	constructor(
 		process: AgentdProcessLike,
-		private readonly options: AgentdProcessClientOptions = {},
+		options: AgentdProcessClientOptions = {},
 	) {
 		this.#process = process;
+		this.#options = options;
 		this.#stdoutReader = process.stdout.getReader();
 		this.#stdinWriter = process.stdin.getWriter();
 		this.#readStdout().catch((error: unknown) => this.#rejectAll(error));
@@ -136,7 +138,7 @@ export class AgentdProcessClient {
 			return;
 		}
 		if (!("id" in message)) {
-			this.options.onNotification?.(message);
+			this.#options.onNotification?.(message);
 			return;
 		}
 		const response = message;
