@@ -11,6 +11,13 @@ export type ManagedDockerContainer = {
 
 const internalSignal = new AbortController().signal;
 
+export function managedDockerRunArgs(args: string[]): string[] {
+	const removesContainer = args.some(
+		(arg) => arg === "--rm" || arg.startsWith("--rm="),
+	);
+	return removesContainer ? [...args] : ["--rm", ...args];
+}
+
 export async function manageContainer(
 	args: string[],
 ): Promise<ManagedDockerContainer> {
@@ -18,7 +25,7 @@ export async function manageContainer(
 	const result = await agentdTransportRequest(
 		internalSignal,
 		"octofriend.agentd/transportDockerRun",
-		{ args },
+		{ args: managedDockerRunArgs(args) },
 	);
 	const container = result["container"] as string;
 	return {
