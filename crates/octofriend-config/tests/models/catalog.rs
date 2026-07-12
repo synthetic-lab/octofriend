@@ -25,7 +25,10 @@ fn exports_builtin_provider_metadata_with_stable_keys_and_recommended_models() {
         recommended_model(ProviderKey::Synthetic),
         &PROVIDERS[0].models[0]
     );
-    assert_eq!(recommended_model(ProviderKey::OpenAi).nickname, "GPT-5.6-Sol");
+    assert_eq!(
+        recommended_model(ProviderKey::OpenAi).nickname,
+        "GPT-5.6-Sol"
+    );
     assert_eq!(PROVIDERS[2].kind, ProviderKind::Anthropic);
     assert_eq!(PROVIDERS[3].kind, ProviderKind::Gemini);
     assert_eq!(PROVIDERS[3].connection.env_var, "GEMINI_API_KEY");

@@ -240,6 +240,28 @@ fn codex_aware_openai_responses_request(
     request
 }
 
+fn gemini_oauth_aware_request(
+    request: &GeminiGenerateContentHttpRequestParams,
+) -> ProviderHttpRequest {
+    let Some(credentials) = request.api_key.strip_prefix("gemini-oauth:") else {
+        return gemini_generate_content_http_request(request);
+    };
+    let Some((project, token)) = credentials.split_once("|token=") else {
+        return gemini_generate_content_http_request(request);
+    };
+    let mut request = gemini_generate_content_http_request(request);
+    request
+        .headers
+        .retain(|(name, _)| !name.eq_ignore_ascii_case("x-goog-api-key"));
+    request
+        .headers
+        .push(("Authorization".into(), format!("Bearer {token}")));
+    request
+        .headers
+        .push(("x-goog-user-project".into(), project.into()));
+    request
+}
+
 pub(in crate::runtime) fn provider_http_request_parts(
     params: ProviderHttpRequestParams,
 ) -> Result<
@@ -409,7 +431,7 @@ pub(in crate::runtime) fn provider_http_request_parts(
             (
                 "gemini",
                 AssistantOutputProvider::Gemini,
-                gemini_generate_content_http_request(&http_request),
+                gemini_oauth_aware_request(&http_request),
                 gemini_generate_content_curl(&curl_request),
             )
         }
@@ -430,5 +452,38 @@ pub(in crate::runtime) fn provider_http_stream_request(
             .map(|(name, value)| (name.clone(), Value::String(value.clone())))
             .collect(),
         body: request.body.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gemini_oauth_uses_bearer_and_quota_project_headers() {
+        let request = GeminiGenerateContentHttpRequestParams {
+            base_url: "https://generativelanguage.googleapis.com/v1beta".into(),
+            api_key: "gemini-oauth:example-project|token=access-token".into(),
+            model: "gemini-test".into(),
+            contents: json!([]),
+            system_instruction: None,
+            tools: None,
+            generation_config: None,
+        };
+        let request = gemini_oauth_aware_request(&request);
+        assert!(request.headers.contains(&(
+            String::from("Authorization"),
+            String::from("Bearer access-token")
+        )));
+        assert!(request.headers.contains(&(
+            String::from("x-goog-user-project"),
+            String::from("example-project")
+        )));
+        assert!(
+            request
+                .headers
+                .iter()
+                .all(|(name, _)| !name.eq_ignore_ascii_case("x-goog-api-key"))
+        );
     }
 }

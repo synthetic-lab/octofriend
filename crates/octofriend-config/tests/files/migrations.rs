@@ -213,7 +213,7 @@ fn migrates_provider_metadata_from_normalized_base_urls() {
     }));
 
     assert_eq!(migrated["models"][0]["type"], "openai-responses");
-    assert_eq!(migrated["models"][0]["context"], 400_000);
+    assert_eq!(migrated["models"][0]["context"], 272_000);
     assert_eq!(migrated["models"][1]["context"], 256 * 1024);
     assert_eq!(
         migrated["models"][1]["modalities"]["image"]["acceptedMimeTypes"],
@@ -246,7 +246,7 @@ fn migrates_known_model_metadata_for_local_proxy_model_names() {
         json!(["image/jpeg", "image/png", "image/webp", "image/gif"])
     );
     assert_eq!(migrated["models"][1]["type"], "openai-responses");
-    assert_eq!(migrated["models"][1]["context"], 400_000);
+    assert_eq!(migrated["models"][1]["context"], 272_000);
 }
 
 #[test]

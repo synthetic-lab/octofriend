@@ -243,14 +243,26 @@ fn auth_api_key(auth: Option<&Value>) -> Option<String> {
                         .flatten()
                 })
                 .or_else(|| is_oauth.then(codex_file_access_token).flatten())?;
-            if is_oauth {
-                Some(format!("codex-oauth:{value}"))
-            } else {
-                Some(value)
-            }
+            encode_auth_key(auth, value)
         }
-        "command" => command_auth_api_key(auth),
+        "command" => command_auth_api_key(auth).and_then(|value| encode_auth_key(auth, value)),
         _ => None,
+    }
+}
+
+fn encode_auth_key(auth: &JsonObject, value: String) -> Option<String> {
+    match auth.get("credential").and_then(Value::as_str) {
+        Some("chatgpt-oauth") if !value.starts_with("codex-oauth:") => {
+            Some(format!("codex-oauth:{value}"))
+        }
+        Some("gemini-oauth") => {
+            let project = auth.get("project")?.as_str()?.trim();
+            if project.is_empty() {
+                return None;
+            }
+            Some(format!("gemini-oauth:{project}|token={value}"))
+        }
+        _ => Some(value),
     }
 }
 

@@ -39,6 +39,9 @@ fn validates_exact_config_shapes_and_preserves_values() {
             "auth": { "type": "command", "command": ["op", "read"] },
             "model": "gpt"
         },
+        "compaction": { "autoThresholdPercent": 75, "compactOldestPercent": 50 },
+        "showShellOutput": true,
+        "showProviderMetrics": true,
         "vimEmulation": { "enabled": true },
         "search": {
             "url": "https://search.invalid",
@@ -78,6 +81,10 @@ fn validates_exact_config_shapes_and_preserves_values() {
     assert_eq!(validated["models"][0]["thinkingBudgetTokens"], 12000);
     assert_eq!(validated["diffApply"]["type"], "openai-responses");
     assert_eq!(validated["fixJson"]["type"], "gemini");
+    assert_eq!(validated["compaction"]["autoThresholdPercent"], 75);
+    assert_eq!(validated["compaction"]["compactOldestPercent"], 50);
+    assert_eq!(validated["showShellOutput"], true);
+    assert_eq!(validated["showProviderMetrics"], true);
     assert_eq!(validated["lsp"]["rust"], json!({ "disabled": true }));
 }
 
@@ -100,6 +107,22 @@ fn validates_notifications_without_custom_notify_command() {
             "alwaysNotify": true
         })
     );
+}
+
+#[test]
+fn rejects_invalid_compaction_thresholds() {
+    for key in ["autoThresholdPercent", "compactOldestPercent"] {
+        for threshold in [json!(0), json!(101), json!(1.5), json!("75")] {
+            assert!(
+                validate_config(json!({
+                    "yourName": "Ada",
+                    "models": [],
+                    "compaction": { (key): threshold }
+                }))
+                .is_err()
+            );
+        }
+    }
 }
 
 #[test]
@@ -172,4 +195,27 @@ fn rejects_unknown_keys_and_mixed_lsp_disabled_entries() {
         }))
         .is_err()
     );
+}
+
+#[test]
+fn accepts_gemini_oauth_command_auth_with_quota_project() {
+    let config = json!({
+        "yourName": "Ada",
+        "models": [{
+            "type": "gemini",
+            "nickname": "Gemini OAuth",
+            "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+            "model": "gemini-3.5-pro",
+            "context": 1_000_000,
+            "auth": {
+                "type": "command",
+                "command": ["gcloud", "auth", "application-default", "print-access-token"],
+                "credential": "gemini-oauth",
+                "project": "example-project"
+            }
+        }]
+    });
+    let validated = validate_config(config).expect("Gemini OAuth command auth should validate");
+    assert_eq!(validated["models"][0]["auth"]["credential"], "gemini-oauth");
+    assert_eq!(validated["models"][0]["auth"]["project"], "example-project");
 }

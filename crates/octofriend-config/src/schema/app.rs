@@ -36,6 +36,9 @@ pub fn validate_config(value: Value) -> ConfigValidationResult<Value> {
             "models",
             "diffApply",
             "fixJson",
+            "compaction",
+            "showShellOutput",
+            "showProviderMetrics",
             "vimEmulation",
             "search",
             "defaultApiKeyOverrides",
@@ -82,6 +85,15 @@ pub fn validate_config(value: Value) -> ConfigValidationResult<Value> {
         "config",
         validate_autofix_model,
     )?;
+    insert_optional_value(
+        &mut validated,
+        &data,
+        "compaction",
+        "config",
+        validate_compaction,
+    )?;
+    insert_optional_boolean(&mut validated, &data, "showShellOutput", "config")?;
+    insert_optional_boolean(&mut validated, &data, "showProviderMetrics", "config")?;
     if let Some(value) = data.get("vimEmulation") {
         let object = object(value.clone(), "config.vimEmulation")?;
         let mut vim = Map::new();
@@ -161,7 +173,9 @@ fn validate_model_config(value: Value, context: &str) -> ConfigValidationResult<
         &mut validated,
         &data,
         "reasoning",
-        &["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+        &[
+            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+        ],
         context,
     )?;
     validate_thinking_budget_tokens(&data, context)?;
@@ -221,7 +235,7 @@ fn validate_auth(value: Value, context: &str) -> ConfigValidationResult<Value> {
     let data = object(value, context)?;
     match data.get("type").and_then(Value::as_str) {
         Some("env") => {
-            assert_exact_keys(&data, &["type", "name", "credential"], context)?;
+            assert_exact_keys(&data, &["type", "name", "credential", "project"], context)?;
             let mut validated = Map::new();
             validated.insert("type".into(), Value::String("env".into()));
             insert_required_string(&mut validated, &data, "name", context)?;
@@ -229,13 +243,18 @@ fn validate_auth(value: Value, context: &str) -> ConfigValidationResult<Value> {
                 &mut validated,
                 &data,
                 "credential",
-                &["api-key", "chatgpt-oauth"],
+                &["api-key", "chatgpt-oauth", "gemini-oauth"],
                 context,
             )?;
+            insert_optional_string(&mut validated, &data, "project", context)?;
             Ok(Value::Object(validated))
         }
         Some("command") => {
-            assert_exact_keys(&data, &["type", "command"], context)?;
+            assert_exact_keys(
+                &data,
+                &["type", "command", "credential", "project"],
+                context,
+            )?;
             let mut validated = Map::new();
             validated.insert("type".into(), Value::String("command".into()));
             validated.insert(
@@ -245,6 +264,14 @@ fn validate_auth(value: Value, context: &str) -> ConfigValidationResult<Value> {
                     &format!("{context}.command"),
                 )?),
             );
+            insert_optional_enum(
+                &mut validated,
+                &data,
+                "credential",
+                &["api-key", "chatgpt-oauth", "gemini-oauth"],
+                context,
+            )?;
+            insert_optional_string(&mut validated, &data, "project", context)?;
             Ok(Value::Object(validated))
         }
         _ => Err(ConfigValidationError::new(format!(
@@ -343,6 +370,31 @@ fn validate_skills(value: Value, context: &str) -> ConfigValidationResult<Value>
     assert_exact_keys(&data, &["paths"], context)?;
     let mut validated = Map::new();
     insert_optional_string_array(&mut validated, &data, "paths", context)?;
+    Ok(Value::Object(validated))
+}
+
+fn validate_compaction(value: Value, context: &str) -> ConfigValidationResult<Value> {
+    let data = object(value, context)?;
+    assert_exact_keys(
+        &data,
+        &["autoThresholdPercent", "compactOldestPercent"],
+        context,
+    )?;
+    let mut validated = Map::new();
+    for key in ["autoThresholdPercent", "compactOldestPercent"] {
+        let Some(value) = data.get(key) else { continue };
+        let Some(percent) = value.as_u64() else {
+            return Err(ConfigValidationError::new(format!(
+                "{context}.{key} must be an integer from 1 to 100"
+            )));
+        };
+        if !(1..=100).contains(&percent) {
+            return Err(ConfigValidationError::new(format!(
+                "{context}.{key} must be an integer from 1 to 100"
+            )));
+        }
+        validated.insert(key.into(), Value::from(percent));
+    }
     Ok(Value::Object(validated))
 }
 

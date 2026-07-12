@@ -74,7 +74,9 @@ pub(super) fn anthropic_output_config(
 
 fn anthropic_effort(reasoning: ProviderReasoningParam) -> Option<&'static str> {
     match reasoning {
-        ProviderReasoningParam::XHigh | ProviderReasoningParam::Max | ProviderReasoningParam::Ultra => Some("xhigh"),
+        ProviderReasoningParam::XHigh
+        | ProviderReasoningParam::Max
+        | ProviderReasoningParam::Ultra => Some("xhigh"),
         ProviderReasoningParam::High => Some("high"),
         ProviderReasoningParam::Medium => Some("medium"),
         ProviderReasoningParam::Low | ProviderReasoningParam::Minimal => Some("low"),
@@ -124,7 +126,9 @@ fn anthropic_valid_thinking_budget(budget_tokens: u64, max_tokens: u64) -> Optio
 
 fn anthropic_thinking_budget(reasoning: Option<ProviderReasoningParam>) -> Option<u64> {
     Some(match reasoning? {
-        ProviderReasoningParam::XHigh | ProviderReasoningParam::Max | ProviderReasoningParam::Ultra => 16_384,
+        ProviderReasoningParam::XHigh
+        | ProviderReasoningParam::Max
+        | ProviderReasoningParam::Ultra => 16_384,
         ProviderReasoningParam::High => 8192,
         ProviderReasoningParam::Medium => 4096,
         ProviderReasoningParam::Low => 2048,
@@ -161,7 +165,10 @@ fn gemini_thinking_level(reasoning: ProviderReasoningParam) -> Value {
         ProviderReasoningParam::Minimal => json!({ "thinkingLevel": "minimal" }),
         ProviderReasoningParam::Low => json!({ "thinkingLevel": "low" }),
         ProviderReasoningParam::Medium => json!({ "thinkingLevel": "medium" }),
-        ProviderReasoningParam::High | ProviderReasoningParam::XHigh | ProviderReasoningParam::Max | ProviderReasoningParam::Ultra => {
+        ProviderReasoningParam::High
+        | ProviderReasoningParam::XHigh
+        | ProviderReasoningParam::Max
+        | ProviderReasoningParam::Ultra => {
             json!({ "thinkingLevel": "high" })
         }
     }
@@ -177,7 +184,9 @@ fn gemini_25_thinking_budget(model: &str, reasoning: ProviderReasoningParam) -> 
         ProviderReasoningParam::Low => 1024,
         ProviderReasoningParam::Medium => 4096,
         ProviderReasoningParam::High => 8192,
-        ProviderReasoningParam::XHigh | ProviderReasoningParam::Max | ProviderReasoningParam::Ultra => 16_384,
+        ProviderReasoningParam::XHigh
+        | ProviderReasoningParam::Max
+        | ProviderReasoningParam::Ultra => 16_384,
     })
 }
 

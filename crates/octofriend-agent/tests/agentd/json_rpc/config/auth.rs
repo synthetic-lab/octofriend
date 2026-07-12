@@ -231,7 +231,42 @@ fn config_key_for_model_allows_chatgpt_oauth_for_openai_provider() {
     assert_eq!(value["id"], "config-key-model-openai-oauth");
     assert_eq!(
         value["result"]["result"],
-        json!({ "ok": true, "key": path_key })
+        json!({ "ok": true, "key": format!("codex-oauth:{path_key}") })
+    );
+}
+
+#[test]
+fn config_key_for_model_encodes_gemini_oauth_project_and_token() {
+    let path_key = safe_env::var("PATH").expect("PATH should be available for this test");
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "config-key-model-gemini-oauth",
+        "method": octofriend_agent::runtime::AGENTD_CONFIG_KEY_FOR_MODEL_METHOD,
+        "params": {
+            "model": {
+                "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+                "type": "gemini",
+                "auth": {
+                    "type": "env",
+                    "name": "PATH",
+                    "credential": "gemini-oauth",
+                    "project": "example-project"
+                }
+            },
+            "config": null
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+    assert_eq!(
+        value["result"]["result"],
+        json!({
+            "ok": true,
+            "key": format!("gemini-oauth:example-project|token={path_key}")
+        })
     );
 }
 

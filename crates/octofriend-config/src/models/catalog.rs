@@ -151,11 +151,26 @@ pub const SYNTHETIC_MODELS: &[ProviderModelConfig] = &[
 
 pub const OPENAI_MODELS: &[ProviderModelConfig] = &[
     openai_model("gpt-5.6-sol", "GPT-5.6-Sol", 372_000, ReasoningLevel::Low),
-    openai_model("gpt-5.6-terra", "GPT-5.6-Terra", 372_000, ReasoningLevel::Medium),
-    openai_model("gpt-5.6-luna", "GPT-5.6-Luna", 372_000, ReasoningLevel::Medium),
+    openai_model(
+        "gpt-5.6-terra",
+        "GPT-5.6-Terra",
+        372_000,
+        ReasoningLevel::Medium,
+    ),
+    openai_model(
+        "gpt-5.6-luna",
+        "GPT-5.6-Luna",
+        372_000,
+        ReasoningLevel::Medium,
+    ),
     openai_model("gpt-5.5", "GPT-5.5", 272_000, ReasoningLevel::Medium),
     openai_model("gpt-5.4", "GPT-5.4", 272_000, ReasoningLevel::Medium),
-    openai_model("gpt-5.4-mini", "GPT-5.4-Mini", 272_000, ReasoningLevel::Medium),
+    openai_model(
+        "gpt-5.4-mini",
+        "GPT-5.4-Mini",
+        272_000,
+        ReasoningLevel::Medium,
+    ),
     openai_model("gpt-5.2", "GPT-5.2", 272_000, ReasoningLevel::Medium),
 ];
 

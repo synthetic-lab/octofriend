@@ -88,8 +88,16 @@ pub(super) fn config_migrate_response(id: JsonRpcId, params: Option<Value>) -> J
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
     let migrated = octofriend_config::files::migrate_config(params.config);
-    let Ok(config) = octofriend_config::schema::validate_config(migrated) else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid config", None);
+    let config = match octofriend_config::schema::validate_config(migrated) {
+        Ok(config) => config,
+        Err(error) => {
+            return create_json_rpc_error(
+                id,
+                INVALID_PARAMS,
+                &format!("Invalid config: {error}"),
+                None,
+            );
+        }
     };
     create_json_rpc_success(id, json!({ "config": config }))
 }
@@ -101,8 +109,16 @@ pub(super) fn config_sanitize_response(id: JsonRpcId, params: Option<Value>) -> 
     let Ok(params) = serde_json::from_value::<ConfigParams>(params) else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
-    let Ok(config) = octofriend_config::schema::validate_config(params.config) else {
-        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid config", None);
+    let config = match octofriend_config::schema::validate_config(params.config) {
+        Ok(config) => config,
+        Err(error) => {
+            return create_json_rpc_error(
+                id,
+                INVALID_PARAMS,
+                &format!("Invalid config: {error}"),
+                None,
+            );
+        }
     };
     create_json_rpc_success(
         id,
@@ -196,7 +212,8 @@ pub(super) fn config_merge_env_var_response(
     let Ok(params) = serde_json::from_value::<ConfigMergeEnvVarParams>(params) else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
-    match octofriend_config::files::merge_env_var(params.config, &params.model, &params.api_env_var) {
+    match octofriend_config::files::merge_env_var(params.config, &params.model, &params.api_env_var)
+    {
         Some(config) => create_json_rpc_success(id, json!({ "config": config })),
         None => create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None),
     }
@@ -270,7 +287,10 @@ pub(super) fn config_default_paths_response(id: JsonRpcId) -> JsonRpcResponse {
 }
 
 pub(super) fn config_autofix_keys_response(id: JsonRpcId) -> JsonRpcResponse {
-    create_json_rpc_success(id, json!({ "keys": octofriend_config::files::AUTOFIX_KEYS }))
+    create_json_rpc_success(
+        id,
+        json!({ "keys": octofriend_config::files::AUTOFIX_KEYS }),
+    )
 }
 
 fn run_notify_command(config: &Value) -> Result<(), String> {
@@ -326,6 +346,12 @@ fn key_for_model_result(model: &Value, config: Option<&Value>) -> Value {
             return key_error_result(
                 "invalid",
                 "ChatGPT OAuth is only supported for OpenAI providers.".to_string(),
+            );
+        }
+        if auth_uses_gemini_oauth(&auth) && !model_supports_gemini_oauth(model) {
+            return key_error_result(
+                "invalid",
+                "Gemini OAuth is only supported for Gemini providers.".to_string(),
             );
         }
         let result = resolve_auth_result(&auth);
@@ -538,6 +564,20 @@ fn auth_uses_chatgpt_oauth(auth: &Value) -> bool {
         == Some("chatgpt-oauth")
 }
 
+fn auth_uses_gemini_oauth(auth: &Value) -> bool {
+    auth.as_object()
+        .and_then(|auth| auth.get("credential"))
+        .and_then(Value::as_str)
+        == Some("gemini-oauth")
+}
+
+fn model_supports_gemini_oauth(model: &Value) -> bool {
+    model
+        .as_object()
+        .and_then(octofriend_config::models::provider_for_model_object)
+        .is_some_and(|provider| provider.kind == octofriend_config::models::ProviderKind::Gemini)
+}
+
 fn model_supports_chatgpt_oauth(model: &Value) -> bool {
     let Some(model) = model.as_object() else {
         return false;
@@ -552,6 +592,42 @@ fn model_supports_chatgpt_oauth(model: &Value) -> bool {
 }
 
 fn resolve_auth_result(auth: &Value) -> Value {
+    let result = resolve_raw_auth_result(auth);
+    encode_credential_result(auth, result)
+}
+
+fn encode_credential_result(auth: &Value, mut result: Value) -> Value {
+    let Some(key) = result.get("key").and_then(Value::as_str).map(str::to_owned) else {
+        return result;
+    };
+    let credential = auth.get("credential").and_then(Value::as_str);
+    let encoded = match credential {
+        Some("chatgpt-oauth") if !key.starts_with("codex-oauth:") => {
+            format!("codex-oauth:{key}")
+        }
+        Some("gemini-oauth") => {
+            let Some(project) = auth
+                .get("project")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|project| !project.is_empty())
+            else {
+                return key_error_result(
+                    "invalid",
+                    "Gemini OAuth auth requires a Google Cloud project".to_string(),
+                );
+            };
+            format!("gemini-oauth:{project}|token={key}")
+        }
+        _ => return result,
+    };
+    if let Some(object) = result.as_object_mut() {
+        object.insert("key".into(), Value::String(encoded));
+    }
+    result
+}
+
+fn resolve_raw_auth_result(auth: &Value) -> Value {
     let Some(auth) = auth.as_object() else {
         return key_error_result("invalid", "Invalid auth configuration".to_string());
     };
@@ -595,8 +671,12 @@ fn codex_file_key() -> Option<String> {
         format!("{home}/.config/octofriend/oauth.json5"),
         format!("{home}/.config/octofriend/oauth.json"),
     ] {
-        let Ok(contents) = std::fs::read_to_string(path) else { continue };
-        let Ok(value) = serde_json::from_str::<Value>(&contents) else { continue };
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&contents) else {
+            continue;
+        };
         let access = value
             .pointer("/codex/access")
             .or_else(|| value.get("access"))
@@ -650,7 +730,11 @@ fn write_key_for_base_url(base_url: &str, api_key: &str) -> std::io::Result<()> 
     )
 }
 
-fn upsert_key_file_key(keys: &mut octofriend_config::auth::ApiKeyMap, base_url: &str, api_key: &str) {
+fn upsert_key_file_key(
+    keys: &mut octofriend_config::auth::ApiKeyMap,
+    base_url: &str,
+    api_key: &str,
+) {
     let normalized_base_url = normalize_key_file_base_url(base_url);
     keys.retain(|key_base_url, _| {
         !octofriend_config::models::base_urls_match(key_base_url, &normalized_base_url)
@@ -808,7 +892,9 @@ fn command_failed_key_result(
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{env_value_key, upsert_key_file_key};
+    use serde_json::json;
+
+    use super::{encode_credential_result, env_value_key, ok_key_result, upsert_key_file_key};
 
     #[test]
     fn env_value_key_trims_and_rejects_whitespace_only_values() {
@@ -856,6 +942,43 @@ mod tests {
 	 "
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn oauth_credentials_are_encoded_for_provider_request_builders() {
+        let chatgpt = encode_credential_result(
+            &json!({ "credential": "chatgpt-oauth" }),
+            ok_key_result("access-token"),
+        );
+        assert_eq!(chatgpt["key"], "codex-oauth:access-token");
+
+        let gemini = encode_credential_result(
+            &json!({
+                "type": "command",
+                "command": ["unused"],
+                "credential": "gemini-oauth",
+                "project": "example-project"
+            }),
+            ok_key_result("access-token"),
+        );
+        assert_eq!(
+            gemini["key"],
+            "gemini-oauth:example-project|token=access-token"
+        );
+
+        let missing_project = encode_credential_result(
+            &json!({
+                "type": "command",
+                "command": ["unused"],
+                "credential": "gemini-oauth"
+            }),
+            ok_key_result("access-token"),
+        );
+        assert_eq!(missing_project["ok"], false);
+        assert_eq!(
+            missing_project["error"]["message"],
+            "Gemini OAuth auth requires a Google Cloud project"
         );
     }
 }

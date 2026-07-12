@@ -98,6 +98,35 @@ fn config_migrate_request_uses_config_migrations() {
 }
 
 #[test]
+fn config_migrate_request_returns_actionable_validation_error() {
+    let line = json!({
+        "jsonrpc": "2.0",
+        "id": "config-migrate-invalid",
+        "method": AGENTD_CONFIG_MIGRATE_METHOD,
+        "params": {
+            "config": {
+                "yourName": "Ada",
+                "models": [],
+                "mcpServers": {
+                    "broken": { "args": [] }
+                }
+            }
+        }
+    })
+    .to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert_eq!(value["error"]["code"], -32602);
+    assert_eq!(
+        value["error"]["message"],
+        "Invalid config: Expected config.mcpServers.broken.command to be present"
+    );
+}
+
+#[test]
 fn config_sanitize_request_uses_config_sanitizer() {
     let line = json!({
         "jsonrpc": "2.0",
