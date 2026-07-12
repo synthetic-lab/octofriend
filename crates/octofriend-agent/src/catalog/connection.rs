@@ -84,8 +84,8 @@ pub(in crate::runtime) fn model_discover_response(
         })
         .send();
     let result = response
-        .and_then(|response| response.error_for_status())
-        .and_then(|response| response.text())
+        .and_then(reqwest::blocking::Response::error_for_status)
+        .and_then(reqwest::blocking::Response::text)
         .map_err(|error| error.to_string())
         .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|error| error.to_string()));
     match result {
@@ -124,7 +124,7 @@ pub(in crate::runtime) fn model_discover_response(
                 .collect::<Vec<_>>();
             create_json_rpc_success(id, json!({ "models": models }))
         }
-        Err(error) => create_json_rpc_error(id, -32010, &error.to_string(), None),
+        Err(error) => create_json_rpc_error(id, -32010, error, None),
     }
 }
 

@@ -17,7 +17,7 @@ use std::io::Read;
 use std::time::Instant;
 
 use super::super::event_stream::parse_server_sent_json_events;
-use super::stream::{provider_stream_events_json, provider_stream_state_json};
+use super::event_stream::{provider_stream_events_json, provider_stream_state_json};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

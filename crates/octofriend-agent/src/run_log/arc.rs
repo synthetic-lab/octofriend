@@ -166,28 +166,37 @@ impl ResponseIdExt for JsonRpcResponse {
     }
 }
 
-fn trajectory_arc_result_json(
-    params: TrajectoryArcParams,
+fn early_trajectory_finish(
+    params: &TrajectoryArcParams,
     stream_events: &mut dyn FnMut(Value),
-) -> Result<Value, JsonRpcResponse> {
+) -> Result<Option<Value>, JsonRpcResponse> {
     if params.aborted.unwrap_or(false) {
-        return Ok(json!({
+        return Ok(Some(json!({
             "type": "finish",
             "irs": [],
             "reason": { "type": "abort" },
             "events": [],
-        }));
+        })));
     }
+    if !params.compact_only {
+        return Ok(None);
+    }
+    let mut events = Vec::new();
+    let _ = provider_irs_after_compaction(params, &mut events, stream_events)?;
+    Ok(Some(json!({
+        "type": "finish",
+        "irs": [],
+        "reason": { "type": "needs-response" },
+        "events": events,
+    })))
+}
 
-    if params.compact_only {
-        let mut events = Vec::new();
-        let _ = provider_irs_after_compaction(&params, &mut events, stream_events)?;
-        return Ok(json!({
-            "type": "finish",
-            "irs": [],
-            "reason": { "type": "needs-response" },
-            "events": events,
-        }));
+fn trajectory_arc_result_json(
+    params: TrajectoryArcParams,
+    stream_events: &mut dyn FnMut(Value),
+) -> Result<Value, JsonRpcResponse> {
+    if let Some(finish) = early_trajectory_finish(&params, stream_events)? {
+        return Ok(finish);
     }
 
     let skills = call_result(skill_discover_response(
@@ -326,11 +335,18 @@ fn call_main_provider(
     ))
 }
 
-fn provider_irs_after_compaction(
-    params: &TrajectoryArcParams,
-    events: &mut JsonValues,
-    stream_events: &mut dyn FnMut(Value),
-) -> Result<Value, JsonRpcResponse> {
+struct CompactionPlan {
+    lowered: Value,
+    messages_to_compact: Vec<Value>,
+    retained_messages: Vec<Value>,
+}
+
+enum CompactionPlanResult {
+    Skip(Value),
+    Compact(CompactionPlan),
+}
+
+fn compaction_plan(params: &TrajectoryArcParams) -> Result<CompactionPlanResult, JsonRpcResponse> {
     let lowered = lower_messages(
         params.messages.clone(),
         params.model.modalities.clone(),
@@ -348,10 +364,8 @@ fn provider_irs_after_compaction(
     ))?;
     if !params.compact_only && decision.get("shouldCompact").and_then(Value::as_bool) != Some(true)
     {
-        return Ok(lowered);
+        return Ok(CompactionPlanResult::Skip(lowered));
     }
-
-    events.push(json!({ "type": "start-compaction" }));
     let compact_oldest_percent = params
         .config
         .compaction
@@ -363,10 +377,30 @@ fn provider_irs_after_compaction(
         .messages
         .len()
         .saturating_mul(compact_oldest_percent)
-        .div_ceil(100);
-    let compact_count = compact_count.min(params.messages.len());
-    let messages_to_compact = params.messages[..compact_count].to_vec();
-    let retained_messages = params.messages[compact_count..].to_vec();
+        .div_ceil(100)
+        .min(params.messages.len());
+    Ok(CompactionPlanResult::Compact(CompactionPlan {
+        lowered,
+        messages_to_compact: params.messages[..compact_count].to_vec(),
+        retained_messages: params.messages[compact_count..].to_vec(),
+    }))
+}
+
+fn provider_irs_after_compaction(
+    params: &TrajectoryArcParams,
+    events: &mut JsonValues,
+    stream_events: &mut dyn FnMut(Value),
+) -> Result<Value, JsonRpcResponse> {
+    let plan = match compaction_plan(params)? {
+        CompactionPlanResult::Skip(lowered) => return Ok(lowered),
+        CompactionPlanResult::Compact(plan) => plan,
+    };
+    let CompactionPlan {
+        lowered,
+        messages_to_compact,
+        retained_messages,
+    } = plan;
+    events.push(json!({ "type": "start-compaction" }));
     let prepared = call_result(compaction_prepare_response(
         JsonRpcId::String("trajectory-arc-compaction-prepare".into()),
         Some(json!({ "messages": messages_to_compact })),

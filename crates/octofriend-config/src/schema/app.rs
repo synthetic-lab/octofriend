@@ -94,6 +94,22 @@ pub fn validate_config(value: Value) -> ConfigValidationResult<Value> {
     )?;
     insert_optional_boolean(&mut validated, &data, "showShellOutput", "config")?;
     insert_optional_boolean(&mut validated, &data, "showProviderMetrics", "config")?;
+    validate_config_integrations(&mut validated, &data)?;
+    insert_optional_value(&mut validated, &data, "skills", "config", validate_skills)?;
+    insert_optional_value(
+        &mut validated,
+        &data,
+        "notifications",
+        "config",
+        validate_notifications,
+    )?;
+    Ok(Value::Object(validated))
+}
+
+fn validate_config_integrations(
+    validated: &mut Map<String, Value>,
+    data: &Map<String, Value>,
+) -> ConfigValidationResult<()> {
     if let Some(value) = data.get("vimEmulation") {
         let object = object(value.clone(), "config.vimEmulation")?;
         let mut vim = Map::new();
@@ -103,7 +119,7 @@ pub fn validate_config(value: Value) -> ConfigValidationResult<Value> {
         );
         validated.insert("vimEmulation".into(), Value::Object(vim));
     }
-    insert_optional_value(&mut validated, &data, "search", "config", validate_search)?;
+    insert_optional_value(validated, data, "search", "config", validate_search)?;
     if let Some(value) = data.get("defaultApiKeyOverrides") {
         validated.insert(
             "defaultApiKeyOverrides".into(),
@@ -122,15 +138,7 @@ pub fn validate_config(value: Value) -> ConfigValidationResult<Value> {
     if let Some(value) = data.get("lsp") {
         validated.insert("lsp".into(), validate_lsp(value.clone())?);
     }
-    insert_optional_value(&mut validated, &data, "skills", "config", validate_skills)?;
-    insert_optional_value(
-        &mut validated,
-        &data,
-        "notifications",
-        "config",
-        validate_notifications,
-    )?;
-    Ok(Value::Object(validated))
+    Ok(())
 }
 
 pub fn validate_key_config(value: Value) -> ConfigValidationResult<Value> {

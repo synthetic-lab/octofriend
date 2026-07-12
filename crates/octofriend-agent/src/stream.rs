@@ -4,10 +4,10 @@ mod auth_keys;
 mod compiler_complete;
 #[path = "stream/compiler_finalize.rs"]
 mod compiler_finalize;
+#[path = "stream/stream.rs"]
+mod event_stream;
 #[path = "stream/http_stream.rs"]
 mod http_stream;
-#[path = "stream/stream.rs"]
-mod stream;
 
 pub(in crate::runtime) use compiler_complete::{
     provider_compiler_complete_response, provider_compiler_complete_response_with_events,

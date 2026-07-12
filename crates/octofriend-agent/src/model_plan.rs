@@ -210,10 +210,6 @@ pub(in crate::runtime) fn provider_compiler_plan_json(
     result
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "provider request builder mirrors provider-specific wire sections"
-)]
 fn codex_aware_openai_responses_request(
     request: &OpenAiResponsesHttpRequestParams,
 ) -> ProviderHttpRequest {
@@ -262,17 +258,170 @@ fn gemini_oauth_aware_request(
     request
 }
 
+type ProviderRequestParts = (
+    &'static str,
+    AssistantOutputProvider,
+    ProviderHttpRequest,
+    String,
+);
+
+fn openai_chat_request_parts(
+    base_url: String,
+    api_key: String,
+    model: String,
+    modalities: Option<Vec<String>>,
+    irs: &[Value],
+    system: Option<&str>,
+    tools: Option<Vec<ProviderToolDefinition>>,
+) -> Result<ProviderRequestParts, ()> {
+    let messages = openai_chat_completions_messages_from_ts_ir(irs, system, modalities.as_deref())
+        .map_err(|_| ())?;
+    let tools =
+        provider_tool_definitions_json(ProviderToolDefinitionTarget::OpenAiChatCompletions, tools);
+    let curl_request = OpenAiChatCompletionsCurlRequest {
+        base_url: base_url.clone(),
+        model: model.clone(),
+        messages: messages.clone(),
+        tools: tools.clone(),
+    };
+    let http_request = OpenAiChatCompletionsHttpRequestParams {
+        base_url,
+        api_key,
+        model,
+        messages,
+        tools,
+    };
+    Ok((
+        "openai-chat-completions",
+        AssistantOutputProvider::OpenAiChatCompletions,
+        openai_chat_completions_http_request(&http_request),
+        openai_chat_completions_curl(&curl_request),
+    ))
+}
+
+fn openai_responses_request_parts(
+    base_url: String,
+    api_key: String,
+    model: String,
+    modalities: Option<Vec<String>>,
+    reasoning: Option<Value>,
+    irs: &[Value],
+    system: Option<String>,
+    tools: Option<Vec<ProviderToolDefinition>>,
+) -> Result<ProviderRequestParts, ()> {
+    let input = openai_responses_input_from_ts_ir(irs, modalities.as_deref()).map_err(|_| ())?;
+    let tools =
+        provider_tool_definitions_json(ProviderToolDefinitionTarget::OpenAiResponses, tools);
+    let curl_request = OpenAiResponsesCurlRequest {
+        base_url: base_url.clone(),
+        model: model.clone(),
+        input: input.clone(),
+        instructions: system.clone(),
+        tools: tools.clone(),
+        reasoning: reasoning.clone(),
+    };
+    let http_request = OpenAiResponsesHttpRequestParams {
+        base_url,
+        api_key,
+        model,
+        input,
+        instructions: system,
+        tools,
+        reasoning,
+    };
+    Ok((
+        "openai-responses",
+        AssistantOutputProvider::OpenAiResponses,
+        codex_aware_openai_responses_request(&http_request),
+        openai_responses_curl(&curl_request),
+    ))
+}
+
+fn anthropic_request_parts(
+    base_url: String,
+    api_key: String,
+    model: String,
+    modalities: Option<Vec<String>>,
+    max_tokens: u64,
+    thinking: Option<Value>,
+    output_config: Option<Value>,
+    irs: &[Value],
+    system: Option<String>,
+    tools: Option<Vec<ProviderToolDefinition>>,
+) -> Result<ProviderRequestParts, ()> {
+    let messages = anthropic_messages_from_ts_ir(irs, modalities.as_deref()).map_err(|_| ())?;
+    let tools = provider_tool_definitions_json(ProviderToolDefinitionTarget::Anthropic, tools);
+    let system = system.unwrap_or_default();
+    let curl_request = AnthropicCurlRequest {
+        base_url: base_url.clone(),
+        model: model.clone(),
+        system: system.clone(),
+        messages: messages.clone(),
+        tools: tools.clone(),
+        max_tokens,
+        thinking: thinking.clone(),
+        output_config: output_config.clone(),
+    };
+    let http_request = AnthropicMessagesHttpRequestParams {
+        base_url,
+        api_key,
+        model,
+        system,
+        messages,
+        tools,
+        max_tokens,
+        thinking,
+        output_config,
+    };
+    Ok((
+        "anthropic",
+        AssistantOutputProvider::Anthropic,
+        anthropic_messages_http_request(&http_request),
+        anthropic_messages_curl(&curl_request),
+    ))
+}
+
+fn gemini_request_parts(
+    base_url: String,
+    api_key: String,
+    model: String,
+    modalities: Option<Vec<String>>,
+    generation_config: Option<Value>,
+    irs: &[Value],
+    system: Option<String>,
+    tools: Option<Vec<ProviderToolDefinition>>,
+) -> Result<ProviderRequestParts, ()> {
+    let contents = gemini_contents_from_ts_ir(irs, modalities.as_deref()).map_err(|_| ())?;
+    let tools = provider_tool_definitions_json(ProviderToolDefinitionTarget::Gemini, tools);
+    let system_instruction = system.map(|system| json!({ "parts": [{ "text": system }] }));
+    let curl_request = GeminiGenerateContentCurlRequest {
+        base_url: base_url.clone(),
+        model: model.clone(),
+        contents: contents.clone(),
+        system_instruction: system_instruction.clone(),
+        tools: tools.clone(),
+        generation_config: generation_config.clone(),
+    };
+    let http_request = GeminiGenerateContentHttpRequestParams {
+        base_url,
+        api_key,
+        model,
+        contents,
+        system_instruction,
+        tools,
+        generation_config,
+    };
+    Ok((
+        "gemini",
+        AssistantOutputProvider::Gemini,
+        gemini_oauth_aware_request(&http_request),
+        gemini_generate_content_curl(&curl_request),
+    ))
+}
+
 pub(in crate::runtime) fn provider_http_request_parts(
     params: ProviderHttpRequestParams,
-) -> Result<
-    (
-        &'static str,
-        AssistantOutputProvider,
-        ProviderHttpRequest,
-        String,
-    ),
-    (),
-> {
+) -> Result<ProviderRequestParts, ()> {
     let ProviderHttpRequestParams {
         plan,
         api_key,
@@ -280,81 +429,28 @@ pub(in crate::runtime) fn provider_http_request_parts(
         system,
         tools,
     } = params;
-
-    let result = match plan {
+    match plan {
         ProviderHttpRequestPlanParam::OpenaiChatCompletions {
             base_url,
             model,
             modalities,
-        } => {
-            let Ok(messages) = openai_chat_completions_messages_from_ts_ir(
-                &irs,
-                system.as_deref(),
-                modalities.as_deref(),
-            ) else {
-                return Err(());
-            };
-            let tools = provider_tool_definitions_json(
-                ProviderToolDefinitionTarget::OpenAiChatCompletions,
-                tools,
-            );
-            let curl_request = OpenAiChatCompletionsCurlRequest {
-                base_url: base_url.clone(),
-                model: model.clone(),
-                messages: messages.clone(),
-                tools: tools.clone(),
-            };
-            let http_request = OpenAiChatCompletionsHttpRequestParams {
-                base_url,
-                api_key,
-                model,
-                messages,
-                tools,
-            };
-            (
-                "openai-chat-completions",
-                AssistantOutputProvider::OpenAiChatCompletions,
-                openai_chat_completions_http_request(&http_request),
-                openai_chat_completions_curl(&curl_request),
-            )
-        }
+        } => openai_chat_request_parts(
+            base_url,
+            api_key,
+            model,
+            modalities,
+            &irs,
+            system.as_deref(),
+            tools,
+        ),
         ProviderHttpRequestPlanParam::OpenaiResponses {
             base_url,
             model,
             modalities,
             reasoning,
-        } => {
-            let Ok(input) = openai_responses_input_from_ts_ir(&irs, modalities.as_deref()) else {
-                return Err(());
-            };
-            let tools = provider_tool_definitions_json(
-                ProviderToolDefinitionTarget::OpenAiResponses,
-                tools,
-            );
-            let curl_request = OpenAiResponsesCurlRequest {
-                base_url: base_url.clone(),
-                model: model.clone(),
-                input: input.clone(),
-                instructions: system.clone(),
-                tools: tools.clone(),
-                reasoning: reasoning.clone(),
-            };
-            let http_request = OpenAiResponsesHttpRequestParams {
-                base_url,
-                api_key,
-                model,
-                input,
-                instructions: system,
-                tools,
-                reasoning,
-            };
-            (
-                "openai-responses",
-                AssistantOutputProvider::OpenAiResponses,
-                codex_aware_openai_responses_request(&http_request),
-                openai_responses_curl(&curl_request),
-            )
-        }
+        } => openai_responses_request_parts(
+            base_url, api_key, model, modalities, reasoning, &irs, system, tools,
+        ),
         ProviderHttpRequestPlanParam::Anthropic {
             base_url,
             model,
@@ -362,82 +458,34 @@ pub(in crate::runtime) fn provider_http_request_parts(
             max_tokens,
             thinking,
             output_config,
-        } => {
-            let Ok(messages) = anthropic_messages_from_ts_ir(&irs, modalities.as_deref()) else {
-                return Err(());
-            };
-            let tools =
-                provider_tool_definitions_json(ProviderToolDefinitionTarget::Anthropic, tools);
-            let curl_request = AnthropicCurlRequest {
-                base_url: base_url.clone(),
-                model: model.clone(),
-                system: system.clone().unwrap_or_default(),
-                messages: messages.clone(),
-                tools: tools.clone(),
-                max_tokens,
-                thinking: thinking.clone(),
-                output_config: output_config.clone(),
-            };
-            let http_request = AnthropicMessagesHttpRequestParams {
-                base_url,
-                api_key,
-                model,
-                system: system.unwrap_or_default(),
-                messages,
-                tools,
-                max_tokens,
-                thinking,
-                output_config,
-            };
-            (
-                "anthropic",
-                AssistantOutputProvider::Anthropic,
-                anthropic_messages_http_request(&http_request),
-                anthropic_messages_curl(&curl_request),
-            )
-        }
+        } => anthropic_request_parts(
+            base_url,
+            api_key,
+            model,
+            modalities,
+            max_tokens,
+            thinking,
+            output_config,
+            &irs,
+            system,
+            tools,
+        ),
         ProviderHttpRequestPlanParam::Gemini {
             base_url,
             model,
             modalities,
             generation_config,
-        } => {
-            let Ok(contents) = gemini_contents_from_ts_ir(&irs, modalities.as_deref()) else {
-                return Err(());
-            };
-            let system_instruction = system.map(|system| {
-                json!({
-                    "parts": [{ "text": system }],
-                })
-            });
-            let tools = provider_tool_definitions_json(ProviderToolDefinitionTarget::Gemini, tools);
-            let curl_request = GeminiGenerateContentCurlRequest {
-                base_url: base_url.clone(),
-                model: model.clone(),
-                contents: contents.clone(),
-                system_instruction: system_instruction.clone(),
-                tools: tools.clone(),
-                generation_config: generation_config.clone(),
-            };
-            let http_request = GeminiGenerateContentHttpRequestParams {
-                base_url,
-                api_key,
-                model,
-                contents,
-                system_instruction,
-                tools,
-                generation_config,
-            };
-            (
-                "gemini",
-                AssistantOutputProvider::Gemini,
-                gemini_oauth_aware_request(&http_request),
-                gemini_generate_content_curl(&curl_request),
-            )
-        }
-    };
-
-    Ok(result)
+        } => gemini_request_parts(
+            base_url,
+            api_key,
+            model,
+            modalities,
+            generation_config,
+            &irs,
+            system,
+            tools,
+        ),
+    }
 }
 
 pub(in crate::runtime) fn provider_http_stream_request(
