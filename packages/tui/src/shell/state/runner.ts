@@ -1,11 +1,9 @@
 import { trajectoryArc } from "../../runtime/run-log/main";
 import { assertKeyForModel } from "../../runtime/config/keys";
 import { getModelFromConfig } from "../../runtime/config/model-selection";
+import type { ProviderMetrics } from "../../runtime/run-log/types";
 import type { HistoryItem } from "../../runtime/history/main";
-import {
-	outputToHistory,
-	toLlmIR,
-} from "../../runtime/history/main";
+import { outputToHistory, toLlmIR } from "../../runtime/history/main";
 import type { OctoIR } from "../../runtime/agent/ir/main";
 import { errorToString } from "../result";
 import { handleFinishReason } from "./runner-finish";
@@ -20,6 +18,22 @@ import {
 } from "./runner-history";
 import { throttledMergeBuffer } from "./scheduling";
 import type { AppStateGet, AppStateSet, UiState } from "./types";
+
+export function formatProviderMetrics(metrics: ProviderMetrics): string {
+	const label =
+		metrics.phase === "compaction" ? "Compaction" : "Provider response";
+	const ttft =
+		metrics.ttftMs === null
+			? "unavailable"
+			: `${(metrics.ttftMs / 1000).toFixed(3)}s`;
+	const generationMs =
+		metrics.ttftMs === null
+			? metrics.durationMs
+			: Math.max(0, metrics.durationMs - metrics.ttftMs);
+	const tokensPerSecond =
+		generationMs > 0 ? metrics.outputTokens / (generationMs / 1000) : 0;
+	return `${label}: TTFT ${ttft} · ${tokensPerSecond.toFixed(2)} tok/s · ${metrics.outputTokens} output tokens`;
+}
 
 export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 	return {
@@ -70,6 +84,11 @@ export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 			});
 		},
 
+		compactHistory: async (args) => {
+			if (get().history.length === 0) return;
+			await get().runAgent({ ...args, compactOnly: true });
+		},
+
 		retryFrom: async (mode, args) => {
 			if (get().modeData.mode === mode) {
 				await get().runAgent(args);
@@ -94,7 +113,7 @@ export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 			return false;
 		},
 
-		runAgent: async ({ config, transport, trajectoryArcRun }) => {
+		runAgent: async ({ config, transport, trajectoryArcRun, compactOnly }) => {
 			let baseHistory = [...get().history];
 			const abortController = new AbortController();
 			let compactionByteCount = 0;
@@ -130,6 +149,7 @@ export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 					transport,
 					abortSignal: abortController.signal,
 					trajectoryArcRun,
+					compactOnly,
 					handler: {
 						startResponse: () => {
 							throttle.flush();
@@ -195,11 +215,16 @@ export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 
 						compactionParsed: (event) => {
 							throttle.flush();
-							const checkpointItem: HistoryItem<OctoIR> = {
-								type: "llm-ir",
-								ir: event.checkpoint,
-							};
-							baseHistory = [checkpointItem];
+							baseHistory = outputToHistory(event.history);
+							set({ history: [...baseHistory] });
+						},
+
+						providerMetrics: (event) => {
+							if (config.showProviderMetrics !== true) return;
+							baseHistory = [
+								...baseHistory,
+								{ type: "notification", content: formatProviderMetrics(event) },
+							];
 							set({ history: [...baseHistory] });
 						},
 
@@ -270,6 +295,11 @@ export function createAgentActions(set: AppStateSet, get: AppStateGet) {
 		},
 	} satisfies Pick<
 		UiState,
-		"input" | "retryFrom" | "abortResponse" | "_maybeHandleAbort" | "runAgent"
+		| "input"
+		| "compactHistory"
+		| "retryFrom"
+		| "abortResponse"
+		| "_maybeHandleAbort"
+		| "runAgent"
 	>;
 }

@@ -5,7 +5,7 @@ import { useCtrlC } from "../input/ctrl-c";
 import type { ImageInfo } from "../input/images";
 import { type InkInputKey, useLatestInput } from "../input/latest-input";
 import { MultimediaInput, VimModeIndicator } from "../input/text";
-import { useConfig } from "../runtime/config/react-context";
+import { useConfig, useSetConfig } from "../runtime/config/react-context";
 import type { Transport } from "../runtime/workspace/common";
 import { useTerminalThemeColor } from "../theme/branding";
 import {
@@ -18,7 +18,12 @@ import { useModel } from "./state/model-hook";
 import { useAppStore } from "./state/store";
 import type { RunArgs, UiState } from "./state/types";
 import { ToolRequestsRenderer } from "./tool-requests";
-import { isSlashCommand, matchingSlashCommands, slashCommandName, SLASH_COMMANDS } from "./slash-commands";
+import {
+	matchingSlashCommands,
+	projectInitializationPrompt,
+	slashCommandName,
+	SLASH_COMMANDS,
+} from "./slash-commands";
 import { TransportContext } from "./transport-context";
 
 const COMPACTING_LOADING_STRINGS = [
@@ -122,6 +127,7 @@ export function BottomBarContent({
 	toolRun,
 }: BottomBarContentProps) {
 	const config = useConfig();
+	const setConfig = useSetConfig();
 	const { exit } = useApp();
 	const transport = useContext(TransportContext);
 	const vimEnabled = !!config.vimEmulation?.enabled;
@@ -139,8 +145,16 @@ export function BottomBarContent({
 		query,
 		setQuery,
 		clearHistory,
+		compactHistory,
 		notify,
-	} = useAppStore(useShallow((state) => ({ ...selectBottomBarContentState(state), clearHistory: state.clearHistory, notify: state.notify })));
+	} = useAppStore(
+		useShallow((state) => ({
+			...selectBottomBarContentState(state),
+			clearHistory: state.clearHistory,
+			compactHistory: state.compactHistory,
+			notify: state.notify,
+		})),
+	);
 
 	const vimMode = vimEnabled ? storeVimMode : "NORMAL";
 	const queryRef = useRef(query);
@@ -184,14 +198,57 @@ export function BottomBarContent({
 				setQuery("");
 				return;
 			}
+			if (command === "/init") {
+				setQuery("");
+				await input({
+					query: projectInitializationPrompt(finalQuery),
+					config,
+					transport,
+					images,
+					trajectoryArcRun,
+					toolPermission,
+					skillDiscover,
+					toolDefinitions,
+					toolRun,
+				});
+				return;
+			}
+			if (command === "/compact") {
+				setQuery("");
+				if (useAppStore.getState().history.length === 0) {
+					notify("Nothing to compact.");
+					return;
+				}
+				await compactHistory({
+					config,
+					transport,
+					trajectoryArcRun,
+					toolPermission,
+					skillDiscover,
+					toolDefinitions,
+					toolRun,
+				});
+				return;
+			}
 			if (command === "/help") {
-				notify(SLASH_COMMANDS.map(({ name, description }) => `${name}: ${description}`).join("\n"));
+				notify(
+					SLASH_COMMANDS.map(
+						({ name, description }) => `${name}: ${description}`,
+					).join("\n"),
+				);
 				setQuery("");
 				return;
 			}
 			if (command === "/quit") {
 				abortResponse();
 				exit();
+				setQuery("");
+				return;
+			}
+			if (command === "/metrics") {
+				const enabled = config.showProviderMetrics !== true;
+				await setConfig({ ...config, showProviderMetrics: enabled });
+				notify(`Provider metrics ${enabled ? "enabled" : "disabled"}.`);
 				setQuery("");
 				return;
 			}
@@ -218,7 +275,9 @@ export function BottomBarContent({
 			transport,
 			input,
 			setQuery,
+			setConfig,
 			clearHistory,
+			compactHistory,
 			notify,
 			skillDiscover,
 			trajectoryArcRun,
@@ -316,7 +375,9 @@ function BottomBarInputControls({
 			{slashCommands.length > 0 && (
 				<Box flexDirection="column" marginLeft={1}>
 					{slashCommands.map((command) => (
-						<Text key={command.name} color="gray">{command.name} — {command.description}</Text>
+						<Text key={command.name} color="gray">
+							{command.name} — {command.description}
+						</Text>
 					))}
 				</Box>
 			)}

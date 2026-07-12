@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { matchingSlashCommands } from "../../src/shell/slash-commands";
+import {
+	matchingSlashCommands,
+	projectInitializationPrompt,
+} from "../../src/shell/slash-commands";
 
 describe("slash command tooltip matching", () => {
 	it("returns no commands for ordinary input", () => {
@@ -8,7 +11,13 @@ describe("slash command tooltip matching", () => {
 
 	it("lists all commands for a slash", () => {
 		expect(matchingSlashCommands("/").map((command) => command.name)).toEqual([
-			"/help", "/clear", "/model", "/quit",
+			"/help",
+			"/init",
+			"/clear",
+			"/compact",
+			"/metrics",
+			"/model",
+			"/quit",
 		]);
 	});
 
@@ -16,5 +25,14 @@ describe("slash command tooltip matching", () => {
 		expect(matchingSlashCommands("/he")).toEqual([
 			{ name: "/help", description: "Show available slash commands" },
 		]);
+	});
+
+	it("builds a project initialization turn with optional instructions", () => {
+		expect(projectInitializationPrompt("/init")).toContain(
+			"create or update OCTO.md",
+		);
+		expect(projectInitializationPrompt("/init focus on Rust tests")).toContain(
+			"Additional user instructions: focus on Rust tests",
+		);
 	});
 });

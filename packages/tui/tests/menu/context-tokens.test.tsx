@@ -9,15 +9,13 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe("terminal model setup context tokens", () => {
-	it("parses context token inputs without allocating around the k suffix", async () => {
+	it("requires an unambiguous full context token count", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
-		const { Context } = await import(
-			"../../src/menu/models/route-views"
-		);
+		const { Context } = await import("../../src/menu/models/route-views.tsx");
 		const submissions: unknown[] = [];
 
 		const instance = render(
@@ -44,8 +42,8 @@ describe("terminal model setup context tokens", () => {
 		);
 
 		await Bun.sleep(1);
-		instance.stdin.write("1k2");
-		await waitFor(() => (instance.lastFrame() ?? "").includes("1k2"));
+		instance.stdin.write("12000");
+		await waitFor(() => (instance.lastFrame() ?? "").includes("12000"));
 		instance.stdin.write("\r");
 		await waitFor(() => submissions.length === 1);
 
@@ -54,7 +52,7 @@ describe("terminal model setup context tokens", () => {
 				baseUrl: "https://api.openai.com/v1",
 				model: "gpt-test",
 				nickname: "GPT Test",
-				context: 12 * 1024,
+				context: 12_000,
 				auth: {
 					type: "env",
 					name: "OPENAI_API_KEY",

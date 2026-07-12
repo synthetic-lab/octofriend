@@ -222,45 +222,26 @@ function providerConnectionKey(
 	return `${provider.name}\u001f${provider.type ?? ""}\u001f${provider.baseUrl}`;
 }
 
+const POSITIVE_INTEGER_PATTERN = /^[1-9]\d*$/u;
+
 export function formatContextTokens(tokens: number): string {
-	const halfTokens = tokens / 2;
-	const kValue = Math.round(halfTokens / 1024);
-	return `${kValue}k`;
+	return String(Math.round(tokens / 2));
 }
 
 function parseContextTokens(value: string): number {
-	let tokens = 0;
-	for (let index = 0; index < value.length; index += 1) {
-		const code = value.charCodeAt(index);
-		if (code === 107) continue;
-		tokens = tokens * 10 + code - 48;
-	}
-	return tokens * 1024;
-}
-
-function isContextTokenInput(value: string): boolean {
-	let removedK = false;
-	let digitCount = 0;
-	let index = 0;
-	while (index < value.length) {
-		const code = value.charCodeAt(index);
-		if (code === 107 && !removedK) {
-			removedK = true;
-			index += 1;
-			continue;
-		}
-		if (code < 48 || code > 57) return false;
-		digitCount += 1;
-		index += 1;
-	}
-	return digitCount > 0;
+	return Number(value);
 }
 
 function validateContextTokenInput(value: string) {
-	if (isContextTokenInput(value)) return { valid: true as const };
+	if (
+		POSITIVE_INTEGER_PATTERN.test(value) &&
+		Number.isSafeInteger(Number(value))
+	) {
+		return { valid: true as const };
+	}
 	return {
 		valid: false as const,
-		error: "Couldn't parse your input as a number: please try again",
+		error: "Enter the full token count as a positive integer",
 	};
 }
 
@@ -308,8 +289,9 @@ export function Context(
 						</Text>
 					</Box>
 					<Text>
-						Format the number in k: for example, <Text color={color}>32k</Text>{" "}
-						or, <Text color={color}>64k</Text>.
+						Enter the full token count without a unit suffix: for example,{" "}
+						<Text color={color}>32000</Text> or{" "}
+						<Text color={color}>64000</Text>.
 					</Text>
 				</Box>
 			</Step>
