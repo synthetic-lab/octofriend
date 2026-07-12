@@ -304,14 +304,13 @@ so Octo doesn't try to call it.
 
 ## Sandboxing Octo
 
-Octo has built-in Docker support, and can attach to any Docker container
-without needing special configuration or editing the image or container. To
-make Octo run inside an _existing_ container you have running — for example, if
-you already have a Docker Compose setup — run `octo docker connect
+Octo has built-in support for Docker-compatible runtimes, including
+[OrbStack](https://orbstack.dev/), and can attach to any container without
+special configuration or image changes. To make Octo run inside an _existing_
+container — for example, from Docker Compose — run `octo docker connect
 your-container-name`.
 
-To have Octo launch a Docker image and shut it down when Octo quits, you can
-run:
+To have Octo launch a container and remove it when Octo quits, run:
 
 ```bash
 # Make sure to add the -- before the docker run args!
@@ -323,6 +322,11 @@ For example, to launch Octo inside an Alpine Linux container:
 ```bash
 octo docker run -- -d -i -t alpine /bin/sh
 ```
+
+The runtime may pull an image that is not already available locally. To avoid
+an implicit download, connect to an existing container or pass `--pull=never`
+in the Docker arguments. Octo adds `--rm` to managed runs unless it is already
+present, so stopped managed containers do not consume storage.
 
 All of Octo shell commands and filesystem edits and reads will happen inside
 the container. However, Octo will continue to use any MCP servers you have
