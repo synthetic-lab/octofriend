@@ -41,10 +41,11 @@ const config: Config = {
 };
 
 async function waitForCondition(predicate: () => boolean): Promise<void> {
-	for (let attempt = 0; attempt < 50; attempt += 1) {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
 		if (predicate()) return;
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		await Bun.sleep(1);
 	}
+	throw new Error("Timed out waiting for condition");
 }
 
 function transport(overrides: Partial<Transport> = {}): Transport {
@@ -323,6 +324,7 @@ describe("terminal tool request rendering", () => {
 		);
 
 		await waitForCondition(() => (rendered.lastFrame() ?? "").includes("Yes"));
+		await Bun.sleep(1);
 		rendered.stdin.write("\r");
 		await waitForCondition(() => runCalls.length === 1);
 		rendered.stdin.write("\r");

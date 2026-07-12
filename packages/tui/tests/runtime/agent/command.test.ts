@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { dirname, join } from "node:path";
 import {
 	PACKAGED_AGENTD_LAUNCHER_PATH,
 	resolveAgentdCommand,
@@ -29,13 +30,23 @@ describe("resolveAgentdCommand", () => {
 			),
 		).toEqual([
 			"/usr/bin/bun",
-			"/opt/octofriend/packages/cli/bin/octofriend-agentd.js",
+			join(
+				dirname("/opt/octofriend/packages/cli/bin/octofriend-acp.js"),
+				"octofriend-agentd.js",
+			),
 		]);
 		expect(
 			resolveAgentdCommand(
 				{},
 				{ processExecutable: "/opt/octofriend/octofriend" },
 			),
-		).toEqual(["/opt/octofriend/octofriend-agentd"]);
+		).toEqual([
+			join(
+				dirname("/opt/octofriend/octofriend"),
+				process.platform === "win32"
+					? "octofriend-agentd.exe"
+					: "octofriend-agentd",
+			),
+		]);
 	});
 });

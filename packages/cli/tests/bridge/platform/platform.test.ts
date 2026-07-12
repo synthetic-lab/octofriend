@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
 	PACKAGED_AGENTD_EXECUTABLE_PATH,
 	resolveAgentdCommand,
@@ -55,7 +56,10 @@ describe("resolveAgentdCommand", () => {
 			}),
 		).toEqual([
 			"/usr/bin/bun",
-			"/opt/octofriend/packages/cli/bin/octofriend-agentd.js",
+			join(
+				dirname("/opt/octofriend/packages/cli/bin/octofriend.js"),
+				"octofriend-agentd.js",
+			),
 		]);
 	});
 
@@ -65,7 +69,14 @@ describe("resolveAgentdCommand", () => {
 				env: {},
 				processExecutable: "/opt/octofriend/octofriend",
 			}),
-		).toEqual(["/opt/octofriend/octofriend-agentd"]);
+		).toEqual([
+			join(
+				dirname("/opt/octofriend/octofriend"),
+				process.platform === "win32"
+					? "octofriend-agentd.exe"
+					: "octofriend-agentd",
+			),
+		]);
 	});
 });
 

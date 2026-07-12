@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { render } from "ink-testing-library";
+import * as React from "react";
+import { ModelConnectionTestContext } from "../../../src/menu/models/connection.ts";
 import {
 	AutofixSetup,
 	autofixSetupFlow,
@@ -36,9 +39,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("makes the main coding model step explicit after skipping autofix", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
-
 		const instance = render(
 			React.createElement(FirstTimeSetup, {
 				configPath: "/tmp/octofriend-test-config.json",
@@ -63,8 +63,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("can reach the first-time setup review after importing an API-key provider model", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
 		const instance = render(
 			React.createElement(FirstTimeSetup, {
 				configPath: "/tmp/octofriend-test-config.json",
@@ -106,8 +104,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("keeps setup route stable when runtime props change", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
 		const firstTester = () => Promise.resolve({ valid: true, metadata: {} });
 		const secondTester = () => Promise.resolve({ valid: true, metadata: {} });
 
@@ -139,13 +135,7 @@ describe("terminal first-time setup", () => {
 		expect(frame).not.toContain("Welcome to octofriend");
 	});
 
-	test("explains Synthetic autofix authentication choices", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
-		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection.ts"
-		);
-
+	test("explains Synthetic autofix authentication choices", () => {
 		const instance = render(
 			React.createElement(
 				ModelConnectionTestContext.Provider,
@@ -166,11 +156,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("uses configured Synthetic API-key overrides in autofix setup", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
-		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection.ts"
-		);
 		const calls: unknown[] = [];
 		const completed: unknown[] = [];
 		const instance = render(
@@ -242,8 +227,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("uses latest autofix choice callbacks and config after rerender", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
 		const calls: unknown[] = [];
 		const completed: string[] = [];
 		const skipped: string[] = [];
@@ -300,8 +283,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("uses latest autofix skip callback after rerender", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
 		const skipped: string[] = [];
 		const to = {
 			choose: () => undefined,
@@ -328,11 +309,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("keeps autofix auth route stable when setup callbacks change", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
-		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection.ts"
-		);
 		const noExistingKey = async () => false;
 		const env = {};
 		const renderSetup = (callbacks: {
@@ -382,11 +358,6 @@ describe("terminal first-time setup", () => {
 	});
 
 	test("shows progress and ignores duplicate Synthetic autofix selection while checking", async () => {
-		const React = await import("react");
-		const { render } = await import("ink-testing-library");
-		const { ModelConnectionTestContext } = await import(
-			"../../../src/menu/models/connection.ts"
-		);
 		const connection = deferred<{
 			valid: true;
 			metadata: Record<string, never>;
