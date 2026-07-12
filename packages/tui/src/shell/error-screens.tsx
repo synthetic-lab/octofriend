@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import clipboardy from "clipboardy";
 import { Box, Text, useApp } from "ink";
 import {
@@ -30,6 +33,7 @@ export type RequestErrorScreenProps = {
 	error: string;
 	curlCommand: string | null;
 	clipboardWriteSync?: (text: string) => void;
+	writeCurlFile?: (command: string) => Promise<string>;
 };
 
 export type AuthErrorScreenProps = {
@@ -47,6 +51,7 @@ export type PaymentErrorScreenProps = {
 type RequestErrorAction =
 	| "view"
 	| "copy-curl"
+	| "write-curl"
 	| "retry"
 	| "edit-retry"
 	| "quit";
@@ -74,6 +79,15 @@ const COPIED_CURL_ITEM: Item<RequestErrorAction> = {
 	label: "Copied cURL!",
 	value: "copy-curl",
 };
+const WRITE_CURL_ITEM: Item<RequestErrorAction> = {
+	label: "Write failed request as a cURL script",
+	value: "write-curl",
+};
+const WROTE_CURL_ITEM: Item<RequestErrorAction> = {
+	label: "Wrote cURL script!",
+	value: "write-curl",
+};
+
 const RETRY_ITEM: Item<RequestErrorAction> = {
 	label: "Retry",
 	value: "retry",
@@ -100,14 +114,19 @@ function requestErrorShortcutItems({
 	viewError,
 	curlCommand,
 	copiedCurl,
+	wroteCurl,
 }: {
 	viewError: boolean;
 	curlCommand: string | null;
 	copiedCurl: boolean;
+	wroteCurl: boolean;
 }): ShortcutArray<RequestErrorAction> {
 	const mapping: Record<string, Item<RequestErrorAction>> = {};
 	if (!viewError) mapping.v = VIEW_ERROR_ITEM;
-	if (curlCommand) mapping.c = copiedCurl ? COPIED_CURL_ITEM : COPY_CURL_ITEM;
+	if (curlCommand) {
+		mapping.c = copiedCurl ? COPIED_CURL_ITEM : COPY_CURL_ITEM;
+		mapping.w = wroteCurl ? WROTE_CURL_ITEM : WRITE_CURL_ITEM;
+	}
 	mapping.r = RETRY_ITEM;
 	mapping.e = EDIT_RETRY_ITEM;
 	mapping.q = QUIT_ITEM;
@@ -119,12 +138,24 @@ function requestErrorShortcutItems({
 	];
 }
 
+async function writeCurlCommandFile(command: string): Promise<string> {
+	const directory = await mkdtemp(join(tmpdir(), "octofriend-curl-"));
+	const filePath = join(directory, "request.sh");
+	const contents = command.endsWith("\n") ? command : command.concat("\n");
+	await writeFile(filePath, contents, {
+		encoding: "utf8",
+		mode: 0o700,
+	});
+	return filePath;
+}
+
 export function RequestErrorScreen({
 	mode,
 	contextualMessage,
 	error,
 	curlCommand,
 	clipboardWriteSync = clipboardy.writeSync,
+	writeCurlFile = writeCurlCommandFile,
 }: RequestErrorScreenProps) {
 	const config = useConfig();
 	const transport = useContext(TransportContext);
@@ -141,15 +172,37 @@ export function RequestErrorScreen({
 		command: string;
 		message: string;
 	} | null>(null);
+	const [writtenCurl, setWrittenCurl] = useState<{
+		command: string;
+		filePath: string;
+	} | null>(null);
+	const [writeError, setWriteError] = useState<{
+		command: string;
+		message: string;
+	} | null>(null);
 	const copiedCurl = curlCommand !== null && copiedCurlCommand === curlCommand;
 	const activeClipboardError =
 		curlCommand !== null && clipboardError?.command === curlCommand
 			? clipboardError.message
 			: null;
+	const activeWrittenCurl =
+		curlCommand !== null && writtenCurl?.command === curlCommand
+			? writtenCurl.filePath
+			: null;
+	const activeWriteError =
+		curlCommand !== null && writeError?.command === curlCommand
+			? writeError.message
+			: null;
 
 	const shortcutItems = useMemo(
-		() => requestErrorShortcutItems({ viewError, curlCommand, copiedCurl }),
-		[copiedCurl, curlCommand, viewError],
+		() =>
+			requestErrorShortcutItems({
+				viewError,
+				curlCommand,
+				copiedCurl,
+				wroteCurl: activeWrittenCurl !== null,
+			}),
+		[activeWrittenCurl, copiedCurl, curlCommand, viewError],
 	);
 
 	const copyCurlCommand = useCallback(() => {
@@ -167,14 +220,32 @@ export function RequestErrorScreen({
 		}
 	}, [clipboardWriteSync, curlCommand]);
 
+	const writeCurlCommand = useCallback(async () => {
+		if (!curlCommand) return;
+		try {
+			const filePath = await writeCurlFile(curlCommand);
+			setWriteError(null);
+			setWrittenCurl({ command: curlCommand, filePath });
+		} catch (error) {
+			setWrittenCurl(null);
+			setWriteError({
+				command: curlCommand,
+				message: errorToString(error) || "Failed to write cURL script",
+			});
+		}
+	}, [curlCommand, writeCurlFile]);
+
 	const onSelect = useCallback(
-		(item: Item<RequestErrorAction>) => {
+		async (item: Item<RequestErrorAction>) => {
 			switch (item.value) {
 				case "view":
 					setViewError(true);
 					return;
 				case "copy-curl":
 					copyCurlCommand();
+					return;
+				case "write-curl":
+					await writeCurlCommand();
 					return;
 				case "retry":
 					retryFrom(mode, { config, transport });
@@ -197,6 +268,7 @@ export function RequestErrorScreen({
 			mode,
 			retryFrom,
 			transport,
+			writeCurlCommand,
 		],
 	);
 
@@ -217,6 +289,18 @@ export function RequestErrorScreen({
 				<Box marginY={1}>
 					<Text color="red">
 						{normalizeRenderedLineBreaks(activeClipboardError)}
+					</Text>
+				</Box>
+			)}
+			{activeWrittenCurl && (
+				<Box marginY={1}>
+					<Text color="green">cURL script written to {activeWrittenCurl}</Text>
+				</Box>
+			)}
+			{activeWriteError && (
+				<Box marginY={1}>
+					<Text color="red">
+						{normalizeRenderedLineBreaks(activeWriteError)}
 					</Text>
 				</Box>
 			)}

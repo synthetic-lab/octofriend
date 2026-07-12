@@ -49,6 +49,48 @@ describe("terminal error screens", () => {
 		expect(lastFrame()).not.toContain(longCurl);
 	});
 
+	it("writes failed requests to a cURL script without rendering the command", async () => {
+		const longCurl = `curl https://api.example.test -H ${"x".repeat(200)}`;
+		const writes: string[] = [];
+		const { lastFrame, stdin } = render(
+			<RequestErrorScreen
+				mode="request-error"
+				contextualMessage="request failed"
+				error="boom"
+				curlCommand={longCurl}
+				writeCurlFile={(command) => {
+					writes.push(command);
+					return Promise.resolve("/tmp/octofriend-curl/request.sh");
+				}}
+			/>,
+		);
+
+		stdin.write("w");
+		await waitFor(() =>
+			(lastFrame() ?? "").includes("/tmp/octofriend-curl/request.sh"),
+		);
+
+		expect(writes).toEqual([longCurl]);
+		expect(lastFrame()).toContain("cURL script written to");
+		expect(lastFrame()).not.toContain(longCurl);
+	});
+
+	it("shows cURL script write failures", async () => {
+		const { lastFrame, stdin } = render(
+			<RequestErrorScreen
+				mode="request-error"
+				contextualMessage="request failed"
+				error="boom"
+				curlCommand="curl https://api.example.test"
+				writeCurlFile={() => Promise.reject(new Error("disk unavailable"))}
+			/>,
+		);
+
+		stdin.write("w");
+		await waitFor(() => (lastFrame() ?? "").includes("disk unavailable"));
+		expect(lastFrame()).not.toContain("cURL script written to");
+	});
+
 	it("clears copied cURL state when the failed request changes", async () => {
 		const firstCurl = "curl https://api.example.test/first";
 		const secondCurl = "curl https://api.example.test/second";
