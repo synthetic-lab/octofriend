@@ -743,7 +743,7 @@ fn runs_runtime_web_search_tool_calls() {
         &root,
         "search-1",
         &json!({ "type": "tool-call", "toolCallId": "search-1", "name": "web-search", "original": { "query": "octofriend" }, "parsed": { "query": "octofriend" } }),
-        &json!({ "query": "octofriend", "searchUrl": server.url(), "searchKey": "search-key" }),
+        &json!({ "query": "octofriend", "searchUrl": server.url(), "searchKey": "search-key", "modelContext": 65536 }),
     )
     .expect("web-search should run");
 
@@ -756,6 +756,27 @@ fn runs_runtime_web_search_tool_calls() {
         })
     );
 
+    std::fs::remove_dir_all(root).expect("temp dir should be removed");
+}
+
+#[test]
+fn rejects_oversized_runtime_web_search_responses() {
+    let server = TestHttpServer::start(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 89\r\n\r\n{\"results\":[{\"url\":\"https://example.com/a\",\"title\":\"A\",\"text\":\"Alpha\",\"published\":null}]}",
+    );
+    let root = unique_temp_dir("octofriend-tools-web-search-size");
+    std::fs::create_dir_all(&root).expect("temp dir should be created");
+
+    let error = run_runtime_tool_call(
+        "web-search",
+        &root,
+        "search-size",
+        &json!({ "type": "tool-call", "toolCallId": "search-size", "name": "web-search", "original": { "query": "octofriend" }, "parsed": { "query": "octofriend" } }),
+        &json!({ "query": "octofriend", "searchUrl": server.url(), "searchKey": "search-key", "modelContext": 32 }),
+    )
+    .expect_err("oversized web-search output should be rejected");
+
+    assert!(error.starts_with("Web search response too large: 89 bytes (max: 32 bytes)."));
     std::fs::remove_dir_all(root).expect("temp dir should be removed");
 }
 

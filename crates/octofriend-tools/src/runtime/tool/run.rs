@@ -134,10 +134,15 @@ Here are the contents of the SKILL.md file stored at {}:
     )
 }
 
+const MAX_WEB_SEARCH_RESPONSE_BYTES: usize = 64 * 1024;
+
 fn run_web_search(parsed: &Value) -> Result<Value, String> {
     let query = required_string(parsed, "query")?;
     let search_url = required_string(parsed, "searchUrl")?;
     let search_key = required_string(parsed, "searchKey")?;
+    let max_response_bytes = optional_usize(parsed, "modelContext")?
+        .unwrap_or(MAX_WEB_SEARCH_RESPONSE_BYTES)
+        .min(MAX_WEB_SEARCH_RESPONSE_BYTES);
     let client = reqwest::blocking::Client::new();
     let response = client
         .post(search_url)
@@ -149,6 +154,12 @@ fn run_web_search(parsed: &Value) -> Result<Value, String> {
     let body = response
         .text()
         .map_err(|error| format!("Web search failed: {query}: {error}"))?;
+    if body.len() > max_response_bytes {
+        return Err(format!(
+            "Web search response too large: {} bytes (max: {max_response_bytes} bytes). Refine the query and try again.",
+            body.len()
+        ));
+    }
     let json: Value = serde_json::from_str(&body)
         .map_err(|error| format!("Web search failed: {query}: {error}"))?;
     let results = json

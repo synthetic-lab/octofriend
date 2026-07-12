@@ -30,6 +30,13 @@ fn renders_text_media_links_and_resources_from_model_context_tool_results() {
                     },
                     text: "resource text".into(),
                 },
+                ModelContextToolResultContent::ResourceText {
+                    resource: ModelContextResourceContents {
+                        uri: "file:///tmp/doc.xml".into(),
+                        mime_type: Some("text/xml".into()),
+                    },
+                    text: "<documentation />".into(),
+                },
                 ModelContextToolResultContent::ResourceBlob {
                     resource: ModelContextResourceContents {
                         uri: "file:///tmp/c.bin".into(),
@@ -45,7 +52,7 @@ fn renders_text_media_links_and_resources_from_model_context_tool_results() {
     assert_eq!(
         result,
         RenderedModelContextToolResult::Success {
-            output: "plain text\n[Image: image/png, 6 bytes]\n[Audio: audio/wav, 4 bytes]\n[Resource Link: file:///tmp/a.txt (text/plain)]\n[Resource: file:///tmp/b.txt]\nresource text\n[Resource: file:///tmp/c.bin (application/octet-stream)]\n[Binary data: 5 bytes]".into(),
+            output: "plain text\n[Image: image/png, 6 bytes]\n[Audio: audio/wav, 4 bytes]\n[Resource Link: file:///tmp/a.txt (text/plain)]\n[Resource: file:///tmp/b.txt]\nresource text\n[Resource: file:///tmp/doc.xml (text/xml)]\n<documentation />\n[Resource: file:///tmp/c.bin (application/octet-stream)]\n[Binary data: 5 bytes]".into(),
         }
     );
 }

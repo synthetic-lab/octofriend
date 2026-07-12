@@ -3,13 +3,18 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use crate::local::LocalTransport;
 use crate::local::filesystem::{TransportError, TransportResult};
 
 impl LocalTransport {
     pub fn shell(&self, command: &str, timeout: Duration) -> TransportResult<String> {
         let (shell, shell_arg) = platform_shell();
-        let mut child = Command::new(shell)
+        let mut process = Command::new(shell);
+        hide_process_window(&mut process);
+        let mut child = process
             .arg(shell_arg)
             .arg(command)
             .current_dir(self.cwd())
@@ -76,6 +81,15 @@ fn read_output(
     }
     output
 }
+
+#[cfg(windows)]
+fn hide_process_window(command: &mut Command) {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn hide_process_window(_command: &mut Command) {}
 
 #[cfg(windows)]
 fn platform_shell() -> (String, &'static str) {

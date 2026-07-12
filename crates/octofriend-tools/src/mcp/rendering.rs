@@ -116,7 +116,12 @@ fn format_model_context_content(content: &ModelContextToolResultContent) -> Stri
             None => format!("[Resource Link: {uri}]"),
         },
         ModelContextToolResultContent::ResourceText { resource, text } => {
-            format!("[Resource: {}]\n{text}", resource.uri)
+            match resource.mime_type.as_deref() {
+                Some(mime_type) if mime_type != "text/plain" => {
+                    format!("[Resource: {} ({mime_type})]\n{text}", resource.uri)
+                }
+                _ => format!("[Resource: {}]\n{text}", resource.uri),
+            }
         }
         ModelContextToolResultContent::ResourceBlob { resource, blob } => format!(
             "[Resource: {} ({})]\n[Binary data: {} bytes]",
