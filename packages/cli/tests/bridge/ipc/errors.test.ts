@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { AgentdJsonRpcError } from "../../../src/bridge/ipc/errors";
+import { AgentdJsonRpcError } from "../../../src/bridge/ipc/errors.ts";
 
 describe("AgentdJsonRpcError", () => {
 	it("preserves JSON-RPC error code and data", () => {
@@ -19,7 +19,7 @@ describe("AgentdJsonRpcError", () => {
 
 describe("process client exports", () => {
 	it("does not re-export JSON-RPC errors from the client owner", async () => {
-		const clientModule = await import("../../../src/bridge/ipc/client");
+		const clientModule = await import("../../../src/bridge/ipc/client.ts");
 
 		expect("AgentdJsonRpcError" in clientModule).toBe(false);
 	});

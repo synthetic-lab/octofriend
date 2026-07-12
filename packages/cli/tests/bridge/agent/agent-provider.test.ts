@@ -5,7 +5,7 @@ import {
 	type AgentdProviderCompilerCompleteResult,
 	AgentdRustBridge,
 	type AgentdTrajectoryArcResult,
-} from "../../../src/bridge/agent/agent";
+} from "../../../src/bridge/agent/agent.ts";
 
 type RecordedRequest = {
 	method: string;

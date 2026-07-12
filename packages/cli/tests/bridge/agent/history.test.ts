@@ -11,7 +11,7 @@ import {
 	type AgentdConversationSessionCreateParams,
 	type AgentdConversationSessionReplaceParams,
 	AgentdRustBridge,
-} from "../../../src/bridge/agent/agent";
+} from "../../../src/bridge/agent/agent.ts";
 
 type RecordedRequest = {
 	method: string;

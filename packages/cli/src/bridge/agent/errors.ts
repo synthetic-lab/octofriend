@@ -120,15 +120,21 @@ export function invalidAgentdUpdateNotificationsMarkSeenResponseError(): Error {
 }
 
 export function invalidAgentdConversationSessionCreateResponseError(): Error {
-	return new Error("Invalid octofriend-agentd conversation session create response");
+	return new Error(
+		"Invalid octofriend-agentd conversation session create response",
+	);
 }
 
 export function invalidAgentdConversationSessionLoadResponseError(): Error {
-	return new Error("Invalid octofriend-agentd conversation session load response");
+	return new Error(
+		"Invalid octofriend-agentd conversation session load response",
+	);
 }
 
 export function invalidAgentdConversationSessionReplaceResponseError(): Error {
-	return new Error("Invalid octofriend-agentd conversation session replace response");
+	return new Error(
+		"Invalid octofriend-agentd conversation session replace response",
+	);
 }
 
 export function invalidAgentdConversationHistoryAppendResponseError(): Error {

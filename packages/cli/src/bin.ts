@@ -1,4 +1,4 @@
 #!/usr/bin/env bun
-import { runCli } from "./index";
+import { runCli } from "./index.tsx";
 
 runCli();

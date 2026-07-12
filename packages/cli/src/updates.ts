@@ -1,5 +1,5 @@
 import path from "node:path";
-import { err, ok, type Result } from "./result";
+import { err, ok, type Result } from "./result.ts";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, "../../..");
 

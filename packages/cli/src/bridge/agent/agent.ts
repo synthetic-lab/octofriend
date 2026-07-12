@@ -3,7 +3,8 @@ import type {
 	AgentdAutofixEditResult,
 	AgentdAutofixJsonParams,
 	AgentdAutofixJsonResult,
-} from "./autofix";
+} from "./autofix.ts";
+import type { AgentdModelProviderCatalogResult } from "./catalog.ts";
 import type {
 	AgentdCompactionCheckpointContentParams,
 	AgentdCompactionCheckpointContentResult,
@@ -11,7 +12,7 @@ import type {
 	AgentdCompactionDecisionResult,
 	AgentdCompactionPrepareParams,
 	AgentdCompactionPrepareResult,
-} from "./compaction";
+} from "./compaction.ts";
 import type {
 	AgentdConfigAutofixKeysResult,
 	AgentdConfigHasExistingKeyResult,
@@ -24,7 +25,11 @@ import type {
 	AgentdConfigSearchResult,
 	AgentdConfigWriteKeyParams,
 	AgentdConfigWriteKeyResult,
-} from "./config";
+} from "./config.ts";
+import type {
+	AgentdModelConnectionTestParams,
+	AgentdModelConnectionTestResult,
+} from "./connection.ts";
 import type {
 	AgentdConversationHistoryAppendParams,
 	AgentdConversationHistoryAppendResult,
@@ -36,91 +41,86 @@ import type {
 	AgentdConversationSessionLoadResult,
 	AgentdConversationSessionReplaceParams,
 	AgentdConversationSessionReplaceResult,
-} from "./history";
-import type { AgentdInitializeResult } from "./initialize";
+} from "./history.ts";
+import type { AgentdInitializeResult } from "./initialize.ts";
 import type {
 	AgentdInputHistoryAppendParams,
 	AgentdInputHistoryLoadParams,
 	AgentdInputHistoryResult,
-} from "./input";
-import type { AgentdModelProviderCatalogResult } from "./catalog";
-import type {
-	AgentdModelConnectionTestParams,
-	AgentdModelConnectionTestResult,
-} from "./connection";
+} from "./input.ts";
 import type {
 	AgentdOctoLowerParams,
 	AgentdOctoLowerResult,
-} from "./octofriend";
-import type {
-	AgentdSkillDiscoverParams,
-	AgentdSkillDiscoverResult,
-} from "./skills";
-import type {
-	AgentdSyntheticQuotaFetchParams,
-	AgentdSyntheticQuotaFetchResult,
-} from "./synthetic-quota";
-import type {
-	AgentdSystemPromptParams,
-	AgentdSystemPromptResult,
-} from "./system-prompt";
-import type {
-	AgentdToolDefinitionsParams,
-	AgentdToolDefinitionsResult,
-} from "./tool-defs";
-import type {
-	AgentdToolPermissionParams,
-	AgentdToolPermissionResult,
-} from "./tool-permission";
-import type { AgentdToolRenderModel } from "./tool-render";
-import type { AgentdToolRunParams, AgentdToolRunResult } from "./tool-run";
-import type {
-	AgentdToolValidateParams,
-	AgentdToolValidateResult,
-} from "./tool-check";
+} from "./octofriend.ts";
 import type {
 	AgentdTrajectoryArcParams,
 	AgentdTrajectoryArcResult,
-} from "./run-arc";
+} from "./run-arc.ts";
 import type {
 	AgentdTrajectoryFinishParams,
 	AgentdTrajectoryFinishResult,
-} from "./run-finish";
+} from "./run-finish.ts";
+import type {
+	AgentdSkillDiscoverParams,
+	AgentdSkillDiscoverResult,
+} from "./skills.ts";
+import type {
+	AgentdSyntheticQuotaFetchParams,
+	AgentdSyntheticQuotaFetchResult,
+} from "./synthetic-quota.ts";
+import type {
+	AgentdSystemPromptParams,
+	AgentdSystemPromptResult,
+} from "./system-prompt.ts";
+import type {
+	AgentdToolValidateParams,
+	AgentdToolValidateResult,
+} from "./tool-check.ts";
+import type {
+	AgentdToolDefinitionsParams,
+	AgentdToolDefinitionsResult,
+} from "./tool-defs.ts";
+import type {
+	AgentdToolPermissionParams,
+	AgentdToolPermissionResult,
+} from "./tool-permission.ts";
+import type { AgentdToolRenderModel } from "./tool-render.ts";
+import type { AgentdToolRunParams, AgentdToolRunResult } from "./tool-run.ts";
 import type {
 	AgentdUpdateNotificationsMarkSeenResult,
 	AgentdUpdateNotificationsParams,
 	AgentdUpdateNotificationsReadResult,
-} from "./updates";
+} from "./updates.ts";
 
 export type {
 	AgentdInputHistoryAppendParams,
 	AgentdInputHistoryLoadParams,
 	AgentdInputHistoryResult,
-} from "./input";
+} from "./input.ts";
 export type {
 	AgentdDiscoveredSkill,
 	AgentdSkillDiscoverParams,
 	AgentdSkillDiscoverResult,
-} from "./skills";
+} from "./skills.ts";
 export type {
 	AgentdToolDefinition,
 	AgentdToolDefinitionsParams,
 	AgentdToolDefinitionsResult,
-} from "./tool-defs";
+} from "./tool-defs.ts";
 export type {
 	AgentdToolPermissionParams,
 	AgentdToolPermissionResult,
-} from "./tool-permission";
+} from "./tool-permission.ts";
 export type {
 	AgentdUpdateNotificationsMarkSeenResult,
 	AgentdUpdateNotificationsParams,
 	AgentdUpdateNotificationsReadResult,
-} from "./updates";
+} from "./updates.ts";
 
 import type {
 	AgentdProviderCompilerCompleteParams,
 	AgentdProviderCompilerCompleteResult,
-} from "./provider";
+} from "./provider.ts";
 
 export type {
 	AgentdAutofixEditParams,
@@ -128,7 +128,8 @@ export type {
 	AgentdAutofixJsonParams,
 	AgentdAutofixJsonResult,
 	AgentdAutofixUsage,
-} from "./autofix";
+} from "./autofix.ts";
+export type { AgentdModelProviderCatalogResult } from "./catalog.ts";
 export type {
 	AgentdCompactionCheckpointContentParams,
 	AgentdCompactionCheckpointContentResult,
@@ -136,42 +137,41 @@ export type {
 	AgentdCompactionDecisionResult,
 	AgentdCompactionPrepareParams,
 	AgentdCompactionPrepareResult,
-} from "./compaction";
-export type { AgentdConfigParams, AgentdConfigResult } from "./config";
-export type { AgentdModelProviderCatalogResult } from "./catalog";
+} from "./compaction.ts";
+export type { AgentdConfigParams, AgentdConfigResult } from "./config.ts";
 export type {
 	AgentdModelConnectionTestParams,
 	AgentdModelConnectionTestResult,
-} from "./connection";
+} from "./connection.ts";
 export type {
 	AgentdOctoLowerParams,
 	AgentdOctoLowerResult,
-} from "./octofriend";
+} from "./octofriend.ts";
 export type {
 	AgentdProviderCompilerCompleteParams,
 	AgentdProviderCompilerCompleteResult,
 	AgentdProviderStreamEvent,
-} from "./provider";
+} from "./provider.ts";
 export type {
 	AgentdSyntheticQuotaFetchParams,
 	AgentdSyntheticQuotaFetchResult,
-} from "./synthetic-quota";
+} from "./synthetic-quota.ts";
 export type {
 	AgentdSystemPromptParams,
 	AgentdSystemPromptResult,
-} from "./system-prompt";
+} from "./system-prompt.ts";
 
+import type { AgentdRequestOptions } from "../ipc/client.ts";
+import { AgentdProcessClient } from "../ipc/client.ts";
 import {
 	type AgentdSpawnOptions,
 	spawnAgentdProcess,
-} from "../platform/platform";
-import type { AgentdRequestOptions } from "../ipc/client";
-import { AgentdProcessClient } from "../ipc/client";
-import * as configRequests from "./config-requests";
-import * as historyRequests from "./history-requests";
-import * as agentMethods from "./methods";
-import * as runRequests from "./run-requests";
-import * as toolRequests from "./tool-requests";
+} from "../platform/platform.ts";
+import * as configRequests from "./config-requests.ts";
+import * as historyRequests from "./history-requests.ts";
+import * as agentMethods from "./methods.ts";
+import * as runRequests from "./run-requests.ts";
+import * as toolRequests from "./tool-requests.ts";
 
 export const AGENTD_INITIALIZE_METHOD = agentMethods.AGENTD_INITIALIZE_METHOD;
 export const AGENTD_INPUT_HISTORY_LOAD_METHOD =
@@ -262,7 +262,7 @@ export type {
 	AgentdConversationSessionMetadata,
 	AgentdConversationSessionReplaceParams,
 	AgentdConversationSessionReplaceResult,
-} from "./history";
+} from "./history.ts";
 
 export type {
 	AgentdToolRenderModel,

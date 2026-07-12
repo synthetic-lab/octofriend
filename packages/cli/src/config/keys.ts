@@ -1,8 +1,8 @@
 import {
 	AgentdRustBridge,
 	spawnAgentdProcessClient,
-} from "../bridge/agent/agent";
-import type { Auth, Config, KeyResult } from "./schemas";
+} from "../bridge/agent/agent.ts";
+import type { Auth, Config, KeyResult } from "./schemas.ts";
 
 type KeyedModel = {
 	baseUrl: string;

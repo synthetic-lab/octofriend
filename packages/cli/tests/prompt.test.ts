@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { createTokenHandler } from "../src/prompt-files";
+import { createTokenHandler } from "../src/prompt-files.ts";
 
 describe("createTokenHandler", () => {
 	afterEach(() => {

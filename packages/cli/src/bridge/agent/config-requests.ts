@@ -1,10 +1,9 @@
-import * as agentMethods from "./methods";
 import {
 	type AgentdRequestClient,
 	requestAgentdResult,
 	unwrapAgentdResult,
 	validateAgentdResult,
-} from "./agent-check";
+} from "./agent-check.ts";
 import {
 	type AgentdConfigAutofixKeysResult,
 	type AgentdConfigHasExistingKeyResult,
@@ -23,11 +22,12 @@ import {
 	isAgentdConfigResult,
 	isAgentdConfigSearchResult,
 	isAgentdConfigWriteKeyResult,
-} from "./config";
+} from "./config.ts";
 import {
 	invalidAgentdConfigAutofixKeysResponseError,
 	invalidAgentdConfigResponseError,
-} from "./errors";
+} from "./errors.ts";
+import * as agentMethods from "./methods.ts";
 
 export async function configMigrate(
 	client: AgentdRequestClient,

@@ -1,4 +1,4 @@
-import type { AgentdProviderType } from "./catalog";
+import type { AgentdProviderType } from "./catalog.ts";
 
 export type AgentdTrajectoryArcParams = {
 	cwd: string;

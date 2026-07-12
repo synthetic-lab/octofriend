@@ -1,9 +1,8 @@
-import type { AgentdRequestOptions } from "../ipc/client";
-import * as agentMethods from "./methods";
+import type { AgentdRequestOptions } from "../ipc/client.ts";
 import {
 	type AgentdRequestClient,
 	requestAgentdResult,
-} from "./agent-check";
+} from "./agent-check.ts";
 import {
 	invalidAgentdSkillDiscoverResponseError,
 	invalidAgentdToolDefinitionsResponseError,
@@ -11,36 +10,37 @@ import {
 	invalidAgentdToolRenderResponseError,
 	invalidAgentdToolRunResponseError,
 	invalidAgentdToolValidateResponseError,
-} from "./errors";
+} from "./errors.ts";
+import * as agentMethods from "./methods.ts";
 import {
 	type AgentdSkillDiscoverParams,
 	type AgentdSkillDiscoverResult,
 	isAgentdSkillDiscoverResult,
-} from "./skills";
-import {
-	type AgentdToolDefinitionsParams,
-	type AgentdToolDefinitionsResult,
-	isAgentdToolDefinitionsResult,
-} from "./tool-defs";
-import {
-	type AgentdToolPermissionParams,
-	type AgentdToolPermissionResult,
-	isAgentdToolPermissionResult,
-} from "./tool-permission";
-import {
-	type AgentdToolRenderModel,
-	isAgentdToolRenderModel,
-} from "./tool-render";
-import {
-	type AgentdToolRunParams,
-	type AgentdToolRunResult,
-	isAgentdToolRunResult,
-} from "./tool-run";
+} from "./skills.ts";
 import {
 	type AgentdToolValidateParams,
 	type AgentdToolValidateResult,
 	isAgentdToolValidateResult,
-} from "./tool-check";
+} from "./tool-check.ts";
+import {
+	type AgentdToolDefinitionsParams,
+	type AgentdToolDefinitionsResult,
+	isAgentdToolDefinitionsResult,
+} from "./tool-defs.ts";
+import {
+	type AgentdToolPermissionParams,
+	type AgentdToolPermissionResult,
+	isAgentdToolPermissionResult,
+} from "./tool-permission.ts";
+import {
+	type AgentdToolRenderModel,
+	isAgentdToolRenderModel,
+} from "./tool-render.ts";
+import {
+	type AgentdToolRunParams,
+	type AgentdToolRunResult,
+	isAgentdToolRunResult,
+} from "./tool-run.ts";
 
 export async function renderToolCall(
 	client: AgentdRequestClient,

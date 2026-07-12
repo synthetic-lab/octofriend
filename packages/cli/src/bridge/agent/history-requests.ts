@@ -1,5 +1,18 @@
-import * as agentMethods from "./methods";
-import { type AgentdRequestClient, requestAgentdResult } from "./agent-check";
+import {
+	type AgentdRequestClient,
+	requestAgentdResult,
+} from "./agent-check.ts";
+import {
+	invalidAgentdConversationHistoryAppendResponseError,
+	invalidAgentdConversationHistoryLlmPayloadsResponseError,
+	invalidAgentdConversationHistoryRecordsResponseError,
+	invalidAgentdConversationSessionCreateResponseError,
+	invalidAgentdConversationSessionLoadResponseError,
+	invalidAgentdConversationSessionReplaceResponseError,
+	invalidAgentdInputHistoryResponseError,
+	invalidAgentdUpdateNotificationsMarkSeenResponseError,
+	invalidAgentdUpdateNotificationsReadResponseError,
+} from "./errors.ts";
 import {
 	type AgentdConversationHistoryAppendParams,
 	type AgentdConversationHistoryAppendResult,
@@ -17,31 +30,21 @@ import {
 	isAgentdConversationSessionEmptyResult,
 	isAgentdConversationSessionLoadResult,
 	isAgentdConversationSessionReplaceResult,
-} from "./history";
-import {
-	invalidAgentdConversationHistoryAppendResponseError,
-	invalidAgentdConversationHistoryLlmPayloadsResponseError,
-	invalidAgentdConversationHistoryRecordsResponseError,
-	invalidAgentdConversationSessionCreateResponseError,
-	invalidAgentdConversationSessionLoadResponseError,
-	invalidAgentdConversationSessionReplaceResponseError,
-	invalidAgentdInputHistoryResponseError,
-	invalidAgentdUpdateNotificationsMarkSeenResponseError,
-	invalidAgentdUpdateNotificationsReadResponseError,
-} from "./errors";
+} from "./history.ts";
 import {
 	type AgentdInputHistoryAppendParams,
 	type AgentdInputHistoryLoadParams,
 	type AgentdInputHistoryResult,
 	isAgentdInputHistoryResult,
-} from "./input";
+} from "./input.ts";
+import * as agentMethods from "./methods.ts";
 import {
 	type AgentdUpdateNotificationsMarkSeenResult,
 	type AgentdUpdateNotificationsParams,
 	type AgentdUpdateNotificationsReadResult,
 	isAgentdUpdateNotificationsMarkSeenResult,
 	isAgentdUpdateNotificationsReadResult,
-} from "./updates";
+} from "./updates.ts";
 
 export async function inputHistoryLoad(
 	client: AgentdRequestClient,

@@ -1,5 +1,5 @@
-import { err, ok, type Result } from "../../result";
-import type { AgentdRequestOptions } from "../ipc/client";
+import { err, ok, type Result } from "../../result.ts";
+import type { AgentdRequestOptions } from "../ipc/client.ts";
 
 export function validateAgentdResult<T>(
 	result: unknown,

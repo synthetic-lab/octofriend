@@ -5,8 +5,8 @@ import {
 	AGENTD_MODEL_PROVIDER_CATALOG_METHOD,
 	type AgentdModelProviderCatalogResult,
 	AgentdRustBridge,
-} from "../../../src/bridge/agent/agent";
-import { AgentdBridgeResponseError } from "../../../src/bridge/agent/errors";
+} from "../../../src/bridge/agent/agent.ts";
+import { AgentdBridgeResponseError } from "../../../src/bridge/agent/errors.ts";
 
 class FakeProcessClient {
 	readonly responses: unknown[];

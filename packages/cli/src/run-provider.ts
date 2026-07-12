@@ -1,10 +1,10 @@
-import type { AgentdRustBridge } from "./bridge/agent/agent";
+import type { AgentdRustBridge } from "./bridge/agent/agent.ts";
 import type {
 	AgentdProviderCompilerCompleteResult,
 	AgentdProviderStreamEvent,
-} from "./bridge/agent/provider";
-import type { Config } from "./config/schemas";
-import { err, ok, type Result } from "./result";
+} from "./bridge/agent/provider.ts";
+import type { Config } from "./config/schemas.ts";
+import { err, ok, type Result } from "./result.ts";
 
 export type CliProviderMessage = {
 	role: "user" | "assistant" | "system" | "tool";

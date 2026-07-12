@@ -1,13 +1,13 @@
+import type { AgentdProviderType } from "./catalog.ts";
 import type {
 	AgentdAssistantOutput,
 	AgentdAssistantOutputResult,
 	AgentdAssistantOutputUsage,
 	AgentdProviderStreamState,
-} from "./output";
-import type { AgentdProviderType } from "./catalog";
-import * as streamValidation from "./stream-check";
+} from "./output.ts";
+import * as streamValidation from "./stream-check.ts";
 
-export type { AgentdProviderStreamState } from "./output";
+export type { AgentdProviderStreamState } from "./output.ts";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -16,7 +16,15 @@ export type AgentdProviderModelParams = {
 	baseUrl: string;
 	model: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+	reasoning?:
+		| "none"
+		| "minimal"
+		| "low"
+		| "medium"
+		| "high"
+		| "xhigh"
+		| "max"
+		| "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: unknown;
 	apiKey: string;

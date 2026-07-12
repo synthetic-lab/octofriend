@@ -1,4 +1,4 @@
-import type { AgentdJsonRpcErrorObject } from "./errors";
+import type { AgentdJsonRpcErrorObject } from "./errors.ts";
 
 export type AgentdJsonRpcId = number | string | null;
 

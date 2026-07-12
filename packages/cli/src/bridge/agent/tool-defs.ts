@@ -1,4 +1,4 @@
-import type { AgentdDiscoveredSkill } from "./skills";
+import type { AgentdDiscoveredSkill } from "./skills.ts";
 
 export type AgentdToolDefinitionsParams = {
 	hasMcpServers: boolean;

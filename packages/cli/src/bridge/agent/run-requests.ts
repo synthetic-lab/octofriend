@@ -1,9 +1,8 @@
-import type { AgentdRequestOptions } from "../ipc/client";
-import * as agentMethods from "./methods";
+import type { AgentdRequestOptions } from "../ipc/client.ts";
 import {
 	type AgentdRequestClient,
 	requestAgentdResult,
-} from "./agent-check";
+} from "./agent-check.ts";
 import {
 	type AgentdAutofixEditParams,
 	type AgentdAutofixEditResult,
@@ -11,7 +10,11 @@ import {
 	type AgentdAutofixJsonResult,
 	isAgentdAutofixEditResult,
 	isAgentdAutofixJsonResult,
-} from "./autofix";
+} from "./autofix.ts";
+import {
+	type AgentdModelProviderCatalogResult,
+	isAgentdModelProviderCatalogResult,
+} from "./catalog.ts";
 import {
 	type AgentdCompactionCheckpointContentParams,
 	type AgentdCompactionCheckpointContentResult,
@@ -22,7 +25,15 @@ import {
 	isAgentdCompactionCheckpointContentResult,
 	isAgentdCompactionDecisionResult,
 	isAgentdCompactionPrepareResult,
-} from "./compaction";
+} from "./compaction.ts";
+import {
+	type AgentdModelConnectionTestParams,
+	type AgentdModelConnectionTestResult,
+	type AgentdModelDiscoverParams,
+	type AgentdModelDiscoverResult,
+	isAgentdModelConnectionTestResult,
+	isAgentdModelDiscoverResult,
+} from "./connection.ts";
 import {
 	invalidAgentdAutofixEditResponseError,
 	invalidAgentdAutofixJsonResponseError,
@@ -38,53 +49,42 @@ import {
 	invalidAgentdSystemPromptResponseError,
 	invalidAgentdTrajectoryArcResponseError,
 	invalidAgentdTrajectoryFinishResponseError,
-} from "./errors";
+} from "./errors.ts";
 import {
 	type AgentdInitializeResult,
 	isAgentdInitializeResult,
-} from "./initialize";
-import {
-	type AgentdModelProviderCatalogResult,
-	isAgentdModelProviderCatalogResult,
-} from "./catalog";
-import {
-	type AgentdModelConnectionTestParams,
-	type AgentdModelConnectionTestResult,
-	isAgentdModelConnectionTestResult,
-	isAgentdModelDiscoverResult,
-	type AgentdModelDiscoverParams,
-	type AgentdModelDiscoverResult,
-} from "./connection";
+} from "./initialize.ts";
+import * as agentMethods from "./methods.ts";
 import {
 	type AgentdOctoLowerParams,
 	type AgentdOctoLowerResult,
 	isAgentdOctoLowerResult,
-} from "./octofriend";
+} from "./octofriend.ts";
 import {
 	type AgentdProviderCompilerCompleteParams,
 	type AgentdProviderCompilerCompleteResult,
 	isAgentdProviderCompilerCompleteResult,
-} from "./provider";
-import {
-	type AgentdSyntheticQuotaFetchParams,
-	type AgentdSyntheticQuotaFetchResult,
-	isAgentdSyntheticQuotaFetchResult,
-} from "./synthetic-quota";
-import {
-	type AgentdSystemPromptParams,
-	type AgentdSystemPromptResult,
-	isAgentdSystemPromptResult,
-} from "./system-prompt";
+} from "./provider.ts";
 import {
 	type AgentdTrajectoryArcParams,
 	type AgentdTrajectoryArcResult,
 	isAgentdTrajectoryArcResult,
-} from "./run-arc";
+} from "./run-arc.ts";
 import {
 	type AgentdTrajectoryFinishParams,
 	type AgentdTrajectoryFinishResult,
 	isAgentdTrajectoryFinishResult,
-} from "./run-finish";
+} from "./run-finish.ts";
+import {
+	type AgentdSyntheticQuotaFetchParams,
+	type AgentdSyntheticQuotaFetchResult,
+	isAgentdSyntheticQuotaFetchResult,
+} from "./synthetic-quota.ts";
+import {
+	type AgentdSystemPromptParams,
+	type AgentdSystemPromptResult,
+	isAgentdSystemPromptResult,
+} from "./system-prompt.ts";
 
 export async function trajectoryArc(
 	client: AgentdRequestClient,

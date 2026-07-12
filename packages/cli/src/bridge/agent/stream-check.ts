@@ -1,5 +1,5 @@
-import type { AgentdProviderStreamState } from "./output";
-import type { AgentdProviderStreamEvent } from "./provider";
+import type { AgentdProviderStreamState } from "./output.ts";
+import type { AgentdProviderStreamEvent } from "./provider.ts";
 
 type UnknownRecord = Record<string, unknown>;
 

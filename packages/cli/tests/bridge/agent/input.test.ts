@@ -5,7 +5,7 @@ import {
 	type AgentdInputHistoryAppendParams,
 	type AgentdInputHistoryLoadParams,
 	AgentdRustBridge,
-} from "../../../src/bridge/agent/agent";
+} from "../../../src/bridge/agent/agent.ts";
 
 type RecordedRequest = {
 	method: string;

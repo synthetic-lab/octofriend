@@ -3,18 +3,18 @@ import { render } from "ink";
 import {
 	type AgentdRustBridge,
 	createAgentdRustBridge,
-} from "./bridge/agent/agent";
-import { loadConfig } from "./config-screen";
-import type { Config } from "./config/schemas";
-import { loadInputHistory } from "./input";
-import { APP_METADATA } from "./metadata";
+} from "./bridge/agent/agent.ts";
+import type { Config } from "./config/schemas.ts";
+import { loadConfig } from "./config-screen.tsx";
+import { loadInputHistory } from "./input.ts";
+import { loadTui } from "./launch-tui.ts";
+import { APP_METADATA } from "./metadata.ts";
 import {
 	type ConversationSessionLaunch,
 	prepareConversationSession,
-} from "./session";
-import type { Transport } from "./workspace/common";
-import { loadTui } from "./launch-tui";
-import { markUpdatesSeen, readUpdates } from "./updates";
+} from "./session.ts";
+import { markUpdatesSeen, readUpdates } from "./updates.ts";
+import type { Transport } from "./workspace/common.ts";
 
 type ModelTokenUsage = { input: number; output: number };
 type TokenUsageCounts = Record<string, ModelTokenUsage>;

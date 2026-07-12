@@ -136,7 +136,9 @@ async function ensureOneAutofixModelAuth(
 			...loaded.config,
 			[key]: { ...autofixModel, auth: inheritedOAuthModel.auth },
 		};
-		await writeConfig(updatedConfig, loaded.configPath, { bridge: options.bridge });
+		await writeConfig(updatedConfig, loaded.configPath, {
+			bridge: options.bridge,
+		});
 		return { ...loaded, config: updatedConfig };
 	}
 

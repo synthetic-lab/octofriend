@@ -135,7 +135,7 @@ export function isAgentdConversationSessionReplaceResult(
 export function isAgentdConversationSessionLoadResult(
 	value: unknown,
 ): value is AgentdConversationSessionLoadResult {
-	if (!isRecord(value) || !isRecord(value["metadata"])) return false;
+	if (!(isRecord(value) && isRecord(value["metadata"]))) return false;
 	const metadata = value["metadata"];
 	return (
 		typeof metadata["sessionId"] === "string" &&

@@ -10,7 +10,7 @@ function expectPresent<T>(value: T): NonNullable<T> {
 describe("CLI provider catalog", () => {
 	it("maps provider models with local base URL overrides by provider type", async () => {
 		const { PROVIDERS, providerForModelConfig, providerValues } = await import(
-			"../src/models/catalog/main"
+			"../src/models/catalog/main.ts"
 		);
 
 		expect(providerValues().map((provider) => provider.name)).toEqual([

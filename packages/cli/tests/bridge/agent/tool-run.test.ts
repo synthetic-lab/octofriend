@@ -4,7 +4,7 @@ import {
 	AgentdRustBridge,
 	type AgentdToolRunParams,
 	type AgentdToolRunResult,
-} from "../../../src/bridge/agent/agent";
+} from "../../../src/bridge/agent/agent.ts";
 
 type RecordedRequest = { method: string; params?: unknown; options?: unknown };
 

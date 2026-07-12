@@ -29,11 +29,13 @@ function isModelConnectionMetadata(value: unknown): boolean {
 			typeof value["contextLength"] === "number") &&
 		(value["models"] === undefined ||
 			(Array.isArray(value["models"]) &&
-				value["models"].every((model) =>
-					isRecord(model) &&
-					typeof model["model"] === "string" &&
-					typeof model["nickname"] === "string" &&
-					(model["context"] === undefined || typeof model["context"] === "number"),
+				value["models"].every(
+					(model) =>
+						isRecord(model) &&
+						typeof model["model"] === "string" &&
+						typeof model["nickname"] === "string" &&
+						(model["context"] === undefined ||
+							typeof model["context"] === "number"),
 				)))
 	);
 }
@@ -53,8 +55,14 @@ export function isAgentdModelConnectionTestResult(
 	);
 }
 
-export type AgentdModelDiscoverParams = { type?: "standard" | "openai-responses" | "anthropic" | "gemini"; baseUrl: string; apiKey: string };
-export type AgentdModelDiscoverResult = { models: Array<{ id: string; name?: string; context_length?: number }> };
+export type AgentdModelDiscoverParams = {
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
+	baseUrl: string;
+	apiKey: string;
+};
+export type AgentdModelDiscoverResult = {
+	models: Array<{ id: string; name?: string; context_length?: number }>;
+};
 
 export function isAgentdModelDiscoverResult(
 	value: unknown,
@@ -62,6 +70,8 @@ export function isAgentdModelDiscoverResult(
 	return (
 		isRecord(value) &&
 		Array.isArray(value["models"]) &&
-		value["models"].every((model) => isRecord(model) && typeof model["id"] === "string")
+		value["models"].every(
+			(model) => isRecord(model) && typeof model["id"] === "string",
+		)
 	);
 }

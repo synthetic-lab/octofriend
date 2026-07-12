@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "./result";
+import { err, ok, type Result } from "./result.ts";
 
 export const MAX_HISTORY_ITEMS = 100;
 export const MAX_HISTORY_TRUNCATION_BATCH = 20;

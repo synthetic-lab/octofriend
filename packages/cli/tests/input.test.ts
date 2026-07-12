@@ -4,7 +4,7 @@ import {
 	type InputHistoryLoadParams,
 	loadInputHistory,
 	MAX_HISTORY_ITEMS,
-} from "../src/input";
+} from "../src/input.ts";
 
 function bridgeBackedInputHistoryStore(initialHistory: string[] = []) {
 	let history = [...initialHistory];

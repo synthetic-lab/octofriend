@@ -4,7 +4,7 @@ import {
 	AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD,
 	AgentdRustBridge,
 	type AgentdUpdateNotificationsParams,
-} from "../../../src/bridge/agent/agent";
+} from "../../../src/bridge/agent/agent.ts";
 
 type RecordedRequest = {
 	method: string;

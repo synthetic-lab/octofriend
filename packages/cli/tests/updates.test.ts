@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
-import type { Result } from "../src/result";
+import type { Result } from "../src/result.ts";
 import {
 	DEFAULT_UPDATES_FILE_PATH,
 	markUpdatesSeen,
 	readUpdates,
 	type UpdateNotificationsParams,
-} from "../src/updates";
+} from "../src/updates.ts";
 
 function bridgeBackedUpdateStore(initialUpdate: string) {
 	let currentUpdate = initialUpdate;

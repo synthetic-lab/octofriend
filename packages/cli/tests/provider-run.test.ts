@@ -1,16 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentdRustBridge } from "../src/bridge/agent/agent";
+import type { AgentdRustBridge } from "../src/bridge/agent/agent.ts";
 import type {
 	AgentdProviderCompilerCompleteParams,
 	AgentdProviderCompilerCompleteResult,
 	AgentdProviderStreamEvent,
-} from "../src/bridge/agent/provider";
-import type { Config } from "../src/config/schemas";
+} from "../src/bridge/agent/provider.ts";
+import type { Config } from "../src/config/schemas.ts";
 import {
 	type CliProviderMessage,
 	replayProviderTokenEvents,
 	runCliProviderCompletion,
-} from "../src/run-provider";
+} from "../src/run-provider.ts";
 
 const emptyAssistantUsage = {
 	input: { cached: 0, uncached: 0, total: 0 },

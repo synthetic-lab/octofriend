@@ -1,12 +1,12 @@
-import { createAgentdRustBridge } from "./bridge/agent/agent";
-import { assertKeyForModel } from "./config/keys";
-import type { Config } from "./config/schemas";
-import { exitForMissingModel, selectModel } from "./model-selection";
+import { createAgentdRustBridge } from "./bridge/agent/agent.ts";
+import { assertKeyForModel } from "./config/keys.ts";
+import type { Config } from "./config/schemas.ts";
+import { exitForMissingModel, selectModel } from "./model-selection.ts";
 import {
 	replayProviderTokenEvents,
 	runCliProviderCompletion,
-} from "./run-provider";
-import type { Transport } from "./workspace/common";
+} from "./run-provider.ts";
+import type { Transport } from "./workspace/common.ts";
 
 type SuccessfulBenchmark = {
 	tokens: number;

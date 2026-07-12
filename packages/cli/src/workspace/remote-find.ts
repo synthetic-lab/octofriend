@@ -1,4 +1,4 @@
-import type { FindFilesOptions, Transport } from "./common";
+import type { FindFilesOptions, Transport } from "./common.ts";
 
 const leadingDotSlashPattern = /^\.\//u;
 const leadingSlashPattern = /^\//u;
