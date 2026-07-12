@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>octofriend</id>
+    <version>$version$</version>
+    <title>octofriend</title>
+    <authors>octofriend contributors</authors>
+    <owners>octofriend contributors</owners>
+    <projectUrl>https://github.com/xsyetopz/octofriend-next</projectUrl>
+    <license type="expression">MIT</license>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Fast coding agent with ACP support.</description>
+    <tags>ai coding-agent acp cli</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
