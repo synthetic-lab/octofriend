@@ -57,7 +57,7 @@ Audited against the `rewrite` worktree on 2026-07-12. Status meanings:
 - `cargo test -p octofriend-agent --test agentd tool_permission_request_returns_permission_policy`: 1 passed.
 - `bun test packages/tui/tests/render/tools.test.tsx packages/tui/tests/shell/tool-requests.test.tsx packages/cli/tests/bridge/agent/tool-permission.test.ts`: 18 passed.
 - `bun run typecheck`: passed for shared, TUI, and CLI packages.
-- `cargo clippy -p octofriend-agent --lib --tests -- -D warnings`: blocked by ten pre-existing unrelated warnings in catalog, model-plan, stream, and auth-key modules.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: passed after refactoring the catalog, provider request planner, trajectory compaction path, token refresh helpers, and TypeScript-facing stream modules without lint suppressions.
 
 ## Additional focused validation
 
@@ -78,10 +78,12 @@ Audited against the `rewrite` worktree on 2026-07-12. Status meanings:
 
 ## Broad validation and remaining caveats
 
-- `bun test`: 813 passed, 3 failed out of 816. The failures are pre-existing worktree catalog/setup drift: a catalog assertion and first-time setup shortcut still expect GPT-5.5 while the catalog recommends GPT-5.6-Sol, and an OAuth connection test bypasses its fake environment through the global bridge. Existing catalog/auth changes were preserved rather than folded into this audit.
-- `cargo test --workspace`: all reached agent tests passed, then two pre-existing `octofriend-config` migration expectations failed on the same 400000-versus-272000 catalog drift.
-- `cargo test --workspace --exclude octofriend-config`: passed across all remaining crates, integration tests, protocol conformance tests, and doc tests.
-- `cargo fmt --check`: only pre-existing formatting differences remain in `reasoning.rs`, `tools/call_parse.rs`, `transport.rs`, and `updates.rs`; these files are untouched by this worktree diff.
+- `bun test`: 832 passed, 0 failed across 121 files, including duplex ACP, ChatGPT OAuth account claims, cURL script recovery, installers, sessions, and distribution metadata.
+- `cargo test --workspace`: passed across every crate, integration test, protocol conformance test, and doc test.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: passed with no suppressions.
 - `bun run typecheck`: passed for shared, TUI, and CLI packages.
-- `git diff --check`: passed.
+- `biome check . --max-diagnostics=1000`: checked 410 files with no findings.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- Upstream commits [#217](https://github.com/synthetic-lab/octofriend/pull/217) and [#221](https://github.com/synthetic-lab/octofriend/pull/221) were reconciled after porting their durable behavior: ChatGPT account identity is extracted from OAuth JWT claims and stored with mode `0600`, while failed provider requests can be written to a uniquely named mode-`0700` cURL script under the system temporary directory.
+- Current `synthetic-lab/main` is an ancestor of local `rewrite`; `git merge-tree --write-tree rewrite upstream/main` succeeds without conflicts. Draft PR #222 will continue to report its old conflict until the local branch is pushed.
 - No audited product port remains incomplete. Release-tag and hosted package-manager evidence still requires publication of the prepared release workflow.
