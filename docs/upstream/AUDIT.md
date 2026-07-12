@@ -78,12 +78,15 @@ Audited against the `rewrite` worktree on 2026-07-12. Status meanings:
 
 ## Broad validation and remaining caveats
 
-- `bun test`: 832 passed, 0 failed across 121 files, including duplex ACP, ChatGPT OAuth account claims, cURL script recovery, installers, sessions, and distribution metadata.
+- `bun test`: 835 passed, 0 failed across 122 files, including duplex ACP, ChatGPT OAuth account claims, cURL script recovery, installers, sessions, and distribution metadata.
 - `cargo test --workspace`: passed across every crate, integration test, protocol conformance test, and doc test.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: passed with no suppressions.
 - `bun run typecheck`: passed for shared, TUI, and CLI packages.
-- `biome check . --max-diagnostics=1000`: checked 410 files with no findings.
+- `biome check . --max-diagnostics=1000`: checked 411 files with no findings.
 - `cargo fmt --all -- --check` and `git diff --check`: passed.
+- `scripts/test-install.ps1`: passed under local PowerShell, including checksum verification and installation of all Windows executables.
+- Managed Docker-compatible runtime launches add `--rm` without duplicating an explicit option; focused tests pass, and the README documents OrbStack plus `--pull=never` for storage-conservative use.
+- GitHub CLI plumbing resolves the local `xsyetopz/octofwen` remote redirect to canonical repository `xsyetopz/octofriend-next`, whose default branch is `rewrite`; installer and package-manager URLs therefore target the owning repository rather than a stale fork.
 - Upstream commits [#217](https://github.com/synthetic-lab/octofriend/pull/217) and [#221](https://github.com/synthetic-lab/octofriend/pull/221) were reconciled after porting their durable behavior: ChatGPT account identity is extracted from OAuth JWT claims and stored with mode `0600`, while failed provider requests can be written to a uniquely named mode-`0700` cURL script under the system temporary directory.
 - Current `synthetic-lab/main` is an ancestor of local `rewrite`; `git merge-tree --write-tree rewrite upstream/main` succeeds without conflicts. Draft PR #222 will continue to report its old conflict until the local branch is pushed.
 - No audited product port remains incomplete. Release-tag and hosted package-manager evidence still requires publication of the prepared release workflow.
