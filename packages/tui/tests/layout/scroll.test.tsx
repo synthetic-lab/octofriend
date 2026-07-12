@@ -59,10 +59,14 @@ describe("ScrollView", () => {
 				</ScrollView>,
 			);
 
-			await waitFor(() => (instance.lastFrame() ?? "").includes("100% ↑"));
+			await waitFor(() =>
+				instance.stdout.frames.some((frame) => frame.includes("\x1b[?1000h")),
+			);
 			expect(writes).toEqual([]);
 			instance.unmount();
-			await Bun.sleep(1);
+			await waitFor(() =>
+				instance.stdout.frames.some((frame) => frame.includes("\x1b[?1000l")),
+			);
 			expect(writes).toEqual([]);
 		} finally {
 			process.stdout.write = originalWrite;

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { generateDistribution } from "./update-distribution.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -38,20 +39,7 @@ describe("distribution metadata generator", () => {
 			.join("\n");
 		await writeFile(join(assets, "SHA256SUMS"), `${sums}\n`);
 
-		const child = Bun.spawn(
-			[
-				process.execPath,
-				resolve(import.meta.dirname, "update-distribution.ts"),
-				"--version",
-				"1.2.3",
-				"--assets",
-				assets,
-				"--output",
-				output,
-			],
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		expect(await child.exited).toBe(0);
+		await generateDistribution({ version: "1.2.3", assets, output });
 
 		const formula = await readFile(
 			join(output, "Formula/octofriend.rb"),
@@ -85,19 +73,12 @@ describe("distribution metadata generator", () => {
 		const root = await mkdtemp(join(tmpdir(), "octofriend-distribution-"));
 		temporaryDirectories.push(root);
 		await writeFile(join(root, "SHA256SUMS"), `${"a".repeat(64)}  unrelated\n`);
-		const child = Bun.spawn(
-			[
-				process.execPath,
-				resolve(import.meta.dirname, "update-distribution.ts"),
-				"--version",
-				"1.2.3",
-				"--assets",
-				root,
-				"--output",
-				join(root, "output"),
-			],
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		expect(await child.exited).not.toBe(0);
+		await expect(
+			generateDistribution({
+				version: "1.2.3",
+				assets: root,
+				output: join(root, "output"),
+			}),
+		).rejects.toThrow("Missing checksum");
 	});
 });
