@@ -35,6 +35,7 @@ describe("AgentdRustBridge tool permission", () => {
 		const bridge = new AgentdRustBridge(client);
 		const params: AgentdToolPermissionParams = {
 			toolName: "mcp",
+			cwd: "/workspace/project",
 			parsed: { server: "filesystem", tool: "read_file" },
 		};
 

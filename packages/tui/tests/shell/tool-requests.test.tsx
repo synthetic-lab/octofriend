@@ -174,6 +174,7 @@ describe("terminal tool request rendering", () => {
 		expect(permissionCalls).toEqual([
 			{
 				toolName: "rewrite",
+				cwd: "/repo",
 				parsed: {
 					filePath: "rewrite.txt",
 					text: "new file contents",

@@ -37,11 +37,13 @@ function createFakeAgentdProcess(
 					const line = buffer.slice(0, newlineIndex);
 					buffer = buffer.slice(newlineIndex + 1);
 					if (line.length > 0) {
-						stdoutController.enqueue(
-							encoder.encode(
-								`${JSON.stringify(handleRequest(JSON.parse(line)))}\n`,
-							),
-						);
+						const handled = handleRequest(JSON.parse(line));
+						const messages = Array.isArray(handled) ? handled : [handled];
+						for (const message of messages) {
+							stdoutController.enqueue(
+								encoder.encode(`${JSON.stringify(message)}\n`),
+							);
+						}
 					}
 					newlineIndex = buffer.indexOf("\n");
 				}
@@ -94,6 +96,39 @@ describe("AgentdProcessClient", () => {
 
 		client.close();
 		expect(process.killed).toBe(true);
+	});
+
+	it("delivers notifications without consuming the matching response", async () => {
+		const notifications: unknown[] = [];
+		const process = createFakeAgentdProcess((request) => [
+			{
+				jsonrpc: "2.0",
+				method: "octofriend.agentd/trajectoryEvent",
+				params: { event: { type: "provider-event", phase: "main" } },
+			},
+			{
+				jsonrpc: "2.0",
+				id: (request as { id: number }).id,
+				result: { complete: true },
+			},
+		]);
+		const client = new AgentdProcessClient(process, {
+			onNotification: (notification) => notifications.push(notification),
+		});
+
+		await expect(
+			client.request("octofriend.agentd/runTrajectory"),
+		).resolves.toEqual({
+			complete: true,
+		});
+		expect(notifications).toEqual([
+			{
+				jsonrpc: "2.0",
+				method: "octofriend.agentd/trajectoryEvent",
+				params: { event: { type: "provider-event", phase: "main" } },
+			},
+		]);
+		client.close();
 	});
 
 	it("rejects JSON-RPC error responses", async () => {

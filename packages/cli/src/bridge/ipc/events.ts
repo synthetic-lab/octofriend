@@ -23,6 +23,12 @@ export type AgentdErrorResponse = {
 
 export type AgentdResponse = AgentdSuccessResponse | AgentdErrorResponse;
 
+export type AgentdNotification = {
+	jsonrpc: "2.0";
+	method: string;
+	params?: unknown;
+};
+
 export function createAgentdRequest(
 	id: AgentdJsonRpcId,
 	method: string,

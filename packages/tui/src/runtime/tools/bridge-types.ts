@@ -25,6 +25,7 @@ export type SkillDiscoveryResolver = (
 
 export type ToolPermissionParams = {
 	toolName: string;
+	cwd: string;
 	parsed: unknown;
 };
 

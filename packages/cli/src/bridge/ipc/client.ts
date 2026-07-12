@@ -1,6 +1,7 @@
 import { AgentdJsonRpcError } from "./errors";
 import {
 	type AgentdJsonRpcId,
+	type AgentdNotification,
 	type AgentdResponse,
 	createAgentdRequest,
 } from "./events";
@@ -8,6 +9,10 @@ import {
 type PendingRequest = {
 	resolve: (value: unknown) => void;
 	reject: (error: unknown) => void;
+};
+
+export type AgentdProcessClientOptions = {
+	onNotification?: (notification: AgentdNotification) => void;
 };
 
 export type AgentdRequestOptions = {
@@ -33,7 +38,10 @@ export class AgentdProcessClient {
 	#buffer = "";
 	#closed = false;
 
-	constructor(process: AgentdProcessLike) {
+	constructor(
+		process: AgentdProcessLike,
+		private readonly options: AgentdProcessClientOptions = {},
+	) {
 		this.#process = process;
 		this.#stdoutReader = process.stdout.getReader();
 		this.#stdinWriter = process.stdin.getWriter();
@@ -120,14 +128,18 @@ export class AgentdProcessClient {
 	}
 
 	#handleLine(line: string): void {
-		let response: AgentdResponse;
+		let message: AgentdResponse | AgentdNotification;
 		try {
-			response = JSON.parse(line) as AgentdResponse;
+			message = JSON.parse(line) as AgentdResponse | AgentdNotification;
 		} catch (error) {
 			this.#rejectAll(error);
 			return;
 		}
-
+		if (!("id" in message)) {
+			this.options.onNotification?.(message);
+			return;
+		}
+		const response = message;
 		const pending = this.#pending.get(response.id);
 		if (!pending) return;
 		this.#pending.delete(response.id);

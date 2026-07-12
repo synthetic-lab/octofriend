@@ -1,5 +1,6 @@
 export type AgentdToolPermissionParams = {
 	toolName: string;
+	cwd: string;
 	parsed: unknown;
 };
 

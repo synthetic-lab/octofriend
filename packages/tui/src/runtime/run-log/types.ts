@@ -50,8 +50,16 @@ export type AssistantDelta<AllowedType extends string> = {
 	type: AllowedType;
 };
 
+export type ProviderMetrics = {
+	phase: "response" | "compaction";
+	ttftMs: number | null;
+	durationMs: number;
+	outputTokens: number;
+};
+
 export type CompactionType = {
 	checkpoint: TrajectoryOutputIR & { role: "checkpoint" };
+	history: TrajectoryOutputIR[];
 };
 
 export type RecoverableRequestError = Extract<
@@ -74,6 +82,7 @@ export type StateEvents = {
 	startCompaction: null;
 	compactionProgress: AutocompactionStream;
 	compactionParsed: CompactionType;
+	providerMetrics: ProviderMetrics;
 	autofixingJson: null;
 	autofixingDiff: null;
 	retryTool: {

@@ -6,15 +6,18 @@
 		".": "./src/index.tsx"
 	},
 	"bin": {
-		"octofriend": "./src/bin.ts",
-		"octo": "./src/bin.ts",
-		"octofriend-agentd": "./bin/octofriend-agentd.js"
+		"octofriend": "./bin/octofriend.js",
+		"octo": "./bin/octofriend.js",
+		"octofriend-agentd": "./bin/octofriend-agentd.js",
+		"octofriend-acp": "./bin/octofriend-acp.js"
 	},
 	"scripts": {
 		"test": "bun test tests",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"build:agentd": "bun src/scripts/build-agentd.ts",
-		"prepack": "bun run build:agentd"
+		"build:package": "bun src/scripts/build-package.ts",
+		"prepack": "bun run build:package",
+		"build:release": "bun src/scripts/build-release.ts"
 	},
 	"dependencies": {
 		"@commander-js/extra-typings": "^15.0.0",
@@ -22,7 +25,8 @@
 		"ink": "^7.1.0",
 		"@octofriend/tui": "workspace:*",
 		"json5": "^2.2.3",
-		"@octofriend/shared": "workspace:*"
+		"@octofriend/shared": "workspace:*",
+		"@agentclientprotocol/sdk": "^1.2.1"
 	},
 	"devDependencies": {
 		"@types/bun": "^1.3.14",

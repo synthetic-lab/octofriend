@@ -31,6 +31,11 @@ import type {
 	AgentdConversationHistoryLlmPayloadsResult,
 	AgentdConversationHistoryParams,
 	AgentdConversationHistoryRecordsResult,
+	AgentdConversationSessionCreateParams,
+	AgentdConversationSessionEmptyResult,
+	AgentdConversationSessionLoadResult,
+	AgentdConversationSessionReplaceParams,
+	AgentdConversationSessionReplaceResult,
 } from "./history";
 import type { AgentdInitializeResult } from "./initialize";
 import type {
@@ -177,6 +182,12 @@ export const AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD =
 	agentMethods.AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD;
 export const AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD =
 	agentMethods.AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD;
+export const AGENTD_CONVERSATION_SESSION_CREATE_METHOD =
+	agentMethods.AGENTD_CONVERSATION_SESSION_CREATE_METHOD;
+export const AGENTD_CONVERSATION_SESSION_LOAD_METHOD =
+	agentMethods.AGENTD_CONVERSATION_SESSION_LOAD_METHOD;
+export const AGENTD_CONVERSATION_SESSION_REPLACE_METHOD =
+	agentMethods.AGENTD_CONVERSATION_SESSION_REPLACE_METHOD;
 export const AGENTD_CONVERSATION_HISTORY_APPEND_METHOD =
 	agentMethods.AGENTD_CONVERSATION_HISTORY_APPEND_METHOD;
 export const AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD =
@@ -245,6 +256,12 @@ export type {
 	AgentdConversationHistoryParams,
 	AgentdConversationHistoryRecord,
 	AgentdConversationHistoryRecordsResult,
+	AgentdConversationSessionCreateParams,
+	AgentdConversationSessionEmptyResult,
+	AgentdConversationSessionLoadResult,
+	AgentdConversationSessionMetadata,
+	AgentdConversationSessionReplaceParams,
+	AgentdConversationSessionReplaceResult,
 } from "./history";
 
 export type {
@@ -270,6 +287,7 @@ type AgentdClientLike = {
 
 type CreateAgentdRustBridgeOptions = AgentdSpawnOptions & {
 	createClient?: () => AgentdClientLike;
+	onNotification?: (notification: { method: string; params?: unknown }) => void;
 };
 
 export class AgentdRustBridge {
@@ -289,6 +307,30 @@ export class AgentdRustBridge {
 		params: AgentdInputHistoryAppendParams,
 	): Promise<AgentdInputHistoryResult> {
 		return await historyRequests.inputHistoryAppend(this.#client, params);
+	}
+
+	async conversationSessionCreate(
+		params: AgentdConversationSessionCreateParams,
+	): Promise<AgentdConversationSessionEmptyResult> {
+		return await historyRequests.conversationSessionCreate(
+			this.#client,
+			params,
+		);
+	}
+
+	async conversationSessionLoad(
+		params: AgentdConversationHistoryParams,
+	): Promise<AgentdConversationSessionLoadResult> {
+		return await historyRequests.conversationSessionLoad(this.#client, params);
+	}
+
+	async conversationSessionReplace(
+		params: AgentdConversationSessionReplaceParams,
+	): Promise<AgentdConversationSessionReplaceResult> {
+		return await historyRequests.conversationSessionReplace(
+			this.#client,
+			params,
+		);
 	}
 
 	async conversationHistoryAppend(
@@ -515,14 +557,24 @@ export class AgentdRustBridge {
 
 export function spawnAgentdProcessClient(
 	options: AgentdSpawnOptions = {},
+	clientOptions: {
+		onNotification?: (notification: {
+			method: string;
+			params?: unknown;
+		}) => void;
+	} = {},
 ): AgentdProcessClient {
-	return new AgentdProcessClient(spawnAgentdProcess(options));
+	return new AgentdProcessClient(spawnAgentdProcess(options), clientOptions);
 }
 
 export async function createAgentdRustBridge(
 	options: CreateAgentdRustBridgeOptions = {},
 ): Promise<AgentdRustBridge> {
-	const client = options.createClient?.() ?? spawnAgentdProcessClient(options);
+	const client =
+		options.createClient?.() ??
+		spawnAgentdProcessClient(options, {
+			onNotification: options.onNotification,
+		});
 	const bridge = new AgentdRustBridge(client);
 	await bridge.initialize();
 	return bridge;

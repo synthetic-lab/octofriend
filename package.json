@@ -2,11 +2,12 @@
 	"name": "octofriend",
 	"version": "0.0.53",
 	"license": "MIT",
-	"repository": "github:synthetic-lab/octofriend",
+	"repository": "github:xsyetopz/octofriend-next",
 	"bin": {
-		"octofriend": "packages/cli/src/bin.ts",
-		"octo": "packages/cli/src/bin.ts",
-		"octofriend-agentd": "packages/cli/bin/octofriend-agentd.js"
+		"octofriend": "packages/cli/bin/octofriend.js",
+		"octo": "packages/cli/bin/octofriend.js",
+		"octofriend-agentd": "packages/cli/bin/octofriend-agentd.js",
+		"octofriend-acp": "packages/cli/bin/octofriend-acp.js"
 	},
 	"type": "module",
 	"preferGlobal": true,
@@ -24,10 +25,12 @@
 		"test:run": "bun test",
 		"typecheck": "tsc --noEmit -p tsconfig.json && bun run --filter \"@octofriend/*\" typecheck",
 		"prepublishOnly": "bun run build",
-		"prepack": "bun run --filter \"@octofriend/cli\" build:agentd"
+		"prepack": "bun run --filter \"@octofriend/cli\" build:package"
 	},
 	"files": [
 		"packages",
+		"packages/cli/bin/octofriend.js",
+		"packages/cli/bin/octofriend-acp.js",
 		"crates",
 		"Cargo.toml",
 		"Cargo.lock",
@@ -60,6 +63,7 @@
 		"zustand": "^5.0.14"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "2.5.3",
 		"@types/bun": "^1.3.14",
 		"@types/figlet": "^1.7.0",
 		"@types/html-to-text": "^9.0.4",
@@ -69,8 +73,7 @@
 		"ink-testing-library": "^4.0.0",
 		"parse-git-diff": "^0.0.20",
 		"tsx": "^4.23.0",
-		"typescript": "^7.0.2",
-		"@biomejs/biome": "2.5.3"
+		"typescript": "^7.0.2"
 	},
 	"packageManager": "bun@1.3.14",
 	"workspaces": [

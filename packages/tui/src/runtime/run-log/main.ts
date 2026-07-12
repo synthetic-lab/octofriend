@@ -30,12 +30,19 @@ type TrajectoryArcBridgeEvent =
 			buffer: { content?: string | null; reasoning?: string | null };
 			delta: { type: CompactionTokenTypes; value: string };
 	  }
-	| { type: "compaction-parsed"; checkpoint: unknown }
+	| { type: "compaction-parsed"; checkpoint: unknown; history: unknown[] }
 	| { type: "autofixing-json" }
 	| { type: "autofixing-diff" }
 	| { type: "quota-updated"; quota: unknown }
 	| { type: "retry-tool"; irs: unknown[] }
-	| { type: "token-usage"; input: number; output: number };
+	| { type: "token-usage"; input: number; output: number }
+	| {
+			type: "provider-metrics";
+			phase: "response" | "compaction";
+			ttftMs: number | null;
+			durationMs: number;
+			outputTokens: number;
+	  };
 
 export type TrajectoryArcRunner = (
 	params: {
@@ -58,6 +65,10 @@ export type TrajectoryArcRunner = (
 			search?: unknown;
 			hasWebSearch?: boolean;
 			skills?: { paths?: readonly string[] };
+			compaction?: {
+				autoThresholdPercent?: number;
+				compactOldestPercent?: number;
+			};
 			defaultApiKeyOverrides?: Record<string, string>;
 			authModels?: Array<{
 				type?: Config["models"][number]["type"];
@@ -74,6 +85,7 @@ export type TrajectoryArcRunner = (
 			};
 		};
 		aborted?: boolean;
+		compactOnly?: boolean;
 	},
 	options?: { abortSignal?: AbortSignal; cancelOnAbort?: boolean },
 ) => Promise<{
@@ -90,6 +102,7 @@ export async function trajectoryArc({
 	config,
 	transport,
 	abortSignal,
+	compactOnly = false,
 	handler,
 	trajectoryArcRun,
 }: {
@@ -99,6 +112,7 @@ export async function trajectoryArc({
 	config: Config;
 	transport: Transport;
 	abortSignal: AbortSignal;
+	compactOnly?: boolean;
 	handler: TrajectoryHandler;
 	trajectoryArcRun: TrajectoryArcRunner;
 }): Promise<Finish> {
@@ -124,11 +138,13 @@ export async function trajectoryArc({
 				search: config.search,
 				hasWebSearch: searchConfig != null,
 				skills: config.skills,
+				compaction: config.compaction,
 				defaultApiKeyOverrides: config.defaultApiKeyOverrides,
 				authModels: authModelsConfig(config),
 				fixJson,
 			},
 			aborted: abortSignal.aborted,
+			compactOnly,
 		},
 		{ abortSignal, cancelOnAbort: true },
 	);
@@ -173,6 +189,7 @@ function emitTrajectoryArcEvents(
 						TrajectoryOutputIR,
 						{ role: "checkpoint" }
 					>,
+					history: event.history as TrajectoryOutputIR[],
 				});
 				break;
 			case "autofixing-json":
@@ -191,6 +208,14 @@ function emitTrajectoryArcEvents(
 				break;
 			case "token-usage":
 				trackTokenUsage(model, event.input, event.output);
+				break;
+			case "provider-metrics":
+				handler.providerMetrics({
+					phase: event.phase,
+					ttftMs: event.ttftMs,
+					durationMs: event.durationMs,
+					outputTokens: event.outputTokens,
+				});
 				break;
 			default:
 				break;

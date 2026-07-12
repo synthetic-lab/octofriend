@@ -75,6 +75,7 @@ describe("agent trajectory runtime", () => {
 					fixJson: undefined,
 				},
 				aborted: false,
+				compactOnly: false,
 			},
 			options: {
 				abortSignal: expect.anything(),
@@ -133,6 +134,8 @@ describe("agent trajectory runtime", () => {
 	test("replays trajectory arc events to presentation handlers", async () => {
 		const events: string[] = [];
 		const quotaUpdates: unknown[] = [];
+		const compactedHistories: unknown[] = [];
+		const metrics: unknown[] = [];
 		const finish = await trajectoryArc({
 			apiKey: "test-key",
 			model: {
@@ -171,6 +174,27 @@ describe("agent trajectory runtime", () => {
 							},
 						},
 					},
+					{
+						type: "compaction-parsed",
+						checkpoint: {
+							role: "checkpoint",
+							content: [{ type: "text", content: "summary" }],
+						},
+						history: [
+							{
+								role: "checkpoint",
+								content: [{ type: "text", content: "summary" }],
+							},
+							{ role: "user", content: [{ type: "text", content: "recent" }] },
+						],
+					},
+					{
+						type: "provider-metrics",
+						phase: "response",
+						ttftMs: 125,
+						durationMs: 1125,
+						outputTokens: 20,
+					},
 					{ type: "retry-tool", irs: [assistantMessage("retry")] },
 				],
 			}),
@@ -178,12 +202,23 @@ describe("agent trajectory runtime", () => {
 				...quietHandler(),
 				startResponse: () => events.push("start-response"),
 				responseProgress: (event) => events.push(event.delta.value),
+				compactionParsed: (event) => compactedHistories.push(event.history),
+				providerMetrics: (event) => metrics.push(event),
 				retryTool: () => events.push("retry-tool"),
 				onQuotaUpdated: (quota) => quotaUpdates.push(quota),
 			},
 		});
 
 		expect(events).toEqual(["start-response", "hel", "retry-tool"]);
+		expect(compactedHistories).toEqual([
+			[
+				{ role: "checkpoint", content: [{ type: "text", content: "summary" }] },
+				{ role: "user", content: [{ type: "text", content: "recent" }] },
+			],
+		]);
+		expect(metrics).toEqual([
+			{ phase: "response", ttftMs: 125, durationMs: 1125, outputTokens: 20 },
+		]);
 		expect(quotaUpdates).toHaveLength(1);
 		expect(
 			(quotaUpdates[0] as { rollingFiveHourLimit: { nextTickAt: Date } })
@@ -352,6 +387,7 @@ function quietHandler() {
 		startCompaction: () => undefined,
 		compactionProgress: () => undefined,
 		compactionParsed: () => undefined,
+		providerMetrics: () => undefined,
 		autofixingJson: () => undefined,
 		autofixingDiff: () => undefined,
 		retryTool: () => undefined,

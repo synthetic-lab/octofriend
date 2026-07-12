@@ -8,7 +8,15 @@ export type AgentdTrajectoryArcParams = {
 		baseUrl: string;
 		model: string;
 		context: number;
-		reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+		reasoning?:
+			| "none"
+			| "minimal"
+			| "low"
+			| "medium"
+			| "high"
+			| "xhigh"
+			| "max"
+			| "ultra";
 		thinkingBudgetTokens?: number;
 		modalities?: unknown;
 	};
@@ -18,6 +26,10 @@ export type AgentdTrajectoryArcParams = {
 		mcpServers?: unknown;
 		search?: unknown;
 		skills?: { paths?: readonly string[] };
+		compaction?: {
+			autoThresholdPercent?: number;
+			compactOldestPercent?: number;
+		};
 		defaultApiKeyOverrides?: Record<string, string>;
 		authModels?: Array<{
 			type?: AgentdProviderType;
@@ -35,6 +47,7 @@ export type AgentdTrajectoryArcParams = {
 		};
 	};
 	aborted?: boolean;
+	compactOnly?: boolean;
 };
 
 export type AgentdTrajectoryArcEvent =
@@ -54,12 +67,19 @@ export type AgentdTrajectoryArcEvent =
 			buffer: { content?: string | null; reasoning?: string | null };
 			delta: { type: "content" | "reasoning"; value: string };
 	  }
-	| { type: "compaction-parsed"; checkpoint: unknown }
+	| { type: "compaction-parsed"; checkpoint: unknown; history: unknown[] }
 	| { type: "autofixing-json" }
 	| { type: "autofixing-diff" }
 	| { type: "quota-updated"; quota: unknown }
 	| { type: "retry-tool"; irs: unknown[] }
-	| { type: "token-usage"; input: number; output: number };
+	| { type: "token-usage"; input: number; output: number }
+	| {
+			type: "provider-metrics";
+			phase: "response" | "compaction";
+			ttftMs: number | null;
+			durationMs: number;
+			outputTokens: number;
+	  };
 
 export type AgentdTrajectoryArcResult = {
 	type: "finish";
@@ -124,7 +144,7 @@ function isTrajectoryArcEvent(
 		case "compaction-progress":
 			return isProgressEvent(value, ["content", "reasoning"]);
 		case "compaction-parsed":
-			return "checkpoint" in value;
+			return "checkpoint" in value && Array.isArray(value["history"]);
 		case "quota-updated":
 			return "quota" in value;
 		case "retry-tool":
@@ -133,6 +153,13 @@ function isTrajectoryArcEvent(
 			return (
 				typeof value["input"] === "number" &&
 				typeof value["output"] === "number"
+			);
+		case "provider-metrics":
+			return (
+				(value["phase"] === "response" || value["phase"] === "compaction") &&
+				(value["ttftMs"] === null || typeof value["ttftMs"] === "number") &&
+				typeof value["durationMs"] === "number" &&
+				typeof value["outputTokens"] === "number"
 			);
 		default:
 			return false;
