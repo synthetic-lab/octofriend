@@ -9,6 +9,7 @@ fn tool_permission_request_returns_permission_policy() {
         "method": AGENTD_TOOL_PERMISSION_METHOD,
         "params": {
             "toolName": "mcp",
+            "cwd": "/workspace/project",
             "parsed": {
                 "server": "filesystem",
                 "tool": "read_file"

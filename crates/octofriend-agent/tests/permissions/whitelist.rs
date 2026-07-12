@@ -3,38 +3,53 @@ use octofriend_agent::permissions::{
 };
 use serde_json::json;
 
+fn request(name: &str, arguments: serde_json::Value) -> ToolCallPermissionRequest {
+    ToolCallPermissionRequest::with_cwd(name, arguments, "/workspace/project")
+}
+
 #[test]
-fn computes_stable_whitelist_keys_for_builtin_tool_groups() {
+fn computes_directory_scoped_whitelist_keys_for_builtin_tool_groups() {
     assert_eq!(
-        ToolCallPermissionRequest::new("read", json!({})).whitelist_key(),
-        "read:*"
+        request("read", json!({ "filePath": "src/main.rs" })).whitelist_key(),
+        "read:/workspace/project"
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("list", json!({})).whitelist_key(),
-        "read:*"
+        request("list", json!({ "dirPath": "src" })).whitelist_key(),
+        "read:/workspace/project"
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("edit", json!({})).whitelist_key(),
-        "edits:*"
+        request("edit", json!({ "filePath": "src/main.rs" })).whitelist_key(),
+        "edits:/workspace/project"
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("create", json!({})).whitelist_key(),
-        "edits:*"
+        request("create", json!({ "filePath": "../other/new.rs" })).whitelist_key(),
+        "edits:/workspace/other"
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("rewrite", json!({})).whitelist_key(),
-        "edits:*"
+        request("rewrite", json!({ "filePath": "/tmp/out.rs" })).whitelist_key(),
+        "edits:/tmp"
     );
-    assert_eq!(
-        ToolCallPermissionRequest::new("shell", json!({})).whitelist_key(),
-        "shell:*"
-    );
+}
+
+#[test]
+fn normalizes_paths_without_accepting_prefix_siblings_as_in_project() {
+    let sibling = request(
+        "read",
+        json!({ "filePath": "/workspace/project-other/secret" }),
+    )
+    .permission_policy();
+    assert_eq!(sibling.whitelist_key, "read:/workspace/project-other");
+    assert!(!sibling.skip_confirmation);
+
+    let traversed = request("read", json!({ "filePath": "src/../../secret" })).permission_policy();
+    assert_eq!(traversed.whitelist_key, "read:/workspace");
+    assert!(!traversed.skip_confirmation);
 }
 
 #[test]
 fn computes_server_scoped_mcp_whitelist_keys() {
     assert_eq!(
-        ToolCallPermissionRequest::new(
+        request(
             "mcp",
             json!({ "server": "filesystem", "tool": "read_file" })
         )
@@ -56,17 +71,25 @@ fn whitelist_adds_keys_idempotently_and_checks_membership() {
 }
 
 #[test]
-fn computes_confirmation_policy_for_builtin_tool_groups() {
+fn auto_allows_reads_only_inside_the_project_directory() {
     assert_eq!(
-        ToolCallPermissionRequest::new("read", json!({})).permission_policy(),
+        request("read", json!({ "filePath": "README.md" })).permission_policy(),
         ToolCallPermissionPolicy {
-            whitelist_key: "read:*".to_string(),
+            whitelist_key: "read:/workspace/project".to_string(),
             skip_confirmation: true,
             always_request_permission: false,
         }
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("shell", json!({})).permission_policy(),
+        request("read", json!({ "filePath": "/etc/passwd" })).permission_policy(),
+        ToolCallPermissionPolicy {
+            whitelist_key: "read:/etc".to_string(),
+            skip_confirmation: false,
+            always_request_permission: false,
+        }
+    );
+    assert_eq!(
+        request("shell", json!({})).permission_policy(),
         ToolCallPermissionPolicy {
             whitelist_key: "shell:*".to_string(),
             skip_confirmation: false,
@@ -74,9 +97,9 @@ fn computes_confirmation_policy_for_builtin_tool_groups() {
         }
     );
     assert_eq!(
-        ToolCallPermissionRequest::new("edit", json!({})).permission_policy(),
+        request("edit", json!({ "filePath": "src/main.rs" })).permission_policy(),
         ToolCallPermissionPolicy {
-            whitelist_key: "edits:*".to_string(),
+            whitelist_key: "edits:/workspace/project".to_string(),
             skip_confirmation: false,
             always_request_permission: false,
         }

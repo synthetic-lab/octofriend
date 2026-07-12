@@ -12,6 +12,7 @@ const INVALID_PARAMS: i64 = -32602;
 struct ToolPermissionParams {
     tool_name: String,
     parsed: Value,
+    cwd: String,
 }
 
 pub(in crate::runtime) fn tool_permission_response(
@@ -25,8 +26,8 @@ pub(in crate::runtime) fn tool_permission_response(
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
 
-    let policy =
-        ToolCallPermissionRequest::new(params.tool_name, params.parsed).permission_policy();
+    let policy = ToolCallPermissionRequest::with_cwd(params.tool_name, params.parsed, params.cwd)
+        .permission_policy();
     create_json_rpc_success(
         id,
         serde_json::json!({
