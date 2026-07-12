@@ -71,8 +71,8 @@ export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 
 			<Box marginTop={1}>
 				<Text>
-					OpenAI setup supports ChatGPT OAuth or an API key. Anthropic, Gemini,
-					and Synthetic setup use API keys.
+					OpenAI setup supports ChatGPT OAuth or an API key. Gemini supports an
+					API key or configured OAuth/ADC. Anthropic and Synthetic use API keys.
 				</Text>
 			</Box>
 

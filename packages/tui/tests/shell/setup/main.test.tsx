@@ -88,11 +88,19 @@ describe("terminal first-time setup", () => {
 		);
 		instance.stdin.write("\r");
 		await waitFor(() => (instance.lastFrame() ?? "").includes("⦿"));
-		instance.stdin.write("5");
+		const { PROVIDERS } = await import(
+			"../../../src/runtime/models/catalog/main"
+		);
+		const openaiModels = PROVIDERS.openai?.models ?? [];
+		const recommendedOpenAiModel = openaiModels[0];
+		if (!recommendedOpenAiModel) throw new Error("Missing OpenAI model");
+		instance.stdin.write(String(openaiModels.length + 1));
 		await waitFor(() => (instance.lastFrame() ?? "").includes("Your name:"));
 
 		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("Main models: 1 (GPT-5.5 (OpenAI))");
+		expect(frame).toContain(
+			`Main models: 1 (${recommendedOpenAiModel.nickname} (OpenAI))`,
+		);
 		expect(frame).toContain("Autofix models: not enabled");
 		expect(frame).toContain("Model auth: stored keys");
 	});

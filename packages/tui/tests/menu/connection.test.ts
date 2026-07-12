@@ -9,9 +9,7 @@ function expectPresent<T>(value: T): NonNullable<T> {
 
 describe("terminal model setup connection helpers", () => {
 	it("returns provider error text from failed connection tests", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
 
 		const result = await testConnection({
 			baseUrl: "https://api.example.test/v1",
@@ -30,9 +28,7 @@ describe("terminal model setup connection helpers", () => {
 	});
 
 	it("rejects malformed explicit env auth before provider default fallback", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
 		const requests: unknown[] = [];
 
 		const result = await testConnection({
@@ -61,9 +57,7 @@ describe("terminal model setup connection helpers", () => {
 	});
 
 	it("passes native provider types to connection tests for known provider base URLs", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
 		const requests: unknown[] = [];
 
 		const env = { MODEL_SETUP_PROVIDER_TYPE_TEST_KEY: "test-key" };
@@ -127,12 +121,8 @@ describe("terminal model setup connection helpers", () => {
 	});
 
 	it("uses selected provider type for connection tests when the base URL is overridden", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
-		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
+		const { PROVIDERS } = await import("../../src/runtime/models/catalog/main");
 		const requests: unknown[] = [];
 
 		const result = await testConnection({
@@ -163,12 +153,8 @@ describe("terminal model setup connection helpers", () => {
 	});
 
 	it("uses the selected provider type to resolve default auth for custom base URLs", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
-		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
+		const { PROVIDERS } = await import("../../src/runtime/models/catalog/main");
 		const pathKey = process.env.PATH;
 		if (!pathKey) throw new Error("PATH must be set for this test");
 		const requests: unknown[] = [];
@@ -205,12 +191,8 @@ describe("terminal model setup connection helpers", () => {
 	});
 
 	it("allows ChatGPT OAuth only for OpenAI provider connection tests", async () => {
-		const { testConnection } = await import(
-			"../../src/menu/models/connection"
-		);
-		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
-		);
+		const { testConnection } = await import("../../src/menu/models/connection");
+		const { PROVIDERS } = await import("../../src/runtime/models/catalog/main");
 		const env = { CODEX_ACCESS_TOKEN: "oauth-token" };
 		const requests: unknown[] = [];
 
@@ -255,8 +237,8 @@ describe("terminal model setup connection helpers", () => {
 		expect(requests).toEqual([
 			{
 				type: "openai-responses",
-				baseUrl: "https://api.openai.com/v1",
-				apiKey: "oauth-token",
+				baseUrl: "https://chatgpt.com/backend-api/codex",
+				apiKey: "codex-oauth:oauth-token",
 				model: "gpt-5.4-mini",
 			},
 		]);

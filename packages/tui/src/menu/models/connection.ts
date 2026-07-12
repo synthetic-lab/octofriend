@@ -28,13 +28,21 @@ export type ModelConnectionTestResult =
 	  }
 	| { valid: false };
 
-export type ModelDiscoveryTester = (params: { type?: "standard" | "openai-responses" | "anthropic" | "gemini"; baseUrl: string; apiKey: string }) => Promise<{ models: Array<{ id: string; name?: string; context_length?: number }> }>;
+export type ModelDiscoveryTester = (params: {
+	type?: "standard" | "openai-responses" | "anthropic" | "gemini";
+	baseUrl: string;
+	apiKey: string;
+}) => Promise<{
+	models: Array<{ id: string; name?: string; context_length?: number }>;
+}>;
 
 export type ModelConnectionTester = (
 	params: ModelConnectionTestParams,
 ) => Promise<ModelConnectionTestResult>;
 
-export const ModelDiscoveryContext = createContext<ModelDiscoveryTester>(async () => ({ models: [] }));
+export const ModelDiscoveryContext = createContext<ModelDiscoveryTester>(
+	async () => ({ models: [] }),
+);
 
 export const ModelConnectionTestContext = createContext<ModelConnectionTester>(
 	async () => ({ valid: false }),
@@ -69,13 +77,21 @@ async function resolveConnectionApiKey({
 		};
 	}
 	if (auth.credential === "chatgpt-oauth") {
-		return {
-			valid: true,
-			apiKey: await assertKeyForModel(
-				{ baseUrl, auth, type: providerType },
-				config,
-			),
-		};
+		const envAuth = resolveEnvAuthKey(auth, resolvedProvider, env);
+		if (!envAuth.valid) {
+			const envValue = nonEmptyEnvValue(auth.name ?? "", env);
+			if (envValue === null && envAuth.errorMessage.includes("isn't defined")) {
+				return {
+					valid: true,
+					apiKey: await assertKeyForModel(
+						{ baseUrl, auth, type: providerType },
+						config,
+					),
+				};
+			}
+			return envAuth;
+		}
+		return { valid: true, apiKey: `codex-oauth:${envAuth.apiKey}` };
 	}
 
 	const envAuth = resolveEnvAuthKey(auth, resolvedProvider, env);

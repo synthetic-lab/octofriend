@@ -42,7 +42,9 @@ describe("provider catalog", () => {
 		expect(recommendedModel("synthetic")).toEqual(
 			expectPresent(PROVIDERS.synthetic).models[0],
 		);
-		expect(recommendedModel("openai")?.nickname).toBe("GPT-5.5");
+		expect(recommendedModel("openai")).toEqual(
+			expectPresent(PROVIDERS.openai).models[0],
+		);
 		expect(expectPresent(PROVIDERS.anthropic).type).toBe("anthropic");
 		expect(expectPresent(PROVIDERS.gemini).type).toBe("gemini");
 		expect(expectPresent(PROVIDERS.gemini).envVar).toBe("GEMINI_API_KEY");

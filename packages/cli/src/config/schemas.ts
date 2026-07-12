@@ -14,11 +14,14 @@ export type Auth =
 	| {
 			type: "env";
 			name: string;
-			credential?: "api-key" | "chatgpt-oauth";
+			credential?: "api-key" | "chatgpt-oauth" | "gemini-oauth";
+			project?: string;
 	  }
 	| {
 			type: "command";
 			command: string[];
+			credential?: "api-key" | "chatgpt-oauth" | "gemini-oauth";
+			project?: string;
 	  };
 
 export type AuthError =
@@ -43,7 +46,15 @@ export type ModelConfig = {
 	auth?: Auth;
 	model: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+	reasoning?:
+		| "none"
+		| "minimal"
+		| "low"
+		| "medium"
+		| "high"
+		| "xhigh"
+		| "max"
+		| "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: {
 		image?: {
@@ -74,6 +85,12 @@ export type ConfigModels = {
 };
 
 export type ConfigEditing = {
+	showShellOutput?: boolean;
+	showProviderMetrics?: boolean;
+	compaction?: {
+		autoThresholdPercent?: number;
+		compactOldestPercent?: number;
+	};
 	vimEmulation?: {
 		enabled: boolean;
 	};

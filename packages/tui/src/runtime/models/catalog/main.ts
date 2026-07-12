@@ -38,12 +38,20 @@ export type ProviderModelConfig = {
 	model: string;
 	nickname: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+	reasoning?:
+		| "none"
+		| "minimal"
+		| "low"
+		| "medium"
+		| "high"
+		| "xhigh"
+		| "max"
+		| "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: MultimodalConfig;
 };
 
-export type ProviderAuthMethod = "api-key" | "chatgpt-oauth";
+export type ProviderAuthMethod = "api-key" | "chatgpt-oauth" | "gemini-oauth";
 
 export type ProviderConfig = {
 	shortcut: ProviderShortcut;

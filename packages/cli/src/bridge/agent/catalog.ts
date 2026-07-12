@@ -36,12 +36,23 @@ export type AgentdProviderModelConfig = {
 	model: string;
 	nickname: string;
 	context: number;
-	reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+	reasoning?:
+		| "none"
+		| "minimal"
+		| "low"
+		| "medium"
+		| "high"
+		| "xhigh"
+		| "max"
+		| "ultra";
 	thinkingBudgetTokens?: number;
 	modalities?: AgentdMultimodalConfig;
 };
 
-export type AgentdProviderAuthMethod = "api-key" | "chatgpt-oauth";
+export type AgentdProviderAuthMethod =
+	| "api-key"
+	| "chatgpt-oauth"
+	| "gemini-oauth";
 
 export type AgentdProviderType =
 	| "standard"
@@ -87,7 +98,9 @@ function isProviderShortcut(value: unknown): value is AgentdProviderShortcut {
 function isProviderAuthMethod(
 	value: unknown,
 ): value is AgentdProviderAuthMethod {
-	return value === "api-key" || value === "chatgpt-oauth";
+	return (
+		value === "api-key" || value === "chatgpt-oauth" || value === "gemini-oauth"
+	);
 }
 
 function isProviderType(value: unknown): value is AgentdProviderConfig["type"] {
@@ -101,7 +114,15 @@ function isProviderType(value: unknown): value is AgentdProviderConfig["type"] {
 
 function isReasoning(
 	value: unknown,
-): value is "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" {
+): value is
+	| "none"
+	| "minimal"
+	| "low"
+	| "medium"
+	| "high"
+	| "xhigh"
+	| "max"
+	| "ultra" {
 	return (
 		value === "none" ||
 		value === "minimal" ||

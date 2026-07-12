@@ -19,8 +19,9 @@ describe("first-time setup welcome screen", () => {
 			"OpenAI setup supports ChatGPT OAuth or an API key",
 		);
 		expect(frame).toContain(
-			"Anthropic, Gemini, and Synthetic setup use API keys",
+			"Gemini supports an API key or configured OAuth/ADC",
 		);
+		expect(frame).toContain("Anthropic and Synthetic use API keys");
 		expect(frame).toContain("OpenAI, Anthropic, and Gemini");
 	});
 

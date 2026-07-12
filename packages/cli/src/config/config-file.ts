@@ -29,8 +29,20 @@ export async function readConfig(
 	options: ConfigFileOptions = {},
 ): Promise<Config> {
 	const file = await fs.readFile(filePath, "utf8");
-	const parsed = json5.parse(file.trim());
-	const fileVersion: number = parsed["configVersion"] ?? 0;
+	let parsed: Record<string, unknown>;
+	try {
+		parsed = json5.parse(file.trim()) as Record<string, unknown>;
+	} catch (error) {
+		const detail = error instanceof Error ? error.message : String(error);
+		throw new Error(
+			`Failed to parse configuration file ${filePath}: ${detail}`,
+			{
+				cause: error,
+			},
+		);
+	}
+	const fileVersion =
+		typeof parsed["configVersion"] === "number" ? parsed["configVersion"] : 0;
 	const raw = await migrateConfig(parsed, options);
 	const config = raw as Config;
 	const currentVersion = config.configVersion ?? fileVersion;

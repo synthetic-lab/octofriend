@@ -56,6 +56,18 @@ function RetryPreflightHarness({
 	);
 }
 
+async function waitForRenderedText(
+	lastFrame: () => string | undefined,
+	expected: string,
+): Promise<string> {
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		const frame = lastFrame() ?? "";
+		if (frame.includes(expected)) return frame;
+		await Bun.sleep(5);
+	}
+	return lastFrame() ?? "";
+}
+
 const CURRENT_CONFIG_VERSION = 6;
 
 const config: Config = {
@@ -289,9 +301,11 @@ describe("terminal auth preflight", () => {
 		);
 
 		stdin.write("r");
-		await Bun.sleep(1);
 
-		const frame = lastFrame() ?? "";
+		const frame = await waitForRenderedText(
+			lastFrame,
+			"Retry failed: config unreadable",
+		);
 		expect(frame).toContain("Your auth command failed");
 		expect(frame).toContain("Retry failed: config unreadable");
 		expect(frame).not.toContain("(retrying...)");

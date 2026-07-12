@@ -35,6 +35,28 @@ class FakeProcessClient {
 }
 
 describe("config file bridge reuse", () => {
+	it("reports the invalid config path and JSON5 parser detail", async () => {
+		const tmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "octofriend-config-invalid-"),
+		);
+		const configPath = path.join(tmpDir, "broken.json5");
+		try {
+			await fs.writeFile(configPath, "{ models: [ }");
+			let failure: unknown;
+			try {
+				await readConfig(configPath);
+			} catch (error) {
+				failure = error;
+			}
+			expect(failure).toBeInstanceOf(Error);
+			expect((failure as Error).message).toContain(
+				`Failed to parse configuration file ${configPath}:`,
+			);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
 	it("uses a supplied bridge for migration writeback", async () => {
 		const tmpDir = await fs.mkdtemp(
 			path.join(os.tmpdir(), "octofriend-config-"),
