@@ -32,7 +32,7 @@ impl ToolCallPermissionRequest {
 
     pub fn whitelist_key(&self) -> String {
         if let Some((group, scope)) = self.filesystem_scope() {
-            return format!("{group}:{}", scope.display());
+            return format!("{group}:{}", whitelist_scope(&scope));
         }
 
         match self.name.as_str() {
@@ -109,6 +109,15 @@ impl ToolCallPermissionRequest {
             self.cwd.join(path)
         };
         Some(normalize_path(&resolved))
+    }
+}
+
+fn whitelist_scope(path: &Path) -> String {
+    let display = path.to_string_lossy();
+    if std::path::MAIN_SEPARATOR == '/' {
+        display.into_owned()
+    } else {
+        display.replace(std::path::MAIN_SEPARATOR, "/")
     }
 }
 
