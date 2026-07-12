@@ -9,13 +9,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn unique_temp_dir() -> PathBuf {
+fn unique_temp_dir(scenario: &str) -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after epoch")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "octofriend-agentd-conversation-history-{}-{nonce}",
+        "octofriend-agentd-conversation-history-{scenario}-{}-{nonce}",
         std::process::id()
     ))
 }
@@ -34,7 +34,7 @@ fn request(method: &str, id: &str, params: serde_json::Value) -> serde_json::Val
 
 #[test]
 fn conversation_history_requests_use_storage() {
-    let temp_dir = unique_temp_dir();
+    let temp_dir = unique_temp_dir("records");
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
     let database_path = temp_dir.join("conversation.sqlite");
 
@@ -96,7 +96,7 @@ fn conversation_history_requests_use_storage() {
 
 #[test]
 fn conversation_session_requests_create_replace_and_load_snapshots() {
-    let temp_dir = unique_temp_dir();
+    let temp_dir = unique_temp_dir("session");
     fs::create_dir_all(&temp_dir).expect("temp dir should be created");
     let database_path = temp_dir.join("session.sqlite");
 

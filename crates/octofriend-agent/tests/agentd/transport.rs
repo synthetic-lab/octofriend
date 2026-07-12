@@ -3,11 +3,11 @@ use std::fs;
 #[cfg(not(windows))]
 use octofriend_agent::runtime::{
     AGENTD_TRANSPORT_DOCKER_KILL_METHOD, AGENTD_TRANSPORT_DOCKER_METHOD,
-    AGENTD_TRANSPORT_DOCKER_RUN_METHOD,
+    AGENTD_TRANSPORT_DOCKER_RUN_METHOD, AGENTD_TRANSPORT_SSH_METHOD,
 };
 use octofriend_agent::runtime::{
     AGENTD_TRANSPORT_FIND_FILES_METHOD, AGENTD_TRANSPORT_GET_ENV_METHOD,
-    AGENTD_TRANSPORT_LOCAL_METHOD, AGENTD_TRANSPORT_SSH_METHOD, handle_agentd_json_rpc_line,
+    AGENTD_TRANSPORT_LOCAL_METHOD, handle_agentd_json_rpc_line,
 };
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
