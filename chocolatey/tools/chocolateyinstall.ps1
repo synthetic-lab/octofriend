@@ -1,3 +1,5 @@
+#requires -version 5.1
+
 $ErrorActionPreference = "Stop"
 $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $architecture = $env:PROCESSOR_ARCHITEW6432
