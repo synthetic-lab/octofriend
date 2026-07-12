@@ -14,8 +14,9 @@ use super::{
     AGENTD_CONFIG_MIGRATE_METHOD, AGENTD_CONFIG_RUN_NOTIFY_METHOD, AGENTD_CONFIG_SANITIZE_METHOD,
     AGENTD_CONFIG_SEARCH_METHOD, AGENTD_CONFIG_SELECT_MODEL_METHOD, AGENTD_CONFIG_WRITE_KEY_METHOD,
     AGENTD_CONVERSATION_HISTORY_APPEND_METHOD, AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD,
-    AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD, AGENTD_INITIALIZE_METHOD,
-    AGENTD_INPUT_HISTORY_APPEND_METHOD, AGENTD_INPUT_HISTORY_LOAD_METHOD,
+    AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD, AGENTD_CONVERSATION_SESSION_CREATE_METHOD,
+    AGENTD_CONVERSATION_SESSION_LOAD_METHOD, AGENTD_CONVERSATION_SESSION_REPLACE_METHOD,
+    AGENTD_INITIALIZE_METHOD, AGENTD_INPUT_HISTORY_APPEND_METHOD, AGENTD_INPUT_HISTORY_LOAD_METHOD,
     AGENTD_MODEL_CONNECTION_TEST_METHOD, AGENTD_MODEL_DISCOVER_METHOD,
     AGENTD_MODEL_PROVIDER_CATALOG_METHOD, AGENTD_MODEL_PROVIDER_FOR_BASE_URL_METHOD,
     AGENTD_MODEL_PROVIDER_KEY_FROM_NAME_METHOD, AGENTD_MODEL_RECOMMENDED_MODEL_METHOD,
@@ -28,8 +29,8 @@ use super::{
     AGENTD_TRANSPORT_DOCKER_RUN_METHOD, AGENTD_TRANSPORT_FIND_FILES_METHOD,
     AGENTD_TRANSPORT_GET_ENV_METHOD, AGENTD_TRANSPORT_LOCAL_METHOD, AGENTD_TRANSPORT_SSH_METHOD,
     AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD, AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD,
-    AgentdJsonRpcHandlerState, AgentdRequest, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR,
-    a2a_get_task_response, a2a_send_message_response, acp_initialize_response,
+    AgentdEventSink, AgentdJsonRpcHandlerState, AgentdRequest, INVALID_REQUEST, METHOD_NOT_FOUND,
+    PARSE_ERROR, a2a_get_task_response, a2a_send_message_response, acp_initialize_response,
     acp_session_new_response, acp_session_prompt_response,
     autofix::autofix_edit_response,
     autofix::autofix_json_response,
@@ -57,13 +58,16 @@ use super::{
     history::conversation_history_append_response,
     history::conversation_history_llm_payloads_response,
     history::conversation_history_records_response,
+    history::conversation_session_create_response,
+    history::conversation_session_load_response,
+    history::conversation_session_replace_response,
     initialize_result,
     input::input_history_append_response,
     input::input_history_load_response,
     octofriend::octo_lower_response,
     render_tool_call_response,
-    run_log::trajectory_arc_response,
     run_log::trajectory_finish_response,
+    run_log::{trajectory_arc_response, trajectory_arc_response_with_events},
     serialize_response,
     skills::skill_discover_response,
     stream::provider_compiler_complete_response,
@@ -91,6 +95,7 @@ fn cloned_params(params: Option<&Value>) -> Option<Value> {
 pub(super) fn handle_agentd_json_rpc_line_with_state(
     line: &str,
     state: AgentdJsonRpcHandlerState<'_>,
+    events: AgentdEventSink<'_>,
 ) -> Option<String> {
     let Ok(request) = serde_json::from_str::<AgentdRequest>(line) else {
         return Some(serialize_response(create_json_rpc_error(
@@ -121,7 +126,7 @@ pub(super) fn handle_agentd_json_rpc_line_with_state(
         return Some(serialize_response(response));
     }
 
-    let response = agentd_json_rpc_response(id.clone(), method, request.params.as_ref())
+    let response = agentd_json_rpc_response(id.clone(), method, request.params.as_ref(), events)
         .unwrap_or_else(|| create_json_rpc_error(id, METHOD_NOT_FOUND, "Method not found", None));
     Some(serialize_response(response))
 }
@@ -156,10 +161,22 @@ fn agentd_json_rpc_response(
     id: JsonRpcId,
     method: &str,
     params: Option<&Value>,
+    events: AgentdEventSink<'_>,
 ) -> Option<JsonRpcResponse> {
-    agentd_storage_json_rpc_response(id.clone(), method, params)
-        .or_else(|| agentd_config_json_rpc_response(id.clone(), method, params))
-        .or_else(|| agentd_runtime_json_rpc_response(id.clone(), method, params))
+    if let Some(response) = agentd_storage_json_rpc_response(id.clone(), method, params) {
+        return Some(response);
+    }
+    if let Some(response) = agentd_config_json_rpc_response(id.clone(), method, params) {
+        return Some(response);
+    }
+    if method == AGENTD_TRAJECTORY_ARC_METHOD {
+        return Some(trajectory_arc_response_with_events(
+            id,
+            cloned_params(params),
+            events,
+        ));
+    }
+    agentd_runtime_json_rpc_response(id.clone(), method, params)
         .or_else(|| agentd_model_json_rpc_response(id.clone(), method, params))
         .or_else(|| agentd_misc_json_rpc_response(id, method, params))
 }
@@ -183,6 +200,18 @@ fn agentd_storage_json_rpc_response(
         AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD => Some(
             update_notifications_mark_seen_response(id, cloned_params(params)),
         ),
+        AGENTD_CONVERSATION_SESSION_CREATE_METHOD => Some(conversation_session_create_response(
+            id,
+            cloned_params(params),
+        )),
+        AGENTD_CONVERSATION_SESSION_LOAD_METHOD => Some(conversation_session_load_response(
+            id,
+            cloned_params(params),
+        )),
+        AGENTD_CONVERSATION_SESSION_REPLACE_METHOD => Some(conversation_session_replace_response(
+            id,
+            cloned_params(params),
+        )),
         AGENTD_CONVERSATION_HISTORY_APPEND_METHOD => Some(conversation_history_append_response(
             id,
             cloned_params(params),

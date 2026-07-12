@@ -63,6 +63,7 @@ pub fn open_sqlite_database(path: impl AsRef<Path>) -> StorageResult<Connection>
     }
 
     let connection = Connection::open(path)?;
+    connection.execute_batch("pragma foreign_keys = on;")?;
     connection.execute_batch(INPUT_HISTORY_SCHEMA)?;
     connection.execute_batch(UPDATE_NOTIFICATIONS_SCHEMA)?;
     connection.execute_batch(CONVERSATION_HISTORY_SCHEMA)?;

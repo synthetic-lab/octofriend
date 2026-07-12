@@ -33,3 +33,19 @@ impl ConversationHistoryKind {
         }
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConversationSessionMetadata {
+    pub session_id: String,
+    pub cwd: String,
+    pub launch_json: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConversationRevision {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub created_at: i64,
+}

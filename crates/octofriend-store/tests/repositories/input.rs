@@ -14,7 +14,10 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 fn temp_database_path(name: &str) -> PathBuf {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir()
-        .join(format!("octofriend-store-{name}-{}-{id}", std::process::id()))
+        .join(format!(
+            "octofriend-store-{name}-{}-{id}",
+            std::process::id()
+        ))
         .join("history.sqlite")
 }
 

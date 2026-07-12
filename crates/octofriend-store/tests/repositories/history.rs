@@ -144,3 +144,143 @@ fn default_path_preserves_legacy_octofriend_sqlite_location() {
 
     assert_eq!(default_database_path(), expected);
 }
+
+#[test]
+fn rejects_session_revisions_with_unknown_parents() -> TestResult {
+    let database_path = temp_database_path("session-invalid-parent");
+    let repository = ConversationHistoryRepository::open(
+        ConversationHistoryOptions::with_database_path(&database_path),
+    )?;
+    repository.create_session("session-parent", "/workspace", "{}", 100)?;
+
+    let error = repository
+        .append_revision(&[], Some(999), 101)
+        .expect_err("unknown parent should fail");
+    assert!(error.to_string().contains("FOREIGN KEY constraint failed"));
+    assert!(repository.revisions()?.is_empty());
+
+    remove_database_root(&database_path);
+    Ok(())
+}
+
+#[test]
+fn preserves_sibling_session_revisions_and_loads_the_newest_leaf() -> TestResult {
+    let database_path = temp_database_path("session-branches");
+    let repository = ConversationHistoryRepository::open(
+        ConversationHistoryOptions::with_database_path(&database_path),
+    )?;
+    repository.create_session("session-branches", "/workspace", "{}", 100)?;
+
+    let root = repository.append_revision(
+        &[ConversationHistoryRecord {
+            id: 0,
+            kind: ConversationHistoryKind::Notification,
+            payload: Some("root".into()),
+        }],
+        None,
+        101,
+    )?;
+    let left = repository.append_revision(
+        &[ConversationHistoryRecord {
+            id: 0,
+            kind: ConversationHistoryKind::Notification,
+            payload: Some("left".into()),
+        }],
+        Some(root),
+        102,
+    )?;
+    let right = repository.append_revision(
+        &[ConversationHistoryRecord {
+            id: 0,
+            kind: ConversationHistoryKind::Notification,
+            payload: Some("right".into()),
+        }],
+        Some(root),
+        103,
+    )?;
+
+    assert_eq!(
+        repository.revisions()?,
+        vec![
+            octofriend_store::record::conversation::ConversationRevision {
+                id: root,
+                parent_id: None,
+                created_at: 101,
+            },
+            octofriend_store::record::conversation::ConversationRevision {
+                id: left,
+                parent_id: Some(root),
+                created_at: 102,
+            },
+            octofriend_store::record::conversation::ConversationRevision {
+                id: right,
+                parent_id: Some(root),
+                created_at: 103,
+            },
+        ]
+    );
+    let (revision_id, records) = repository.latest_revision_records()?;
+    assert_eq!(revision_id, Some(right));
+    assert_eq!(records[0].payload.as_deref(), Some("right"));
+
+    remove_database_root(&database_path);
+    Ok(())
+}
+
+#[test]
+fn creates_session_metadata_and_atomically_replaces_history() -> TestResult {
+    let database_path = temp_database_path("session-snapshot");
+    let repository = ConversationHistoryRepository::open(
+        ConversationHistoryOptions::with_database_path(&database_path),
+    )?;
+
+    repository.create_session(
+        "session-123",
+        "/workspace/project",
+        r#"{"kind":"local","unchained":false}"#,
+        100,
+    )?;
+    assert_eq!(
+        repository.session_metadata()?,
+        Some(
+            octofriend_store::record::conversation::ConversationSessionMetadata {
+                session_id: "session-123".into(),
+                cwd: "/workspace/project".into(),
+                launch_json: r#"{"kind":"local","unchained":false}"#.into(),
+                created_at: 100,
+                updated_at: 100,
+            }
+        )
+    );
+
+    repository.append_notification("obsolete")?;
+    repository.replace_records(
+        &[
+            ConversationHistoryRecord {
+                id: 999,
+                kind: ConversationHistoryKind::LlmIr,
+                payload: Some(r#"{"role":"user","content":"hello"}"#.into()),
+            },
+            ConversationHistoryRecord {
+                id: 1000,
+                kind: ConversationHistoryKind::RequestFailed,
+                payload: None,
+            },
+        ],
+        200,
+    )?;
+
+    let records = repository.records()?;
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].id, 2);
+    assert_eq!(records[0].kind, ConversationHistoryKind::LlmIr);
+    assert_eq!(
+        records[0].payload.as_deref(),
+        Some(r#"{"role":"user","content":"hello"}"#)
+    );
+    assert_eq!(records[1].kind, ConversationHistoryKind::RequestFailed);
+    assert_eq!(repository.session_metadata()?.unwrap().updated_at, 200);
+
+    remove_database_root(&database_path);
+    Ok(())
+}

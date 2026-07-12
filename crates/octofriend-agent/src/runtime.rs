@@ -63,7 +63,7 @@ use compaction::{
 use octofriend::octo_lower_response;
 use run_log::trajectory_arc_result_from_value;
 use skills::skill_discover_response;
-use stream::provider_compiler_complete_response;
+use stream::provider_compiler_complete_response_with_events;
 use system_prompt::system_prompt_response;
 
 pub const A2A_SEND_MESSAGE_METHOD: &str = "SendMessage";
@@ -78,6 +78,12 @@ pub const AGENTD_UPDATE_NOTIFICATIONS_READ_METHOD: &str =
     "octofriend.agentd/updateNotificationsRead";
 pub const AGENTD_UPDATE_NOTIFICATIONS_MARK_SEEN_METHOD: &str =
     "octofriend.agentd/updateNotificationsMarkSeen";
+pub const AGENTD_CONVERSATION_SESSION_CREATE_METHOD: &str =
+    "octofriend.agentd/conversationSessionCreate";
+pub const AGENTD_CONVERSATION_SESSION_LOAD_METHOD: &str =
+    "octofriend.agentd/conversationSessionLoad";
+pub const AGENTD_CONVERSATION_SESSION_REPLACE_METHOD: &str =
+    "octofriend.agentd/conversationSessionReplace";
 pub const AGENTD_CONVERSATION_HISTORY_APPEND_METHOD: &str =
     "octofriend.agentd/conversationHistoryAppend";
 pub const AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD: &str =
@@ -139,6 +145,7 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
 type AgentdJsonRpcHandlerState<'a> = Option<&'a mut AgentdJsonRpcHandler>;
+type AgentdEventSink<'a> = Option<&'a mut dyn FnMut(Value)>;
 type AgentdJsonRpcHandlerView<'a> = Option<&'a AgentdJsonRpcHandler>;
 
 #[derive(Default)]
@@ -149,7 +156,15 @@ pub struct AgentdJsonRpcHandler {
 
 impl AgentdJsonRpcHandler {
     pub fn handle_line(&mut self, line: &str) -> Option<String> {
-        dispatch::handle_agentd_json_rpc_line_with_state(line, Some(self))
+        dispatch::handle_agentd_json_rpc_line_with_state(line, Some(self), None)
+    }
+
+    fn handle_line_with_events(
+        &mut self,
+        line: &str,
+        events: AgentdEventSink<'_>,
+    ) -> Option<String> {
+        dispatch::handle_agentd_json_rpc_line_with_state(line, Some(self), events)
     }
 }
 
@@ -170,7 +185,7 @@ struct RenderToolCallParams {
 }
 
 pub fn handle_agentd_json_rpc_line(line: &str) -> Option<String> {
-    dispatch::handle_agentd_json_rpc_line_with_state(line, None)
+    dispatch::handle_agentd_json_rpc_line_with_state(line, None, None)
 }
 
 pub fn run_agentd_jsonl(
@@ -180,7 +195,28 @@ pub fn run_agentd_jsonl(
     let mut handler = AgentdJsonRpcHandler::default();
     for line in reader.lines() {
         let line = line?;
-        if let Some(response) = handler.handle_line(&line) {
+        let mut write_error = None;
+        let response = handler.handle_line_with_events(
+            &line,
+            Some(&mut |event| {
+                if write_error.is_some() {
+                    return;
+                }
+                let notification = json!({
+                    "jsonrpc": JSON_RPC_VERSION,
+                    "method": "octofriend.agentd/trajectoryEvent",
+                    "params": { "event": event },
+                });
+                if let Err(error) = writeln!(writer, "{notification}").and_then(|()| writer.flush())
+                {
+                    write_error = Some(error);
+                }
+            }),
+        );
+        if let Some(error) = write_error {
+            return Err(error);
+        }
+        if let Some(response) = response {
             writeln!(writer, "{response}")?;
             writer.flush()?;
         }

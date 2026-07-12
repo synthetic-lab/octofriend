@@ -1,6 +1,8 @@
 use octofriend_agent::runtime::{
     AGENTD_CONVERSATION_HISTORY_APPEND_METHOD, AGENTD_CONVERSATION_HISTORY_LLM_PAYLOADS_METHOD,
-    AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD, handle_agentd_json_rpc_line,
+    AGENTD_CONVERSATION_HISTORY_RECORDS_METHOD, AGENTD_CONVERSATION_SESSION_CREATE_METHOD,
+    AGENTD_CONVERSATION_SESSION_LOAD_METHOD, AGENTD_CONVERSATION_SESSION_REPLACE_METHOD,
+    handle_agentd_json_rpc_line,
 };
 use serde_json::json;
 use std::fs;
@@ -85,6 +87,65 @@ fn conversation_history_requests_use_storage() {
             "payloads": [
                 "{\"role\":\"user\",\"content\":\"hello\"}",
                 "{\"role\":\"assistant\",\"content\":\"hi\"}"
+            ]
+        })
+    );
+
+    fs::remove_dir_all(&temp_dir).expect("temp dir should be removed");
+}
+
+#[test]
+fn conversation_session_requests_create_replace_and_load_snapshots() {
+    let temp_dir = unique_temp_dir();
+    fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+    let database_path = temp_dir.join("session.sqlite");
+
+    let created = request(
+        AGENTD_CONVERSATION_SESSION_CREATE_METHOD,
+        "session-create",
+        json!({
+            "databasePath": database_path,
+            "sessionId": "session-123",
+            "cwd": "/workspace/project",
+            "launchJson": "{\"kind\":\"local\",\"unchained\":false}",
+            "timestamp": 100
+        }),
+    );
+    assert_eq!(created["result"], json!({}));
+
+    let replaced = request(
+        AGENTD_CONVERSATION_SESSION_REPLACE_METHOD,
+        "session-replace",
+        json!({
+            "databasePath": database_path,
+            "timestamp": 200,
+            "records": [
+                { "kind": "llm-ir", "payload": "{\"role\":\"user\",\"content\":\"hello\"}" },
+                { "kind": "notification", "payload": "resumed" }
+            ]
+        }),
+    );
+    assert_eq!(replaced["result"], json!({ "revisionId": 1 }));
+
+    let loaded = request(
+        AGENTD_CONVERSATION_SESSION_LOAD_METHOD,
+        "session-load",
+        json!({ "databasePath": database_path }),
+    );
+    assert_eq!(
+        loaded["result"],
+        json!({
+            "metadata": {
+                "sessionId": "session-123",
+                "cwd": "/workspace/project",
+                "launchJson": "{\"kind\":\"local\",\"unchained\":false}",
+                "createdAt": 100,
+                "updatedAt": 200
+            },
+            "revisionId": 1,
+            "records": [
+                { "id": 0, "kind": "llm-ir", "payload": "{\"role\":\"user\",\"content\":\"hello\"}" },
+                { "id": 1, "kind": "notification", "payload": "resumed" }
             ]
         })
     );
