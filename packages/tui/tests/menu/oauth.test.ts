@@ -69,6 +69,36 @@ describe("provider OAuth auto-detection", () => {
 	});
 });
 
+describe("ChatGPT OAuth token claims", () => {
+	it("extracts account ids from supported JWT claim layouts", async () => {
+		const { extractCodexAccountId, parseCodexJwtClaims } = await import(
+			"../../src/menu/models/codex-oauth.ts"
+		);
+		const token = [
+			Buffer.from("{}").toString("base64url"),
+			Buffer.from(
+				JSON.stringify({
+					"https://api.openai.com/auth": {
+						chatgpt_account_id: "account-123",
+					},
+				}),
+			).toString("base64url"),
+			"signature",
+		].join(".");
+		const claims = parseCodexJwtClaims(token);
+		expect(claims).toBeDefined();
+		expect(extractCodexAccountId(expectPresent(claims))).toBe("account-123");
+	});
+
+	it("rejects malformed JWT payloads without throwing", async () => {
+		const { parseCodexJwtClaims } = await import(
+			"../../src/menu/models/codex-oauth.ts"
+		);
+		expect(parseCodexJwtClaims("not-a-jwt")).toBeUndefined();
+		expect(parseCodexJwtClaims("e30.invalid.signature")).toBeUndefined();
+	});
+});
+
 describe("ChatGPT OAuth errors", () => {
 	it("formats structured provider errors instead of displaying [object Object]", async () => {
 		const { formatCodexOAuthError } = await import(

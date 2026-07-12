@@ -66,14 +66,60 @@ function openBrowser(url: string): void {
 	});
 }
 
+export type CodexIdTokenClaims = {
+	chatgpt_account_id?: string;
+	organizations?: Array<{ id: string }>;
+	"https://api.openai.com/auth"?: {
+		chatgpt_account_id?: string;
+	};
+};
+
+export function parseCodexJwtClaims(
+	token: string,
+): CodexIdTokenClaims | undefined {
+	const parts = token.split(".");
+	if (parts.length !== 3 || !parts[1]) return undefined;
+	try {
+		return JSON.parse(
+			Buffer.from(parts[1], "base64url").toString(),
+		) as CodexIdTokenClaims;
+	} catch {
+		return undefined;
+	}
+}
+
+export function extractCodexAccountId(
+	claims: CodexIdTokenClaims,
+): string | undefined {
+	return (
+		claims.chatgpt_account_id ??
+		claims["https://api.openai.com/auth"]?.chatgpt_account_id ??
+		claims.organizations?.[0]?.id
+	);
+}
+
+function accountIdFromTokenResponse(
+	token: Record<string, unknown>,
+): string | undefined {
+	if (typeof token.account_id === "string") return token.account_id;
+	for (const field of ["id_token", "access_token"]) {
+		const value = token[field];
+		if (typeof value !== "string") continue;
+		const claims = parseCodexJwtClaims(value);
+		if (!claims) continue;
+		const accountId = extractCodexAccountId(claims);
+		if (accountId) return accountId;
+	}
+	return undefined;
+}
+
 async function writeTokens(tokens: Record<string, unknown>): Promise<void> {
 	const path = join(homedir(), ".config", "octofriend", "oauth.json");
 	await mkdir(dirname(path), { recursive: true });
-	await writeFile(
-		path,
-		`${JSON.stringify({ codex: tokens }, null, 2)}\n`,
-		"utf8",
-	);
+	await writeFile(path, `$${JSON.stringify({ codex: tokens }, null, 2)}\n`, {
+		encoding: "utf8",
+		mode: 0o600,
+	});
 }
 
 type DeviceAuthorization = {
@@ -152,8 +198,7 @@ async function exchangeAuthorizationCode(
 		access: token.access_token,
 		refresh: token.refresh_token,
 		expires: Date.now() + Number(token.expires_in ?? 3600) * 1000,
-		accountId:
-			typeof token.account_id === "string" ? token.account_id : undefined,
+		accountId: accountIdFromTokenResponse(token),
 	});
 }
 
