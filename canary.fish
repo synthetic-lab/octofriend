@@ -29,7 +29,7 @@ function canary-octofriend
     end
 
     set -gx octofriend_CHANNEL canary
-    bun "$_octofriend_DIR/packages/octofriend-cli/src/bin.ts" $argv
+    bun "$_octofriend_DIR/packages/cli/src/bin.ts" $argv
     set -l canary_status $status
 
     if test "$had_channel" = 1

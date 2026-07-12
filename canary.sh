@@ -14,7 +14,7 @@ fi
 
 function canary-octofriend() {
   (cd "$_octofriend_DIR" && bun run typecheck) || return 1
-  octofriend_CHANNEL=canary bun "$_octofriend_DIR/packages/octofriend-cli/src/bin.ts" "$@"
+  octofriend_CHANNEL=canary bun "$_octofriend_DIR/packages/cli/src/bin.ts" "$@"
 }
 
 function canary-octo() {

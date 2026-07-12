@@ -28,7 +28,7 @@ function Invoke-Canaryoctofriend {
     $previousChannel = $env:octofriend_CHANNEL
     try {
         $env:octofriend_CHANNEL = "canary"
-        bun (Join-Path $script:octofriendCanaryDir "packages/octofriend-cli/src/bin.ts") @Arguments
+        bun (Join-Path $script:octofriendCanaryDir "packages/cli/src/bin.ts") @Arguments
         $canaryExitCode = $LASTEXITCODE
         if ($canaryExitCode -ne 0) {
             Write-Error "octofriend canary command failed with exit code $canaryExitCode" -ErrorAction Stop
