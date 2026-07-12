@@ -1,11 +1,11 @@
 import parseGitDiff from "parse-git-diff";
-import { asynctryexpr } from "../../packages/tui/src/shell/result";
+import { asynctryexpr } from "../../packages/tui/src/shell/result.ts";
 import {
 	getAllCommits,
 	getCommitDiff,
 	getFileContentsBeforeAfter,
-} from "./git";
-import { parseLines } from "./parse";
+} from "./git.ts";
+import { parseLines } from "./parse.ts";
 
 type DiffEdit = {
 	search: string;

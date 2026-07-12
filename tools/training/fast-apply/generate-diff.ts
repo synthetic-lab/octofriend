@@ -4,16 +4,16 @@ import { fileURLToPath } from "node:url";
 import {
 	type DiffApplyResponseValue,
 	fixEditPrompt,
-} from "../../../packages/tui/src/runtime/prompts/autofix/main";
-import { type Diff, genDiffs } from "../generate-edits";
-import { parseLines } from "../parse";
+} from "../../../packages/tui/src/runtime/prompts/autofix/main.ts";
+import { type Diff, genDiffs } from "../generate-edits.ts";
+import { parseLines } from "../parse.ts";
 import {
 	coinFlip,
 	oneToN,
 	percentChance,
 	pickRandom,
 	randomIndex,
-} from "../random";
+} from "../random.ts";
 import { cutIndex, insertAt } from "../str.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

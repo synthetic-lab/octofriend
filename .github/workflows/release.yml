@@ -51,12 +51,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-24.04, target_id: linux-x64, bun_target: bun-linux-x64-baseline, archive: tar }
-          - { runner: ubuntu-24.04-arm, target_id: linux-arm64, bun_target: bun-linux-arm64, archive: tar }
-          - { runner: macos-15-intel, target_id: macos-x64, bun_target: bun-darwin-x64, archive: tar }
-          - { runner: macos-15, target_id: macos-arm64, bun_target: bun-darwin-arm64, archive: tar }
-          - { runner: windows-2025, target_id: windows-x64, bun_target: bun-windows-x64-baseline, archive: zip }
-          - { runner: windows-11-arm, target_id: windows-arm64, bun_target: bun-windows-arm64, archive: zip }
+          - {
+              runner: ubuntu-24.04,
+              target_id: linux-x64,
+              bun_target: bun-linux-x64-baseline,
+              archive: tar,
+            }
+          - {
+              runner: ubuntu-24.04-arm,
+              target_id: linux-arm64,
+              bun_target: bun-linux-arm64,
+              archive: tar,
+            }
+          - {
+              runner: macos-15-intel,
+              target_id: macos-x64,
+              bun_target: bun-darwin-x64,
+              archive: tar,
+            }
+          - {
+              runner: macos-15,
+              target_id: macos-arm64,
+              bun_target: bun-darwin-arm64,
+              archive: tar,
+            }
+          - {
+              runner: windows-2025,
+              target_id: windows-x64,
+              bun_target: bun-windows-x64-baseline,
+              archive: zip,
+            }
+          - {
+              runner: windows-11-arm,
+              target_id: windows-arm64,
+              bun_target: bun-windows-arm64,
+              archive: zip,
+            }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7.0.0

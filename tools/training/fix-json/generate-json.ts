@@ -2,19 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import json5 from "json5";
-import { tryexpr } from "../../../packages/tui/src/shell/result";
 import {
 	fixJsonPrompt,
 	type JsonFixResponse,
-} from "../../../packages/tui/src/runtime/prompts/autofix/main";
-import { genDiffs } from "../generate-edits";
+} from "../../../packages/tui/src/runtime/prompts/autofix/main.ts";
+import { tryexpr } from "../../../packages/tui/src/shell/result.ts";
+import { genDiffs } from "../generate-edits.ts";
 import {
 	percentChance,
 	pickRandom,
 	randomIndex,
 	randomLowercase,
 	zeroToN,
-} from "../random";
+} from "../random.ts";
 import { cutIndex, insertAt } from "../str.ts";
 import { generateJSON } from "./json-generator.ts";
 import {
