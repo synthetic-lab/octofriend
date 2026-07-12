@@ -1,4 +1,6 @@
-use octofriend_agent::rendering_model::{build_file_render_model, file_language, split_trimmed_line};
+use octofriend_agent::rendering_model::{
+    build_file_render_model, file_language, split_trimmed_line,
+};
 
 #[test]
 fn file_render_model_numbers_lines_and_preserves_trimmed_segments() {

@@ -9,6 +9,8 @@ mod http_stream;
 #[path = "stream/stream.rs"]
 mod stream;
 
-pub(in crate::runtime) use compiler_complete::provider_compiler_complete_response;
+pub(in crate::runtime) use compiler_complete::{
+    provider_compiler_complete_response, provider_compiler_complete_response_with_events,
+};
 pub(in crate::runtime) use compiler_finalize::provider_compiler_finalize_response;
 pub(in crate::runtime) use http_stream::ProviderHttpStreamRequest;

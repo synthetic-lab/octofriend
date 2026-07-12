@@ -7,7 +7,9 @@ use octofriend_models::compiler::{
     build_tool_parse_inputs, normalize_openai_strict_function_arguments, preparse_tool_call,
 };
 use octofriend_models::providers::stream::ProviderStreamTool;
-use octofriend_tools::runtime::{ToolBuilder, parse_tool_arguments, validate_json_schema_arguments};
+use octofriend_tools::runtime::{
+    ToolBuilder, parse_tool_arguments, validate_json_schema_arguments,
+};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;

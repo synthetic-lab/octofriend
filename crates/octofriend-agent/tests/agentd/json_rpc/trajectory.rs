@@ -547,16 +547,39 @@ fn trajectory_arc_runs_forgotten_check_before_returning_input() {
     })
     .to_string();
 
-    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let mut output = Vec::new();
+    octofriend_agent::runtime::run_agentd_jsonl(
+        std::io::Cursor::new(format!("{line}\n")),
+        &mut output,
+    )
+    .expect("agentd JSONL should run");
     let requests = server.join().expect("test server should finish");
-    let value: serde_json::Value =
-        serde_json::from_str(&response).expect("response should be json");
+    let messages = String::from_utf8(output)
+        .expect("agentd output should be UTF-8")
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("line should be JSON"))
+        .collect::<Vec<_>>();
+    let value = messages.last().expect("response should be present");
+    let streamed = &messages[..messages.len().saturating_sub(1)];
 
     assert_eq!(requests.len(), 2);
     assert!(requests[0].contains("finish the task"));
     assert!(!requests[0].contains("Before returning control to the user"));
     assert!(requests[1].contains("first answer"));
     assert!(requests[1].contains("Before returning control to the user"));
+    assert_eq!(
+        streamed
+            .iter()
+            .filter_map(|message| message.pointer("/params/event/event/text"))
+            .filter_map(serde_json::Value::as_str)
+            .collect::<Vec<_>>(),
+        vec!["first answer", "checked answer"]
+    );
+    assert!(
+        streamed
+            .iter()
+            .all(|message| message["method"] == "octofriend.agentd/trajectoryEvent")
+    );
     assert_eq!(value["id"], "trajectory-arc-forgotten-check");
     assert_eq!(
         value["result"]["reason"],
@@ -584,9 +607,11 @@ fn trajectory_arc_runs_forgotten_check_before_returning_input() {
             "start-response",
             "response-progress",
             "token-usage",
+            "provider-metrics",
             "start-response",
             "response-progress",
-            "token-usage"
+            "token-usage",
+            "provider-metrics"
         ]
     );
 }
@@ -694,10 +719,100 @@ fn trajectory_arc_auto_compacts_before_main_provider_request() {
             "start-compaction",
             "compaction-progress",
             "token-usage",
+            "provider-metrics",
             "compaction-parsed",
             "start-response",
             "response-progress",
-            "token-usage"
+            "token-usage",
+            "provider-metrics"
+        ]
+    );
+}
+
+#[test]
+fn trajectory_arc_compact_only_forces_compaction_without_main_provider_request() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should expose local address");
+    let server = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("provider request should arrive");
+        let mut request = [0_u8; 16384];
+        let bytes_read = stream
+            .read(&mut request)
+            .expect("request should be readable");
+        let request = String::from_utf8_lossy(&request[..bytes_read]).to_string();
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"manual summary\"}}]}\n\ndata: [DONE]\n\n";
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("response should be writable");
+        request
+    });
+
+    let line = json!({
+        "jsonrpc": "2.0", "id": "trajectory-arc-compact-only",
+        "method": octofriend_agent::runtime::AGENTD_TRAJECTORY_ARC_METHOD,
+        "params": {
+            "cwd": ".", "apiKey": "test-key", "compactOnly": true,
+            "model": { "type": "standard", "baseUrl": format!("http://{address}/v1"), "model": "gpt-test", "context": 100000 },
+            "messages": [
+                { "role": "user", "content": [{ "type": "text", "content": "old history" }] },
+                { "role": "user", "content": [{ "type": "text", "content": "recent history" }] }
+            ],
+            "config": {
+                "yourName": "Test User",
+                "compaction": { "compactOldestPercent": 50 }
+            }
+        }
+    }).to_string();
+
+    let response = handle_agentd_json_rpc_line(&line).expect("request should produce response");
+    let request = server.join().expect("test server should finish");
+    let value: serde_json::Value =
+        serde_json::from_str(&response).expect("response should be json");
+
+    assert!(request.contains("Generate a summary of everything"));
+    assert!(request.contains("old history"));
+    assert!(!request.contains("recent history"));
+    let parsed = value["result"]["events"]
+        .as_array()
+        .and_then(|events| {
+            events
+                .iter()
+                .find(|event| event["type"] == "compaction-parsed")
+        })
+        .expect("compaction event should be present");
+    assert_eq!(parsed["history"][0]["role"], "checkpoint");
+    assert_eq!(
+        parsed["history"][1]["content"][0]["content"],
+        "recent history"
+    );
+    assert_eq!(value["result"]["irs"], json!([]));
+    assert_eq!(
+        value["result"]["reason"],
+        json!({ "type": "needs-response" })
+    );
+    assert_eq!(
+        value["result"]["events"]
+            .as_array()
+            .expect("events should be array")
+            .iter()
+            .filter_map(|event| event.get("type").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>(),
+        vec![
+            "start-compaction",
+            "compaction-progress",
+            "provider-metrics",
+            "compaction-parsed"
         ]
     );
 }

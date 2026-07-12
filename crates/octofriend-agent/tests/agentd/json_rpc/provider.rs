@@ -54,19 +54,28 @@ fn provider_compiler_complete_executes_stream_and_finishes_output_through_agentd
         assert!(request_text.contains("authorization: Bearer test-key"));
         assert!(request_text.contains("\"model\":\"gpt-test\""));
 
-        let body = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n",
+        let first = "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n\n";
+        let remaining = concat!(
             "data: {\"usage\":{\"prompt_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":2},\"completion_tokens\":3}}\n\n",
             "data: [DONE]\n\n"
         );
-        let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nx-provider-run: present\r\ncontent-length: {}\r\n\r\n{}",
-            body.len(),
-            body
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nx-provider-run: present\r\ncontent-length: {}\r\n\r\n",
+            first.len() + remaining.len()
         );
         stream
-            .write_all(response.as_bytes())
-            .expect("test server should write response");
+            .write_all(headers.as_bytes())
+            .expect("headers should write");
+        stream.flush().expect("headers should flush");
+        thread::sleep(std::time::Duration::from_millis(20));
+        stream
+            .write_all(first.as_bytes())
+            .expect("first token should write");
+        stream.flush().expect("first token should flush");
+        thread::sleep(std::time::Duration::from_millis(20));
+        stream
+            .write_all(remaining.as_bytes())
+            .expect("remaining events should write");
     });
 
     let line = json!({
@@ -102,6 +111,14 @@ fn provider_compiler_complete_executes_stream_and_finishes_output_through_agentd
     assert_eq!(value["result"]["usage"]["output"], 3);
     assert_eq!(value["result"]["headers"]["x-provider-run"], "present");
     assert_eq!(value["result"]["unexpectedToolCall"], false);
+    assert!(value["result"]["metrics"]["ttftMs"].as_u64().unwrap_or(0) >= 10);
+    assert!(
+        value["result"]["metrics"]["durationMs"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 30
+    );
+    assert_eq!(value["result"]["metrics"]["outputTokens"], 3);
     assert_eq!(
         value["result"]["events"],
         json!([

@@ -9,14 +9,14 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 const INVALID_PARAMS: i64 = -32602;
-const AUTOCOMPACT_THRESHOLD_NUMERATOR: usize = 9;
-const AUTOCOMPACT_THRESHOLD_DENOMINATOR: usize = 10;
+const DEFAULT_AUTOCOMPACT_THRESHOLD_PERCENT: usize = 90;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompactionDecisionParams {
     max_context_window: usize,
     messages: Vec<Value>,
+    auto_threshold_percent: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,7 +42,14 @@ pub(super) fn compaction_decision_response(
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
 
-    let max_allowed_tokens = autocompact_max_allowed_tokens(params.max_context_window);
+    let threshold_percent = params
+        .auto_threshold_percent
+        .unwrap_or(DEFAULT_AUTOCOMPACT_THRESHOLD_PERCENT);
+    if !(1..=100).contains(&threshold_percent) {
+        return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
+    }
+    let max_allowed_tokens =
+        autocompact_max_allowed_tokens(params.max_context_window, threshold_percent);
     let estimated_tokens = approximate_ts_ir_tokens(&params.messages);
 
     create_json_rpc_success(
@@ -112,9 +119,8 @@ pub(super) fn compaction_checkpoint_content_response(
     )
 }
 
-fn autocompact_max_allowed_tokens(max_context_window: usize) -> usize {
-    max_context_window.saturating_mul(AUTOCOMPACT_THRESHOLD_NUMERATOR)
-        / AUTOCOMPACT_THRESHOLD_DENOMINATOR
+fn autocompact_max_allowed_tokens(max_context_window: usize, threshold_percent: usize) -> usize {
+    max_context_window.saturating_mul(threshold_percent) / 100
 }
 
 fn approximate_ts_ir_tokens(messages: &[Value]) -> usize {

@@ -10,9 +10,10 @@ type ForgottenCheckIrs = (JsonValues, JsonValues);
 
 use super::super::tools::{tool_definitions_response, tool_validate_response};
 use super::super::{
-    INVALID_PARAMS, compaction_checkpoint_content_response, compaction_decision_response,
-    compaction_prepare_response, octo_lower_response, provider_compiler_complete_response,
-    skill_discover_response, system_prompt_response,
+    AgentdEventSink, INVALID_PARAMS, compaction_checkpoint_content_response,
+    compaction_decision_response, compaction_prepare_response, octo_lower_response,
+    provider_compiler_complete_response_with_events, skill_discover_response,
+    system_prompt_response,
 };
 use super::trajectory_finish_response;
 
@@ -28,6 +29,8 @@ struct TrajectoryArcParams {
     messages: JsonValues,
     config: TrajectoryArcConfigParam,
     aborted: Option<bool>,
+    #[serde(default)]
+    compact_only: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +61,8 @@ struct TrajectoryArcConfigParam {
     has_web_search: Option<bool>,
     #[serde(default)]
     skills: Option<TrajectoryArcSkillsConfigParam>,
+    #[serde(default)]
+    compaction: Option<TrajectoryArcCompactionConfigParam>,
     #[serde(default, rename = "defaultApiKeyOverrides")]
     default_api_key_overrides: Option<std::collections::BTreeMap<String, String>>,
     #[serde(default)]
@@ -71,6 +76,13 @@ struct TrajectoryArcConfigParam {
 struct TrajectoryArcSkillsConfigParam {
     #[serde(default)]
     paths: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TrajectoryArcCompactionConfigParam {
+    auto_threshold_percent: Option<usize>,
+    compact_oldest_percent: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,6 +112,14 @@ pub(in crate::runtime) fn trajectory_arc_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
+    trajectory_arc_response_with_events(id, params, None)
+}
+
+pub(in crate::runtime) fn trajectory_arc_response_with_events(
+    id: JsonRpcId,
+    params: Option<Value>,
+    events: AgentdEventSink<'_>,
+) -> JsonRpcResponse {
     let Some(params) = params else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
@@ -107,7 +127,9 @@ pub(in crate::runtime) fn trajectory_arc_response(
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
 
-    match trajectory_arc_result_json(params) {
+    let mut discard = |_: Value| {};
+    let stream_events = events.unwrap_or(&mut discard);
+    match trajectory_arc_result_json(params, stream_events) {
         Ok(result) => create_json_rpc_success(id, result),
         Err(response) => response.with_id(id),
     }
@@ -124,7 +146,7 @@ pub(in crate::runtime) fn trajectory_arc_result_from_value(
             None,
         ));
     };
-    trajectory_arc_result_json(params)
+    trajectory_arc_result_json(params, &mut |_: Value| {})
 }
 
 trait ResponseIdExt {
@@ -144,13 +166,27 @@ impl ResponseIdExt for JsonRpcResponse {
     }
 }
 
-fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, JsonRpcResponse> {
+fn trajectory_arc_result_json(
+    params: TrajectoryArcParams,
+    stream_events: &mut dyn FnMut(Value),
+) -> Result<Value, JsonRpcResponse> {
     if params.aborted.unwrap_or(false) {
         return Ok(json!({
             "type": "finish",
             "irs": [],
             "reason": { "type": "abort" },
             "events": [],
+        }));
+    }
+
+    if params.compact_only {
+        let mut events = Vec::new();
+        let _ = provider_irs_after_compaction(&params, &mut events, stream_events)?;
+        return Ok(json!({
+            "type": "finish",
+            "irs": [],
+            "reason": { "type": "needs-response" },
+            "events": events,
         }));
     }
 
@@ -181,7 +217,7 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
         })),
     ))?;
     let mut events = Vec::new();
-    let provider_irs = provider_irs_after_compaction(&params, &mut events)?;
+    let provider_irs = provider_irs_after_compaction(&params, &mut events, stream_events)?;
     let system_prompt_text = system_prompt.get("prompt").cloned().unwrap_or(Value::Null);
     let tools = provider_tools(tool_definitions.get("tools"));
 
@@ -191,10 +227,13 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
         system_prompt_text.clone(),
         tools.clone(),
         "trajectory-arc-provider",
+        "response",
+        stream_events,
     )?;
 
     events.extend(provider_stream_events(
         provider_result.get("events"),
+        provider_result.get("metrics"),
         "start-response",
         "response-progress",
     ));
@@ -224,7 +263,14 @@ fn trajectory_arc_result_json(params: TrajectoryArcParams) -> Result<Value, Json
             })),
         ))?;
         let finish = finish_after_tool_validation(assistant_finish, &params.cwd)?;
-        finish_after_forgotten_check(finish, &params, system_prompt_text, tools, &mut events)?
+        finish_after_forgotten_check(
+            finish,
+            &params,
+            system_prompt_text,
+            tools,
+            &mut events,
+            stream_events,
+        )?
     };
 
     events.extend(value_array(finish.get("events")));
@@ -242,8 +288,10 @@ fn call_main_provider(
     system: Value,
     tools: Value,
     id: &str,
+    stream_phase: &str,
+    stream_events: &mut dyn FnMut(Value),
 ) -> Result<Value, JsonRpcResponse> {
-    call_result(provider_compiler_complete_response(
+    call_result(provider_compiler_complete_response_with_events(
         JsonRpcId::String(id.into()),
         Some(json!({
             "type": params.model.provider_type.clone(),
@@ -259,6 +307,7 @@ fn call_main_provider(
             "tools": tools,
             "cwd": params.cwd.clone(),
             "aborted": false,
+            "streamPhase": stream_phase,
             "fixJson": params.config.fix_json.as_ref().map(|config| json!({
                 "baseUrl": config.base_url,
                 "apiKey": config.api_key,
@@ -273,12 +322,14 @@ fn call_main_provider(
                 })).collect::<Vec<_>>(),
             })),
         })),
+        Some(stream_events),
     ))
 }
 
 fn provider_irs_after_compaction(
     params: &TrajectoryArcParams,
     events: &mut JsonValues,
+    stream_events: &mut dyn FnMut(Value),
 ) -> Result<Value, JsonRpcResponse> {
     let lowered = lower_messages(
         params.messages.clone(),
@@ -290,16 +341,35 @@ fn provider_irs_after_compaction(
         Some(json!({
             "maxContextWindow": params.model.context,
             "messages": params.messages,
+            "autoThresholdPercent": params.config.compaction
+                .as_ref()
+                .and_then(|config| config.auto_threshold_percent),
         })),
     ))?;
-    if decision.get("shouldCompact").and_then(Value::as_bool) != Some(true) {
+    if !params.compact_only && decision.get("shouldCompact").and_then(Value::as_bool) != Some(true)
+    {
         return Ok(lowered);
     }
 
     events.push(json!({ "type": "start-compaction" }));
+    let compact_oldest_percent = params
+        .config
+        .compaction
+        .as_ref()
+        .and_then(|config| config.compact_oldest_percent)
+        .unwrap_or(100)
+        .clamp(1, 100);
+    let compact_count = params
+        .messages
+        .len()
+        .saturating_mul(compact_oldest_percent)
+        .div_ceil(100);
+    let compact_count = compact_count.min(params.messages.len());
+    let messages_to_compact = params.messages[..compact_count].to_vec();
+    let retained_messages = params.messages[compact_count..].to_vec();
     let prepared = call_result(compaction_prepare_response(
         JsonRpcId::String("trajectory-arc-compaction-prepare".into()),
-        Some(json!({ "messages": params.messages })),
+        Some(json!({ "messages": messages_to_compact })),
     ))?;
     let compaction_irs = lower_messages(
         prepared
@@ -310,7 +380,7 @@ fn provider_irs_after_compaction(
         params.model.modalities.clone(),
         "trajectory-arc-compaction-lower",
     )?;
-    let compaction_result = call_result(provider_compiler_complete_response(
+    let compaction_result = call_result(provider_compiler_complete_response_with_events(
         JsonRpcId::String("trajectory-arc-compaction-provider".into()),
         Some(json!({
             "type": params.model.provider_type,
@@ -326,10 +396,13 @@ fn provider_irs_after_compaction(
             "tools": [],
             "cwd": params.cwd,
             "aborted": false,
+            "streamPhase": "compaction",
         })),
+        Some(stream_events),
     ))?;
     events.extend(provider_stream_events(
         compaction_result.get("events"),
+        compaction_result.get("metrics"),
         "",
         "compaction-progress",
     ));
@@ -355,12 +428,16 @@ fn provider_irs_after_compaction(
         "role": "checkpoint",
         "content": checkpoint.get("content").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
     });
+    let mut compacted_messages = Vec::with_capacity(1 + retained_messages.len());
+    compacted_messages.push(checkpoint_ir.clone());
+    compacted_messages.extend(retained_messages);
     events.push(json!({
         "type": "compaction-parsed",
         "checkpoint": checkpoint_ir,
+        "history": compacted_messages,
     }));
     lower_messages(
-        vec![checkpoint_ir],
+        compacted_messages,
         params.model.modalities.clone(),
         "trajectory-arc-post-compaction-lower",
     )
@@ -476,6 +553,7 @@ fn provider_tools(value: Option<&Value>) -> Value {
 
 fn provider_stream_events(
     value: Option<&Value>,
+    metrics: Option<&Value>,
     start_type: &str,
     progress_type: &str,
 ) -> JsonValues {
@@ -534,6 +612,15 @@ fn provider_stream_events(
             "delta": { "type": kind, "value": delta },
         }));
     }
+    if let Some(metrics) = metrics {
+        events.push(json!({
+            "type": "provider-metrics",
+            "phase": if progress_type == "compaction-progress" { "compaction" } else { "response" },
+            "ttftMs": metrics.get("ttftMs").cloned().unwrap_or(Value::Null),
+            "durationMs": metrics.get("durationMs").cloned().unwrap_or(Value::from(0)),
+            "outputTokens": metrics.get("outputTokens").cloned().unwrap_or(Value::from(0)),
+        }));
+    }
     events
 }
 
@@ -574,6 +661,7 @@ fn finish_after_forgotten_check(
     system: Value,
     tools: Value,
     events: &mut JsonValues,
+    stream_events: &mut dyn FnMut(Value),
 ) -> Result<Value, JsonRpcResponse> {
     if !should_run_forgotten_check(&finish) {
         return Ok(finish);
@@ -591,6 +679,8 @@ fn finish_after_forgotten_check(
         system,
         tools,
         "trajectory-arc-forgotten-check-provider",
+        "response",
+        stream_events,
     ) else {
         return Ok(finish);
     };
@@ -600,6 +690,7 @@ fn finish_after_forgotten_check(
 
     events.extend(provider_stream_events(
         provider_result.get("events"),
+        provider_result.get("metrics"),
         "start-response",
         "response-progress",
     ));

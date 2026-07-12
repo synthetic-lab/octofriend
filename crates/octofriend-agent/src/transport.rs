@@ -6,7 +6,9 @@ use octofriend_wire::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };
 use octofriend_workspace::docker::DockerTransport;
-use octofriend_workspace::local::{DirectoryEntry, LocalTransport, TransportError, TransportResult};
+use octofriend_workspace::local::{
+    DirectoryEntry, LocalTransport, TransportError, TransportResult,
+};
 use octofriend_workspace::ssh::SshTransport;
 use octofriend_workspace::workspace::{FindFilesEntryType, FindFilesOptions, find_files};
 use serde::Deserialize;

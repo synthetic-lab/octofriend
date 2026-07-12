@@ -1,4 +1,6 @@
-use octofriend_store::repo::updates::{UpdateNotificationsOptions, mark_updates_seen, read_updates};
+use octofriend_store::repo::updates::{
+    UpdateNotificationsOptions, mark_updates_seen, read_updates,
+};
 use octofriend_wire::json_rpc::{
     JsonRpcId, JsonRpcResponse, create_json_rpc_error, create_json_rpc_success,
 };

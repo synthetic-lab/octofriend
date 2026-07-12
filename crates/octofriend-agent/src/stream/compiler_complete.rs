@@ -5,13 +5,13 @@ use octofriend_wire::json_rpc::{
 };
 use serde_json::{Map, Value, json};
 
-use super::super::INVALID_PARAMS;
 use super::super::autofix::autofix_json_response;
 use super::super::model_plan::{
     ProviderCompilerPlanParams, ProviderCompilerRequestParams, ProviderHttpRequestParams,
     ProviderHttpRequestPlanParam, provider_compiler_plan_json, provider_http_request_parts,
     provider_http_stream_request,
 };
+use super::super::{AgentdEventSink, INVALID_PARAMS};
 use super::auth_keys::autofix_api_key;
 use super::http_stream::provider_http_events_result_json;
 use super::provider_compiler_finalize_response;
@@ -23,9 +23,20 @@ pub(in crate::runtime) fn provider_compiler_complete_response(
     id: JsonRpcId,
     params: Option<Value>,
 ) -> JsonRpcResponse {
+    provider_compiler_complete_response_with_events(id, params, None)
+}
+
+pub(in crate::runtime) fn provider_compiler_complete_response_with_events(
+    id: JsonRpcId,
+    params: Option<Value>,
+    events: AgentdEventSink<'_>,
+) -> JsonRpcResponse {
     let Some(Value::Object(params)) = params else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
     };
+
+    let mut discard = |_: Value| {};
+    let events = events.unwrap_or(&mut discard);
 
     let Some(cwd) = params.get("cwd").cloned() else {
         return create_json_rpc_error(id, INVALID_PARAMS, "Invalid params", None);
@@ -35,7 +46,7 @@ pub(in crate::runtime) fn provider_compiler_complete_response(
         .and_then(Value::as_bool)
         .unwrap_or(false);
 
-    let run_result = match provider_run_result(params.clone()) {
+    let run_result = match provider_run_result(params.clone(), events) {
         Ok(result) => result,
         Err(response) => return response.with_id(id),
     };
@@ -95,11 +106,18 @@ impl ResponseIdExt for JsonRpcResponse {
     }
 }
 
-fn provider_run_result(mut params: JsonObject) -> Result<Value, JsonRpcResponse> {
+fn provider_run_result(
+    mut params: JsonObject,
+    events: &mut dyn FnMut(Value),
+) -> Result<Value, JsonRpcResponse> {
     params.remove("cwd");
     params.remove("aborted");
     params.remove("fixJson");
     params.remove("autofixJson");
+    let stream_phase = params
+        .remove("streamPhase")
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "response".into());
     let Ok(params) = serde_json::from_value::<ProviderCompilerRequestParams>(Value::Object(params))
     else {
         return Err(create_json_rpc_error(
@@ -151,6 +169,8 @@ fn provider_run_result(mut params: JsonObject) -> Result<Value, JsonRpcResponse>
         assistant_output_provider,
         tools_enabled,
         provider_http_stream_request(&request),
+        &stream_phase,
+        events,
     ) {
         Ok(mut result) => {
             if let Value::Object(object) = &mut result {

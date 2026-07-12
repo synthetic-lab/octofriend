@@ -12,6 +12,7 @@ fn compaction_decision_request_returns_agentd_threshold_decision() {
         "method": AGENTD_COMPACTION_DECISION_METHOD,
         "params": {
             "maxContextWindow": 100,
+            "autoThresholdPercent": 95,
             "messages": [
                 {
                     "role": "assistant",
@@ -46,9 +47,9 @@ fn compaction_decision_request_returns_agentd_threshold_decision() {
     assert_eq!(
         value["result"],
         json!({
-            "shouldCompact": true,
+            "shouldCompact": false,
             "estimatedTokens": 91,
-            "maxAllowedTokens": 90
+            "maxAllowedTokens": 95
         })
     );
 }
