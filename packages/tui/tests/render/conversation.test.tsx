@@ -288,6 +288,43 @@ describe("terminal conversation rendering", () => {
 		expect(output).toContain("third");
 	});
 
+	it("expands shell output when configured without expanding other tools", () => {
+		const toolOutput = (name: "shell" | "mcp") => ({
+			type: "llm-ir" as const,
+			ir: {
+				role: "tool-output" as const,
+				toolCall: {
+					type: "tool-call" as const,
+					name,
+					toolCallId: `call-${name}`,
+					original: {},
+					parsed:
+						name === "shell"
+							? { cmd: "printf output" }
+							: { server: "test", tool: "run" },
+				},
+				content: [{ type: "text" as const, content: `visible-${name}-output` }],
+			},
+		});
+		const shell = render(
+			<ConfigContext.Provider
+				value={{ yourName: "Ada", models: [], showShellOutput: true }}
+			>
+				<MessageDisplay item={toolOutput("shell") as never} />
+			</ConfigContext.Provider>,
+		);
+		const mcp = render(
+			<ConfigContext.Provider
+				value={{ yourName: "Ada", models: [], showShellOutput: true }}
+			>
+				<MessageDisplay item={toolOutput("mcp") as never} />
+			</ConfigContext.Provider>,
+		);
+
+		expect(shell.lastFrame() || "").toContain("visible-shell-output");
+		expect(mcp.lastFrame() || "").not.toContain("visible-mcp-output");
+	});
+
 	it("does not rerender static items that do not read the active model", async () => {
 		const previousModelOverride = useAppStore.getState().modelOverride;
 		let renders = 0;

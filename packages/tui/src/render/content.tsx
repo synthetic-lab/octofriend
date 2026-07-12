@@ -4,6 +4,7 @@ import type { ImageInfo } from "../input/images";
 import type { Content } from "../runtime/models/ir/main";
 import {
 	countRenderedLinesDropTrailingEmpty,
+	normalizeRenderedLineBreaks,
 	nextRenderedLineBreak,
 } from "./lines";
 
@@ -57,17 +58,34 @@ export function toolOutputLineCountText(lineCount: number): string {
 
 export function ToolOutputContentRenderer({
 	content,
+	showText = false,
 }: {
 	content: TerminalContent;
+	showText?: boolean;
 }) {
 	const lineCount = countToolOutputTextLines(content);
 
 	return (
 		<Box marginLeft={2} flexDirection="column">
 			<Text color="gray">{toolOutputLineCountText(lineCount)}</Text>
+			{showText && renderToolOutputText(content)}
 			{renderToolOutputImages(content)}
 		</Box>
 	);
+}
+
+function renderToolOutputText(
+	content: TerminalContent,
+): React.ReactNode[] | null {
+	const rows: React.ReactNode[] = [];
+	for (let index = 0; index < content.length; index += 1) {
+		const part = content[index];
+		if (part?.type !== "text" || part.content.length === 0) continue;
+		rows.push(
+			<Text key={index}>{normalizeRenderedLineBreaks(part.content)}</Text>,
+		);
+	}
+	return rows.length === 0 ? null : rows;
 }
 
 function renderToolOutputImages(

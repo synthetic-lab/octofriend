@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { displayLog } from "../shell/runtime-logging";
+import { useConfig } from "../runtime/config/react-context";
 import { useAppStore } from "../shell/state/store";
 import type { InflightResponseType, UiState } from "../shell/state/types";
 import type { HistoryItem } from "../runtime/history/main";
@@ -192,13 +193,23 @@ function renderToolReject(item: ToolRejectItem) {
 	);
 }
 
-function renderToolOutput(item: ToolOutputItem) {
+function ToolOutputRenderer({ item }: { item: ToolOutputItem }) {
+	const config = useConfig();
 	return (
 		<Box flexDirection="column" marginBottom={1}>
 			<ToolMessageRenderer item={item.toolCall} />
-			<ToolOutputContentRenderer content={item.content} />
+			<ToolOutputContentRenderer
+				content={item.content}
+				showText={
+					config.showShellOutput === true && item.toolCall.name === "shell"
+				}
+			/>
 		</Box>
 	);
+}
+
+function renderToolOutput(item: ToolOutputItem) {
+	return <ToolOutputRenderer item={item} />;
 }
 
 function renderFileRead(item: FileReadItem) {

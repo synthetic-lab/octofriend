@@ -11,6 +11,7 @@ const DIFF_ADDED = "#405e35";
 export type LineCounter = {
 	getLine: () => number;
 	incrementLine: () => number;
+	advanceLines: (count: number) => void;
 	getStartLine: () => number;
 };
 
@@ -19,6 +20,9 @@ export function buildLineCounter(startLine: number): LineCounter {
 	return {
 		getLine: () => curr,
 		incrementLine: () => curr++,
+		advanceLines: (count) => {
+			curr += count;
+		},
 		getStartLine: () => startLine,
 	};
 }

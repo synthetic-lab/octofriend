@@ -166,6 +166,21 @@ describe("terminal content rendering", () => {
 		expect(output).toContain("result.jpg");
 	});
 
+	it("shows text tool output only when expansion is requested", () => {
+		const content = [
+			{ type: "text" as const, content: "stdout first\r\nstdout second" },
+		];
+		const hidden = render(<ToolOutputContentRenderer content={content} />);
+		const shown = render(
+			<ToolOutputContentRenderer content={content} showText={true} />,
+		);
+
+		expect(hidden.lastFrame() || "").not.toContain("stdout first");
+		expect(shown.lastFrame() || "").toContain("stdout first");
+		expect(shown.lastFrame() || "").toContain("stdout second");
+		expect(shown.lastFrame() || "").not.toContain("\r");
+	});
+
 	it("does not count a trailing line break as a phantom output line", () => {
 		const { lastFrame } = render(
 			<ToolOutputTextRenderer content={"one\ntwo\n"} />,

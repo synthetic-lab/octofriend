@@ -255,6 +255,35 @@ describe("DiffRenderer", () => {
 		).toBe(true);
 	});
 
+	it("collapses distant unchanged rewrite lines while preserving gutter positions", () => {
+		const oldLines = Array.from(
+			{ length: 30 },
+			(_, index) => `line ${index + 1}`,
+		);
+		const newLines = [...oldLines];
+		newLines[14] = "changed line 15";
+		const oldText = `${oldLines.join("\n")}\n`;
+		const newText = `${newLines.join("\n")}\n`;
+
+		const { lastFrame } = render(
+			<TerminalSizeProvider size={{ width: 60, height: 40 }}>
+				<DiffRenderer
+					oldText={oldText}
+					newText={newText}
+					filepath="/test.txt"
+					fileContents={oldText}
+				/>
+			</TerminalSizeProvider>,
+		);
+
+		const output = lastFrame() || "";
+		expect(output).toContain("11 unchanged lines (1–11)");
+		expect(output).toContain("12 unchanged lines (19–30)");
+		expect(output).toContain("15 +  changed line 15");
+		expect(output).not.toContain("line 1\n");
+		expect(output).not.toContain("line 30");
+	});
+
 	it("keeps original whitespace in highlighted line parts before Ink layout", () => {
 		expect(renderableCodeLineParts("\treturn 1;  ", "js")).toEqual({
 			kind: "highlighted",

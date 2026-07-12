@@ -1,12 +1,12 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import type { ToolPermissionResult } from "../runtime/tools/bridge-types";
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
 import { normalizeRenderedLineBreaks } from "../render/lines";
 import {
 	parsedToolSchema,
 	WhitelistAllowDescription,
 } from "../render/tools";
+import type { ToolPermissionResult } from "../runtime/tools/bridge-types";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
 import { useTerminalThemeColor } from "../theme/branding";
 import type { ToolRequestSelectItem } from "./tool-types";
 
@@ -90,7 +90,10 @@ export function toolRequestItems({
 			label: "Yes, and always allow",
 			value: "yes-whitelist",
 			whitelistAllowDescription: (
-				<WhitelistAllowDescription toolCallRequest={toolReq} />
+				<WhitelistAllowDescription
+					toolCallRequest={toolReq}
+					whitelistKey={permission.whitelistKey}
+				/>
 			),
 		};
 	}

@@ -11,7 +11,8 @@ export type DiffPart =
 			changed: true;
 			oldValue: string;
 			newValue: string;
-	  };
+	  }
+	| { omitted: true; count: number };
 
 type DiffPartsProps = {
 	diffParts: DiffPart[];
@@ -53,6 +54,18 @@ function renderSideBySideDiffSets({
 	for (let index = 0; index < diffParts.length; index += 1) {
 		const part = diffParts[index];
 		if (part === undefined) continue;
+		if ("omitted" in part) {
+			rows[writeIndex] = (
+				<DiffOmissionRow
+					key={index}
+					count={part.count}
+					oldLineCounter={oldLineCounter}
+					newLineCounter={newLineCounter}
+				/>
+			);
+			writeIndex += 1;
+			continue;
+		}
 		let oldValue: string | undefined;
 		let newValue: string | undefined;
 		let oldRemoved: boolean | undefined;
@@ -91,6 +104,46 @@ function renderSideBySideDiffSets({
 	}
 	if (writeIndex < rows.length) rows.length = writeIndex;
 	return rows;
+}
+
+function DiffOmission({
+	count,
+	lineCounter,
+}: {
+	count: number;
+	lineCounter: LineCounter;
+}) {
+	const start = lineCounter.getLine();
+	lineCounter.advanceLines(count);
+	const end = lineCounter.getLine() - 1;
+	return (
+		<Box paddingX={1}>
+			<Text color="gray">
+				… {count} unchanged lines ({start}–{end}) …
+			</Text>
+		</Box>
+	);
+}
+
+function DiffOmissionRow({
+	count,
+	oldLineCounter,
+	newLineCounter,
+}: {
+	count: number;
+	oldLineCounter: LineCounter;
+	newLineCounter: LineCounter;
+}) {
+	return (
+		<Box>
+			<Box width="50%">
+				<DiffOmission count={count} lineCounter={oldLineCounter} />
+			</Box>
+			<Box width="50%">
+				<DiffOmission count={count} lineCounter={newLineCounter} />
+			</Box>
+		</Box>
+	);
 }
 
 export function StackedDiff({
@@ -148,10 +201,11 @@ function shouldRenderDiffSidePart(
 	part: DiffPart,
 	side: "old" | "new",
 ): boolean {
-	return side === "old" ? !part.added : !part.removed;
+	return "omitted" in part || (side === "old" ? !part.added : !part.removed);
 }
 
 function diffSideValue(part: DiffPart, side: "old" | "new"): string {
+	if ("omitted" in part) return "";
 	if (!("changed" in part)) return part.value;
 	return side === "old" ? part.oldValue : part.newValue;
 }
@@ -162,6 +216,15 @@ function renderDiffSideRow(
 	args: Omit<DiffSideRenderArgs, "diffParts">,
 	side: "old" | "new",
 ): React.ReactNode {
+	if ("omitted" in part) {
+		return (
+			<DiffOmission
+				key={index}
+				count={part.count}
+				lineCounter={args.lineCounter}
+			/>
+		);
+	}
 	const isChanged = part.removed || part.added || "changed" in part;
 	const value = diffSideValue(part, side);
 	if (side === "old") {

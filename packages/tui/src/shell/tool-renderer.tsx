@@ -102,6 +102,7 @@ export function ToolRequestRenderer({
 					);
 			const resolved = await toolPermission({
 				toolName: resolvedToolReq.name,
+				cwd: transport.cwd,
 				parsed: resolvedToolReq.parsed,
 			});
 			if (alive) {

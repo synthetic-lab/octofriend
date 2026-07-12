@@ -1,7 +1,7 @@
 import { Text } from "ink";
 import type { ReactElement } from "react";
-import { useCwd } from "../shell/workspace-context";
 import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
+import { useCwd } from "../shell/workspace-context";
 import { normalizeRenderedLineBreaks } from "./lines";
 import { type ParsedToolCallSchema, parsedItemFor } from "./tool-types";
 
@@ -25,16 +25,16 @@ const STATIC_WHITELIST_DESCRIPTIONS: Readonly<Record<string, ReactElement>> = {
 };
 
 function ToolScopeDescription({
-	cwd,
+	directory,
 	kind,
 }: {
-	cwd: string;
+	directory: string;
 	kind: "reads" | "changes";
 }) {
 	return (
 		<Text>
 			<Text> file {kind} in </Text>
-			<Text bold={true}>{renderedWhitelistValue(cwd)}</Text>
+			<Text bold={true}>{renderedWhitelistValue(directory)}</Text>
 		</Text>
 	);
 }
@@ -88,24 +88,41 @@ function SkillWhitelistDescription({
 
 export function WhitelistAllowDescription({
 	toolCallRequest,
+	whitelistKey,
 }: {
 	toolCallRequest: ToolCallRequest;
+	whitelistKey?: string;
 }) {
 	const cwd = useCwd();
+	const filesystemScope = whitelistKey?.split(":", 2)[1] ?? cwd;
+	const readTools = new Set([
+		"read",
+		"list",
+		"glob",
+		"grep",
+		"lsp-definition",
+		"lsp-references",
+		"lsp-hover",
+		"lsp-diagnostics",
+		"lsp-document-symbol",
+		"lsp-implementation",
+		"lsp-incoming-calls",
+		"lsp-outgoing-calls",
+	]);
+	if (readTools.has(toolCallRequest.name)) {
+		return <ToolScopeDescription directory={filesystemScope} kind="reads" />;
+	}
 	const staticDescription = STATIC_WHITELIST_DESCRIPTIONS[toolCallRequest.name];
 	if (staticDescription !== undefined) return staticDescription;
 	if (toolCallRequest.name === "shell") {
 		return <ShellWhitelistDescription toolCallRequest={toolCallRequest} />;
-	}
-	if (toolCallRequest.name === "list" || toolCallRequest.name === "read") {
-		return <ToolScopeDescription cwd={cwd} kind="reads" />;
 	}
 	if (
 		toolCallRequest.name === "edit" ||
 		toolCallRequest.name === "create" ||
 		toolCallRequest.name === "rewrite"
 	) {
-		return <ToolScopeDescription cwd={cwd} kind="changes" />;
+		return <ToolScopeDescription directory={filesystemScope} kind="changes" />;
 	}
 	if (toolCallRequest.name === "mcp") {
 		return <McpWhitelistDescription toolCallRequest={toolCallRequest} />;

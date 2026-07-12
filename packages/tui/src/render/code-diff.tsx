@@ -2,15 +2,12 @@ import { diffLines } from "diff";
 import { Box } from "ink";
 import { fileExtLanguage, numWidth } from "../shell/text-processing";
 import { useTerminalSize } from "../layout/viewport";
-import {
-	type DiffPart,
-	SideBySideDiff,
-	StackedDiff,
-} from "./diff-layout";
+import { type DiffPart, SideBySideDiff, StackedDiff } from "./diff-layout";
 import { buildLineCounter } from "./line-segments";
-import { splitRenderedLines } from "./lines";
+import { normalizeRenderedLineBreaks, splitRenderedLines } from "./lines";
 
 const STACKED_DIFF_MAX_TERMINAL_WIDTH = 80;
+const DIFF_CONTEXT_LINES = 3;
 
 export function DiffRenderer({
 	oldText,
@@ -32,7 +29,9 @@ export function DiffRenderer({
 	try {
 		const language = fileExtLanguage(filepath);
 
-		const diffWithChanged = mergeChangedDiffParts(diffLines(oldText, newText));
+		const diffWithChanged = focusDiffParts(
+			mergeChangedDiffParts(diffLines(oldText, newText)),
+		);
 
 		const startLine = getStartLine(fileContents, oldText);
 		if (startLine == null) return null;
@@ -91,7 +90,12 @@ function mergeChangedDiffParts(diff: ReturnType<typeof diffLines>): DiffPart[] {
 			writeIndex += 1;
 			continue;
 		}
-		if (prev.removed && curr.added) {
+		if (
+			!("omitted" in prev) &&
+			!("changed" in prev) &&
+			prev.removed &&
+			curr.added
+		) {
 			diffWithChanged[writeIndex - 1] = {
 				added: false,
 				removed: false,
@@ -106,6 +110,54 @@ function mergeChangedDiffParts(diff: ReturnType<typeof diffLines>): DiffPart[] {
 	}
 	if (writeIndex < diffWithChanged.length) diffWithChanged.length = writeIndex;
 	return diffWithChanged;
+}
+
+export function focusDiffParts(
+	diffParts: DiffPart[],
+	contextLines = DIFF_CONTEXT_LINES,
+): DiffPart[] {
+	const focused: DiffPart[] = [];
+	for (let index = 0; index < diffParts.length; index += 1) {
+		const part = diffParts[index];
+		if (part === undefined || "omitted" in part) continue;
+		if ("changed" in part || part.added || part.removed) {
+			focused.push(part);
+			continue;
+		}
+		const normalized = normalizeRenderedLineBreaks(part.value);
+		const lines = splitRenderedLines(normalized);
+		const trailingBreak = normalized.endsWith("\n");
+		if (trailingBreak) lines.pop();
+		const prefixCount = index > 0 ? Math.min(contextLines, lines.length) : 0;
+		const suffixCount =
+			index + 1 < diffParts.length
+				? Math.min(contextLines, lines.length - prefixCount)
+				: 0;
+		const omittedCount = lines.length - prefixCount - suffixCount;
+		if (omittedCount <= 0 || (prefixCount === 0 && suffixCount === 0)) {
+			focused.push(part);
+			continue;
+		}
+		if (prefixCount > 0) {
+			focused.push({
+				value: `${lines.slice(0, prefixCount).join("\n")}\n`,
+				count: prefixCount,
+				added: false,
+				removed: false,
+			});
+		}
+		focused.push({ omitted: true, count: omittedCount });
+		if (suffixCount > 0) {
+			const suffix = lines.slice(lines.length - suffixCount).join("\n");
+			focused.push({
+				value: trailingBreak ? `${suffix}\n` : suffix,
+				count: suffixCount,
+				added: false,
+				removed: false,
+			});
+		}
+	}
+	return focused;
 }
 
 function getStartLine(file: string, search: string) {

@@ -140,9 +140,10 @@ describe("terminal tool rendering", () => {
 		const lsp = render(
 			<WhitelistAllowDescription
 				toolCallRequest={{ name: "lsp-hover", parsed: {} } as never}
+				whitelistKey="read:/outside/project"
 			/>,
 		);
-		expect(lsp.lastFrame() || "").toContain("LSP queries during this session.");
+		expect(lsp.lastFrame() || "").toContain("file reads in /outside/project");
 	});
 
 	it("normalizes whitelist description line breaks before rendering", () => {
