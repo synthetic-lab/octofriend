@@ -1,3 +1,4 @@
+import { WhitelistAllowDescription as WhitelistAllowDescriptionImpl } from "./tool-list.tsx";
 import {
 	CreateToolRenderer as CreateToolRendererImpl,
 	DiffEditRenderer as DiffEditRendererImpl,
@@ -13,13 +14,12 @@ import {
 	SkillToolRenderer as SkillToolRendererImpl,
 	ToolMessageRenderer as ToolMessageRendererImpl,
 	WebSearchToolRenderer as WebSearchToolRendererImpl,
-} from "./tool-renderers";
+} from "./tool-renderers.tsx";
 import {
 	type ParsedToolCallArguments as ParsedToolCallArgumentsType,
 	type ParsedToolCallSchema as ParsedToolCallSchemaType,
 	parsedToolSchema as parsedToolSchemaImpl,
-} from "./tool-types";
-import { WhitelistAllowDescription as WhitelistAllowDescriptionImpl } from "./tool-list";
+} from "./tool-types.ts";
 
 export type ParsedToolCallArguments = ParsedToolCallArgumentsType;
 export type ParsedToolCallSchema = ParsedToolCallSchemaType;

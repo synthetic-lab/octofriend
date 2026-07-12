@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { Box, Text } from "ink";
 import { render } from "ink-testing-library";
 import { useState } from "react";
-import { AuthCommandErrorPanel } from "../../src/shell/auth-check/error";
+import type { AuthError, Config } from "../../src/runtime/config/schemas.ts";
+import { AuthCommandErrorPanel } from "../../src/shell/auth-check/error.tsx";
 import {
 	PreflightAutofixAuth,
 	PreflightModelAuth,
-} from "../../src/shell/auth-check/main";
+} from "../../src/shell/auth-check/main.tsx";
 import {
 	applyAutofixAuthToConfig,
 	applyModelAuthToConfig,
@@ -15,12 +16,8 @@ import {
 	resolveAutofixModelFromConfig,
 	resolveModelFromConfig,
 	shouldMergeEnvAuthAsDefaultApiKey,
-} from "../../src/shell/auth-check/model-resolve";
-import { useAuthPreflightInput } from "../../src/shell/auth-check/use-input";
-import type {
-	AuthError,
-	Config,
-} from "../../src/runtime/config/schemas";
+} from "../../src/shell/auth-check/model-resolve.ts";
+import { useAuthPreflightInput } from "../../src/shell/auth-check/use-input.ts";
 
 function RetryPreflightHarness({
 	validateAuth,

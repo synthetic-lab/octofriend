@@ -1,12 +1,12 @@
-import type { ImageInfo } from "../../input/images";
-import type { HistoryItem } from "../../runtime/history/main";
-import type { OctoIR } from "../../runtime/agent/ir/main";
+import type { ImageInfo } from "../../input/images.ts";
+import type { OctoIR } from "../../runtime/agent/ir/main.ts";
+import type { HistoryItem } from "../../runtime/history/main.ts";
 import {
 	linkFinishReasonToolCalls as linkFinishReasonToolCallsImpl,
 	linkTrajectoryHistory as linkTrajectoryHistoryImpl,
-} from "./history-links";
-import { createLocalMessageId as createLocalMessageIdImpl } from "./message-id";
-import type { UiState } from "./types";
+} from "./history-links.ts";
+import { createLocalMessageId as createLocalMessageIdImpl } from "./message-id.ts";
+import type { UiState } from "./types.ts";
 
 export const createLocalMessageId = createLocalMessageIdImpl;
 export const linkTrajectoryHistory = linkTrajectoryHistoryImpl;

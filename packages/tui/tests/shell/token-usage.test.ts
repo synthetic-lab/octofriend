@@ -5,7 +5,7 @@ import {
 	tokenCounts,
 	trackTokens,
 	trackTokenUsage,
-} from "../../src/shell/token-usage";
+} from "../../src/shell/token-usage.ts";
 
 describe("token usage tracking", () => {
 	it("starts unseen models with zero counts for the opposite token type", () => {

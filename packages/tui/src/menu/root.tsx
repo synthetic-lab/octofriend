@@ -1,13 +1,13 @@
 import { Box, Text } from "ink";
 import type { ReactNode } from "react";
-import { useTerminalContentWidth } from "../layout/viewport";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { Octo } from "../theme/branding";
+import { useTerminalContentWidth } from "../layout/viewport.tsx";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { Octo } from "../theme/branding.tsx";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
 	ThemedSelectItem as ItemComponent,
 	SelectInput,
-} from "./select";
+} from "./select.tsx";
 
 export type MenuItem<V> = {
 	label: string;

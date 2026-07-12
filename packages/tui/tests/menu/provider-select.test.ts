@@ -6,7 +6,7 @@ describe("provider selection shortcuts", () => {
 			buildFastProviderShortcutItems,
 			modelSetupStepForProviderChoice,
 			providerShortcutLabel,
-		} = await import("../../src/menu/models/provider-select");
+		} = await import("../../src/menu/models/provider-select.ts");
 
 		expect(
 			buildFastProviderShortcutItems([

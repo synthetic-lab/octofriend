@@ -1,18 +1,15 @@
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "../../shell/state/store";
-import type { UiState } from "../../shell/state/types";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
 	type ShortcutArray,
-} from "../../input/shortcuts";
-import {
-	useConfig,
-	useSetConfig,
-} from "../../runtime/config/react-context";
-import type { Config } from "../../runtime/config/schemas";
+} from "../../input/shortcuts.tsx";
+import { useConfig, useSetConfig } from "../../runtime/config/react-context.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { useAppStore } from "../../shell/state/store.ts";
+import type { UiState } from "../../shell/state/types.ts";
 
 const notificationsMenuStateSelector = (state: UiState) => ({
 	sessionAutoNotify: state.sessionAutoNotify,

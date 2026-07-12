@@ -3,7 +3,7 @@ import {
 	type HistoryItem,
 	outputToHistory,
 	toLlmIR,
-} from "../../../src/runtime/history/main";
+} from "../../../src/runtime/history/main.ts";
 
 type TestIr =
 	| { role: "user"; content: string }

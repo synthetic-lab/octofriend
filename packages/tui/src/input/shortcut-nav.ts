@@ -5,7 +5,7 @@ import {
 	PAGE_SIZE,
 	type RenderedShortcutItem,
 	type ShortcutArray,
-} from "./shortcut-types";
+} from "./shortcut-types.ts";
 
 function maxShortcutPage<V>(shortcutItems: ShortcutArray<V>): number {
 	let maxPage = 0;

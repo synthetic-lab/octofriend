@@ -1,10 +1,7 @@
-import { errorToString } from "../../shell/result";
-import type { Auth, Config } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import {
-	type ModelConnectionTester,
-	testConnection,
-} from "./connection";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import { errorToString } from "../../shell/result.ts";
+import { type ModelConnectionTester, testConnection } from "./connection.ts";
 
 export type SyntheticAutofixConnectionFailure = {
 	step: "connection-failed";

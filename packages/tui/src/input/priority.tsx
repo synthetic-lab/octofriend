@@ -5,7 +5,7 @@ import React, {
 	useMemo,
 	useRef,
 } from "react";
-import { type InkInputHandler, useLatestInput } from "./latest-input";
+import { type InkInputHandler, useLatestInput } from "./latest-input.ts";
 
 declare const priorityBrand: unique symbol;
 export type Priority = number & { [priorityBrand]: never };

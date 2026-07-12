@@ -1,10 +1,7 @@
-import type {
-	VimHandlerActions,
-	VimHandlerState,
-} from "./vim-state";
-import { motions } from "./vim-motions";
-import { clampToVimBounds, getLineRange } from "./vim-nav";
-import type { Operator, TextRange, VimKeyHandlerResult } from "./vim-types";
+import { motions } from "./vim-motions.ts";
+import { clampToVimBounds, getLineRange } from "./vim-nav.ts";
+import type { VimHandlerActions, VimHandlerState } from "./vim-state.ts";
+import type { Operator, TextRange, VimKeyHandlerResult } from "./vim-types.ts";
 
 type PendingOperatorResultInput = {
 	operator: Operator;

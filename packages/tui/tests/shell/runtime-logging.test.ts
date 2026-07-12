@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { displayLog, error, log, setLevel } from "../../src/shell/runtime-logging";
+import {
+	displayLog,
+	error,
+	log,
+	setLevel,
+} from "../../src/shell/runtime-logging.ts";
 
 const originalLog = console.log;
 const originalError = console.error;

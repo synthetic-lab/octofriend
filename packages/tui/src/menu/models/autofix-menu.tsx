@@ -1,22 +1,22 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useCallback, useContext, useMemo, useRef, useState } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
 	type ShortcutArray,
-} from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
-import { useModelConnectionTest } from "./connection";
-import { errorContext } from "./error-context";
-import { CustomAutofixFlow } from "./flow";
-import { CustomAuthFlow } from "./custom-auth";
+} from "../../input/shortcuts.tsx";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { useModelConnectionTest } from "./connection.ts";
+import { CustomAuthFlow } from "./custom-auth.tsx";
+import { errorContext } from "./error-context.tsx";
+import { CustomAutofixFlow } from "./flow.tsx";
 import {
 	resolveSyntheticAutofixSelection,
 	resolveSyntheticAutofixSelectionFromAuth,
 	syntheticProviderWithResolvedBaseUrl,
-} from "./synthetic-autofix";
+} from "./synthetic-autofix.ts";
 
 export type AutofixModelProps = {
 	config: Config | null;

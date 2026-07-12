@@ -1,14 +1,14 @@
 import { Box, Text } from "ink";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { assertKeyForModel } from "../runtime/config/keys.ts";
+import type { Config, ModelConfig } from "../runtime/config/schemas.ts";
 import {
 	formatTimeUntil,
 	normalizeQuotaData,
 	type QuotaData,
 	type QuotaEntry,
 	type WeeklyEntry,
-} from "../shell/state/quota";
-import { assertKeyForModel } from "../runtime/config/keys";
-import type { Config, ModelConfig } from "../runtime/config/schemas";
+} from "../shell/state/quota.ts";
 
 export type QuotaModel = Pick<
 	ModelConfig,

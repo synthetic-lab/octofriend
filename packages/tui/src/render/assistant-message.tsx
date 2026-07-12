@@ -1,14 +1,14 @@
 import { Box, type DOMElement, measureElement, Text } from "ink";
 import type React from "react";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useAppStore } from "../shell/state/store";
-import type { UiState } from "../shell/state/types";
-import { IsScrollableContext, ScrollView } from "../layout/scroll";
-import { useTerminalSize } from "../layout/viewport";
-import { Octo } from "../theme/branding";
-import { normalizeRenderedLineBreaks } from "./lines";
-import { Markdown } from "./markdown";
-import type { AssistantDisplayItem } from "./types";
+import { IsScrollableContext, ScrollView } from "../layout/scroll.tsx";
+import { useTerminalSize } from "../layout/viewport.tsx";
+import { useAppStore } from "../shell/state/store.ts";
+import type { UiState } from "../shell/state/types.ts";
+import { Octo } from "../theme/branding.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
+import { Markdown } from "./markdown.tsx";
+import type { AssistantDisplayItem } from "./types.ts";
 
 const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;

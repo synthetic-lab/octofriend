@@ -1,4 +1,4 @@
-import type { AppStateGet, AppStateSet, RunArgs, UiState } from "./types";
+import type { AppStateGet, AppStateSet, RunArgs, UiState } from "./types.ts";
 
 type AppHistory = ReturnType<AppStateGet>["history"];
 type AppHistoryItem = AppHistory[number];

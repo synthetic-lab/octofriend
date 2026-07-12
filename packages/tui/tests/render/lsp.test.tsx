@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { getLspActionName, LspToolRenderer } from "../../src/render/lsp";
+import { getLspActionName, LspToolRenderer } from "../../src/render/lsp.tsx";
 
 describe("getLspActionName", () => {
 	it("maps known LSP tool names and falls back to query", () => {

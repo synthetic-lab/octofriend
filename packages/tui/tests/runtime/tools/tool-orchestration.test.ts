@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import type { Result } from "../../../src/shell/result";
-import type { Config } from "../../../src/runtime/config/schemas";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
 import {
 	loadTools,
 	preflightToolCall,
 	runTool,
-} from "../../../src/runtime/tools/main";
-import type { Transport } from "../../../src/runtime/workspace/common";
+} from "../../../src/runtime/tools/main.ts";
+import type { Transport } from "../../../src/runtime/workspace/common.ts";
+import type { Result } from "../../../src/shell/result.ts";
 
 const baseConfig: Config = {
 	yourName: "Octo",

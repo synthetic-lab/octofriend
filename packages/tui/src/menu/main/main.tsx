@@ -1,29 +1,29 @@
 import { useCallback, useMemo } from "react";
-import { Back, router, type ToRoute } from "../models/router";
-import { DiffApplyToggle, FixJsonToggle } from "./autofix-toggles";
-import { ClearConversationConfirm, QuitConfirm } from "./confirmations";
+import { Back, router, type ToRoute } from "../models/router.tsx";
+import { DiffApplyToggle, FixJsonToggle } from "./autofix-toggles.tsx";
+import { ClearConversationConfirm, QuitConfirm } from "./confirmations.tsx";
 import {
 	buildMainMenuShortcutItems,
 	handleMainMenuSelection,
 	MainMenu,
 	mainMenuShortcutState,
-} from "./main-menu";
+} from "./main-menu.tsx";
+import { SwitchModelMenu } from "./model-switch.tsx";
 import {
 	AddModelMenuFlow,
 	RemoveModelMenu,
 	SetDefaultModelMenu,
-} from "./models";
-import { SwitchModelMenu } from "./model-switch";
+} from "./models.tsx";
 import {
 	buildNotificationShortcutItems,
 	NotificationsMenu,
-} from "./notifications";
+} from "./notifications.tsx";
 import {
 	buildSettingsMenuShortcutItems,
 	filterSettingsItems,
 	SettingsMenu,
 	type SettingsValues,
-} from "./settings";
+} from "./settings.tsx";
 
 export type AppMenuRouteData = {
 	mainMenu: Record<string, never>;

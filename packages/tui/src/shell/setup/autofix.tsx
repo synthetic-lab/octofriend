@@ -1,29 +1,25 @@
 import { Text } from "ink";
 import { useCallback, useMemo } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import type { Auth, Config } from "../../runtime/config/schemas";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { defaultApiKeyOverrideForProviderAuth } from "../../menu/models/auth.ts";
+import { AutofixModelMenu } from "../../menu/models/autofix-menu.tsx";
 import {
 	type ModelConnectionTester,
 	useModelConnectionTest,
-} from "../../menu/models/connection";
-import { AutofixModelMenu } from "../../menu/models/autofix-menu";
+} from "../../menu/models/connection.ts";
 import {
 	CustomAuthFlow,
 	type ExistingKeyChecker,
-} from "../../menu/models/custom-auth";
-import { defaultApiKeyOverrideForProviderAuth } from "../../menu/models/auth";
-import {
-	Back,
-	router,
-	type ToRoute,
-} from "../../menu/models/router";
+} from "../../menu/models/custom-auth.tsx";
+import { Back, router, type ToRoute } from "../../menu/models/router.tsx";
 import {
 	type ResolveSyntheticAutofixSelectionInput,
 	resolveSyntheticAutofixConfigFromAuth,
 	syntheticProviderWithResolvedBaseUrl,
-} from "../../menu/models/synthetic-autofix";
-import { AutofixSetupChooseRoute } from "./autofix-choice";
-import type { AutofixConfig, AutofixSetupRouteData } from "./types";
+} from "../../menu/models/synthetic-autofix.ts";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
+import { AutofixSetupChooseRoute } from "./autofix-choice.tsx";
+import type { AutofixConfig, AutofixSetupRouteData } from "./types.ts";
 
 export const autofixSetupFlow = router<AutofixSetupRouteData>();
 

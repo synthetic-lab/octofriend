@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { PROVIDERS } from "../../src/runtime/models/catalog/main";
+import { PROVIDERS } from "../../src/runtime/models/catalog/main.ts";
 
 function expectPresent<T>(value: T): NonNullable<T> {
 	if (value === null || value === undefined) {
@@ -19,7 +19,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 describe("provider setup summary", () => {
 	it("maps provider authentication and base URL override env vars from the catalog", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		expect(
 			providerSetupSummaryLines(
@@ -41,7 +41,7 @@ describe("provider setup summary", () => {
 
 	it("marks configured auth env vars as detected when present", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		expect(
 			providerSetupSummaryLines(
@@ -64,7 +64,7 @@ describe("provider setup summary", () => {
 
 	it("marks legacy octofriend OpenAI OAuth env vars as detected", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		expect(
 			providerSetupSummaryLines([["openai", expectPresent(PROVIDERS.openai)]], {
@@ -77,7 +77,7 @@ describe("provider setup summary", () => {
 
 	it("uses configured API-key overrides in provider setup summaries", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		const config = {
 			defaultApiKeyOverrides: {
@@ -103,7 +103,7 @@ describe("provider setup summary", () => {
 
 	it("shows active local proxy base URL overrides without changing auth method text", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		expect(
 			providerSetupSummaryLines(
@@ -127,7 +127,7 @@ describe("provider setup summary", () => {
 
 	it("does not invent API-key setup text for providers without supported auth methods", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		const synthetic = expectPresent(PROVIDERS.synthetic);
 
@@ -153,7 +153,7 @@ describe("provider setup summary", () => {
 
 	it("does not resolve API-key override text for OAuth-only providers", async () => {
 		const { providerSetupSummaryLines } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 
@@ -180,7 +180,7 @@ describe("provider setup summary", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelSetup } = await import(
-			"../../src/menu/models/detect-models"
+			"../../src/menu/models/detect-models.tsx"
 		);
 
 		const instance = render(
@@ -218,7 +218,7 @@ describe("provider setup summary", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ProviderSetupSummary } = await import(
-			"../../src/menu/models/auth-summary"
+			"../../src/menu/models/auth-summary.tsx"
 		);
 		const instance = render(
 			React.createElement(ProviderSetupSummary, {
@@ -238,7 +238,7 @@ describe("provider setup summary", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelSetup } = await import(
-			"../../src/menu/models/detect-models"
+			"../../src/menu/models/detect-models.tsx"
 		);
 		const calls: string[] = [];
 		const renderSetup = (onCancel: () => void) =>
@@ -266,7 +266,7 @@ describe("provider setup summary", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { FastProviderList } = await import(
-			"../../src/menu/models/provider-screen"
+			"../../src/menu/models/provider-screen.tsx"
 		);
 		const calls: string[] = [];
 		const firstCallbacks = {

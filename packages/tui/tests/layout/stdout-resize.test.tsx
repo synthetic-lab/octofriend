@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
-import { useStdoutResize } from "../../src/layout/stdout-resize";
+import { useStdoutResize } from "../../src/layout/stdout-resize.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 50; attempt += 1) {

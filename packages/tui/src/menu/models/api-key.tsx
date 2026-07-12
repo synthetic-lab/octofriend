@@ -1,18 +1,18 @@
 import { Box, Text } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { TextInput } from "../../input/text";
-import { writeKeyForModel } from "../../runtime/config/keys";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import { useTerminalContentWidth } from "../../layout/viewport";
-import { MenuHeader } from "../root";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { TextInput } from "../../input/text.ts";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import { useTerminalContentWidth } from "../../layout/viewport.tsx";
+import { writeKeyForModel } from "../../runtime/config/keys.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import { MenuHeader } from "../root.tsx";
 import {
 	getProviderApiKeyUrl,
 	getProviderDisplayName,
 	nonEmptyTrimmedValue,
 	terminalHyperlink,
-} from "./providers";
+} from "./providers.ts";
 
 export const EMPTY_API_KEY_ERROR = "API key can't be empty";
 export const API_KEY_WRITE_ERROR =

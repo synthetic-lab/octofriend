@@ -5,7 +5,7 @@ import {
 	ExitOnDoubleCtrlC,
 	useCtrlC,
 	useCtrlCPressed,
-} from "../../src/input/ctrl-c";
+} from "../../src/input/ctrl-c.tsx";
 
 function CtrlCProbe() {
 	const pressed = useCtrlCPressed();

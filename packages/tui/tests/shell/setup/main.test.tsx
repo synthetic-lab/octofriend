@@ -89,7 +89,7 @@ describe("terminal first-time setup", () => {
 		instance.stdin.write("\r");
 		await waitFor(() => (instance.lastFrame() ?? "").includes("⦿"));
 		const { PROVIDERS } = await import(
-			"../../../src/runtime/models/catalog/main"
+			"../../../src/runtime/models/catalog/main.ts"
 		);
 		const openaiModels = PROVIDERS.openai?.models ?? [];
 		const recommendedOpenAiModel = openaiModels[0];

@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { getModelFromConfig } from "../../runtime/config/model-selection";
-import { useConfig } from "../../runtime/config/react-context";
-import type { ModelConfig } from "../../runtime/config/schemas";
-import { useAppStore } from "./store";
-import type { UiState } from "./types";
+import { getModelFromConfig } from "../../runtime/config/model-selection.ts";
+import { useConfig } from "../../runtime/config/react-context.ts";
+import type { ModelConfig } from "../../runtime/config/schemas.ts";
+import { useAppStore } from "./store.ts";
+import type { UiState } from "./types.ts";
 
 const selectModelOverride = (state: UiState) => {
 	return state.modelOverride;

@@ -6,7 +6,7 @@ import {
 	isWindows,
 	Platform,
 	platformFromNodePlatform,
-} from "../../../src/shell/setup/platform";
+} from "../../../src/shell/setup/platform.ts";
 
 describe("host platform detection", () => {
 	it("maps Node platform identifiers to stable platform keys", () => {

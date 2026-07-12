@@ -1,16 +1,16 @@
 import { Box, Text } from "ink";
-import { useModel } from "../shell/state/model-hook";
-import type { HistoryItem } from "../runtime/history/main";
-import type { OctoIR } from "../runtime/agent/ir/main";
+import type { OctoIR } from "../runtime/agent/ir/main.ts";
+import type { HistoryItem } from "../runtime/history/main.ts";
+import { useModel } from "../shell/state/model-hook.ts";
 import {
 	TerminalHeader,
 	useTerminalThemeColor,
 	useTerminalUnchained,
-} from "../theme/branding";
-import { normalizeRenderedLineBreaks } from "./lines";
-import { Markdown } from "./markdown";
-import { MessageDisplay } from "./messages";
-import type { StaticItem } from "./types";
+} from "../theme/branding.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
+import { Markdown } from "./markdown.tsx";
+import { MessageDisplay } from "./messages.tsx";
+import type { StaticItem } from "./types.ts";
 
 export function toStaticItems(messages: HistoryItem<OctoIR>[]): StaticItem[] {
 	const items: StaticItem[] = [];

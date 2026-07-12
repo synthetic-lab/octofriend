@@ -12,9 +12,9 @@ import {
 	searchFiles,
 	stableFileResults,
 	useFileSearch,
-} from "../../src/input/file-suggestions";
-import type { Transport } from "../../src/runtime/workspace/common";
-import { LocalTransport } from "../../src/runtime/workspace/local";
+} from "../../src/input/file-suggestions.tsx";
+import type { Transport } from "../../src/runtime/workspace/common.ts";
+import { LocalTransport } from "../../src/runtime/workspace/local.ts";
 
 const tempRoots: string[] = [];
 

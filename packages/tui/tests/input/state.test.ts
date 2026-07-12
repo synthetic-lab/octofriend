@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 describe("text input state helpers", () => {
 	it("computes plain text edits without dropping pasted whitespace", async () => {
 		const { nextPlainTextInputState } = await import(
-			"../../src/input/editor/state"
+			"../../src/input/editor/state.ts"
 		);
 
 		expect(
@@ -25,7 +25,7 @@ describe("text input state helpers", () => {
 
 	it("handles empty, prepend, and append text edits without changing whitespace", async () => {
 		const { nextPlainTextInputState } = await import(
-			"../../src/input/editor/state"
+			"../../src/input/editor/state.ts"
 		);
 
 		expect(
@@ -62,7 +62,7 @@ describe("text input state helpers", () => {
 
 	it("normalizes pasted CRLF and CR line endings to LF", async () => {
 		const { nextPlainTextInputState, normalizePastedLineEndings } =
-			await import("../../src/input/editor/state");
+			await import("../../src/input/editor/state.ts");
 
 		expect(normalizePastedLineEndings("one\ntwo")).toBe("one\ntwo");
 		expect(normalizePastedLineEndings("one\r\ntwo\rthree")).toBe(
@@ -87,7 +87,7 @@ describe("text input state helpers", () => {
 
 	it("keeps image deletion as an explicit edit effect", async () => {
 		const { nextPlainTextInputState } = await import(
-			"../../src/input/editor/state"
+			"../../src/input/editor/state.ts"
 		);
 
 		expect(
@@ -109,7 +109,7 @@ describe("text input state helpers", () => {
 
 	it("treats delete as forward delete without splitting graphemes", async () => {
 		const { nextPlainTextInputState } = await import(
-			"../../src/input/editor/state"
+			"../../src/input/editor/state.ts"
 		);
 
 		expect(
@@ -147,7 +147,7 @@ describe("text input state helpers", () => {
 
 	it("normalizes stale cursor positions before text edits can split graphemes", async () => {
 		const { clampCursorPosition, nextPlainTextInputState } = await import(
-			"../../src/input/editor/state"
+			"../../src/input/editor/state.ts"
 		);
 
 		expect(clampCursorPosition(2, "a🙂b")).toBe(1);
@@ -182,7 +182,7 @@ describe("text input state helpers", () => {
 
 	it("uses terminal width before layout measurement to avoid an unwrapped first render", async () => {
 		const { initialTextInputMeasuredWidth, nextTextInputMeasuredWidth } =
-			await import("../../src/input/text");
+			await import("../../src/input/text.ts");
 
 		expect(initialTextInputMeasuredWidth(96)).toBe(96);
 		expect(initialTextInputMeasuredWidth(0)).toBe(80);
@@ -195,7 +195,7 @@ describe("text input state helpers", () => {
 	});
 
 	it("splits rendered input lines without regex allocation", async () => {
-		const { splitRenderedTextLines } = await import("../../src/input/text");
+		const { splitRenderedTextLines } = await import("../../src/input/text.ts");
 
 		expect(splitRenderedTextLines("")).toEqual([""]);
 		expect(splitRenderedTextLines("one\ntwo")).toEqual(["one", "two"]);
@@ -209,7 +209,7 @@ describe("text input state helpers", () => {
 
 	it("keeps image badge text and widths stable across cache boundary", async () => {
 		const { getImageBadgeText, getImageBadgeWidth } = await import(
-			"../../src/input/text"
+			"../../src/input/text.ts"
 		);
 
 		expect(getImageBadgeText(0)).toBe("⟦ 📎 Image Attachment #1 ⟧");

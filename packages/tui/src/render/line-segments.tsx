@@ -1,8 +1,8 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import { extractTrim } from "../shell/text-processing";
-import { HighlightedCode } from "./highlight";
-import { countRenderedLinesDropTrailingEmpty } from "./lines";
+import { extractTrim } from "../shell/text-processing.ts";
+import { HighlightedCode } from "./highlight.tsx";
+import { countRenderedLinesDropTrailingEmpty } from "./lines.ts";
 
 const CODE_GUTTER_COLOR = "gray";
 const DIFF_REMOVED = "#880808";

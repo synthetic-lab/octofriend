@@ -1,29 +1,25 @@
 import { Box, Text } from "ink";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useLatestRef } from "../../input/latest-input";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { useTerminalContentWidth } from "../../layout/viewport.tsx";
+import { SelectInput } from "../../menu/select.tsx";
+import { assertKeyForModel } from "../../runtime/config/keys.ts";
 import {
 	keyFromName,
 	type ProviderConfig,
 	providerForBaseUrl,
 	SYNTHETIC_PROVIDER,
-} from "../../runtime/models/catalog/main";
-import { assertKeyForModel } from "../../runtime/config/keys";
-import { useTerminalContentWidth } from "../../layout/viewport";
-import { useTerminalThemeColor } from "../../theme/branding";
+} from "../../runtime/models/catalog/main.ts";
+import { useTerminalThemeColor } from "../../theme/branding.tsx";
 import {
+	ModelDiscoveryContext,
 	testConnection,
 	useModelConnectionTest,
-	ModelDiscoveryContext,
-} from "./connection";
-import { errorContext } from "./error-context";
-import { Step } from "./step";
-import { SelectInput } from "../../menu/select";
-import type {
-	FullFlowRouteData,
-	ModelMetadata,
-	Transitions,
-} from "./types";
-import { Back } from "./router";
+} from "./connection.ts";
+import { errorContext } from "./error-context.tsx";
+import { Back } from "./router.tsx";
+import { Step } from "./step.tsx";
+import type { FullFlowRouteData, ModelMetadata, Transitions } from "./types.ts";
 
 export function requiresSyntheticModelPrefix({
 	baseUrl,
@@ -64,17 +60,39 @@ export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 	useEffect(() => {
 		let active = true;
 		if (!props.auth) return;
-		if (props.auth.type === "env" && props.auth.credential === "chatgpt-oauth") {
-			return () => { active = false; };
+		if (
+			props.auth.type === "env" &&
+			props.auth.credential === "chatgpt-oauth"
+		) {
+			return () => {
+				active = false;
+			};
 		}
-		assertKeyForModel({ baseUrl: props.baseUrl, auth: props.auth, type: props.provider?.type }, props.config)
-			.then((apiKey) => modelDiscover({ type: props.provider?.type, baseUrl: props.baseUrl, apiKey }))
+		assertKeyForModel(
+			{ baseUrl: props.baseUrl, auth: props.auth, type: props.provider?.type },
+			props.config,
+		)
+			.then((apiKey) =>
+				modelDiscover({
+					type: props.provider?.type,
+					baseUrl: props.baseUrl,
+					apiKey,
+				}),
+			)
 			.then((result) => {
 				if (active) setDiscoveredModels(result.models.map((model) => model.id));
 			})
 			.catch(() => undefined);
-		return () => { active = false; };
-	}, [modelDiscover, props.auth, props.baseUrl, props.config, props.provider?.type]);
+		return () => {
+			active = false;
+		};
+	}, [
+		modelDiscover,
+		props.auth,
+		props.baseUrl,
+		props.config,
+		props.provider?.type,
+	]);
 	const validateModelInput = useCallback(
 		(value: string) => modelInputIsValid(value, propsRef.current),
 		[propsRef],
@@ -90,10 +108,17 @@ export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 					<Text>Choose a model from this provider:</Text>
 					<SelectInput
 						items={[
-							...discoveredModels.map((model) => ({ label: model, value: model })),
+							...discoveredModels.map((model) => ({
+								label: model,
+								value: model,
+							})),
 							{ label: "Enter a custom model string...", value: "__custom__" },
 						]}
-						onSelect={({ value }) => value === "__custom__" ? setManualEntry(true) : handleSubmit(value)}
+						onSelect={({ value }) =>
+							value === "__custom__"
+								? setManualEntry(true)
+								: handleSubmit(value)
+						}
 					/>
 				</Box>
 			</Back>
@@ -101,9 +126,23 @@ export function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
 	}
 	return (
 		<Back go={props.back}>
-			<Step<string> title="What's the model string for the API you're using?" prompt="Model string:" parse={parseModelInput} validate={validateModelInput} onSubmit={handleSubmit}>
-				{props.renderExamples && <Text>(For example, to use Kimi K2 with the Moonshot API, you would use kimi-k2-0711-preview)</Text>}
-				<Text>This varies by inference provider: you can typically find this information in your inference provider's documentation.</Text>
+			<Step<string>
+				title="What's the model string for the API you're using?"
+				prompt="Model string:"
+				parse={parseModelInput}
+				validate={validateModelInput}
+				onSubmit={handleSubmit}
+			>
+				{props.renderExamples && (
+					<Text>
+						(For example, to use Kimi K2 with the Moonshot API, you would use
+						kimi-k2-0711-preview)
+					</Text>
+				)}
+				<Text>
+					This varies by inference provider: you can typically find this
+					information in your inference provider's documentation.
+				</Text>
 			</Step>
 		</Back>
 	);
@@ -290,8 +329,8 @@ export function Context(
 					</Box>
 					<Text>
 						Enter the full token count without a unit suffix: for example,{" "}
-						<Text color={color}>32000</Text> or{" "}
-						<Text color={color}>64000</Text>.
+						<Text color={color}>32000</Text> or <Text color={color}>64000</Text>
+						.
 					</Text>
 				</Box>
 			</Step>

@@ -1,7 +1,7 @@
 import { Box } from "ink";
 import type { ReactNode } from "react";
 
-import { useTerminalContentWidth } from "./viewport";
+import { useTerminalContentWidth } from "./viewport.tsx";
 
 type CenteredBoxProps = {
 	children?: ReactNode;

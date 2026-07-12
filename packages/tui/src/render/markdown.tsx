@@ -1,15 +1,15 @@
 import { Box, Text } from "ink";
 import { marked, type Token, type Tokens } from "marked";
 import React from "react";
-import { useTerminalSize } from "../layout/viewport";
-import { HighlightedCode } from "./highlight";
-import { normalizeRenderedLineBreaks } from "./lines";
+import { useTerminalSize } from "../layout/viewport.tsx";
+import { HighlightedCode } from "./highlight.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
 import {
 	isMarkedToken,
 	renderTokenAsPlaintext,
 	renderTokensAsPlaintext,
-} from "./plaintext";
-import { TableRenderer } from "./table";
+} from "./plaintext.ts";
+import { TableRenderer } from "./table.tsx";
 
 type MarkdownRenderModel =
 	| { kind: "plain"; text: string }

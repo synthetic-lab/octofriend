@@ -3,10 +3,10 @@ import {
 	keyFromName,
 	type ProviderConfig,
 	providerForBaseUrl,
-} from "../../runtime/models/catalog/main";
-import type { FullFlowRouteData } from "./types";
-import { nonEmptyEnvValue, nonEmptyTrimmedValue } from "./providers";
-import { CHATGPT_OAUTH_ENV_VARS } from "./auth";
+} from "../../runtime/models/catalog/main.ts";
+import { CHATGPT_OAUTH_ENV_VARS } from "./auth.ts";
+import { nonEmptyEnvValue, nonEmptyTrimmedValue } from "./providers.ts";
+import type { FullFlowRouteData } from "./types.ts";
 
 export function envVarExampleForBaseUrl(
 	baseUrl: string,

@@ -1,27 +1,24 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Auth, Config } from "../../runtime/config/schemas";
-import { assertKeyForModel } from "../../runtime/config/keys";
+import { assertKeyForModel } from "../../runtime/config/keys.ts";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
 import type {
 	ProviderConfig,
 	ProviderKey,
-} from "../../runtime/models/catalog/main";
-import { CustomModelFlow, FullAddModelFlow } from "./flow";
-import { CustomAuthFlow } from "./custom-auth";
-import { defaultApiKeyOverrideForProviderAuth } from "./auth";
-import { buildCustomProviderModel } from "./import";
+} from "../../runtime/models/catalog/main.ts";
+import { defaultApiKeyOverrideForProviderAuth } from "./auth.ts";
+import { ModelDiscoveryContext } from "./connection.ts";
+import { CustomAuthFlow } from "./custom-auth.tsx";
+import { CustomModelFlow, FullAddModelFlow } from "./flow.tsx";
+import { buildCustomProviderModel } from "./import.ts";
 import {
 	buildImportedProviderModels,
 	providerImportAuthText,
 	providerModelAuth,
-} from "./import-auth";
-import { ImportModelsFrom } from "./import-screen";
-import { modelSetupStepForProviderChoice } from "./provider-select";
-import { FastProviderList } from "./provider-screen";
-import { ModelDiscoveryContext } from "./connection";
-import type {
-	ModelSetupStepAction,
-	ModelSetupStepData,
-} from "./state";
+} from "./import-auth.ts";
+import { ImportModelsFrom } from "./import-screen.tsx";
+import { FastProviderList } from "./provider-screen.tsx";
+import { modelSetupStepForProviderChoice } from "./provider-select.ts";
+import type { ModelSetupStepAction, ModelSetupStepData } from "./state.ts";
 
 export type ModelSetupDispatch = React.Dispatch<ModelSetupStepAction>;
 
@@ -117,15 +114,30 @@ export function ModelSetupFoundRoute({
 }) {
 	const { provider, overrideAuth, useEnvVar } = stepData;
 	const modelDiscover = useContext(ModelDiscoveryContext);
-	const [discoveredModels, setDiscoveredModels] = useState<ProviderConfig["models"] | null>(null);
+	const [discoveredModels, setDiscoveredModels] = useState<
+		ProviderConfig["models"] | null
+	>(null);
 	useEffect(() => {
 		let active = true;
-		const auth = overrideAuth ?? (useEnvVar ? { type: "env" as const, name: provider.envVar } : undefined);
+		const auth =
+			overrideAuth ??
+			(useEnvVar ? { type: "env" as const, name: provider.envVar } : undefined);
 		if (auth?.type === "env" && auth.credential === "chatgpt-oauth") {
-			return () => { active = false; };
+			return () => {
+				active = false;
+			};
 		}
-		assertKeyForModel({ baseUrl: provider.baseUrl, type: provider.type, auth }, config)
-			.then((apiKey) => modelDiscover({ type: provider.type, baseUrl: provider.baseUrl, apiKey }))
+		assertKeyForModel(
+			{ baseUrl: provider.baseUrl, type: provider.type, auth },
+			config,
+		)
+			.then((apiKey) =>
+				modelDiscover({
+					type: provider.type,
+					baseUrl: provider.baseUrl,
+					apiKey,
+				}),
+			)
 			.then((result) => {
 				const models = result.models.map((model) => ({
 					model: model.id,
@@ -135,9 +147,15 @@ export function ModelSetupFoundRoute({
 				if (active && models.length > 0) setDiscoveredModels(models);
 			})
 			.catch(() => undefined);
-		return () => { active = false; };
+		return () => {
+			active = false;
+		};
 	}, [config, modelDiscover, overrideAuth, provider, useEnvVar]);
-	const importProvider = useMemo(() => discoveredModels ? { ...provider, models: discoveredModels } : provider, [discoveredModels, provider]);
+	const importProvider = useMemo(
+		() =>
+			discoveredModels ? { ...provider, models: discoveredModels } : provider,
+		[discoveredModels, provider],
+	);
 	const authSummaryText = useMemo(
 		() =>
 			providerImportAuthText({

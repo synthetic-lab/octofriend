@@ -6,7 +6,7 @@ import {
 	type Keymap,
 	type MapShortcutType,
 	type ShortcutArray,
-} from "./shortcut-types";
+} from "./shortcut-types.ts";
 
 function keymapsEqual<V>(left: Keymap<V>, right: Keymap<V>): boolean {
 	if (left === right) return true;

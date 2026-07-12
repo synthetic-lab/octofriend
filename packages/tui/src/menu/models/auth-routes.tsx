@@ -1,16 +1,16 @@
-import { fullFlow } from "./routes";
 import {
 	envVarExampleForBaseUrl as envVarExampleForBaseUrlImpl,
 	envVarHasNonEmptyValue as envVarHasNonEmptyValueImpl,
 	normalizeEnvVarName as normalizeEnvVarNameImpl,
 	secretPathExampleForBaseUrl as secretPathExampleForBaseUrlImpl,
-} from "./auth-input";
+} from "./auth-input.ts";
 import {
 	ApiKeyRoute,
 	ChatGptOAuthRoute,
 	CommandRoute,
 	EnvVarRoute,
-} from "./input-routes";
+} from "./input-routes.tsx";
+import { fullFlow } from "./routes.tsx";
 
 export const envVarExampleForBaseUrl = envVarExampleForBaseUrlImpl;
 export const normalizeEnvVarName = normalizeEnvVarNameImpl;

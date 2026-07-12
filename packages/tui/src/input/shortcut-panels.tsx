@@ -1,9 +1,9 @@
 import { Box, Text } from "ink";
 import { type ReactNode, useCallback, useMemo } from "react";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { Octo } from "../theme/branding";
-import type { Item, ShortcutArray } from "./shortcut-render";
-import { KbShortcutSelect } from "./shortcut-select";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { Octo } from "../theme/branding.tsx";
+import type { Item, ShortcutArray } from "./shortcut-render.ts";
+import { KbShortcutSelect } from "./shortcut-select.tsx";
 
 export type KbPanelProps<V> = {
 	shortcutItems: ShortcutArray<V>;

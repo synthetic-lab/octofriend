@@ -1,11 +1,11 @@
 import { create } from "zustand";
-import { createAgentActions } from "./runner";
-import { createHistoryActions } from "./history-actions";
-import { createMenuActions } from "./menu-state";
-import { createNotificationActions } from "./notifications";
-import { createToolActions } from "./tool-actions";
-import type { UiState } from "./types";
-import { createWhitelistActions } from "./whitelist";
+import { createHistoryActions } from "./history-actions.ts";
+import { createMenuActions } from "./menu-state.ts";
+import { createNotificationActions } from "./notifications.ts";
+import { createAgentActions } from "./runner.ts";
+import { createToolActions } from "./tool-actions.ts";
+import type { UiState } from "./types.ts";
+import { createWhitelistActions } from "./whitelist.ts";
 
 export const useAppStore = create<UiState>((set, get) => ({
 	preMenuModeData: null,

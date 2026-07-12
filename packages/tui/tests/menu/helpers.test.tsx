@@ -1,18 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import type { ProviderConfig } from "../../src/runtime/models/catalog/main";
-import {
-	expectOk,
-	expectPresent,
-	waitFor,
-} from "./helpers";
+import type { ProviderConfig } from "../../src/runtime/models/catalog/main.ts";
+import { expectOk, expectPresent, waitFor } from "./helpers.ts";
 
 describe("provider setup helpers", () => {
 	it("resolves provider base URLs from local proxy environment overrides", async () => {
 		const { resolveProviderBaseUrl } = await import(
-			"../../src/menu/models/detect-models"
+			"../../src/menu/models/detect-models.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(
@@ -37,10 +33,10 @@ describe("provider setup helpers", () => {
 
 	it("deduplicates provider imports across aliases and local base URL overrides", async () => {
 		const { getRemainingProviderModels } = await import(
-			"../../src/menu/models/import"
+			"../../src/menu/models/import.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const synthetic = expectPresent(PROVIDERS.synthetic);
 		const openai = expectPresent(PROVIDERS.openai);
@@ -114,7 +110,7 @@ describe("provider setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ImportModelsFrom } = await import(
-			"../../src/menu/models/import-screen"
+			"../../src/menu/models/import-screen.tsx"
 		);
 		const providerA: ProviderConfig = {
 			shortcut: "a",
@@ -172,7 +168,7 @@ describe("provider setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ImportModelsFrom } = await import(
-			"../../src/menu/models/import-screen"
+			"../../src/menu/models/import-screen.tsx"
 		);
 		const provider: ProviderConfig = {
 			shortcut: "p",
@@ -227,7 +223,7 @@ describe("provider setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ImportModelsFrom } = await import(
-			"../../src/menu/models/import-screen"
+			"../../src/menu/models/import-screen.tsx"
 		);
 		const provider: ProviderConfig = {
 			shortcut: "p",
@@ -270,10 +266,10 @@ describe("provider setup helpers", () => {
 
 	it("resolves provider env vars from explicit override, config override, then provider default", async () => {
 		const { resolveProviderEnvVar } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 		const { keyFromName, PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openaiKey = expectOk(
 			keyFromName(expectPresent(PROVIDERS.openai).name),
@@ -308,7 +304,7 @@ describe("provider setup helpers", () => {
 
 	it("returns non-empty environment values without trimming allocations when possible", async () => {
 		const { nonEmptyEnvValue } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 		const raw = "OPENAI_API_KEY";
 
@@ -322,10 +318,10 @@ describe("provider setup helpers", () => {
 
 	it("adds provider type metadata to custom provider models", async () => {
 		const { buildCustomProviderModel } = await import(
-			"../../src/menu/models/import"
+			"../../src/menu/models/import.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const customModel = {
 			baseUrl: "https://api.openai.com/v1",
@@ -347,10 +343,10 @@ describe("provider setup helpers", () => {
 
 	it("builds imported provider models with provider auth metadata", async () => {
 		const { buildImportedProviderModels, providerModelAuth } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const openaiConfig = {
@@ -434,7 +430,7 @@ describe("provider setup helpers", () => {
 
 	it("builds empty-provider import shortcuts without inline route data", async () => {
 		const { buildEmptyProviderImportShortcutItems } = await import(
-			"../../src/menu/models/import"
+			"../../src/menu/models/import.ts"
 		);
 
 		expect(buildEmptyProviderImportShortcutItems("OpenAI")).toEqual([
@@ -461,7 +457,7 @@ describe("provider setup helpers", () => {
 			EMPTY_SELECTED_PROVIDER_MODELS,
 			selectedProviderModels,
 			toggleSelectedProviderModel,
-		} = await import("../../src/menu/models/import");
+		} = await import("../../src/menu/models/import.ts");
 		const providerModels = [
 			{
 				model: "provider-back",
@@ -513,7 +509,7 @@ describe("provider setup helpers", () => {
 			selectedProviderModels,
 			toggleSelectedProviderModel,
 			EMPTY_SELECTED_PROVIDER_MODELS,
-		} = await import("../../src/menu/models/import");
+		} = await import("../../src/menu/models/import.ts");
 		const providerModels = [
 			{ model: "model-a", nickname: "Shared", context: 128000 },
 			{ model: "model-b", nickname: "Shared", context: 128000 },
@@ -540,10 +536,10 @@ describe("provider setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ImportModelsFrom } = await import(
-			"../../src/menu/models/import-screen"
+			"../../src/menu/models/import-screen.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const imported = openai.models.map((model) => ({
@@ -574,10 +570,10 @@ describe("provider setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ImportModelsFrom } = await import(
-			"../../src/menu/models/import-screen"
+			"../../src/menu/models/import-screen.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { Config } from "../../../src/runtime/config/schemas";
-import { runTool } from "../../../src/runtime/tools/main";
-import type { Transport } from "../../../src/runtime/workspace/common";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
+import { runTool } from "../../../src/runtime/tools/main.ts";
+import type { Transport } from "../../../src/runtime/workspace/common.ts";
 
 const baseConfig: Config = {
 	yourName: "Octo",

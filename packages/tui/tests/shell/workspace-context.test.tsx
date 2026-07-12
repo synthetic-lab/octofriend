@@ -5,7 +5,7 @@ import {
 	CwdContext,
 	DEFAULT_CWD_CONTEXT_VALUE,
 	useCwd,
-} from "../../src/shell/workspace-context";
+} from "../../src/shell/workspace-context.tsx";
 
 function CwdProbe() {
 	return <Text>{useCwd()}</Text>;

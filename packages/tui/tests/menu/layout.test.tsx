@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
-import { SetApiKey } from "../../src/menu/models/api-key";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
+import { SetApiKey } from "../../src/menu/models/api-key.tsx";
 
 describe("SetApiKey layout", () => {
 	it("wraps provider text to narrow terminal width", () => {

@@ -4,8 +4,8 @@ import {
 	configKeyForModel,
 	configSearch,
 	configWriteKey,
-} from "./agentd-config";
-import type { Auth, Config, KeyResult } from "./schemas";
+} from "./agentd-config.ts";
+import type { Auth, Config, KeyResult } from "./schemas.ts";
 
 type KeyedModel = {
 	baseUrl: string;

@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import type { CodeSegment } from "./html-highlight";
-import { nextRenderedLineBreak } from "./lines";
+import type { CodeSegment } from "./html-highlight.ts";
+import { nextRenderedLineBreak } from "./lines.ts";
 
 const HIGHLIGHT_CLASS_COLORS: Record<string, string> = {
 	"hljs-keyword": "blue",

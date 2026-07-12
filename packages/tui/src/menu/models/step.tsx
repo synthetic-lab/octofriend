@@ -7,14 +7,14 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { TextInput } from "../../input/text";
-import { useTerminalContentWidth } from "../../layout/viewport";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { useTerminalThemeColor } from "../../theme/branding";
-import { errorContext } from "./error-context";
-import type { AddModelStep } from "./types";
-import { nonEmptyTrimmedValue } from "./providers";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { TextInput } from "../../input/text.ts";
+import { useTerminalContentWidth } from "../../layout/viewport.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import { useTerminalThemeColor } from "../../theme/branding.tsx";
+import { errorContext } from "./error-context.tsx";
+import { nonEmptyTrimmedValue } from "./providers.ts";
+import type { AddModelStep } from "./types.ts";
 
 export const STEP_SUBMIT_ERROR = "Setup step failed. Try again.";
 

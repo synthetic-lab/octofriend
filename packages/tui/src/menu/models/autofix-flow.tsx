@@ -1,30 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import type { Config } from "../../runtime/config/schemas";
-import { errorContext } from "./error-context";
-import { baseUrl } from "./routes";
-import {
-	Context,
-	Model,
-	TestConnection,
-} from "./route-views";
+import { useLatestRef } from "../../input/latest-input.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { apiKey, chatGptOAuth, command, envVar } from "./auth-routes.tsx";
+import { AuthAsk, type AuthChoiceRoute, PostAuth } from "./auth-views.tsx";
+import { errorContext } from "./error-context.tsx";
+import { Context, Model, TestConnection } from "./route-views.tsx";
+import { router, type ToRoute } from "./router.tsx";
+import { baseUrl } from "./routes.tsx";
 import type {
 	FullFlowRouteData,
 	ModelMetadata,
 	Model as SetupModel,
-} from "./types";
-import {
-	apiKey,
-	chatGptOAuth,
-	command,
-	envVar,
-} from "./auth-routes";
-import {
-	AuthAsk,
-	type AuthChoiceRoute,
-	PostAuth,
-} from "./auth-views";
-import { router, type ToRoute } from "./router";
+} from "./types.ts";
 
 type CustomAutofixFlowRouteData = Pick<
 	FullFlowRouteData,

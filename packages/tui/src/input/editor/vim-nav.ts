@@ -1,4 +1,4 @@
-import type { VimKeyHandlerResult } from "./vim-types";
+import type { VimKeyHandlerResult } from "./vim-types.ts";
 
 const WHITESPACE_PATTERN = /\s/;
 

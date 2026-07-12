@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
-import type { Transport } from "../runtime/workspace/common";
-import { LocalTransport } from "../runtime/workspace/local";
+import type { Transport } from "../runtime/workspace/common.ts";
+import { LocalTransport } from "../runtime/workspace/local.ts";
 
 export const TransportContext = createContext<Transport>(new LocalTransport());
 

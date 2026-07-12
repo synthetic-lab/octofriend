@@ -1,13 +1,13 @@
 import type { Key } from "ink";
 import { Box, Text } from "ink";
 import React from "react";
-import { useTerminalThemeColor } from "../../theme/branding";
-import { createVimKeyHandler } from "./vim-handler";
+import { useTerminalThemeColor } from "../../theme/branding.tsx";
+import { createVimKeyHandler } from "./vim-handler.ts";
 import type {
 	VimKeyHandler,
 	VimKeyHandlerResult,
 	VimMode,
-} from "./vim-types";
+} from "./vim-types.ts";
 
 export type { VimKeyHandler, VimKeyHandlerResult, VimMode };
 export { createVimKeyHandler };

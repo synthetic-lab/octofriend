@@ -8,7 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useStdoutResize } from "./stdout-resize";
+import { useStdoutResize } from "./stdout-resize.ts";
 
 export type TerminalSize = {
 	width: number;

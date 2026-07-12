@@ -1,14 +1,14 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import { normalizeRenderedLineBreaks } from "../render/lines";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
 import {
 	parsedToolSchema,
 	WhitelistAllowDescription,
-} from "../render/tools";
-import type { ToolPermissionResult } from "../runtime/tools/bridge-types";
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
-import { useTerminalThemeColor } from "../theme/branding";
-import type { ToolRequestSelectItem } from "./tool-types";
+} from "../render/tools.tsx";
+import type { ToolPermissionResult } from "../runtime/tools/bridge-types.ts";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
+import type { ToolRequestSelectItem } from "./tool-types.ts";
 
 export const ToolRequestItem = ({
 	isSelected = false,

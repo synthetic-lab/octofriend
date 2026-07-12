@@ -1,4 +1,4 @@
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main.ts";
 
 type ParsedToolIdentityArguments = {
 	server?: string;

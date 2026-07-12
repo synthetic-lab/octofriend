@@ -1,19 +1,19 @@
 import { describe, expect, it } from "bun:test";
 
-import { deferred, waitFor } from "./test-support";
+import { deferred, waitFor } from "./test-support.ts";
 
 describe("terminal model setup connection tests", () => {
 	it("does not repeat connection tests when rerendering the same target", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const { TestConnection } = await import(
-			"../../src/menu/models/route-views"
+			"../../src/menu/models/route-views.tsx"
 		);
 		const calls: unknown[] = [];
 		const connection = deferred<{
@@ -70,13 +70,13 @@ describe("terminal model setup connection tests", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const { TestConnection } = await import(
-			"../../src/menu/models/route-views"
+			"../../src/menu/models/route-views.tsx"
 		);
 		const calls: unknown[] = [];
 		const modelConnectionTest = (params: unknown) => {
@@ -134,13 +134,13 @@ describe("terminal model setup connection tests", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const { TestConnection } = await import(
-			"../../src/menu/models/route-views"
+			"../../src/menu/models/route-views.tsx"
 		);
 		const first = deferred<{ valid: false }>();
 		const second = deferred<{

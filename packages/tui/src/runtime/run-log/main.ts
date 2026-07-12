@@ -1,17 +1,17 @@
-import { normalizeQuotaData } from "../../shell/state/quota";
-import { trackTokenUsage } from "../../shell/token-usage";
-import { readSearchConfig } from "../config/keys";
-import type { Config, ModelConfig } from "../config/schemas";
-import type { Transport } from "../workspace/common";
+import { normalizeQuotaData } from "../../shell/state/quota.ts";
+import { trackTokenUsage } from "../../shell/token-usage.ts";
+import { readSearchConfig } from "../config/keys.ts";
+import type { Config, ModelConfig } from "../config/schemas.ts";
+import type { Transport } from "../workspace/common.ts";
 import type {
 	CompactionTokenTypes,
 	Finish,
 	ResponseTokenTypes,
 	TrajectoryHandler,
 	TrajectoryOutputIR,
-} from "./types";
+} from "./types.ts";
 
-export type { AnyState, StateEvents, TrajectoryOutputIR } from "./types";
+export type { AnyState, StateEvents, TrajectoryOutputIR } from "./types.ts";
 
 type TrajectoryArcBridgeEvent =
 	| { type: "start-response" }

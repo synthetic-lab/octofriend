@@ -7,34 +7,22 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { errorToString } from "../../shell/result";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { CenteredBox } from "../../layout/boxes.tsx";
 import {
 	hasExistingKeyForBaseUrl,
 	hasExistingKeyForModel,
-} from "../../runtime/config/keys";
-import type { Auth, Config } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import { MenuHeader } from "../root";
-import { errorContext } from "./error-context";
-import type {
-	FullFlowRouteData,
-	Model as SetupModel,
-} from "./types";
-import {
-	apiKey,
-	chatGptOAuth,
-	command,
-	envVar,
-} from "./auth-routes";
-import {
-	AuthAsk,
-	type AuthChoiceRoute,
-	PostAuth,
-} from "./auth-views";
-import { detectExistingProviderAuth } from "./auth";
-import { router, type ToRoute } from "./router";
+} from "../../runtime/config/keys.ts";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import { errorToString } from "../../shell/result.ts";
+import { MenuHeader } from "../root.tsx";
+import { detectExistingProviderAuth } from "./auth.ts";
+import { apiKey, chatGptOAuth, command, envVar } from "./auth-routes.tsx";
+import { AuthAsk, type AuthChoiceRoute, PostAuth } from "./auth-views.tsx";
+import { errorContext } from "./error-context.tsx";
+import { router, type ToRoute } from "./router.tsx";
+import type { FullFlowRouteData, Model as SetupModel } from "./types.ts";
 
 function ignoreDone(_data: SetupModel): undefined {
 	return undefined;

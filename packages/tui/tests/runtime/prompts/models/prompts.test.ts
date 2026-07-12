@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	imageAttachmentPlaceholderText,
 	toolSkip,
-} from "../../../../src/runtime/prompts/models/main";
+} from "../../../../src/runtime/prompts/models/main.ts";
 
 describe("LLM IR prompt fragments", () => {
 	it("renders skipped tool calls with the reason", () => {

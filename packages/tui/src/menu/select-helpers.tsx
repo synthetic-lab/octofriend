@@ -4,7 +4,7 @@ import type {
 	SelectIndicatorProps,
 	SelectItem,
 	SelectItemProps,
-} from "./select";
+} from "./select.tsx";
 
 function normalizedRotationStart(length: number, rotateIndex: number): number {
 	if (length === 0) return 0;

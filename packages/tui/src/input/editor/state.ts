@@ -1,4 +1,4 @@
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
 
 export type TextInputSnapshot = {
 	currentValue: string;

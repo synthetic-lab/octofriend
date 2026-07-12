@@ -1,10 +1,10 @@
-import type { Auth, Config } from "../../runtime/config/schemas";
+import { isApiKeyEnvAuth } from "../../menu/models/auth.ts";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
 import {
 	type ProviderConfig,
 	providerBaseUrlsMatch,
 	providerForModelConfig,
-} from "../../runtime/models/catalog/main";
-import { isApiKeyEnvAuth } from "../../menu/models/auth";
+} from "../../runtime/models/catalog/main.ts";
 
 type ModelEndpointIdentity = Pick<Config["models"][number], "baseUrl" | "type">;
 

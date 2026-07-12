@@ -1,16 +1,16 @@
 import { Box, Text } from "ink";
 import type { ReactElement } from "react";
-import type { MalformedToolRequest } from "../runtime/models/ir/main";
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
-import { useTerminalThemeColor } from "../theme/branding";
-import { DiffRenderer, FileRenderer } from "./code";
-import { normalizeRenderedLineBreaks } from "./lines";
-import { type LspToolParsedSchema, LspToolRenderer } from "./lsp";
+import type { MalformedToolRequest } from "../runtime/models/ir/main.ts";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
+import { DiffRenderer, FileRenderer } from "./code.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
+import { type LspToolParsedSchema, LspToolRenderer } from "./lsp.tsx";
 import {
 	type ParsedToolCallArguments,
 	type ParsedToolCallSchema,
 	parsedItemFor,
-} from "./tool-types";
+} from "./tool-types.ts";
 
 export function ToolMessageRenderer({
 	item,

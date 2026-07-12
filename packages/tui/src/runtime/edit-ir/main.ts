@@ -1,4 +1,4 @@
-import type { ImageInfo } from "../../input/images";
+import type { ImageInfo } from "../../input/images.ts";
 
 export type ImageModalityConfig = {
 	enabled: boolean;

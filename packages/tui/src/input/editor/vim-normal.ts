@@ -1,12 +1,12 @@
 import type { Key } from "ink";
-import type { VimHandlerState } from "./vim-state";
 import {
 	runNormalCommand,
 	type VimNormalCommandContext,
-} from "./vim-commands";
-import { operators } from "./vim-operators";
-import { handlePendingCommand } from "./vim-pending";
-import type { VimKeyHandlerResult } from "./vim-types";
+} from "./vim-commands.ts";
+import { operators } from "./vim-operators.ts";
+import { handlePendingCommand } from "./vim-pending.ts";
+import type { VimHandlerState } from "./vim-state.ts";
+import type { VimKeyHandlerResult } from "./vim-types.ts";
 
 function handleRedo(
 	currentValue: string,

@@ -1,5 +1,5 @@
-import type { FindFilesOptions, Transport } from "./common";
-import { pathPatternMatches, wildcardMatches } from "./wildcard";
+import type { FindFilesOptions, Transport } from "./common.ts";
+import { pathPatternMatches, wildcardMatches } from "./wildcard.ts";
 
 const excludedDirs = new Set([
 	"node_modules",

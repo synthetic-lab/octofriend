@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { useAppStore } from "../../src/shell/state/store";
-import { ToolRequestPrompt } from "../../src/shell/tool-options";
+import type { Config } from "../../src/runtime/config/schemas.ts";
+import type { ToolCall as ToolCallRequest } from "../../src/runtime/tools/main.ts";
+import type { Transport } from "../../src/runtime/workspace/common.ts";
+import { useAppStore } from "../../src/shell/state/store.ts";
+import { ToolRequestPrompt } from "../../src/shell/tool-options.tsx";
 import {
 	selectIsRunningToolCall,
 	TOOL_REQUEST_PREPARE_ERROR,
 	ToolRequestRenderer,
 	ToolRequestsRenderer,
-} from "../../src/shell/tool-requests";
-import type { Config } from "../../src/runtime/config/schemas";
-import type { ToolCall as ToolCallRequest } from "../../src/runtime/tools/main";
-import type { Transport } from "../../src/runtime/workspace/common";
+} from "../../src/shell/tool-requests.tsx";
 
 const originalStoreActions = {
 	runTool: useAppStore.getState().runTool,

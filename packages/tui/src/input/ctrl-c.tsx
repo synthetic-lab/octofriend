@@ -1,6 +1,6 @@
 import { useApp } from "ink";
 import * as React from "react";
-import { useLatestInput } from "./latest-input";
+import { useLatestInput } from "./latest-input.ts";
 
 export type ExitOnDoubleCtrlCProps = {
 	children: React.ReactNode;

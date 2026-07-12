@@ -12,9 +12,9 @@ import {
 	type InkInputKey,
 	useLatestInput,
 	useLatestRef,
-} from "../input/latest-input";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { useTerminalThemeColor } from "../theme/branding";
+} from "../input/latest-input.ts";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
 import {
 	initialRotateIndex,
 	initialSelectedIndex,
@@ -24,7 +24,7 @@ import {
 	selectMove,
 	selectValuesEqual,
 	visibleItemAt,
-} from "./select-helpers";
+} from "./select-helpers.tsx";
 
 export type SelectIndicatorProps = {
 	readonly isSelected?: boolean;

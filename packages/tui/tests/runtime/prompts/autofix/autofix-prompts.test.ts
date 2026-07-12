@@ -8,7 +8,7 @@ import {
 	JsonFixFailure,
 	JsonFixResponseSchema,
 	JsonFixSuccess,
-} from "../../../../src/runtime/prompts/autofix/main";
+} from "../../../../src/runtime/prompts/autofix/main.ts";
 
 describe("autofix prompts", () => {
 	it("renders a diff edit repair prompt with the broken edit payload and response schemas", () => {

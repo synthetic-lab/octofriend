@@ -1,12 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { err, errorToString, ok, type Result } from "../shell/result";
+import { err, errorToString, ok, type Result } from "../shell/result.ts";
 import {
 	IMAGE_EXTENSIONS,
 	type ImageInfo,
 	type ImageMimeType,
 	SUPPORTED_IMAGE_MIME_TYPES,
-} from "./image-types";
+} from "./image-types.ts";
 
 export function getMimeTypeFromPath(
 	filePath: string,

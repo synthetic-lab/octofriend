@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { PROVIDERS } from "../../src/runtime/models/catalog/main";
 import {
 	apiKeyEnvAuth,
 	authChoicesForProvider,
@@ -8,8 +7,9 @@ import {
 	detectExistingProviderAuth,
 	providerAuthText,
 	shouldPersistDefaultApiKeyOverride,
-} from "../../src/menu/models/auth";
-import { expectPresent } from "./test-support";
+} from "../../src/menu/models/auth.ts";
+import { PROVIDERS } from "../../src/runtime/models/catalog/main.ts";
+import { expectPresent } from "./test-support.ts";
 
 describe("provider auth helpers", () => {
 	it("does not report auth support when no provider is selected", () => {

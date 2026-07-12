@@ -1,21 +1,23 @@
 import { useApp } from "ink";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
-import { type LatestRef, useLatestRef } from "../../input/latest-input";
-import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys";
-import type { Config } from "../../runtime/config/schemas";
-import type { ModelConnectionTester, ModelDiscoveryTester } from "../../menu/models/connection";
-import { ModelConnectionTestContext, ModelDiscoveryContext } from "../../menu/models/connection";
-import { ModelSetup } from "../../menu/models/detect-models";
+import { type LatestRef, useLatestRef } from "../../input/latest-input.ts";
+import type {
+	ModelConnectionTester,
+	ModelDiscoveryTester,
+} from "../../menu/models/connection.ts";
 import {
-	Back,
-	router,
-	type ToRoute,
-} from "../../menu/models/router";
-import { AutofixCompleteScreen } from "./autofix-complete";
-import { AutofixSetup } from "./autofix";
-import { NameStep } from "./name-step";
-import type { AutofixConfig, FirstTimeSetupRouteData } from "./types";
-import { WelcomeScreen } from "./welcome";
+	ModelConnectionTestContext,
+	ModelDiscoveryContext,
+} from "../../menu/models/connection.ts";
+import { ModelSetup } from "../../menu/models/detect-models.tsx";
+import { Back, router, type ToRoute } from "../../menu/models/router.tsx";
+import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { AutofixSetup } from "./autofix.tsx";
+import { AutofixCompleteScreen } from "./autofix-complete.tsx";
+import { NameStep } from "./name-step.tsx";
+import type { AutofixConfig, FirstTimeSetupRouteData } from "./types.ts";
+import { WelcomeScreen } from "./welcome.tsx";
 
 export const firstTimeSetupFlow = router<FirstTimeSetupRouteData>();
 
@@ -254,7 +256,9 @@ export function FirstTimeSetup({
 	);
 
 	return (
-		<ModelDiscoveryContext.Provider value={modelDiscover ?? (async () => ({ models: [] }))}>
+		<ModelDiscoveryContext.Provider
+			value={modelDiscover ?? (async () => ({ models: [] }))}
+		>
 			<routes.Root route="welcome" props={EMPTY_ROUTE_PROPS} />
 		</ModelDiscoveryContext.Provider>
 	);

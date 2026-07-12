@@ -1,17 +1,17 @@
 import { Box, Text } from "ink";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { type Item, KbShortcutPanel } from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { MenuHeader } from "../root";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { type Item, KbShortcutPanel } from "../../input/shortcuts.tsx";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import { MenuHeader } from "../root.tsx";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
 	ThemedSelectItem as ItemComponent,
 	SelectInput,
-} from "../select";
+} from "../select.tsx";
 import {
 	buildEmptyProviderImportShortcutItems,
 	buildImportModelItems,
@@ -22,7 +22,7 @@ import {
 	providerModelSelectionKey,
 	selectedProviderModels,
 	toggleSelectedProviderModel,
-} from "./import";
+} from "./import.ts";
 
 type ProviderSelectionState = {
 	providerKey: string;

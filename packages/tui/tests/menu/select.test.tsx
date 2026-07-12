@@ -6,7 +6,7 @@ import {
 	SelectInput,
 	ThemedSelectIndicator,
 	ThemedSelectItem,
-} from "../../src/menu/select";
+} from "../../src/menu/select.tsx";
 
 describe("SelectInput", () => {
 	it("renders visible selectable labels", () => {

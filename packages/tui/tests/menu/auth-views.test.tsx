@@ -1,13 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import React from "react";
-
-import type { Config } from "../../src/runtime/config/schemas";
+import { errorContext } from "../../src/menu/models/error-context.tsx";
+import type { Config } from "../../src/runtime/config/schemas.ts";
 import {
 	PROVIDERS,
 	type ProviderConfig,
-} from "../../src/runtime/models/catalog/main";
-import { errorContext } from "../../src/menu/models/error-context";
+} from "../../src/runtime/models/catalog/main.ts";
 
 const oauthOnlyProvider = {
 	shortcut: "o",
@@ -55,9 +54,7 @@ const apiOnlyProvider = {
 
 describe("AuthAsk", () => {
 	it("uses latest selection and back callbacks after rerender", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 		const calls: string[] = [];
 		const instance = render(
 			React.createElement(AuthAsk, {
@@ -93,9 +90,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("normalizes CR line breaks in auth setup dynamic copy", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 		const provider = {
 			...apiOnlyProvider,
 			name: "API\r\nOnly",
@@ -135,9 +130,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("uses configured API-key env overrides in OpenAI auth setup copy", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 		const provider = expectPresent(PROVIDERS.openai);
 		const config = {
 			yourName: "Ada",
@@ -171,9 +164,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("renders only back for providers without supported auth methods", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -206,9 +197,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("renders provider-specific API-key choices for API-key providers", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -233,9 +222,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("renders API-key choices for custom endpoints without catalog providers", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -264,9 +251,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("only renders OAuth choices for OAuth-only providers", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -295,9 +280,7 @@ describe("AuthAsk", () => {
 	});
 
 	it("does not read API-key override copy for OAuth-only OpenAI setup", async () => {
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 		const provider = {
 			...expectPresent(PROVIDERS.openai),
 			authMethods: ["chatgpt-oauth"],
@@ -332,9 +315,7 @@ describe("AuthAsk", () => {
 
 describe("PostAuth", () => {
 	it("runs terminal auth completion once across rerenders", async () => {
-		const { PostAuth } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { PostAuth } = await import("../../src/menu/models/auth-views.tsx");
 		const calls: string[] = [];
 		const props = {
 			baseUrl: "https://api.example.test/v1",

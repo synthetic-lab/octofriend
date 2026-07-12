@@ -1,5 +1,5 @@
-import type { FileMutateIR, FileReadIR } from "../../edit-ir/main";
-import type { LlmIR, ToolCall, ToolContract } from "../../models/ir/main";
+import type { FileMutateIR, FileReadIR } from "../../edit-ir/main.ts";
+import type { LlmIR, ToolCall, ToolContract } from "../../models/ir/main.ts";
 
 export const BuiltInToolContracts = {
 	read: { name: "read" },

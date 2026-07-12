@@ -3,17 +3,17 @@ import {
 	getMimeTypeFromDataUrl as getMimeTypeFromDataUrlImpl,
 	getMimeTypeFromPath as getMimeTypeFromPathImpl,
 	loadImageFromPath as loadImageFromPathImpl,
-} from "./image-loading";
+} from "./image-loading.ts";
 import {
 	isImagePath as isImagePathImpl,
 	parseImagePaths as parseImagePathsImpl,
 	replaceInputWithSafeCharacters as replaceInputWithSafeCharactersImpl,
 	separateFilePaths as separateFilePathsImpl,
-} from "./image-paths";
+} from "./image-paths.ts";
 import type {
 	ImageInfo as ImageInfoType,
 	ImageMimeType as ImageMimeTypeType,
-} from "./image-types";
+} from "./image-types.ts";
 
 export type ImageMimeType = ImageMimeTypeType;
 export type ImageInfo = ImageInfoType;

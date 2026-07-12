@@ -1,12 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
-import { errorContext } from "../../src/menu/models/error-context";
-import {
-	STEP_SUBMIT_ERROR,
-	Step,
-} from "../../src/menu/models/step";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
+import { errorContext } from "../../src/menu/models/error-context.tsx";
+import { STEP_SUBMIT_ERROR, Step } from "../../src/menu/models/step.tsx";
 
 function renderStep(
 	errorMessage: string,

@@ -1,5 +1,5 @@
-import type { Config } from "../../config/schemas";
-import type { Transport } from "../../workspace/common";
+import type { Config } from "../../config/schemas.ts";
+import type { Transport } from "../../workspace/common.ts";
 
 export type SystemPromptBuildParams = {
 	userName: string;

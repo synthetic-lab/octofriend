@@ -1,15 +1,15 @@
 import { useCallback, useReducer } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import type { Config } from "../../runtime/config/schemas";
-import { resolveProviderBaseUrl } from "../../runtime/models/catalog/main";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { resolveProviderBaseUrl } from "../../runtime/models/catalog/main.ts";
 import {
 	ModelSetupCustomRoute,
 	ModelSetupFoundRoute,
 	ModelSetupInitialRoute,
 	ModelSetupMissingAuthRoute,
 	ModelSetupOverrideModelRoute,
-} from "./detect-routes";
-import { modelSetupEscapeAction, reduceModelSetupStep } from "./state";
+} from "./detect-routes.tsx";
+import { modelSetupEscapeAction, reduceModelSetupStep } from "./state.ts";
 
 export { resolveProviderBaseUrl };
 

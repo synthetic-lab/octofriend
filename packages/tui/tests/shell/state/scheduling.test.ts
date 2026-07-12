@@ -6,7 +6,7 @@ import {
 	throttledBuffer,
 	throttledMergeBuffer,
 	timeout,
-} from "../../../src/shell/state/scheduling";
+} from "../../../src/shell/state/scheduling.ts";
 
 describe("sleep", () => {
 	it("resolves after the requested delay", async () => {

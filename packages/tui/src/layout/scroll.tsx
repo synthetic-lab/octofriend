@@ -15,8 +15,8 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useTerminalThemeColor } from "../theme/branding";
-import { useStdoutResize } from "./stdout-resize";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
+import { useStdoutResize } from "./stdout-resize.ts";
 
 const ASCII_ESCAPE = 27;
 const ASCII_OPEN_BRACKET = 91;

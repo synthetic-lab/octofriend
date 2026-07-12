@@ -1,4 +1,4 @@
-import type { PendingCommand, TextState, VimMode } from "./vim-types";
+import type { PendingCommand, TextState, VimMode } from "./vim-types.ts";
 
 export type VimHandlerState = {
 	pendingCommand: PendingCommand | null;

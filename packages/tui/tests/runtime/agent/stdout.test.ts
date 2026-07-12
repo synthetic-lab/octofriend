@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { firstNonEmptyStdoutLine } from "../../../src/runtime/agent/stdout";
+import { firstNonEmptyStdoutLine } from "../../../src/runtime/agent/stdout.ts";
 
 describe("firstNonEmptyStdoutLine", () => {
 	it("returns the first non-empty stdout line without splitting the full payload", () => {

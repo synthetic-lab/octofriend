@@ -1,10 +1,10 @@
-import type { ShortcutArray } from "../../input/shortcuts";
-import type { FullFlowRouteData } from "./types";
+import type { ShortcutArray } from "../../input/shortcuts.tsx";
 import {
 	CHATGPT_OAUTH_ENV_VAR,
 	LEGACY_CHATGPT_OAUTH_ENV_VAR,
 	providerAuthText,
-} from "./auth";
+} from "./auth.ts";
+import type { FullFlowRouteData } from "./types.ts";
 
 export type AuthChoiceRoute = "apiKey" | "chatGptOAuth" | "envVar" | "command";
 

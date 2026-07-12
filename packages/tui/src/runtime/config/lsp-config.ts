@@ -1,4 +1,4 @@
-import type { Config } from "./schemas";
+import type { Config } from "./schemas.ts";
 
 export function withServerDisabled(serverName: string, config: Config): Config {
 	const existing = config.lsp === false ? {} : (config.lsp ?? {});

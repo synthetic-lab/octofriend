@@ -1,24 +1,24 @@
 import { Box, Text } from "ink";
 import { useCallback, useRef, useState } from "react";
-import type { InputHistory } from "../../shell/input";
-import { trimWhitespace } from "../../shell/text-processing";
-import type { MultimodalConfig } from "../../runtime/models/catalog/main";
-import type { Transport } from "../../runtime/workspace/common";
-import { useTerminalThemeColor } from "../../theme/branding";
-import { FileSuggestionBox } from "../file-suggestions";
-import type { ImageInfo } from "../images";
+import type { MultimodalConfig } from "../../runtime/models/catalog/main.ts";
+import type { Transport } from "../../runtime/workspace/common.ts";
+import type { InputHistory } from "../../shell/input.ts";
+import { trimWhitespace } from "../../shell/text-processing.ts";
+import { useTerminalThemeColor } from "../../theme/branding.tsx";
+import { FileSuggestionBox } from "../file-suggestions.tsx";
+import type { ImageInfo } from "../images.ts";
 import {
 	type InkInputKey,
 	useLatestInput,
 	useLatestRef,
-} from "../latest-input";
+} from "../latest-input.ts";
 import {
 	fileSuggestionTrigger,
 	pruneSelectedMentions,
 	replaceSelectedMentions,
-} from "./mentions";
-import { TextInput } from "./text-input";
-import type { VimMode } from "./vim";
+} from "./mentions.ts";
+import { TextInput } from "./text-input.tsx";
+import type { VimMode } from "./vim.tsx";
 
 export type InputWithHistoryProps = {
 	attachedImages: ImageInfo[];

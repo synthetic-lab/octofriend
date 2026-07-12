@@ -1,6 +1,6 @@
-import { runNotifyCommand } from "../../runtime/config/notify";
-import type { Config } from "../../runtime/config/schemas";
-import type { AppStateGet, AppStateSet, UiState } from "./types";
+import { runNotifyCommand } from "../../runtime/config/notify.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
 export function createNotificationActions(set: AppStateSet, get: AppStateGet) {
 	return {

@@ -1,10 +1,10 @@
 import { Box, Text } from "ink";
 import { useCallback } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { recommendedModel } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import { MenuHeader } from "../../menu/root";
-import { TERMINAL_THEME_COLOR } from "../../theme/branding";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import { MenuHeader } from "../../menu/root.tsx";
+import { recommendedModel } from "../../runtime/models/catalog/main.ts";
+import { TERMINAL_THEME_COLOR } from "../../theme/branding.tsx";
 
 const SYNTHETIC_MODEL = recommendedModel("synthetic")?.nickname ?? "Synthetic";
 const CLOSED_SOURCE_TEXT = closedSourceSetupText();

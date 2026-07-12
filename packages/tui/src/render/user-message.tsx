@@ -1,8 +1,8 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import type { Content } from "../runtime/models/ir/main";
-import type { OctoIR } from "../runtime/agent/ir/main";
-import { appendContentTextLines } from "./content";
+import type { OctoIR } from "../runtime/agent/ir/main.ts";
+import type { Content } from "../runtime/models/ir/main.ts";
+import { appendContentTextLines } from "./content.tsx";
 
 type UserItem = Extract<OctoIR, { role: "user" }>;
 

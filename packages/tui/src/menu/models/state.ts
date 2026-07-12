@@ -1,5 +1,5 @@
-import type { Auth } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
+import type { Auth } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
 
 export type ModelSetupStepData =
 	| {

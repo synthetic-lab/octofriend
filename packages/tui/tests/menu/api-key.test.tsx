@@ -1,15 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { expectPresent, waitFor } from "./helpers";
+import { expectPresent, waitFor } from "./helpers.ts";
 
 describe("provider setup API-key entry", () => {
 	it("renders selected provider details for API-key entry when the base URL is overridden", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { SetApiKey } = await import(
-			"../../src/menu/models/api-key"
-		);
+		const { SetApiKey } = await import("../../src/menu/models/api-key.tsx");
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		const instance = render(
@@ -34,9 +32,7 @@ describe("provider setup API-key entry", () => {
 	it("does not duplicate endpoint copy when the provider is the base URL", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { SetApiKey } = await import(
-			"../../src/menu/models/api-key"
-		);
+		const { SetApiKey } = await import("../../src/menu/models/api-key.tsx");
 
 		const instance = render(
 			React.createElement(SetApiKey, {
@@ -57,11 +53,9 @@ describe("provider setup API-key entry", () => {
 	it("masks typed API keys in setup output", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { SetApiKey } = await import(
-			"../../src/menu/models/api-key"
-		);
+		const { SetApiKey } = await import("../../src/menu/models/api-key.tsx");
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const secret = "sk-test-secret";
 
@@ -87,9 +81,7 @@ describe("provider setup API-key entry", () => {
 	it("does not cancel API-key entry while saving", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { SetApiKey } = await import(
-			"../../src/menu/models/api-key"
-		);
+		const { SetApiKey } = await import("../../src/menu/models/api-key.tsx");
 		let cancelCount = 0;
 		let completeCount = 0;
 		let resolveWrite: (() => void) | undefined;
@@ -130,7 +122,7 @@ describe("provider setup API-key entry", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { API_KEY_WRITE_ERROR, SetApiKey } = await import(
-			"../../src/menu/models/api-key"
+			"../../src/menu/models/api-key.tsx"
 		);
 
 		const instance = render(
@@ -163,7 +155,7 @@ describe("provider setup API-key entry", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { API_KEY_COMPLETE_ERROR, SetApiKey } = await import(
-			"../../src/menu/models/api-key"
+			"../../src/menu/models/api-key.tsx"
 		);
 
 		const instance = render(

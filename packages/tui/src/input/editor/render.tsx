@@ -1,17 +1,17 @@
 import { Box, type DOMElement, Text } from "ink";
 import type { ReactNode, RefObject } from "react";
 import { useMemo } from "react";
-import { wrapTextWithMapping } from "../../shell/text-processing";
-import { splitRenderedLines } from "../../render/lines";
-import { nextTextBoundary } from "./boundaries";
+import { splitRenderedLines } from "../../render/lines.ts";
+import { wrapTextWithMapping } from "../../shell/text-processing.ts";
 import {
 	computeImageBadgeLayout,
 	EMPTY_IMAGE_BADGE_ROWS,
 	getImageBadgeText,
 	type ImageBadgeLayoutItem,
 	LOADING_BADGE_TEXT,
-} from "./badges";
-import { renderCursorText } from "./cursor-render";
+} from "./badges.ts";
+import { nextTextBoundary } from "./boundaries.ts";
+import { renderCursorText } from "./cursor-render.ts";
 
 type TextInputRenderOptions = {
 	attachedImageCount: number;

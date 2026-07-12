@@ -4,7 +4,7 @@ import {
 	flatten,
 	ok,
 	type Result,
-} from "../../src/shell/result";
+} from "../../src/shell/result.ts";
 
 const expectType = <T>(_: T) => undefined;
 

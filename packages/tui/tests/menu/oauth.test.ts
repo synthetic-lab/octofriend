@@ -10,10 +10,10 @@ function expectPresent<T>(value: T): NonNullable<T> {
 describe("provider OAuth auto-detection", () => {
 	it("uses an existing ChatGPT OAuth token for OpenAI setup without treating it as an API-key override", async () => {
 		const { detectExistingProviderAuth } = await import(
-			"../../src/menu/models/auth"
+			"../../src/menu/models/auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(
@@ -32,10 +32,10 @@ describe("provider OAuth auto-detection", () => {
 
 	it("prefers ChatGPT OAuth for OpenAI when both configured auth env vars are present", async () => {
 		const { detectExistingProviderAuth } = await import(
-			"../../src/menu/models/auth"
+			"../../src/menu/models/auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(
@@ -55,10 +55,10 @@ describe("provider OAuth auto-detection", () => {
 
 	it("does not use ChatGPT OAuth tokens for API-key-only providers", async () => {
 		const { detectExistingProviderAuth } = await import(
-			"../../src/menu/models/auth"
+			"../../src/menu/models/auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(
@@ -72,12 +72,12 @@ describe("provider OAuth auto-detection", () => {
 describe("ChatGPT OAuth errors", () => {
 	it("formats structured provider errors instead of displaying [object Object]", async () => {
 		const { formatCodexOAuthError } = await import(
-			"../../src/menu/models/codex-oauth"
+			"../../src/menu/models/codex-oauth.ts"
 		);
 
-		expect(formatCodexOAuthError({ error: { message: "authorization expired" } })).toBe(
-			"authorization expired",
-		);
+		expect(
+			formatCodexOAuthError({ error: { message: "authorization expired" } }),
+		).toBe("authorization expired");
 		expect(formatCodexOAuthError({ code: "access_denied" })).toBe(
 			'{"code":"access_denied"}',
 		);

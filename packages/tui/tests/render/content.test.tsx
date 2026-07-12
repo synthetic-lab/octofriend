@@ -10,8 +10,8 @@ import {
 	ToolOutputContentRenderer,
 	ToolOutputTextRenderer,
 	toolOutputLineCountText,
-} from "../../src/render/content";
-import { countRenderedLines } from "../../src/render/lines";
+} from "../../src/render/content.tsx";
+import { countRenderedLines } from "../../src/render/lines.ts";
 
 describe("terminal content rendering", () => {
 	it("renders text content line by line", () => {

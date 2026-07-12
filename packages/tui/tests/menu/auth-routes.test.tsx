@@ -19,11 +19,9 @@ function expectPresent<T>(value: T): NonNullable<T> {
 
 describe("auth route builders", () => {
 	it("submits existing environment variables as API-key auth, not ChatGPT OAuth", async () => {
-		const { envVar } = await import(
-			"../../src/menu/models/auth-routes"
-		);
+		const { envVar } = await import("../../src/menu/models/auth-routes.tsx");
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const completed: unknown[] = [];
 
@@ -67,7 +65,7 @@ describe("auth route builders", () => {
 
 	it("env-var route uses latest props and callbacks after rerender", async () => {
 		const { EnvVarRoute } = await import(
-			"../../src/menu/models/input-routes"
+			"../../src/menu/models/input-routes.tsx"
 		);
 		const completed: unknown[] = [];
 		const backCalls: unknown[] = [];
@@ -116,7 +114,7 @@ describe("auth route builders", () => {
 
 	it("env-var route uses latest back callback after rerender", async () => {
 		const { EnvVarRoute } = await import(
-			"../../src/menu/models/input-routes"
+			"../../src/menu/models/input-routes.tsx"
 		);
 		const backCalls: unknown[] = [];
 		const renderRoute = (tag: string) =>
@@ -156,10 +154,10 @@ describe("auth route builders", () => {
 
 	it("uses provider-specific env var examples in API-key setup", async () => {
 		const { envVarExampleForBaseUrl } = await import(
-			"../../src/menu/models/auth-routes"
+			"../../src/menu/models/auth-routes.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(envVarExampleForBaseUrl("https://api.openai.com/v1")).toBe(
@@ -189,10 +187,10 @@ describe("auth route builders", () => {
 
 	it("requires env auth variables to contain non-whitespace values", async () => {
 		const { envVarHasNonEmptyValue, normalizeEnvVarName } = await import(
-			"../../src/menu/models/auth-routes"
+			"../../src/menu/models/auth-routes.tsx"
 		);
 		const { nonEmptyEnvValue } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 
 		expect(normalizeEnvVarName(" MODEL_SETUP_ENV_AUTH_KEY ")).toBe(
@@ -223,11 +221,9 @@ describe("auth route builders", () => {
 	});
 
 	it("validates command auth input without accepting shell operators", async () => {
-		const { command } = await import(
-			"../../src/menu/models/auth-routes"
-		);
+		const { command } = await import("../../src/menu/models/auth-routes.tsx");
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const route = command({
 			authAsk: () => null,
@@ -263,9 +259,7 @@ describe("auth route builders", () => {
 	});
 
 	it("submits command auth as parsed argv", async () => {
-		const { command } = await import(
-			"../../src/menu/models/auth-routes"
-		);
+		const { command } = await import("../../src/menu/models/auth-routes.tsx");
 		const completed: unknown[] = [];
 		const route = command({
 			authAsk: () => null,
@@ -302,10 +296,10 @@ describe("auth route builders", () => {
 	});
 	it("uses provider-specific secret path examples in command auth setup", async () => {
 		const { secretPathExampleForBaseUrl } = await import(
-			"../../src/menu/models/auth-routes"
+			"../../src/menu/models/auth-routes.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(secretPathExampleForBaseUrl("https://api.openai.com/v1")).toBe(
@@ -337,10 +331,10 @@ describe("auth route builders", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { chatGptOAuth } = await import(
-			"../../src/menu/models/auth-routes"
+			"../../src/menu/models/auth-routes.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const completed: unknown[] = [];
 

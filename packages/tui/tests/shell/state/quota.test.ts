@@ -3,7 +3,7 @@ import {
 	formatTimeUntil,
 	parseQuotaJson,
 	type QuotaData,
-} from "../../../src/shell/state/quota";
+} from "../../../src/shell/state/quota.ts";
 
 describe("parseQuotaJson", () => {
 	it("parses rolling five-hour and weekly quota entries", () => {

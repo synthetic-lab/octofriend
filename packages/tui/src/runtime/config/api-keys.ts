@@ -1,4 +1,4 @@
-import { nonEmptyTrimmedText } from "../../shell/text-processing";
+import { nonEmptyTrimmedText } from "../../shell/text-processing.ts";
 
 type DefaultApiKeyOverrides = Record<string, string>;
 

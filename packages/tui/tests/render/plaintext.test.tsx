@@ -3,11 +3,11 @@ import { render } from "ink-testing-library";
 import {
 	isPlainMarkdownFastPath,
 	Markdown,
-} from "../../src/render/markdown";
+} from "../../src/render/markdown.tsx";
 import {
 	isMarkedToken,
 	renderTokensAsPlaintext,
-} from "../../src/render/plaintext";
+} from "../../src/render/plaintext.ts";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 

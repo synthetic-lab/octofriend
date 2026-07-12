@@ -1,11 +1,11 @@
-import type { Finish } from "../../runtime/run-log/types";
+import type { OctoIR } from "../../runtime/agent/ir/main.ts";
 import type {
 	HistoryItem,
 	LlmHistoryItem,
-} from "../../runtime/history/main";
-import type { OctoIR } from "../../runtime/agent/ir/main";
-import { createLocalMessageId } from "./message-id";
-import type { UiState } from "./types";
+} from "../../runtime/history/main.ts";
+import type { Finish } from "../../runtime/run-log/types.ts";
+import { createLocalMessageId } from "./message-id.ts";
+import type { UiState } from "./types.ts";
 
 function linkToolCallToAssistant(
 	toolCall: unknown,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import React from "react";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const SPLIT_CRLF_CURSOR_PATTERN = new RegExp(
@@ -22,7 +22,7 @@ async function waitForTextInputTest(predicate: () => boolean): Promise<void> {
 
 describe("TextInput", () => {
 	it("uses provided terminal width before layout measurement", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		const { lastFrame } = render(
 			<TerminalSizeProvider size={{ width: 10, height: 10 }}>
 				<TextInput
@@ -37,7 +37,7 @@ describe("TextInput", () => {
 	});
 	it("masks API-key input by grapheme count without leaking UTF-16 length", async () => {
 		const { buildTextInputRenderModel, maskedText } = await import(
-			"../../src/input/editor/render"
+			"../../src/input/editor/render.tsx"
 		);
 
 		expect(maskedText("a🙂é❤️🇪🇪", "•")).toBe("•••••");
@@ -59,7 +59,7 @@ describe("TextInput", () => {
 
 	it("keeps masked cursors aligned for multi-character masks", async () => {
 		const { buildTextInputRenderModel } = await import(
-			"../../src/input/editor/render"
+			"../../src/input/editor/render.tsx"
 		);
 
 		const renderModel = buildTextInputRenderModel({
@@ -79,7 +79,7 @@ describe("TextInput", () => {
 
 	it("keeps masked stale cursors on grapheme boundaries", async () => {
 		const { buildTextInputRenderModel } = await import(
-			"../../src/input/editor/render"
+			"../../src/input/editor/render.tsx"
 		);
 
 		const renderModel = buildTextInputRenderModel({
@@ -99,7 +99,7 @@ describe("TextInput", () => {
 
 	it("does not split surrogate-pair placeholders under the cursor", async () => {
 		const { renderCursorText } = await import(
-			"../../src/input/editor/cursor-render"
+			"../../src/input/editor/cursor-render.ts"
 		);
 
 		const rendered = renderCursorText({
@@ -117,7 +117,7 @@ describe("TextInput", () => {
 
 	it("does not split grapheme-cluster placeholders under the cursor", async () => {
 		const { renderCursorText } = await import(
-			"../../src/input/editor/cursor-render"
+			"../../src/input/editor/cursor-render.ts"
 		);
 
 		const rendered = renderCursorText({
@@ -135,7 +135,7 @@ describe("TextInput", () => {
 
 	it("does not split graphemes when a stale cursor points inside one", async () => {
 		const { renderCursorText } = await import(
-			"../../src/input/editor/cursor-render"
+			"../../src/input/editor/cursor-render.ts"
 		);
 
 		for (const value of ["🙂x", "éx"]) {
@@ -155,7 +155,7 @@ describe("TextInput", () => {
 
 	it("renders cursors on CRLF and CR separated input without duplicating text", async () => {
 		const { renderCursorText } = await import(
-			"../../src/input/editor/cursor-render"
+			"../../src/input/editor/cursor-render.ts"
 		);
 
 		const crlfInput = "alpha\r\nbeta";
@@ -211,7 +211,7 @@ describe("TextInput", () => {
 
 	it("moves and deletes by grapheme cluster boundaries", async () => {
 		const { nextTextBoundary, previousTextBoundary } = await import(
-			"../../src/input/text"
+			"../../src/input/text.ts"
 		);
 
 		expect(nextTextBoundary("abc", 1)).toBe(2);
@@ -234,7 +234,7 @@ describe("TextInput", () => {
 	});
 
 	it("does not split surrogate pairs when deleting before the cursor", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		function Probe() {
 			const [value, setValue] = React.useState("🙂a");
@@ -259,7 +259,7 @@ describe("TextInput", () => {
 	});
 
 	it("does not split surrogate pairs during emacs character deletion", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		function Probe() {
 			const [value, setValue] = React.useState("🙂a");
@@ -284,7 +284,7 @@ describe("TextInput", () => {
 	});
 
 	it("does not split surrogate pairs during emacs forward deletion", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		function Probe() {
 			const [value, setValue] = React.useState("🙂a");
@@ -311,7 +311,7 @@ describe("TextInput", () => {
 	});
 
 	it("uses the latest change callback after rerender", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		const changes: string[] = [];
 		const instance = render(
 			React.createElement(TextInput, {
@@ -333,7 +333,7 @@ describe("TextInput", () => {
 	});
 
 	it("uses the latest submit callback after rerender", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		const submitted: string[] = [];
 		const instance = render(
 			React.createElement(TextInput, {
@@ -357,7 +357,7 @@ describe("TextInput", () => {
 	});
 
 	it("preserves pasted text containing tab characters", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		function Probe() {
 			const [value, setValue] = React.useState("");
@@ -380,7 +380,7 @@ describe("TextInput", () => {
 	});
 
 	it("preserves pasted whitespace when image attachments are enabled", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		const attachedPaths: string[][] = [];
 		function Probe() {
@@ -411,7 +411,7 @@ describe("TextInput", () => {
 	});
 
 	it("submits pasted multiline text without trimming copy-sensitive whitespace", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		let submitted = "";
 		function Probe() {
@@ -441,7 +441,7 @@ describe("TextInput", () => {
 	});
 
 	it("pastes image-looking paths as text when image attachments are disabled", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		const attachedPaths: string[][] = [];
 		function Probe() {
@@ -472,7 +472,7 @@ describe("TextInput", () => {
 	});
 
 	it("renders multiline cursor movement without duplicating copied text", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		const instance = render(
 			React.createElement(TextInput, {
 				value: "alpha\nbeta\ngamma",
@@ -492,7 +492,7 @@ describe("TextInput", () => {
 	});
 
 	it("moves across CRLF as one line break without exposing split-newline cursor states", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		const instance = render(
 			React.createElement(TextInput, {
 				value: "alpha\r\nbeta",
@@ -513,7 +513,7 @@ describe("TextInput", () => {
 	});
 
 	it("does not rerender for no-op emacs cursor moves", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let updateCommits = 0;
 
 		const instance = render(
@@ -541,7 +541,7 @@ describe("TextInput", () => {
 	});
 
 	it("clamps stale cursor offsets after controlled value shrinks", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "abcdef";
 		function Probe({ value }: { value: string }) {
 			const [localValue, setLocalValue] = React.useState(value);
@@ -580,7 +580,7 @@ describe("TextInput", () => {
 	});
 
 	it("applies rapid emacs edits to the latest text value", async () => {
-		const { TextInput } = await import("../../src/input/text");
+		const { TextInput } = await import("../../src/input/text.ts");
 		let latestValue = "";
 		function Probe() {
 			const [value, setValue] = React.useState("abc");

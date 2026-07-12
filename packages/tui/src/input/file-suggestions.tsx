@@ -11,15 +11,15 @@ import {
 	useState,
 } from "react";
 import stringWidth from "string-width";
-import type { Transport } from "../runtime/workspace/common";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { searchFiles } from "./file-search";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import type { Transport } from "../runtime/workspace/common.ts";
+import { searchFiles } from "./file-search.ts";
 import {
 	type InkInputKey,
 	useLatestInput,
 	useLatestRef,
-} from "./latest-input";
-import { FILE_SUGGESTIONS_PRIORITY, usePriorityInput } from "./priority";
+} from "./latest-input.ts";
+import { FILE_SUGGESTIONS_PRIORITY, usePriorityInput } from "./priority.tsx";
 
 const EMPTY_FILE_RESULTS: string[] = [];
 const MAX_DISPLAY_PATH_WIDTH = 50;

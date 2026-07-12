@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
 
-import { deferred, expectPresent, waitFor } from "./test-support";
+import { deferred, expectPresent, waitFor } from "./test-support.ts";
 
 describe("terminal custom auth flow", () => {
 	it("renders an auth-checking screen instead of a blank frame", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 
 		const { lastFrame } = render(
@@ -26,7 +26,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const existingAuth = deferred<boolean>();
 		const cancels: string[] = [];
@@ -56,7 +56,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 
 		const instance = render(
@@ -81,7 +81,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 
 		const instance = render(
@@ -108,7 +108,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 
 		const instance = render(
@@ -133,7 +133,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const existingAuth = deferred<boolean>();
 		const completions: string[] = [];
@@ -167,7 +167,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const completion = deferred<void>();
 		let completions = 0;
@@ -205,7 +205,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		let completions = 0;
 
@@ -232,7 +232,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const completed: unknown[] = [];
 
@@ -269,10 +269,10 @@ describe("terminal custom auth flow", () => {
 
 	it("prefers OpenAI OAuth env auth before stored API-key auth in the default check", async () => {
 		const { hasExistingKeyForAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		await expect(
 			hasExistingKeyForAuthFlow(
@@ -294,10 +294,10 @@ describe("terminal custom auth flow", () => {
 
 	it("uses provider API-key env auth in the default existing-auth check", async () => {
 		const { hasExistingKeyForAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		await expect(
@@ -314,10 +314,10 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		const openai = expectPresent(PROVIDERS.openai);
@@ -360,10 +360,10 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		let checks = 0;
@@ -411,10 +411,10 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const provider = { ...openai, baseUrl: "http://127.0.0.1:8080/v1" };
@@ -462,7 +462,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const completed: unknown[] = [];
 		const checks: unknown[] = [];
@@ -524,10 +524,10 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const anthropic = expectPresent(PROVIDERS.anthropic);
 		const env = { NEW_ANTHROPIC_KEY: "present" };
@@ -563,10 +563,10 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const env = {};
@@ -621,7 +621,7 @@ describe("terminal custom auth flow", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAuthFlow } = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
 		const checks: string[] = [];
 		const hasExistingKey = (baseUrl: string) => {

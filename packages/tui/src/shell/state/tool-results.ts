@@ -1,7 +1,7 @@
-import type { OctoIR } from "../../runtime/agent/ir/main";
-import type { ToolRunResult } from "../../runtime/tools/main";
-import { err, ok, type Result } from "../result";
-import type { ToolCallRequest } from "./types";
+import type { OctoIR } from "../../runtime/agent/ir/main.ts";
+import type { ToolRunResult } from "../../runtime/tools/main.ts";
+import { err, ok, type Result } from "../result.ts";
+import type { ToolCallRequest } from "./types.ts";
 
 export function toolRunResultToIR(
 	result: ToolRunResult,

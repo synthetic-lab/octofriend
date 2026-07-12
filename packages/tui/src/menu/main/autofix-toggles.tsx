@@ -2,21 +2,18 @@ import { Text } from "ink";
 import type React from "react";
 import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "../../shell/state/store";
-import type { UiState } from "../../shell/state/types";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { ConfirmDialog } from "../../input/shortcuts";
-import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys";
-import {
-	useConfig,
-	useSetConfig,
-} from "../../runtime/config/react-context";
-import type { Config } from "../../runtime/config/schemas";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { ConfirmDialog } from "../../input/shortcuts.tsx";
+import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys.ts";
+import { useConfig, useSetConfig } from "../../runtime/config/react-context.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
 import {
 	keyFromName,
 	SYNTHETIC_PROVIDER,
-} from "../../runtime/models/catalog/main";
-import { AutofixModelMenu } from "../models/autofix-menu";
+} from "../../runtime/models/catalog/main.ts";
+import { useAppStore } from "../../shell/state/store.ts";
+import type { UiState } from "../../shell/state/types.ts";
+import { AutofixModelMenu } from "../models/autofix-menu.tsx";
 
 const autofixToggleStateSelector = (state: UiState) => ({
 	toggleMenu: state.toggleMenu,

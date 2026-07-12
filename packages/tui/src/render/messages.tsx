@@ -1,27 +1,27 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import { displayLog } from "../shell/runtime-logging";
-import { useConfig } from "../runtime/config/react-context";
-import { useAppStore } from "../shell/state/store";
-import type { InflightResponseType, UiState } from "../shell/state/types";
-import type { HistoryItem } from "../runtime/history/main";
-import type { Content } from "../runtime/models/ir/main";
-import type { OctoIR } from "../runtime/agent/ir/main";
-import { useTerminalThemeColor } from "../theme/branding";
+import type { OctoIR } from "../runtime/agent/ir/main.ts";
+import { useConfig } from "../runtime/config/react-context.ts";
+import type { HistoryItem } from "../runtime/history/main.ts";
+import type { Content } from "../runtime/models/ir/main.ts";
+import { displayLog } from "../shell/runtime-logging.ts";
+import { useAppStore } from "../shell/state/store.ts";
+import type { InflightResponseType, UiState } from "../shell/state/types.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
 import {
 	AssistantMessageRenderer,
 	CompactionRenderer,
-} from "./assistant-message";
+} from "./assistant-message.tsx";
 import {
 	appendContentTextLines,
 	ImageContentRenderer,
 	ToolOutputContentRenderer,
 	ToolOutputTextRenderer,
-} from "./content";
-import { normalizeRenderedLineBreaks } from "./lines";
-import { hasVisibleText } from "./visibility";
-import { ToolMessageRenderer } from "./tools";
-import { renderUserItem } from "./user-message";
+} from "./content.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
+import { ToolMessageRenderer } from "./tools.tsx";
+import { renderUserItem } from "./user-message.tsx";
+import { hasVisibleText } from "./visibility.ts";
 
 const selectAppMode = (state: UiState) => state.modeData.mode;
 

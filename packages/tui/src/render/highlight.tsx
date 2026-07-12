@@ -1,10 +1,7 @@
 import hljs from "highlight.js";
 import React from "react";
-import { parseHighlightedHTML } from "./html-highlight";
-import {
-	renderCodeSegments,
-	renderPlainCodeLines,
-} from "./line-highlight";
+import { parseHighlightedHTML } from "./html-highlight.ts";
+import { renderCodeSegments, renderPlainCodeLines } from "./line-highlight.tsx";
 
 function HighlightedCodeComponent({
 	code,

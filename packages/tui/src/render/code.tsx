@@ -4,9 +4,9 @@ import {
 	extractTrim,
 	fileExtLanguage,
 	numWidth,
-} from "../shell/text-processing";
-import { DiffRenderer as CodeDiffRenderer } from "./code-diff";
-import { HighlightedCode } from "./highlight";
+} from "../shell/text-processing.ts";
+import { DiffRenderer as CodeDiffRenderer } from "./code-diff.tsx";
+import { HighlightedCode } from "./highlight.tsx";
 
 const CODE_GUTTER_COLOR = "gray";
 

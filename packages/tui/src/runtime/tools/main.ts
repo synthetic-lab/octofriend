@@ -1,17 +1,16 @@
 import { homedir } from "node:os";
-
-import { err, errorToString, ok, type Result } from "../../shell/result";
-import type { ImageInfo } from "../../input/images";
-import { readSearchConfig } from "../config/keys";
-import { getModelFromConfig } from "../config/model-selection";
-import type { Config } from "../config/schemas";
-import type { Transport } from "../workspace/common";
+import type { ImageInfo } from "../../input/images.ts";
+import { err, errorToString, ok, type Result } from "../../shell/result.ts";
+import { readSearchConfig } from "../config/keys.ts";
+import { getModelFromConfig } from "../config/model-selection.ts";
+import type { Config } from "../config/schemas.ts";
+import type { Transport } from "../workspace/common.ts";
 import type {
 	DiscoveredSkill,
 	SkillDiscoveryResolver,
 	ToolRunner,
 	ToolValidator,
-} from "./bridge-types";
+} from "./bridge-types.ts";
 
 type UnknownRecord = Record<string, unknown>;
 

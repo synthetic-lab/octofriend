@@ -12,10 +12,10 @@ describe("model setup state helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { ModelSetupMissingAuthRoute } = await import(
-			"../../src/menu/models/detect-routes"
+			"../../src/menu/models/detect-routes.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const provider = expectPresent(PROVIDERS.openai);
 		const instance = render(
@@ -35,10 +35,10 @@ describe("model setup state helpers", () => {
 
 	it("keeps stale step transitions from replacing the current setup state", async () => {
 		const { reduceModelSetupStep } = await import(
-			"../../src/menu/models/state"
+			"../../src/menu/models/state.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { SetApiKey } from "../../src/menu/models/api-key";
+import { SetApiKey } from "../../src/menu/models/api-key.tsx";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 100; attempt += 1) {

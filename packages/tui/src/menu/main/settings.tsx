@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
 	type Keymap,
 	type ShortcutArray,
-} from "../../input/shortcuts";
-import { useConfig } from "../../runtime/config/react-context";
-import type { Config } from "../../runtime/config/schemas";
+} from "../../input/shortcuts.tsx";
+import { useConfig } from "../../runtime/config/react-context.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
 
 export type SettingsValues =
 	| "set-default-model"

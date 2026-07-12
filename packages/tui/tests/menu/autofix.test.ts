@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 describe("autofix setup route helpers", () => {
 	it("builds autofix shortcuts without per-render route data", async () => {
 		const { buildAutofixShortcutItems } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 
 		expect(buildAutofixShortcutItems("diff apply")).toEqual([

@@ -9,7 +9,7 @@ import {
 	loadingStringsOrDefault,
 	longestLoadingStatusWidth,
 	Spinner,
-} from "../../src/shell/loading";
+} from "../../src/shell/loading.tsx";
 
 const TESTING_COPY_PADDING_PATTERN = /Testing {2,}$/;
 const COPY_PADDING_PATTERN = / {2,}$/;

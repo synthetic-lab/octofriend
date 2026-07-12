@@ -1,14 +1,14 @@
 import type { Key } from "ink";
-import type { MultimodalConfig } from "../../runtime/models/catalog/main";
-import { type ImageInfo, parseImagePaths } from "../images";
-import type { EmacsKeyHandler } from "./emacs-keys";
+import type { MultimodalConfig } from "../../runtime/models/catalog/main.ts";
+import { type ImageInfo, parseImagePaths } from "../images.ts";
+import type { EmacsKeyHandler } from "./emacs-keys.ts";
 import {
 	clampCursorPosition,
 	nextPlainTextInputState,
 	type TextInputEditResult,
 	type TextInputSnapshot,
-} from "./state";
-import type { VimKeyHandlerResult } from "./vim";
+} from "./state.ts";
+import type { VimKeyHandlerResult } from "./vim.tsx";
 
 type CursorState = {
 	cursorOffset: number;

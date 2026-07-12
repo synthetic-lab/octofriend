@@ -1,16 +1,16 @@
 import { createContext, useContext } from "react";
-import { errorToString } from "../../shell/result";
-import * as logger from "../../shell/runtime-logging";
-import { trackTokens } from "../../shell/token-usage";
-import { assertKeyForModel } from "../../runtime/config/keys";
-import { providerForBaseUrl } from "../../runtime/models/catalog/main";
+import { assertKeyForModel } from "../../runtime/config/keys.ts";
+import { providerForBaseUrl } from "../../runtime/models/catalog/main.ts";
+import { errorToString } from "../../shell/result.ts";
+import * as logger from "../../shell/runtime-logging.ts";
+import { trackTokens } from "../../shell/token-usage.ts";
+import { authChoicesForProvider } from "./auth.ts";
+import { nonEmptyEnvValue } from "./providers.ts";
 import type {
 	MinConnectArgs,
 	ModelMetadata,
 	TestConnectionResult,
-} from "./types";
-import { authChoicesForProvider } from "./auth";
-import { nonEmptyEnvValue } from "./providers";
+} from "./types.ts";
 
 export type ModelConnectionTestParams = {
 	type?: "standard" | "openai-responses" | "anthropic" | "gemini";

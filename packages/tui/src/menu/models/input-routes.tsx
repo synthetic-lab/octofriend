@@ -1,8 +1,12 @@
 import { Box, Text } from "ink";
 import { useCallback, useEffect, useState } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { Step } from "./step";
-import type { FullFlowRouteData } from "./types";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { SetApiKey } from "./api-key.tsx";
+import {
+	apiKeyEnvAuth,
+	CHATGPT_OAUTH_ENV_VAR,
+	chatGptOAuthEnvAuth,
+} from "./auth.ts";
 import {
 	envVarExampleForBaseUrl,
 	normalizeEnvVarName,
@@ -10,17 +14,12 @@ import {
 	providerForRouteProps,
 	secretPathExampleForBaseUrl,
 	validateApiKeyEnvVar,
-	validateChatGptOAuthEnvVar,
 	validateCommandArgs,
-} from "./auth-input";
-import {
-	apiKeyEnvAuth,
-	CHATGPT_OAUTH_ENV_VAR,
-	chatGptOAuthEnvAuth,
-} from "./auth";
-import { SetApiKey } from "./api-key";
-import { Back, type ToRoute } from "./router";
-import { authorizeCodexOAuth, type CodexOAuthStatus } from "./codex-oauth";
+} from "./auth-input.ts";
+import { authorizeCodexOAuth, type CodexOAuthStatus } from "./codex-oauth.ts";
+import { Back, type ToRoute } from "./router.tsx";
+import { Step } from "./step.tsx";
+import type { FullFlowRouteData } from "./types.ts";
 
 type FullFlowToRoute = ToRoute<FullFlowRouteData>;
 
@@ -98,21 +97,46 @@ export function ChatGptOAuthRoute({
 	const propsRef = useLatestRef(props);
 	const [status, setStatus] = useState<CodexOAuthStatus>({ type: "starting" });
 	const configuredEnv = props.env ?? process.env;
-	const existingEnvVar = configuredEnv[CHATGPT_OAUTH_ENV_VAR] ? CHATGPT_OAUTH_ENV_VAR : configuredEnv.OPENAI_CODEX_ACCESS_TOKEN ? "OPENAI_CODEX_ACCESS_TOKEN" : null;
+	const existingEnvVar = configuredEnv[CHATGPT_OAUTH_ENV_VAR]
+		? CHATGPT_OAUTH_ENV_VAR
+		: configuredEnv.OPENAI_CODEX_ACCESS_TOKEN
+			? "OPENAI_CODEX_ACCESS_TOKEN"
+			: null;
 	useEffect(() => {
 		if (existingEnvVar) return;
 		const controller = new AbortController();
 		authorizeCodexOAuth(setStatus, controller.signal)
-			.then(() => toRef.current.postAuth({ ...propsRef.current, auth: chatGptOAuthEnvAuth(CHATGPT_OAUTH_ENV_VAR) }))
+			.then(() =>
+				toRef.current.postAuth({
+					...propsRef.current,
+					auth: chatGptOAuthEnvAuth(CHATGPT_OAUTH_ENV_VAR),
+				}),
+			)
 			.catch((error: unknown) => {
-				if (!controller.signal.aborted) setStatus({ type: "error", message: error instanceof Error ? error.message : String(error) });
+				if (!controller.signal.aborted)
+					setStatus({
+						type: "error",
+						message: error instanceof Error ? error.message : String(error),
+					});
 			});
 		return () => controller.abort();
 	}, [existingEnvVar, propsRef, toRef]);
 	if (existingEnvVar) {
 		return (
 			<Back go={() => toRef.current.authAsk(propsRef.current)}>
-				<Step<string> title="What environment variable contains your ChatGPT OAuth access token?" prompt="OAuth token environment variable:" defaultValue={existingEnvVar} parse={normalizeEnvVarName} validate={() => ({ valid: true as const })} onSubmit={(envVar) => toRef.current.postAuth({ ...propsRef.current, auth: chatGptOAuthEnvAuth(envVar) })}>
+				<Step<string>
+					title="What environment variable contains your ChatGPT OAuth access token?"
+					prompt="OAuth token environment variable:"
+					defaultValue={existingEnvVar}
+					parse={normalizeEnvVarName}
+					validate={() => ({ valid: true as const })}
+					onSubmit={(envVar) =>
+						toRef.current.postAuth({
+							...propsRef.current,
+							auth: chatGptOAuthEnvAuth(envVar),
+						})
+					}
+				>
 					<Text>Using the existing OAuth token from {existingEnvVar}.</Text>
 				</Step>
 			</Back>
@@ -122,8 +146,16 @@ export function ChatGptOAuthRoute({
 		<Back go={() => toRef.current.authAsk(propsRef.current)}>
 			<Box flexDirection="column">
 				<Text bold={true}>ChatGPT OAuth authorization</Text>
-				{status.type === "starting" && <Text>Requesting an authorization code...</Text>}
-				{status.type === "waiting" && <><Text>Open {status.url}</Text><Text>Enter code: {status.code}</Text><Text>Waiting for browser authorization...</Text></>}
+				{status.type === "starting" && (
+					<Text>Requesting an authorization code...</Text>
+				)}
+				{status.type === "waiting" && (
+					<>
+						<Text>Open {status.url}</Text>
+						<Text>Enter code: {status.code}</Text>
+						<Text>Waiting for browser authorization...</Text>
+					</>
+				)}
 				{status.type === "error" && <Text color="red">{status.message}</Text>}
 			</Box>
 		</Back>

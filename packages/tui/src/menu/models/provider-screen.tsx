@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { type Item, KbShortcutPanel } from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
-import type { ProviderKey } from "../../runtime/models/catalog/main";
-import { ProviderSetupSummary } from "./auth-summary";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { type Item, KbShortcutPanel } from "../../input/shortcuts.tsx";
+import type { Config } from "../../runtime/config/schemas.ts";
+import type { ProviderKey } from "../../runtime/models/catalog/main.ts";
+import { ProviderSetupSummary } from "./auth-summary.tsx";
 import {
 	buildFastProviderShortcutItems,
 	type FastProviderValue,
-} from "./provider-select";
+} from "./provider-select.ts";
 
 export function FastProviderList({
 	onChooseCustom,

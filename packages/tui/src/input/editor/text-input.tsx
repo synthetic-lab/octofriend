@@ -7,19 +7,16 @@ import {
 	useRef,
 	useState,
 } from "react";
-import type { MultimodalConfig } from "../../runtime/models/catalog/main";
-import { useStdoutResize } from "../../layout/stdout-resize";
-import { useTerminalContentWidth } from "../../layout/viewport";
-import type { ImageInfo } from "../images";
-import { useLatestInput, useLatestRef } from "../latest-input";
-import { useEmacsKeyHandler } from "./emacs-keys";
-import { handleTextInputKey } from "./keys";
-import {
-	buildTextInputRenderModel,
-	TextInputRows,
-} from "./render";
-import { clampCursorPosition } from "./state";
-import { useVimKeyHandler, type VimMode } from "./vim";
+import { useStdoutResize } from "../../layout/stdout-resize.ts";
+import { useTerminalContentWidth } from "../../layout/viewport.tsx";
+import type { MultimodalConfig } from "../../runtime/models/catalog/main.ts";
+import type { ImageInfo } from "../images.ts";
+import { useLatestInput, useLatestRef } from "../latest-input.ts";
+import { useEmacsKeyHandler } from "./emacs-keys.ts";
+import { handleTextInputKey } from "./keys.ts";
+import { buildTextInputRenderModel, TextInputRows } from "./render.tsx";
+import { clampCursorPosition } from "./state.ts";
+import { useVimKeyHandler, type VimMode } from "./vim.tsx";
 
 const FALLBACK_TEXT_INPUT_WIDTH = 80;
 

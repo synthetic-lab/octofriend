@@ -1,4 +1,4 @@
-import type { XMLEventHandlers } from "./types";
+import type { XMLEventHandlers } from "./types.ts";
 
 const ParserState = {
 	TEXT: "text",

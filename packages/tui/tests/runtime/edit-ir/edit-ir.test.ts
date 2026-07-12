@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { ImageInfo } from "../../../src/input/images";
+import type { ImageInfo } from "../../../src/input/images.ts";
 import {
 	canDisplayImage,
 	optimizeFiles,
-} from "../../../src/runtime/edit-ir/main";
+} from "../../../src/runtime/edit-ir/main.ts";
 
 type TestToolCall = {
 	type: "tool-call";

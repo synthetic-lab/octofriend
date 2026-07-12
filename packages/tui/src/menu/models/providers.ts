@@ -1,10 +1,10 @@
-import { nonEmptyTrimmedText } from "../../shell/text-processing";
-import type { Config } from "../../runtime/config/schemas";
+import type { Config } from "../../runtime/config/schemas.ts";
 import {
 	keyFromName,
 	type ProviderConfig,
 	providerForBaseUrl,
-} from "../../runtime/models/catalog/main";
+} from "../../runtime/models/catalog/main.ts";
+import { nonEmptyTrimmedText } from "../../shell/text-processing.ts";
 
 export function getProviderDisplayName(baseUrl: string): string {
 	const provider = providerForBaseUrl(baseUrl);

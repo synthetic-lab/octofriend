@@ -6,7 +6,7 @@ import {
 	tagged,
 	type XMLEvent,
 	xmlEscape,
-} from "../../src/shell/xml-markup";
+} from "../../src/shell/xml-markup.ts";
 
 describe("xml markup helpers", () => {
 	it("builds opening, closing, and wrapped tags", () => {

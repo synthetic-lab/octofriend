@@ -1,9 +1,9 @@
 import { useApp } from "ink";
 import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "../../shell/state/store";
-import type { UiState } from "../../shell/state/types";
-import { ConfirmDialog } from "../../input/shortcuts";
+import { ConfirmDialog } from "../../input/shortcuts.tsx";
+import { useAppStore } from "../../shell/state/store.ts";
+import type { UiState } from "../../shell/state/types.ts";
 
 const clearConversationConfirmSelector = (state: UiState) => ({
 	clearHistory: state.clearHistory,

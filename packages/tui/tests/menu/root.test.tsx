@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
-import { MenuHeader, MenuPanel } from "../../src/menu/root";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
+import { MenuHeader, MenuPanel } from "../../src/menu/root.tsx";
 
 describe("MenuHeader", () => {
 	it("renders the terminal assistant glyph with a title", () => {

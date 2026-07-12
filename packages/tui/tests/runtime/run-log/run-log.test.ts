@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { trajectoryArc } from "../../../src/runtime/run-log/main";
-import type { Transport } from "../../../src/runtime/workspace/common";
+import { trajectoryArc } from "../../../src/runtime/run-log/main.ts";
+import type { Transport } from "../../../src/runtime/workspace/common.ts";
 
 const CURRENT_CONFIG_VERSION = 6;
 
@@ -259,7 +259,7 @@ describe("agent trajectory runtime", () => {
 	});
 
 	test("records trajectory token usage for the active model", async () => {
-		const { tokenCounts } = await import("../../../src/shell/token-usage");
+		const { tokenCounts } = await import("../../../src/shell/token-usage.ts");
 		await trajectoryArc({
 			apiKey: "test-key",
 			model: {

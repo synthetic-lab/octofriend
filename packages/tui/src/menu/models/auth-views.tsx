@@ -145,7 +145,11 @@ export function PostAuth(
 	}, [props.handleAuth, setErrorMessage]);
 	return (
 		<>
-			{errorMessage ? <Text color="red">{errorMessage}</Text> : <Text>Saving authentication...</Text>}
+			{errorMessage ? (
+				<Text color="red">{errorMessage}</Text>
+			) : (
+				<Text>Saving authentication...</Text>
+			)}
 		</>
 	);
 }

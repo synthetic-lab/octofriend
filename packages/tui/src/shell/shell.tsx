@@ -1,47 +1,52 @@
 import { Box, Static } from "ink";
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { ExitOnDoubleCtrlC } from "../input/ctrl-c";
-import { useLatestInput } from "../input/latest-input";
+import { ExitOnDoubleCtrlC } from "../input/ctrl-c.tsx";
+import { useLatestInput } from "../input/latest-input.ts";
 import {
 	InputPriorityProvider,
 	UNCHAINED_PRIORITY,
 	usePriorityInput,
-} from "../input/priority";
-import type { Metadata } from "../runtime/config/metadata";
-import {
-	ConfigContext,
-	ConfigPathContext,
-	SetConfigContext,
-} from "../runtime/config/react-context";
-import type { Config } from "../runtime/config/schemas";
-import type { Transport } from "../runtime/workspace/common";
-import { TerminalSizeTracker } from "../layout/viewport";
-import { ModelDiscoveryContext } from "../menu/models/connection";
+} from "../input/priority.tsx";
+import { TerminalSizeTracker } from "../layout/viewport.tsx";
 import type {
 	ModelConnectionTester,
 	ModelDiscoveryTester,
-} from "../menu/models/connection";
-import { ModelConnectionTestContext } from "../menu/models/connection";
+} from "../menu/models/connection.ts";
+import {
+	ModelConnectionTestContext,
+	ModelDiscoveryContext,
+} from "../menu/models/connection.ts";
 import {
 	SyntheticQuotaFetchContext,
 	type SyntheticQuotaFetcher,
-} from "../menu/quota";
-import { MessageDisplay } from "../render/messages";
+} from "../menu/quota.tsx";
+import { MessageDisplay } from "../render/messages.tsx";
 import {
 	appendHistoryStaticItems,
 	StaticItemRenderer,
 	staticItemKey,
-} from "../render/static-items";
-import type { StaticItem } from "../render/types";
-import { TerminalUnchainedContext } from "../theme/branding";
-import { BottomBar } from "./bottom-bar";
-import type { InputHistory } from "./input";
-import { useAppStore } from "./state/store";
-import type { RunArgs, UiState } from "./state/types";
-import { attachTokenUsageMirror, type TokenUsageCounts } from "./token-usage";
-import { TransportContext } from "./transport-context";
-import { CwdContext } from "./workspace-context";
+} from "../render/static-items.tsx";
+import type { StaticItem } from "../render/types.ts";
+import type { Metadata } from "../runtime/config/metadata.ts";
+import {
+	ConfigContext,
+	ConfigPathContext,
+	SetConfigContext,
+} from "../runtime/config/react-context.ts";
+import type { Config } from "../runtime/config/schemas.ts";
+import type { Transport } from "../runtime/workspace/common.ts";
+import { TerminalUnchainedContext } from "../theme/branding.tsx";
+import { BottomBar } from "./bottom-bar.tsx";
+import type { InputHistory } from "./input.ts";
+import { useAppStore } from "./state/store.ts";
+import type { RunArgs, UiState } from "./state/types.ts";
+import {
+	attachTokenUsageMirror,
+	type TokenUsageCounts,
+} from "./token-usage.ts";
+import { TransportContext } from "./transport-context.tsx";
+import { CwdContext } from "./workspace-context.tsx";
 
 export type TerminalAppShellProps = {
 	config: Config;

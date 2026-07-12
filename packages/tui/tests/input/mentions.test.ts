@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 describe("fileSuggestionTrigger", () => {
 	it("does not open suggestions for email-style text", async () => {
-		const { fileSuggestionTrigger } = await import("../../src/input/text");
+		const { fileSuggestionTrigger } = await import("../../src/input/text.ts");
 
 		expect(fileSuggestionTrigger("email name@example.com")).toBeNull();
 		expect(fileSuggestionTrigger("open @src/app.ts")).toEqual({
@@ -19,7 +19,7 @@ describe("fileSuggestionTrigger", () => {
 
 describe("replaceSelectedMentions", () => {
 	it("replaces selected @mentions with normalized relative paths", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		expect(
 			replaceSelectedMentions(
@@ -30,7 +30,7 @@ describe("replaceSelectedMentions", () => {
 	});
 
 	it("does not replace unselected mentions or email-style text", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		expect(
 			replaceSelectedMentions(
@@ -41,7 +41,7 @@ describe("replaceSelectedMentions", () => {
 	});
 
 	it("skips selected mention work when the input has no mention marker", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		expect(
 			replaceSelectedMentions("plain copied text", new Set(["text"])),
@@ -49,7 +49,7 @@ describe("replaceSelectedMentions", () => {
 	});
 
 	it("replaces selected @mentions containing regex syntax as literal paths", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		expect(
 			replaceSelectedMentions(
@@ -60,7 +60,7 @@ describe("replaceSelectedMentions", () => {
 	});
 
 	it("replaces repeated selected mentions while preserving email-style text", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		expect(
 			replaceSelectedMentions(
@@ -71,7 +71,7 @@ describe("replaceSelectedMentions", () => {
 	});
 
 	it("matches selected mentions by first character bucket without replacing boundary collisions", async () => {
-		const { replaceSelectedMentions } = await import("../../src/input/text");
+		const { replaceSelectedMentions } = await import("../../src/input/text.ts");
 
 		const selected = new Set([
 			"alpha.ts",

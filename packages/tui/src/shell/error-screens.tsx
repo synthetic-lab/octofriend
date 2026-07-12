@@ -8,19 +8,19 @@ import {
 	useState,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useLatestInput } from "../input/latest-input";
+import { useLatestInput } from "../input/latest-input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
 	type ShortcutArray,
-} from "../input/shortcuts";
-import { useConfig } from "../runtime/config/react-context";
-import { CenteredBox } from "../layout/boxes";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { errorToString } from "./result";
-import { useAppStore } from "./state/store";
-import type { UiState } from "./state/types";
-import { TransportContext } from "./transport-context";
+} from "../input/shortcuts.tsx";
+import { CenteredBox } from "../layout/boxes.tsx";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { useConfig } from "../runtime/config/react-context.ts";
+import { errorToString } from "./result.ts";
+import { useAppStore } from "./state/store.ts";
+import type { UiState } from "./state/types.ts";
+import { TransportContext } from "./transport-context.tsx";
 
 export type RequestErrorMode = "request-error" | "compaction-error";
 

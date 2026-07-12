@@ -1,20 +1,20 @@
-import type { ImageInfo } from "../../input/images";
-import type { TrajectoryArcRunner } from "../../runtime/run-log/main";
-import type { Config, ModelConfig } from "../../runtime/config/schemas";
-import type { HistoryItem } from "../../runtime/history/main";
-import type { ToolCall } from "../../runtime/models/ir/main";
+import type { ImageInfo } from "../../input/images.ts";
 import type {
 	OctoIR,
 	BuiltInToolContracts as toolMap,
-} from "../../runtime/agent/ir/main";
+} from "../../runtime/agent/ir/main.ts";
+import type { Config, ModelConfig } from "../../runtime/config/schemas.ts";
+import type { HistoryItem } from "../../runtime/history/main.ts";
+import type { ToolCall } from "../../runtime/models/ir/main.ts";
+import type { TrajectoryArcRunner } from "../../runtime/run-log/main.ts";
 import type {
 	SkillDiscoveryResolver,
 	ToolPermissionResolver,
 	ToolRunner,
-} from "../../runtime/tools/bridge-types";
-import type { ToolDefinitionLoader } from "../../runtime/tools/main";
-import type { Transport } from "../../runtime/workspace/common";
-import type { QuotaData } from "./quota";
+} from "../../runtime/tools/bridge-types.ts";
+import type { ToolDefinitionLoader } from "../../runtime/tools/main.ts";
+import type { Transport } from "../../runtime/workspace/common.ts";
+import type { QuotaData } from "./quota.ts";
 
 export type RunArgs = {
 	config: Config;

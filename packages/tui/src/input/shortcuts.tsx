@@ -3,11 +3,11 @@ import {
 	type ConfirmDialogProps as ConfirmDialogPropsType,
 	type KbPanelProps as KbPanelPropsType,
 	KbShortcutPanel as KbShortcutPanelImpl,
-} from "./shortcut-panels";
+} from "./shortcut-panels.tsx";
 import {
 	type KbSelectProps as KbSelectPropsType,
 	KbShortcutSelect as KbShortcutSelectImpl,
-} from "./shortcut-select";
+} from "./shortcut-select.tsx";
 
 export type {
 	AutolistShortcutType,
@@ -16,7 +16,7 @@ export type {
 	Keymap,
 	MapShortcutType,
 	ShortcutArray,
-} from "./shortcut-render";
+} from "./shortcut-render.ts";
 
 export type KbSelectProps<V> = KbSelectPropsType<V>;
 export type KbPanelProps<V> = KbPanelPropsType<V>;

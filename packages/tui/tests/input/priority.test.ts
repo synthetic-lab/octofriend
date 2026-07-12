@@ -3,7 +3,7 @@ import {
 	createInputPriorityRegistry,
 	FILE_SUGGESTIONS_PRIORITY,
 	UNCHAINED_PRIORITY,
-} from "../../src/input/priority";
+} from "../../src/input/priority.tsx";
 
 describe("createInputPriorityRegistry", () => {
 	it("returns null before any input handlers are registered", () => {

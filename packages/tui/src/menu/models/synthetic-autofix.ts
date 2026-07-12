@@ -1,19 +1,19 @@
-import { errorToString } from "../../shell/result";
-import { readKeyForModel as readConfiguredKeyForModel } from "../../runtime/config/keys";
-import type { Auth, Config } from "../../runtime/config/schemas";
+import { readKeyForModel as readConfiguredKeyForModel } from "../../runtime/config/keys.ts";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
 import {
 	type ProviderConfig,
 	providerWithResolvedBaseUrl,
 	SYNTHETIC_PROVIDER,
 	SYNTHETIC_PROVIDER_KEY,
-} from "../../runtime/models/catalog/main";
-import type { ModelConnectionTester } from "./connection";
-import { apiKeyEnvAuth } from "./auth";
-import { nonEmptyEnvValue, resolveProviderEnvVar } from "./providers";
+} from "../../runtime/models/catalog/main.ts";
+import { errorToString } from "../../shell/result.ts";
+import { apiKeyEnvAuth } from "./auth.ts";
+import type { ModelConnectionTester } from "./connection.ts";
+import { nonEmptyEnvValue, resolveProviderEnvVar } from "./providers.ts";
 import {
 	testSyntheticAutofixAuth,
 	testSyntheticAutofixConnection,
-} from "./synthetic-connection";
+} from "./synthetic-connection.ts";
 
 export type AutofixDiffApplyConfig = Exclude<Config["diffApply"], undefined>;
 

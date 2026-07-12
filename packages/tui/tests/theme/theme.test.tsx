@@ -10,7 +10,7 @@ import {
 	TerminalThemeProvider,
 	useTerminalThemeColor,
 	useTerminalUnchained,
-} from "../../src/theme/branding";
+} from "../../src/theme/branding.tsx";
 
 function ThemeProbe() {
 	const color = useTerminalThemeColor();

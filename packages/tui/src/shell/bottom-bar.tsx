@@ -1,27 +1,27 @@
 import { Box, Text } from "ink";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { useCtrlCPressed } from "../input/ctrl-c";
-import type { Metadata } from "../runtime/config/metadata";
-import { Menu } from "../menu/main/main";
-import { normalizeRenderedLineBreaks } from "../render/lines";
+import { useCtrlCPressed } from "../input/ctrl-c.tsx";
+import { Menu } from "../menu/main/main.tsx";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import type { Metadata } from "../runtime/config/metadata.ts";
 import {
 	useTerminalThemeColor,
 	useTerminalUnchained,
-} from "../theme/branding";
+} from "../theme/branding.tsx";
 import {
 	BottomBarContent,
 	type BottomBarContentProps,
 	selectBottomBarContentState,
-} from "./content";
-import type { InputHistory } from "./input";
-import { useAppStore } from "./state/store";
-import type { RunArgs, UiState } from "./state/types";
+} from "./content.tsx";
+import type { InputHistory } from "./input.ts";
+import { useAppStore } from "./state/store.ts";
+import type { RunArgs, UiState } from "./state/types.ts";
 import {
 	bottomBarVersionMessage,
 	getLatestVersion,
 	useVersionCheck,
-} from "./version-check";
+} from "./version-check.ts";
 
 export type { BottomBarContentProps };
 export {

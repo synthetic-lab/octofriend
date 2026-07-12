@@ -1,19 +1,19 @@
-import type { Keymap, ShortcutArray } from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
+import type { Keymap, ShortcutArray } from "../../input/shortcuts.tsx";
+import type { Config } from "../../runtime/config/schemas.ts";
 import {
 	PROVIDERS,
 	type ProviderConfig,
 	type ProviderKey,
 	providerEntries,
 	providerWithResolvedBaseUrl,
-} from "../../runtime/models/catalog/main";
+} from "../../runtime/models/catalog/main.ts";
 import {
 	authChoicesForProvider,
 	detectExistingProviderAuth,
 	providerAuthShortcutText,
-} from "./auth";
-import { resolveProviderEnvVar } from "./providers";
-import type { ModelSetupStepData } from "./state";
+} from "./auth.ts";
+import { resolveProviderEnvVar } from "./providers.ts";
+import type { ModelSetupStepData } from "./state.ts";
 
 export type FastProviderValue = ProviderKey | "custom" | "back";
 

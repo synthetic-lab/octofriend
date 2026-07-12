@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
-import { errorContext } from "../../src/menu/models/error-context";
-import { Model } from "../../src/menu/models/route-views";
+import { errorContext } from "../../src/menu/models/error-context.tsx";
+import { Model } from "../../src/menu/models/route-views.tsx";
 
 function baseProps(onSubmit: (model: string) => void) {
 	return {

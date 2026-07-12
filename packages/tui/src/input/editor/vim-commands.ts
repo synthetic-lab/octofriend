@@ -1,10 +1,5 @@
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
-import type {
-	VimHandlerActions,
-	VimHandlerState,
-} from "./vim-state";
-import { motions } from "./vim-motions";
-import { operators } from "./vim-operators";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
+import { motions } from "./vim-motions.ts";
 import {
 	clampToVimBounds,
 	getFirstNonWhitespacePosition,
@@ -17,8 +12,10 @@ import {
 	hasLineAfter,
 	vimCommandResult,
 	vimEarlyExit,
-} from "./vim-nav";
-import type { VimKeyHandlerResult } from "./vim-types";
+} from "./vim-nav.ts";
+import { operators } from "./vim-operators.ts";
+import type { VimHandlerActions, VimHandlerState } from "./vim-state.ts";
+import type { VimKeyHandlerResult } from "./vim-types.ts";
 
 export type VimNormalCommandContext = {
 	currentValue: string;

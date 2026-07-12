@@ -11,7 +11,7 @@ import {
 	providerForModelConfig,
 	recommendedModel,
 	SYNTHETIC_PROVIDER,
-} from "../../../../src/runtime/models/catalog/main";
+} from "../../../../src/runtime/models/catalog/main.ts";
 
 type TestResult<T, E> =
 	| { success: true; data: T }

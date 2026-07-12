@@ -1,12 +1,8 @@
 import type { Key } from "ink";
-import { previousTextBoundary } from "./boundaries";
-import type { VimHandlerRuntime } from "./vim-state";
-import {
-	getLineInfo,
-	getLineStart,
-	getLineText,
-} from "./vim-nav";
-import type { VimKeyHandlerResult } from "./vim-types";
+import { previousTextBoundary } from "./boundaries.ts";
+import { getLineInfo, getLineStart, getLineText } from "./vim-nav.ts";
+import type { VimHandlerRuntime } from "./vim-state.ts";
+import type { VimKeyHandlerResult } from "./vim-types.ts";
 
 export function handleInsertMode(
 	input: string,

@@ -1,4 +1,4 @@
-import type { AppStateGet, AppStateSet, UiState } from "./types";
+import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
 export function createWhitelistActions(set: AppStateSet, get: AppStateGet) {
 	return {

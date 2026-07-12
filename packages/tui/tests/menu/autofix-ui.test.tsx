@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { deferred, expectOk, expectPresent, waitFor } from "./test-support";
+import { deferred, expectOk, expectPresent, waitFor } from "./test-support.ts";
 
 describe("terminal Synthetic autofix model menu", () => {
 	it("shows progress and ignores duplicate Synthetic autofix selections", async () => {
@@ -8,13 +8,13 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const syntheticProvider = expectPresent(SYNTHETIC_PROVIDER);
 		const connection = deferred<{
@@ -71,13 +71,13 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const syntheticKey = expectOk(
 			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
@@ -120,13 +120,13 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const syntheticProvider = expectPresent(SYNTHETIC_PROVIDER);
 		const completed: unknown[] = [];
@@ -209,10 +209,10 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const syntheticProvider = expectPresent(SYNTHETIC_PROVIDER);
 		const syntheticKey = expectOk(keyFromName(syntheticProvider.name));
@@ -258,7 +258,7 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const cancels: string[] = [];
 		const instance = render(
@@ -293,7 +293,7 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const calls: string[] = [];
 		const renderMenu = (onCancel: () => void) =>
@@ -325,13 +325,13 @@ describe("terminal Synthetic autofix model menu", () => {
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { AutofixModelMenu } = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 		const syntheticProvider = expectPresent(SYNTHETIC_PROVIDER);
 		const calls: string[] = [];

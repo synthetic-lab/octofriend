@@ -11,7 +11,7 @@ import {
 	TerminalSizeTracker,
 	useTerminalContentWidth,
 	useTerminalSize,
-} from "../../src/layout/viewport";
+} from "../../src/layout/viewport.tsx";
 
 function TerminalSizeProbe() {
 	const size = useTerminalSize();

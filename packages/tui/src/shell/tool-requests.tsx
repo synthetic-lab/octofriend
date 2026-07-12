@@ -1,30 +1,30 @@
 import { Box } from "ink";
 import { useCallback, useEffect, useState } from "react";
+import { ToolMessageRenderer } from "../render/tools.tsx";
 import {
 	preflightToolCall,
 	type ToolCall as ToolCallRequest,
-} from "../runtime/tools/main";
-import { ToolMessageRenderer } from "../render/tools";
-import { Loading } from "./loading";
-import { useAppStore } from "./state/store";
-import type { UiState } from "./state/types";
+} from "../runtime/tools/main.ts";
+import { Loading } from "./loading.tsx";
+import { useAppStore } from "./state/store.ts";
+import type { UiState } from "./state/types.ts";
 import {
 	selectIsRunningToolCall as selectIsRunningToolCallImpl,
 	ToolRequestRenderer as ToolRequestRendererComponent,
-} from "./tool-renderer";
+} from "./tool-renderer.tsx";
 import {
 	type FinishToolRequestsProps,
 	type TerminalToolRequestsProps,
 	TOOL_REQUEST_LOADING_STRINGS,
 	TOOL_REQUEST_PREPARE_ERROR as TOOL_REQUEST_PREPARE_ERROR_VALUE,
-} from "./tool-types";
+} from "./tool-types.ts";
 
 export type {
 	FinishToolRequestsProps,
 	TerminalToolRequestProps,
 	TerminalToolRequestsProps,
 	ToolRequestSelectItem,
-} from "./tool-types";
+} from "./tool-types.ts";
 export const TOOL_REQUEST_PREPARE_ERROR = TOOL_REQUEST_PREPARE_ERROR_VALUE;
 export const ToolRequestRenderer = ToolRequestRendererComponent;
 export const selectIsRunningToolCall = selectIsRunningToolCallImpl;

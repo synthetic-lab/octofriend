@@ -8,7 +8,7 @@ import {
 	isLinkToken,
 	isStrongToken,
 	isTextToken,
-} from "./tokens";
+} from "./tokens.ts";
 
 export function renderTokensAsPlaintext(tokens: Token[]): string {
 	if (tokens.length === 0) return "";

@@ -1,34 +1,34 @@
 import { Box, Text } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import type { ToolPermissionResult } from "../runtime/tools/bridge-types";
-import {
-	preflightToolCall,
-	type ToolCall as ToolCallRequest,
-} from "../runtime/tools/main";
 import {
 	ThemedSelectIndicator as IndicatorComponent,
 	SelectInput,
-} from "../menu/select";
-import { normalizeRenderedLineBreaks } from "../render/lines";
+} from "../menu/select.tsx";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import type { ToolPermissionResult } from "../runtime/tools/bridge-types.ts";
+import {
+	preflightToolCall,
+	type ToolCall as ToolCallRequest,
+} from "../runtime/tools/main.ts";
 import {
 	useTerminalThemeColor,
 	useTerminalUnchained,
-} from "../theme/branding";
-import { Loading } from "./loading";
-import { useAppStore } from "./state/store";
-import type { UiState } from "./state/types";
+} from "../theme/branding.tsx";
+import { Loading } from "./loading.tsx";
+import { useAppStore } from "./state/store.ts";
+import type { UiState } from "./state/types.ts";
 import {
 	ToolRequestItem,
 	ToolRequestPrompt,
 	toolRequestItems,
-} from "./tool-options";
+} from "./tool-options.tsx";
 import {
 	type TerminalToolRequestProps,
 	TOOL_REQUEST_LOADING_STRINGS,
 	TOOL_REQUEST_PREPARE_ERROR,
 	type ToolRequestSelectItem,
-} from "./tool-types";
+} from "./tool-types.ts";
 
 const toolRequestActionsSelector = (state: UiState) => ({
 	runTool: state.runTool,

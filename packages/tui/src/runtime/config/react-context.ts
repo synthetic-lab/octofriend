@@ -1,6 +1,6 @@
 import React from "react";
-import { writeConfig } from "./config-file";
-import type { Config } from "./schemas";
+import { writeConfig } from "./config-file.ts";
+import type { Config } from "./schemas.ts";
 
 export const ConfigContext = React.createContext<Config>({
 	yourName: "unknown",

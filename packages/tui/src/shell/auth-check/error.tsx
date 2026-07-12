@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
-import type { AuthError } from "../../runtime/config/schemas";
-import { HeightlessCenteredBox } from "../../layout/boxes";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
+import { HeightlessCenteredBox } from "../../layout/boxes.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import type { AuthError } from "../../runtime/config/schemas.ts";
 
 type CommandFailedAuthError = Extract<AuthError, { type: "command_failed" }>;
 

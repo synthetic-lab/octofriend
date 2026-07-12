@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import React from "react";
-import { AutofixCompleteScreen } from "../../../src/shell/setup/autofix-complete";
-import { WelcomeScreen } from "../../../src/shell/setup/welcome";
+import { AutofixCompleteScreen } from "../../../src/shell/setup/autofix-complete.tsx";
+import { WelcomeScreen } from "../../../src/shell/setup/welcome.tsx";
 
 describe("first-time setup welcome screen", () => {
 	test("explains Gemini-compatible setup support", () => {

@@ -1,18 +1,18 @@
 import { Box, Text } from "ink";
 import { type ReactNode, useCallback, useState } from "react";
-import type { InputHistory } from "../../shell/input";
-import { hasNonWhitespace } from "../../shell/text-processing";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
 import {
 	canDisplayImage,
 	DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
 	type MultimodalConfig,
-} from "../../runtime/models/catalog/main";
-import type { Transport } from "../../runtime/workspace/common";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { useCtrlC } from "../ctrl-c";
-import { type ImageInfo, loadImageFromPath } from "../images";
-import { InputWithHistory } from "./history-input";
-import type { VimMode } from "./vim";
+} from "../../runtime/models/catalog/main.ts";
+import type { Transport } from "../../runtime/workspace/common.ts";
+import type { InputHistory } from "../../shell/input.ts";
+import { hasNonWhitespace } from "../../shell/text-processing.ts";
+import { useCtrlC } from "../ctrl-c.tsx";
+import { type ImageInfo, loadImageFromPath } from "../images.ts";
+import { InputWithHistory } from "./history-input.tsx";
+import type { VimMode } from "./vim.tsx";
 
 export type MultimediaInputProps = {
 	inputHistory: InputHistory;

@@ -1,7 +1,7 @@
 import type React from "react";
-import type { Auth, Config } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import type { ModelConnectionTester } from "./connection";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import type { ModelConnectionTester } from "./connection.ts";
 
 export type Model = Config["models"][number];
 export type ValidationResult =

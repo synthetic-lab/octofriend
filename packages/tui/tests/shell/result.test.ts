@@ -7,7 +7,7 @@ import {
 	ok,
 	toErrString,
 	tryexpr,
-} from "../../src/shell/result";
+} from "../../src/shell/result.ts";
 
 describe("Result constructors and transforms", () => {
 	it("maps ok values and leaves errors untouched", () => {

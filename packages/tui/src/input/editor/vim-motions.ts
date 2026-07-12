@@ -1,5 +1,5 @@
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
-import { previousTextGrapheme, textGraphemeAt } from "./graphemes";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
+import { previousTextGrapheme, textGraphemeAt } from "./graphemes.ts";
 import {
 	getFirstNonWhitespacePosition,
 	getLineEnd,
@@ -7,8 +7,8 @@ import {
 	getLineStart,
 	isWhitespace,
 	isWordChar,
-} from "./vim-nav";
-import type { Motion } from "./vim-types";
+} from "./vim-nav.ts";
+import type { Motion } from "./vim-types.ts";
 
 export const motions: Record<string, Motion> = {
 	// In vim, a "word" is either: (1) a sequence of letters/digits/underscores,

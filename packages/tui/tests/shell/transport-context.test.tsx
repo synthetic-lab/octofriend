@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
+import { LocalTransport } from "../../src/runtime/workspace/local.ts";
 import {
 	TransportContext,
 	useTransport,
-} from "../../src/shell/transport-context";
-import { LocalTransport } from "../../src/runtime/workspace/local";
+} from "../../src/shell/transport-context.tsx";
 
 function TransportProbe() {
 	return <Text>{useTransport().cwd}</Text>;

@@ -11,12 +11,12 @@ import {
 	renderShortcutItems,
 	type ShortcutArray,
 	shortcutArraysEqual,
-} from "../../src/input/shortcut-render";
+} from "../../src/input/shortcut-render.ts";
 import {
 	ConfirmDialog,
 	KbShortcutPanel,
 	KbShortcutSelect,
-} from "../../src/input/shortcuts";
+} from "../../src/input/shortcuts.tsx";
 
 function deferred<T>() {
 	let resolve: (value: T) => void = () => undefined;

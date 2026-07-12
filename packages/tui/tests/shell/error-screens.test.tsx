@@ -5,8 +5,8 @@ import {
 	PaymentErrorScreen,
 	RateLimitErrorScreen,
 	RequestErrorScreen,
-} from "../../src/shell/error-screens";
-import { useAppStore } from "../../src/shell/state/store";
+} from "../../src/shell/error-screens.tsx";
+import { useAppStore } from "../../src/shell/state/store.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 500; attempt += 1) {

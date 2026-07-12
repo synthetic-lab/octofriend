@@ -1,4 +1,4 @@
-import type { Config } from "../../runtime/config/schemas";
+import type { Config } from "../../runtime/config/schemas.ts";
 
 export type AutofixConfig = {
 	diffApply: Config["diffApply"];

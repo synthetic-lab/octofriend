@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import type { Tokens } from "marked";
 import React from "react";
 import stringWidth from "string-width";
-import { renderTokensAsPlaintext } from "./plaintext";
+import { renderTokensAsPlaintext } from "./plaintext.ts";
 
 type RenderedTableCell = {
 	text: string;

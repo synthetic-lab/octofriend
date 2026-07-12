@@ -3,8 +3,8 @@ import {
 	PaymentErrorScreen,
 	RateLimitErrorScreen,
 	RequestErrorScreen,
-} from "./error-screens";
-import type { AppModeData } from "./state/types";
+} from "./error-screens.tsx";
+import type { AppModeData } from "./state/types.ts";
 
 export type BottomBarErrorModeData = Extract<
 	AppModeData,

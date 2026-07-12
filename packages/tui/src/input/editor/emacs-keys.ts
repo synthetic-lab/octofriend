@@ -1,6 +1,6 @@
 import type { Key } from "ink";
-import { isWhitespaceCode } from "../../shell/text-characters";
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
+import { isWhitespaceCode } from "../../shell/text-characters.ts";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
 
 export type EmacsKeyHandlerResult = {
 	consumed: boolean;

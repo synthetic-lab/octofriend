@@ -1,6 +1,6 @@
 import ignore from "ignore";
-import type { Transport } from "../runtime/workspace/common";
-import { findFiles } from "../runtime/workspace/common";
+import type { Transport } from "../runtime/workspace/common.ts";
+import { findFiles } from "../runtime/workspace/common.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;

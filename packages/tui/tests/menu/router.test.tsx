@@ -13,7 +13,7 @@ describe("terminal setup router", () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { Back } = await import("../../src/menu/models/router");
+		const { Back } = await import("../../src/menu/models/router.tsx");
 		const calls: string[] = [];
 		const instance = render(
 			React.createElement(Back, {
@@ -42,7 +42,7 @@ describe("terminal setup router", () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { router } = await import("../../src/menu/models/router");
+		const { router } = await import("../../src/menu/models/router.tsx");
 		type Routes = {
 			first: { value: string };
 			second: { count: number };
@@ -77,7 +77,7 @@ describe("terminal setup router", () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { router } = await import("../../src/menu/models/router");
+		const { router } = await import("../../src/menu/models/router.tsx");
 		type Routes = {
 			first: { value: string; jump: boolean };
 			second: { count: number };
@@ -115,7 +115,7 @@ describe("terminal setup router", () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { router } = await import("../../src/menu/models/router");
+		const { router } = await import("../../src/menu/models/router.tsx");
 		type Routes = {
 			first: { value: string };
 		};

@@ -1,22 +1,16 @@
 import { Box, Text, useApp } from "ink";
 import { useCallback, useMemo, useState } from "react";
+import { HeightlessCenteredBox } from "../../layout/boxes.tsx";
+import { CustomAuthFlow } from "../../menu/models/custom-auth.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
 import {
 	configMergeAutofixEnvVar,
 	configMergeEnvVar,
-} from "../../runtime/config/agentd-config";
-import {
-	readConfig,
-	writeConfig,
-} from "../../runtime/config/config-file";
-import { readKeyForModelWithDetails } from "../../runtime/config/keys";
-import type {
-	AuthError,
-	Config,
-} from "../../runtime/config/schemas";
-import { HeightlessCenteredBox } from "../../layout/boxes";
-import { CustomAuthFlow } from "../../menu/models/custom-auth";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { AuthCommandErrorPanel } from "./error";
+} from "../../runtime/config/agentd-config.ts";
+import { readConfig, writeConfig } from "../../runtime/config/config-file.ts";
+import { readKeyForModelWithDetails } from "../../runtime/config/keys.ts";
+import type { AuthError, Config } from "../../runtime/config/schemas.ts";
+import { AuthCommandErrorPanel } from "./error.tsx";
 import {
 	applyAutofixAuthToConfig,
 	applyModelAuthToConfig,
@@ -25,8 +19,8 @@ import {
 	resolveAutofixModelFromConfig,
 	resolveModelFromConfig,
 	shouldMergeEnvAuthAsDefaultApiKey,
-} from "./model-resolve";
-import { useAuthPreflightInput } from "./use-input";
+} from "./model-resolve.ts";
+import { useAuthPreflightInput } from "./use-input.ts";
 
 export function PreflightModelAuth({
 	model,

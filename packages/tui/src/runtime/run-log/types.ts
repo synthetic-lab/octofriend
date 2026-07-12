@@ -1,12 +1,12 @@
-import type { QuotaData } from "../../shell/state/quota";
+import type { QuotaData } from "../../shell/state/quota.ts";
+import type { BuiltInToolContracts, OctoIR } from "../agent/ir/main.ts";
 import type {
 	AssistantMessage,
 	Content,
 	MalformedToolRequest,
 	ToolValidationErrorMessage,
-} from "../models/ir/main";
-import type { BuiltInToolContracts, OctoIR } from "../agent/ir/main";
-import type { ToolCall as BuiltInToolCall } from "../tools/main";
+} from "../models/ir/main.ts";
+import type { ToolCall as BuiltInToolCall } from "../tools/main.ts";
 
 type RequestCompilerError =
 	| { type: "request-error"; requestError: string; curl: string }

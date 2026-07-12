@@ -1,11 +1,11 @@
-import type { VimHandlerRuntime } from "./vim-state";
-import { handleInsertMode } from "./vim-insert";
-import { handleNormalMode } from "./vim-normal";
+import { handleInsertMode } from "./vim-insert.ts";
+import { handleNormalMode } from "./vim-normal.ts";
+import type { VimHandlerRuntime } from "./vim-state.ts";
 import type {
 	VimKeyHandler,
 	VimKeyHandlerResult,
 	VimMode,
-} from "./vim-types";
+} from "./vim-types.ts";
 
 export function createVimKeyHandler(
 	setVimMode: (mode: VimMode) => void,

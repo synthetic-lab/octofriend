@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { render } from "ink-testing-library";
 import React from "react";
-import type { InputHistory } from "../../src/shell/input";
-import { InputWithHistory } from "../../src/input/editor/history-input";
-import type { Transport } from "../../src/runtime/workspace/common";
-import { LocalTransport } from "../../src/runtime/workspace/local";
+import { InputWithHistory } from "../../src/input/editor/history-input.tsx";
+import type { Transport } from "../../src/runtime/workspace/common.ts";
+import { LocalTransport } from "../../src/runtime/workspace/local.ts";
+import type { InputHistory } from "../../src/shell/input.ts";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 50; attempt += 1) {

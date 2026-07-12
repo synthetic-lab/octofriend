@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
 
-import { expectOk, expectPresent } from "./test-support";
+import { expectOk, expectPresent } from "./test-support.ts";
 
 describe("autofix model setup helpers", () => {
 	it("resolves Synthetic autofix from configured env var overrides", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const syntheticKey = expectOk(
 			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
@@ -44,10 +44,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests Synthetic autofix model connectivity before completing env auth selection", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const syntheticKey = expectOk(
 			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
@@ -84,10 +84,10 @@ describe("autofix model setup helpers", () => {
 
 	it("uses Synthetic base URL overrides for first-time autofix setup", async () => {
 		const { resolveSyntheticAutofixConfig } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const syntheticKey = expectOk(
 			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
@@ -151,10 +151,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests both default Synthetic autofix models before completing setup", async () => {
 		const { resolveSyntheticAutofixConfig } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { keyFromName, SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const syntheticKey = expectOk(
 			keyFromName(expectPresent(SYNTHETIC_PROVIDER).name),
@@ -215,10 +215,10 @@ describe("autofix model setup helpers", () => {
 
 	it("uses a stored Synthetic key before asking for missing auth", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		const result = await resolveSyntheticAutofixSelection({
@@ -244,10 +244,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests Synthetic autofix model connectivity with stored key auth", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const calls: unknown[] = [];
 
@@ -278,7 +278,7 @@ describe("autofix model setup helpers", () => {
 
 	it("returns missing auth when Synthetic env and stored key are absent", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 
 		const result = await resolveSyntheticAutofixSelection({
@@ -293,7 +293,7 @@ describe("autofix model setup helpers", () => {
 
 	it("surfaces stored Synthetic key lookup failures as setup errors", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 
 		const result = await resolveSyntheticAutofixSelection({
@@ -313,7 +313,7 @@ describe("autofix model setup helpers", () => {
 
 	it("ignores whitespace-only Synthetic autofix env auth", async () => {
 		const { resolveSyntheticAutofixSelection } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 
 		const result = await resolveSyntheticAutofixSelection({
@@ -328,10 +328,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests Synthetic autofix custom env auth before completing a single model", async () => {
 		const { resolveSyntheticAutofixSelectionFromAuth } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const calls: unknown[] = [];
 
@@ -366,7 +366,7 @@ describe("autofix model setup helpers", () => {
 
 	it("rejects ChatGPT OAuth env auth for Synthetic autofix", async () => {
 		const { resolveSyntheticAutofixSelectionFromAuth } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 
 		const result = await resolveSyntheticAutofixSelectionFromAuth({
@@ -391,10 +391,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests Synthetic autofix custom command auth before completing a single model", async () => {
 		const { resolveSyntheticAutofixSelectionFromAuth } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const calls: unknown[] = [];
 
@@ -429,10 +429,10 @@ describe("autofix model setup helpers", () => {
 
 	it("tests both Synthetic autofix models for custom auth before completing setup", async () => {
 		const { resolveSyntheticAutofixConfigFromAuth } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const calls: unknown[] = [];
 
@@ -475,10 +475,10 @@ describe("autofix model setup helpers", () => {
 
 	it("builds Synthetic autofix config from custom auth results", async () => {
 		const { syntheticAutofixDiffApplyFromAuth } = await import(
-			"../../src/menu/models/synthetic-autofix"
+			"../../src/menu/models/synthetic-autofix.ts"
 		);
 		const { SYNTHETIC_PROVIDER } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(

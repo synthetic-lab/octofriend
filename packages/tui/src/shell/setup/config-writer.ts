@@ -1,7 +1,7 @@
-import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys";
-import { writeConfig } from "../../runtime/config/config-file";
-import type { Config } from "../../runtime/config/schemas";
-import type { AutofixConfig } from "./types";
+import { mergeDefaultApiKeyOverrides } from "../../runtime/config/api-keys.ts";
+import { writeConfig } from "../../runtime/config/config-file.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import type { AutofixConfig } from "./types.ts";
 
 export type WriteFirstTimeConfigInput = {
 	configPath: string;

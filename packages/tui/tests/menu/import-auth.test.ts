@@ -10,10 +10,10 @@ function expectPresent<T>(value: T): NonNullable<T> {
 describe("provider import auth metadata", () => {
 	it("preserves OpenAI ChatGPT OAuth auth on imported recommended models", async () => {
 		const { buildImportedProviderModels, providerModelAuth } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const oauthAuth = {
@@ -54,10 +54,10 @@ describe("provider import auth metadata", () => {
 
 	it("summarizes imported provider model authentication paths", async () => {
 		const { providerImportAuthText } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const anthropic = expectPresent(PROVIDERS.anthropic);
@@ -102,10 +102,10 @@ describe("provider import auth metadata", () => {
 
 	it("preserves active provider base URL overrides on imported models", async () => {
 		const { buildImportedProviderModels } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { providerWithResolvedBaseUrl, PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 		const proxiedOpenai = providerWithResolvedBaseUrl("openai", openai, {
@@ -135,10 +135,10 @@ describe("provider import auth metadata", () => {
 
 	it("preserves provider auth metadata on custom provider models", async () => {
 		const { buildCustomProviderModel } = await import(
-			"../../src/menu/models/import"
+			"../../src/menu/models/import.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const anthropic = expectPresent(PROVIDERS.anthropic);
 		const apiKeyAuth = {
@@ -162,10 +162,10 @@ describe("provider import auth metadata", () => {
 
 	it("does not invent API-key auth for providers without API-key support", async () => {
 		const { providerModelAuth } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const openai = expectPresent(PROVIDERS.openai);
 
@@ -190,10 +190,10 @@ describe("provider import auth metadata", () => {
 
 	it("omits provider API-key env auth on imported models so provider overrides stay canonical", async () => {
 		const { buildImportedProviderModels, providerModelAuth } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const anthropic = expectPresent(PROVIDERS.anthropic);
 		const apiKeyAuth = {
@@ -249,10 +249,10 @@ describe("provider import auth metadata", () => {
 
 	it("does not preserve ChatGPT OAuth override auth for API-key-only providers", async () => {
 		const { buildImportedProviderModels, providerModelAuth } = await import(
-			"../../src/menu/models/import-auth"
+			"../../src/menu/models/import-auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const anthropic = expectPresent(PROVIDERS.anthropic);
 		const oauthAuth = {
@@ -295,13 +295,13 @@ describe("provider import auth metadata", () => {
 	});
 	it("filters canonical Synthetic imports when a local proxy base URL is active", async () => {
 		const { providerWithResolvedBaseUrl } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 		const { getRemainingProviderModels } = await import(
-			"../../src/menu/models/import"
+			"../../src/menu/models/import.ts"
 		);
 		const synthetic = expectPresent(PROVIDERS.synthetic);
 		const proxiedSynthetic = providerWithResolvedBaseUrl(

@@ -7,14 +7,14 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { ThemedSelectIndicator as IndicatorComponent } from "../menu/select";
-import { normalizeRenderedLineBreaks } from "../render/lines";
-import { useTerminalThemeColor } from "../theme/branding";
+import { ThemedSelectIndicator as IndicatorComponent } from "../menu/select.tsx";
+import { normalizeRenderedLineBreaks } from "../render/lines.ts";
+import { useTerminalThemeColor } from "../theme/branding.tsx";
 import {
 	type InkInputKey,
 	useLatestInput,
 	useLatestRef,
-} from "./latest-input";
+} from "./latest-input.ts";
 import {
 	buildDirectShortcutLookup,
 	clampSelectedShortcutIndex,
@@ -27,7 +27,7 @@ import {
 	renderShortcutItems,
 	type ShortcutArray,
 	shortcutArraysEqual,
-} from "./shortcut-render";
+} from "./shortcut-render.ts";
 
 export type KbSelectProps<V> = {
 	shortcutItems: ShortcutArray<V>;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { Config } from "../../../../src/runtime/config/schemas";
-import { systemPrompt } from "../../../../src/runtime/prompts/system/main";
-import type { Transport } from "../../../../src/runtime/workspace/common";
+import type { Config } from "../../../../src/runtime/config/schemas.ts";
+import { systemPrompt } from "../../../../src/runtime/prompts/system/main.ts";
+import type { Transport } from "../../../../src/runtime/workspace/common.ts";
 
 function memoryTransport(cwd: string): Transport {
 	return {

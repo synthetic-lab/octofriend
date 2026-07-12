@@ -1,21 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
-import { extractTrim } from "../../src/shell/text-processing";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
-import { DiffRenderer, FileRenderer } from "../../src/render/code";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
+import { DiffRenderer, FileRenderer } from "../../src/render/code.tsx";
 import {
 	buildLineCounter,
 	LineSegments,
 	renderableCodeLineParts,
-} from "../../src/render/line-segments";
+} from "../../src/render/line-segments.tsx";
 import {
 	countLfLinesDropTrailingEmpty,
 	countRenderedLinesDropTrailingEmpty,
 	splitLfLines,
 	splitLfLinesDropTrailingEmpty,
 	splitRenderedLines,
-} from "../../src/render/lines";
+} from "../../src/render/lines.ts";
+import { extractTrim } from "../../src/shell/text-processing.ts";
 
 describe("line splitting", () => {
 	it("splits LF lines while preserving split newline semantics", () => {

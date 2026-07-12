@@ -1,9 +1,3 @@
-import {
-	PreflightAutofixAuth,
-	PreflightModelAuth,
-} from "./shell/auth-check/main";
-import { FirstTimeSetup } from "./shell/setup/main";
-import { App } from "./shell/shell";
 import type {
 	CanDisplayImageResult,
 	ImageModalityConfig,
@@ -13,7 +7,7 @@ import type {
 	ProviderKey,
 	ProviderModelConfig,
 	ProviderShortcut,
-} from "./runtime/models/catalog/main";
+} from "./runtime/models/catalog/main.ts";
 import {
 	canDisplayImage,
 	DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
@@ -30,12 +24,18 @@ import {
 	resolveProviderBaseUrl,
 	SYNTHETIC_PROVIDER,
 	SYNTHETIC_PROVIDER_KEY,
-} from "./runtime/models/catalog/main";
+} from "./runtime/models/catalog/main.ts";
+import {
+	PreflightAutofixAuth,
+	PreflightModelAuth,
+} from "./shell/auth-check/main.tsx";
+import { FirstTimeSetup } from "./shell/setup/main.tsx";
+import { App } from "./shell/shell.tsx";
 
 export type {
 	ConversationSessionHistory,
 	SaveConversationSession,
-} from "./shell/session";
+} from "./shell/session.ts";
 export type {
 	CanDisplayImageResult,
 	ImageModalityConfig,

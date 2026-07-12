@@ -10,17 +10,13 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 describe("model setup module boundaries", () => {
 	it("exports the model setup flow components from their owning module", async () => {
-		const flowModule = await import(
-			"../../src/menu/models/flow"
-		);
+		const flowModule = await import("../../src/menu/models/flow.tsx");
 		const customAuthModule = await import(
-			"../../src/menu/models/custom-auth"
+			"../../src/menu/models/custom-auth.tsx"
 		);
-		const setupModule = await import(
-			"../../src/menu/models/detect-models"
-		);
+		const setupModule = await import("../../src/menu/models/detect-models.tsx");
 		const autofixModule = await import(
-			"../../src/menu/models/autofix-menu"
+			"../../src/menu/models/autofix-menu.tsx"
 		);
 
 		expect(typeof flowModule.FullAddModelFlow).toBe("function");
@@ -34,9 +30,7 @@ describe("model setup module boundaries", () => {
 	it("full add-model flow uses latest cancel callback after rerender", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { FullAddModelFlow } = await import(
-			"../../src/menu/models/flow"
-		);
+		const { FullAddModelFlow } = await import("../../src/menu/models/flow.tsx");
 		const calls: string[] = [];
 		const renderFlow = (onCancel: () => void) =>
 			React.createElement(FullAddModelFlow, {
@@ -60,9 +54,7 @@ describe("model setup module boundaries", () => {
 	it("custom add-model flow uses latest cancel callback after rerender", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { CustomModelFlow } = await import(
-			"../../src/menu/models/flow"
-		);
+		const { CustomModelFlow } = await import("../../src/menu/models/flow.tsx");
 		const calls: string[] = [];
 		const renderFlow = (onCancel: () => void) =>
 			React.createElement(CustomModelFlow, {
@@ -88,7 +80,7 @@ describe("model setup module boundaries", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { CustomAutofixFlow } = await import(
-			"../../src/menu/models/flow"
+			"../../src/menu/models/flow.tsx"
 		);
 		const calls: string[] = [];
 		const renderFlow = (onCancel: () => void) =>

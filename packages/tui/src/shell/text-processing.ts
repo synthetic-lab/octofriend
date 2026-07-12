@@ -1,7 +1,7 @@
-import { err, ok, type Result } from "./result";
-import { isWhitespaceCode } from "./text-characters";
+import { err, ok, type Result } from "./result.ts";
+import { isWhitespaceCode } from "./text-characters.ts";
 
-import { wrapTextWithMapping as wrapTextWithMappingImpl } from "./text-wrapping";
+import { wrapTextWithMapping as wrapTextWithMappingImpl } from "./text-wrapping.ts";
 
 export const LINE_SPLIT_REGEX = /\r\n|\r|\n/;
 export type WrapResult = {

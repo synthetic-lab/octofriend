@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 import React from "react";
-import { useAppStore } from "../../src/shell/state/store";
-import { ConfigContext } from "../../src/runtime/config/react-context";
-import type { Config } from "../../src/runtime/config/schemas";
+import { ConfigContext } from "../../src/runtime/config/react-context.ts";
+import type { Config } from "../../src/runtime/config/schemas.ts";
+import { useAppStore } from "../../src/shell/state/store.ts";
 
 const config = {
 	models: [
@@ -19,7 +19,7 @@ const config = {
 describe("terminal app menu rerenders", () => {
 	test("notifications menu uses latest back callback after rerender", async () => {
 		const { NotificationsMenu } = await import(
-			"../../src/menu/main/notifications"
+			"../../src/menu/main/notifications.tsx"
 		);
 		const calls: string[] = [];
 		const previousState = useAppStore.getState();
@@ -44,7 +44,7 @@ describe("terminal app menu rerenders", () => {
 
 	test("default model menu uses latest back callback after rerender", async () => {
 		const { SetDefaultModelMenu } = await import(
-			"../../src/menu/main/models"
+			"../../src/menu/main/models.tsx"
 		);
 		const calls: string[] = [];
 		const previousState = useAppStore.getState();
@@ -80,9 +80,7 @@ describe("terminal app menu rerenders", () => {
 	});
 
 	test("settings menu uses latest navigation callbacks after rerender", async () => {
-		const { SettingsMenu } = await import(
-			"../../src/menu/main/settings"
-		);
+		const { SettingsMenu } = await import("../../src/menu/main/settings.tsx");
 		const calls: string[] = [];
 		const settingsConfig = {
 			...config,
@@ -128,7 +126,7 @@ describe("terminal app menu rerenders", () => {
 
 	test("model switch uses latest back callback after rerender", async () => {
 		const { SwitchModelMenu } = await import(
-			"../../src/menu/main/model-switch"
+			"../../src/menu/main/model-switch.tsx"
 		);
 		const calls: string[] = [];
 		const previousState = useAppStore.getState();
@@ -153,7 +151,7 @@ describe("terminal app menu rerenders", () => {
 	});
 
 	test("main menu uses latest navigation callbacks after rerender", async () => {
-		const { MainMenu } = await import("../../src/menu/main/main-menu");
+		const { MainMenu } = await import("../../src/menu/main/main-menu.tsx");
 		const calls: string[] = [];
 		const previousState = useAppStore.getState();
 		useAppStore.setState({ modelOverride: null });
@@ -197,7 +195,7 @@ describe("terminal app menu rerenders", () => {
 	});
 
 	test("main menu does not rerender shortcuts for non-Synthetic model switches", async () => {
-		const { MainMenu } = await import("../../src/menu/main/main-menu");
+		const { MainMenu } = await import("../../src/menu/main/main-menu.tsx");
 		const previousState = useAppStore.getState();
 		let updateCommits = 0;
 		const multiOpenAiConfig = {
@@ -257,7 +255,7 @@ describe("terminal app menu rerenders", () => {
 
 	test("diff-apply toggle uses latest back callback after rerender", async () => {
 		const { DiffApplyToggle } = await import(
-			"../../src/menu/main/autofix-toggles"
+			"../../src/menu/main/autofix-toggles.tsx"
 		);
 		const calls: string[] = [];
 		const enabledConfig = {

@@ -1,7 +1,7 @@
 import type { diffLines } from "diff";
 import { Box, Text } from "ink";
 import type React from "react";
-import { DiffSet, DiffSide, type LineCounter } from "./line-segments";
+import { DiffSet, DiffSide, type LineCounter } from "./line-segments.tsx";
 
 export type DiffPart =
 	| ReturnType<typeof diffLines>[number]

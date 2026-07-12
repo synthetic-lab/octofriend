@@ -1,20 +1,17 @@
 import { Text } from "ink";
 import React, { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useAppStore } from "../../shell/state/store";
-import type { UiState } from "../../shell/state/types";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { type Item, KbShortcutPanel } from "../../input/shortcuts";
-import { readKeyForModelWithDetails } from "../../runtime/config/keys";
-import { useConfig } from "../../runtime/config/react-context";
-import type {
-	Config,
-	KeyResult,
-} from "../../runtime/config/schemas";
-import { providerForModelConfig } from "../../runtime/models/catalog/main";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { SetApiKey } from "../models/api-key";
-import { buildModelShortcutItems } from "./models";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { type Item, KbShortcutPanel } from "../../input/shortcuts.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import { readKeyForModelWithDetails } from "../../runtime/config/keys.ts";
+import { useConfig } from "../../runtime/config/react-context.ts";
+import type { Config, KeyResult } from "../../runtime/config/schemas.ts";
+import { providerForModelConfig } from "../../runtime/models/catalog/main.ts";
+import { useAppStore } from "../../shell/state/store.ts";
+import type { UiState } from "../../shell/state/types.ts";
+import { SetApiKey } from "../models/api-key.tsx";
+import { buildModelShortcutItems } from "./models.tsx";
 
 const switchModelMenuStateSelector = (state: UiState) => ({
 	setModelOverride: state.setModelOverride,

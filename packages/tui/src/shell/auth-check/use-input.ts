@@ -1,7 +1,7 @@
 import { type Dispatch, type SetStateAction, useCallback } from "react";
-import { type InkInputKey, useLatestInput } from "../../input/latest-input";
-import type { AuthError } from "../../runtime/config/schemas";
-import { errorToString } from "../result";
+import { type InkInputKey, useLatestInput } from "../../input/latest-input.ts";
+import type { AuthError } from "../../runtime/config/schemas.ts";
+import { errorToString } from "../result.ts";
 
 export function useAuthPreflightInput({
 	authError,

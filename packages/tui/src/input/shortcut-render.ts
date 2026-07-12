@@ -1,4 +1,5 @@
-import { shortcutArraysEqual as shortcutArraysEqualImpl } from "./shortcut-eq";
+import { shortcutArraysEqual as shortcutArraysEqualImpl } from "./shortcut-eq.ts";
+import { renderShortcutItems as renderShortcutItemsImpl } from "./shortcut-items.ts";
 import {
 	buildDirectShortcutLookup as buildDirectShortcutLookupImpl,
 	clampSelectedShortcutIndex as clampSelectedShortcutIndexImpl,
@@ -8,8 +9,7 @@ import {
 	handlePageShortcutLookup as handlePageShortcutLookupImpl,
 	handleSelectionMovement as handleSelectionMovementImpl,
 	normalizedSingleShortcutCode,
-} from "./shortcut-nav";
-import { renderShortcutItems as renderShortcutItemsImpl } from "./shortcut-items";
+} from "./shortcut-nav.ts";
 import type {
 	AutolistShortcutType as AutolistShortcutTypeType,
 	Hotkey as HotkeyType,
@@ -18,7 +18,7 @@ import type {
 	MapShortcutType as MapShortcutTypeType,
 	RenderedShortcutItem as RenderedShortcutItemType,
 	ShortcutArray as ShortcutArrayType,
-} from "./shortcut-types";
+} from "./shortcut-types.ts";
 
 type Item<V> = ItemType<V>;
 type RenderedShortcutItem<V> = RenderedShortcutItemType<V>;

@@ -1,12 +1,12 @@
-import { trajectoryArc } from "../../runtime/run-log/main";
-import { assertKeyForModel } from "../../runtime/config/keys";
-import { getModelFromConfig } from "../../runtime/config/model-selection";
-import type { ProviderMetrics } from "../../runtime/run-log/types";
-import type { HistoryItem } from "../../runtime/history/main";
-import { outputToHistory, toLlmIR } from "../../runtime/history/main";
-import type { OctoIR } from "../../runtime/agent/ir/main";
-import { errorToString } from "../result";
-import { handleFinishReason } from "./runner-finish";
+import type { OctoIR } from "../../runtime/agent/ir/main.ts";
+import { assertKeyForModel } from "../../runtime/config/keys.ts";
+import { getModelFromConfig } from "../../runtime/config/model-selection.ts";
+import type { HistoryItem } from "../../runtime/history/main.ts";
+import { outputToHistory, toLlmIR } from "../../runtime/history/main.ts";
+import { trajectoryArc } from "../../runtime/run-log/main.ts";
+import type { ProviderMetrics } from "../../runtime/run-log/types.ts";
+import { errorToString } from "../result.ts";
+import { handleFinishReason } from "./runner-finish.ts";
 import {
 	appendHistoryItems,
 	createLocalMessageId,
@@ -15,9 +15,9 @@ import {
 	mergeTrajectoryFinishHistory,
 	rejectedToolHistoryForUserMessage,
 	userMessageContent,
-} from "./runner-history";
-import { throttledMergeBuffer } from "./scheduling";
-import type { AppStateGet, AppStateSet, UiState } from "./types";
+} from "./runner-history.ts";
+import { throttledMergeBuffer } from "./scheduling.ts";
+import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
 export function formatProviderMetrics(metrics: ProviderMetrics): string {
 	const label =

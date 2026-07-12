@@ -1,7 +1,7 @@
 import stringWidth from "string-width";
-import { nextTextBoundary } from "../input/editor/boundaries";
-import { isWhitespaceChar, isWhitespaceCode } from "./text-characters";
-import type { WrapResult } from "./text-processing";
+import { nextTextBoundary } from "../input/editor/boundaries.ts";
+import { isWhitespaceChar, isWhitespaceCode } from "./text-characters.ts";
+import type { WrapResult } from "./text-processing.ts";
 
 type WrapState = {
 	text: string;

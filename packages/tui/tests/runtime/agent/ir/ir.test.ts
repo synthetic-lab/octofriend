@@ -3,7 +3,7 @@ import {
 	BuiltInToolContracts,
 	type OctoIR,
 	octoAgent,
-} from "../../../../src/runtime/agent/ir/main";
+} from "../../../../src/runtime/agent/ir/main.ts";
 
 describe("Octo agent IR", () => {
 	it("binds the Octo agent to the built-in tool map with no subagents", () => {

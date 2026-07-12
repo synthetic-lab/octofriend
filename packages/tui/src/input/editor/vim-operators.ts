@@ -4,8 +4,8 @@ import {
 	isNewline,
 	isWhitespace,
 	trimNewlinesFromEnd,
-} from "./vim-nav";
-import type { Operator } from "./vim-types";
+} from "./vim-nav.ts";
+import type { Operator } from "./vim-types.ts";
 
 export const operators: Record<string, Operator> = {
 	d: (text, { start, end }, motionChar) => {

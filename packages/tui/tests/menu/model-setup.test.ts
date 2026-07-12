@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Config } from "../../src/runtime/config/schemas";
+import type { Config } from "../../src/runtime/config/schemas.ts";
 
 function expectPresent<T>(value: T): NonNullable<T> {
 	if (value === null || value === undefined) {
@@ -27,7 +27,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 describe("terminal model setup helpers", () => {
 	it("uses a known provider name for matching base URLs", async () => {
 		const { getProviderDisplayName } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 
 		expect(getProviderDisplayName("https://api.openai.com/v1")).toBe("OpenAI");
@@ -38,7 +38,7 @@ describe("terminal model setup helpers", () => {
 
 	it("falls back to the base URL for unknown providers", async () => {
 		const { getProviderDisplayName } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 
 		expect(getProviderDisplayName("https://models.example.test/v1")).toBe(
@@ -48,7 +48,7 @@ describe("terminal model setup helpers", () => {
 
 	it("derives default nicknames from model names without char-concat loops", async () => {
 		const { defaultNicknameFromModelName } = await import(
-			"../../src/menu/models/routes"
+			"../../src/menu/models/routes.tsx"
 		);
 
 		expect(defaultNicknameFromModelName(undefined)).toBe("");
@@ -63,9 +63,7 @@ describe("terminal model setup helpers", () => {
 	it("renders custom base URL auth choices without requiring every catalog provider", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -87,10 +85,10 @@ describe("terminal model setup helpers", () => {
 
 	it("derives provider auth choices without per-render shortcut rebuilding", async () => {
 		const { authChoicesForProvider } = await import(
-			"../../src/menu/models/auth"
+			"../../src/menu/models/auth.ts"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(authChoicesForProvider(expectPresent(PROVIDERS.openai))).toEqual({
@@ -118,9 +116,7 @@ describe("terminal model setup helpers", () => {
 	it("surfaces provider-specific OpenAI OAuth metadata without hiding API-key setup", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -152,9 +148,7 @@ describe("terminal model setup helpers", () => {
 	it("does not advertise OAuth for Anthropic API-key-only setup", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -182,9 +176,7 @@ describe("terminal model setup helpers", () => {
 	it("does not advertise OAuth for Synthetic API-key-only setup", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { AuthAsk } = await import(
-			"../../src/menu/models/auth-views"
-		);
+		const { AuthAsk } = await import("../../src/menu/models/auth-views.tsx");
 
 		const { lastFrame } = render(
 			React.createElement(AuthAsk, {
@@ -210,10 +202,10 @@ describe("terminal model setup helpers", () => {
 
 	it("requires hf-prefixed model names for Synthetic base URLs and overrides", async () => {
 		const { requiresSyntheticModelPrefix } = await import(
-			"../../src/menu/models/route-views"
+			"../../src/menu/models/route-views.tsx"
 		);
 		const { PROVIDERS } = await import(
-			"../../src/runtime/models/catalog/main"
+			"../../src/runtime/models/catalog/main.ts"
 		);
 
 		expect(
@@ -243,13 +235,13 @@ describe("terminal model setup helpers", () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const { ModelConnectionTestContext } = await import(
-			"../../src/menu/models/connection"
+			"../../src/menu/models/connection.ts"
 		);
 		const { TestConnection } = await import(
-			"../../src/menu/models/route-views"
+			"../../src/menu/models/route-views.tsx"
 		);
 		let connectionCalls = 0;
 		const tester = () => {
@@ -304,7 +296,7 @@ describe("terminal model setup helpers", () => {
 
 	it("returns API key URLs for known providers", async () => {
 		const { getProviderApiKeyUrl } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 
 		expect(getProviderApiKeyUrl("https://api.synthetic.new/v1")).toBe(
@@ -330,7 +322,7 @@ describe("terminal model setup helpers", () => {
 
 	it("formats API key URLs as OSC 8 terminal hyperlinks", async () => {
 		const { terminalHyperlink } = await import(
-			"../../src/menu/models/providers"
+			"../../src/menu/models/providers.ts"
 		);
 
 		expect(terminalHyperlink("https://platform.openai.com/api-keys")).toBe(
@@ -345,7 +337,7 @@ describe("terminal model setup helpers", () => {
 
 	it("rejects empty API keys with the legacy validation message", async () => {
 		const { validateApiKeyValue } = await import(
-			"../../src/menu/models/api-key"
+			"../../src/menu/models/api-key.tsx"
 		);
 
 		expect(validateApiKeyValue("")).toEqual({
@@ -362,7 +354,7 @@ describe("terminal model setup helpers", () => {
 
 describe("terminal model setup routing", () => {
 	it("returns typed route builders unchanged", async () => {
-		const { router } = await import("../../src/menu/models/router");
+		const { router } = await import("../../src/menu/models/router.tsx");
 		type Routes = {
 			first: { value: string };
 			second: { count: number };
@@ -380,9 +372,9 @@ describe("terminal model setup routing", () => {
 	it("ignores duplicate async step submissions while the first submit is pending", async () => {
 		const React = await import("react");
 		const { render } = await import("ink-testing-library");
-		const { Step } = await import("../../src/menu/models/step");
+		const { Step } = await import("../../src/menu/models/step.tsx");
 		const { errorContext } = await import(
-			"../../src/menu/models/error-context"
+			"../../src/menu/models/error-context.tsx"
 		);
 		const submit = deferred<void>();
 		const submitted: string[] = [];
@@ -431,7 +423,7 @@ describe("terminal model setup routing", () => {
 		const React = await import("react");
 		const { Text } = await import("ink");
 		const { render } = await import("ink-testing-library");
-		const { router } = await import("../../src/menu/models/router");
+		const { router } = await import("../../src/menu/models/router.tsx");
 		type Routes = {
 			first: { value: string };
 			second: { count: number };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { buildFirstTimeConfig } from "../../../src/shell/setup/config-writer";
-import { mergeDefaultApiKeyOverrides } from "../../../src/runtime/config/api-keys";
+import { mergeDefaultApiKeyOverrides } from "../../../src/runtime/config/api-keys.ts";
+import { buildFirstTimeConfig } from "../../../src/shell/setup/config-writer.ts";
 
 describe("first-time setup config writer", () => {
 	test("keeps default API key overrides stable when unchanged", () => {

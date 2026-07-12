@@ -1,19 +1,19 @@
 import { Box, Text } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { errorToString } from "../result";
-import { nonEmptyTrimmedText } from "../text-processing";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { TextInput } from "../../input/text";
-import type { Config } from "../../runtime/config/schemas";
-import { providerEntries } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import { normalizeRenderedLineBreaks } from "../../render/lines";
-import { useTerminalThemeColor } from "../../theme/branding";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { TextInput } from "../../input/text.ts";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import { normalizeRenderedLineBreaks } from "../../render/lines.ts";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { providerEntries } from "../../runtime/models/catalog/main.ts";
+import { useTerminalThemeColor } from "../../theme/branding.tsx";
+import { errorToString } from "../result.ts";
+import { nonEmptyTrimmedText } from "../text-processing.ts";
 import {
 	type WriteFirstTimeConfigInput,
 	writeFirstTimeConfig,
-} from "./config-writer";
-import type { AutofixConfig } from "./types";
+} from "./config-writer.ts";
+import type { AutofixConfig } from "./types.ts";
 
 type WriteFirstTimeConfig = (input: WriteFirstTimeConfigInput) => Promise<void>;
 

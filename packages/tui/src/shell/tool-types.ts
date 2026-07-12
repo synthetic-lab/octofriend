@@ -1,6 +1,6 @@
 import type React from "react";
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
-import type { RunArgs } from "./state/types";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main.ts";
+import type { RunArgs } from "./state/types.ts";
 
 export type TerminalToolRequestsProps = {
 	toolReqs: ToolCallRequest[];

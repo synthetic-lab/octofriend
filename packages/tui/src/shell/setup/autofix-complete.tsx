@@ -1,9 +1,9 @@
 import { Box, Text } from "ink";
 import { useCallback } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
-import { CenteredBox } from "../../layout/boxes";
-import { MenuHeader } from "../../menu/root";
-import { TERMINAL_THEME_COLOR } from "../../theme/branding";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import { MenuHeader } from "../../menu/root.tsx";
+import { TERMINAL_THEME_COLOR } from "../../theme/branding.tsx";
 
 export function AutofixCompleteScreen({
 	onContinue,

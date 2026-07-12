@@ -1,4 +1,4 @@
-import { configDefaultPaths } from "./agentd-config";
+import { configDefaultPaths } from "./agentd-config.ts";
 
 const paths = await configDefaultPaths();
 

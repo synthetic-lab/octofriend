@@ -1,4 +1,4 @@
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
 
 export function textGraphemeAt(text: string, position: number): string {
 	return text.slice(position, nextTextBoundary(text, position));

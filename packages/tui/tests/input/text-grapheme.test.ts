@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Key } from "ink";
-import { useEmacsKeyHandler } from "../../src/input/text";
+import { useEmacsKeyHandler } from "../../src/input/text.ts";
 
 const key = (overrides: Partial<Key> = {}): Key =>
 	({

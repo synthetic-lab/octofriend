@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { nextTextBoundary, previousTextBoundary } from "./boundaries";
+import { nextTextBoundary, previousTextBoundary } from "./boundaries.ts";
 
 export type CursorTextOptions = {
 	wrapped: string;

@@ -1,9 +1,9 @@
 import { Text } from "ink";
 import type { ReactElement } from "react";
-import type { ToolCall as ToolCallRequest } from "../runtime/tools/main";
-import { useCwd } from "../shell/workspace-context";
-import { normalizeRenderedLineBreaks } from "./lines";
-import { type ParsedToolCallSchema, parsedItemFor } from "./tool-types";
+import type { ToolCall as ToolCallRequest } from "../runtime/tools/main.ts";
+import { useCwd } from "../shell/workspace-context.tsx";
+import { normalizeRenderedLineBreaks } from "./lines.ts";
+import { type ParsedToolCallSchema, parsedItemFor } from "./tool-types.ts";
 
 function renderedWhitelistValue(value: string | undefined): string {
 	return typeof value === "string" ? normalizeRenderedLineBreaks(value) : "";

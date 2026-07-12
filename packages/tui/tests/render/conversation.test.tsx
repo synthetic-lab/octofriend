@@ -1,23 +1,23 @@
 import { describe, expect, it } from "bun:test";
 import { render } from "ink-testing-library";
 import { Profiler } from "react";
-import { useAppStore } from "../../src/shell/state/store";
-import { ConfigContext } from "../../src/runtime/config/react-context";
 import {
 	assistantScrollViewHeight,
 	thoughtBoxWidth,
-} from "../../src/render/assistant-message";
+} from "../../src/render/assistant-message.tsx";
 import {
 	hasVisibleText,
 	MessageDisplay,
 	renderLlmIR,
 	stripCompactionSummaryTags,
-} from "../../src/render/messages";
+} from "../../src/render/messages.tsx";
 import {
 	StaticItemRenderer,
 	staticItemKey,
 	toStaticItems,
-} from "../../src/render/static-items";
+} from "../../src/render/static-items.tsx";
+import { ConfigContext } from "../../src/runtime/config/react-context.ts";
+import { useAppStore } from "../../src/shell/state/store.ts";
 
 describe("terminal conversation rendering", () => {
 	it("exports static and message renderers", () => {

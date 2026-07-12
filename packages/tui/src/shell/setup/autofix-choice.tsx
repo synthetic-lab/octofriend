@@ -1,23 +1,23 @@
 import { Box, Text } from "ink";
 import { useCallback, useRef, useState } from "react";
-import { useLatestRef } from "../../input/latest-input";
+import { useLatestRef } from "../../input/latest-input.ts";
 import {
 	type Item,
 	KbShortcutPanel,
 	type ShortcutArray,
-} from "../../input/shortcuts";
-import type { Config } from "../../runtime/config/schemas";
-import { SYNTHETIC_PROVIDER } from "../../runtime/models/catalog/main";
-import { CenteredBox } from "../../layout/boxes";
-import type { ModelConnectionTester } from "../../menu/models/connection";
-import { resolveProviderEnvVar } from "../../menu/models/providers";
-import type { ToRoute } from "../../menu/models/router";
+} from "../../input/shortcuts.tsx";
+import { CenteredBox } from "../../layout/boxes.tsx";
+import type { ModelConnectionTester } from "../../menu/models/connection.ts";
+import { resolveProviderEnvVar } from "../../menu/models/providers.ts";
+import type { ToRoute } from "../../menu/models/router.tsx";
 import {
 	type ResolveSyntheticAutofixSelectionInput,
 	resolveSyntheticAutofixConfig,
-} from "../../menu/models/synthetic-autofix";
-import { MenuHeader } from "../../menu/root";
-import type { AutofixConfig, AutofixSetupRouteData } from "./types";
+} from "../../menu/models/synthetic-autofix.ts";
+import { MenuHeader } from "../../menu/root.tsx";
+import type { Config } from "../../runtime/config/schemas.ts";
+import { SYNTHETIC_PROVIDER } from "../../runtime/models/catalog/main.ts";
+import type { AutofixConfig, AutofixSetupRouteData } from "./types.ts";
 
 const AUTOFIX_SETUP_SHORTCUT_ITEMS = [
 	{

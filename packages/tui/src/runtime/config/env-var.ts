@@ -1,8 +1,8 @@
 import {
 	configMergeAutofixEnvVar,
 	configMergeEnvVar,
-} from "./agentd-config";
-import type { Config } from "./schemas";
+} from "./agentd-config.ts";
+import type { Config } from "./schemas.ts";
 
 export async function mergeEnvVar(
 	config: Config,

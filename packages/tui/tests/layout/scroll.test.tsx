@@ -6,7 +6,7 @@ import {
 	IsScrollableContext,
 	parseMouseScrollDirection,
 	ScrollView,
-} from "../../src/layout/scroll";
+} from "../../src/layout/scroll.tsx";
 
 async function waitFor(predicate: () => boolean): Promise<void> {
 	for (let attempt = 0; attempt < 50; attempt += 1) {

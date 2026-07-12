@@ -1,12 +1,12 @@
 import { Box, Text } from "ink";
 import type React from "react";
-import type { ImageInfo } from "../input/images";
-import type { Content } from "../runtime/models/ir/main";
+import type { ImageInfo } from "../input/images.ts";
+import type { Content } from "../runtime/models/ir/main.ts";
 import {
 	countRenderedLinesDropTrailingEmpty,
-	normalizeRenderedLineBreaks,
 	nextRenderedLineBreak,
-} from "./lines";
+	normalizeRenderedLineBreaks,
+} from "./lines.ts";
 
 export type TerminalContent = Content["content"];
 

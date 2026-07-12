@@ -7,7 +7,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useLatestInput, useLatestRef } from "../../input/latest-input";
+import { useLatestInput, useLatestRef } from "../../input/latest-input.ts";
 
 export type Route<
 	TRoutes extends { [TRouteKey in keyof TRoutes]: object },

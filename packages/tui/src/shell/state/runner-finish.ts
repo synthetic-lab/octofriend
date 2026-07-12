@@ -1,5 +1,5 @@
-import type { Finish } from "../../runtime/run-log/types";
-import type { AppStateGet, AppStateSet, UiState } from "./types";
+import type { Finish } from "../../runtime/run-log/types.ts";
+import type { AppStateGet, AppStateSet, UiState } from "./types.ts";
 
 export function handleFinishReason({
 	config,

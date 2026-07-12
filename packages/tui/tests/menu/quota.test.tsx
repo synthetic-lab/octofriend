@@ -4,7 +4,7 @@ import { render } from "ink-testing-library";
 import {
 	MenuQuotaIndicator,
 	SyntheticQuotaFetchContext,
-} from "../../src/menu/quota";
+} from "../../src/menu/quota.tsx";
 
 const quota = {
 	weeklyTokenLimit: {

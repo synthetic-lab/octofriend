@@ -1,7 +1,7 @@
-import type { Auth, Config } from "../../runtime/config/schemas";
-import type { ProviderConfig } from "../../runtime/models/catalog/main";
-import { supportsAuthMethod } from "./auth";
-import { resolveProviderEnvVar } from "./providers";
+import type { Auth, Config } from "../../runtime/config/schemas.ts";
+import type { ProviderConfig } from "../../runtime/models/catalog/main.ts";
+import { supportsAuthMethod } from "./auth.ts";
+import { resolveProviderEnvVar } from "./providers.ts";
 
 type BuildImportedProviderModelsInput = {
 	models: ProviderConfig["models"];

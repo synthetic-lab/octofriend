@@ -1,11 +1,11 @@
 import { Box, Text } from "ink";
 import { useCallback } from "react";
-import { useLatestRef } from "../../input/latest-input";
-import { hasExistingKeyForBaseUrl } from "../../runtime/config/keys";
-import { Step } from "./step";
-import type { FullFlowRouteData } from "./types";
-import { nonEmptyTrimmedValue } from "./providers";
-import { Back, router, type ToRoute } from "./router";
+import { useLatestRef } from "../../input/latest-input.ts";
+import { hasExistingKeyForBaseUrl } from "../../runtime/config/keys.ts";
+import { nonEmptyTrimmedValue } from "./providers.ts";
+import { Back, router, type ToRoute } from "./router.tsx";
+import { Step } from "./step.tsx";
+import type { FullFlowRouteData } from "./types.ts";
 
 export const fullFlow = router<FullFlowRouteData>();
 type FullFlowToRoute = ToRoute<FullFlowRouteData>;

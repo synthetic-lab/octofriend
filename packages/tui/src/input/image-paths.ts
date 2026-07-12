@@ -1,6 +1,6 @@
 import path from "node:path";
 import { parse } from "shell-quote";
-import { IMAGE_EXTENSIONS } from "./image-types";
+import { IMAGE_EXTENSIONS } from "./image-types.ts";
 
 const CHARACTER_PLACEHOLDER = "_";
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { Text } from "ink";
 import { render } from "ink-testing-library";
-import { CenteredBox, HeightlessCenteredBox } from "../../src/layout/boxes";
-import { TerminalSizeProvider } from "../../src/layout/viewport";
+import { CenteredBox, HeightlessCenteredBox } from "../../src/layout/boxes.tsx";
+import { TerminalSizeProvider } from "../../src/layout/viewport.tsx";
 
 describe("CenteredBox", () => {
 	it("renders its children inside the centered layout", () => {

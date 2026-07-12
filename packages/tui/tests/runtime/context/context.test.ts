@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import type { Result } from "../../../src/shell/result";
-import type { Config } from "../../../src/runtime/config/schemas";
-import { loadTools } from "../../../src/runtime/tools/main";
-import type { Transport } from "../../../src/runtime/workspace/common";
+import type { Config } from "../../../src/runtime/config/schemas.ts";
+import { loadTools } from "../../../src/runtime/tools/main.ts";
+import type { Transport } from "../../../src/runtime/workspace/common.ts";
+import type { Result } from "../../../src/shell/result.ts";
 
 const transport: Transport = {
 	cwd: "/repo",

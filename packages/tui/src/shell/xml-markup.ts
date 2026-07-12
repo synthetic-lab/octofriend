@@ -5,7 +5,7 @@ import {
 	openTag as openTagImpl,
 	tagged as taggedImpl,
 	xmlEscape as xmlEscapeImpl,
-} from "./tags";
+} from "./tags.ts";
 import type {
 	Attribute as AttributeType,
 	CloseTagEvent as CloseTagEventType,
@@ -13,8 +13,8 @@ import type {
 	TextEvent as TextEventType,
 	XMLEventHandlers as XMLEventHandlersType,
 	XMLEvent as XMLEventType,
-} from "./types";
-import { StreamingXMLParser as StreamingXMLParserImpl } from "./xml-stream";
+} from "./types.ts";
+import { StreamingXMLParser as StreamingXMLParserImpl } from "./xml-stream.ts";
 
 export type Attribute = AttributeType;
 export type OpenTagEvent = OpenTagEventType;

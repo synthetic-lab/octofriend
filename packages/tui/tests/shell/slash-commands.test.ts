@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	matchingSlashCommands,
 	projectInitializationPrompt,
-} from "../../src/shell/slash-commands";
+} from "../../src/shell/slash-commands.ts";
 
 describe("slash command tooltip matching", () => {
 	it("returns no commands for ordinary input", () => {

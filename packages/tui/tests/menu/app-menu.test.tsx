@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Config } from "../../src/runtime/config/schemas";
-import { mergeAutofixCompletionConfig } from "../../src/menu/main/autofix-toggles";
+import { mergeAutofixCompletionConfig } from "../../src/menu/main/autofix-toggles.tsx";
 import {
 	appMenuFlow,
 	buildMainMenuShortcutItems,
@@ -10,9 +9,10 @@ import {
 	handleMainMenuSelection,
 	Menu,
 	mainMenuShortcutState,
-} from "../../src/menu/main/main";
-import { buildModelShortcutItems } from "../../src/menu/main/models";
-import { resolveSwitchModelSelection } from "../../src/menu/main/model-switch";
+} from "../../src/menu/main/main.tsx";
+import { resolveSwitchModelSelection } from "../../src/menu/main/model-switch.tsx";
+import { buildModelShortcutItems } from "../../src/menu/main/models.tsx";
+import type { Config } from "../../src/runtime/config/schemas.ts";
 
 const config = {
 	models: [
