@@ -15,7 +15,7 @@ Thank you for your interest in contributing to octofriend! We welcome contributi
 
 ## Before You Start
 
-- Check existing [issues](https://github.com/synthetic-lab/octofriend/issues) and [pull requests](https://github.com/synthetic-lab/octofriend/pulls) to avoid duplicating work.
+- Check existing [issues](https://github.com/xsyetopz/octofriend-next/issues) and [pull requests](https://github.com/xsyetopz/octofriend-next/pulls) to avoid duplicating work.
 - For new features, discuss your approach in a [#feature-request](https://discord.com/channels/1315627714056687706/1476772316401893407) post in our [Discord](https://synthetic.new/discord) or in a Github issue. We may have opinions on the direction, and it's better to align early than after you've put in the work.
 - If you want to work on an open issue or feature, comment on it (either on Discord or GH Issues) to let others know.
 

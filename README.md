@@ -3,11 +3,68 @@ Octo is still your friend.
 
 ## Get Started
 
+### Standalone installer
+
+The standalone release includes `octofriend`, its `octo` alias,
+`octofriend-acp`, and the native `octofriend-agentd` worker.
+
+macOS and Linux with curl:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xsyetopz/octofriend-next/rewrite/install.sh | sh
+```
+
+macOS and Linux with wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/xsyetopz/octofriend-next/rewrite/install.sh | sh
+```
+
+Windows PowerShell 5.1 or newer:
+
+```powershell
+Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/xsyetopz/octofriend-next/rewrite/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+Remove-Item .\install.ps1
+```
+
+The installers verify the selected archive against the release
+`SHA256SUMS`. Set `OCTO_VERSION` to install a specific version,
+`OCTO_INSTALL_DIR` to choose a destination, or `OCTO_DOWNLOADER=curl|wget`
+to force a Unix downloader.
+
+### Package managers
+
+Homebrew is hosted directly by this repository:
+
+```bash
+brew tap xsyetopz/octofriend-next https://github.com/xsyetopz/octofriend-next
+brew install xsyetopz/octofriend-next/octofriend
+```
+
+Scoop is also hosted directly by this repository:
+
+```powershell
+scoop bucket add octofriend https://github.com/xsyetopz/octofriend-next
+scoop install octofriend/octofriend
+```
+
+Each GitHub release contains a self-contained
+`octofriend.<version>.nupkg`. Download it and use its directory as a
+Chocolatey source:
+
+```powershell
+gh release download --repo xsyetopz/octofriend-next --pattern "octofriend.*.nupkg"
+choco install octofriend --source . --yes
+```
+
+The Bun package remains available when a Bun-managed installation is preferred:
+
 ```bash
 bun install --global octofriend
 ```
 
-And then:
+Then run:
 
 ```bash
 octofriend
@@ -22,6 +79,57 @@ bun install
 bun run exec
 ```
 
+### Resume a conversation
+
+Every interactive run prints a session ID and saves append-only conversation
+revisions locally. Concurrent resumes preserve sibling branches, and resuming
+selects the newest revision.
+Resume it from the same working directory with:
+
+```bash
+octo --resume <session-id>
+```
+
+Octo restores the original config, permission mode, and local, Docker, or SSH
+launch. Starting a new conversation with `/clear` creates a new session ID.
+Use `/compact` during an interactive run to replace the current history with a
+model-generated checkpoint without starting another assistant turn. Use
+`/init [instructions]` to ask Octo to inspect the repository and create or update
+its `OCTO.md` project guidance.
+
+The automatic trigger defaults to 90% of the model context window and can be
+changed in the config:
+
+```json5
+compaction: {
+  autoThresholdPercent: 75,
+  compactOldestPercent: 50,
+}
+```
+
+To display shell tool stdout/stderr instead of only its line count, enable:
+
+```json5
+showShellOutput: true
+```
+
+Use `/metrics` to persistently toggle per-provider-request TTFT and output
+token-rate summaries. The equivalent config value is `showProviderMetrics: true`;
+it defaults to off.
+
+Pre-fill a new interactive prompt without submitting it with:
+
+```bash
+octo --prefill "Investigate the failing test"
+```
+
+### Supported platforms
+
+Octofriend is designed to run natively on Linux, macOS, and Windows. On
+Windows, launch it from PowerShell or Command Prompt; Git Bash and WSL are not
+required. Shell tools use `cmd.exe` and suppress the extra console windows that
+Windows would otherwise create for each tool call.
+
 For local proxy testing, copy `.env.template` to `.env`. The template points
 OpenAI, Anthropic, Gemini, and Synthetic clients at `http://127.0.0.1:8080`
 with `pwd` API keys so a local codex-proxy can exercise every provider path.
@@ -33,8 +141,9 @@ with `pwd` API keys so a local codex-proxy can exercise every provider path.
 octofriend is a small, helpful, cephalopod-flavored coding assistant that works with
 OpenAI, Anthropic, Gemini, Synthetic, and compatible LLM APIs, and allows you to
 switch models at will mid-conversation when a particular model gets stuck. OpenAI
-setup supports ChatGPT OAuth or `OPENAI_API_KEY`; Anthropic, Gemini, and
-Synthetic setup use API keys. Octo can optionally use (and we recommend using)
+setup supports ChatGPT OAuth or `OPENAI_API_KEY`; Gemini supports an API
+key or OAuth/ADC, while Anthropic and Synthetic use API keys. Octo can
+optionally use (and we recommend using)
 ML models we custom-trained and open-sourced
 ([1](https://huggingface.co/syntheticlab/diff-apply),
 [2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
@@ -47,6 +156,111 @@ Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we
 selfishly recommend [Synthetic](https://synthetic.new)?) means your code stays
 yours. But you can also use it with OpenAI-compatible providers, Anthropic,
 Gemini, Synthetic, or local LLMs you run on your own machine.
+
+## Authentication
+
+Octofriend supports provider API keys and the official delegated credential
+paths that the provider APIs expose:
+
+- **OpenAI API:** set `OPENAI_API_KEY`.
+- **ChatGPT subscription:** run `codex login`. Octofriend can reuse the
+  official Codex login stored in `~/.codex/auth.json`, or a
+  `CODEX_ACCESS_TOKEN`, through its `chatgpt-oauth` credential path.
+  ChatGPT sign-in and API-key billing are separate choices; see
+  [OpenAI's Codex authentication documentation](https://learn.chatgpt.com/docs/auth?surface=app).
+- **Gemini API:** set `GEMINI_API_KEY`.
+- **Gemini OAuth / Application Default Credentials:** provide a Google Cloud
+  project and a command that prints a current access token. This is the
+  official OAuth/ADC API path documented by
+  [Google](https://ai.google.dev/gemini-api/docs/oauth); it uses Google Cloud
+  project quota and is not a consumer Gemini subscription credential.
+- **Anthropic:** use `ANTHROPIC_API_KEY`. Claude Max subscription credentials
+  are intentionally not accepted outside Anthropic's Claude Code harness.
+
+A durable Gemini ADC model entry looks like this in
+`~/.config/octofriend/octofriend.json5`:
+
+```json5
+models: [
+  {
+    nickname: "Gemini with ADC",
+    type: "gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    model: "gemini-3.5-flash",
+    auth: {
+      type: "command",
+      command: ["gcloud", "auth", "application-default", "print-access-token"],
+      credential: "gemini-oauth",
+      project: "your-google-cloud-project",
+    },
+  },
+],
+```
+
+An environment variable containing a current access token also works:
+
+```json5
+auth: {
+  type: "env",
+  name: "GEMINI_ACCESS_TOKEN",
+  credential: "gemini-oauth",
+  project: "your-google-cloud-project",
+},
+```
+
+The [Apps SDK authentication guide](https://developers.openai.com/apps-sdk/build/auth)
+covers authenticating users of an MCP app. It does not turn an app user's
+ChatGPT or Gemini account into a provider API credential.
+
+## Agent Client Protocol
+
+`octofriend-acp` is the duplex stdio ACP adapter. ACP clients can launch it
+directly. It supports standard ACP session prompts, live assistant/thought/tool
+updates, permission callbacks, per-session model selection, prompt cancellation, and
+session cleanup. It uses the same Octofriend config and adjacent
+`octofriend-agentd` worker as the interactive CLI; no private prompt method is
+required.
+
+### Zed
+
+In Zed, run `agent: open settings`, choose **Add Agent** → **Add Custom
+Agent**, and use the installed adapter:
+
+```json
+{
+  "agent_servers": {
+    "octofriend": {
+      "type": "custom",
+      "command": "octofriend-acp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+For development, point Zed at Bun and the checkout instead:
+
+```json
+{
+  "agent_servers": {
+    "octofriend-dev": {
+      "type": "custom",
+      "command": "bun",
+      "args": [
+        "/absolute/path/to/octofriend/packages/cli/src/acp/index.ts",
+        "--config",
+        "/absolute/path/to/octofriend.json5"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+Use `dev: open acp logs` in Zed to inspect the protocol stream. See
+[Zed's External Agents documentation](https://zed.dev/docs/ai/external-agents)
+for the current custom-agent settings contract.
 
 ## Enabling web search
 

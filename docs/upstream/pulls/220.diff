@@ -1,0 +1,2556 @@
+diff --git a/drizzle/0004_tree_nodes_tree_id_index.sql b/drizzle/0004_tree_nodes_tree_id_index.sql
+new file mode 100644
+index 00000000..53ca958b
+--- /dev/null
++++ b/drizzle/0004_tree_nodes_tree_id_index.sql
+@@ -0,0 +1,3 @@
++CREATE INDEX `tree_nodes_tree_id_idx` ON `tree_nodes` (`tree_id`);
++--> statement-breakpoint
++ALTER TABLE `tree_nodes` ADD `created_at` integer NOT NULL;
+\ No newline at end of file
+diff --git a/drizzle/meta/0004_snapshot.json b/drizzle/meta/0004_snapshot.json
+new file mode 100644
+index 00000000..c11a6a4e
+--- /dev/null
++++ b/drizzle/meta/0004_snapshot.json
+@@ -0,0 +1,583 @@
++{
++  "version": "6",
++  "dialect": "sqlite",
++  "id": "92716ac2-9f17-4c38-a0c1-bf5c303a65c4",
++  "prevId": "1308853c-b9c7-4f4f-a509-a65ca55dfdf2",
++  "tables": {
++    "input_history": {
++      "name": "input_history",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "input": {
++          "name": "input",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "compaction_failed_items": {
++      "name": "compaction_failed_items",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "docker_launches": {
++      "name": "docker_launches",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "kind": {
++          "name": "kind",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "container_target": {
++          "name": "container_target",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "docker_run_args_json": {
++          "name": "docker_run_args_json",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "config": {
++          "name": "config",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "unchained": {
++          "name": "unchained",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {
++        "docker_launches_kind_args_check": {
++          "name": "docker_launches_kind_args_check",
++          "value": "(\"docker_launches\".\"kind\" = 'connect' AND \"docker_launches\".\"container_target\" IS NOT NULL AND \"docker_launches\".\"docker_run_args_json\" IS NULL)\n        OR (\"docker_launches\".\"kind\" = 'run' AND \"docker_launches\".\"container_target\" IS NULL AND \"docker_launches\".\"docker_run_args_json\" IS NOT NULL)"
++        }
++      }
++    },
++    "history_items": {
++      "name": "history_items",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "request_failed_id": {
++          "name": "request_failed_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "compaction_failed_id": {
++          "name": "compaction_failed_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "notification_id": {
++          "name": "notification_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "llm_ir_id": {
++          "name": "llm_ir_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "history_items_requestFailedId_unique": {
++          "name": "history_items_requestFailedId_unique",
++          "columns": ["request_failed_id"],
++          "isUnique": true
++        },
++        "history_items_compactionFailedId_unique": {
++          "name": "history_items_compactionFailedId_unique",
++          "columns": ["compaction_failed_id"],
++          "isUnique": true
++        },
++        "history_items_notificationId_unique": {
++          "name": "history_items_notificationId_unique",
++          "columns": ["notification_id"],
++          "isUnique": true
++        },
++        "history_items_llmIrId_unique": {
++          "name": "history_items_llmIrId_unique",
++          "columns": ["llm_ir_id"],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {
++        "history_items_request_failed_id_request_failed_items_id_fk": {
++          "name": "history_items_request_failed_id_request_failed_items_id_fk",
++          "tableFrom": "history_items",
++          "tableTo": "request_failed_items",
++          "columnsFrom": ["request_failed_id"],
++          "columnsTo": ["id"],
++          "onDelete": "restrict",
++          "onUpdate": "no action"
++        },
++        "history_items_compaction_failed_id_compaction_failed_items_id_fk": {
++          "name": "history_items_compaction_failed_id_compaction_failed_items_id_fk",
++          "tableFrom": "history_items",
++          "tableTo": "compaction_failed_items",
++          "columnsFrom": ["compaction_failed_id"],
++          "columnsTo": ["id"],
++          "onDelete": "restrict",
++          "onUpdate": "no action"
++        },
++        "history_items_notification_id_notifications_id_fk": {
++          "name": "history_items_notification_id_notifications_id_fk",
++          "tableFrom": "history_items",
++          "tableTo": "notifications",
++          "columnsFrom": ["notification_id"],
++          "columnsTo": ["id"],
++          "onDelete": "restrict",
++          "onUpdate": "no action"
++        },
++        "history_items_llm_ir_id_llm_irs_id_fk": {
++          "name": "history_items_llm_ir_id_llm_irs_id_fk",
++          "tableFrom": "history_items",
++          "tableTo": "llm_irs",
++          "columnsFrom": ["llm_ir_id"],
++          "columnsTo": ["id"],
++          "onDelete": "restrict",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {
++        "history_items_exactly_one_payload_check": {
++          "name": "history_items_exactly_one_payload_check",
++          "value": "(\"history_items\".\"request_failed_id\" IS NOT NULL)\n        + (\"history_items\".\"compaction_failed_id\" IS NOT NULL)\n        + (\"history_items\".\"notification_id\" IS NOT NULL)\n        + (\"history_items\".\"llm_ir_id\" IS NOT NULL) = 1"
++        }
++      }
++    },
++    "launches": {
++      "name": "launches",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "docker_launch_id": {
++          "name": "docker_launch_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "local_launch_id": {
++          "name": "local_launch_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "launches_dockerLaunchId_unique": {
++          "name": "launches_dockerLaunchId_unique",
++          "columns": ["docker_launch_id"],
++          "isUnique": true
++        },
++        "launches_localLaunchId_unique": {
++          "name": "launches_localLaunchId_unique",
++          "columns": ["local_launch_id"],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {
++        "launches_docker_launch_id_docker_launches_id_fk": {
++          "name": "launches_docker_launch_id_docker_launches_id_fk",
++          "tableFrom": "launches",
++          "tableTo": "docker_launches",
++          "columnsFrom": ["docker_launch_id"],
++          "columnsTo": ["id"],
++          "onDelete": "no action",
++          "onUpdate": "no action"
++        },
++        "launches_local_launch_id_local_launches_id_fk": {
++          "name": "launches_local_launch_id_local_launches_id_fk",
++          "tableFrom": "launches",
++          "tableTo": "local_launches",
++          "columnsFrom": ["local_launch_id"],
++          "columnsTo": ["id"],
++          "onDelete": "no action",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {
++        "launches_exactly_one_kind_check": {
++          "name": "launches_exactly_one_kind_check",
++          "value": "(\"launches\".\"docker_launch_id\" IS NOT NULL) <> (\"launches\".\"local_launch_id\" IS NOT NULL)"
++        }
++      }
++    },
++    "llm_irs": {
++      "name": "llm_irs",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "json": {
++          "name": "json",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "local_launches": {
++      "name": "local_launches",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "config": {
++          "name": "config",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "unchained": {
++          "name": "unchained",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "notifications": {
++      "name": "notifications",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "content": {
++          "name": "content",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "request_failed_items": {
++      "name": "request_failed_items",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        }
++      },
++      "indexes": {},
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "tree_nodes": {
++      "name": "tree_nodes",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "history_item_id": {
++          "name": "history_item_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "tree_id": {
++          "name": "tree_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "parent_id": {
++          "name": "parent_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": false,
++          "autoincrement": false
++        },
++        "is_leaf": {
++          "name": "is_leaf",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "launch_id": {
++          "name": "launch_id",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "created_at": {
++          "name": "created_at",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "tree_nodes_tree_id_idx": {
++          "name": "tree_nodes_tree_id_idx",
++          "columns": ["tree_id"],
++          "isUnique": false
++        },
++        "tree_nodes_one_root_unique": {
++          "name": "tree_nodes_one_root_unique",
++          "columns": ["tree_id"],
++          "isUnique": true,
++          "where": "\"tree_nodes\".\"parent_id\" IS NULL"
++        },
++        "tree_nodes_historyItemId_unique": {
++          "name": "tree_nodes_historyItemId_unique",
++          "columns": ["history_item_id"],
++          "isUnique": true
++        },
++        "tree_nodes_id_treeId_unique": {
++          "name": "tree_nodes_id_treeId_unique",
++          "columns": ["id", "tree_id"],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {
++        "tree_nodes_history_item_id_history_items_id_fk": {
++          "name": "tree_nodes_history_item_id_history_items_id_fk",
++          "tableFrom": "tree_nodes",
++          "tableTo": "history_items",
++          "columnsFrom": ["history_item_id"],
++          "columnsTo": ["id"],
++          "onDelete": "no action",
++          "onUpdate": "no action"
++        },
++        "tree_nodes_tree_id_trees_id_fk": {
++          "name": "tree_nodes_tree_id_trees_id_fk",
++          "tableFrom": "tree_nodes",
++          "tableTo": "trees",
++          "columnsFrom": ["tree_id"],
++          "columnsTo": ["id"],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        },
++        "tree_nodes_launch_id_launches_id_fk": {
++          "name": "tree_nodes_launch_id_launches_id_fk",
++          "tableFrom": "tree_nodes",
++          "tableTo": "launches",
++          "columnsFrom": ["launch_id"],
++          "columnsTo": ["id"],
++          "onDelete": "no action",
++          "onUpdate": "no action"
++        },
++        "tree_nodes_parent_same_tree_fk": {
++          "name": "tree_nodes_parent_same_tree_fk",
++          "tableFrom": "tree_nodes",
++          "tableTo": "tree_nodes",
++          "columnsFrom": ["parent_id", "tree_id"],
++          "columnsTo": ["id", "tree_id"],
++          "onDelete": "cascade",
++          "onUpdate": "no action"
++        }
++      },
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {
++        "tree_nodes_not_own_parent_check": {
++          "name": "tree_nodes_not_own_parent_check",
++          "value": "\"tree_nodes\".\"parent_id\" IS NULL OR \"tree_nodes\".\"parent_id\" <> \"tree_nodes\".\"id\""
++        }
++      }
++    },
++    "trees": {
++      "name": "trees",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "name": {
++          "name": "name",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "cwd": {
++          "name": "cwd",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        },
++        "updated_at": {
++          "name": "updated_at",
++          "type": "integer",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "trees_name_unique": {
++          "name": "trees_name_unique",
++          "columns": ["name"],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    },
++    "shown_update_notifs": {
++      "name": "shown_update_notifs",
++      "columns": {
++        "id": {
++          "name": "id",
++          "type": "integer",
++          "primaryKey": true,
++          "notNull": true,
++          "autoincrement": true
++        },
++        "update": {
++          "name": "update",
++          "type": "text",
++          "primaryKey": false,
++          "notNull": true,
++          "autoincrement": false
++        }
++      },
++      "indexes": {
++        "update_idx": {
++          "name": "update_idx",
++          "columns": ["update"],
++          "isUnique": true
++        }
++      },
++      "foreignKeys": {},
++      "compositePrimaryKeys": {},
++      "uniqueConstraints": {},
++      "checkConstraints": {}
++    }
++  },
++  "views": {},
++  "enums": {},
++  "_meta": {
++    "schemas": {},
++    "tables": {},
++    "columns": {}
++  },
++  "internal": {
++    "indexes": {}
++  }
++}
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index 6588fb95..a4bd7a28 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -29,6 +29,13 @@
+       "when": 1782169044845,
+       "tag": "0003_tree_node_triggers",
+       "breakpoints": true
++    },
++    {
++      "idx": 4,
++      "version": "6",
++      "when": 1783462300500,
++      "tag": "0004_tree_nodes_tree_id_index",
++      "breakpoints": true
+     }
+   ]
+ }
+diff --git a/package-lock.json b/package-lock.json
+index 6b38234c..7d092741 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1321,17 +1321,6 @@
+       "license": "MIT",
+       "optional": true
+     },
+-    "node_modules/@opentelemetry/api": {
+-      "version": "1.9.0",
+-      "resolved": "https://registry.npmjs.org/@opentelemetry/api/-/api-1.9.0.tgz",
+-      "integrity": "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==",
+-      "license": "Apache-2.0",
+-      "optional": true,
+-      "peer": true,
+-      "engines": {
+-        "node": ">=8.0.0"
+-      }
+-    },
+     "node_modules/@rolldown/pluginutils": {
+       "version": "1.0.0-beta.53",
+       "resolved": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.0-beta.53.tgz",
+diff --git a/package.json b/package.json
+index 75059381..12851042 100644
+--- a/package.json
++++ b/package.json
+@@ -4,8 +4,8 @@
+   "license": "MIT",
+   "repository": "github:synthetic-lab/octofriend",
+   "bin": {
+-    "octofriend": "dist/source/cli.js",
+-    "octo": "dist/source/cli.js"
++    "octofriend": "dist/source/cli/cli.js",
++    "octo": "dist/source/cli/cli.js"
+   },
+   "type": "module",
+   "preferGlobal": true,
+@@ -15,7 +15,7 @@
+   "scripts": {
+     "build": "rm -rf dist && babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
+     "dev": "npm run build -- --watch",
+-    "exec": "npm run build && node ./dist/source/cli.js",
++    "exec": "npm run build && node ./dist/source/cli/cli.js",
+     "test": "vitest",
+     "test:run": "vitest run",
+     "prepublishOnly": "npm run build",
+diff --git a/source/app.tsx b/source/app.tsx
+index a1c35d6d..f9d5b8c0 100644
+--- a/source/app.tsx
++++ b/source/app.tsx
+@@ -15,7 +15,6 @@ import {
+   useConfig,
+   useSetConfig,
+ } from "./config.ts";
+-import { HistoryItem } from "./history.ts";
+ import Loading from "./components/loading.tsx";
+ import { Header } from "./header.tsx";
+ import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
+@@ -40,6 +39,7 @@ import { useShallow } from "zustand/react/shallow";
+ import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
+ import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
+ import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
++import type { Session } from "./session-history/index.ts";
+ import { Octo } from "./components/octo.tsx";
+ import { Menu } from "./menu.tsx";
+ import SelectInput from "./components/ink/select-input.tsx";
+@@ -48,6 +48,7 @@ import { displayLog } from "./logger.ts";
+ import { CenteredBox } from "./components/centered-box.tsx";
+ import { Transport } from "./transports/transport-common.ts";
+ import { TransportContext } from "./transport-context.ts";
++import { SessionContext, useSession } from "./session-context.ts";
+ import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
+ import {
+   useCtrlC,
+@@ -78,6 +79,7 @@ import path from "path";
+ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
+ import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
+ import { CustomAuthFlow } from "./components/add-model-flow.tsx";
++import { HistoryNode } from "./session-history/index.ts";
+ 
+ type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
+ type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
+@@ -98,6 +100,8 @@ type Props = {
+   updates: string | null;
+   unchained: boolean;
+   transport: Transport;
++  session: Session;
++  onSessionChange: (session: Session) => void;
+   inputHistory: InputHistory;
+   bootSkills: string[];
+ };
+@@ -120,20 +124,13 @@ type StaticItem =
+     }
+   | {
+       type: "history-item";
+-      item: HistoryItem;
++      item: HistoryNode;
+     }
+   | {
+       type: "boot-notification";
+       content: string;
+     };
+ 
+-function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
+-  return messages.map(message => ({
+-    type: "history-item",
+-    item: message,
+-  }));
+-}
+-
+ const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
+ const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
+ 
+@@ -167,11 +164,23 @@ export default function App({
+   metadata,
+   unchained,
+   transport,
++  session: initialSession,
++  onSessionChange,
+   updates,
+   inputHistory,
+   bootSkills,
+ }: Props) {
+   const [currConfig, setCurrConfig] = useState(config);
++  const [session, setSession] = useState(initialSession);
++  const handleSessionChange = useCallback(
++    (nextSession: Session) => {
++      if (nextSession === session) return;
++
++      setSession(nextSession);
++      onSessionChange(nextSession);
++    },
++    [onSessionChange, session],
++  );
+   const [isUnchained, setIsUnchained] = useState(unchained);
+   const [tempNotification, setTempNotification] = useState<string | null>(
+     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
+@@ -209,11 +218,10 @@ export default function App({
+       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
+       ...(updates ? [{ type: "updates" as const, updates }] : []),
+       { type: "slogan" as const },
+-      ...toStaticItems(history),
+     ];
+ 
+     return items;
+-  }, [history, currConfig, skillNotifs, updates]);
++  }, [currConfig, skillNotifs, updates]);
+ 
+   return (
+     <InputPriorityProvider>
+@@ -226,29 +234,40 @@ export default function App({
+           <ConfigContext.Provider value={currConfig}>
+             <UnchainedContext.Provider value={isUnchained}>
+               <TransportContext.Provider value={transport}>
+-                <CwdContext.Provider value={cwd}>
+-                  <ExitOnDoubleCtrlC>
+-                    <TerminalSizeTracker>
+-                      <Box flexDirection="column" width="100%" height="100%">
+-                        <Static items={staticItems} key={clearNonce}>
+-                          {(item, index) => (
+-                            <StaticItemRenderer item={item} key={`static-${index}`} />
+-                          )}
+-                        </Static>
+-                        {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+-                          (modeData.inflightResponse.reasoningContent ||
+-                            modeData.inflightResponse.content) && (
+-                            <MessageDisplay item={modeData.inflightResponse} />
+-                          )}
+-                        <BottomBar
+-                          inputHistory={inputHistory}
+-                          metadata={metadata}
+-                          tempNotification={tempNotification}
+-                        />
+-                      </Box>
+-                    </TerminalSizeTracker>
+-                  </ExitOnDoubleCtrlC>
+-                </CwdContext.Provider>
++                <SessionContext.Provider value={session}>
++                  <CwdContext.Provider value={cwd}>
++                    <ExitOnDoubleCtrlC>
++                      <TerminalSizeTracker>
++                        <Box flexDirection="column" width="100%" height="100%">
++                          <Static items={staticItems}>
++                            {(item, index) => (
++                              <StaticItemRenderer item={item} key={`static-${index}`} />
++                            )}
++                          </Static>
++                          <Box key={clearNonce} flexDirection="column">
++                            {history.map((item, index) => (
++                              <StaticItemRenderer
++                                item={{ type: "history-item", item }}
++                                key={`history-${index}`}
++                              />
++                            ))}
++                          </Box>
++                          {(modeData.mode === "responding" || modeData.mode === "compacting") &&
++                            (modeData.inflightResponse.reasoningContent ||
++                              modeData.inflightResponse.content) && (
++                              <MessageDisplay item={modeData.inflightResponse} />
++                            )}
++                          <BottomBar
++                            inputHistory={inputHistory}
++                            metadata={metadata}
++                            tempNotification={tempNotification}
++                            onSessionChange={handleSessionChange}
++                          />
++                        </Box>
++                      </TerminalSizeTracker>
++                    </ExitOnDoubleCtrlC>
++                  </CwdContext.Provider>
++                </SessionContext.Provider>
+               </TransportContext.Provider>
+             </UnchainedContext.Provider>
+           </ConfigContext.Provider>
+@@ -262,10 +281,12 @@ function BottomBar({
+   inputHistory,
+   metadata,
+   tempNotification,
++  onSessionChange,
+ }: {
+   inputHistory: InputHistory;
+   metadata: Metadata;
+   tempNotification: string | null;
++  onSessionChange: (session: Session) => void;
+ }) {
+   const TEMP_NOTIFICATION_DURATION = 5000;
+ 
+@@ -306,7 +327,7 @@ function BottomBar({
+     return undefined;
+   }, [tempNotification]);
+ 
+-  if (modeData.mode === "menu") return <Menu />;
++  if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
+ 
+   const unchained = useUnchained();
+ 
+@@ -358,6 +379,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+   const config = useConfig();
+   const model = useModel();
+   const transport = useContext(TransportContext);
++  const session = useSession();
+   const vimEnabled = !!config.vimEmulation?.enabled;
+   const {
+     modeData,
+@@ -413,9 +435,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+     async (submittedQuery?: string, images?: ImageInfo[]) => {
+       const finalQuery = submittedQuery ?? query;
+       setQuery("");
+-      await input({ query: finalQuery, config, transport, images });
++      await input({ query: finalQuery, config, transport, session, images });
+     },
+-    [query, config, transport, setQuery],
++    [query, config, transport, session, setQuery],
+   );
+ 
+   if (modeData.mode === "responding" || modeData.mode === "compacting") {
+@@ -456,6 +478,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+         error={modeData.error}
+         config={config}
+         transport={transport}
++        session={session}
+       />
+     );
+   }
+@@ -482,7 +505,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+ 
+   if (modeData.mode === "tool-call") {
+     return (
+-      <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
++      <ToolRequestsRenderer
++        toolReqs={modeData.toolReqs}
++        config={config}
++        transport={transport}
++        session={session}
++      />
+     );
+   }
+ 
+@@ -513,11 +541,13 @@ function AuthErrorScreen({
+   error,
+   config,
+   transport,
++  session,
+ }: {
+   model: Config["models"][number];
+   error: AuthError;
+   config: Config;
+   transport: Transport;
++  session: Session;
+ }) {
+   const setConfig = useSetConfig();
+   const { runAgent, clearAuthError } = useAppStore(
+@@ -603,9 +633,9 @@ function AuthErrorScreen({
+         return;
+       }
+ 
+-      await runAgent({ config: updatedConfig, transport });
++      await runAgent({ config: updatedConfig, transport, session });
+     },
+-    [config, model, resolveModelIndex, runAgent, setConfig, transport],
++    [config, model, resolveModelIndex, runAgent, setConfig, transport, session],
+   );
+ 
+   return (
+@@ -650,6 +680,7 @@ function RequestErrorScreen({
+   const config = useConfig();
+   const transport = useContext(TransportContext);
+   const themeColor = useColor();
++  const session = useSession();
+   const { retryFrom, editAndRetryFrom } = useAppStore(
+     useShallow(state => ({
+       retryFrom: state.retryFrom,
+@@ -733,15 +764,15 @@ function RequestErrorScreen({
+           setWriteError(error instanceof Error ? error.message : "Failed to write cURL to file");
+         }
+       } else if (item.value === "retry") {
+-        retryFrom(mode, { config, transport });
++        retryFrom(mode, { config, transport, session });
+       } else if (item.value === "edit-retry") {
+-        editAndRetryFrom(mode, { config, transport });
++        editAndRetryFrom(mode, { config, transport, session });
+       } else {
+         const _: "quit" = item.value;
+         exit();
+       }
+     },
+-    [curlCommand, mode, config, transport],
++    [curlCommand, mode, config, transport, session],
+   );
+ 
+   return (
+@@ -781,6 +812,7 @@ function RequestErrorScreen({
+ function RateLimitErrorScreen({ error }: { error: string }) {
+   const config = useConfig();
+   const transport = useContext(TransportContext);
++  const session = useSession();
+   const { retryFrom } = useAppStore(
+     useShallow(state => ({
+       retryFrom: state.retryFrom,
+@@ -788,7 +820,7 @@ function RateLimitErrorScreen({ error }: { error: string }) {
+   );
+ 
+   useInput(() => {
+-    retryFrom("rate-limit-error", { config, transport });
++    retryFrom("rate-limit-error", { config, transport, session });
+   });
+ 
+   return (
+@@ -805,6 +837,7 @@ function RateLimitErrorScreen({ error }: { error: string }) {
+ function PaymentErrorScreen({ error }: { error: string }) {
+   const config = useConfig();
+   const transport = useContext(TransportContext);
++  const session = useSession();
+   const { retryFrom } = useAppStore(
+     useShallow(state => ({
+       retryFrom: state.retryFrom,
+@@ -812,7 +845,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
+   );
+ 
+   useInput(() => {
+-    retryFrom("payment-error", { config, transport });
++    retryFrom("payment-error", { config, transport, session });
+   });
+ 
+   return (
+@@ -847,6 +880,7 @@ function ToolRequestsRenderer({
+   toolReqs,
+   config,
+   transport,
++  session,
+ }: {
+   toolReqs: ToolCallRequest[];
+ } & RunArgs) {
+@@ -857,7 +891,14 @@ function ToolRequestsRenderer({
+   }, []);
+ 
+   if (currentIndex >= toolReqs.length) {
+-    return <FinishToolRequests runAgent={runAgent} config={config} transport={transport} />;
++    return (
++      <FinishToolRequests
++        runAgent={runAgent}
++        config={config}
++        transport={transport}
++        session={session}
++      />
++    );
+   }
+ 
+   const currentToolReq = toolReqs[currentIndex];
+@@ -869,6 +910,7 @@ function ToolRequestsRenderer({
+         toolReq={currentToolReq}
+         config={config}
+         transport={transport}
++        session={session}
+         onDone={onDone}
+       />
+     </Box>
+@@ -879,12 +921,13 @@ function FinishToolRequests({
+   runAgent,
+   config,
+   transport,
++  session,
+ }: {
+   runAgent: (args: RunArgs) => Promise<void>;
+ } & RunArgs) {
+   useEffect(() => {
+-    runAgent({ config, transport });
+-  }, [runAgent, config, transport]);
++    runAgent({ config, transport, session });
++  }, [runAgent, config, transport, session]);
+   return <Loading />;
+ }
+ 
+@@ -892,6 +935,7 @@ function ToolRequestRenderer({
+   toolReq,
+   config,
+   transport,
++  session,
+   onDone,
+ }: {
+   toolReq: ToolCallRequest;
+@@ -1022,17 +1066,27 @@ function ToolRequestRenderer({
+   const onSelect = useCallback(
+     async (item: (typeof items)[number]) => {
+       if (item.value === "no") {
+-        rejectTool(toolReq);
++        rejectTool(toolReq, session);
+       } else if (item.value === "yes-whitelist") {
+         await addToWhitelist(whitelistKey);
+-        await runTool({ toolReq, config, transport });
++        await runTool({ toolReq, config, transport, session });
+         onDone();
+       } else {
+-        await runTool({ toolReq, config, transport });
++        await runTool({ toolReq, config, transport, session });
+         onDone();
+       }
+     },
+-    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey, onDone],
++    [
++      toolReq,
++      config,
++      transport,
++      session,
++      addToWhitelist,
++      runTool,
++      rejectTool,
++      whitelistKey,
++      onDone,
++    ],
+   );
+ 
+   const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
+@@ -1044,11 +1098,11 @@ function ToolRequestRenderer({
+ 
+   useEffect(() => {
+     if (noConfirmationNeeded) {
+-      runTool({ toolReq, config, transport }).then(onDone);
++      runTool({ toolReq, config, transport, session }).then(onDone);
+     } else {
+       notifyReadyForInput(config);
+     }
+-  }, [toolReq, noConfirmationNeeded, config, transport, onDone]);
++  }, [toolReq, noConfirmationNeeded, config, transport, session, onDone]);
+ 
+   if (noConfirmationNeeded || isRunning) {
+     return (
+@@ -1118,7 +1172,7 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
+   return <MessageDisplay item={item.item} />;
+ };
+ 
+-const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) => {
++const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
+   return (
+     <Box flexDirection="column" paddingRight={4}>
+       <MessageDisplayInner item={item} />
+@@ -1126,7 +1180,7 @@ const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType })
+   );
+ };
+ 
+-const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseType }) => {
++const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
+   const { modeData } = useAppStore(
+     useShallow(state => ({
+       modeData: state.modeData,
+diff --git a/source/cli/cli-args.ts b/source/cli/cli-args.ts
+new file mode 100644
+index 00000000..00a97f07
+--- /dev/null
++++ b/source/cli/cli-args.ts
+@@ -0,0 +1,108 @@
++import { Command, CommandUnknownOpts } from "@commander-js/extra-typings";
++
++export const CLI_ARGS_JSON_V1 = "octo-cli-args/v1" as const;
++
++export type LocalCommand = {
++  kind: "local";
++};
++
++export type DockerConnectCommand = {
++  kind: "docker-connect";
++  target: string;
++};
++
++export type DockerRunCommand = {
++  kind: "docker-run";
++  dockerRunArgs: string[];
++};
++
++export type InvalidCommand = {
++  kind: "invalid";
++};
++
++type CliPayload = LocalCommand | DockerConnectCommand | DockerRunCommand | InvalidCommand;
++
++export type OctoFlags = {
++  config?: string;
++  unchained?: boolean;
++};
++
++export type ValidCliPayload = Exclude<CliPayload, InvalidCommand>;
++
++export type ParsedCliArgs = ValidCliPayload & OctoFlags;
++
++type VersionedCliArgsJson = {
++  version: typeof CLI_ARGS_JSON_V1;
++} & ParsedCliArgs;
++
++function isObject(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null && !Array.isArray(value);
++}
++
++export function withOctoFlags(cmd: Command) {
++  return cmd
++    .option("--config <path>", "Use a specific Octo config file")
++    .option(
++      "--unchained",
++      "Skips confirmation for all tools, running them immediately. Dangerous.",
++    );
++}
++
++export function buildFlagString(command: ParsedCliArgs): string[] {
++  const options: string[] = [];
++  if (command.config != null) options.push("--config", command.config);
++  if (command.unchained) options.push("--unchained");
++
++  switch (command.kind) {
++    case "local":
++      return options;
++    case "docker-connect":
++      return [...options, "docker", "connect", command.target];
++    case "docker-run":
++      return [...options, "docker", "run", "--", ...command.dockerRunArgs];
++  }
++}
++
++export function replaceOctoFlags(command: ParsedCliArgs, overrides: OctoFlags): ParsedCliArgs {
++  return {
++    ...command,
++    config: overrides.config ?? command.config,
++    unchained: overrides.unchained || command.unchained,
++  };
++}
++
++export function replaceDockerRunArgs(
++  command: DockerRunCommand,
++  dockerRunArgs: string[],
++): DockerRunCommand {
++  return { ...command, dockerRunArgs };
++}
++
++function octoFlags(command: CommandUnknownOpts): OctoFlags {
++  const opts = command.optsWithGlobals() as OctoFlags;
++  return {
++    config: opts.config,
++    unchained: opts.unchained,
++  };
++}
++
++export function serializeCliArgs(cliArgs: ParsedCliArgs): string {
++  return JSON.stringify({
++    version: CLI_ARGS_JSON_V1,
++    ...cliArgs,
++  } satisfies VersionedCliArgsJson);
++}
++
++export function deserializeCliArgs(json: string): ParsedCliArgs {
++  const parsed = JSON.parse(json) as unknown;
++  if (!isObject(parsed)) throw new Error("Invalid CLI args JSON");
++  if (parsed["version"] !== CLI_ARGS_JSON_V1) {
++    throw new Error("Unsupported CLI args JSON version");
++  }
++  const kind = parsed["kind"];
++  if (kind !== "local" && kind !== "docker-connect" && kind !== "docker-run") {
++    throw new Error("Invalid CLI args kind in JSON");
++  }
++  const { version: _, ...cliArgs } = parsed as Record<string, unknown>;
++  return cliArgs as unknown as ParsedCliArgs;
++}
+diff --git a/source/cli.tsx b/source/cli/cli.tsx
+similarity index 75%
+rename from source/cli.tsx
+rename to source/cli/cli.tsx
+index cf803ef8..b8cc2e5a 100644
+--- a/source/cli.tsx
++++ b/source/cli/cli.tsx
+@@ -1,88 +1,114 @@
+ #!/usr/bin/env node
+-import { setupDb } from "./db/setup.ts";
++import { setupDb } from "../db/setup.ts";
+ setupDb();
+ 
+ import React from "react";
+ import path from "path";
+ import os from "os";
+ import fs from "fs/promises";
++import chalk from "chalk";
+ import { render } from "ink";
+ import { Command } from "@commander-js/extra-typings";
+-import { fileExists } from "./fs-utils.ts";
+-import App from "./app.tsx";
+-import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "./config.ts";
+-import { tokenCounts } from "./token-tracker.ts";
+-import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
+-import { FirstTimeSetup } from "./first-time-setup.tsx";
+-import { PreflightModelAuth, PreflightAutofixAuth } from "./preflight-auth.tsx";
+-import { Transport } from "./transports/transport-common.ts";
+-import { LocalTransport } from "./transports/local.ts";
+-import { DockerTransport, manageContainer } from "./transports/docker.ts";
+-import { readUpdates, markUpdatesSeen } from "./update-notifs/update-notifs.ts";
+-import { migrate } from "./db/migrate.ts";
+-import { run } from "./compilers/run.ts";
+-import type { ModelData } from "./compilers/run.ts";
+-import { loadInputHistory } from "./input-history/index.ts";
+-import { makeAutofixJson } from "./compilers/autofix.ts";
+-import { discoverSkills } from "./skills/skills.ts";
+-import { timeout } from "./signals.ts";
+-import { shutdownLspClients } from "./lsp/client.ts";
++import { fileExists } from "../fs-utils.ts";
++import App from "../app.tsx";
++import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
++import { tokenCounts } from "../token-tracker.ts";
++import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../tools/tool-defs/mcp.ts";
++import { FirstTimeSetup } from "../first-time-setup.tsx";
++import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
++import { Transport } from "../transports/transport-common.ts";
++import { LocalTransport } from "../transports/local.ts";
++import { DockerTransport, manageContainer } from "../transports/docker.ts";
++import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts";
++import { migrate } from "../db/migrate.ts";
++import { run } from "../compilers/run.ts";
++import type { ModelData } from "../compilers/run.ts";
++import { loadInputHistory } from "../input-history/index.ts";
++import { makeAutofixJson } from "../compilers/autofix.ts";
++import { discoverSkills } from "../skills/skills.ts";
++import { timeout } from "../signals.ts";
++import { shutdownLspClients } from "../lsp/client.ts";
++import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
++import type { ParsedCliArgs } from "./cli-args.ts";
++import { loadSession } from "../session-history/index.ts";
++import type { LoadedSession, Session } from "../session-history/index.ts";
++import { useAppStore } from "../state.ts";
++import { THEME_COLOR } from "../theme.ts";
+ 
+ const __dirname = import.meta.dirname;
+ 
+ const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
+ const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
+ 
+-const cli = new Command()
+-  .description("If run with no subcommands, runs Octo interactively.")
+-  .option("--config <path>")
+-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+-  .action(async opts => {
+-    const transport = new LocalTransport();
++const cli = withOctoFlags(
++  new Command().description("If run with no subcommands, runs Octo interactively."),
++)
++  .option("--resume <session-id>", "Resume a previous Octo session")
++  .argument("[docker-run-args...]", "Optional replacement args for `docker run` when resuming")
++  .action(async (dockerRunArgs, opts) => {
++    const resumeSessionId = opts.resume ?? null;
++    if (resumeSessionId == null && dockerRunArgs.length > 0) {
++      console.error("Use octo docker run <args> to start a new session with Docker.");
++      process.exitCode = 1;
++      return;
++    }
++    let runConfig = null;
++    if (resumeSessionId != null) {
++      runConfig = await buildConfigForResuming(resumeSessionId, {
++        config: opts.config,
++        unchained: opts.unchained,
++        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
++      });
++      if (runConfig == null) return;
++    } else {
++      runConfig = {
++        loadedSession: null,
++        transport: new LocalTransport(),
++        parsedCliArgs: {
++          kind: "local" as const,
++          config: opts.config,
++          unchained: opts.unchained,
++        },
++      };
++    }
++
+     try {
+       // Set terminal title for tmux
+       process.title = "\\_o_O.//";
+       // Set terminal title for xterm-compatible term emulators
+       process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
+-
+-      await runMain({
+-        config: opts.config,
+-        unchained: opts.unchained,
+-        transport,
+-      });
++      await runMain(runConfig);
+     } finally {
+-      await transport.close();
++      await runConfig.transport.close();
+     }
+   });
+ 
+ const docker = cli.command("docker").description("Sandbox Octo inside Docker");
+-docker
+-  .command("connect")
++withOctoFlags(docker.command("connect"))
+   .description("Sandbox Octo inside an already-running container")
+-  .option("--config <path>")
+-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+   .argument("<target>", "The Docker container")
+   .action(async (target, opts) => {
+     const transport = await DockerTransport.create({ type: "container", container: target });
+-
+     try {
+       await runMain({
+-        config: opts.config,
+-        unchained: opts.unchained,
+         transport,
++        loadedSession: null,
++        parsedCliArgs: {
++          kind: "docker-connect",
++          target,
++          config: opts.config,
++          unchained: opts.unchained,
++        },
+       });
+     } finally {
+       await transport.close();
+     }
+   });
+ 
+-docker
+-  .command("run")
++withOctoFlags(docker.command("run"))
+   .description(
+     "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
+   )
+-  .option("--config <path>")
+-  .option("--unchained", "Skips confirmation for all tools, running them immediately. Dangerous.")
+   .argument("[args...]", "The args to pass to `docker run`")
+   .action(async (args, opts) => {
+     const transport = await DockerTransport.create({
+@@ -92,18 +118,95 @@ docker
+ 
+     try {
+       await runMain({
+-        config: opts.config,
+-        unchained: opts.unchained,
+         transport,
++        loadedSession: null,
++        parsedCliArgs: {
++          kind: "docker-run",
++          dockerRunArgs: args,
++          config: opts.config,
++          unchained: opts.unchained,
++        },
+       });
+     } finally {
+       await transport.close();
+     }
+   });
+ 
+-async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
++async function buildConfigForResuming(
++  resumeSessionId: string,
++  overrides: { config?: string; unchained?: boolean; dockerRunArgs?: string[] },
++): Promise<{
++  loadedSession: LoadedSession;
++  transport: Transport;
++  parsedCliArgs: ParsedCliArgs;
++} | null> {
++  const loadedSession = loadSession(resumeSessionId);
++  if (loadedSession == null) {
++    console.error(`No session found with ID ${resumeSessionId}.`);
++    process.exit(1);
++  }
++
++  const storedCliArgs = loadedSession.session.metadata.cliArgs;
++  let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
++  if (overrides.dockerRunArgs != null) {
++    if (effectiveCliArgs.kind !== "docker-run") {
++      console.error(`
++        Cannot override Docker run args for session ${resumeSessionId}: that session was not initialized with \`octo docker run\`.,
++      `);
++      process.exit(1);
++    } else {
++      effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
++    }
++  }
++
++  const shared = {
++    parsedCliArgs: effectiveCliArgs,
++    loadedSession,
++  };
++
++  switch (effectiveCliArgs.kind) {
++    case "local":
++      return {
++        ...shared,
++        transport: new LocalTransport(),
++      };
++    case "docker-connect":
++      return {
++        ...shared,
++        transport: await DockerTransport.create({
++          type: "container",
++          container: effectiveCliArgs.target,
++        }),
++      };
++    case "docker-run":
++      return {
++        ...shared,
++        transport: await DockerTransport.create({
++          type: "image",
++          image: await manageContainer(effectiveCliArgs.dockerRunArgs),
++        }),
++      };
++  }
++}
++
++async function runMain(opts: {
++  parsedCliArgs: ParsedCliArgs;
++  transport: Transport;
++  loadedSession?: LoadedSession | null;
++}) {
++  let session: Session;
++  if (opts.loadedSession != null) {
++    session = {
++      ...opts.loadedSession.session,
++      metadata: { ...opts.loadedSession.session.metadata, cliArgs: opts.parsedCliArgs },
++    };
++    useAppStore.getState().hydrateSession(opts.loadedSession.history);
++  } else {
++    session = useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
++  }
++
+   try {
+-    let { config, configPath } = await loadConfig(opts.config);
++    let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
+ 
+     // Connect to all MCP servers on boot
+     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+@@ -138,8 +241,12 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport:
+         configPath={configPath}
+         cwd={cwd}
+         metadata={APP_METADATA}
+-        unchained={!!opts.unchained}
++        unchained={!!opts.parsedCliArgs.unchained}
+         transport={opts.transport}
++        session={session}
++        onSessionChange={nextSession => {
++          session = nextSession;
++        }}
+         updates={await readUpdates()}
+         inputHistory={await loadInputHistory()}
+       />,
+@@ -152,6 +259,11 @@ async function runMain(opts: { config?: string; unchained?: boolean; transport:
+     );
+ 
+     await waitUntilExit();
++    const { history } = useAppStore.getState();
++    if (history.some(item => item.type === "llm-ir")) {
++      const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
++      console.log(`\nResume this session with ${resumeCommand}`);
++    }
+ 
+     console.log("\nApprox. tokens used:");
+     if (Object.keys(tokenCounts()).length === 0) {
+@@ -187,7 +299,7 @@ cli
+   .command("changelog")
+   .description("List the changelog")
+   .action(async () => {
+-    const changelog = await fs.readFile(path.join(__dirname, "../../CHANGELOG.md"), "utf8");
++    const changelog = await fs.readFile(path.join(__dirname, "../../../CHANGELOG.md"), "utf8");
+     console.log(changelog);
+   });
+ 
+diff --git a/source/db/db.ts b/source/db/db.ts
+index 16866ddf..d24a9e64 100644
+--- a/source/db/db.ts
++++ b/source/db/db.ts
+@@ -1,13 +1,19 @@
+-import { drizzle } from "drizzle-orm/better-sqlite3";
++import { BetterSQLiteTransaction, drizzle } from "drizzle-orm/better-sqlite3";
+ import Database from "better-sqlite3";
+ import * as schema from "./schema.ts";
+ import { DB_PATH } from "./setup.ts";
++import { ExtractTablesWithRelations } from "drizzle-orm";
+ 
+ export * as schema from "./schema.ts";
+ 
+ let sqliteDb: Database.Database;
+ let client: ReturnType<typeof drizzle<typeof schema>>;
+ 
++export type DbTransaction = BetterSQLiteTransaction<
++  typeof schema,
++  ExtractTablesWithRelations<typeof schema>
++>; // Drizzle doesn't export the transaction type directly
++
+ export function db() {
+   if (sqliteDb == null) {
+     if (process.env["NODE_ENV"] === "test") {
+diff --git a/source/history.ts b/source/history.ts
+deleted file mode 100644
+index 5cb100c5..00000000
+--- a/source/history.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import type { OctoIR } from "./ir/octo-ir.ts";
+-
+-export type LlmIRItem = {
+-  type: "llm-ir";
+-  ir: OctoIR;
+-};
+-
+-export type RequestFailed = {
+-  type: "request-failed";
+-};
+-
+-export type CompactionFailed = {
+-  type: "compaction-failed";
+-};
+-
+-export type Notification = {
+-  type: "notification";
+-  content: string;
+-};
+-
+-export type HistoryItem = LlmIRItem | RequestFailed | CompactionFailed | Notification;
+diff --git a/source/ir/convert-history-ir.ts b/source/ir/convert-history-ir.ts
+index f0dd8c67..83a15104 100644
+--- a/source/ir/convert-history-ir.ts
++++ b/source/ir/convert-history-ir.ts
+@@ -1,6 +1,6 @@
+-import type { HistoryItem } from "../history.ts";
+ import type { OctoIR } from "./octo-ir.ts";
+ import type { TrajectoryOutputIR } from "../agent/trajectory-arc.ts";
++import type { HistoryItem } from "../session-history/index.ts";
+ 
+ export function outputToHistory(output: TrajectoryOutputIR[]): HistoryItem[] {
+   return output.map(ir => ({
+diff --git a/source/menu.tsx b/source/menu.tsx
+index aba1c494..13887107 100644
+--- a/source/menu.tsx
++++ b/source/menu.tsx
+@@ -3,6 +3,8 @@ import { create } from "zustand";
+ import { useInput, useApp, Text } from "ink";
+ import { useShallow } from "zustand/react/shallow";
+ import { useAppStore, useModel } from "./state.ts";
++import { useSession } from "./session-context.ts";
++import type { Session } from "./session-history/index.ts";
+ import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
+ import { ModelSetup } from "./components/auto-detect-models.tsx";
+ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
+@@ -39,7 +41,7 @@ const useMenuState = create<MenuState>((set, _) => ({
+   },
+ }));
+ 
+-export function Menu() {
++export function Menu({ onSessionChange }: { onSessionChange: (session: Session) => void }) {
+   const { menuMode } = useMenuState(
+     useShallow(state => ({
+       menuMode: state.menuMode,
+@@ -51,7 +53,8 @@ export function Menu() {
+   if (menuMode === "model-select") return <SwitchModelMenu />;
+   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
+   if (menuMode === "quit-confirm") return <QuitConfirm />;
+-  if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
++  if (menuMode === "clear-confirm")
++    return <ClearConversationConfirm onSessionChange={onSessionChange} />;
+   if (menuMode === "remove-model") return <RemoveModelMenu />;
+   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
+   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
+@@ -88,6 +91,7 @@ function AutofixToggle({
+       notify: state.notify,
+     })),
+   );
++  const session = useSession();
+ 
+   useInput((_, key) => {
+     if (key.escape) setMenuMode("main-menu");
+@@ -104,7 +108,7 @@ function AutofixToggle({
+           await setConfig(newconf);
+           setMenuMode("main-menu");
+           toggleMenu();
+-          notify(disableNotification);
++          notify(disableNotification, session);
+         }}
+         onConfirm={() => {
+           setMenuMode("main-menu");
+@@ -133,7 +137,7 @@ function AutofixToggle({
+         });
+         setMenuMode("main-menu");
+         toggleMenu();
+-        notify(enableNotification);
++        notify(enableNotification, session);
+       }}
+       onCancel={() => {
+         setMenuMode("main-menu");
+@@ -193,6 +197,7 @@ function SwitchModelMenu() {
+       toggleMenu: state.toggleMenu,
+     })),
+   );
++  const session = useSession();
+ 
+   const { setMenuMode } = useMenuState(
+     useShallow(state => ({
+@@ -224,11 +229,11 @@ function SwitchModelMenu() {
+         return;
+       }
+ 
+-      setModelOverride(target);
++      setModelOverride(target, session);
+       setMenuMode("main-menu");
+       toggleMenu();
+     },
+-    [config, setMenuMode, setModelOverride, toggleMenu],
++    [config, setMenuMode, setModelOverride, toggleMenu, session],
+   );
+ 
+   if (pendingModel) {
+@@ -257,7 +262,7 @@ function SwitchModelMenu() {
+               await setConfig({ ...config, models });
+             }
+           }
+-          setModelOverride(pendingModel.nickname);
++          setModelOverride(pendingModel.nickname, session);
+           setPendingModel(null);
+           setMenuMode("main-menu");
+           toggleMenu();
+@@ -357,6 +362,7 @@ function MainMenu() {
+       resetPreMenuVimMode: state.resetPreMenuVimMode,
+     })),
+   );
++  const session = useSession();
+ 
+   const { setMenuMode } = useMenuState(
+     useShallow(state => ({
+@@ -487,12 +493,12 @@ function MainMenu() {
+         }
+ 
+         // Notify user
+-        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
++        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`, session);
+         return;
+       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
+       else setMenuMode(item.value);
+     },
+-    [config, setConfig, notify],
++    [config, setConfig, notify, session],
+   );
+ 
+   return (
+@@ -644,29 +650,39 @@ function QuitConfirm() {
+   );
+ }
+ 
+-function ClearConversationConfirm() {
++function ClearConversationConfirm({
++  onSessionChange,
++}: {
++  onSessionChange: (session: Session) => void;
++}) {
+   const { setMenuMode } = useMenuState(
+     useShallow(state => ({
+       setMenuMode: state.setMenuMode,
+     })),
+   );
+-  const { clearHistory, toggleMenu, notify } = useAppStore(
++  const { startNewSession, notify } = useAppStore(
+     useShallow(state => ({
+-      clearHistory: state.clearHistory,
+-      toggleMenu: state.toggleMenu,
++      startNewSession: state.startNewSession,
+       notify: state.notify,
+     })),
+   );
++  const session = useSession();
+ 
+   return (
+     <ConfirmDialog
+       confirmLabel="Yes, start new conversation"
+       rejectLabel="Never mind, take me back"
+-      onConfirm={() => {
+-        clearHistory();
++      onConfirm={async () => {
++        const { cwd, cliArgs } = session.metadata;
++        const oldSessionId = session.metadata.sessionId;
++        const newSession = startNewSession(cwd, cliArgs);
++        onSessionChange(newSession);
+         setMenuMode("main-menu");
+-        toggleMenu();
+-        notify("New conversation started");
++        const resumeHint =
++          oldSessionId != null
++            ? ` To resume the previous session, run \`octo --resume ${oldSessionId}\``
++            : "";
++        notify(`New conversation started.${resumeHint}`, newSession);
+       }}
+       onReject={() => setMenuMode("main-menu")}
+     />
+@@ -680,6 +696,7 @@ function SetDefaultModelMenu() {
+       toggleMenu: state.toggleMenu,
+     })),
+   );
++  const session = useSession();
+ 
+   const config = useConfig();
+   const setConfig = useSetConfig();
+@@ -729,11 +746,11 @@ function SetDefaultModelMenu() {
+         ...config,
+         models: [model, ...rest],
+       });
+-      setModelOverride(target);
++      setModelOverride(target, session);
+       setMenuMode("main-menu");
+       toggleMenu();
+     },
+-    [config],
++    [config, setModelOverride, toggleMenu, session],
+   );
+ 
+   return (
+@@ -752,6 +769,7 @@ function RemoveModelMenu() {
+       toggleMenu: state.toggleMenu,
+     })),
+   );
++  const session = useSession();
+ 
+   const config = useConfig();
+   const setConfig = useSetConfig();
+@@ -801,11 +819,11 @@ function RemoveModelMenu() {
+         models: [...rest],
+       });
+       const current = rest[0];
+-      setModelOverride(current.nickname);
++      setModelOverride(current.nickname, session);
+       setMenuMode("main-menu");
+       toggleMenu();
+     },
+-    [config],
++    [config, setModelOverride, toggleMenu, session],
+   );
+ 
+   return (
+diff --git a/source/session-context.ts b/source/session-context.ts
+new file mode 100644
+index 00000000..dc5b8da9
+--- /dev/null
++++ b/source/session-context.ts
+@@ -0,0 +1,10 @@
++import { createContext, useContext } from "react";
++import type { Session } from "./session-history/index.ts";
++
++export const SessionContext = createContext<Session | null>(null);
++
++export function useSession(): Session {
++  const session = useContext(SessionContext);
++  if (session == null) throw new Error("Session is not initialized.");
++  return session;
++}
+diff --git a/source/session-history/index.ts b/source/session-history/index.ts
+new file mode 100644
+index 00000000..f9b54e81
+--- /dev/null
++++ b/source/session-history/index.ts
+@@ -0,0 +1,317 @@
++import { ParsedCliArgs } from "../cli/cli-args.ts";
++import { eq } from "drizzle-orm";
++import { db, DbTransaction, schema } from "../db/db.ts";
++import { OctoIR } from "../ir/octo-ir.ts";
++import {
++  compactionFailedItems,
++  historyItems,
++  launches,
++  llmIrs,
++  notifications,
++  requestFailedItems,
++  treeNodes,
++  trees,
++} from "./schema/session-history-schema.ts";
++import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
++
++export type TransportKind = "local" | "docker-connect" | "docker-run";
++
++export type HistoryItem =
++  | { type: "request-failed" }
++  | { type: "compaction-failed" }
++  | { type: "notification"; content: string }
++  | { type: "llm-ir"; ir: OctoIR };
++
++export type HistoryNode = HistoryItem & { nodeId: number };
++
++export type SessionMetadata = {
++  sessionId: string | null;
++  cwd: string;
++  cliArgs: ParsedCliArgs;
++};
++
++export type Session = {
++  metadata: SessionMetadata;
++  treeId: number | null;
++  launchId: number | null;
++};
++
++export type LoadedSession = {
++  session: Session;
++  history: readonly HistoryNode[];
++};
++
++export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
++  return {
++    metadata: { sessionId: null, cwd, cliArgs },
++    treeId: null,
++    launchId: null,
++  };
++}
++
++export function loadSession(sessionId: string): LoadedSession | null {
++  const tree = loadSessionTree(sessionId);
++  if (tree == null) return null;
++
++  let mostRecentLeaf: SessionTreeNode | undefined;
++  const nodesById = new Map<number, SessionTreeNode>();
++  for (const node of tree.nodes) {
++    nodesById.set(node.id, node);
++    if (
++      node.isLeaf &&
++      (mostRecentLeaf == null ||
++        node.createdAt > mostRecentLeaf.createdAt ||
++        (node.createdAt === mostRecentLeaf.createdAt && node.id > mostRecentLeaf.id))
++    ) {
++      mostRecentLeaf = node;
++    }
++  }
++  if (mostRecentLeaf == null) return null;
++
++  const history: HistoryNode[] = [];
++  const visitedNodeIds = new Set<number>();
++  let current: SessionTreeNode | undefined = mostRecentLeaf;
++  while (current != null) {
++    visitedNodeIds.add(current.id);
++    history.push(historyNodeFromRow(current));
++
++    if (current.parentId == null) break;
++    current = nodesById.get(current.parentId);
++  }
++  history.reverse();
++
++  const cliArgs = cliArgsFromRow(mostRecentLeaf);
++  return {
++    session: {
++      metadata: {
++        sessionId,
++        cwd: tree.cwd,
++        cliArgs,
++      },
++      treeId: tree.id,
++      launchId: null,
++    },
++    history,
++  };
++}
++
++function loadSessionTree(sessionId: string) {
++  return db()
++    .query.trees.findFirst({
++      where: (table, { eq }) => eq(table.name, sessionId),
++      with: {
++        nodes: {
++          with: {
++            historyItem: {
++              with: {
++                requestFailedItem: true,
++                compactionFailedItem: true,
++                notification: true,
++                llmIr: true,
++              },
++            },
++            launch: {
++              with: {
++                local: true,
++                docker: true,
++              },
++            },
++          },
++        },
++      },
++    })
++    .sync();
++}
++
++type SessionTree = NonNullable<ReturnType<typeof loadSessionTree>>;
++type SessionTreeNode = SessionTree["nodes"][number];
++
++function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
++  const item = node.historyItem;
++  if (item.llmIr != null) {
++    return { nodeId: node.id, type: "llm-ir", ir: deserializeLlmIr(item.llmIr.json) };
++  }
++  if (item.notification != null) {
++    return { nodeId: node.id, type: "notification", content: item.notification.content };
++  }
++  if (item.requestFailedItem != null) return { nodeId: node.id, type: "request-failed" };
++  if (item.compactionFailedItem != null) return { nodeId: node.id, type: "compaction-failed" };
++  throw new Error(`History node ${node.id} has no payload.`);
++}
++
++function cliArgsFromRow(node: SessionTreeNode): ParsedCliArgs {
++  const { local, docker } = node.launch;
++  if (local != null) {
++    return {
++      kind: "local",
++      config: local.config ?? undefined,
++      unchained: local.unchained || undefined,
++    };
++  }
++  if (docker == null) {
++    throw new Error("Session history node has no launch configuration.");
++  }
++  if (docker.kind === "connect") {
++    if (docker.containerTarget == null) {
++      throw new Error("Docker connect launch has no container target.");
++    }
++    return {
++      kind: "docker-connect",
++      target: docker.containerTarget,
++      config: docker.config ?? undefined,
++      unchained: docker.unchained || undefined,
++    };
++  }
++  if (docker.dockerRunArgsJson == null) throw new Error("Docker run launch has no arguments.");
++  return {
++    kind: "docker-run",
++    dockerRunArgs: JSON.parse(docker.dockerRunArgsJson),
++    config: docker.config ?? undefined,
++    unchained: docker.unchained || undefined,
++  };
++}
++
++export function insertHistoryItems(
++  session: Session,
++  parentNodeId: number | null,
++  itemsToInsert: HistoryItem[],
++): HistoryNode[] {
++  if (itemsToInsert.length === 0) return [];
++
++  // sessionId is null until the first durable history item is persisted; generate it lazily.
++  if (session.metadata.sessionId == null) {
++    session.metadata = { ...session.metadata, sessionId: crypto.randomUUID() };
++  }
++
++  const result = db().transaction(tx => {
++    // we don't create a session tree or uuid until at least one history item is available
++    const treeId = session.treeId ?? createTree(tx, session.metadata);
++    const launchId = session.launchId ?? createLaunch(tx, session.metadata.cliArgs);
++
++    const insertedNodes: HistoryNode[] = [];
++    let currParentId = parentNodeId;
++    for (const historyItem of itemsToInsert) {
++      const insertedHistoryItemId = insertHistoryItem(tx, historyItem);
++      const insertedTreeNode = tx
++        .insert(treeNodes)
++        .values({
++          treeId,
++          historyItemId: insertedHistoryItemId,
++          parentId: currParentId,
++          isLeaf: true,
++          launchId,
++        })
++        .returning({ id: treeNodes.id })
++        .get();
++      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id });
++      currParentId = insertedTreeNode.id;
++    }
++    tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
++    return { treeId, launchId, insertedNodes };
++  });
++
++  session.treeId = result.treeId;
++  session.launchId = result.launchId;
++  return result.insertedNodes;
++}
++
++function createTree(tx: DbTransaction, metadata: SessionMetadata): number {
++  const sessionId = metadata.sessionId;
++  if (sessionId == null) throw new Error("Cannot create a tree without a session id.");
++  tx.insert(trees).values({ name: sessionId, cwd: metadata.cwd }).onConflictDoNothing().run();
++
++  const tree = tx
++    .select({ id: trees.id, cwd: trees.cwd })
++    .from(trees)
++    .where(eq(trees.name, sessionId))
++    .get();
++  if (tree == null) throw new Error("Failed to create history tree.");
++  if (tree.cwd !== metadata.cwd) {
++    throw new Error(`Session ${sessionId} belongs to a different working directory.`);
++  }
++  return tree.id;
++}
++
++function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
++  const shared = { config: cliArgs.config ?? null, unchained: !!cliArgs.unchained };
++  let localLaunchId: number | null = null;
++  let dockerLaunchId: number | null = null;
++
++  if (cliArgs.kind === "local") {
++    localLaunchId = tx
++      .insert(schema.localLaunches)
++      .values(shared)
++      .returning({ id: schema.localLaunches.id })
++      .get().id;
++  } else {
++    dockerLaunchId = tx
++      .insert(schema.dockerLaunches)
++      .values({
++        ...shared,
++        kind: cliArgs.kind === "docker-connect" ? "connect" : "run",
++        containerTarget: cliArgs.kind === "docker-connect" ? cliArgs.target : null,
++        dockerRunArgsJson:
++          cliArgs.kind === "docker-run" ? JSON.stringify(cliArgs.dockerRunArgs) : null,
++      })
++      .returning({ id: schema.dockerLaunches.id })
++      .get().id;
++  }
++
++  return tx
++    .insert(launches)
++    .values({ localLaunchId, dockerLaunchId })
++    .returning({ id: launches.id })
++    .get().id;
++}
++
++function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
++  let requestFailedId: number | null = null;
++  let compactionFailedId: number | null = null;
++  let notificationId: number | null = null;
++  let llmIrId: number | null = null;
++  let persistedItem: HistoryItem;
++
++  switch (item.type) {
++    case "llm-ir": {
++      const row = tx
++        .insert(llmIrs)
++        .values({ json: serializeLlmIr(item.ir) })
++        .returning()
++        .get();
++      llmIrId = row.id;
++      persistedItem = { type: "llm-ir", ir: deserializeLlmIr(row.json) };
++      break;
++    }
++    case "notification": {
++      const row = tx.insert(notifications).values({ content: item.content }).returning().get();
++      notificationId = row.id;
++      persistedItem = { type: "notification", content: row.content };
++      break;
++    }
++    case "request-failed": {
++      requestFailedId = tx
++        .insert(requestFailedItems)
++        .values({})
++        .returning({ id: requestFailedItems.id })
++        .get().id;
++      persistedItem = { type: "request-failed" };
++      break;
++    }
++    case "compaction-failed": {
++      compactionFailedId = tx
++        .insert(compactionFailedItems)
++        .values({})
++        .returning({ id: compactionFailedItems.id })
++        .get().id;
++      persistedItem = { type: "compaction-failed" };
++      break;
++    }
++  }
++
++  const insertedHistoryItem = tx
++    .insert(historyItems)
++    .values({ requestFailedId, compactionFailedId, notificationId, llmIrId })
++    .returning({ id: historyItems.id })
++    .get();
++  return insertedHistoryItem.id;
++}
+diff --git a/source/session-history/llm-ir-json.ts b/source/session-history/llm-ir-json.ts
+new file mode 100644
+index 00000000..be195a2a
+--- /dev/null
++++ b/source/session-history/llm-ir-json.ts
+@@ -0,0 +1,37 @@
++import type { OctoIR } from "../ir/octo-ir.ts";
++
++export type LlmIr = {
++  type: "llm-ir";
++  ir: OctoIR;
++};
++
++export const CURRENT_LLM_IR_JSON_VERSION = "octo-llm-ir/v1" as const;
++
++type VersionedLlmIrJson = {
++  version: typeof CURRENT_LLM_IR_JSON_VERSION;
++  ir: OctoIR;
++};
++
++export function serializeLlmIr(ir: OctoIR): string {
++  return JSON.stringify({
++    version: CURRENT_LLM_IR_JSON_VERSION,
++    ir,
++  } satisfies VersionedLlmIrJson);
++}
++
++export function deserializeLlmIr(json: string): OctoIR {
++  const parsed = JSON.parse(json) as unknown;
++  return migrateLlmIrJson(parsed);
++}
++
++function migrateLlmIrJson(value: unknown): OctoIR {
++  if (isObject(value) && value["version"] === CURRENT_LLM_IR_JSON_VERSION) {
++    return value["ir"] as OctoIR;
++  }
++
++  throw new Error("Unsupported LLM IR JSON version");
++}
++
++function isObject(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null;
++}
+diff --git a/source/session-history/schema/session-history-schema.ts b/source/session-history/schema/session-history-schema.ts
+index 6e37a0ff..a70e468d 100644
+--- a/source/session-history/schema/session-history-schema.ts
++++ b/source/session-history/schema/session-history-schema.ts
+@@ -1,7 +1,8 @@
+-import { sql } from "drizzle-orm";
++import { relations, sql } from "drizzle-orm";
+ import {
+   check,
+   foreignKey,
++  index,
+   integer,
+   sqliteTable,
+   text,
+@@ -13,7 +14,9 @@ export const trees = sqliteTable("trees", {
+   id: integer().primaryKey({ autoIncrement: true }),
+   name: text().notNull().unique(),
+   cwd: text().notNull(),
+-  updatedAt: integer().notNull(),
++  updatedAt: integer()
++    .notNull()
++    .$onUpdate(() => Date.now()),
+ });
+ 
+ export const localLaunches = sqliteTable("local_launches", {
+@@ -117,8 +120,12 @@ export const treeNodes = sqliteTable(
+     launchId: integer()
+       .notNull()
+       .references(() => launches.id),
++    createdAt: integer()
++      .notNull()
++      .$defaultFn(() => Date.now()),
+   },
+   table => [
++    index("tree_nodes_tree_id_idx").on(table.treeId),
+     unique().on(table.historyItemId),
+     unique().on(table.id, table.treeId),
+     uniqueIndex("tree_nodes_one_root_unique")
+@@ -136,7 +143,51 @@ export const treeNodes = sqliteTable(
+   ],
+ );
+ 
+-export type RequestFailedRow = typeof requestFailedItems.$inferSelect;
+-export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect;
+-export type NotificationRow = typeof notifications.$inferSelect;
+-export type LlmIrRow = typeof llmIrs.$inferSelect;
++export const treesRelations = relations(trees, ({ many }) => ({
++  nodes: many(treeNodes),
++}));
++
++export const treeNodesRelations = relations(treeNodes, ({ one }) => ({
++  tree: one(trees, {
++    fields: [treeNodes.treeId],
++    references: [trees.id],
++  }),
++  historyItem: one(historyItems, {
++    fields: [treeNodes.historyItemId],
++    references: [historyItems.id],
++  }),
++  launch: one(launches, {
++    fields: [treeNodes.launchId],
++    references: [launches.id],
++  }),
++}));
++
++export const historyItemsRelations = relations(historyItems, ({ one }) => ({
++  requestFailedItem: one(requestFailedItems, {
++    fields: [historyItems.requestFailedId],
++    references: [requestFailedItems.id],
++  }),
++  compactionFailedItem: one(compactionFailedItems, {
++    fields: [historyItems.compactionFailedId],
++    references: [compactionFailedItems.id],
++  }),
++  notification: one(notifications, {
++    fields: [historyItems.notificationId],
++    references: [notifications.id],
++  }),
++  llmIr: one(llmIrs, {
++    fields: [historyItems.llmIrId],
++    references: [llmIrs.id],
++  }),
++}));
++
++export const launchesRelations = relations(launches, ({ one }) => ({
++  local: one(localLaunches, {
++    fields: [launches.localLaunchId],
++    references: [localLaunches.id],
++  }),
++  docker: one(dockerLaunches, {
++    fields: [launches.dockerLaunchId],
++    references: [dockerLaunches.id],
++  }),
++}));
+diff --git a/source/state.ts b/source/state.ts
+index bd43f049..1377fd1c 100644
+--- a/source/state.ts
++++ b/source/state.ts
+@@ -6,8 +6,15 @@ import {
+   readAuthForModel,
+   runNotifyCommand,
+ } from "./config.ts";
+-import { HistoryItem } from "./history.ts";
+ import { ImageInfo } from "./utils/image-utils.ts";
++import {
++  createSession,
++  HistoryNode,
++  insertHistoryItems,
++  HistoryItem,
++  Session,
++} from "./session-history/index.ts";
++import type { ParsedCliArgs } from "./cli/cli-args.ts";
+ import { runTool } from "./tools/index.ts";
+ import type { ToolRunResult } from "./tools/index.ts";
+ import { create } from "zustand";
+@@ -26,6 +33,7 @@ import type { OctoIR } from "./ir/octo-ir.ts";
+ export type RunArgs = {
+   config: Config;
+   transport: Transport;
++  session: Session;
+ };
+ 
+ type ToolCallRequest = ToolCall<typeof toolMap>;
+@@ -103,7 +111,7 @@ export type UiState = {
+   quotaData: QuotaData | null;
+   byteCount: number;
+   query: string;
+-  history: Array<HistoryItem>;
++  readonly history: readonly HistoryNode[];
+   clearNonce: number;
+   lastUserPromptIndex: number | null;
+   whitelist: Set<string>;
+@@ -113,14 +121,14 @@ export type UiState = {
+   setNotifySession: (notifySession: boolean) => void;
+   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
+   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
+-  rejectTool: (toolCall: ToolCallRequest) => void;
++  rejectTool: (toolCall: ToolCallRequest, session: Session) => void;
+   abortResponse: () => void;
+   toggleMenu: () => void;
+   openMenu: () => void;
+   closeMenu: () => void;
+   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
+   resetPreMenuVimMode: () => void;
+-  setModelOverride: (m: string) => void;
++  setModelOverride: (m: string, session: Session) => void;
+   setQuery: (query: string) => void;
+   retryFrom: (
+     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
+@@ -128,14 +136,24 @@ export type UiState = {
+   ) => Promise<void>;
+   clearAuthError: () => void;
+   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
+-  notify: (notif: string) => void;
++  notify: (notif: string, session: Session) => void;
+   addToWhitelist: (whitelistKey: string) => Promise<void>;
+   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
+-  clearHistory: () => void;
++  hydrateSession: (history: readonly HistoryNode[]) => void;
++  startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
+   _maybeHandleAbort: (signal: AbortSignal) => boolean;
+   runAgent: (args: RunArgs) => Promise<void>;
+ };
+ 
++function appendAndPersistHistory(
++  session: Session,
++  prevHistory: readonly HistoryNode[],
++  itemsToInsert: HistoryItem[],
++): HistoryNode[] {
++  const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
++  return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
++}
++
+ export const useAppStore = create<UiState>((set, get) => ({
+   preMenuModeData: null,
+   _notifyTimer: null,
+@@ -194,7 +212,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+     }
+   },
+ 
+-  input: async ({ config, query, transport, images }) => {
++  input: async ({ config, query, transport, session, images }) => {
+     const userMessage: HistoryItem = {
+       type: "llm-ir",
+       ir: {
+@@ -206,9 +224,9 @@ export const useAppStore = create<UiState>((set, get) => ({
+       },
+     };
+ 
+-    let history = [...get().history, userMessage];
++    const history = appendAndPersistHistory(session, get().history, [userMessage]);
+     set({ history, lastUserPromptIndex: history.length - 1 });
+-    await get().runAgent({ config, transport });
++    await get().runAgent({ config, transport, session });
+   },
+ 
+   retryFrom: async (mode, args) => {
+@@ -259,7 +277,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+     }));
+   },
+ 
+-  rejectTool: toolCall => {
++  rejectTool: (toolCall, session) => {
+     const history = get().history;
+ 
+     // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
+@@ -300,8 +318,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+       }
+     }
+     set({
+-      history: [
+-        ...get().history,
++      history: appendAndPersistHistory(session, get().history, [
+         {
+           type: "llm-ir",
+           ir: {
+@@ -310,7 +327,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+           },
+         },
+         ...skippedCalls,
+-      ],
++      ]),
+       modeData: {
+         mode: "input",
+         vimMode: "INSERT",
+@@ -386,42 +403,57 @@ export const useAppStore = create<UiState>((set, get) => ({
+     set({ query });
+   },
+ 
+-  setModelOverride: model => {
++  setModelOverride: (model, session) => {
+     set({
+       modelOverride: model,
+-      history: [
+-        ...get().history,
++      history: appendAndPersistHistory(session, get().history, [
+         {
+           type: "notification",
+           content: `Model: ${model}`,
+         },
+-      ],
++      ]),
+     });
+   },
+ 
+-  notify: notif => {
++  notify: (notif, session) => {
+     set({
+-      history: [
+-        ...get().history,
++      history: appendAndPersistHistory(session, get().history, [
+         {
+           type: "notification",
+           content: notif,
+         },
+-      ],
++      ]),
+     });
+   },
+ 
+-  clearHistory: () => {
++  hydrateSession: history => {
++    set(state => ({
++      history,
++      lastUserPromptIndex: null,
++      byteCount: 0,
++      clearNonce: state.clearNonce + 1,
++      sessionAutoNotify: false,
++    }));
++  },
++
++  startNewSession: (cwd, cliArgs) => {
+     // Abort any ongoing responses to avoid polluting the new cleared state.
+-    const { abortResponse } = get();
+-    abortResponse();
++    const { modeData, preMenuModeData } = get();
++    const activeMode = modeData.mode === "menu" ? preMenuModeData : modeData;
++    if (activeMode != null && "abortController" in activeMode) {
++      activeMode.abortController.abort();
++    }
+ 
+     set(state => ({
+       history: [],
+       lastUserPromptIndex: null,
+       byteCount: 0,
+       clearNonce: state.clearNonce + 1,
++      sessionAutoNotify: false,
++      modeData: { mode: "input", vimMode: "INSERT" },
++      preMenuModeData: null,
+     }));
++    return createSession(cwd, cliArgs);
+   },
+ 
+   addToWhitelist: async (whitelistKey: string) => {
+@@ -435,7 +467,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+     return get().whitelist.has(whitelistKey);
+   },
+ 
+-  runTool: async ({ config, toolReq, transport }) => {
++  runTool: async ({ config, toolReq, transport, session }) => {
+     let { modeData } = get();
+     if (modeData.mode !== "tool-call") {
+       throw new Error(`Impossible tool mode: ${modeData.mode}`);
+@@ -456,8 +488,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+     const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+     if (!result.success) {
+       set({
+-        history: [
+-          ...get().history,
++        history: appendAndPersistHistory(session, get().history, [
+           {
+             type: "llm-ir",
+             ir: {
+@@ -466,17 +497,16 @@ export const useAppStore = create<UiState>((set, get) => ({
+               toolCall: toolReq,
+             },
+           },
+-        ],
++        ]),
+       });
+     } else {
+       set({
+-        history: [
+-          ...get().history,
++        history: appendAndPersistHistory(session, get().history, [
+           {
+             type: "llm-ir",
+             ir: toolRunResultToIR(result.data, toolReq),
+           },
+-        ],
++        ]),
+       });
+     }
+ 
+@@ -490,7 +520,7 @@ export const useAppStore = create<UiState>((set, get) => ({
+     }
+   },
+ 
+-  runAgent: async ({ config, transport }) => {
++  runAgent: async ({ config, transport, session }) => {
+     const historyCopy = [...get().history];
+     const abortController = new AbortController();
+     let compactionByteCount = 0;
+@@ -603,7 +633,9 @@ export const useAppStore = create<UiState>((set, get) => ({
+               type: "llm-ir",
+               ir: event.checkpoint,
+             };
+-            set({ history: [...historyCopy, checkpointItem] });
++            set({
++              history: appendAndPersistHistory(session, historyCopy, [checkpointItem]),
++            });
+           },
+ 
+           autofixingJson: () => {
+@@ -630,13 +662,16 @@ export const useAppStore = create<UiState>((set, get) => ({
+ 
+           retryTool: event => {
+             throttle.flush();
+-            set({ history: [...historyCopy, ...outputToHistory(event.irs)] });
++            set({
++              history: appendAndPersistHistory(session, historyCopy, outputToHistory(event.irs)),
++            });
+           },
+         },
+       });
+       throttle.flush();
+-      historyCopy.push(...outputToHistory(finish.irs));
+-      set({ history: [...historyCopy] });
++      set({
++        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs)),
++      });
+       const finishReason = finish.reason;
+       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
+         get().notifyReadyForInput(config);
+@@ -683,12 +718,11 @@ export const useAppStore = create<UiState>((set, get) => ({
+             error: finishReason.requestError,
+             curlCommand: finishReason.curl,
+           },
+-          history: [
+-            ...get().history,
++          history: appendAndPersistHistory(session, get().history, [
+             {
+               type: "compaction-failed",
+             },
+-          ],
++          ]),
+         });
+         return;
+       }

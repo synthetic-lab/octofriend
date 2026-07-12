@@ -1,0 +1,134 @@
+diff --git a/source/cli.tsx b/source/cli.tsx
+index 0074cdf2..c54f23e8 100644
+--- a/source/cli.tsx
++++ b/source/cli.tsx
+@@ -17,6 +17,7 @@ import {
+   assertKeyForModel,
+   AUTOFIX_KEYS,
+   APP_METADATA,
++  Config,
+ } from "./config.ts";
+ import { tokenCounts } from "./token-tracker.ts";
+ import { getMcpClient, connectMcpServer, shutdownMcpClients } from "./tools/tool-defs/mcp.ts";
+@@ -112,9 +113,26 @@ docker
+   });
+ 
+ async function runMain(opts: { config?: string; unchained?: boolean; transport: Transport }) {
++  let config: Config;
++  let configPath: string;
++
+   try {
+-    let { config, configPath } = await loadConfig(opts.config);
++    const loaded = await loadConfig(opts.config);
++    config = loaded.config;
++    configPath = loaded.configPath;
++  } catch (error) {
++    // Handle config loading errors gracefully
++    console.error("\n❌ Failed to load configuration\n");
++    if (error instanceof Error) {
++      console.error(error.message);
++    } else {
++      console.error(String(error));
++    }
++    console.error("\nRun 'octofriend init' to create a fresh configuration.\n");
++    process.exit(1);
++  }
+ 
++  try {
+     // Connect to all MCP servers on boot
+     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
+       for (const server of Object.keys(config.mcpServers)) {
+diff --git a/source/config.ts b/source/config.ts
+index 310bff20..ceabd84e 100644
+--- a/source/config.ts
++++ b/source/config.ts
+@@ -574,10 +574,87 @@ export function getModelFromConfig(config: Config, modelOverride: string | null)
+ 
+ export async function readConfig(filePath: string): Promise<Config> {
+   const file = await fs.readFile(filePath, "utf8");
+-  const parsed = json5.parse(file.trim());
++
++  let parsed: any;
++  try {
++    parsed = json5.parse(file.trim());
++  } catch (error) {
++    const errorMessage = error instanceof Error ? error.message : String(error);
++    throw new Error(
++      `Failed to parse configuration file: ${filePath}\n\n` +
++        `JSON5 parsing error: ${errorMessage}\n\n` +
++        `Please check your configuration file for syntax errors (missing commas, quotes, brackets, etc.)`,
++    );
++  }
++
+   const fileVersion: number = parsed["configVersion"] ?? 0;
+   const raw = migrateConfig(parsed);
+-  const config = ConfigSchema.slice(raw);
++
++  let config: Config;
++  try {
++    config = ConfigSchema.slice(raw);
++  } catch (error) {
++    // Provide user-friendly error messages for common config issues
++    const errorMessage = error instanceof Error ? error.message : String(error);
++
++    // Handle MCP server configuration errors
++    // Check if the error is related to mcpServers by looking at the error message or checking if mcpServers exists in raw config
++    const mcpServers = raw["mcpServers"] as Record<string, any> | undefined;
++    const hasMcpServers =
++      mcpServers && typeof mcpServers === "object" && Object.keys(mcpServers).length > 0;
++
++    if (
++      hasMcpServers &&
++      (errorMessage.includes("mcpServers") ||
++        errorMessage.includes("[") ||
++        errorMessage.includes("undefined"))
++    ) {
++      if (mcpServers) {
++        const invalidServers: string[] = [];
++        for (const [serverName, serverConfig] of Object.entries(mcpServers)) {
++          if (!serverConfig || typeof serverConfig !== "object") {
++            invalidServers.push(`${serverName}: configuration is not an object`);
++          } else if (!serverConfig.command || typeof serverConfig.command !== "string") {
++            invalidServers.push(
++              `${serverName}: missing or invalid 'command' field (must be a string)`,
++            );
++          } else if (serverConfig.args && !Array.isArray(serverConfig.args)) {
++            invalidServers.push(`${serverName}: 'args' must be an array of strings`);
++          } else if (serverConfig.env && typeof serverConfig.env !== "object") {
++            invalidServers.push(`${serverName}: 'env' must be an object with string values`);
++          }
++        }
++
++        if (invalidServers.length > 0) {
++          throw new Error(
++            `Invalid MCP server configuration in ${filePath}:\n\n` +
++              invalidServers.map(s => `  • ${s}`).join("\n") +
++              `\n\nEach MCP server must have:\n` +
++              `  - command: string (path to the MCP server executable)\n` +
++              `  - args: string[] (optional, command arguments)\n` +
++              `  - env: object (optional, environment variables)\n\n` +
++              `Example:\n` +
++              `  mcpServers: {\n` +
++              `    myserver: {\n` +
++              `      command: "/path/to/server",\n` +
++              `      args: ["--flag"],\n` +
++              `      env: { "VAR": "value" }\n` +
++              `    }\n` +
++              `  }`,
++          );
++        }
++      }
++    }
++
++    // Generic error fallback with helpful context
++    throw new Error(
++      `Configuration file validation failed: ${filePath}\n\n` +
++        `Error: ${errorMessage}\n\n` +
++        `Please check your configuration file for syntax errors or invalid values.\n` +
++        `You can reset your config by deleting: ${filePath}`,
++    );
++  }
++
+   if (fileVersion < CURRENT_CONFIG_VERSION) {
+     await writeConfig(config, filePath);
+   }
