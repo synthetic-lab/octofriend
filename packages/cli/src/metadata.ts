@@ -7,7 +7,14 @@ export type Metadata = {
 	version: string;
 };
 
-export const APP_METADATA = await readMetadata();
+declare const __OCTO_VERSION__: string | undefined;
+
+const COMPILED_VERSION =
+	typeof __OCTO_VERSION__ === "string" ? __OCTO_VERSION__ : null;
+
+export const APP_METADATA = COMPILED_VERSION
+	? { version: COMPILED_VERSION }
+	: await readMetadata();
 
 async function readMetadata(): Promise<Metadata> {
 	const packageFile = await findWorkspacePackageJson(PACKAGE_DIR);

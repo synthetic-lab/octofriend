@@ -1,15 +1,46 @@
-import { resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { AgentdProcessLike } from "../ipc/client.ts";
 
 export type AgentdExecutableResolutionOptions = {
 	executable?: string;
 	env?: Record<string, string | undefined>;
+	processExecutable?: string;
+	scriptPath?: string;
 };
 
 export const PACKAGED_AGENTD_EXECUTABLE_PATH = resolve(
 	import.meta.dirname,
 	"../../../bin/octofriend-agentd.js",
 );
+
+export const ADJACENT_AGENTD_EXECUTABLE_PATH = join(
+	dirname(process.execPath),
+	process.platform === "win32" ? "octofriend-agentd.exe" : "octofriend-agentd",
+);
+
+function isStandaloneExecutable(executable: string): boolean {
+	const name = basename(executable).toLowerCase();
+	return name !== "bun" && name !== "bun.exe";
+}
+
+function packagedAgentdLauncherPath(scriptPath: string | undefined): string {
+	if (
+		scriptPath &&
+		["octofriend.js", "octofriend-acp.js"].includes(basename(scriptPath))
+	) {
+		return join(dirname(scriptPath), "octofriend-agentd.js");
+	}
+	return PACKAGED_AGENTD_EXECUTABLE_PATH;
+}
+
+function adjacentAgentdExecutablePath(processExecutable: string): string {
+	return join(
+		dirname(processExecutable),
+		process.platform === "win32"
+			? "octofriend-agentd.exe"
+			: "octofriend-agentd",
+	);
+}
 
 export type AgentdSpawnOptions = {
 	executable?: string;
@@ -39,7 +70,7 @@ export function resolveAgentdExecutable(
 	return (
 		options.executable ??
 		(options.env ?? process.env)["octofriend_AGENTD"] ??
-		PACKAGED_AGENTD_EXECUTABLE_PATH
+		packagedAgentdLauncherPath(options.scriptPath ?? process.argv[1])
 	);
 }
 
@@ -48,9 +79,15 @@ export function resolveAgentdCommand(
 ): string[] {
 	const executable =
 		options.executable ?? (options.env ?? process.env)["octofriend_AGENTD"];
-	return executable
-		? [executable]
-		: [process.execPath, PACKAGED_AGENTD_EXECUTABLE_PATH];
+	if (executable) return [executable];
+	const processExecutable = options.processExecutable ?? process.execPath;
+	if (isStandaloneExecutable(processExecutable)) {
+		return [adjacentAgentdExecutablePath(processExecutable)];
+	}
+	return [
+		processExecutable,
+		packagedAgentdLauncherPath(options.scriptPath ?? process.argv[1]),
+	];
 }
 
 export function spawnAgentdProcess(

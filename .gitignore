@@ -23,3 +23,5 @@ packages/octofriend-cli/bin/octofriend-agentd.exe
 # OS/editor noise
 .DS_Store
 *.DS_Store
+packages/cli/bin/octofriend.js
+packages/cli/bin/octofriend-acp.js

@@ -39,8 +39,9 @@ describe("cli", () => {
 		const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 
 		expect(packageJson.bin).toEqual({
-			octofriend: "packages/cli/src/bin.ts",
-			octo: "packages/cli/src/bin.ts",
+			octofriend: "packages/cli/bin/octofriend.js",
+			octo: "packages/cli/bin/octofriend.js",
+			"octofriend-acp": "packages/cli/bin/octofriend-acp.js",
 			"octofriend-agentd": "packages/cli/bin/octofriend-agentd.js",
 		});
 		expect(packageJson.bundledDependencies).toBeUndefined();
@@ -68,6 +69,7 @@ describe("cli", () => {
 			[
 				"If run with no subcommands, runs Octo interactively.",
 				"--config <path>",
+				"--prefill <prompt>",
 				"--unchained",
 				"docker",
 				"version",

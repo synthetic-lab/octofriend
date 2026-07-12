@@ -17,4 +17,25 @@ describe("resolveAgentdCommand", () => {
 			PACKAGED_AGENTD_LAUNCHER_PATH,
 		]);
 	});
+
+	it("resolves bundled and standalone adjacent daemons", () => {
+		expect(
+			resolveAgentdCommand(
+				{},
+				{
+					processExecutable: "/usr/bin/bun",
+					scriptPath: "/opt/octofriend/packages/cli/bin/octofriend-acp.js",
+				},
+			),
+		).toEqual([
+			"/usr/bin/bun",
+			"/opt/octofriend/packages/cli/bin/octofriend-agentd.js",
+		]);
+		expect(
+			resolveAgentdCommand(
+				{},
+				{ processExecutable: "/opt/octofriend/octofriend" },
+			),
+		).toEqual(["/opt/octofriend/octofriend-agentd"]);
+	});
 });

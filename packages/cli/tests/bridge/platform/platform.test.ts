@@ -45,6 +45,28 @@ describe("resolveAgentdCommand", () => {
 			PACKAGED_AGENTD_EXECUTABLE_PATH,
 		]);
 	});
+
+	it("runs an adjacent launcher from a bundled npm entrypoint", () => {
+		expect(
+			resolveAgentdCommand({
+				env: {},
+				processExecutable: "/usr/bin/bun",
+				scriptPath: "/opt/octofriend/packages/cli/bin/octofriend.js",
+			}),
+		).toEqual([
+			"/usr/bin/bun",
+			"/opt/octofriend/packages/cli/bin/octofriend-agentd.js",
+		]);
+	});
+
+	it("runs an adjacent native daemon from a standalone executable", () => {
+		expect(
+			resolveAgentdCommand({
+				env: {},
+				processExecutable: "/opt/octofriend/octofriend",
+			}),
+		).toEqual(["/opt/octofriend/octofriend-agentd"]);
+	});
 });
 
 describe("spawnAgentdProcess", () => {
@@ -134,8 +156,8 @@ describe("packaged agent daemon startup", () => {
 
 		expect(packageJson.private).toBeUndefined();
 		expect(packageJson.bin).toMatchObject({
-			octofriend: "./src/bin.ts",
-			octo: "./src/bin.ts",
+			octofriend: "./bin/octofriend.js",
+			octo: "./bin/octofriend.js",
 			"octofriend-agentd": "./bin/octofriend-agentd.js",
 		});
 		expect(packageJson.files).toContain("bin");
