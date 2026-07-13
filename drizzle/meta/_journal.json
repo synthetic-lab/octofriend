@@ -29,6 +29,13 @@
       "when": 1782169044845,
       "tag": "0003_tree_node_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783462300500,
+      "tag": "0004_tree_nodes_tree_id_index",
+      "breakpoints": true
     }
   ]
 }

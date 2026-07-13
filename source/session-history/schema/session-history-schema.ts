@@ -1,7 +1,8 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
+  index,
   integer,
   sqliteTable,
   text,
@@ -13,7 +14,9 @@ export const trees = sqliteTable("trees", {
   id: integer().primaryKey({ autoIncrement: true }),
   name: text().notNull().unique(),
   cwd: text().notNull(),
-  updatedAt: integer().notNull(),
+  updatedAt: integer()
+    .notNull()
+    .$onUpdate(() => Date.now()),
 });
 
 export const localLaunches = sqliteTable("local_launches", {
@@ -117,8 +120,12 @@ export const treeNodes = sqliteTable(
     launchId: integer()
       .notNull()
       .references(() => launches.id),
+    createdAt: integer()
+      .notNull()
+      .$defaultFn(() => Date.now()),
   },
   table => [
+    index("tree_nodes_tree_id_idx").on(table.treeId),
     unique().on(table.historyItemId),
     unique().on(table.id, table.treeId),
     uniqueIndex("tree_nodes_one_root_unique")
@@ -136,7 +143,51 @@ export const treeNodes = sqliteTable(
   ],
 );
 
-export type RequestFailedRow = typeof requestFailedItems.$inferSelect;
-export type CompactionFailedRow = typeof compactionFailedItems.$inferSelect;
-export type NotificationRow = typeof notifications.$inferSelect;
-export type LlmIrRow = typeof llmIrs.$inferSelect;
+export const treesRelations = relations(trees, ({ many }) => ({
+  nodes: many(treeNodes),
+}));
+
+export const treeNodesRelations = relations(treeNodes, ({ one }) => ({
+  tree: one(trees, {
+    fields: [treeNodes.treeId],
+    references: [trees.id],
+  }),
+  historyItem: one(historyItems, {
+    fields: [treeNodes.historyItemId],
+    references: [historyItems.id],
+  }),
+  launch: one(launches, {
+    fields: [treeNodes.launchId],
+    references: [launches.id],
+  }),
+}));
+
+export const historyItemsRelations = relations(historyItems, ({ one }) => ({
+  requestFailedItem: one(requestFailedItems, {
+    fields: [historyItems.requestFailedId],
+    references: [requestFailedItems.id],
+  }),
+  compactionFailedItem: one(compactionFailedItems, {
+    fields: [historyItems.compactionFailedId],
+    references: [compactionFailedItems.id],
+  }),
+  notification: one(notifications, {
+    fields: [historyItems.notificationId],
+    references: [notifications.id],
+  }),
+  llmIr: one(llmIrs, {
+    fields: [historyItems.llmIrId],
+    references: [llmIrs.id],
+  }),
+}));
+
+export const launchesRelations = relations(launches, ({ one }) => ({
+  local: one(localLaunches, {
+    fields: [launches.localLaunchId],
+    references: [localLaunches.id],
+  }),
+  docker: one(dockerLaunches, {
+    fields: [launches.dockerLaunchId],
+    references: [dockerLaunches.id],
+  }),
+}));

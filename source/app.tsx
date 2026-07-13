@@ -15,7 +15,6 @@ import {
   useConfig,
   useSetConfig,
 } from "./config.ts";
-import { HistoryItem } from "./history.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
@@ -40,6 +39,7 @@ import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
+import type { Session } from "./session-history/index.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/ink/select-input.tsx";
@@ -48,6 +48,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
+import { SessionContext, useSession } from "./session-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import {
   useCtrlC,
@@ -78,6 +79,7 @@ import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
+import { HistoryNode } from "./session-history/index.ts";
 
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
@@ -98,6 +100,8 @@ type Props = {
   updates: string | null;
   unchained: boolean;
   transport: Transport;
+  session: Session;
+  onSessionChange: (session: Session) => void;
   inputHistory: InputHistory;
   bootSkills: string[];
 };
@@ -120,19 +124,12 @@ type StaticItem =
     }
   | {
       type: "history-item";
-      item: HistoryItem;
+      item: HistoryNode;
     }
   | {
       type: "boot-notification";
       content: string;
     };
-
-function toStaticItems(messages: HistoryItem[]): Array<StaticItem> {
-  return messages.map(message => ({
-    type: "history-item",
-    item: message,
-  }));
-}
 
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
@@ -167,11 +164,23 @@ export default function App({
   metadata,
   unchained,
   transport,
+  session: initialSession,
+  onSessionChange,
   updates,
   inputHistory,
   bootSkills,
 }: Props) {
   const [currConfig, setCurrConfig] = useState(config);
+  const [session, setSession] = useState(initialSession);
+  const handleSessionChange = useCallback(
+    (nextSession: Session) => {
+      if (nextSession === session) return;
+
+      setSession(nextSession);
+      onSessionChange(nextSession);
+    },
+    [onSessionChange, session],
+  );
   const [isUnchained, setIsUnchained] = useState(unchained);
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
@@ -209,11 +218,10 @@ export default function App({
       ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
       ...(updates ? [{ type: "updates" as const, updates }] : []),
       { type: "slogan" as const },
-      ...toStaticItems(history),
     ];
 
     return items;
-  }, [history, currConfig, skillNotifs, updates]);
+  }, [currConfig, skillNotifs, updates]);
 
   return (
     <InputPriorityProvider>
@@ -226,29 +234,40 @@ export default function App({
           <ConfigContext.Provider value={currConfig}>
             <UnchainedContext.Provider value={isUnchained}>
               <TransportContext.Provider value={transport}>
-                <CwdContext.Provider value={cwd}>
-                  <ExitOnDoubleCtrlC>
-                    <TerminalSizeTracker>
-                      <Box flexDirection="column" width="100%" height="100%">
-                        <Static items={staticItems} key={clearNonce}>
-                          {(item, index) => (
-                            <StaticItemRenderer item={item} key={`static-${index}`} />
-                          )}
-                        </Static>
-                        {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                          (modeData.inflightResponse.reasoningContent ||
-                            modeData.inflightResponse.content) && (
-                            <MessageDisplay item={modeData.inflightResponse} />
-                          )}
-                        <BottomBar
-                          inputHistory={inputHistory}
-                          metadata={metadata}
-                          tempNotification={tempNotification}
-                        />
-                      </Box>
-                    </TerminalSizeTracker>
-                  </ExitOnDoubleCtrlC>
-                </CwdContext.Provider>
+                <SessionContext.Provider value={session}>
+                  <CwdContext.Provider value={cwd}>
+                    <ExitOnDoubleCtrlC>
+                      <TerminalSizeTracker>
+                        <Box flexDirection="column" width="100%" height="100%">
+                          <Static items={staticItems}>
+                            {(item, index) => (
+                              <StaticItemRenderer item={item} key={`static-${index}`} />
+                            )}
+                          </Static>
+                          <Box key={clearNonce} flexDirection="column">
+                            {history.map((item, index) => (
+                              <StaticItemRenderer
+                                item={{ type: "history-item", item }}
+                                key={`history-${index}`}
+                              />
+                            ))}
+                          </Box>
+                          {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                            (modeData.inflightResponse.reasoningContent ||
+                              modeData.inflightResponse.content) && (
+                              <MessageDisplay item={modeData.inflightResponse} />
+                            )}
+                          <BottomBar
+                            inputHistory={inputHistory}
+                            metadata={metadata}
+                            tempNotification={tempNotification}
+                            onSessionChange={handleSessionChange}
+                          />
+                        </Box>
+                      </TerminalSizeTracker>
+                    </ExitOnDoubleCtrlC>
+                  </CwdContext.Provider>
+                </SessionContext.Provider>
               </TransportContext.Provider>
             </UnchainedContext.Provider>
           </ConfigContext.Provider>
@@ -262,10 +281,12 @@ function BottomBar({
   inputHistory,
   metadata,
   tempNotification,
+  onSessionChange,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
+  onSessionChange: (session: Session) => void;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
 
@@ -306,7 +327,7 @@ function BottomBar({
     return undefined;
   }, [tempNotification]);
 
-  if (modeData.mode === "menu") return <Menu />;
+  if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
 
   const unchained = useUnchained();
 
@@ -358,6 +379,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const model = useModel();
   const transport = useContext(TransportContext);
+  const session = useSession();
   const vimEnabled = !!config.vimEmulation?.enabled;
   const {
     modeData,
@@ -413,9 +435,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     async (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
       setQuery("");
-      await input({ query: finalQuery, config, transport, images });
+      await input({ query: finalQuery, config, transport, session, images });
     },
-    [query, config, transport, setQuery],
+    [query, config, transport, session, setQuery],
   );
 
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
@@ -456,6 +478,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         error={modeData.error}
         config={config}
         transport={transport}
+        session={session}
       />
     );
   }
@@ -482,7 +505,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
 
   if (modeData.mode === "tool-call") {
     return (
-      <ToolRequestsRenderer toolReqs={modeData.toolReqs} config={config} transport={transport} />
+      <ToolRequestsRenderer
+        toolReqs={modeData.toolReqs}
+        config={config}
+        transport={transport}
+        session={session}
+      />
     );
   }
 
@@ -513,11 +541,13 @@ function AuthErrorScreen({
   error,
   config,
   transport,
+  session,
 }: {
   model: Config["models"][number];
   error: AuthError;
   config: Config;
   transport: Transport;
+  session: Session;
 }) {
   const setConfig = useSetConfig();
   const { runAgent, clearAuthError } = useAppStore(
@@ -603,9 +633,9 @@ function AuthErrorScreen({
         return;
       }
 
-      await runAgent({ config: updatedConfig, transport });
+      await runAgent({ config: updatedConfig, transport, session });
     },
-    [config, model, resolveModelIndex, runAgent, setConfig, transport],
+    [config, model, resolveModelIndex, runAgent, setConfig, transport, session],
   );
 
   return (
@@ -650,6 +680,7 @@ function RequestErrorScreen({
   const config = useConfig();
   const transport = useContext(TransportContext);
   const themeColor = useColor();
+  const session = useSession();
   const { retryFrom, editAndRetryFrom } = useAppStore(
     useShallow(state => ({
       retryFrom: state.retryFrom,
@@ -733,15 +764,15 @@ function RequestErrorScreen({
           setWriteError(error instanceof Error ? error.message : "Failed to write cURL to file");
         }
       } else if (item.value === "retry") {
-        retryFrom(mode, { config, transport });
+        retryFrom(mode, { config, transport, session });
       } else if (item.value === "edit-retry") {
-        editAndRetryFrom(mode, { config, transport });
+        editAndRetryFrom(mode, { config, transport, session });
       } else {
         const _: "quit" = item.value;
         exit();
       }
     },
-    [curlCommand, mode, config, transport],
+    [curlCommand, mode, config, transport, session],
   );
 
   return (
@@ -781,6 +812,7 @@ function RequestErrorScreen({
 function RateLimitErrorScreen({ error }: { error: string }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
+  const session = useSession();
   const { retryFrom } = useAppStore(
     useShallow(state => ({
       retryFrom: state.retryFrom,
@@ -788,7 +820,7 @@ function RateLimitErrorScreen({ error }: { error: string }) {
   );
 
   useInput(() => {
-    retryFrom("rate-limit-error", { config, transport });
+    retryFrom("rate-limit-error", { config, transport, session });
   });
 
   return (
@@ -805,6 +837,7 @@ function RateLimitErrorScreen({ error }: { error: string }) {
 function PaymentErrorScreen({ error }: { error: string }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
+  const session = useSession();
   const { retryFrom } = useAppStore(
     useShallow(state => ({
       retryFrom: state.retryFrom,
@@ -812,7 +845,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
   );
 
   useInput(() => {
-    retryFrom("payment-error", { config, transport });
+    retryFrom("payment-error", { config, transport, session });
   });
 
   return (
@@ -847,6 +880,7 @@ function ToolRequestsRenderer({
   toolReqs,
   config,
   transport,
+  session,
 }: {
   toolReqs: ToolCallRequest[];
 } & RunArgs) {
@@ -857,7 +891,14 @@ function ToolRequestsRenderer({
   }, []);
 
   if (currentIndex >= toolReqs.length) {
-    return <FinishToolRequests runAgent={runAgent} config={config} transport={transport} />;
+    return (
+      <FinishToolRequests
+        runAgent={runAgent}
+        config={config}
+        transport={transport}
+        session={session}
+      />
+    );
   }
 
   const currentToolReq = toolReqs[currentIndex];
@@ -869,6 +910,7 @@ function ToolRequestsRenderer({
         toolReq={currentToolReq}
         config={config}
         transport={transport}
+        session={session}
         onDone={onDone}
       />
     </Box>
@@ -879,12 +921,13 @@ function FinishToolRequests({
   runAgent,
   config,
   transport,
+  session,
 }: {
   runAgent: (args: RunArgs) => Promise<void>;
 } & RunArgs) {
   useEffect(() => {
-    runAgent({ config, transport });
-  }, [runAgent, config, transport]);
+    runAgent({ config, transport, session });
+  }, [runAgent, config, transport, session]);
   return <Loading />;
 }
 
@@ -892,6 +935,7 @@ function ToolRequestRenderer({
   toolReq,
   config,
   transport,
+  session,
   onDone,
 }: {
   toolReq: ToolCallRequest;
@@ -1022,17 +1066,27 @@ function ToolRequestRenderer({
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
-        rejectTool(toolReq);
+        rejectTool(toolReq, session);
       } else if (item.value === "yes-whitelist") {
         await addToWhitelist(whitelistKey);
-        await runTool({ toolReq, config, transport });
+        await runTool({ toolReq, config, transport, session });
         onDone();
       } else {
-        await runTool({ toolReq, config, transport });
+        await runTool({ toolReq, config, transport, session });
         onDone();
       }
     },
-    [toolReq, config, transport, addToWhitelist, runTool, rejectTool, whitelistKey, onDone],
+    [
+      toolReq,
+      config,
+      transport,
+      session,
+      addToWhitelist,
+      runTool,
+      rejectTool,
+      whitelistKey,
+      onDone,
+    ],
   );
 
   const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
@@ -1044,11 +1098,11 @@ function ToolRequestRenderer({
 
   useEffect(() => {
     if (noConfirmationNeeded) {
-      runTool({ toolReq, config, transport }).then(onDone);
+      runTool({ toolReq, config, transport, session }).then(onDone);
     } else {
       notifyReadyForInput(config);
     }
-  }, [toolReq, noConfirmationNeeded, config, transport, onDone]);
+  }, [toolReq, noConfirmationNeeded, config, transport, session, onDone]);
 
   if (noConfirmationNeeded || isRunning) {
     return (
@@ -1118,7 +1172,7 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
   return <MessageDisplay item={item.item} />;
 };
 
-const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   return (
     <Box flexDirection="column" paddingRight={4}>
       <MessageDisplayInner item={item} />
@@ -1126,7 +1180,7 @@ const MessageDisplay = ({ item }: { item: HistoryItem | InflightResponseType }) 
   );
 };
 
-const MessageDisplayInner = ({ item }: { item: HistoryItem | InflightResponseType }) => {
+const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
