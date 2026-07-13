@@ -206,7 +206,6 @@ export function insertHistoryItems(
       insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id });
       currParentId = insertedTreeNode.id;
     }
-    tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
     return { treeId, launchId, insertedNodes };
   });
 
