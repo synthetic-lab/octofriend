@@ -249,6 +249,7 @@ export default function App({
     history.length,
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
+    modeData.mode,
     staticItems.length,
   ]);
   useEffect(() => {
@@ -334,12 +335,20 @@ export default function App({
                                 key={`history-${index}`}
                               />
                             ))}
-                          </Div>
-                          {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                            (modeData.inflightResponse.reasoningContent ||
-                              modeData.inflightResponse.content) && (
-                              <MessageDisplay item={modeData.inflightResponse} />
+                            {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                              (modeData.inflightResponse.reasoningContent ||
+                                modeData.inflightResponse.content) && (
+                                <MessageDisplay item={modeData.inflightResponse} />
+                              )}
+                            {modeData.mode === "tool-call" && (
+                              <ToolRequestsRenderer
+                                toolReqs={modeData.toolReqs}
+                                config={currConfig}
+                                transport={transport}
+                                session={session}
+                              />
                             )}
+                          </Div>
                         </Div>
                         <BottomBar
                           inputHistory={inputHistory}
@@ -664,14 +673,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "tool-call") {
-    return (
-      <ToolRequestsRenderer
-        toolReqs={modeData.toolReqs}
-        config={config}
-        transport={transport}
-        session={session}
-      />
-    );
+    return null;
   }
   const _: "menu" | "input" = modeData.mode;
   return (

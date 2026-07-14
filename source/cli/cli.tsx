@@ -32,6 +32,7 @@ import { loadSession } from "../session-history/index.ts";
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { BACKGROUND_COLOR, FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
+import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 const __dirname = import.meta.dirname;
 const INTERACTIVE_RENDER_OPTIONS = {
@@ -40,7 +41,7 @@ const INTERACTIVE_RENDER_OPTIONS = {
   captureCtrlC: true,
 } satisfies CreateRootOptions;
 function renderInteractive(element: React.ReactNode) {
-  const root = render(element, INTERACTIVE_RENDER_OPTIONS);
+  const root = render(<KeyboardProvider>{element}</KeyboardProvider>, INTERACTIVE_RENDER_OPTIONS);
   root.container.style.backgroundColor = BACKGROUND_COLOR;
   root.container.style.color = FOREGROUND_COLOR;
   return root;
