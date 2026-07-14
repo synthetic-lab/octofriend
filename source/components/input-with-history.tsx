@@ -5,7 +5,7 @@ import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
 import { ImageInfo } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
-import { Div, Span } from "paintcannon-react";
+import { Div } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
 interface Props {
   attachedImages: ImageInfo[];
@@ -169,20 +169,10 @@ export const InputWithHistory = (props: Props) => {
           whiteSpace: "pre-wrap",
           width: "100%",
           minWidth: 0,
-          border: "solid",
-          borderLeft: "none",
-          borderRight: "none",
+          border: "rounded",
           borderColor: themeColor,
-          gap: 1,
         }}
       >
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          &gt;
-        </Span>
         <TextInput
           attachedImages={props.attachedImages}
           showLoadingImageBadge={props.showLoadingImageBadge}
