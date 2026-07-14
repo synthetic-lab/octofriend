@@ -5,8 +5,10 @@ export const UNCHAINED_COLOR = "#AA0A0A";
 export const DIFF_REMOVED = "#880808";
 export const DIFF_ADDED = "#405e35";
 export const CODE_GUTTER_COLOR = "gray";
-export const SCROLLBAR_COLOR = "#52525b #1e293b";
-export const SUBTLE_SCROLLBAR_COLOR = "#3f3f46 #1e293b";
+export const BACKGROUND_COLOR = "#0f172a";
+export const FOREGROUND_COLOR = "#a3a3a3";
+export const SCROLLBAR_COLOR = "#64748b #1e293b";
+export const SUBTLE_SCROLLBAR_COLOR = "#475569 #1e293b";
 
 export function color(unchained: boolean) {
   if (unchained) return UNCHAINED_COLOR;

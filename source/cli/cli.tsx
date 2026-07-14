@@ -31,7 +31,7 @@ import type { ParsedCliArgs } from "./cli-args.ts";
 import { loadSession } from "../session-history/index.ts";
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
-import { THEME_COLOR } from "../theme.ts";
+import { BACKGROUND_COLOR, FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 const __dirname = import.meta.dirname;
 const INTERACTIVE_RENDER_OPTIONS = {
@@ -39,6 +39,12 @@ const INTERACTIVE_RENDER_OPTIONS = {
   captureMouse: true,
   captureCtrlC: true,
 } satisfies CreateRootOptions;
+function renderInteractive(element: React.ReactNode) {
+  const root = render(element, INTERACTIVE_RENDER_OPTIONS);
+  root.container.style.backgroundColor = BACKGROUND_COLOR;
+  root.container.style.color = FOREGROUND_COLOR;
+  return root;
+}
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
 const cli = withOctoFlags(
@@ -233,7 +239,7 @@ async function runMain(opts: {
     }
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
-    const { waitUntilExit } = render(
+    const { waitUntilExit } = renderInteractive(
       <App
         bootSkills={skills.map(s => s.name)}
         config={config}
@@ -249,7 +255,6 @@ async function runMain(opts: {
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
       />,
-      INTERACTIVE_RENDER_OPTIONS,
     );
     await waitUntilExit();
     const { history } = useAppStore.getState();
@@ -282,7 +287,7 @@ cli
   .command("init")
   .description("Create a fresh config file for Octo")
   .action(() => {
-    render(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />, INTERACTIVE_RENDER_OPTIONS);
+    renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
   });
 cli
   .command("changelog")
@@ -622,14 +627,13 @@ async function loadConfig(path?: string) {
   let { config, configPath } = await loadConfigWithoutReauth(path);
   let defaultModel = config.models[0];
   if (!(await readAuthForModel(defaultModel, config)).ok) {
-    const { waitUntilExit } = render(
+    const { waitUntilExit } = renderInteractive(
       <PreflightModelAuth
         error="It looks like we need to set up auth for your default model"
         model={defaultModel}
         config={config}
         configPath={configPath}
       />,
-      INTERACTIVE_RENDER_OPTIONS,
     );
     await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path);
@@ -642,14 +646,13 @@ async function loadConfig(path?: string) {
     let autofixModel = config[key];
     if (autofixModel) {
       if (!(await readAuthForModel(autofixModel, config)).ok) {
-        const { waitUntilExit } = render(
+        const { waitUntilExit } = renderInteractive(
           <PreflightAutofixAuth
             autofixKey={key}
             model={autofixModel}
             config={config}
             configPath={configPath}
           />,
-          INTERACTIVE_RENDER_OPTIONS,
         );
         await waitUntilExit();
         const reloaded = await loadConfigWithoutReauth(path);
@@ -680,10 +683,7 @@ async function loadConfigWithoutReauth(configPath?: string) {
 
   // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
   await markUpdatesSeen();
-  const { waitUntilExit } = render(
-    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} />,
-    INTERACTIVE_RENDER_OPTIONS,
-  );
+  const { waitUntilExit } = renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
   await waitUntilExit();
   if (await fileExists(CONFIG_JSON5_FILE)) {
     return {

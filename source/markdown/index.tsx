@@ -167,8 +167,8 @@ function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
   return (
     <Span
       style={{
-        color: "#111827",
-        backgroundColor: "#e5e7eb",
+        color: "#b8c2d1",
+        backgroundColor: "#182b42",
       }}
     >
       {token.text}
@@ -208,9 +208,9 @@ function EscapeRenderer({ token }: { token: Tokens.Escape }) {
 function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   const indent = Math.max(0, token.depth - 1) * 2; // Convert to padding units
 
-  const colors = ["magenta", "blue", "cyan", "green", "yellow", "red"] as const;
+  const colors = ["#d4d4d4", "#c8c8c8", "#bfc3c7", "#b9b8c0", "#b5b0bb", "#afa9b5"];
   const color = colors[Math.min(token.depth - 1, colors.length - 1)];
-  const marker = token.depth === 1 ? "█" : token.depth === 2 ? "▆" : "▉";
+  const marker = "#".repeat(token.depth);
   return (
     <Div
       style={{
@@ -223,7 +223,7 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
     >
       <Span
         style={{
-          color: color,
+          color,
           fontWeight: "bold",
         }}
       >
