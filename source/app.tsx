@@ -170,6 +170,7 @@ export default function App({
   inputHistory,
   bootSkills,
 }: Props) {
+  const { paintCannon } = useApp();
   const transcriptRef = useRef<DivElement>(null);
   const followTranscriptRef = useRef(true);
   const [currConfig, setCurrConfig] = useState(config);
@@ -250,6 +251,23 @@ export default function App({
     inflightResponse?.reasoningContent,
     staticItems.length,
   ]);
+  useEffect(() => {
+    let resizeFrame: number | undefined;
+    const handleResize = () => {
+      if (!followTranscriptRef.current) return;
+      if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
+      resizeFrame = paintCannon.requestAnimationFrame(() => {
+        resizeFrame = undefined;
+        scrollToBottom(transcriptRef.current);
+      });
+    };
+
+    paintCannon.addEventListener("resize", handleResize);
+    return () => {
+      paintCannon.removeEventListener("resize", handleResize);
+      if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
+    };
+  }, [paintCannon]);
   return (
     <InputPriorityProvider>
       <UnchainedShiftTabHandler
