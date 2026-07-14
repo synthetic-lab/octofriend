@@ -1,9 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { parse } from "shell-quote";
-import { parseArgsStringToArgv } from "string-argv";
-
-const CHARACTER_PLACEHOLDER = "_";
+import type { PaintFile } from "paintcannon";
 
 // NOTE: not every model will support all image mime types.
 const IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
@@ -36,98 +33,6 @@ export function isImagePath(filePath: string): boolean {
   if (!isFilePath(filePath)) return false;
   const ext = path.extname(filePath).toLowerCase();
   return ext in IMAGE_EXTENSIONS;
-}
-
-// Replaces every character with a placeholder character except for spaces that are not escaped, which are used to separate file paths.
-export function replaceInputWithSafeCharacters(input: string): string {
-  let escaped = false;
-  let sanitized = "";
-  for (const char of input) {
-    if (char === "\n" || char === "\r") {
-      sanitized += char;
-    } else if (char === "\\") {
-      escaped = !escaped;
-      sanitized += CHARACTER_PLACEHOLDER;
-    } else if (char === " " && !escaped) {
-      sanitized += " ";
-      escaped = false;
-    } else {
-      sanitized += CHARACTER_PLACEHOLDER;
-      escaped = false;
-    }
-  }
-  return sanitized;
-}
-
-export function separateFilePaths(input: string): string[] {
-  const placeholderInput = replaceInputWithSafeCharacters(input);
-  const parsedPlaceholderInput = parse(placeholderInput);
-  const filePaths: string[] = [];
-  let cursor = 0;
-  for (const separatedPlaceholderPath of parsedPlaceholderInput) {
-    if (typeof separatedPlaceholderPath == "string") {
-      filePaths.push(input.slice(cursor, cursor + separatedPlaceholderPath.length));
-      cursor += separatedPlaceholderPath.length + 1;
-    }
-  }
-  return filePaths.flatMap(path => path.split("\n"));
-}
-
-function sanitizeFilePath(path: string): string {
-  const trimmed = path.trim();
-  const cleanPath = trimmed.replace(/\\(.)/g, "$1");
-  return cleanPath;
-}
-
-function dequote(input: string): string {
-  return dequoteType(dequoteType(input, "'"), '"');
-}
-
-function dequoteType(input: string, quoteType: string): string {
-  let inQuote = false;
-  let chars: string[] = [];
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-    if (char === quoteType) {
-      inQuote = !inQuote;
-      continue;
-    }
-
-    if (!inQuote) {
-      chars.push(char);
-      continue;
-    }
-
-    switch (char) {
-      case " ":
-        chars.push("\\", " ");
-        break;
-      case "\n":
-        chars.push("\\", "n");
-        break;
-      case "\r":
-        chars.push("\\", "\r");
-        break;
-      default:
-        chars.push(char);
-    }
-  }
-  return chars.join("");
-}
-
-export function parseImagePaths(input: string): string[] | null {
-  const dequoted = dequote(input);
-  const filePaths = separateFilePaths(dequoted);
-  const sanitizedFilePaths = filePaths.map(path => sanitizeFilePath(path));
-  const imagePaths: string[] = [];
-  for (const path of sanitizedFilePaths) {
-    if (typeof path === "string" && isImagePath(path)) {
-      imagePaths.push(path);
-    } else {
-      return null;
-    }
-  }
-  return imagePaths;
 }
 
 export function getMimeTypeFromPath(filePath: string): ImageMimeType {
@@ -171,6 +76,21 @@ export async function loadImageFromPath(filePath: string): Promise<ImageInfo> {
     dataUrl,
     filePath: path.resolve(filePath),
     sizeBytes: buffer.length,
+  };
+}
+
+export async function loadImageFromPaintFile(file: PaintFile): Promise<ImageInfo> {
+  if (!isSupportedImageMimeType(file.type)) {
+    throw new Error(`Unsupported pasted image format: ${file.type}`);
+  }
+  const buffer = Buffer.from(await file.bytes());
+  const base64Data = bufferToBase64(buffer);
+  return {
+    mimeType: file.type,
+    base64Data,
+    dataUrl: createDataUrl(file.type, base64Data),
+    filePath: file.name,
+    sizeBytes: file.size,
   };
 }
 

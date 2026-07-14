@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render } from "ink-testing-library";
+import { renderPaintcannon } from "../test-utils/render-paintcannon.tsx";
 import { DiffRenderer } from "./diff-renderer.tsx";
 import { readFileSync } from "fs";
 
@@ -18,7 +18,7 @@ describe("DiffRenderer", () => {
     const oldText = "line 1\nline 2\nline 3\n";
     vi.mocked(readFileSync).mockReturnValue(oldText);
 
-    const { lastFrame } = render(
+    const { text: output } = renderPaintcannon(
       <DiffRenderer
         oldText={oldText}
         newText="line 1\nmodified line\nline 3\n"
@@ -27,7 +27,6 @@ describe("DiffRenderer", () => {
       />,
     );
 
-    const output = lastFrame() || "";
     expect(output.length).toBeGreaterThan(0);
     expect(output).toContain("Old");
     expect(output).toContain("New");
@@ -39,7 +38,7 @@ describe("DiffRenderer", () => {
 
     const oldText = "line 2\nline 2\n"; // Doesn't match the file content
 
-    const { lastFrame } = render(
+    const { text: output } = renderPaintcannon(
       <DiffRenderer
         oldText={oldText}
         newText="line 1\nline 2\nline 3\n"
@@ -48,6 +47,6 @@ describe("DiffRenderer", () => {
       />,
     );
 
-    expect(lastFrame()).toBe("");
+    expect(output).toBe("");
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { render } from "ink-testing-library";
+import React from "react";
+import { renderPaintcannon } from "./test-utils/render-paintcannon.tsx";
 import { Markdown } from "./markdown/index.tsx";
 
 describe("renderToString", () => {
@@ -276,10 +277,12 @@ describe("renderToString", () => {
   });
 });
 
+let lastRenderHasStyles = false;
+
 function renderToString(markdown: string): string {
-  const component = Markdown({ markdown });
-  const { lastFrame } = render(component);
-  return lastFrame() || "";
+  const result = renderPaintcannon(React.createElement(Markdown, { markdown }));
+  lastRenderHasStyles = result.hasStyles;
+  return result.text;
 }
 
 function stripAnsi(str: string): string {
@@ -287,9 +290,9 @@ function stripAnsi(str: string): string {
 }
 
 function hasFormatting(str: string): boolean {
-  // Check for ANSI codes (colors), or typical markdown transformations
+  // Formatting is represented as Paintcannon CSS, not terminal escape sequences.
   return (
-    /\u001b\[[0-9;]*m/.test(str) ||
+    lastRenderHasStyles ||
     str.includes("│") || // blockquote markers
     str.includes("┌") || // code block borders
     str.includes("█") || // heading markers

@@ -1,22 +1,55 @@
 import React from "react";
-import { Box } from "ink";
-
+import { Div } from "paintcannon-react";
 export const CenteredBox = ({ children }: { children?: React.ReactNode }) => {
   return (
-    <Box flexDirection="column" justifyContent="center" alignItems="center" height="100%">
-      <Box flexDirection="column" width={80}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100%",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: 80,
+        }}
+      >
         {children}
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 };
-
 export const HeightlessCenteredBox = ({ children }: { children?: React.ReactNode }) => {
   return (
-    <Box flexDirection="column" justifyContent="center" alignItems="center">
-      <Box flexDirection="column" width={80}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: 80,
+        }}
+      >
         {children}
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 };

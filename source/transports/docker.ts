@@ -1,5 +1,12 @@
 import { spawn } from "child_process";
-import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
+import {
+  Transport,
+  AbortError,
+  CommandFailedError,
+  MAX_SHELL_OUTPUT_LENGTH,
+  ShellOutput,
+  TransportError,
+} from "./transport-common.ts";
 
 export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
@@ -55,11 +62,13 @@ async function runDockerCommand(
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    let output = "";
+    const output = new ShellOutput();
     let aborted = false;
+    let killed = false;
 
-    const onAbort = () => {
-      aborted = true;
+    const killChild = () => {
+      if (killed) return;
+      killed = true;
       // Try graceful termination first
       child.kill("SIGTERM");
       // Fallback to SIGKILL if it doesn't exit quickly
@@ -70,6 +79,11 @@ async function runDockerCommand(
       }, 500).unref?.();
     };
 
+    const onAbort = () => {
+      aborted = true;
+      killChild();
+    };
+
     if (signal.aborted) onAbort();
     signal.addEventListener("abort", onAbort);
 
@@ -78,11 +92,11 @@ async function runDockerCommand(
     };
 
     child.stdout.on("data", data => {
-      output += data.toString();
+      if (!output.append(data)) killChild();
     });
 
     child.stderr.on("data", data => {
-      output += data.toString();
+      if (!output.append(data)) killChild();
     });
 
     child.on("close", code => {
@@ -91,21 +105,30 @@ async function runDockerCommand(
         reject(new AbortError());
         return;
       }
+      const commandOutput = output.getOutput();
+      if (commandOutput == null) {
+        reject(
+          new CommandFailedError(
+            `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
+          ),
+        );
+        return;
+      }
       if (code === 0) {
-        resolve(output);
+        resolve(commandOutput);
       } else {
         if (code == null) {
           reject(
             new CommandFailedError(
               `Command timed out.
-output: ${output}`,
+output: ${commandOutput}`,
             ),
           );
         } else {
           reject(
             new CommandFailedError(
               `Command exited with code: ${code}
-output: ${output}`,
+output: ${commandOutput}`,
               code,
             ),
           );

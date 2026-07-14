@@ -1,8 +1,8 @@
 import React from "react";
-import { Box, useInput } from "ink";
 import { useFileSearch } from "./use-file-search.ts";
 import { SuggestionList } from "./suggestion-list.tsx";
-
+import { Div } from "paintcannon-react";
+import { useKeyboard } from "../../hooks/use-keyboard.ts";
 interface FileSuggestionBoxProps {
   query: string;
   isVisible: boolean;
@@ -10,31 +10,35 @@ interface FileSuggestionBoxProps {
   onDismiss: () => void;
   maxHeight?: number;
 }
-
 export function FileSuggestionBox({
   query,
   isVisible,
   onSelect,
   onDismiss,
 }: FileSuggestionBoxProps) {
-  const { results, selectedIndex } = useFileSearch(query, { onSelect });
-
-  useInput(
-    (_, key) => {
-      if (key.escape && isVisible) {
-        onDismiss();
-      }
-    },
-    { isActive: isVisible },
-  );
-
+  const { results, selectedIndex } = useFileSearch(query, {
+    onSelect,
+  });
+  useKeyboard(event => {
+    if (event.key === "Escape" && isVisible) {
+      onDismiss();
+    }
+  }, isVisible);
   if (!isVisible || results.length === 0) {
     return null;
   }
-
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray" width="100%">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        border: "rounded",
+        borderColor: "gray",
+        width: "100%",
+      }}
+    >
       <SuggestionList items={results} selectedIndex={selectedIndex} onSelect={onSelect} />
-    </Box>
+    </Div>
   );
 }

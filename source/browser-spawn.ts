@@ -22,6 +22,5 @@ export function spawnBrowser(url: string): Promise<boolean> {
 
 function browserOpenCommand(url: string): { command: string; args: string[] } | null {
   if (process.platform === "darwin") return { command: "open", args: [url] };
-  if (process.platform === "win32") return { command: "cmd", args: ["/c", "start", "", url] };
   return { command: "xdg-open", args: [url] };
 }

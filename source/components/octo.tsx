@@ -1,6 +1,5 @@
 import React from "react";
-import { Text } from "ink";
-
+import { Span } from "paintcannon-react";
 export const Octo = () => {
-  return <Text>🐙</Text>;
+  return <Span>🐙</Span>;
 };

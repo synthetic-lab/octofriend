@@ -1,5 +1,4 @@
 import React from "react";
-import { Box, Text } from "ink";
 import { marked, MarkedToken, Token, Tokens } from "marked";
 import stringWidth from "string-width";
 import {
@@ -12,27 +11,30 @@ import {
   isCodespanToken,
 } from "./types.ts";
 import { HighlightedCode } from "./highlight-code.tsx";
-
+import { Div, Span } from "paintcannon-react";
 export function Markdown({ markdown }: { markdown: string }) {
   const tokens = marked.lexer(markdown);
   return (
-    <Box flexDirection="column">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
       {tokens.map((token, index) => (
         <TokenRenderer key={index} token={token} />
       ))}
-    </Box>
+    </Div>
   );
 }
-
 function renderChildren(tokens: Token[]): React.ReactNode {
   return tokens.map((token, index) => <TokenRenderer key={index} token={token} />);
 }
-
 function TokenRenderer({ token }: { token: Token }): React.ReactElement {
   if (!isMarkedToken(token)) {
     throw new Error(`Unknown markdown token type: ${token.type}`);
   }
-
   switch (token.type) {
     case "blockquote":
       return <BlockquoteRenderer token={token} />;
@@ -76,194 +78,362 @@ function TokenRenderer({ token }: { token: Token }): React.ReactElement {
       return <SpaceRenderer />;
   }
 }
-
 function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
   return (
-    <Box paddingLeft={2}>
-      <Text color="gray">│ </Text>
-      <Text italic>{renderTokensAsPlaintext(token.tokens)}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        paddingLeft: 2,
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        │{" "}
+      </Span>
+      <Span
+        style={{
+          fontStyle: "italic",
+        }}
+      >
+        {renderTokensAsPlaintext(token.tokens)}
+      </Span>
+    </Div>
   );
 }
-
 function BrRenderer() {
-  return <Text>{"\n"}</Text>;
+  return <Span>{"\n"}</Span>;
 }
-
 function CodeRenderer({ token }: { token: Tokens.Code }) {
   if (token.lang || token.codeBlockStyle !== "indented") {
     const langTag = token.lang
       ? `┌─ ${token.lang} ` + "─".repeat(Math.max(0, 40 - token.lang.length))
       : "┌" + "─".repeat(42);
     const footer = "└" + "─".repeat(42);
-
     return (
-      <Box flexDirection="column" marginBottom={1}>
-        <Text color="gray">{langTag}</Text>
-        <Box paddingLeft={2} flexDirection="column">
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          marginBottom: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {langTag}
+        </Span>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            paddingLeft: 2,
+            flexDirection: "column",
+          }}
+        >
           <HighlightedCode code={token.text} language={token.lang} />
-        </Box>
-        <Text color="gray">{footer}</Text>
-      </Box>
+        </Div>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {footer}
+        </Span>
+      </Div>
     );
   }
-
   return (
-    <Box flexDirection="column" marginBottom={1} paddingLeft={2}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        marginBottom: 1,
+        paddingLeft: 2,
+      }}
+    >
       <HighlightedCode code={token.text} language={token.lang} />
-    </Box>
+    </Div>
   );
 }
-
 function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
-  return <Text inverse>{token.text}</Text>;
+  return (
+    <Span
+      style={{
+        color: "#111827",
+        backgroundColor: "#e5e7eb",
+      }}
+    >
+      {token.text}
+    </Span>
+  );
 }
-
 function DefRenderer({ token }: { token: Tokens.Def }) {
   // Don't render definition links which are usually referenced elsewhere.
   return <></>;
 }
-
 function DelRenderer({ token }: { token: Tokens.Del }) {
   return (
-    <Text strikethrough dimColor>
+    <Span
+      style={{
+        textDecoration: "line-through",
+        color: "gray",
+      }}
+    >
       {renderChildren(token.tokens)}
-    </Text>
+    </Span>
   );
 }
-
 function EmRenderer({ token }: { token: Tokens.Em }) {
-  return <Text italic>{renderChildren(token.tokens)}</Text>;
+  return (
+    <Span
+      style={{
+        fontStyle: "italic",
+      }}
+    >
+      {renderChildren(token.tokens)}
+    </Span>
+  );
 }
-
 function EscapeRenderer({ token }: { token: Tokens.Escape }) {
-  return <Text>{token.text}</Text>;
+  return <Span>{token.text}</Span>;
 }
-
 function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   const indent = Math.max(0, token.depth - 1) * 2; // Convert to padding units
 
   const colors = ["magenta", "blue", "cyan", "green", "yellow", "red"] as const;
-
   const color = colors[Math.min(token.depth - 1, colors.length - 1)];
   const marker = token.depth === 1 ? "█" : token.depth === 2 ? "▆" : "▉";
-
   return (
-    <Box marginTop={1} marginBottom={1} paddingLeft={indent}>
-      <Text color={color} bold>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginTop: 1,
+        marginBottom: 1,
+        paddingLeft: indent,
+      }}
+    >
+      <Span
+        style={{
+          color: color,
+          fontWeight: "bold",
+        }}
+      >
         {marker} {renderChildren(token.tokens)}
-      </Text>
-    </Box>
+      </Span>
+    </Div>
   );
 }
-
 function HrRenderer() {
   const width = Math.min(process.stdout.columns || 80, 80);
   return (
-    <Box marginTop={1} marginBottom={1}>
-      <Text color="gray">{"─".repeat(width)}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginTop: 1,
+        marginBottom: 1,
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {"─".repeat(width)}
+      </Span>
+    </Div>
   );
 }
-
 function HtmlRenderer({ token }: { token: Tokens.HTML | Tokens.Tag }) {
-  return <Text>{token.text}</Text>;
+  return <Span>{token.text}</Span>;
 }
-
 function ImageRenderer({ token }: { token: Tokens.Image }) {
-  return <Text color="yellow">[Image: {token.text}]</Text>;
+  return (
+    <Span
+      style={{
+        color: "yellow",
+      }}
+    >
+      [Image: {token.text}]
+    </Span>
+  );
 }
-
 function LinkRenderer({ token }: { token: Tokens.Link }) {
   // For now, combine link text and URL in a single text element
   const linkText = renderTokensAsPlaintext(token.tokens);
   return (
-    <Text color="blue">
+    <Span
+      style={{
+        color: "blue",
+      }}
+    >
       {linkText} ({token.href}){renderChildren(token.tokens)} ({token.href})
-    </Text>
+    </Span>
   );
 }
-
 function ListRenderer({ token }: { token: Tokens.List }) {
   return (
-    <Box flexDirection="column" paddingLeft={0} marginBottom={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        paddingLeft: 0,
+        marginBottom: 1,
+      }}
+    >
       {token.items.map((item, index) => (
-        <Box key={index} flexDirection="row">
-          <Text color="cyan">
+        <Div
+          key={index}
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            flexDirection: "row",
+          }}
+        >
+          <Span
+            style={{
+              color: "cyan",
+            }}
+          >
             {token.ordered
               ? `${(typeof token.start === "number" ? token.start : 1) + index}. `
               : "• "}
-          </Text>
+          </Span>
           <ListItemRenderer token={item} />
-        </Box>
+        </Div>
       ))}
-    </Box>
+    </Div>
   );
 }
-
 function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
   if (token.task && typeof token.checked === "boolean") {
     // For task items, render checkbox and content inline
     return (
-      <Box flexDirection="column" flexGrow={1}>
-        <Box flexDirection="row">
-          <Text color={token.checked ? "green" : "gray"}>{token.checked ? "[✓]" : "[ ]"} </Text>
-          <Box flexDirection="column" flexGrow={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          flexGrow: 1,
+        }}
+      >
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            flexDirection: "row",
+          }}
+        >
+          <Span
+            style={{
+              color: token.checked ? "green" : "gray",
+            }}
+          >
+            {token.checked ? "[✓]" : "[ ]"}{" "}
+          </Span>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              flexDirection: "column",
+              flexGrow: 1,
+            }}
+          >
             {token.tokens.map((childToken, index) => (
-              <Box
+              <Div
                 key={index}
-                paddingLeft={
-                  childToken.type === "list" ||
-                  childToken.type === "code" ||
-                  childToken.type === "blockquote"
-                    ? 1
-                    : 0
-                }
+                style={{
+                  display: "flex",
+                  whiteSpace: "pre-wrap",
+                  paddingLeft:
+                    childToken.type === "list" ||
+                    childToken.type === "code" ||
+                    childToken.type === "blockquote"
+                      ? 1
+                      : 0,
+                }}
               >
                 <TokenRenderer token={childToken} />
-              </Box>
+              </Div>
             ))}
-          </Box>
-        </Box>
-      </Box>
+          </Div>
+        </Div>
+      </Div>
     );
   }
 
   // For regular list items
   return (
-    <Box flexDirection="column" flexGrow={1}>
-      <Box flexDirection="column">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        flexGrow: 1,
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+        }}
+      >
         {token.tokens.map((childToken, index) => (
-          <Box
+          <Div
             key={index}
-            paddingLeft={
-              childToken.type === "list" ||
-              childToken.type === "code" ||
-              childToken.type === "blockquote"
-                ? 1
-                : 0
-            }
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              paddingLeft:
+                childToken.type === "list" ||
+                childToken.type === "code" ||
+                childToken.type === "blockquote"
+                  ? 1
+                  : 0,
+            }}
           >
             <TokenRenderer token={childToken} />
-          </Box>
+          </Div>
         ))}
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 }
-
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
   return (
-    <Box marginBottom={1}>
-      <Text>{renderChildren(token.tokens)}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginBottom: 1,
+      }}
+    >
+      <Span>{renderChildren(token.tokens)}</Span>
+    </Div>
   );
 }
-
 function StrongRenderer({ token }: { token: Tokens.Strong }) {
-  return <Text bold>{renderChildren(token.tokens)}</Text>;
+  return (
+    <Span
+      style={{
+        fontWeight: "bold",
+      }}
+    >
+      {renderChildren(token.tokens)}
+    </Span>
+  );
 }
-
 function TableRenderer({ token }: { token: Tokens.Table }) {
   // Calculate column widths by measuring display width of all content
   const allRows = [token.header, ...token.rows];
@@ -280,20 +450,31 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
     );
     return Math.max(maxWidth, 3); // Minimum width of 3
   });
-
   const separator = "├" + columnWidths.map(w => "─".repeat(w + 2)).join("┼") + "┤";
-
   return (
-    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        marginTop: 1,
+        marginBottom: 1,
+      }}
+    >
       <TableRowRenderer cells={token.header} columnWidths={columnWidths} isHeader={true} />
-      <Text color="gray">{separator}</Text>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {separator}
+      </Span>
       {token.rows.map((row, index) => (
         <TableRowRenderer key={index} cells={row} columnWidths={columnWidths} isHeader={false} />
       ))}
-    </Box>
+    </Div>
   );
 }
-
 function TableRowRenderer({
   cells,
   columnWidths,
@@ -304,35 +485,56 @@ function TableRowRenderer({
   isHeader: boolean;
 }) {
   return (
-    <Box flexDirection="row">
-      <Text color="gray">│ </Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "row",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        │{" "}
+      </Span>
       {cells.map((cell, index) => {
         const cellText = renderTokensAsPlaintext(cell.tokens);
         const paddedText = cellText.padEnd(columnWidths[index]);
         return (
           <React.Fragment key={index}>
-            <Text color={isHeader ? "cyan" : "white"} bold={isHeader}>
+            <Span
+              style={{
+                color: isHeader ? "cyan" : "white",
+                fontWeight: "bold",
+              }}
+            >
               {paddedText}
-            </Text>
-            <Text color="gray"> │ </Text>
+            </Span>
+            <Span
+              style={{
+                color: "gray",
+              }}
+            >
+              {" "}
+              │{" "}
+            </Span>
           </React.Fragment>
         );
       })}
-    </Box>
+    </Div>
   );
 }
-
 function TextRenderer({ token }: { token: Tokens.Text }) {
   if (token.tokens) {
-    return <Text>{renderChildren(token.tokens)}</Text>;
+    return <Span>{renderChildren(token.tokens)}</Span>;
   }
-  return <Text>{token.text}</Text>;
+  return <Span>{token.text}</Span>;
 }
-
 function SpaceRenderer() {
   return <></>;
 }
-
 function renderTokensAsPlaintext(tokens: Token[]): string {
   return tokens
     .map(token => {
@@ -367,7 +569,6 @@ function renderTokensAsPlaintext(tokens: Token[]): string {
     })
     .join("");
 }
-
 const MARKED_TOKEN_TYPES = [
   "blockquote",
   "br",

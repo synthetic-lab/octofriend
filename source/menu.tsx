@@ -1,6 +1,5 @@
 import React, { useCallback } from "react";
 import { create } from "zustand";
-import { useInput, useApp, Text } from "ink";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useModel } from "./state.ts";
 import { useSession } from "./session-context.ts";
@@ -15,7 +14,8 @@ import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 import { MenuQuotaIndicator } from "./components/menu-quota-indicator.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
-
+import { Span, useApp } from "paintcannon-react";
+import { useKeyboard } from "./hooks/use-keyboard.ts";
 type MenuMode =
   | "main-menu"
   | "settings-menu"
@@ -28,26 +28,24 @@ type MenuMode =
   | "remove-model"
   | "clear-confirm"
   | "notifications-menu";
-
 type MenuState = {
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
 };
-
 const useMenuState = create<MenuState>((set, _) => ({
   menuMode: "main-menu",
   setMenuMode: menuMode => {
-    set({ menuMode });
+    set({
+      menuMode,
+    });
   },
 }));
-
 export function Menu({ onSessionChange }: { onSessionChange: (session: Session) => void }) {
   const { menuMode } = useMenuState(
     useShallow(state => ({
       menuMode: state.menuMode,
     })),
   );
-
   if (menuMode === "main-menu") return <MainMenu />;
   if (menuMode === "settings-menu") return <SettingsMenu />;
   if (menuMode === "model-select") return <SwitchModelMenu />;
@@ -62,7 +60,6 @@ export function Menu({ onSessionChange }: { onSessionChange: (session: Session) 
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
-
 function AutofixToggle({
   configKey,
   modelNickname,
@@ -92,18 +89,18 @@ function AutofixToggle({
     })),
   );
   const session = useSession();
-
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape") setMenuMode("main-menu");
   });
-
   if (config[configKey]) {
     return (
       <ConfirmDialog
         rejectLabel={`Disable ${modelNickname}`}
         confirmLabel={`Keep ${modelNickname} on (recommended)`}
         onReject={async () => {
-          const newconf = { ...config };
+          const newconf = {
+            ...config,
+          };
           delete newconf[configKey];
           await setConfig(newconf);
           setMenuMode("main-menu");
@@ -147,7 +144,6 @@ function AutofixToggle({
     </AutofixModelMenu>
   );
 }
-
 function DiffApplyToggle() {
   return (
     <AutofixToggle
@@ -157,16 +153,15 @@ function DiffApplyToggle() {
       enableNotification="Fast diff apply enabled"
       disableNotification="Fast diff apply disabled"
     >
-      <Text>
+      <Span>
         Even good coding models sometimes make minor mistakes generating code diffs, which can cause
         slow retries and can confuse them, since models often aren't trained as well to handle edit
         failures as they are successes. Diff-apply is a fast, small model that fixes minor code diff
         edit inaccuracies. It speeds up iteration and can significantly improve model performance.
-      </Text>
+      </Span>
     </AutofixToggle>
   );
 }
-
 function FixJsonToggle() {
   return (
     <AutofixToggle
@@ -176,20 +171,19 @@ function FixJsonToggle() {
       enableNotification="JSON auto-fix enabled"
       disableNotification="JSON auto-fix disabled"
     >
-      <Text>
+      <Span>
         Octo uses tools to work with your underlying codebase. Some model providers don't support
         strict constraints on how tool calls are generated, and models can make mistakes generating
         JSON, the format used for all of Octo's tool calls.
-      </Text>
-      <Text>
+      </Span>
+      <Span>
         The fix-json model can automatically fix broken JSON for Octo, helping models avoid failures
         more quickly and cheaply than retrying the main model. It also may help reduce the main
         model's confusion.
-      </Text>
+      </Span>
     </AutofixToggle>
   );
 }
-
 function SwitchModelMenu() {
   const { setModelOverride, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -198,52 +192,49 @@ function SwitchModelMenu() {
     })),
   );
   const session = useSession();
-
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-
   const config = useConfig();
   const setConfig = useSetConfig();
   const [pendingModel, setPendingModel] = React.useState<null | Config["models"][number]>(null);
-
-  useInput((_, key) => {
-    if (key.escape && pendingModel == null) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape" && pendingModel == null) setMenuMode("main-menu");
   });
-
   const onSelect = useCallback(
     async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
         setMenuMode("main-menu");
         return;
       }
-
       const target = item.value.replace("model-", "");
       const model = config.models.find(m => m.nickname === target)!;
-
       const auth = await readAuthForModel(model, config);
       if (!auth.ok) {
         setPendingModel(model);
         return;
       }
-
       setModelOverride(target, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
     [config, setMenuMode, setModelOverride, toggleMenu, session],
   );
-
   if (pendingModel) {
     return (
       <CustomAuthFlow
         config={config}
         authData={
           pendingModel.type === "codex"
-            ? { modelType: "codex" }
-            : { modelType: pendingModel.type, baseUrl: pendingModel.baseUrl }
+            ? {
+                modelType: "codex",
+              }
+            : {
+                modelType: pendingModel.type,
+                baseUrl: pendingModel.baseUrl,
+              }
         }
         onComplete={async (auth?: Auth) => {
           const index = config.models.indexOf(pendingModel);
@@ -251,15 +242,27 @@ function SwitchModelMenu() {
             if (pendingModel.type === "codex") {
               if (auth.type === "codex") {
                 const models = [...config.models];
-                models[index] = { ...pendingModel, auth };
-                await setConfig({ ...config, models });
+                models[index] = {
+                  ...pendingModel,
+                  auth,
+                };
+                await setConfig({
+                  ...config,
+                  models,
+                });
               }
             } else if (auth.type === "env") {
               await setConfig(mergeEnvVar(config, pendingModel, auth.name));
             } else if (auth.type === "command") {
               const models = [...config.models];
-              models[index] = { ...pendingModel, auth };
-              await setConfig({ ...config, models });
+              models[index] = {
+                ...pendingModel,
+                auth,
+              };
+              await setConfig({
+                ...config,
+                models,
+              });
             }
           }
           setModelOverride(pendingModel.nickname, session);
@@ -273,14 +276,12 @@ function SwitchModelMenu() {
       />
     );
   }
-
   const numericItems = config.models.map(model => {
     return {
       label: model.nickname,
       value: `model-${model.nickname}` as const,
     };
   });
-
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
       type: "auto-list" as const,
@@ -296,7 +297,6 @@ function SwitchModelMenu() {
       },
     },
   ];
-
   return (
     <KbShortcutPanel
       title="Which model should Octo use now?"
@@ -305,7 +305,6 @@ function SwitchModelMenu() {
     />
   );
 }
-
 type SettingsValues =
   | "set-default-model"
   | "remove-model"
@@ -350,10 +349,8 @@ function filterSettings(config: Config) {
       t: SETTINGS_ITEMS.t,
     };
   }
-
   return items;
 }
-
 function MainMenu() {
   const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
     useShallow(state => ({
@@ -363,23 +360,19 @@ function MainMenu() {
     })),
   );
   const session = useSession();
-
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-
   const config = useConfig();
   const setConfig = useSetConfig();
   const model = useModel();
   const provider = model.type === "codex" ? null : providerForBaseUrl(model.baseUrl);
   const isSynthetic = provider === SYNTHETIC_PROVIDER;
-
-  useInput((_, key) => {
-    if (key.escape) toggleMenu();
+  useKeyboard(event => {
+    if (event.key === "Escape") toggleMenu();
   });
-
   type Value =
     | "model-select"
     | "add-model"
@@ -391,7 +384,6 @@ function MainMenu() {
     | "settings-menu"
     | "clear-confirm"
     | "notifications-menu";
-
   let items: Keymap<Value> = {
     m: {
       label: "⤭ Switch model",
@@ -406,7 +398,6 @@ function MainMenu() {
       value: "clear-confirm" as const,
     },
   };
-
   if (config.vimEmulation?.enabled) {
     items = {
       ...items,
@@ -424,7 +415,6 @@ function MainMenu() {
       },
     };
   }
-
   if (config.fixJson == null) {
     items = {
       ...items,
@@ -443,7 +433,6 @@ function MainMenu() {
       },
     };
   }
-
   if (config.notifications?.notifyCommand) {
     items = {
       ...items,
@@ -453,7 +442,6 @@ function MainMenu() {
       },
     };
   }
-
   const settings = filterSettings(config);
   if (Object.values(settings).length !== 0) {
     items = {
@@ -464,7 +452,6 @@ function MainMenu() {
       },
     };
   }
-
   items = {
     ...items,
     b: {
@@ -476,7 +463,6 @@ function MainMenu() {
       value: "quit" as const,
     },
   };
-
   const onSelect = useCallback(
     async (item: Item<Value>) => {
       if (item.value === "return") toggleMenu();
@@ -485,7 +471,12 @@ function MainMenu() {
         const wasEnabled = config.vimEmulation?.["enabled"] ?? false;
 
         // Write ONLY to config - single source of truth
-        await setConfig({ ...config, vimEmulation: { enabled: !wasEnabled } });
+        await setConfig({
+          ...config,
+          vimEmulation: {
+            enabled: !wasEnabled,
+          },
+        });
 
         // When switching from Emacs to Vim, default to INSERT mode
         if (!wasEnabled) {
@@ -500,31 +491,31 @@ function MainMenu() {
     },
     [config, setConfig, notify, session],
   );
-
   return (
     <KbShortcutPanel
       title="Main Menu"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      shortcutItems={[
+        {
+          type: "key" as const,
+          mapping: items,
+        },
+      ]}
       onSelect={onSelect}
     >
       {isSynthetic ? <MenuQuotaIndicator /> : null}
     </KbShortcutPanel>
   );
 }
-
 function SettingsMenu() {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-
   const config = useConfig();
-
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape") setMenuMode("main-menu");
   });
-
   const settingsItems = filterSettings(config);
   let items: Keymap<SettingsValues | "back"> = {
     ...settingsItems,
@@ -533,25 +524,26 @@ function SettingsMenu() {
       value: "back" as const,
     },
   };
-
   const onSelect = useCallback((item: Item<SettingsValues | "back">) => {
     if (item.value === "disable-diff-apply") setMenuMode("diff-apply-toggle");
     else if (item.value === "disable-fix-json") setMenuMode("fix-json-toggle");
     else if (item.value === "back") setMenuMode("main-menu");
     else setMenuMode(item.value);
   }, []);
-
   return (
     <KbShortcutPanel
       title="Settings Menu"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      shortcutItems={[
+        {
+          type: "key" as const,
+          mapping: items,
+        },
+      ]}
       onSelect={onSelect}
     />
   );
 }
-
 type NotificationValue = "always-notify" | "session-notify" | "notify-once" | "back";
-
 function NotificationsMenu() {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -570,11 +562,9 @@ function NotificationsMenu() {
         setNotifySession: state.setNotifySession,
       })),
     );
-
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape") setMenuMode("main-menu");
   });
-
   const alwaysNotify = config.notifications?.alwaysNotify;
   const items: Keymap<NotificationValue> = {
     o: {
@@ -598,7 +588,6 @@ function NotificationsMenu() {
       value: "back" as const,
     },
   };
-
   const onSelect = useCallback(
     async (item: Item<NotificationValue>) => {
       if (item.value === "always-notify") {
@@ -621,16 +610,19 @@ function NotificationsMenu() {
     },
     [config, setConfig, alwaysNotify, sessionAutoNotify, notifyOnce, toggleMenu],
   );
-
   return (
     <KbShortcutPanel
       title="Notifications"
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      shortcutItems={[
+        {
+          type: "key" as const,
+          mapping: items,
+        },
+      ]}
       onSelect={onSelect}
     />
   );
 }
-
 function QuitConfirm() {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -638,7 +630,6 @@ function QuitConfirm() {
     })),
   );
   const app = useApp();
-
   return (
     <ConfirmDialog
       confirmLabel="Yes, quit"
@@ -649,7 +640,6 @@ function QuitConfirm() {
     />
   );
 }
-
 function ClearConversationConfirm({
   onSessionChange,
 }: {
@@ -667,7 +657,6 @@ function ClearConversationConfirm({
     })),
   );
   const session = useSession();
-
   return (
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
@@ -688,7 +677,6 @@ function ClearConversationConfirm({
     />
   );
 }
-
 function SetDefaultModelMenu() {
   const { setModelOverride, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -697,7 +685,6 @@ function SetDefaultModelMenu() {
     })),
   );
   const session = useSession();
-
   const config = useConfig();
   const setConfig = useSetConfig();
   const { setMenuMode } = useMenuState(
@@ -705,18 +692,15 @@ function SetDefaultModelMenu() {
       setMenuMode: state.setMenuMode,
     })),
   );
-
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape") setMenuMode("main-menu");
   });
-
   const numericItems = config.models.map(model => {
     return {
       label: model.nickname,
       value: `model-${model.nickname}` as const,
     };
   });
-
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
       type: "auto-list" as const,
@@ -732,7 +716,6 @@ function SetDefaultModelMenu() {
       },
     },
   ];
-
   const onSelect = useCallback(
     async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
@@ -752,7 +735,6 @@ function SetDefaultModelMenu() {
     },
     [config, setModelOverride, toggleMenu, session],
   );
-
   return (
     <KbShortcutPanel
       title="Which model should be the default?"
@@ -761,7 +743,6 @@ function SetDefaultModelMenu() {
     />
   );
 }
-
 function RemoveModelMenu() {
   const { setModelOverride, toggleMenu } = useAppStore(
     useShallow(state => ({
@@ -770,7 +751,6 @@ function RemoveModelMenu() {
     })),
   );
   const session = useSession();
-
   const config = useConfig();
   const setConfig = useSetConfig();
   const { setMenuMode } = useMenuState(
@@ -778,18 +758,15 @@ function RemoveModelMenu() {
       setMenuMode: state.setMenuMode,
     })),
   );
-
-  useInput((_, key) => {
-    if (key.escape) setMenuMode("main-menu");
+  useKeyboard(event => {
+    if (event.key === "Escape") setMenuMode("main-menu");
   });
-
   const numericItems = config.models.map(model => {
     return {
       label: model.nickname,
       value: `model-${model.nickname}` as const,
     };
   });
-
   const shortcutItems: ShortcutArray<`model-${string}` | "back"> = [
     {
       type: "auto-list" as const,
@@ -805,7 +782,6 @@ function RemoveModelMenu() {
       },
     },
   ];
-
   const onSelect = useCallback(
     async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
@@ -825,7 +801,6 @@ function RemoveModelMenu() {
     },
     [config, setModelOverride, toggleMenu, session],
   );
-
   return (
     <KbShortcutPanel
       title="Which model do you want to remove?"
@@ -834,7 +809,6 @@ function RemoveModelMenu() {
     />
   );
 }
-
 function AddModelMenuFlow() {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
@@ -843,7 +817,6 @@ function AddModelMenuFlow() {
   );
   const setConfig = useSetConfig();
   const config = useConfig();
-
   const onComplete = useCallback(
     async (models: Config["models"]) => {
       await setConfig({
@@ -854,11 +827,9 @@ function AddModelMenuFlow() {
     },
     [config, setConfig],
   );
-
   const onCancel = useCallback(() => {
     setMenuMode("main-menu");
   }, [setMenuMode]);
-
   const onOverrideDefaultApiKey = useCallback(
     async (overrides: Record<string, string>) => {
       await setConfig({
@@ -871,7 +842,6 @@ function AddModelMenuFlow() {
     },
     [config, setConfig],
   );
-
   return (
     <ModelSetup
       config={config}

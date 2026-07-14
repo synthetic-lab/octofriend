@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Box, Text, useApp, useInput } from "ink";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import {
   Config,
@@ -11,18 +10,32 @@ import {
   readAuthForModel,
 } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
-
+import { Div, Span, useApp } from "paintcannon-react";
+import { useKeyboard } from "./hooks/use-keyboard.ts";
 function matchCodex<T>(
   model: Config["models"][number],
   arms: {
-    codex: (model: Extract<Config["models"][number], { type: "codex" }>) => T;
-    others: (model: Exclude<Config["models"][number], { type: "codex" }>) => T;
+    codex: (
+      model: Extract<
+        Config["models"][number],
+        {
+          type: "codex";
+        }
+      >,
+    ) => T;
+    others: (
+      model: Exclude<
+        Config["models"][number],
+        {
+          type: "codex";
+        }
+      >,
+    ) => T;
   },
 ): T {
   if (model.type === "codex") return arms.codex(model);
   return arms.others(model);
 }
-
 function resolveModelFromConfig(
   config: Config,
   model: Config["models"][number],
@@ -45,7 +58,6 @@ function resolveModelFromConfig(
   if (exact) return exact;
   return model;
 }
-
 function resolveAutofixModelFromConfig<K extends "diffApply" | "fixJson">(
   config: Config,
   model: Exclude<Config[K], undefined>,
@@ -56,7 +68,6 @@ function resolveAutofixModelFromConfig<K extends "diffApply" | "fixJson">(
     return candidate as Exclude<Config[K], undefined>;
   return (candidate ?? model) as Exclude<Config[K], undefined>;
 }
-
 export function PreflightModelAuth({
   model,
   config,
@@ -73,20 +84,18 @@ export function PreflightModelAuth({
   const [authError, setAuthError] = useState<AuthError | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [currentModel, setCurrentModel] = useState(model);
-
-  useInput(async (input, key) => {
-    if (key.escape && authError) {
+  useKeyboard(async event => {
+    if (event.key === "Escape" && authError) {
       setAuthError(null);
       setIsRetrying(false);
-    } else if (input === "r" && authError && authError.type === "command_failed") {
+    } else if (event.key === "r" && authError && authError.type === "command_failed") {
       setIsRetrying(true);
       const valid = await validateAuth();
       if (valid) {
         app.exit();
       }
-    } else if (!key.escape) setExitMessage(null);
+    } else if (!(event.key === "Escape")) setExitMessage(null);
   });
-
   const validateAuth = async () => {
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveModelFromConfig(reloadedConfig, currentModel);
@@ -99,35 +108,109 @@ export function PreflightModelAuth({
     }
     return true;
   };
-
   return (
-    <Box flexDirection="column" gap={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
       {error && (
         <HeightlessCenteredBox>
-          <Box justifyContent="center">
-            <Text color="red">{error}</Text>
-          </Box>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              justifyContent: "center",
+            }}
+          >
+            <Span
+              style={{
+                color: "red",
+              }}
+            >
+              {error}
+            </Span>
+          </Div>
         </HeightlessCenteredBox>
       )}
 
       {authError && authError.type === "command_failed" && (
         <HeightlessCenteredBox>
-          <Box flexDirection="column" gap={1}>
-            <Box justifyContent="center">
-              <Text color="red">Your auth command failed</Text>
-            </Box>
-            <Box justifyContent="center">
-              <Text color="yellow">{authError.message}</Text>
-            </Box>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              flexDirection: "column",
+              gap: 1,
+            }}
+          >
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "red",
+                }}
+              >
+                Your auth command failed
+              </Span>
+            </Div>
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "yellow",
+                }}
+              >
+                {authError.message}
+              </Span>
+            </Div>
             {authError.stderr && (
-              <Box justifyContent="center">
-                <Text color="gray">stderr: {authError.stderr}</Text>
-              </Box>
+              <Div
+                style={{
+                  display: "flex",
+                  whiteSpace: "pre-wrap",
+                  justifyContent: "center",
+                }}
+              >
+                <Span
+                  style={{
+                    color: "gray",
+                  }}
+                >
+                  stderr: {authError.stderr}
+                </Span>
+              </Div>
             )}
-            <Box justifyContent="center" marginTop={1}>
-              <Text dimColor>[R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}</Text>
-            </Box>
-          </Box>
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+                marginTop: 1,
+              }}
+            >
+              <Span
+                style={{
+                  color: "gray",
+                }}
+              >
+                [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
+              </Span>
+            </Div>
+          </Div>
         </HeightlessCenteredBox>
       )}
 
@@ -136,8 +219,13 @@ export function PreflightModelAuth({
           config={config}
           authData={
             model.type === "codex"
-              ? { modelType: "codex" }
-              : { modelType: model.type, baseUrl: model.baseUrl }
+              ? {
+                  modelType: "codex",
+                }
+              : {
+                  modelType: model.type,
+                  baseUrl: model.baseUrl,
+                }
           }
           onCancel={() => {
             setExitMessage("Press CTRL-C to exit");
@@ -150,9 +238,18 @@ export function PreflightModelAuth({
                 codex: async model => {
                   if (auth.type === "codex") {
                     const updatedModels = [...config.models];
-                    updatedModel = { ...model, auth };
+                    updatedModel = {
+                      ...model,
+                      auth,
+                    };
                     updatedModels[index] = updatedModel;
-                    await writeConfig({ ...config, models: updatedModels }, configPath);
+                    await writeConfig(
+                      {
+                        ...config,
+                        models: updatedModels,
+                      },
+                      configPath,
+                    );
                   }
                 },
                 others: async model => {
@@ -160,9 +257,18 @@ export function PreflightModelAuth({
                     await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
                   } else if (auth.type === "command") {
                     const updatedModels = [...config.models];
-                    updatedModel = { ...model, auth };
+                    updatedModel = {
+                      ...model,
+                      auth,
+                    };
                     updatedModels[index] = updatedModel;
-                    await writeConfig({ ...config, models: updatedModels }, configPath);
+                    await writeConfig(
+                      {
+                        ...config,
+                        models: updatedModels,
+                      },
+                      configPath,
+                    );
                   }
                 },
               });
@@ -184,19 +290,30 @@ export function PreflightModelAuth({
 
       {isRetrying && (
         <HeightlessCenteredBox>
-          <Text color="gray">Retrying...</Text>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            Retrying...
+          </Span>
         </HeightlessCenteredBox>
       )}
 
       {!authError && exitMessage && (
         <HeightlessCenteredBox>
-          <Text color="gray">{exitMessage}</Text>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {exitMessage}
+          </Span>
         </HeightlessCenteredBox>
       )}
-    </Box>
+    </Div>
   );
 }
-
 export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
   autofixKey,
   model,
@@ -213,20 +330,18 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
   const [authError, setAuthError] = useState<AuthError | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [currentModel, setCurrentModel] = useState(model);
-
-  useInput(async (input, key) => {
-    if (key.escape && authError) {
+  useKeyboard(async event => {
+    if (event.key === "Escape" && authError) {
       setAuthError(null);
       setIsRetrying(false);
-    } else if (input === "r" && authError && authError.type === "command_failed") {
+    } else if (event.key === "r" && authError && authError.type === "command_failed") {
       setIsRetrying(true);
       const valid = await validateAuth();
       if (valid) {
         app.exit();
       }
-    } else if (!key.escape) setExitMessage(null);
+    } else if (!(event.key === "Escape")) setExitMessage(null);
   });
-
   const validateAuth = async () => {
     const reloadedConfig = await readConfig(configPath);
     const resolvedModel = resolveAutofixModelFromConfig(reloadedConfig, currentModel, autofixKey);
@@ -239,49 +354,123 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
     }
     return true;
   };
-
   const modelName = (() => {
     if (autofixKey === "diffApply") return "diff-apply";
     const _: "fixJson" = autofixKey;
     return "fix-json";
   })();
-
   return (
-    <Box flexDirection="column" gap={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
       {authError && authError.type === "command_failed" && (
         <HeightlessCenteredBox>
-          <Box flexDirection="column" gap={1}>
-            <Box justifyContent="center">
-              <Text color="red">Your auth command failed</Text>
-            </Box>
-            <Box justifyContent="center">
-              <Text color="yellow">{authError.message}</Text>
-            </Box>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              flexDirection: "column",
+              gap: 1,
+            }}
+          >
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "red",
+                }}
+              >
+                Your auth command failed
+              </Span>
+            </Div>
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "yellow",
+                }}
+              >
+                {authError.message}
+              </Span>
+            </Div>
             {authError.stderr && (
-              <Box justifyContent="center">
-                <Text color="gray">stderr: {authError.stderr}</Text>
-              </Box>
+              <Div
+                style={{
+                  display: "flex",
+                  whiteSpace: "pre-wrap",
+                  justifyContent: "center",
+                }}
+              >
+                <Span
+                  style={{
+                    color: "gray",
+                  }}
+                >
+                  stderr: {authError.stderr}
+                </Span>
+              </Div>
             )}
-            <Box justifyContent="center" marginTop={1}>
-              <Text dimColor>[R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}</Text>
-            </Box>
-          </Box>
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+                marginTop: 1,
+              }}
+            >
+              <Span
+                style={{
+                  color: "gray",
+                }}
+              >
+                [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
+              </Span>
+            </Div>
+          </Div>
         </HeightlessCenteredBox>
       )}
 
       {!authError && (
         <>
           <HeightlessCenteredBox>
-            <Box justifyContent="center">
-              <Text color="red">
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "red",
+                }}
+              >
                 {`It looks like we need to set up auth for the ${modelName} model`}
-              </Text>
-            </Box>
+              </Span>
+            </Div>
           </HeightlessCenteredBox>
 
           <CustomAuthFlow
             config={config}
-            authData={{ modelType: undefined, baseUrl: model.baseUrl }}
+            authData={{
+              modelType: undefined,
+              baseUrl: model.baseUrl,
+            }}
             onCancel={() => {
               setExitMessage("Press CTRL-C to exit");
             }}
@@ -294,8 +483,13 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                     configPath,
                   );
                 } else if (auth.type === "command") {
-                  const merged = { ...config };
-                  updatedModel = { ...model, auth };
+                  const merged = {
+                    ...config,
+                  };
+                  updatedModel = {
+                    ...model,
+                    auth,
+                  };
                   merged[autofixKey] = updatedModel;
                   await writeConfig(merged, configPath);
                 }
@@ -322,15 +516,27 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
 
       {isRetrying && (
         <HeightlessCenteredBox>
-          <Text color="gray">Retrying...</Text>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            Retrying...
+          </Span>
         </HeightlessCenteredBox>
       )}
 
       {!authError && exitMessage && (
         <HeightlessCenteredBox>
-          <Text color="gray">{exitMessage}</Text>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {exitMessage}
+          </Span>
         </HeightlessCenteredBox>
       )}
-    </Box>
+    </Div>
   );
 }

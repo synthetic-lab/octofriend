@@ -1,9 +1,8 @@
 import React from "react";
-import { Box, Text } from "ink";
-import SelectInput from "./ink/select-input.tsx";
+import SelectInput from "./selection/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
-
+import { Div, Span } from "paintcannon-react";
 type Item<V> = {
   label: string;
   value: V;
@@ -14,39 +13,88 @@ type MenuPanelProps<V> = {
   title: string;
   children?: React.ReactNode;
 };
-
 export const MenuHeader = ({ title }: { title: string }) => {
   return (
-    <Box justifyContent="center" marginBottom={1}>
-      <Box justifyContent="center" width={80}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        justifyContent: "center",
+        marginBottom: 1,
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          justifyContent: "center",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: 80,
+        }}
+      >
         <Octo />
-        <Box marginLeft={1}>
-          <Text>{title}</Text>
-        </Box>
-      </Box>
-    </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginLeft: 1,
+          }}
+        >
+          <Span>{title}</Span>
+        </Div>
+      </Div>
+    </Div>
   );
 };
-
 export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProps<V>) {
   return (
-    <Box flexDirection="column">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
       <MenuHeader title={title} />
       {children && (
-        <Box justifyContent="center" alignItems="center" marginBottom={1}>
-          <Box flexDirection="column" width={80}>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            justifyContent: "center",
+            alignItems: "center",
+            marginBottom: 1,
+          }}
+        >
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              flexDirection: "column",
+              width: "100%",
+              minWidth: 0,
+              maxWidth: 80,
+            }}
+          >
             {children}
-          </Box>
-        </Box>
+          </Div>
+        </Div>
       )}
-      <Box justifyContent="center">
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          justifyContent: "center",
+        }}
+      >
         <SelectInput
           items={items}
           onSelect={onSelect}
           indicatorComponent={IndicatorComponent}
           itemComponent={ItemComponent}
         />
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 }

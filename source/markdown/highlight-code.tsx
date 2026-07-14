@@ -1,17 +1,17 @@
-import { Text } from "ink";
 import hljs from "highlight.js";
 import React from "react";
 import { readFileSync } from "fs";
-
+import { Span } from "paintcannon-react";
 export function HighlightedCode({ code, language }: { code: string; language?: string }) {
   try {
     let result;
     if (language && hljs.getLanguage(language)) {
-      result = hljs.highlight(code, { language });
+      result = hljs.highlight(code, {
+        language,
+      });
     } else {
       result = hljs.highlightAuto(code);
     }
-
     const segments = parseHighlightedHTML(result.value);
     return <CodeSegments segments={segments} />;
   } catch (error) {
@@ -19,18 +19,16 @@ export function HighlightedCode({ code, language }: { code: string; language?: s
     return (
       <>
         {code.split("\n").map((line, index) => (
-          <Text key={`code-failed-${index}`}>{line}</Text>
+          <Span key={`code-failed-${index}`}>{line}</Span>
         ))}
       </>
     );
   }
 }
-
 type CodeSegment = {
   text: string;
   className?: string;
 };
-
 function parseHighlightedHTML(html: string): CodeSegment[] {
   const segments: CodeSegment[] = [];
   let currentIndex = 0;
@@ -38,7 +36,6 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
   // Simple state machine to parse HTML
   while (currentIndex < html.length) {
     const nextOpenTag = html.indexOf('<span class="', currentIndex);
-
     if (nextOpenTag === -1) {
       // No more spans, add remaining text
       const remainingText = html.substring(currentIndex);
@@ -62,9 +59,7 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
     const classStart = nextOpenTag + 13; // '<span class="'.length
     const classEnd = html.indexOf('"', classStart);
     const tagEnd = html.indexOf(">", classEnd);
-
     if (classEnd === -1 || tagEnd === -1) break;
-
     const className = html.substring(classStart, classEnd);
 
     // Find the closing tag
@@ -88,9 +83,7 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
         }
       }
     }
-
     if (closingTagStart === -1) break;
-
     const content = html.substring(contentStart, closingTagStart);
 
     // Recursively parse content for nested spans
@@ -103,27 +96,21 @@ function parseHighlightedHTML(html: string): CodeSegment[] {
         className: className,
       });
     }
-
     currentIndex = closingTagStart + closingTag.length;
   }
-
   return segments;
 }
-
 function CodeSegments({ segments }: { segments: CodeSegment[] }) {
   const lines: CodeSegment[][] = [];
   let currentLine: CodeSegment[] = [];
-
   segments.forEach(segment => {
     const linesInSegment = segment.text.split("\n");
-
     linesInSegment.forEach((lineText, lineIndex) => {
       if (lineIndex > 0) {
         // This is a new line, push current line and start fresh
         lines.push(currentLine);
         currentLine = [];
       }
-
       if (lineText || lineIndex === linesInSegment.length - 1) {
         currentLine.push({
           text: lineText,
@@ -137,7 +124,6 @@ function CodeSegments({ segments }: { segments: CodeSegment[] }) {
   if (currentLine.length > 0) {
     lines.push(currentLine);
   }
-
   return (
     <>
       {lines.map((lineSegments, index) => (
@@ -146,22 +132,25 @@ function CodeSegments({ segments }: { segments: CodeSegment[] }) {
     </>
   );
 }
-
 function CodeLine({ segments }: { segments: CodeSegment[] }) {
   return (
-    <Text>
+    <Span>
       {segments.map((segment, index) => {
         const color = segment.className ? getColorForClass(segment.className) : undefined;
         return (
-          <Text key={index} color={color}>
+          <Span
+            key={index}
+            style={{
+              color: color,
+            }}
+          >
             {segment.text}
-          </Text>
+          </Span>
         );
       })}
-    </Text>
+    </Span>
   );
 }
-
 function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&quot;/g, '"')
@@ -172,7 +161,6 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
 }
-
 function getColorForClass(className: string): string | undefined {
   const colorMap: Record<string, string> = {
     "hljs-keyword": "blue",
@@ -193,6 +181,5 @@ function getColorForClass(className: string): string | undefined {
     "hljs-property": "cyan",
     "hljs-value": "green",
   };
-
   return colorMap[className];
 }

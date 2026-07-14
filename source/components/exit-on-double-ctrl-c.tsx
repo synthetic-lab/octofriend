@@ -1,23 +1,20 @@
 import React, { useState, createContext, useContext } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useInput, useApp } from "ink";
 import { useAppStore } from "../state.ts";
 import { useConfig } from "../config.ts";
-
+import { useApp } from "paintcannon-react";
+import { useKeyboard } from "../hooks/use-keyboard.ts";
 export function useCtrlC(callback: () => void) {
-  useInput((input, key) => {
-    if (key.ctrl && input === "c") {
+  useKeyboard(event => {
+    if (!event.defaultPrevented && event.ctrlKey && event.key === "c") {
       callback();
     }
   });
 }
-
 const CtrlCPressedContext = createContext(false);
-
 export function useCtrlCPressed() {
   return useContext(CtrlCPressedContext);
 }
-
 export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const [ctrlCPressed, setCtrlCPressed] = useState(false);
   const { exit } = useApp();
@@ -28,9 +25,7 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
       modeData: state.modeData,
     })),
   );
-
   const isInsertMode = vimEnabled && modeData.mode === "input" && modeData.vimMode === "INSERT";
-
   useCtrlC(() => {
     if (ctrlCPressed) {
       exit();
@@ -41,7 +36,6 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
       }
     }
   });
-
   return (
     <CtrlCPressedContext.Provider value={ctrlCPressed}>{children}</CtrlCPressedContext.Provider>
   );

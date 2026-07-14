@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } from "react";
-import { Text, Box, Static, measureElement, DOMElement, useInput, useApp } from "ink";
+import type { DivElement } from "paintcannon";
 import clipboardy from "clipboardy";
 import { t } from "structural";
 import {
@@ -17,7 +17,13 @@ import {
 } from "./config.ts";
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
-import { UnchainedContext, useColor, useUnchained } from "./theme.ts";
+import {
+  SCROLLBAR_COLOR,
+  SUBTLE_SCROLLBAR_COLOR,
+  UnchainedContext,
+  useColor,
+  useUnchained,
+} from "./theme.ts";
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
@@ -32,7 +38,6 @@ import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import grep from "./tools/tool-defs/grep.ts";
-
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
@@ -42,7 +47,7 @@ import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts
 import type { Session } from "./session-history/index.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
-import SelectInput from "./components/ink/select-input.tsx";
+import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
@@ -62,8 +67,6 @@ import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX } from "./str.ts";
 import { countLines } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
-import { ScrollView, IsScrollableContext } from "./components/scroll-view.tsx";
-import { TerminalSizeTracker, useTerminalSize } from "./components/terminal-size.tsx";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
@@ -80,7 +83,8 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { HistoryNode } from "./session-history/index.ts";
-
+import { Div, Span, useApp } from "paintcannon-react";
+import { useKeyboard } from "./hooks/use-keyboard.ts";
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   name: LoadedToolFrom<T>["name"];
@@ -91,7 +95,6 @@ type AssistantDisplayItem = {
   content: string;
   reasoningContent?: string | null;
 };
-
 type Props = {
   config: Config;
   configPath: string;
@@ -105,7 +108,6 @@ type Props = {
   inputHistory: InputHistory;
   bootSkills: string[];
 };
-
 type StaticItem =
   | {
       type: "header";
@@ -130,10 +132,8 @@ type StaticItem =
       type: "boot-notification";
       content: string;
     };
-
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
-
 function UnchainedShiftTabHandler({
   setIsUnchained,
   setTempNotification,
@@ -141,8 +141,9 @@ function UnchainedShiftTabHandler({
   setIsUnchained: (fn: (prev: boolean) => boolean) => void;
   setTempNotification: (notif: string | null) => void;
 }) {
-  usePriorityInput(UNCHAINED_PRIORITY, (_, key) => {
-    if (key.shift && key.tab) {
+  usePriorityInput(UNCHAINED_PRIORITY, event => {
+    if (event.shiftKey && event.key === "Tab") {
+      event.preventDefault();
       setIsUnchained(prev => {
         const unchained = !prev;
         if (unchained) {
@@ -156,7 +157,6 @@ function UnchainedShiftTabHandler({
   });
   return null;
 }
-
 export default function App({
   config,
   configPath,
@@ -170,12 +170,13 @@ export default function App({
   inputHistory,
   bootSkills,
 }: Props) {
+  const transcriptRef = useRef<DivElement>(null);
+  const followTranscriptRef = useRef(true);
   const [currConfig, setCurrConfig] = useState(config);
   const [session, setSession] = useState(initialSession);
   const handleSessionChange = useCallback(
     (nextSession: Session) => {
       if (nextSession === session) return;
-
       setSession(nextSession);
       onSessionChange(nextSession);
     },
@@ -194,35 +195,61 @@ export default function App({
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
     })),
   );
-
-  useInput(() => {
+  useKeyboard(event => {
     cancelNotifyReadyForInput();
   });
-
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
-
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {
     skillNotifs.push(" ");
     skillNotifs.push("Configured skills:");
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
-
   const staticItems: StaticItem[] = useMemo(() => {
     let items = [
-      { type: "header" as const },
-      { type: "version" as const, metadata, config: currConfig },
-      ...skillNotifs.map(s => ({ type: "boot-notification" as const, content: s })),
-      ...(updates ? [{ type: "updates" as const, updates }] : []),
-      { type: "slogan" as const },
+      {
+        type: "header" as const,
+      },
+      {
+        type: "version" as const,
+        metadata,
+        config: currConfig,
+      },
+      ...skillNotifs.map(s => ({
+        type: "boot-notification" as const,
+        content: s,
+      })),
+      ...(updates
+        ? [
+            {
+              type: "updates" as const,
+              updates,
+            },
+          ]
+        : []),
+      {
+        type: "slogan" as const,
+      },
     ];
-
     return items;
   }, [currConfig, skillNotifs, updates]);
-
+  const inflightResponse =
+    modeData.mode === "responding" || modeData.mode === "compacting"
+      ? modeData.inflightResponse
+      : null;
+  useEffect(() => {
+    if (!followTranscriptRef.current) return;
+    scrollToBottom(transcriptRef.current);
+  }, [
+    clearNonce,
+    history.length,
+    inflightResponse?.content,
+    inflightResponse?.reasoningContent,
+    staticItems.length,
+  ]);
   return (
     <InputPriorityProvider>
       <UnchainedShiftTabHandler
@@ -237,34 +264,72 @@ export default function App({
                 <SessionContext.Provider value={session}>
                   <CwdContext.Provider value={cwd}>
                     <ExitOnDoubleCtrlC>
-                      <TerminalSizeTracker>
-                        <Box flexDirection="column" width="100%" height="100%">
-                          <Static items={staticItems}>
-                            {(item, index) => (
-                              <StaticItemRenderer item={item} key={`static-${index}`} />
-                            )}
-                          </Static>
-                          <Box key={clearNonce} flexDirection="column">
+                      <Div
+                        style={{
+                          display: "flex",
+                          whiteSpace: "pre-wrap",
+                          flexDirection: "column",
+                          width: "100%",
+                          height: "100%",
+                        }}
+                      >
+                        <Div
+                          ref={transcriptRef}
+                          onScroll={event => {
+                            followTranscriptRef.current = isScrolledToBottom(
+                              event.scrollTop,
+                              event.scrollHeight,
+                              transcriptRef.current?.clientHeight ?? 1,
+                            );
+                          }}
+                          style={{
+                            display: "flex",
+                            whiteSpace: "pre-wrap",
+                            flexDirection: "column",
+                            flexGrow: 1,
+                            flexShrink: 1,
+                            flexBasis: 0,
+                            minWidth: 0,
+                            minHeight: 0,
+                            overflowY: "scroll",
+                            scrollbarGutter: "stable",
+                            scrollbarColor: SCROLLBAR_COLOR,
+                          }}
+                        >
+                          {staticItems.map((item, index) => (
+                            <StaticItemRenderer item={item} key={`static-${index}`} />
+                          ))}
+                          <Div
+                            key={clearNonce}
+                            style={{
+                              display: "flex",
+                              whiteSpace: "pre-wrap",
+                              flexDirection: "column",
+                            }}
+                          >
                             {history.map((item, index) => (
                               <StaticItemRenderer
-                                item={{ type: "history-item", item }}
+                                item={{
+                                  type: "history-item",
+                                  item,
+                                }}
                                 key={`history-${index}`}
                               />
                             ))}
-                          </Box>
+                          </Div>
                           {(modeData.mode === "responding" || modeData.mode === "compacting") &&
                             (modeData.inflightResponse.reasoningContent ||
                               modeData.inflightResponse.content) && (
                               <MessageDisplay item={modeData.inflightResponse} />
                             )}
-                          <BottomBar
-                            inputHistory={inputHistory}
-                            metadata={metadata}
-                            tempNotification={tempNotification}
-                            onSessionChange={handleSessionChange}
-                          />
-                        </Box>
-                      </TerminalSizeTracker>
+                        </Div>
+                        <BottomBar
+                          inputHistory={inputHistory}
+                          metadata={metadata}
+                          tempNotification={tempNotification}
+                          onSessionChange={handleSessionChange}
+                        />
+                      </Div>
                     </ExitOnDoubleCtrlC>
                   </CwdContext.Provider>
                 </SessionContext.Provider>
@@ -276,7 +341,6 @@ export default function App({
     </InputPriorityProvider>
   );
 }
-
 function BottomBar({
   inputHistory,
   metadata,
@@ -289,7 +353,6 @@ function BottomBar({
   onSessionChange: (session: Session) => void;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
-
   const [versionCheck, setVersionCheck] = useState("Checking for updates...");
   const [displayedTempNotification, setDisplayedTempNotification] =
     useState<React.ReactNode | null>(null);
@@ -300,7 +363,6 @@ function BottomBar({
       modeData: state.modeData,
     })),
   );
-
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
       if (latestVersion && metadata.version < latestVersion) {
@@ -315,7 +377,6 @@ function BottomBar({
       }, 5000);
     });
   }, [metadata]);
-
   useEffect(() => {
     if (tempNotification) {
       setDisplayedTempNotification(tempNotification);
@@ -326,39 +387,98 @@ function BottomBar({
     }
     return undefined;
   }, [tempNotification]);
-
   if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
-
   const unchained = useUnchained();
-
   return (
-    <Box flexDirection="column" width="100%">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        width: "100%",
+      }}
+    >
       <BottomBarContent inputHistory={inputHistory} />
-      <Box width="100%" justifyContent="space-between" height={1} flexShrink={0} flexGrow={1}>
-        <Box height={1}>
-          <Text color={themeColor}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Text>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          width: "100%",
+          justifyContent: "space-between",
+          height: 1,
+          flexShrink: 0,
+          flexGrow: 1,
+        }}
+      >
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            height: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: themeColor,
+            }}
+          >
+            {ctrlCPressed && "Press Ctrl+C again to exit."}
+          </Span>
           {!ctrlCPressed && (
-            <Text color={"gray"}>
+            <Span
+              style={{
+                color: "gray",
+              }}
+            >
               {unchained ? "⚡ Unchained mode" : "Collaboration mode"}{" "}
-              <Text dimColor>(Shift+Tab to toggle)</Text>
-            </Text>
+              <Span
+                style={{
+                  color: "gray",
+                }}
+              >
+                (Shift+Tab to toggle)
+              </Span>
+            </Span>
           )}
-        </Box>
-        <Text color={themeColor}>{versionCheck}</Text>
-      </Box>
-      <Box minHeight={1}>
+        </Div>
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
+          {versionCheck}
+        </Span>
+      </Div>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          minHeight: 1,
+        }}
+      >
         {displayedTempNotification && (
-          <Box width="100%" flexShrink={0}>
-            <Text color={themeColor} wrap="wrap">
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              width: "100%",
+              flexShrink: 0,
+            }}
+          >
+            <Span
+              style={{
+                color: themeColor,
+                whiteSpace: "pre-wrap",
+              }}
+            >
               {displayedTempNotification}
-            </Text>
-          </Box>
+            </Span>
+          </Div>
         )}
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 }
-
 const PackageSchema = t.subtype({
   "dist-tags": t.subtype({
     latest: t.str,
@@ -374,7 +494,6 @@ async function getLatestVersion() {
     return null;
   }
 }
-
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const model = useModel();
@@ -404,45 +523,50 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       setQuery: state.setQuery,
     })),
   );
-
   const vimMode =
     vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
-
   useCtrlC(() => {
     if (vimEnabled) return;
     setQuery("");
   });
-
-  useInput((input, key) => {
-    if (key.escape) {
+  useKeyboard(event => {
+    if (event.key === "Escape") {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
       if (vimEnabled && vimMode === "INSERT" && modeData.mode === "input") {
         setVimMode("NORMAL");
         return;
       }
-
       abortResponse();
       if (modeData.mode === "menu") closeMenu();
     }
-
-    if (key.ctrl && input === "p") {
+    if (event.ctrlKey && event.key === "p") {
       openMenu();
     }
   });
   const color = useColor();
-
   const onSubmit = useCallback(
     async (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
       setQuery("");
-      await input({ query: finalQuery, config, transport, session, images });
+      await input({
+        query: finalQuery,
+        config,
+        transport,
+        session,
+        images,
+      });
     },
     [query, config, transport, session, setQuery],
   );
-
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (
-      <Box justifyContent="space-between">
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          justifyContent: "space-between",
+        }}
+      >
         <Loading
           overrideStrings={
             modeData.mode === "compacting"
@@ -450,12 +574,31 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
               : undefined
           }
         />
-        <Box>
-          {byteCount === 0 ? null : <Text color={color}>⇩ {byteCount} bytes</Text>}
-          <Text> </Text>
-          <Text color="gray">(Press ESC to interrupt)</Text>
-        </Box>
-      </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {byteCount === 0 ? null : (
+            <Span
+              style={{
+                color: color,
+              }}
+            >
+              ⇩ {byteCount} bytes
+            </Span>
+          )}
+          <Span> </Span>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            (Press ESC to interrupt)
+          </Span>
+        </Div>
+      </Div>
     );
   }
   if (modeData.mode === "error-recovery") return <Loading />;
@@ -502,7 +645,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       />
     );
   }
-
   if (modeData.mode === "tool-call") {
     return (
       <ToolRequestsRenderer
@@ -513,14 +655,31 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       />
     );
   }
-
   const _: "menu" | "input" = modeData.mode;
-
   return (
-    <Box flexDirection="column">
-      <Box marginLeft={1} justifyContent="flex-end">
-        <Text color="gray">(Ctrl+p to enter the menu)</Text>
-      </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginLeft: 1,
+          justifyContent: "flex-end",
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          (Ctrl+p to enter the menu)
+        </Span>
+      </Div>
       <MultimediaInput
         inputHistory={inputHistory}
         value={query}
@@ -532,10 +691,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         modalities={model.modalities}
       />
       <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
-    </Box>
+    </Div>
   );
 }
-
 function AuthErrorScreen({
   model,
   error,
@@ -557,7 +715,6 @@ function AuthErrorScreen({
     })),
   );
   const [authError, setAuthError] = useState<AuthError | null>(error);
-
   const resolveModelIndex = useCallback(
     (models: Config["models"]) => {
       return models.findIndex(candidate => {
@@ -578,17 +735,14 @@ function AuthErrorScreen({
     },
     [model],
   );
-
   const onComplete = useCallback(
     async (auth?: Auth) => {
       let updatedConfig = config;
       let updatedModel = model;
       const index = resolveModelIndex(config.models);
-
       if (index >= 0) {
         updatedModel = config.models[index];
       }
-
       if (auth && index >= 0) {
         if (updatedModel.type === "codex") {
           if (auth.type !== "codex") {
@@ -599,9 +753,15 @@ function AuthErrorScreen({
             return;
           }
           const updatedModels = [...config.models];
-          updatedModel = { ...updatedModel, auth };
+          updatedModel = {
+            ...updatedModel,
+            auth,
+          };
           updatedModels[index] = updatedModel;
-          updatedConfig = { ...config, models: updatedModels };
+          updatedConfig = {
+            ...config,
+            models: updatedModels,
+          };
         } else {
           if (auth.type === "codex") {
             setAuthError({
@@ -614,58 +774,106 @@ function AuthErrorScreen({
             updatedConfig = mergeEnvVar(config, updatedModel, auth.name);
           } else {
             const updatedModels = [...config.models];
-            updatedModel = { ...updatedModel, auth };
+            updatedModel = {
+              ...updatedModel,
+              auth,
+            };
             updatedModels[index] = updatedModel;
-            updatedConfig = { ...config, models: updatedModels };
+            updatedConfig = {
+              ...config,
+              models: updatedModels,
+            };
           }
         }
         await setConfig(updatedConfig);
       }
-
       const updatedIndex = resolveModelIndex(updatedConfig.models);
       if (updatedIndex >= 0) {
         updatedModel = updatedConfig.models[updatedIndex];
       }
-
       const result = await readAuthForModel(updatedModel, updatedConfig);
       if (!result.ok) {
         setAuthError(result.error);
         return;
       }
-
-      await runAgent({ config: updatedConfig, transport, session });
+      await runAgent({
+        config: updatedConfig,
+        transport,
+        session,
+      });
     },
     [config, model, resolveModelIndex, runAgent, setConfig, transport, session],
   );
-
   return (
-    <Box flexDirection="column" gap={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
       <CenteredBox>
-        <Box flexDirection="column" gap={1}>
-          <Box justifyContent="center">
-            <Text color="red">Auth is required for {model.nickname}</Text>
-          </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            flexDirection: "column",
+            gap: 1,
+          }}
+        >
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              justifyContent: "center",
+            }}
+          >
+            <Span
+              style={{
+                color: "red",
+              }}
+            >
+              Auth is required for {model.nickname}
+            </Span>
+          </Div>
           {authError && (
-            <Box justifyContent="center">
-              <Text color="yellow">{authError.message}</Text>
-            </Box>
+            <Div
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+                justifyContent: "center",
+              }}
+            >
+              <Span
+                style={{
+                  color: "yellow",
+                }}
+              >
+                {authError.message}
+              </Span>
+            </Div>
           )}
-        </Box>
+        </Div>
       </CenteredBox>
       <CustomAuthFlow
         config={config}
         authData={
           model.type === "codex"
-            ? { modelType: "codex" }
-            : { modelType: model.type, baseUrl: model.baseUrl }
+            ? {
+                modelType: "codex",
+              }
+            : {
+                modelType: model.type,
+                baseUrl: model.baseUrl,
+              }
         }
         onComplete={onComplete}
         onCancel={clearAuthError}
       />
-    </Box>
+    </Div>
   );
 }
-
 function RequestErrorScreen({
   mode,
   contextualMessage,
@@ -688,26 +896,22 @@ function RequestErrorScreen({
     })),
   );
   const { exit } = useApp();
-
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
   const [wroteCurl, setWroteCurl] = useState(false);
   const [curlFilePath, setCurlFilePath] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
-
   const mapping: Record<
     string,
     Item<"view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit">
   > = {};
-
   if (!viewError) {
     mapping["v"] = {
       label: "View error",
       value: "view",
     };
   }
-
   if (curlCommand) {
     mapping["c"] = {
       label: copiedCurl ? "Copied cURL!" : "Copy failed request as cURL",
@@ -718,22 +922,18 @@ function RequestErrorScreen({
       value: "write-curl",
     };
   }
-
   mapping["r"] = {
     label: "Retry",
     value: "retry",
   };
-
   mapping["e"] = {
     label: "Edit & retry",
     value: "edit-retry",
   };
-
   mapping["q"] = {
     label: "Quit Octo",
     value: "quit",
   };
-
   const shortcutItems: ShortcutArray<
     "view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit"
   > = [
@@ -742,7 +942,6 @@ function RequestErrorScreen({
       mapping,
     },
   ];
-
   const onSelect = useCallback(
     (item: Item<"view" | "copy-curl" | "write-curl" | "retry" | "edit-retry" | "quit">) => {
       if (item.value === "view") {
@@ -764,9 +963,17 @@ function RequestErrorScreen({
           setWriteError(error instanceof Error ? error.message : "Failed to write cURL to file");
         }
       } else if (item.value === "retry") {
-        retryFrom(mode, { config, transport, session });
+        retryFrom(mode, {
+          config,
+          transport,
+          session,
+        });
       } else if (item.value === "edit-retry") {
-        editAndRetryFrom(mode, { config, transport, session });
+        editAndRetryFrom(mode, {
+          config,
+          transport,
+          session,
+        });
       } else {
         const _: "quit" = item.value;
         exit();
@@ -774,41 +981,99 @@ function RequestErrorScreen({
     },
     [curlCommand, mode, config, transport, session],
   );
-
   return (
     <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
-      <Text color="red">{contextualMessage}</Text>
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        {contextualMessage}
+      </Span>
       {viewError && (
-        <Box marginY={1}>
-          <Text>{error}</Text>
-        </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginBottom: 1,
+          }}
+        >
+          <Span>{error}</Span>
+        </Div>
       )}
       {copiedCurl && (
-        <Box marginY={1}>
-          <Text>{curlCommand}</Text>
-        </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginBottom: 1,
+          }}
+        >
+          <Span>{curlCommand}</Span>
+        </Div>
       )}
       {clipboardError && (
-        <Box marginY={1}>
-          <Text color="red">{clipboardError}</Text>
-        </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginBottom: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+            }}
+          >
+            {clipboardError}
+          </Span>
+        </Div>
       )}
       {wroteCurl && curlFilePath && (
-        <Box marginY={1}>
-          <Text>
-            Wrote cURL to <Text color={themeColor}>{curlFilePath}</Text>
-          </Text>
-        </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginBottom: 1,
+          }}
+        >
+          <Span>
+            Wrote cURL to{" "}
+            <Span
+              style={{
+                color: themeColor,
+              }}
+            >
+              {curlFilePath}
+            </Span>
+          </Span>
+        </Div>
       )}
       {writeError && (
-        <Box marginY={1}>
-          <Text color="red">{writeError}</Text>
-        </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginBottom: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+            }}
+          >
+            {writeError}
+          </Span>
+        </Div>
       )}
     </KbShortcutPanel>
   );
 }
-
 function RateLimitErrorScreen({ error }: { error: string }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
@@ -818,22 +1083,33 @@ function RateLimitErrorScreen({ error }: { error: string }) {
       retryFrom: state.retryFrom,
     })),
   );
-
-  useInput(() => {
-    retryFrom("rate-limit-error", { config, transport, session });
+  useKeyboard(event => {
+    retryFrom("rate-limit-error", {
+      config,
+      transport,
+      session,
+    });
   });
-
   return (
     <CenteredBox>
-      <Text color="red">
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
         It looks like you've hit a rate limit! Here's the error from the backend:
-      </Text>
-      <Text>{error}</Text>
-      <Text color="gray">Press any key when you're ready to retry.</Text>
+      </Span>
+      <Span>{error}</Span>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Press any key when you're ready to retry.
+      </Span>
     </CenteredBox>
   );
 }
-
 function PaymentErrorScreen({ error }: { error: string }) {
   const config = useConfig();
   const transport = useContext(TransportContext);
@@ -843,20 +1119,33 @@ function PaymentErrorScreen({ error }: { error: string }) {
       retryFrom: state.retryFrom,
     })),
   );
-
-  useInput(() => {
-    retryFrom("payment-error", { config, transport, session });
+  useKeyboard(event => {
+    retryFrom("payment-error", {
+      config,
+      transport,
+      session,
+    });
   });
-
   return (
     <CenteredBox>
-      <Text color="red">Payment error:</Text>
-      <Text>{error}</Text>
-      <Text color="gray">Once you've paid, press any key to continue.</Text>
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        Payment error:
+      </Span>
+      <Span>{error}</Span>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Once you've paid, press any key to continue.
+      </Span>
     </CenteredBox>
   );
 }
-
 const ToolRequestItem = ({
   isSelected = false,
   label,
@@ -867,15 +1156,17 @@ const ToolRequestItem = ({
   whitelistAllowDescription?: React.ReactNode;
 }) => {
   const themeColor = useColor();
-
   return (
-    <Text color={isSelected ? themeColor : undefined}>
+    <Span
+      style={{
+        color: isSelected ? themeColor : undefined,
+      }}
+    >
       {label}
       {whitelistAllowDescription}
-    </Text>
+    </Span>
   );
 };
-
 function ToolRequestsRenderer({
   toolReqs,
   config,
@@ -889,7 +1180,6 @@ function ToolRequestsRenderer({
   const onDone = useCallback(() => {
     setCurrentIndex(i => i + 1);
   }, []);
-
   if (currentIndex >= toolReqs.length) {
     return (
       <FinishToolRequests
@@ -900,11 +1190,15 @@ function ToolRequestsRenderer({
       />
     );
   }
-
   const currentToolReq = toolReqs[currentIndex];
-
   return (
-    <Box flexDirection="column">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
       <ToolMessageRenderer item={currentToolReq} />
       <ToolRequestRenderer
         toolReq={currentToolReq}
@@ -913,10 +1207,9 @@ function ToolRequestsRenderer({
         session={session}
         onDone={onDone}
       />
-    </Box>
+    </Div>
   );
 }
-
 function FinishToolRequests({
   runAgent,
   config,
@@ -926,11 +1219,14 @@ function FinishToolRequests({
   runAgent: (args: RunArgs) => Promise<void>;
 } & RunArgs) {
   useEffect(() => {
-    runAgent({ config, transport, session });
+    runAgent({
+      config,
+      transport,
+      session,
+    });
   }, [runAgent, config, transport, session]);
   return <Loading />;
 }
-
 function ToolRequestRenderer({
   toolReq,
   config,
@@ -982,26 +1278,47 @@ function ToolRequestRenderer({
     }
     return `${fn.name}:*`;
   })();
-
   const prompt = (() => {
     const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "create":
         return (
-          <Box>
-            <Text>Create file </Text>
-            <Text color={themeColor}>{fn.arguments.filePath}</Text>
-            <Text>?</Text>
-          </Box>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <Span>Create file </Span>
+            <Span
+              style={{
+                color: themeColor,
+              }}
+            >
+              {fn.arguments.filePath}
+            </Span>
+            <Span>?</Span>
+          </Div>
         );
       case "rewrite":
       case "edit":
         return (
-          <Box>
-            <Text>Make these changes to </Text>
-            <Text color={themeColor}>{fn.arguments.filePath}</Text>
-            <Text>?</Text>
-          </Box>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <Span>Make these changes to </Span>
+            <Span
+              style={{
+                color: themeColor,
+              }}
+            >
+              {fn.arguments.filePath}
+            </Span>
+            <Span>?</Span>
+          </Div>
         );
       case "skill":
       case "read":
@@ -1024,18 +1341,14 @@ function ToolRequestRenderer({
     }
     return null;
   })();
-
   const toolName = toolReq.name;
-
   const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
-
   useEffect(() => {
     (async () => {
       const whitelisted = await isWhitelisted(whitelistKey);
       setIsToolWhitelisted(whitelisted);
     })();
   }, [whitelistKey, isWhitelisted]);
-
   type SelectItem = {
     label: string;
     value: string;
@@ -1062,17 +1375,26 @@ function ToolRequestRenderer({
       value: "no",
     },
   ];
-
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
         rejectTool(toolReq, session);
       } else if (item.value === "yes-whitelist") {
         await addToWhitelist(whitelistKey);
-        await runTool({ toolReq, config, transport, session });
+        await runTool({
+          toolReq,
+          config,
+          transport,
+          session,
+        });
         onDone();
       } else {
-        await runTool({ toolReq, config, transport, session });
+        await runTool({
+          toolReq,
+          config,
+          transport,
+          session,
+        });
         onDone();
       }
     },
@@ -1088,22 +1410,27 @@ function ToolRequestRenderer({
       onDone,
     ],
   );
-
-  const { modeData } = useAppStore(useShallow(state => ({ modeData: state.modeData })));
+  const { modeData } = useAppStore(
+    useShallow(state => ({
+      modeData: state.modeData,
+    })),
+  );
   const isRunning =
     modeData.mode === "tool-call" && modeData.runningToolCallId === toolReq.toolCallId;
-
   const noConfirmationNeeded =
     unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
-
   useEffect(() => {
     if (noConfirmationNeeded) {
-      runTool({ toolReq, config, transport, session }).then(onDone);
+      runTool({
+        toolReq,
+        config,
+        transport,
+        session,
+      }).then(onDone);
     } else {
       notifyReadyForInput(config);
     }
   }, [toolReq, noConfirmationNeeded, config, transport, session, onDone]);
-
   if (noConfirmationNeeded || isRunning) {
     return (
       <Loading
@@ -1111,9 +1438,15 @@ function ToolRequestRenderer({
       />
     );
   }
-
   return (
-    <Box flexDirection="column" gap={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
       {prompt}
       <SelectInput
         items={items}
@@ -1121,181 +1454,336 @@ function ToolRequestRenderer({
         indicatorComponent={IndicatorComponent}
         itemComponent={ToolRequestItem}
       />
-    </Box>
+    </Div>
   );
 }
-
 const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
   const themeColor = useColor();
   const model = useModel();
   const unchained = useUnchained();
-
   if (item.type === "header") return <Header unchained={unchained} />;
   if (item.type === "version") {
     return (
-      <Box marginTop={1} marginLeft={1} flexDirection="column">
-        <Text color="gray">Model: {model.nickname}</Text>
-        <Text color="gray">Version: {item.metadata.version}</Text>
-      </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginTop: 1,
+          marginLeft: 1,
+          flexDirection: "column",
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Model: {model.nickname}
+        </Span>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Version: {item.metadata.version}
+        </Span>
+      </Div>
     );
   }
   if (item.type === "slogan") {
     return (
-      <Box marginLeft={1} marginTop={1}>
-        <Text>
-          Octo is your friend. Tell Octo <Text color={themeColor}>what you want to do.</Text>
-        </Text>
-      </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginLeft: 1,
+          marginTop: 1,
+        }}
+      >
+        <Span>
+          Octo is your friend. Tell Octo{" "}
+          <Span
+            style={{
+              color: themeColor,
+            }}
+          >
+            what you want to do.
+          </Span>
+        </Span>
+      </Div>
     );
   }
   if (item.type === "updates") {
     return (
-      <Box marginTop={1} marginLeft={1} flexDirection="column">
-        <Text bold>Updates:</Text>
-        <Box marginTop={1} marginLeft={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginTop: 1,
+          marginLeft: 1,
+          flexDirection: "column",
+        }}
+      >
+        <Span
+          style={{
+            fontWeight: "bold",
+          }}
+        >
+          Updates:
+        </Span>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginTop: 1,
+            marginLeft: 1,
+          }}
+        >
           <Markdown markdown={item.updates} />
-        </Box>
-        <Text color="gray">Thanks for updating!</Text>
-        <Text color="gray">See the full changelog by running: `octo changelog`</Text>
-      </Box>
+        </Div>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Thanks for updating!
+        </Span>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          See the full changelog by running: `octo changelog`
+        </Span>
+      </Div>
     );
   }
-
   if (item.type === "boot-notification") {
     return (
-      <Box marginLeft={1}>
-        <Text color="gray">{item.content}</Text>
-      </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginLeft: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {item.content}
+        </Span>
+      </Div>
     );
   }
-
   return <MessageDisplay item={item.item} />;
 };
-
 const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   return (
-    <Box flexDirection="column" paddingRight={4}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        paddingRight: 4,
+      }}
+    >
       <MessageDisplayInner item={item} />
-    </Box>
+    </Div>
   );
 };
-
 const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   const { modeData } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
     })),
   );
-
   if (item.type === "inflight-response") {
     return renderInflightResponse(item, modeData.mode === "compacting");
   }
-
   if (item.type === "notification") {
     return (
-      <Box marginLeft={1}>
-        <Text color="gray">{item.content}</Text>
-      </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginLeft: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {item.content}
+        </Span>
+      </Div>
     );
   }
-
   if (item.type === "llm-ir") {
     return renderLlmIR(item.ir, modeData.mode === "compacting");
   }
-
   if (item.type === "request-failed") {
-    return <Text color="red">Request failed.</Text>;
+    return (
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        Request failed.
+      </Span>
+    );
   }
-
   if (item.type === "compaction-failed") {
-    return <Text color="red">Compaction failed.</Text>;
+    return (
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        Compaction failed.
+      </Span>
+    );
   }
-
   const _: never = item;
   return null;
 };
-
 function renderInflightResponse(item: InflightResponseType, isCompacting: boolean) {
   if (isCompacting) {
     return (
-      <Box marginBottom={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginBottom: 1,
+        }}
+      >
         <CompactionRenderer item={item} />
-      </Box>
+      </Div>
     );
   }
   return (
-    <Box marginBottom={1}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginBottom: 1,
+      }}
+    >
       <AssistantMessageRenderer item={item} />
-    </Box>
+    </Div>
   );
 }
-
 function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   if (item.role === "assistant") {
     if (isCompacting) {
       return (
-        <Box marginBottom={1}>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginBottom: 1,
+          }}
+        >
           <CompactionRenderer item={item} />
-        </Box>
+        </Div>
       );
     }
     return (
-      <Box marginBottom={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginBottom: 1,
+        }}
+      >
         <AssistantMessageRenderer item={item} />
-      </Box>
+      </Div>
     );
   }
-
   if (item.role === "tool-parse-error") {
     return (
-      <Text color="red">
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
         {displayLog({
           verbose: `Error: ${item.malformedRequest.error}`,
           info: "Malformed tool call. Retrying...",
         })}
-      </Text>
+      </Span>
     );
   }
-
   if (item.role === "tool-validation-error") {
     const message = (() => {
       if (item.aborted) return "Tool call aborted.";
       return "Tool call failed validation checks. Retrying...";
     })();
-
     return (
-      <Text color="red">
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
         {displayLog({
           verbose: `Error: ${item.error}`,
           info: message,
         })}
-      </Text>
+      </Span>
     );
   }
-
   if (item.role === "tool-runtime-error") {
     return (
-      <Box flexDirection="column">
-        <Box marginLeft={2}>
-          <Text color="red">
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+        }}
+      >
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginLeft: 2,
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+            }}
+          >
             {displayLog({
               verbose: `Error: ${item.error}`,
               info: "Tool failed...",
             })}
-          </Text>
-        </Box>
-      </Box>
+          </Span>
+        </Div>
+      </Div>
     );
   }
-
   if (item.role === "tool-reject") {
     return (
-      <Box flexDirection="column">
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+        }}
+      >
         <ToolMessageRenderer item={item.toolCall} />
-        <Box marginLeft={2}>
-          <Text>Tool rejected; tell Octo what to do instead:</Text>
-        </Box>
-      </Box>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginLeft: 2,
+          }}
+        >
+          <Span>Tool rejected; tell Octo what to do instead:</Span>
+        </Div>
+      </Div>
     );
   }
 
@@ -1303,80 +1791,158 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   if (item.role === "tool-skip-output") {
     return null;
   }
-
   if (item.role === "checkpoint") {
     return <CompactionSummaryRenderer content={item.content} />;
   }
-
   if (item.role === "tool-output") {
     return (
-      <Box flexDirection="column" marginBottom={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          marginBottom: 1,
+        }}
+      >
         <ToolMessageRenderer item={item.toolCall} />
         <ToolOutputContentRenderer content={item.content} />
-      </Box>
+      </Div>
     );
   }
-
   if (item.role === "file-read") {
     return (
-      <Box flexDirection="column" marginBottom={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          marginBottom: 1,
+        }}
+      >
         <ToolMessageRenderer item={item.toolCall} />
         <ToolOutputContentRenderer
           content={[
-            { type: "text", content: item.content },
-            ...(item.image ? [{ type: "image" as const, image: item.image }] : []),
+            {
+              type: "text",
+              content: item.content,
+            },
+            ...(item.image
+              ? [
+                  {
+                    type: "image" as const,
+                    image: item.image,
+                  },
+                ]
+              : []),
           ]}
         />
-      </Box>
+      </Div>
     );
   }
-
   if (item.role === "file-mutate") {
     return (
-      <Box flexDirection="column" marginBottom={1}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          marginBottom: 1,
+        }}
+      >
         <ToolMessageRenderer item={item.toolCall} />
-        <ToolOutputContentRenderer content={[{ type: "text", content: item.content }]} />
-      </Box>
+        <ToolOutputContentRenderer
+          content={[
+            {
+              type: "text",
+              content: item.content,
+            },
+          ]}
+        />
+      </Div>
     );
   }
-
   if (item.role === "trajectory") {
     return null;
   }
-
   const _: "user" = item.role;
   const textParts = item.content.filter((part: Content["content"][number]) => part.type === "text");
   const imageParts = item.content.filter(
     (part: Content["content"][number]) => part.type === "image",
   );
-
   const contentLines = textParts.flatMap(part => part.content.split(LINE_SPLIT_REGEX));
-
   return (
-    <Box flexDirection="column" marginY={1}>
-      <Box flexDirection="row">
-        <Box marginRight={1}>
-          <Text color="white">▶</Text>
-        </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        marginTop: 1,
+        marginBottom: 1,
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "row",
+        }}
+      >
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginRight: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "white",
+            }}
+          >
+            ▶
+          </Span>
+        </Div>
         {imageParts.length > 0 && (
-          <Box marginRight={1}>
-            <Text inverse>
+          <Div
+            style={{
+              display: "flex",
+              whiteSpace: "pre-wrap",
+              marginRight: 1,
+            }}
+          >
+            <Span
+              style={{
+                color: "#111827",
+                backgroundColor: "#e5e7eb",
+              }}
+            >
               ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
-            </Text>
-          </Box>
+            </Span>
+          </Div>
         )}
-        <Box flexDirection="column">
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            flexDirection: "column",
+          }}
+        >
           {contentLines.map((line, i) => (
-            <Box key={i}>
-              <Text>{line}</Text>
-            </Box>
+            <Div
+              key={i}
+              style={{
+                display: "flex",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              <Span>{line}</Span>
+            </Div>
           ))}
-        </Box>
-      </Box>
-    </Box>
+        </Div>
+      </Div>
+    </Div>
   );
 }
-
 function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
   const color = useColor();
   const displayContent = content.map(part => {
@@ -1386,16 +1952,34 @@ function CompactionSummaryRenderer({ content }: { content: Content["content"] })
       content: part.content.replace(/^<summary>/, "").replace(/<\/summary>$/, ""),
     };
   });
-
   return (
-    <Box flexDirection="column" marginY={1}>
-      <Text color="gray">History compacted! Summary: </Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        marginTop: 1,
+        marginBottom: 1,
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        History compacted! Summary:{" "}
+      </Span>
       <ContentRenderer content={displayContent} textColor="gray" />
-      <Text color={color}>Summary complete!</Text>
-    </Box>
+      <Span
+        style={{
+          color: color,
+        }}
+      >
+        Summary complete!
+      </Span>
+    </Div>
   );
 }
-
 function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
   if (item.type === "malformed-tool-request") {
     return null;
@@ -1436,136 +2020,287 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
       return <LspToolRenderer item={parsedToolSchema(item)} />;
   }
 }
-
 function parsedToolSchema(toolCall: ToolCallRequest): any {
   return {
     name: toolCall.name,
     arguments: toolCall.parsed,
   };
 }
-
 function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
   return (
-    <Box flexDirection="column">
-      <Text color="gray">Octo searched for files using a glob pattern:</Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Octo searched for files using a glob pattern:
+      </Span>
       <GlobArg name="Path" arg={item.arguments.path} />
       <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
       <GlobArg name="Path pattern" arg={item.arguments.includePath} />
       <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
-    </Box>
+    </Div>
   );
 }
 function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
   return (
-    <Box flexDirection="column">
-      <Text color="gray">Octo searched file contents:</Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Octo searched file contents:
+      </Span>
       <GlobArg name="Pattern" arg={item.arguments.pattern} />
       <GlobArg name="Path" arg={item.arguments.path} />
       <GlobArg name="Case insensitive" arg={item.arguments.caseInsensitive} />
       <GlobArg name="Context lines" arg={item.arguments.context} />
       <GlobArg name="Max results" arg={item.arguments.maxResults} />
       <GlobArg name="Timeout" arg={item.arguments.timeout} />
-    </Box>
+    </Div>
   );
 }
-
 function GlobArg({ name, arg }: { name: string; arg: string | number | boolean | undefined }) {
   const color = useColor();
   if (arg == null) return null;
   return (
-    <Text>
-      <Text color="gray">{name}:</Text> <Text color={color}>{arg}</Text>
-    </Text>
+    <Span>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {name}:
+      </Span>{" "}
+      <Span
+        style={{
+          color: color,
+        }}
+      >
+        {arg}
+      </Span>
+    </Span>
   );
 }
 function WebSearchToolRenderer(_: { item: ParsedToolSchemaFrom<typeof webSearch> }) {
   return (
-    <Box>
-      <Text color="gray">Octo searched the web</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Octo searched the web
+      </Span>
+    </Div>
   );
 }
-
 function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
-    <Box>
-      <Text color="gray">Octo read the {item.arguments.skillName} skill</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Octo read the {item.arguments.skillName} skill
+      </Span>
+    </Div>
   );
 }
-
 function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
   const themeColor = useColor();
   return (
-    <Box>
-      <Text color="gray">{item.name}: </Text>
-      <Text color={themeColor}>{item.arguments.url}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {item.name}:{" "}
+      </Span>
+      <Span
+        style={{
+          color: themeColor,
+        }}
+      >
+        {item.arguments.url}
+      </Span>
+    </Div>
   );
 }
-
 function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> }) {
   const themeColor = useColor();
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text color="gray">{item.name}: </Text>
-        <Text color={themeColor}>{item.arguments.cmd}</Text>
-      </Box>
-      <Text color="gray">timeout: {item.arguments.timeout}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {item.name}:{" "}
+        </Span>
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
+          {item.arguments.cmd}
+        </Span>
+      </Div>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        timeout: {item.arguments.timeout}
+      </Span>
+    </Div>
   );
 }
-
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
   const themeColor = useColor();
   return (
-    <Box>
-      <Text color="gray">{item.name}: </Text>
-      <Text color={themeColor}>{item.arguments.filePath}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {item.name}:{" "}
+      </Span>
+      <Span
+        style={{
+          color: themeColor,
+        }}
+      >
+        {item.arguments.filePath}
+      </Span>
+    </Div>
   );
 }
-
 function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
   const themeColor = useColor();
   return (
-    <Box>
-      <Text color="gray">{item.name}: </Text>
-      <Text color={themeColor}>{item?.arguments?.dirPath || process.cwd()}</Text>
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        {item.name}:{" "}
+      </Span>
+      <Span
+        style={{
+          color: themeColor,
+        }}
+      >
+        {item?.arguments?.dirPath || process.cwd()}
+      </Span>
+    </Div>
   );
 }
-
 function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text>Edit: </Text>
-        <Text color={themeColor}>{item.arguments.filePath}</Text>
-      </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        <Span>Edit: </Span>
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
+          {item.arguments.filePath}
+        </Span>
+      </Div>
       <DiffEditRenderer filePath={item.arguments.filePath} item={item.arguments} />
-    </Box>
+    </Div>
   );
 }
-
 function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath, originalFileContents } = item.arguments;
-
   return (
-    <Box flexDirection="column" gap={1}>
-      <Text>Octo wants to rewrite the file:</Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
+      <Span>Octo wants to rewrite the file:</Span>
       <DiffRenderer
         oldText={originalFileContents}
         newText={text}
         fileContents={originalFileContents}
         filepath={filePath}
       />
-    </Box>
+    </Div>
   );
 }
-
 function DiffEditRenderer({
   item,
   filePath,
@@ -1574,49 +2309,102 @@ function DiffEditRenderer({
   filePath: string;
 }) {
   return (
-    <Box flexDirection="column">
-      <Text>Octo wants to make the following changes:</Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Span>Octo wants to make the following changes:</Span>
       <DiffRenderer
         oldText={item.search}
         newText={item.replace}
         fileContents={item.originalFileContents}
         filepath={filePath}
       />
-    </Box>
+    </Div>
   );
 }
-
 function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof createTool> }) {
   const themeColor = useColor();
   return (
-    <Box flexDirection="column" gap={1}>
-      <Box>
-        <Text>Octo wants to create </Text>
-        <Text color={themeColor}>{item.arguments.filePath}</Text>
-        <Text>:</Text>
-      </Box>
-      <Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+        gap: 1,
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        <Span>Octo wants to create </Span>
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
+          {item.arguments.filePath}
+        </Span>
+        <Span>:</Span>
+      </Div>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+        }}
+      >
         <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
-      </Box>
-    </Box>
+      </Div>
+    </Div>
   );
 }
-
 function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
   const themeColor = useColor();
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text color="gray">{item.name}: </Text>
-        <Text color={themeColor}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {item.name}:{" "}
+        </Span>
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
           Server: {item.arguments.server}, Tool: {item.arguments.tool}
-        </Text>
-      </Box>
-      <Text color="gray">Arguments: {JSON.stringify(item.arguments.arguments)}</Text>
-    </Box>
+        </Span>
+      </Div>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Arguments: {JSON.stringify(item.arguments.arguments)}
+      </Span>
+    </Div>
   );
 }
-
 function ToolOutputContentRenderer({ content }: { content: Content["content"] }) {
   const textParts = content.filter(part => part.type === "text");
   const imageParts = content.filter(part => part.type === "image");
@@ -1624,19 +2412,28 @@ function ToolOutputContentRenderer({ content }: { content: Content["content"] })
     (count, part) => count + part.content.split(LINE_SPLIT_REGEX).length,
     0,
   );
-
   return (
-    <Box marginLeft={2} flexDirection="column">
-      <Text color="gray">
-        Got <Text>{lines}</Text> lines of output
-      </Text>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginLeft: 2,
+        flexDirection: "column",
+      }}
+    >
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        Got <Span>{lines}</Span> lines of output
+      </Span>
       {imageParts.map((part, i) => (
         <ImageContentRenderer key={i} image={part.image} />
       ))}
-    </Box>
+    </Div>
   );
 }
-
 function ContentRenderer({
   content,
   textColor,
@@ -1645,88 +2442,133 @@ function ContentRenderer({
   textColor?: string;
 }) {
   return (
-    <Box flexDirection="column">
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
       {content.map((part, i) => {
         if (part.type === "image") {
           return <ImageContentRenderer key={i} image={part.image} />;
         }
-
         return part.content.split(LINE_SPLIT_REGEX).map((line, lineIndex) => (
-          <Text key={`${i}-${lineIndex}`} color={textColor}>
+          <Span
+            key={`${i}-${lineIndex}`}
+            style={{
+              color: textColor,
+            }}
+          >
             {line}
-          </Text>
+          </Span>
         ));
       })}
-    </Box>
+    </Div>
   );
 }
-
 function ImageContentRenderer({ image }: { image: ImageInfo }) {
   return (
-    <Text inverse>
+    <Span
+      style={{
+        color: "#111827",
+        backgroundColor: "#e5e7eb",
+      }}
+    >
       ⟦ 📎 {image.filePath} ({Math.ceil(image.sizeBytes / 1024)} KB) ⟧
-    </Text>
+    </Span>
   );
 }
-
 function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolCallRequest }) {
   const fn = parsedToolSchema(toolCallRequest);
   const cwd = useCwd();
   switch (fn.name) {
     case "glob":
-      return <Text> local glob searches in this session.</Text>;
+      return <Span> local glob searches in this session.</Span>;
     case "grep":
-      return <Text> local grep searches in this session.</Text>;
+      return <Span> local grep searches in this session.</Span>;
     case "shell": {
       return (
-        <Text>
-          <Text> commands starting with </Text>
-          <Text bold>{fn.arguments.cmd}</Text>
-        </Text>
+        <Span>
+          <Span> commands starting with </Span>
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {fn.arguments.cmd}
+          </Span>
+        </Span>
       );
     }
     case "fetch": {
       return (
-        <Text>
-          <Text> fetches from the web during this session.</Text>
-        </Text>
+        <Span>
+          <Span> fetches from the web during this session.</Span>
+        </Span>
       );
     }
     case "web-search": {
-      return <Text> Web Searches during this session.</Text>;
+      return <Span> Web Searches during this session.</Span>;
     }
     case "list":
     case "read": {
       return (
-        <Text>
-          <Text> file reads in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
+        <Span>
+          <Span> file reads in </Span>
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {cwd}
+          </Span>
+        </Span>
       );
     }
     case "edit":
     case "create":
     case "rewrite": {
       return (
-        <Text>
-          <Text> file changes in </Text>
-          <Text bold>{cwd}</Text>
-        </Text>
+        <Span>
+          <Span> file changes in </Span>
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {cwd}
+          </Span>
+        </Span>
       );
     }
     case "mcp": {
       return (
-        <Text>
-          <Text>
+        <Span>
+          <Span>
             {" "}
-            MCP tools with Server: <Text bold>{fn.arguments.server}</Text> using Tool:{" "}
-            <Text bold>{fn.arguments.tool}</Text>
-          </Text>
-        </Text>
+            MCP tools with Server:{" "}
+            <Span
+              style={{
+                fontWeight: "bold",
+              }}
+            >
+              {fn.arguments.server}
+            </Span>{" "}
+            using Tool:{" "}
+            <Span
+              style={{
+                fontWeight: "bold",
+              }}
+            >
+              {fn.arguments.tool}
+            </Span>
+          </Span>
+        </Span>
       );
     }
     case "skill": {
-      return <Text> {fn.arguments.skillName} skill executions</Text>;
+      return <Span> {fn.arguments.skillName} skill executions</Span>;
     }
     case "lsp-definition":
     case "lsp-references":
@@ -1736,120 +2578,155 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <Text> LSP queries during this session.</Text>;
+      return <Span> LSP queries during this session.</Span>;
   }
-  return <Text> this tool in this session.</Text>;
+  return <Span> this tool in this session.</Span>;
 }
-
 const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;
 function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
   return (
-    <Box>
-      <Box marginRight={OCTO_MARGIN} width={OCTO_PADDING} flexShrink={0} flexGrow={0}>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+      }}
+    >
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginRight: OCTO_MARGIN,
+          width: OCTO_PADDING,
+          flexShrink: 0,
+          flexGrow: 0,
+        }}
+      >
         <Octo />
-      </Box>
+      </Div>
       {children}
-    </Box>
+    </Div>
   );
 }
-
 function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
-  const terminalSize = useTerminalSize();
-  const scrollHeight = Math.max(1, Math.min(10, terminalSize.height - 10));
   return (
     <OctoMessageRenderer>
-      <MaybeScrollView height={scrollHeight}>
-        <Text color="gray">{item.content}</Text>
-      </MaybeScrollView>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          flexGrow: 1,
+          minWidth: 0,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {item.content}
+        </Span>
+      </Div>
     </OctoMessageRenderer>
   );
 }
-
 function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
-  const terminalSize = useTerminalSize();
   let thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
   let content = item.content.trim();
-
-  let reservedSpace = 6; // bottom bar + padding
-  const scrollViewHeight = Math.max(1, terminalSize.height - reservedSpace - 1);
-
   const showThoughts = thoughts && thoughts !== "";
-  // Reserve space for the borders of the thoughtbox
-  if (showThoughts) reservedSpace += 2;
   return (
     <OctoMessageRenderer>
-      <MaybeScrollView height={scrollViewHeight}>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexDirection: "column",
+          flexGrow: 1,
+          minWidth: 0,
+        }}
+      >
         {showThoughts && <ThoughtBox thoughts={thoughts} />}
         <Markdown markdown={content} />
-      </MaybeScrollView>
+      </Div>
     </OctoMessageRenderer>
   );
 }
-
-function MaybeScrollView({ children, height }: { height: number; children?: React.ReactNode }) {
-  const { modeData } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-    })),
-  );
-  const isStreamingContent = modeData.mode == "responding" || modeData.mode == "compacting";
-  return (
-    <Box flexDirection="column" flexGrow={1}>
-      {isStreamingContent ? (
-        <ScrollView height={height}>{children}</ScrollView>
-      ) : (
-        <Box flexDirection="column">{children}</Box>
-      )}
-    </Box>
-  );
-}
-
 const MAX_THOUGHTBOX_HEIGHT = 8;
 const MAX_THOUGHTBOX_WIDTH = 80;
-const THOUGHTBOX_MARGIN = 4;
+
+function scrollToBottom(element: DivElement | null): void {
+  if (!element) return;
+  element.scrollTop = Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
+function isScrolledToBottom(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+): boolean {
+  return scrollTop >= Math.max(0, scrollHeight - clientHeight);
+}
+
 function ThoughtBox({ thoughts }: { thoughts: string }) {
-  const thoughtsRef = useRef<DOMElement | null>(null);
-  const [thoughtsHeight, setThoughtsHeight] = useState(0);
-  const terminalSize = useTerminalSize();
-  const thoughtsOverflow = thoughtsHeight - (MAX_THOUGHTBOX_HEIGHT - 2);
-  const isScrollable = useContext(IsScrollableContext);
+  const viewportRef = useRef<DivElement>(null);
+  const followThoughtsRef = useRef(true);
 
   useEffect(() => {
-    if (thoughtsRef.current) {
-      const { height } = measureElement(thoughtsRef.current);
-      setThoughtsHeight(height);
-    }
+    if (followThoughtsRef.current) scrollToBottom(viewportRef.current);
   }, [thoughts]);
 
-  const enforceMaxHeight = thoughtsOverflow > 0 && !isScrollable;
-  const octoSpace = OCTO_MARGIN + OCTO_PADDING + 1;
-  const scrollBorderWidth = 2;
-  const contentMaxWidth = terminalSize.width - THOUGHTBOX_MARGIN - octoSpace - scrollBorderWidth;
-  const maxWidth = Math.min(contentMaxWidth, MAX_THOUGHTBOX_WIDTH);
-
   return (
-    <Box flexDirection="column">
-      <Box
-        flexGrow={0}
-        flexShrink={1}
-        height={enforceMaxHeight ? MAX_THOUGHTBOX_HEIGHT : undefined}
-        width={maxWidth}
-        overflowY={enforceMaxHeight ? "hidden" : undefined}
-        flexDirection="column"
-        borderColor="gray"
-        borderStyle="round"
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        flexDirection: "column",
+      }}
+    >
+      <Div
+        ref={viewportRef}
+        onScroll={event => {
+          followThoughtsRef.current = isScrolledToBottom(
+            event.scrollTop,
+            event.scrollHeight,
+            viewportRef.current?.clientHeight ?? 1,
+          );
+        }}
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          flexGrow: 0,
+          flexShrink: 1,
+          minWidth: 0,
+          maxWidth: MAX_THOUGHTBOX_WIDTH,
+          maxHeight: MAX_THOUGHTBOX_HEIGHT,
+          overflowY: "scroll",
+          scrollbarGutter: "stable",
+          scrollbarColor: SUBTLE_SCROLLBAR_COLOR,
+          flexDirection: "column",
+          borderColor: "gray",
+          border: "rounded",
+        }}
       >
-        <Box
-          ref={thoughtsRef}
-          flexGrow={0}
-          flexShrink={0}
-          flexDirection="column"
-          marginTop={enforceMaxHeight ? -1 * Math.max(0, thoughtsOverflow) : 0}
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            flexGrow: 0,
+            flexShrink: 0,
+            flexDirection: "column",
+          }}
         >
-          <Text color="gray">{thoughts}</Text>
-        </Box>
-      </Box>
-    </Box>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {thoughts}
+          </Span>
+        </Div>
+      </Div>
+    </Div>
   );
 }

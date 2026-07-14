@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Text } from "ink";
 import spinners from "cli-spinners";
 import type { SpinnerName } from "cli-spinners";
-
+import { Span } from "paintcannon-react";
 type Props = {
   /**
    * Type of a spinner.
@@ -19,7 +18,6 @@ type Props = {
 function Spinner({ type = "dots" }: Props) {
   const [frame, setFrame] = useState(0);
   const spinner = spinners[type];
-
   useEffect(() => {
     const timer = setInterval(() => {
       setFrame(previousFrame => {
@@ -27,13 +25,10 @@ function Spinner({ type = "dots" }: Props) {
         return isLastFrame ? 0 : previousFrame + 1;
       });
     }, spinner.interval);
-
     return () => {
       clearInterval(timer);
     };
   }, [spinner]);
-
-  return <Text>{spinner.frames[frame]}</Text>;
+  return <Span>{spinner.frames[frame]}</Span>;
 }
-
 export default React.memo(Spinner);

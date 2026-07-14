@@ -1,17 +1,31 @@
 import React from "react";
 import { useColor } from "../theme.ts";
-import { Box, Text } from "ink";
 import figures from "figures";
-
+import { Div, Span } from "paintcannon-react";
 export const IndicatorComponent = ({ isSelected = false }: { isSelected?: boolean }) => {
   const themeColor = useColor();
   return (
-    <Box marginRight={1}>
-      {isSelected ? <Text color={themeColor}>{figures.pointer}</Text> : <Text> </Text>}
-    </Box>
+    <Div
+      style={{
+        display: "flex",
+        whiteSpace: "pre-wrap",
+        marginRight: 1,
+      }}
+    >
+      {isSelected ? (
+        <Span
+          style={{
+            color: themeColor,
+          }}
+        >
+          {figures.pointer}
+        </Span>
+      ) : (
+        <Span> </Span>
+      )}
+    </Div>
   );
 };
-
 export const ItemComponent = ({
   isSelected = false,
   label,
@@ -20,5 +34,13 @@ export const ItemComponent = ({
   label: string;
 }) => {
   const themeColor = useColor();
-  return <Text color={isSelected ? themeColor : undefined}>{label}</Text>;
+  return (
+    <Span
+      style={{
+        color: isSelected ? themeColor : undefined,
+      }}
+    >
+      {label}
+    </Span>
+  );
 };

@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useReducer } from "react";
-import { Box, Text, useInput } from "ink";
-import SelectInput from "./ink/select-input.tsx";
+import SelectInput from "./selection/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
 import { Config, Auth } from "../config.ts";
@@ -10,7 +9,8 @@ import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { hasCodexOAuthTokens } from "../codex-oauth.ts";
-
+import { Div, Span } from "paintcannon-react";
+import { useKeyboard } from "../hooks/use-keyboard.ts";
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
   onCancel: () => void;
@@ -18,7 +18,6 @@ export type AutoDetectModelsProps = {
   config: Config | null;
   titleOverride?: string;
 };
-
 type StepData =
   | {
       step: "initial";
@@ -42,7 +41,6 @@ type StepData =
       overrideAuth: Auth | null;
       useEnvVar: boolean;
     };
-
 function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvVar: string | null) {
   if (overrideEnvVar) return overrideEnvVar;
   const key = keyFromName(provider.name);
@@ -51,7 +49,6 @@ function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvV
   }
   return provider.envVar;
 }
-
 export function ModelSetup({
   config,
   onComplete,
@@ -59,18 +56,23 @@ export function ModelSetup({
   onOverrideDefaultApiKey,
   titleOverride,
 }: AutoDetectModelsProps) {
-  const [stepData, dispatch] = useReducer(reducer, { step: "initial" });
-
-  useInput((_, key) => {
-    if (key.escape) {
+  const [stepData, dispatch] = useReducer(reducer, {
+    step: "initial",
+  });
+  useKeyboard(event => {
+    if (event.key === "Escape") {
       if (stepData.step === "initial") onCancel();
       else if (stepData.step !== "custom") {
         // custom handles its own cancellation
-        dispatch({ force: true, to: { step: "initial" } });
+        dispatch({
+          force: true,
+          to: {
+            step: "initial",
+          },
+        });
       }
     }
   });
-
   const onChooseProvider = useCallback(
     async (providerKey: keyof typeof PROVIDERS) => {
       const provider: ProviderConfig = PROVIDERS[providerKey];
@@ -81,12 +83,13 @@ export function ModelSetup({
             to: {
               step: "found",
               provider,
-              overrideAuth: { type: "codex" },
+              overrideAuth: {
+                type: "codex",
+              },
               useEnvVar: false,
             },
           });
         }
-
         return dispatch({
           from: "initial",
           to: {
@@ -95,7 +98,6 @@ export function ModelSetup({
           },
         });
       }
-
       const envVar = getEnvVar(provider, config, null);
       if (process.env[envVar]) {
         return dispatch({
@@ -118,11 +120,14 @@ export function ModelSetup({
     },
     [config],
   );
-
   const onChooseCustom = useCallback(() => {
-    dispatch({ from: "initial", to: { step: "custom" } });
+    dispatch({
+      from: "initial",
+      to: {
+        step: "custom",
+      },
+    });
   }, []);
-
   switch (stepData.step) {
     case "initial":
       return (
@@ -133,7 +138,6 @@ export function ModelSetup({
           titleOverride={titleOverride}
         />
       );
-
     case "custom":
       return (
         <FullAddModelFlow
@@ -142,12 +146,13 @@ export function ModelSetup({
           onCancel={() => {
             dispatch({
               from: "custom",
-              to: { step: "initial" },
+              to: {
+                step: "initial",
+              },
             });
           }}
         />
       );
-
     case "found":
       return (
         <ImportModelsFrom
@@ -161,13 +166,18 @@ export function ModelSetup({
                     ...model,
                     type: "codex",
                     nickname: `${model.nickname} (${stepData.provider.name})`,
-                    auth: { type: "codex" },
+                    auth: {
+                      type: "codex",
+                    },
                   };
                 }
-
                 const base: Config["models"][number] = {
                   ...model,
-                  ...(stepData.provider.type ? { type: stepData.provider.type } : {}),
+                  ...(stepData.provider.type
+                    ? {
+                        type: stepData.provider.type,
+                      }
+                    : {}),
                   nickname: `${model.nickname} (${stepData.provider.name})`,
                   baseUrl: stepData.provider.baseUrl,
                 };
@@ -184,7 +194,12 @@ export function ModelSetup({
             );
           }}
           onCancel={() => {
-            dispatch({ from: "found", to: { step: "initial" } });
+            dispatch({
+              from: "found",
+              to: {
+                step: "initial",
+              },
+            });
           }}
           onCustomModel={() => {
             dispatch({
@@ -199,15 +214,19 @@ export function ModelSetup({
           }}
         />
       );
-
     case "missing":
       return (
         <CustomAuthFlow
           config={config}
           authData={
             stepData.provider.type === "codex"
-              ? { modelType: "codex" }
-              : { modelType: stepData.provider.type, baseUrl: stepData.provider.baseUrl }
+              ? {
+                  modelType: "codex",
+                }
+              : {
+                  modelType: stepData.provider.type,
+                  baseUrl: stepData.provider.baseUrl,
+                }
           }
           onComplete={async auth => {
             if (auth && auth.type === "env") {
@@ -216,7 +235,12 @@ export function ModelSetup({
               });
             }
             const overrideAuth: Auth | null =
-              auth || (stepData.provider.type === "codex" ? { type: "codex" } : null);
+              auth ||
+              (stepData.provider.type === "codex"
+                ? {
+                    type: "codex",
+                  }
+                : null);
             dispatch({
               from: "missing",
               to: {
@@ -228,11 +252,15 @@ export function ModelSetup({
             });
           }}
           onCancel={() => {
-            dispatch({ from: "missing", to: { step: "initial" } });
+            dispatch({
+              from: "missing",
+              to: {
+                step: "initial",
+              },
+            });
           }}
         />
       );
-
     case "override-model-string":
       return (
         <CustomModelFlow
@@ -243,25 +271,35 @@ export function ModelSetup({
                 {
                   ...model,
                   type: "codex",
-                  auth: { type: "codex" },
+                  auth: {
+                    type: "codex",
+                  },
                 },
               ]);
               return;
             }
-
             if (model.type === "codex") return;
             const apiModel = {
               nickname: model.nickname,
               baseUrl: model.baseUrl,
               model: model.model,
               context: model.context,
-              ...(model.reasoning ? { reasoning: model.reasoning } : {}),
-              ...(model.modalities ? { modalities: model.modalities } : {}),
+              ...(model.reasoning
+                ? {
+                    reasoning: model.reasoning,
+                  }
+                : {}),
+              ...(model.modalities
+                ? {
+                    modalities: model.modalities,
+                  }
+                : {}),
               ...(model.auth?.type === "env" || model.auth?.type === "command"
-                ? { auth: model.auth }
+                ? {
+                    auth: model.auth,
+                  }
                 : {}),
             };
-
             if (
               stepData.provider.type === "standard" ||
               stepData.provider.type === "openai-responses" ||
@@ -275,7 +313,6 @@ export function ModelSetup({
               ]);
               return;
             }
-
             onComplete([
               {
                 ...apiModel,
@@ -296,13 +333,17 @@ export function ModelSetup({
           baseUrl={stepData.provider.baseUrl}
           auth={
             stepData.overrideAuth ||
-            (stepData.useEnvVar ? { type: "env", name: stepData.provider.envVar } : undefined)
+            (stepData.useEnvVar
+              ? {
+                  type: "env",
+                  name: stepData.provider.envVar,
+                }
+              : undefined)
           }
         />
       );
   }
 }
-
 function FastProviderList({
   onChooseCustom,
   onChooseProvider,
@@ -322,7 +363,6 @@ function FastProviderList({
       shortcut: provider.shortcut,
     };
   });
-
   const providerShortcuts: Keymap<keyof typeof PROVIDERS> = {};
   for (const item of providerItems) {
     providerShortcuts[item.shortcut] = {
@@ -330,7 +370,6 @@ function FastProviderList({
       value: item.value,
     };
   }
-
   type ProviderValue = keyof typeof PROVIDERS | "custom" | "back";
   const items: Keymap<ProviderValue> = {
     ...providerShortcuts,
@@ -343,22 +382,24 @@ function FastProviderList({
       value: "back" as const,
     },
   };
-
   const onSelect = useCallback((item: Item<ProviderValue>) => {
     if (item.value === "custom") return onChooseCustom();
     if (item.value === "back") return onBack();
     onChooseProvider(item.value);
   }, []);
-
   return (
     <KbShortcutPanel
       title={titleOverride || "Choose a model provider:"}
-      shortcutItems={[{ type: "key" as const, mapping: items }]}
+      shortcutItems={[
+        {
+          type: "key" as const,
+          mapping: items,
+        },
+      ]}
       onSelect={onSelect}
     />
   );
 }
-
 function ImportModelsFrom({
   config,
   provider,
@@ -375,7 +416,6 @@ function ImportModelsFrom({
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   let remainingModels: ProviderConfig["models"] = [];
   const importedModels: ProviderConfig["models"] = [];
-
   if (config == null) {
     remainingModels = provider.models;
   } else {
@@ -396,7 +436,6 @@ function ImportModelsFrom({
       if (!found) remainingModels.push(model);
     }
   }
-
   const items = remainingModels.map(model => {
     const isSelected = selectedModels.includes(model.nickname);
     const label = isSelected ? `⦿ ${model.nickname}` : `○ ${model.nickname}`;
@@ -405,7 +444,6 @@ function ImportModelsFrom({
       value: model.nickname,
     };
   });
-
   if (selectedModels.length > 0) {
     items.push({
       label: "Import selected models",
@@ -420,7 +458,6 @@ function ImportModelsFrom({
     label: "Back",
     value: "back" as const,
   });
-
   const onSelect = useCallback(
     (item: (typeof items)[number]) => {
       if (item.value === "custom") return onCustomModel();
@@ -441,7 +478,6 @@ function ImportModelsFrom({
     },
     [selectedModels],
   );
-
   if (remainingModels.length === 0) {
     return (
       <CenteredBox>
@@ -470,14 +506,19 @@ function ImportModelsFrom({
       </CenteredBox>
     );
   }
-
   return (
     <CenteredBox>
       <MenuHeader title={`${provider.name} models can be imported!`} />
 
-      <Box marginBottom={1}>
-        <Text>Which of the following models would you like to import?</Text>
-      </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginBottom: 1,
+        }}
+      >
+        <Span>Which of the following models would you like to import?</Span>
+      </Div>
 
       <SelectInput
         items={items}
@@ -504,7 +545,6 @@ function reducer(
       },
 ) {
   if ("force" in action) return action.to;
-
   if (state.step === action.from) return action.to;
   return state;
 }

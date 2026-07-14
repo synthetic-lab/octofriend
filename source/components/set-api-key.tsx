@@ -1,11 +1,11 @@
 import React, { useState, useCallback } from "react";
-import { Box, Text, useInput } from "ink";
 import TextInput from "./text-input.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
 import { writeKeyForModel } from "../config.ts";
 import { PROVIDERS } from "../providers.ts";
-
+import { Div, Span } from "paintcannon-react";
+import { useKeyboard } from "../hooks/use-keyboard.ts";
 export function SetApiKey({
   baseUrl,
   onComplete,
@@ -23,22 +23,25 @@ export function SetApiKey({
   const [saving, setSaving] = useState(false);
   const [varValue, setVarValue] = useState("");
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
-  useInput((_, key) => {
-    if (key.escape) onCancel();
+  useKeyboard(event => {
+    if (event.key === "Escape") onCancel();
   });
-
   const onValueChange = useCallback((value: string) => {
     setErrorMessage(null);
     setVarValue(value);
   }, []);
-
   const onSubmit = useCallback(() => {
     if (varValue === "") {
       setErrorMessage("API key can't be empty");
       return;
     }
     setSaving(true);
-    writeKeyForModel({ baseUrl }, varValue).then(
+    writeKeyForModel(
+      {
+        baseUrl,
+      },
+      varValue,
+    ).then(
       () => {
         setSaving(false);
         onComplete(varValue);
@@ -49,7 +52,6 @@ export function SetApiKey({
       },
     );
   }, [varValue]);
-
   if (saving) {
     return (
       <CenteredBox>
@@ -57,29 +59,57 @@ export function SetApiKey({
       </CenteredBox>
     );
   }
-
   return (
     <CenteredBox>
       <MenuHeader title="Set the API key" />
 
-      <Text>
+      <Span>
         Enter your API key for {name}
         {name !== baseUrl ? "" : "."}
-      </Text>
+      </Span>
 
-      <Box marginY={1} width={80}>
-        <Box marginRight={1}>
-          <Text>API key:</Text>
-        </Box>
+      <Div
+        style={{
+          display: "flex",
+          whiteSpace: "pre-wrap",
+          marginTop: 1,
+          marginBottom: 1,
+          width: "100%",
+          minWidth: 0,
+          maxWidth: 80,
+        }}
+      >
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            marginRight: 1,
+          }}
+        >
+          <Span>API key:</Span>
+        </Div>
 
         <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
-      </Box>
+      </Div>
       {errorMessage && (
-        <Box width={80}>
-          <Text color="red" bold>
+        <Div
+          style={{
+            display: "flex",
+            whiteSpace: "pre-wrap",
+            width: "100%",
+            minWidth: 0,
+            maxWidth: 80,
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+              fontWeight: "bold",
+            }}
+          >
             {errorMessage}
-          </Text>
-        </Box>
+          </Span>
+        </Div>
       )}
     </CenteredBox>
   );
