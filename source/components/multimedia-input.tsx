@@ -9,7 +9,8 @@ import {
   MultimodalConfig,
   canDisplayImage,
 } from "../providers.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 interface Props {
   inputHistory: InputHistory;
   value: string;
@@ -68,21 +69,17 @@ export const MultimediaInput = (props: Props) => {
     }
   }, [props, attachedImages]);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         width: "100%",
         minWidth: 0,
       }}
     >
       {errorMessages.map((errorMessage, index) => (
-        <Div
+        <TerminalFlex
           key={index}
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginBottom: 1,
           }}
         >
@@ -93,7 +90,7 @@ export const MultimediaInput = (props: Props) => {
           >
             {errorMessage}
           </Span>
-        </Div>
+        </TerminalFlex>
       ))}
       <InputWithHistory
         attachedImages={attachedImages}
@@ -108,6 +105,6 @@ export const MultimediaInput = (props: Props) => {
         vimMode={props.vimMode}
         setVimMode={props.setVimMode}
       />
-    </Div>
+    </TerminalFlex>
   );
 };

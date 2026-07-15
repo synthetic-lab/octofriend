@@ -2,7 +2,8 @@ import React from "react";
 import { CODE_GUTTER_COLOR } from "../theme.ts";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function FileRenderer({
   contents,
   filePath,
@@ -19,10 +20,8 @@ export function FileRenderer({
   const language = fileExtLanguage(filePath);
   let currentLine = start;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         paddingLeft: 1,
         paddingRight: 1,
         marginBottom: 1,
@@ -33,18 +32,14 @@ export function FileRenderer({
         const lineNumber = currentLine++;
         const matchedLine = extractTrim(line);
         return (
-          <Div
+          <TerminalFlex
             key={`${index}-${line}`}
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexGrow: 1,
             }}
           >
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 width: gutterWidth,
                 flexShrink: 0,
                 flexGrow: 1,
@@ -53,39 +48,33 @@ export function FileRenderer({
               }}
             >
               <Span>{lineNumber}</Span>
-            </Div>
-            <Div
+            </TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 flexGrow: 1,
                 width: "100%",
                 flexDirection: "column",
               }}
             >
-              <Div
+              <TerminalFlex
                 style={{
-                  display: "flex",
-                  whiteSpace: "pre-wrap",
                   flexDirection: "row",
                 }}
               >
                 <Span>{matchedLine[0]}</Span>
-                <Div
+                <TerminalFlex
                   style={{
-                    display: "flex",
-                    whiteSpace: "pre-wrap",
                     flexDirection: "column",
                   }}
                 >
                   <HighlightedCode code={matchedLine[1]} language={language} />
-                </Div>
+                </TerminalFlex>
                 <Span>{matchedLine[2]}</Span>
-              </Div>
-            </Div>
-          </Div>
+              </TerminalFlex>
+            </TerminalFlex>
+          </TerminalFlex>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }

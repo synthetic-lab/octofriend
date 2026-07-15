@@ -1,7 +1,8 @@
 import React from "react";
 import { Octo } from "../octo.tsx";
 import { Item, KbShortcutSelect, ShortcutArray } from "./kb-shortcut-select.tsx";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "../terminal-flex.tsx";
 type KbPanelProps<V> = {
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
@@ -10,18 +11,14 @@ type KbPanelProps<V> = {
 };
 export const MenuHeader = ({ title }: { title: string }) => {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         justifyContent: "center",
         marginBottom: 1,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           justifyContent: "center",
           width: "100%",
           minWidth: 0,
@@ -29,43 +26,35 @@ export const MenuHeader = ({ title }: { title: string }) => {
         }}
       >
         <Octo />
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginLeft: 1,
           }}
         >
           <Span>{title}</Span>
-        </Div>
-      </Div>
-    </Div>
+        </TerminalFlex>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };
 export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
       <MenuHeader title={title} />
       {children && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             justifyContent: "center",
             alignItems: "center",
             marginBottom: 1,
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               width: "100%",
               minWidth: 0,
@@ -73,18 +62,16 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
             }}
           >
             {children}
-          </Div>
-        </Div>
+          </TerminalFlex>
+        </TerminalFlex>
       )}
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           justifyContent: "center",
         }}
       >
         <KbShortcutSelect shortcutItems={shortcutItems} onSelect={onSelect} />
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }

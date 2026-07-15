@@ -4,8 +4,9 @@ import { CenteredBox } from "./centered-box.tsx";
 import { MenuHeader } from "./menu-panel.tsx";
 import { writeKeyForModel } from "../config.ts";
 import { PROVIDERS } from "../providers.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function SetApiKey({
   baseUrl,
   onComplete,
@@ -68,10 +69,8 @@ export function SetApiKey({
         {name !== baseUrl ? "" : "."}
       </Span>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
           marginBottom: 1,
           width: "100%",
@@ -79,23 +78,19 @@ export function SetApiKey({
           maxWidth: 80,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginRight: 1,
           }}
         >
           <Span>API key:</Span>
-        </Div>
+        </TerminalFlex>
 
         <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
-      </Div>
+      </TerminalFlex>
       {errorMessage && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             width: "100%",
             minWidth: 0,
             maxWidth: 80,
@@ -109,7 +104,7 @@ export function SetApiKey({
           >
             {errorMessage}
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
     </CenteredBox>
   );

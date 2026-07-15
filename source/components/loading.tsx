@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import Spinner from "./spinner.tsx";
 import { useColor } from "../theme.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 const DEFAULT_LOADING_STRINGS = [
   "Scheming",
   "Plotting",
@@ -41,12 +42,7 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
     };
   }, [idx, dotCount]);
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -63,6 +59,6 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
         {loadingStrings[idx]}
       </Span>
       <Span>{".".repeat(dotCount)}</Span>
-    </Div>
+    </TerminalFlex>
   );
 }

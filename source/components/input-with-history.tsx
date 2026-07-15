@@ -5,8 +5,8 @@ import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
 import { ImageInfo } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
-import { Div } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { TerminalFlex } from "./terminal-flex.tsx";
 interface Props {
   attachedImages: ImageInfo[];
   inputHistory: InputHistory;
@@ -136,18 +136,14 @@ export const InputWithHistory = (props: Props) => {
     [props.value, suggestionState],
   );
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         minWidth: 0,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexGrow: 1,
           flexDirection: "column-reverse",
           justifyContent: "flex-end",
@@ -161,12 +157,10 @@ export const InputWithHistory = (props: Props) => {
             onDismiss={() => setSuggestionState(null)}
           />
         )}
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           width: "100%",
           minWidth: 0,
           border: "rounded",
@@ -185,8 +179,8 @@ export const InputWithHistory = (props: Props) => {
           vimMode={props.vimMode}
           setVimMode={props.setVimMode}
         />
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };
 function replaceSelectedMentions(input: string, selectedSuggestions: Set<string>): string {

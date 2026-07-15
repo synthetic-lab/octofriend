@@ -1,8 +1,8 @@
 import React from "react";
 import { useFileSearch } from "./use-file-search.ts";
 import { SuggestionList } from "./suggestion-list.tsx";
-import { Div } from "paintcannon-react";
 import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { TerminalFlex } from "../terminal-flex.tsx";
 interface FileSuggestionBoxProps {
   query: string;
   isVisible: boolean;
@@ -28,10 +28,8 @@ export function FileSuggestionBox({
     return null;
   }
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         border: "rounded",
         borderColor: "gray",
@@ -39,6 +37,6 @@ export function FileSuggestionBox({
       }}
     >
       <SuggestionList items={results} selectedIndex={selectedIndex} onSelect={onSelect} />
-    </Div>
+    </TerminalFlex>
   );
 }

@@ -1,5 +1,6 @@
 import React from "react";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 type LspToolParsedSchema = {
   name: `lsp-${string}`;
   arguments: any;
@@ -24,16 +25,11 @@ export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
     case "lsp-diagnostics":
     case "lsp-document-symbol":
       return (
-        <Div
-          style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <TerminalFlex>
           <Span>
             Octo wants to run LSP {lspAction} on {item.arguments.filePath}
           </Span>
-        </Div>
+        </TerminalFlex>
       );
     case "lsp-definition":
     case "lsp-references":
@@ -43,16 +39,11 @@ export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
     case "lsp-outgoing-calls": {
       const { filePath, line, character } = item.arguments;
       return (
-        <Div
-          style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <TerminalFlex>
           <Span>
             Octo wants to run LSP {lspAction} at {filePath}:{line}:{character}
           </Span>
-        </Div>
+        </TerminalFlex>
       );
     }
   }

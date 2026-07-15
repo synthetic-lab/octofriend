@@ -1,15 +1,14 @@
 import React from "react";
 import figures from "figures";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "../terminal-flex.tsx";
 export type Props = {
   readonly isSelected?: boolean;
 };
 function Indicator({ isSelected = false }: Props) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginRight: 1,
       }}
     >
@@ -24,7 +23,7 @@ function Indicator({ isSelected = false }: Props) {
       ) : (
         <Span> </Span>
       )}
-    </Div>
+    </TerminalFlex>
   );
 }
 export default Indicator;

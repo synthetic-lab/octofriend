@@ -10,8 +10,9 @@ import {
   readAuthForModel,
 } from "./config.ts";
 import { HeightlessCenteredBox } from "./components/centered-box.tsx";
-import { Div, Span, useApp } from "paintcannon-react";
+import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 function matchCodex<T>(
   model: Config["models"][number],
   arms: {
@@ -109,20 +110,16 @@ export function PreflightModelAuth({
     return true;
   };
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
     >
       {error && (
         <HeightlessCenteredBox>
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               justifyContent: "center",
             }}
           >
@@ -133,24 +130,20 @@ export function PreflightModelAuth({
             >
               {error}
             </Span>
-          </Div>
+          </TerminalFlex>
         </HeightlessCenteredBox>
       )}
 
       {authError && authError.type === "command_failed" && (
         <HeightlessCenteredBox>
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               gap: 1,
             }}
           >
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -161,11 +154,9 @@ export function PreflightModelAuth({
               >
                 Your auth command failed
               </Span>
-            </Div>
-            <Div
+            </TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -176,12 +167,10 @@ export function PreflightModelAuth({
               >
                 {authError.message}
               </Span>
-            </Div>
+            </TerminalFlex>
             {authError.stderr && (
-              <Div
+              <TerminalFlex
                 style={{
-                  display: "flex",
-                  whiteSpace: "pre-wrap",
                   justifyContent: "center",
                 }}
               >
@@ -192,12 +181,10 @@ export function PreflightModelAuth({
                 >
                   stderr: {authError.stderr}
                 </Span>
-              </Div>
+              </TerminalFlex>
             )}
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
                 marginTop: 1,
               }}
@@ -209,8 +196,8 @@ export function PreflightModelAuth({
               >
                 [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
               </Span>
-            </Div>
-          </Div>
+            </TerminalFlex>
+          </TerminalFlex>
         </HeightlessCenteredBox>
       )}
 
@@ -311,7 +298,7 @@ export function PreflightModelAuth({
           </Span>
         </HeightlessCenteredBox>
       )}
-    </Div>
+    </TerminalFlex>
   );
 }
 export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
@@ -360,28 +347,22 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
     return "fix-json";
   })();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
     >
       {authError && authError.type === "command_failed" && (
         <HeightlessCenteredBox>
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               gap: 1,
             }}
           >
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -392,11 +373,9 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
               >
                 Your auth command failed
               </Span>
-            </Div>
-            <Div
+            </TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -407,12 +386,10 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
               >
                 {authError.message}
               </Span>
-            </Div>
+            </TerminalFlex>
             {authError.stderr && (
-              <Div
+              <TerminalFlex
                 style={{
-                  display: "flex",
-                  whiteSpace: "pre-wrap",
                   justifyContent: "center",
                 }}
               >
@@ -423,12 +400,10 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
                 >
                   stderr: {authError.stderr}
                 </Span>
-              </Div>
+              </TerminalFlex>
             )}
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
                 marginTop: 1,
               }}
@@ -440,18 +415,16 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
               >
                 [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
               </Span>
-            </Div>
-          </Div>
+            </TerminalFlex>
+          </TerminalFlex>
         </HeightlessCenteredBox>
       )}
 
       {!authError && (
         <>
           <HeightlessCenteredBox>
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -462,7 +435,7 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
               >
                 {`It looks like we need to set up auth for the ${modelName} model`}
               </Span>
-            </Div>
+            </TerminalFlex>
           </HeightlessCenteredBox>
 
           <CustomAuthFlow
@@ -537,6 +510,6 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
           </Span>
         </HeightlessCenteredBox>
       )}
-    </Div>
+    </TerminalFlex>
   );
 }

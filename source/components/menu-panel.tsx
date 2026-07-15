@@ -2,7 +2,8 @@ import React from "react";
 import SelectInput from "./selection/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 type Item<V> = {
   label: string;
   value: V;
@@ -15,18 +16,14 @@ type MenuPanelProps<V> = {
 };
 export const MenuHeader = ({ title }: { title: string }) => {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         justifyContent: "center",
         marginBottom: 1,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           justifyContent: "center",
           width: "100%",
           minWidth: 0,
@@ -34,43 +31,35 @@ export const MenuHeader = ({ title }: { title: string }) => {
         }}
       >
         <Octo />
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginLeft: 1,
           }}
         >
           <Span>{title}</Span>
-        </Div>
-      </Div>
-    </Div>
+        </TerminalFlex>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };
 export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProps<V>) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
       <MenuHeader title={title} />
       {children && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             justifyContent: "center",
             alignItems: "center",
             marginBottom: 1,
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               width: "100%",
               minWidth: 0,
@@ -78,13 +67,11 @@ export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProp
             }}
           >
             {children}
-          </Div>
-        </Div>
+          </TerminalFlex>
+        </TerminalFlex>
       )}
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           justifyContent: "center",
         }}
       >
@@ -94,7 +81,7 @@ export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProp
           indicatorComponent={IndicatorComponent}
           itemComponent={ItemComponent}
         />
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }

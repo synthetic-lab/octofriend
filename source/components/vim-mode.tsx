@@ -1,7 +1,8 @@
 import React from "react";
 import type { CursorVisualPosition, PaintKeyboardEvent, VisualLineRange } from "paintcannon";
 import { useColor } from "../theme.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
 const isWordChar = (char: string): boolean => /[a-zA-Z0-9_]/.test(char);
@@ -397,10 +398,8 @@ export function VimModeIndicator({
   const themeColor = useColor();
   if (!vimEnabled) return null;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         visibility: vimMode === "INSERT" ? "visible" : "hidden",
         height: 1,
         flexShrink: 0,
@@ -414,7 +413,7 @@ export function VimModeIndicator({
       >
         -- INSERT --
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 export function useVimKeyHandler(

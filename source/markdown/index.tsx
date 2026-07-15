@@ -11,21 +11,20 @@ import {
   isCodespanToken,
 } from "./types.ts";
 import { HighlightedCode } from "./highlight-code.tsx";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "../components/terminal-flex.tsx";
 export function Markdown({ markdown }: { markdown: string }) {
   const tokens = marked.lexer(markdown);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
       {tokens.map((token, index) => (
         <TokenRenderer key={index} token={token} />
       ))}
-    </Div>
+    </TerminalFlex>
   );
 }
 function renderChildren(tokens: Token[]): React.ReactNode {
@@ -80,10 +79,8 @@ function TokenRenderer({ token }: { token: Token }): React.ReactElement {
 }
 function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         paddingLeft: 2,
       }}
     >
@@ -101,7 +98,7 @@ function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
       >
         {renderTokensAsPlaintext(token.tokens)}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function BrRenderer() {
@@ -114,10 +111,8 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
       : "┌" + "─".repeat(42);
     const footer = "└" + "─".repeat(42);
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           marginBottom: 1,
         }}
@@ -129,16 +124,14 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
         >
           {langTag}
         </Span>
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             paddingLeft: 2,
             flexDirection: "column",
           }}
         >
           <HighlightedCode code={token.text} language={token.lang} />
-        </Div>
+        </TerminalFlex>
         <Span
           style={{
             color: "gray",
@@ -146,21 +139,19 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
         >
           {footer}
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         marginBottom: 1,
         paddingLeft: 2,
       }}
     >
       <HighlightedCode code={token.text} language={token.lang} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
@@ -212,10 +203,8 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   const color = colors[Math.min(token.depth - 1, colors.length - 1)];
   const marker = "#".repeat(token.depth);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginTop: 1,
         marginBottom: 1,
         paddingLeft: indent,
@@ -229,16 +218,14 @@ function HeadingRenderer({ token }: { token: Tokens.Heading }) {
       >
         {marker} {renderChildren(token.tokens)}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function HrRenderer() {
   const width = Math.min(process.stdout.columns || 80, 80);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginTop: 1,
         marginBottom: 1,
       }}
@@ -250,7 +237,7 @@ function HrRenderer() {
       >
         {"─".repeat(width)}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function HtmlRenderer({ token }: { token: Tokens.HTML | Tokens.Tag }) {
@@ -282,21 +269,17 @@ function LinkRenderer({ token }: { token: Tokens.Link }) {
 }
 function ListRenderer({ token }: { token: Tokens.List }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         paddingLeft: 0,
         marginBottom: 1,
       }}
     >
       {token.items.map((item, index) => (
-        <Div
+        <TerminalFlex
           key={index}
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "row",
           }}
         >
@@ -310,27 +293,23 @@ function ListRenderer({ token }: { token: Tokens.List }) {
               : "• "}
           </Span>
           <ListItemRenderer token={item} />
-        </Div>
+        </TerminalFlex>
       ))}
-    </Div>
+    </TerminalFlex>
   );
 }
 function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
   if (token.task && typeof token.checked === "boolean") {
     // For task items, render checkbox and content inline
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           flexGrow: 1,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "row",
           }}
         >
@@ -341,20 +320,16 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
           >
             {token.checked ? "[✓]" : "[ ]"}{" "}
           </Span>
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               flexGrow: 1,
             }}
           >
             {token.tokens.map((childToken, index) => (
-              <Div
+              <TerminalFlex
                 key={index}
                 style={{
-                  display: "flex",
-                  whiteSpace: "pre-wrap",
                   paddingLeft:
                     childToken.type === "list" ||
                     childToken.type === "code" ||
@@ -364,37 +339,31 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
                 }}
               >
                 <TokenRenderer token={childToken} />
-              </Div>
+              </TerminalFlex>
             ))}
-          </Div>
-        </Div>
-      </Div>
+          </TerminalFlex>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   }
 
   // For regular list items
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         flexGrow: 1,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
         {token.tokens.map((childToken, index) => (
-          <Div
+          <TerminalFlex
             key={index}
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               paddingLeft:
                 childToken.type === "list" ||
                 childToken.type === "code" ||
@@ -404,23 +373,21 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
             }}
           >
             <TokenRenderer token={childToken} />
-          </Div>
+          </TerminalFlex>
         ))}
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }
 function ParagraphRenderer({ token }: { token: Tokens.Paragraph }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginBottom: 1,
       }}
     >
       <Span>{renderChildren(token.tokens)}</Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function StrongRenderer({ token }: { token: Tokens.Strong }) {
@@ -452,10 +419,8 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
   });
   const separator = "├" + columnWidths.map(w => "─".repeat(w + 2)).join("┼") + "┤";
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         marginTop: 1,
         marginBottom: 1,
@@ -472,7 +437,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
       {token.rows.map((row, index) => (
         <TableRowRenderer key={index} cells={row} columnWidths={columnWidths} isHeader={false} />
       ))}
-    </Div>
+    </TerminalFlex>
   );
 }
 function TableRowRenderer({
@@ -485,10 +450,8 @@ function TableRowRenderer({
   isHeader: boolean;
 }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "row",
       }}
     >
@@ -523,7 +486,7 @@ function TableRowRenderer({
           </React.Fragment>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }
 function TextRenderer({ token }: { token: Tokens.Text }) {

@@ -1,7 +1,8 @@
 import React from "react";
 import figlet from "figlet";
 import { color } from "./theme.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 type HeaderProps = {
   unchained: boolean;
 };
@@ -15,10 +16,8 @@ export const Header = ({ unchained }: HeaderProps) => {
   });
   const themeColor = color(unchained);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -31,6 +30,6 @@ export const Header = ({ unchained }: HeaderProps) => {
         {top}
       </Span>
       <Span style={{ whiteSpace: "pre" }}>{bottom}</Span>
-    </Div>
+    </TerminalFlex>
   );
 };

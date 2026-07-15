@@ -1,5 +1,6 @@
 import React from "react";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "../terminal-flex.tsx";
 interface SuggestionListProps {
   items: string[];
   selectedIndex: number;
@@ -7,10 +8,8 @@ interface SuggestionListProps {
 }
 export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -18,13 +17,7 @@ export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
         const isSelected = index === selectedIndex;
         const displayPath = item.length > 50 ? "..." + item.slice(-47) : item;
         return (
-          <Div
-            key={item}
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <TerminalFlex key={item}>
             {isSelected ? (
               <Span
                 style={{
@@ -39,9 +32,9 @@ export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
                 {"  "} {displayPath}
               </Span>
             )}
-          </Div>
+          </TerminalFlex>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }

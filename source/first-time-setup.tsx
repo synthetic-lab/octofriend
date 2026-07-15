@@ -15,8 +15,9 @@ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { recommendedModel } from "./providers.ts";
-import { Div, Span, useApp } from "paintcannon-react";
+import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 type SetupStep =
   | {
       step: "welcome";
@@ -172,22 +173,18 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
         And finally... What's your name?
       </Span>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginRight: 1,
           }}
         >
           <Span>Your name:</Span>
-        </Div>
+        </TerminalFlex>
         <TextInput
           value={yourName}
           onChange={value => {
@@ -227,13 +224,11 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
             });
           }}
         />
-      </Div>
+      </TerminalFlex>
 
       {nameError && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
           }}
         >
@@ -244,7 +239,7 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
           >
             {nameError}
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
     </CenteredBox>
   );
@@ -398,10 +393,8 @@ function AutofixSetup({
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginBottom: 1,
           flexDirection: "column",
           gap: 1,
@@ -417,7 +410,7 @@ function AutofixSetup({
           Auto-fixing mistakes can help reduce model confusion, since models are often
           less-well-trained on error recovery than they are at their happy paths.
         </Span>
-      </Div>
+      </TerminalFlex>
     </KbShortcutPanel>
   );
 }
@@ -434,10 +427,8 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
         performance by automatically fixing minor mistakes in code diffs and JSON tool calls.
       </Span>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
         }}
       >
@@ -445,12 +436,10 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
           Now let's set up your main coding model. This is the LLM that will power Octo's code
           generation, analysis, and conversation capabilities.
         </Span>
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 2,
           justifyContent: "center",
         }}
@@ -462,7 +451,7 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
         >
           Press enter to continue to model setup.
         </Span>
-      </Div>
+      </TerminalFlex>
     </CenteredBox>
   );
 }
@@ -476,10 +465,8 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 
       <Span>You don't seem to have a config file, so let's set you up for the first time.</Span>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
         }}
       >
@@ -490,12 +477,10 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
           can also add closed-source models from OpenAI and Anthropic, like
           {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
         </Span>
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
         }}
       >
@@ -508,12 +493,10 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
           implementations, and quality can vary drastically. Many are broken. We'd strongly
           recommend using Synthetic instead.
         </Span>
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
         }}
       >
@@ -523,12 +506,10 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
           models; if one gets stuck, another may often be able to solve your problem. Octo works
           with any OpenAI- or Anthropic-compatible API.
         </Span>
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 2,
           justifyContent: "center",
         }}
@@ -540,7 +521,7 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
         >
           Press enter when you're ready to begin setup.
         </Span>
-      </Div>
+      </TerminalFlex>
     </CenteredBox>
   );
 }

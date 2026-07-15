@@ -3,7 +3,8 @@ import { diffLines } from "diff";
 import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function DiffRenderer({
   oldText,
   newText,
@@ -56,32 +57,21 @@ export function DiffRenderer({
     const maxNewLines = startLine + countLines(newText);
     const lineNrWidth = Math.max(numWidth(maxOldLines), numWidth(maxNewLines));
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
             marginTop: 1,
             marginBottom: 1,
           }}
         >
-          <Div
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            <Div
+          <TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 width: "50%",
                 paddingLeft: 1,
                 paddingRight: 1,
@@ -94,11 +84,9 @@ export function DiffRenderer({
               >
                 Old
               </Span>
-            </Div>
-            <Div
+            </TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 width: "50%",
                 paddingLeft: 1,
                 paddingRight: 1,
@@ -111,8 +99,8 @@ export function DiffRenderer({
               >
                 New
               </Span>
-            </Div>
-          </Div>
+            </TerminalFlex>
+          </TerminalFlex>
           {diffWithChanged.map((part, index) => {
             if (part.added) {
               return (
@@ -175,8 +163,8 @@ export function DiffRenderer({
               />
             );
           })}
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   } catch (e) {
     return null;
@@ -230,10 +218,8 @@ function DiffSet({
 }) {
   const gutterWidth = 3 + lineNrWidth;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "row",
       }}
     >
@@ -281,7 +267,7 @@ function DiffSet({
           <Span>{"  "}</Span>
         )}
       </LineSegments>
-    </Div>
+    </TerminalFlex>
   );
 }
 function LineSegments({
@@ -310,20 +296,16 @@ function LineSegments({
   }
   if (valueLines.length === 0) {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           width: "50%",
           paddingLeft: 1,
           paddingRight: 1,
           flexGrow: 1,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             width: gutterWidth,
             flexShrink: 0,
             flexGrow: 1,
@@ -331,37 +313,31 @@ function LineSegments({
             marginRight: 1,
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               width: lineNrWidth,
               flexShrink: 0,
             }}
           >
             <Span> </Span>
-          </Div>
+          </TerminalFlex>
           {children}
-        </Div>
-        <Div
+        </TerminalFlex>
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexGrow: 1,
             width: "100%",
             flexDirection: "column",
           }}
         >
           <Span> </Span>
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   }
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         width: "50%",
         paddingLeft: 1,
         paddingRight: 1,
@@ -372,18 +348,14 @@ function LineSegments({
       {valueLines.map((line, index) => {
         const lineNumber = lineCounter.incrementLine();
         return (
-          <Div
+          <TerminalFlex
             key={`${index}-${line}`}
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexGrow: 1,
             }}
           >
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 width: gutterWidth,
                 flexShrink: 0,
                 flexGrow: 1,
@@ -393,11 +365,9 @@ function LineSegments({
             >
               <Span>{lineNumber}</Span>
               {children}
-            </Div>
-            <Div
+            </TerminalFlex>
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 flexGrow: 1,
                 width: "100%",
                 flexDirection: "column",
@@ -410,11 +380,11 @@ function LineSegments({
                 currentLine={lineNumber}
                 startLine={lineCounter.getStartLine()}
               />
-            </Div>
-          </Div>
+            </TerminalFlex>
+          </TerminalFlex>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }
 
@@ -465,10 +435,8 @@ function MaybeHighlighted({
   if (language == "txt") {
     if (matchedLine) {
       return (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             paddingLeft: whitespaceWidth(matchedLine[0]),
           }}
         >
@@ -476,23 +444,21 @@ function MaybeHighlighted({
             {matchedLine[1]}
             {matchedLine[2]}
           </Span>
-        </Div>
+        </TerminalFlex>
       );
     }
     return <Span> </Span>;
   }
   if (matchedLine) {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           paddingLeft: whitespaceWidth(matchedLine[0]),
         }}
       >
         <HighlightedCode code={matchedLine[1]} language={language} />
-      </Div>
+      </TerminalFlex>
     );
   }
   return <Span> </Span>;

@@ -4,7 +4,8 @@ import { useModel, useAppStore } from "../state.ts";
 import type { QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntil } from "../time.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
   try {
     const response = await fetch("https://api.synthetic.new/v2/quotas", {
@@ -30,10 +31,8 @@ function QuotaRow({ label, entry }: QuotaRowProps) {
   const tickPercent = formatQuotaNumber(entry.tickPercent * 100);
   const showNextRegen = entry.remaining < entry.max;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -45,7 +44,7 @@ function QuotaRow({ label, entry }: QuotaRowProps) {
           }}
         >{`Next regen: ${tickPercent}% ${formatTimeUntil(entry.nextTickAt)}`}</Span>
       ) : null}
-    </Div>
+    </TerminalFlex>
   );
 }
 type WeeklyQuotaRowProps = {
@@ -55,10 +54,8 @@ type WeeklyQuotaRowProps = {
 function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
   const showNextRegen = entry.remainingCredits !== entry.maxCredits;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -72,7 +69,7 @@ function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
           {`Next regen: ${entry.nextRegenCredits} ${formatTimeUntil(entry.nextRegenAt)}`}
         </Span>
       ) : null}
-    </Div>
+    </TerminalFlex>
   );
 }
 export const MenuQuotaIndicator = () => {
@@ -105,10 +102,8 @@ export const MenuQuotaIndicator = () => {
   if (!quota) return null;
   if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) return null;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         alignItems: "center",
       }}
@@ -120,10 +115,8 @@ export const MenuQuotaIndicator = () => {
       >
         Synthetic Quota
       </Span>
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
@@ -133,7 +126,7 @@ export const MenuQuotaIndicator = () => {
         {quota.rollingFiveHourLimit ? (
           <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
         ) : null}
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };

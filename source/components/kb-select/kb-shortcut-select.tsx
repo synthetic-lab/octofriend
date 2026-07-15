@@ -4,8 +4,9 @@ import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
 // Allowable A-Z hotkeys, minus reserved keys
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
 import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { TerminalFlex } from "../terminal-flex.tsx";
 export type Hotkey =
   | "a"
   | "b"
@@ -201,33 +202,25 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     }
   });
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
       {items.map((item, index) => {
         const isSelected = index === selectedIndex;
         return (
-          <Div
-            key={`kb-select-${index}`}
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <TerminalFlex key={`kb-select-${index}`}>
             <IndicatorComponent isSelected={isSelected} />
             <UnderlineItem
               isSelected={isSelected}
               label={item.item.label}
               shortcut={item.shortcut}
             />
-          </Div>
+          </TerminalFlex>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }
 function UnderlineItem({

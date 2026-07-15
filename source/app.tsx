@@ -83,8 +83,9 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { HistoryNode } from "./session-history/index.ts";
-import { Div, Span, useApp } from "paintcannon-react";
+import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   name: LoadedToolFrom<T>["name"];
@@ -280,16 +281,14 @@ export default function App({
                 <SessionContext.Provider value={session}>
                   <CwdContext.Provider value={cwd}>
                     <ExitOnDoubleCtrlC>
-                      <Div
+                      <TerminalFlex
                         style={{
-                          display: "flex",
-                          whiteSpace: "pre-wrap",
                           flexDirection: "column",
                           width: "100%",
                           height: "100%",
                         }}
                       >
-                        <Div
+                        <TerminalFlex
                           ref={transcriptRef}
                           onScroll={event => {
                             followTranscriptRef.current = isScrolledToBottom(
@@ -299,8 +298,6 @@ export default function App({
                             );
                           }}
                           style={{
-                            display: "flex",
-                            whiteSpace: "pre-wrap",
                             flexDirection: "column",
                             flexGrow: 1,
                             flexShrink: 1,
@@ -312,19 +309,15 @@ export default function App({
                             scrollbarColor: SCROLLBAR_COLOR,
                           }}
                         >
-                          <Div
+                          <TerminalFlex
                             style={{
-                              display: "flex",
-                              whiteSpace: "pre-wrap",
                               flexDirection: "column",
                               minHeight: "100%",
                               flexShrink: 0,
                             }}
                           >
-                            <Div
+                            <TerminalFlex
                               style={{
-                                display: "flex",
-                                whiteSpace: "pre-wrap",
                                 flexDirection: "column",
                                 alignItems: "center",
                                 justifyContent: "center",
@@ -338,13 +331,11 @@ export default function App({
                               {bootItems.map((item, index) => (
                                 <TranscriptItemRenderer item={item} key={`boot-${index}`} />
                               ))}
-                            </Div>
+                            </TerminalFlex>
                             <TranscriptItemRenderer item={{ type: "slogan" }} />
-                            <Div
+                            <TerminalFlex
                               key={clearNonce}
                               style={{
-                                display: "flex",
-                                whiteSpace: "pre-wrap",
                                 flexDirection: "column",
                               }}
                             >
@@ -370,16 +361,16 @@ export default function App({
                                   session={session}
                                 />
                               )}
-                            </Div>
-                          </Div>
-                        </Div>
+                            </TerminalFlex>
+                          </TerminalFlex>
+                        </TerminalFlex>
                         <BottomBar
                           inputHistory={inputHistory}
                           metadata={metadata}
                           tempNotification={tempNotification}
                           onSessionChange={handleSessionChange}
                         />
-                      </Div>
+                      </TerminalFlex>
                     </ExitOnDoubleCtrlC>
                   </CwdContext.Provider>
                 </SessionContext.Provider>
@@ -440,19 +431,15 @@ function BottomBar({
   if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
   const unchained = useUnchained();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         width: "100%",
       }}
     >
       <BottomBarContent inputHistory={inputHistory} />
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           width: "100%",
           justifyContent: "space-between",
           height: 1,
@@ -460,10 +447,8 @@ function BottomBar({
           flexGrow: 1,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             height: 1,
           }}
         >
@@ -490,7 +475,7 @@ function BottomBar({
               </Span>
             </Span>
           )}
-        </Div>
+        </TerminalFlex>
         <Span
           style={{
             color: themeColor,
@@ -498,19 +483,15 @@ function BottomBar({
         >
           {versionCheck}
         </Span>
-      </Div>
-      <Div
+      </TerminalFlex>
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           minHeight: 1,
         }}
       >
         {displayedTempNotification && (
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               width: "100%",
               flexShrink: 0,
             }}
@@ -523,10 +504,10 @@ function BottomBar({
             >
               {displayedTempNotification}
             </Span>
-          </Div>
+          </TerminalFlex>
         )}
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }
 const PackageSchema = t.subtype({
@@ -610,10 +591,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   );
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           justifyContent: "space-between",
         }}
       >
@@ -624,12 +603,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
               : undefined
           }
         />
-        <Div
-          style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <TerminalFlex>
           {byteCount === 0 ? null : (
             <Span
               style={{
@@ -647,8 +621,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           >
             (Press ESC to interrupt)
           </Span>
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   }
   if (modeData.mode === "error-recovery") return <Loading />;
@@ -700,17 +674,13 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   }
   const _: "menu" | "input" = modeData.mode;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginLeft: 1,
           justifyContent: "flex-end",
         }}
@@ -722,7 +692,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         >
           (Ctrl+p to enter the menu)
         </Span>
-      </Div>
+      </TerminalFlex>
       <MultimediaInput
         inputHistory={inputHistory}
         value={query}
@@ -734,7 +704,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         modalities={model.modalities}
       />
       <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function AuthErrorScreen({
@@ -848,27 +818,21 @@ function AuthErrorScreen({
     [config, model, resolveModelIndex, runAgent, setConfig, transport, session],
   );
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
     >
       <CenteredBox>
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
             gap: 1,
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               justifyContent: "center",
             }}
           >
@@ -879,12 +843,10 @@ function AuthErrorScreen({
             >
               Auth is required for {model.nickname}
             </Span>
-          </Div>
+          </TerminalFlex>
           {authError && (
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 justifyContent: "center",
               }}
             >
@@ -895,9 +857,9 @@ function AuthErrorScreen({
               >
                 {authError.message}
               </Span>
-            </Div>
+            </TerminalFlex>
           )}
-        </Div>
+        </TerminalFlex>
       </CenteredBox>
       <CustomAuthFlow
         config={config}
@@ -914,7 +876,7 @@ function AuthErrorScreen({
         onComplete={onComplete}
         onCancel={clearAuthError}
       />
-    </Div>
+    </TerminalFlex>
   );
 }
 function RequestErrorScreen({
@@ -1034,34 +996,28 @@ function RequestErrorScreen({
         {contextualMessage}
       </Span>
       {viewError && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
             marginBottom: 1,
           }}
         >
           <Span>{error}</Span>
-        </Div>
+        </TerminalFlex>
       )}
       {copiedCurl && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
             marginBottom: 1,
           }}
         >
           <Span>{curlCommand}</Span>
-        </Div>
+        </TerminalFlex>
       )}
       {clipboardError && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
             marginBottom: 1,
           }}
@@ -1073,13 +1029,11 @@ function RequestErrorScreen({
           >
             {clipboardError}
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
       {wroteCurl && curlFilePath && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
             marginBottom: 1,
           }}
@@ -1094,13 +1048,11 @@ function RequestErrorScreen({
               {curlFilePath}
             </Span>
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
       {writeError && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
             marginBottom: 1,
           }}
@@ -1112,7 +1064,7 @@ function RequestErrorScreen({
           >
             {writeError}
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
     </KbShortcutPanel>
   );
@@ -1235,10 +1187,8 @@ function ToolRequestsRenderer({
   }
   const currentToolReq = toolReqs[currentIndex];
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -1250,7 +1200,7 @@ function ToolRequestsRenderer({
         session={session}
         onDone={onDone}
       />
-    </Div>
+    </TerminalFlex>
   );
 }
 function FinishToolRequests({
@@ -1326,12 +1276,7 @@ function ToolRequestRenderer({
     switch (fn.name) {
       case "create":
         return (
-          <Div
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <TerminalFlex>
             <Span>Create file </Span>
             <Span
               style={{
@@ -1341,17 +1286,12 @@ function ToolRequestRenderer({
               {fn.arguments.filePath}
             </Span>
             <Span>?</Span>
-          </Div>
+          </TerminalFlex>
         );
       case "rewrite":
       case "edit":
         return (
-          <Div
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <TerminalFlex>
             <Span>Make these changes to </Span>
             <Span
               style={{
@@ -1361,7 +1301,7 @@ function ToolRequestRenderer({
               {fn.arguments.filePath}
             </Span>
             <Span>?</Span>
-          </Div>
+          </TerminalFlex>
         );
       case "skill":
       case "read":
@@ -1482,10 +1422,8 @@ function ToolRequestRenderer({
     );
   }
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
@@ -1497,7 +1435,7 @@ function ToolRequestRenderer({
         indicatorComponent={IndicatorComponent}
         itemComponent={ToolRequestItem}
       />
-    </Div>
+    </TerminalFlex>
   );
 }
 const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
@@ -1507,10 +1445,8 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
   if (item.type === "header") return <Header unchained={unchained} />;
   if (item.type === "version") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
           flexDirection: "column",
           alignItems: "center",
@@ -1530,15 +1466,13 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
         >
           Version: {item.metadata.version}
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.type === "slogan") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginLeft: 1,
           marginTop: 1,
         }}
@@ -1553,15 +1487,13 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
             what you want to do.
           </Span>
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.type === "updates") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
           flexDirection: "column",
           alignItems: "center",
@@ -1574,15 +1506,13 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
         >
           Updates:
         </Span>
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginTop: 1,
           }}
         >
           <Markdown markdown={item.updates} />
-        </Div>
+        </TerminalFlex>
         <Span
           style={{
             color: "gray",
@@ -1597,17 +1527,12 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
         >
           See the full changelog by running: `octo changelog`
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.type === "boot-notification") {
     return (
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      <TerminalFlex>
         <Span
           style={{
             color: "gray",
@@ -1615,23 +1540,21 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
         >
           {item.content}
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   return <MessageDisplay item={item.item} />;
 };
 const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         paddingRight: 4,
       }}
     >
       <MessageDisplayInner item={item} />
-    </Div>
+    </TerminalFlex>
   );
 };
 const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
@@ -1645,10 +1568,8 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
   }
   if (item.type === "notification") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginLeft: 1,
         }}
       >
@@ -1659,7 +1580,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
         >
           {item.content}
         </Span>
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.type === "llm-ir") {
@@ -1693,54 +1614,46 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
 function renderInflightResponse(item: InflightResponseType, isCompacting: boolean) {
   if (isCompacting) {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginBottom: 1,
         }}
       >
         <CompactionRenderer item={item} />
-      </Div>
+      </TerminalFlex>
     );
   }
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginBottom: 1,
       }}
     >
       <AssistantMessageRenderer item={item} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   if (item.role === "assistant") {
     if (isCompacting) {
       return (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginBottom: 1,
           }}
         >
           <CompactionRenderer item={item} />
-        </Div>
+        </TerminalFlex>
       );
     }
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginBottom: 1,
         }}
       >
         <AssistantMessageRenderer item={item} />
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.role === "tool-parse-error") {
@@ -1777,17 +1690,13 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   }
   if (item.role === "tool-runtime-error") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginLeft: 2,
           }}
         >
@@ -1801,30 +1710,26 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
               info: "Tool failed...",
             })}
           </Span>
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   }
   if (item.role === "tool-reject") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
         <ToolMessageRenderer item={item.toolCall} />
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginLeft: 2,
           }}
         >
           <Span>Tool rejected; tell Octo what to do instead:</Span>
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     );
   }
 
@@ -1837,25 +1742,21 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   }
   if (item.role === "tool-output") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           marginBottom: 1,
         }}
       >
         <ToolMessageRenderer item={item.toolCall} />
         <ToolOutputContentRenderer content={item.content} />
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.role === "file-read") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           marginBottom: 1,
         }}
@@ -1877,15 +1778,13 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
               : []),
           ]}
         />
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.role === "file-mutate") {
     return (
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           marginBottom: 1,
         }}
@@ -1899,7 +1798,7 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
             },
           ]}
         />
-      </Div>
+      </TerminalFlex>
     );
   }
   if (item.role === "trajectory") {
@@ -1912,26 +1811,20 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
   );
   const contentLines = textParts.flatMap(part => part.content.split(LINE_SPLIT_REGEX));
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         marginTop: 1,
         marginBottom: 1,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "row",
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginRight: 1,
           }}
         >
@@ -1942,12 +1835,10 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
           >
             ▶
           </Span>
-        </Div>
+        </TerminalFlex>
         {imageParts.length > 0 && (
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               marginRight: 1,
             }}
           >
@@ -1959,29 +1850,21 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
             >
               ⟦ 📎 {imageParts.length} image{imageParts.length > 1 ? "s" : ""} attached ⟧
             </Span>
-          </Div>
+          </TerminalFlex>
         )}
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
           }}
         >
           {contentLines.map((line, i) => (
-            <Div
-              key={i}
-              style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
-              }}
-            >
+            <TerminalFlex key={i}>
               <Span>{line}</Span>
-            </Div>
+            </TerminalFlex>
           ))}
-        </Div>
-      </Div>
-    </Div>
+        </TerminalFlex>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }
 function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
@@ -1994,10 +1877,8 @@ function CompactionSummaryRenderer({ content }: { content: Content["content"] })
     };
   });
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         marginTop: 1,
         marginBottom: 1,
@@ -2018,7 +1899,7 @@ function CompactionSummaryRenderer({ content }: { content: Content["content"] })
       >
         Summary complete!
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
@@ -2069,10 +1950,8 @@ function parsedToolSchema(toolCall: ToolCallRequest): any {
 }
 function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -2087,15 +1966,13 @@ function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
       <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
       <GlobArg name="Path pattern" arg={item.arguments.includePath} />
       <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -2112,7 +1989,7 @@ function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
       <GlobArg name="Context lines" arg={item.arguments.context} />
       <GlobArg name="Max results" arg={item.arguments.maxResults} />
       <GlobArg name="Timeout" arg={item.arguments.timeout} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function GlobArg({ name, arg }: { name: string; arg: string | number | boolean | undefined }) {
@@ -2139,12 +2016,7 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | boolean |
 }
 function WebSearchToolRenderer(_: { item: ParsedToolSchemaFrom<typeof webSearch> }) {
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2152,17 +2024,12 @@ function WebSearchToolRenderer(_: { item: ParsedToolSchemaFrom<typeof webSearch>
       >
         Octo searched the web
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2170,18 +2037,13 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
       >
         Octo read the {item.arguments.skillName} skill
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
   const themeColor = useColor();
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2196,25 +2058,18 @@ function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTo
       >
         {item.arguments.url}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> }) {
   const themeColor = useColor();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      <TerminalFlex>
         <Span
           style={{
             color: "gray",
@@ -2229,7 +2084,7 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
         >
           {item.arguments.cmd}
         </Span>
-      </Div>
+      </TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2237,18 +2092,13 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
       >
         timeout: {item.arguments.timeout}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
   const themeColor = useColor();
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2263,18 +2113,13 @@ function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> })
       >
         {item.arguments.filePath}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
   const themeColor = useColor();
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
+    <TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2289,25 +2134,18 @@ function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> })
       >
         {item?.arguments?.dirPath || process.cwd()}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      <TerminalFlex>
         <Span>Edit: </Span>
         <Span
           style={{
@@ -2316,18 +2154,16 @@ function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> })
         >
           {item.arguments.filePath}
         </Span>
-      </Div>
+      </TerminalFlex>
       <DiffEditRenderer filePath={item.arguments.filePath} item={item.arguments} />
-    </Div>
+    </TerminalFlex>
   );
 }
 function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewrite> }) {
   const { text, filePath, originalFileContents } = item.arguments;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
@@ -2339,7 +2175,7 @@ function RewriteToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof rewri
         fileContents={originalFileContents}
         filepath={filePath}
       />
-    </Div>
+    </TerminalFlex>
   );
 }
 function DiffEditRenderer({
@@ -2350,10 +2186,8 @@ function DiffEditRenderer({
   filePath: string;
 }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -2364,26 +2198,19 @@ function DiffEditRenderer({
         fileContents={item.originalFileContents}
         filepath={filePath}
       />
-    </Div>
+    </TerminalFlex>
   );
 }
 function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof createTool> }) {
   const themeColor = useColor();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         gap: 1,
       }}
     >
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      <TerminalFlex>
         <Span>Octo wants to create </Span>
         <Span
           style={{
@@ -2393,34 +2220,22 @@ function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof create
           {item.arguments.filePath}
         </Span>
         <Span>:</Span>
-      </Div>
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      </TerminalFlex>
+      <TerminalFlex>
         <FileRenderer contents={item.arguments.content} filePath={item.arguments.filePath} />
-      </Div>
-    </Div>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }
 function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
   const themeColor = useColor();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
-      <Div
-        style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
-        }}
-      >
+      <TerminalFlex>
         <Span
           style={{
             color: "gray",
@@ -2435,7 +2250,7 @@ function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
         >
           Server: {item.arguments.server}, Tool: {item.arguments.tool}
         </Span>
-      </Div>
+      </TerminalFlex>
       <Span
         style={{
           color: "gray",
@@ -2443,7 +2258,7 @@ function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
       >
         Arguments: {JSON.stringify(item.arguments.arguments)}
       </Span>
-    </Div>
+    </TerminalFlex>
   );
 }
 function ToolOutputContentRenderer({ content }: { content: Content["content"] }) {
@@ -2454,10 +2269,8 @@ function ToolOutputContentRenderer({ content }: { content: Content["content"] })
     0,
   );
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginLeft: 2,
         flexDirection: "column",
       }}
@@ -2472,7 +2285,7 @@ function ToolOutputContentRenderer({ content }: { content: Content["content"] })
       {imageParts.map((part, i) => (
         <ImageContentRenderer key={i} image={part.image} />
       ))}
-    </Div>
+    </TerminalFlex>
   );
 }
 function ContentRenderer({
@@ -2483,10 +2296,8 @@ function ContentRenderer({
   textColor?: string;
 }) {
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
@@ -2505,7 +2316,7 @@ function ContentRenderer({
           </Span>
         ));
       })}
-    </Div>
+    </TerminalFlex>
   );
 }
 function ImageContentRenderer({ image }: { image: ImageInfo }) {
@@ -2621,16 +2432,9 @@ const OCTO_MARGIN = 1;
 const OCTO_PADDING = 2;
 function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
   return (
-    <Div
-      style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
-      }}
-    >
-      <Div
+    <TerminalFlex>
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginRight: OCTO_MARGIN,
           width: OCTO_PADDING,
           flexShrink: 0,
@@ -2638,18 +2442,16 @@ function OctoMessageRenderer({ children }: { children?: React.ReactNode }) {
         }}
       >
         <Octo />
-      </Div>
+      </TerminalFlex>
       {children}
-    </Div>
+    </TerminalFlex>
   );
 }
 function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
   return (
     <OctoMessageRenderer>
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           flexGrow: 1,
           minWidth: 0,
@@ -2662,7 +2464,7 @@ function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
         >
           {item.content}
         </Span>
-      </Div>
+      </TerminalFlex>
     </OctoMessageRenderer>
   );
 }
@@ -2672,10 +2474,8 @@ function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
   const showThoughts = thoughts && thoughts !== "";
   return (
     <OctoMessageRenderer>
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           flexGrow: 1,
           minWidth: 0,
@@ -2683,7 +2483,7 @@ function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
       >
         {showThoughts && <ThoughtBox thoughts={thoughts} />}
         <Markdown markdown={content} />
-      </Div>
+      </TerminalFlex>
     </OctoMessageRenderer>
   );
 }
@@ -2712,14 +2512,12 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
   }, [thoughts]);
 
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
-      <Div
+      <TerminalFlex
         ref={viewportRef}
         onScroll={event => {
           followThoughtsRef.current = isScrolledToBottom(
@@ -2729,8 +2527,6 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
           );
         }}
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexGrow: 0,
           flexShrink: 1,
           minWidth: 0,
@@ -2744,10 +2540,8 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
           border: "rounded",
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexGrow: 0,
             flexShrink: 0,
             flexDirection: "column",
@@ -2760,8 +2554,8 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
           >
             {thoughts}
           </Span>
-        </Div>
-      </Div>
-    </Div>
+        </TerminalFlex>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }

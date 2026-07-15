@@ -1,6 +1,6 @@
 import React, { useCallback } from "react";
 import { KbShortcutSelect, Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
-import { Div } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function ConfirmDialog({
   confirmLabel,
   rejectLabel,
@@ -45,14 +45,12 @@ export function ConfirmDialog({
     return onReject();
   }, []);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         justifyContent: "center",
       }}
     >
       <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
-    </Div>
+    </TerminalFlex>
   );
 }

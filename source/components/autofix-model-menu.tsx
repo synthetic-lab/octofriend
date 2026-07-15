@@ -6,8 +6,8 @@ import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
-import { Div } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export type AutofixModelProps = {
   config: Config | null;
   onComplete: (diffApply: Exclude<Config["diffApply"], undefined>) => any;
@@ -145,17 +145,15 @@ export function AutofixModelMenu({
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginBottom: 1,
           flexDirection: "column",
           gap: 1,
         }}
       >
         {children}
-      </Div>
+      </TerminalFlex>
     </KbShortcutPanel>
   );
 }

@@ -3,8 +3,8 @@ import React, { type FC, useState, useEffect, useRef, useCallback } from "react"
 import arrayToRotated from "to-rotated";
 import Indicator, { type Props as IndicatorProps } from "./select-indicator.tsx";
 import ItemComponent, { type Props as ItemProps } from "./select-item.tsx";
-import { Div } from "paintcannon-react";
 import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { TerminalFlex } from "../terminal-flex.tsx";
 type Props<V> = {
   /**
    * Items to display in a list. Each item must be an object and have `label` and `value` props, it may also optionally have a `key` prop.
@@ -149,23 +149,15 @@ function SelectInput<V>({
     ? arrayToRotated(items, rotateIndex).slice(0, limit)
     : items;
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
       }}
     >
       {slicedItems.map((item, index) => {
         const isSelected = index === selectedIndex;
         return (
-          <Div
-            key={item.key ?? String(item.value)}
-            style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
-            }}
-          >
+          <TerminalFlex key={item.key ?? String(item.value)}>
             {React.createElement(indicatorComponent, {
               isSelected,
             })}
@@ -173,10 +165,10 @@ function SelectInput<V>({
               ...item,
               isSelected,
             })}
-          </Div>
+          </TerminalFlex>
         );
       })}
-    </Div>
+    </TerminalFlex>
   );
 }
 export default SelectInput;

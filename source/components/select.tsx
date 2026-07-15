@@ -1,14 +1,13 @@
 import React from "react";
 import { useColor } from "../theme.ts";
 import figures from "figures";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export const IndicatorComponent = ({ isSelected = false }: { isSelected?: boolean }) => {
   const themeColor = useColor();
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         marginRight: 1,
       }}
     >
@@ -23,7 +22,7 @@ export const IndicatorComponent = ({ isSelected = false }: { isSelected?: boolea
       ) : (
         <Span> </Span>
       )}
-    </Div>
+    </TerminalFlex>
   );
 };
 export const ItemComponent = ({

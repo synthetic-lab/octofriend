@@ -9,8 +9,9 @@ import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { hasCodexOAuthTokens } from "../codex-oauth.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export type AutoDetectModelsProps = {
   onComplete: (models: Config["models"]) => void;
   onCancel: () => void;
@@ -510,15 +511,13 @@ function ImportModelsFrom({
     <CenteredBox>
       <MenuHeader title={`${provider.name} models can be imported!`} />
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginBottom: 1,
         }}
       >
         <Span>Which of the following models would you like to import?</Span>
-      </Div>
+      </TerminalFlex>
 
       <SelectInput
         items={items}

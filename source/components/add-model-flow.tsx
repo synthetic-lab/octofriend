@@ -26,7 +26,8 @@ import {
   startCodexDeviceAuthorization,
   writeCodexOAuthTokens,
 } from "../codex-oauth.ts";
-import { Div, Span } from "paintcannon-react";
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 type Model = Config["models"][number];
 type ValidationResult =
   | {
@@ -151,28 +152,24 @@ const baseUrl = fullFlow
             }
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
             }}
           >
             {props.renderExamples && (
-              <Div
+              <TerminalFlex
                 style={{
-                  display: "flex",
-                  whiteSpace: "pre-wrap",
                   marginBottom: 1,
                 }}
               >
                 <Span>(For example, for Moonshot's Kimi K2 API, https://api.moonshot.ai/v1)</Span>
-              </Div>
+              </TerminalFlex>
             )}
             <Span>
               You can usually find this information in your inference provider's documentation.
             </Span>
-          </Div>
+          </TerminalFlex>
         </Step>
       </Back>
     );
@@ -292,25 +289,19 @@ function CodexOAuthStep({ cancel, onComplete }: { cancel: () => void; onComplete
   }, [onComplete]);
   return (
     <Back go={cancel}>
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             justifyContent: "center",
             marginBottom: 1,
           }}
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
               width: "100%",
               minWidth: 0,
@@ -386,9 +377,9 @@ function CodexOAuthStep({ cancel, onComplete }: { cancel: () => void; onComplete
                 Credentials will be saved to {CODEX_OAUTH_FILE}
               </Span>
             )}
-          </Div>
-        </Div>
-      </Div>
+          </TerminalFlex>
+        </TerminalFlex>
+      </TerminalFlex>
     </Back>
   );
 }
@@ -438,23 +429,19 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
           })
         }
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
           }}
         >
           {props.renderExamples && (
-            <Div
+            <TerminalFlex
               style={{
-                display: "flex",
-                whiteSpace: "pre-wrap",
                 marginBottom: 1,
               }}
             >
               <Span>(For example, MOONSHOT_API_KEY)</Span>
-            </Div>
+            </TerminalFlex>
           )}
           <Span>
             You can typically find your API key on your account or settings page on your inference
@@ -475,7 +462,7 @@ Env var ${val} isn't defined in your current shell. Do you need to re-source you
               <Span>(If you're running a local LLM, you can use any non-empty env var.)</Span>
             </>
           )}
-        </Div>
+        </TerminalFlex>
       </Step>
     </Back>
   );
@@ -527,10 +514,8 @@ const command = fullFlow
             })
           }
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
             }}
           >
@@ -564,7 +549,7 @@ const command = fullFlow
                 </Span>
               </>
             )}
-          </Div>
+          </TerminalFlex>
         </Step>
       </Back>
     );
@@ -615,10 +600,8 @@ function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
         onSubmit={props.onSubmit}
       >
         {props.renderExamples && (
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               marginBottom: 1,
             }}
           >
@@ -626,7 +609,7 @@ function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
               (For example, to use Kimi K2 with the Moonshot API, you would use
               kimi-k2-0711-preview)
             </Span>
-          </Div>
+          </TerminalFlex>
         )}
         <Span>
           This varies by inference provider: you can typically find this information in your
@@ -659,20 +642,16 @@ function TestConnection(
   }, [props]);
   return (
     <Back go={props.back}>
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
           marginTop: 1,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
             width: "100%",
             minWidth: 0,
@@ -687,8 +666,8 @@ function TestConnection(
           >
             Testing connection...
           </Span>
-        </Div>
-      </Div>
+        </TerminalFlex>
+      </TerminalFlex>
     </Back>
   );
 }
@@ -714,10 +693,8 @@ const nickname = fullFlow
             })
           }
         >
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               flexDirection: "column",
             }}
           >
@@ -726,7 +703,7 @@ const nickname = fullFlow
                 For example, if this was set up to talk to Kimi K2, you might want to call it that.
               </Span>
             )}
-          </Div>
+          </TerminalFlex>
         </Step>
       </Back>
     );
@@ -779,10 +756,8 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
           });
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             flexDirection: "column",
           }}
         >
@@ -790,10 +765,8 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             You can usually find this information in the documentation for the model on your
             inference company's website.
           </Span>
-          <Div
+          <TerminalFlex
             style={{
-              display: "flex",
-              whiteSpace: "pre-wrap",
               marginTop: 1,
               marginBottom: 1,
             }}
@@ -802,7 +775,7 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
               (This is an estimate: leave some buffer room. Best performance is often at half the
               number of tokens supported by the API.)
             </Span>
-          </Div>
+          </TerminalFlex>
           <Span>
             Format the number in k: for example,{" "}
             <Span
@@ -822,7 +795,7 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             </Span>
             .
           </Span>
-        </Div>
+        </TerminalFlex>
       </Step>
     </Back>
   );
@@ -1217,20 +1190,16 @@ function Step<T>(props: AddModelStep<T>) {
     props.onSubmit(parsed);
   }, [props, varValue]);
   return (
-    <Div
+    <TerminalFlex
       style={{
-        display: "flex",
-        whiteSpace: "pre-wrap",
         flexDirection: "column",
         justifyContent: "center",
         alignItems: "center",
         marginTop: 1,
       }}
     >
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           flexDirection: "column",
           width: "100%",
           minWidth: 0,
@@ -1246,12 +1215,10 @@ function Step<T>(props: AddModelStep<T>) {
           {props.title}
         </Span>
         {props.children}
-      </Div>
+      </TerminalFlex>
 
-      <Div
+      <TerminalFlex
         style={{
-          display: "flex",
-          whiteSpace: "pre-wrap",
           marginTop: 1,
           marginBottom: 1,
           width: "100%",
@@ -1259,24 +1226,20 @@ function Step<T>(props: AddModelStep<T>) {
           maxWidth: 80,
         }}
       >
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             marginRight: 1,
           }}
         >
           <Span>{props.prompt}</Span>
-        </Div>
+        </TerminalFlex>
 
         <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
-      </Div>
+      </TerminalFlex>
 
       {errorMessage && (
-        <Div
+        <TerminalFlex
           style={{
-            display: "flex",
-            whiteSpace: "pre-wrap",
             width: "100%",
             minWidth: 0,
             maxWidth: 80,
@@ -1290,9 +1253,9 @@ function Step<T>(props: AddModelStep<T>) {
           >
             {errorMessage}
           </Span>
-        </Div>
+        </TerminalFlex>
       )}
-    </Div>
+    </TerminalFlex>
   );
 }
 type ModelMetadata = {
