@@ -2543,11 +2543,7 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
       );
     }
     case "fetch": {
-      return (
-        <Span>
-          <Span> fetches from the web during this session.</Span>
-        </Span>
-      );
+      return <Span> fetches from the web during this session.</Span>;
     }
     case "web-search": {
       return <Span> Web Searches during this session.</Span>;
@@ -2586,24 +2582,22 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
     case "mcp": {
       return (
         <Span>
-          <Span>
-            {" "}
-            MCP tools with Server:{" "}
-            <Span
-              style={{
-                fontWeight: "bold",
-              }}
-            >
-              {fn.arguments.server}
-            </Span>{" "}
-            using Tool:{" "}
-            <Span
-              style={{
-                fontWeight: "bold",
-              }}
-            >
-              {fn.arguments.tool}
-            </Span>
+          {" "}
+          MCP tools with Server:{" "}
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {fn.arguments.server}
+          </Span>{" "}
+          using Tool:{" "}
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {fn.arguments.tool}
           </Span>
         </Span>
       );
