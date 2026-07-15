@@ -108,7 +108,7 @@ type Props = {
   inputHistory: InputHistory;
   bootSkills: string[];
 };
-type StaticItem =
+type TranscriptItem =
   | {
       type: "header";
     }
@@ -209,7 +209,7 @@ export default function App({
     skillNotifs.push("Configured skills:");
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
-  const staticItems: StaticItem[] = useMemo(() => {
+  const bootItems: TranscriptItem[] = useMemo(() => {
     let items = [
       {
         type: "header" as const,
@@ -247,7 +247,7 @@ export default function App({
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
     modeData.mode,
-    staticItems.length,
+    bootItems.length,
   ]);
   useEffect(() => {
     let resizeFrame: number | undefined;
@@ -335,11 +335,11 @@ export default function App({
                                 marginBottom: 1,
                               }}
                             >
-                              {staticItems.map((item, index) => (
-                                <StaticItemRenderer item={item} key={`static-${index}`} />
+                              {bootItems.map((item, index) => (
+                                <TranscriptItemRenderer item={item} key={`boot-${index}`} />
                               ))}
                             </Div>
-                            <StaticItemRenderer item={{ type: "slogan" }} />
+                            <TranscriptItemRenderer item={{ type: "slogan" }} />
                             <Div
                               key={clearNonce}
                               style={{
@@ -349,7 +349,7 @@ export default function App({
                               }}
                             >
                               {history.map((item, index) => (
-                                <StaticItemRenderer
+                                <TranscriptItemRenderer
                                   item={{
                                     type: "history-item",
                                     item,
@@ -1500,7 +1500,7 @@ function ToolRequestRenderer({
     </Div>
   );
 }
-const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
+const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
   const themeColor = useColor();
   const model = useModel();
   const unchained = useUnchained();
