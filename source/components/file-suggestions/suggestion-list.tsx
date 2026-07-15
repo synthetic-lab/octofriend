@@ -1,6 +1,7 @@
 import React from "react";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "../terminal-flex.tsx";
+import { BACKGROUND_COLOR, FOREGROUND_COLOR } from "../../theme.ts";
 interface SuggestionListProps {
   items: string[];
   selectedIndex: number;
@@ -21,8 +22,8 @@ export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
             {isSelected ? (
               <Span
                 style={{
-                  color: "#111827",
-                  backgroundColor: "#e5e7eb",
+                  color: BACKGROUND_COLOR,
+                  backgroundColor: FOREGROUND_COLOR,
                 }}
               >
                 {">"} {displayPath}
