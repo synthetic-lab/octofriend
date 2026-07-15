@@ -125,6 +125,18 @@ export default function TextInput({
 
           const cursorPosition = characterIndexToStringIndex(value, textarea.cursorPosition);
           if (vimEnabled) {
+            const cursorVisualPosition = textarea.getCursorVisualPosition();
+            const nativeVisualLineRange =
+              cursorVisualPosition === null
+                ? null
+                : textarea.getVisualLineRange(cursorVisualPosition.row);
+            const visualLineRange =
+              nativeVisualLineRange === null
+                ? null
+                : {
+                    start: characterIndexToStringIndex(value, nativeVisualLineRange.start),
+                    end: characterIndexToStringIndex(value, nativeVisualLineRange.end),
+                  };
             if (
               vimMode === "NORMAL" &&
               (event.key === "j" ||
@@ -145,6 +157,8 @@ export default function TextInput({
               cursorPosition,
               value.length,
               value,
+              cursorVisualPosition,
+              visualLineRange,
             );
             if (vimResult.consumed) {
               event.preventDefault();
