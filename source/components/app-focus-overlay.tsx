@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Div, useApp } from "paintcannon-react";
+import { APP_OVERLAY_Z_INDEX } from "../theme.ts";
 
 const DIMMED_OPACITY = 0.4;
 const DIM_TRANSITION = "opacity 100ms";
@@ -19,7 +20,7 @@ function FocusDimmer() {
         left: 0,
         width: "100%",
         height: "100%",
-        zIndex: 2147483647,
+        zIndex: APP_OVERLAY_Z_INDEX,
         backgroundColor: "black",
         opacity,
         transition: DIM_TRANSITION,

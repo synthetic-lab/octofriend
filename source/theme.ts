@@ -9,6 +9,7 @@ export const BACKGROUND_COLOR = "#0f172a";
 export const FOREGROUND_COLOR = "#a3a3a3";
 export const SCROLLBAR_COLOR = "#64748b #1e293b";
 export const SUBTLE_SCROLLBAR_COLOR = "#475569 #1e293b";
+export const APP_OVERLAY_Z_INDEX = 2147483647;
 
 export function color(unchained: boolean) {
   if (unchained) return UNCHAINED_COLOR;
