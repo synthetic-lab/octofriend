@@ -777,23 +777,8 @@ function Context(props: FullFlowRouteData["context"] & Pick<Transitions<number>,
             </Span>
           </TerminalFlex>
           <Span>
-            Format the number in k: for example,{" "}
-            <Span
-              style={{
-                color: color,
-              }}
-            >
-              32k
-            </Span>{" "}
-            or,{" "}
-            <Span
-              style={{
-                color: color,
-              }}
-            >
-              64k
-            </Span>
-            .
+            Format the number in k: for example, <Span style={{ color: color }}>32k</Span> or,{" "}
+            <Span style={{ color: color }}>64k</Span>.
           </Span>
         </TerminalFlex>
       </Step>
