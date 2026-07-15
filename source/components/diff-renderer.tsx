@@ -232,18 +232,7 @@ function DiffSet({
         lineCounter={oldLineCounter}
         originalText={oldText}
       >
-        {oldRemoved ? (
-          <Span
-            style={{
-              color: "black",
-            }}
-          >
-            {" "}
-            -{" "}
-          </Span>
-        ) : (
-          <Span>{"  "}</Span>
-        )}
+        {oldRemoved ? <Span style={{ color: "black" }}> - </Span> : <Span>{"  "}</Span>}
       </LineSegments>
       <LineSegments
         value={newValue}
@@ -254,18 +243,7 @@ function DiffSet({
         lineCounter={newLineCounter}
         originalText={newText}
       >
-        {newAdded ? (
-          <Span
-            style={{
-              color: "black",
-            }}
-          >
-            {" "}
-            +{" "}
-          </Span>
-        ) : (
-          <Span>{"  "}</Span>
-        )}
+        {newAdded ? <Span style={{ color: "black" }}> + </Span> : <Span>{"  "}</Span>}
       </LineSegments>
     </TerminalFlex>
   );
