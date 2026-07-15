@@ -231,9 +231,6 @@ export default function App({
             },
           ]
         : []),
-      {
-        type: "slogan" as const,
-      },
     ];
     return items;
   }, [currConfig, skillNotifs, updates]);
@@ -315,39 +312,65 @@ export default function App({
                             scrollbarColor: SCROLLBAR_COLOR,
                           }}
                         >
-                          {staticItems.map((item, index) => (
-                            <StaticItemRenderer item={item} key={`static-${index}`} />
-                          ))}
                           <Div
-                            key={clearNonce}
                             style={{
                               display: "flex",
                               whiteSpace: "pre-wrap",
                               flexDirection: "column",
+                              minHeight: "100%",
+                              flexShrink: 0,
                             }}
                           >
-                            {history.map((item, index) => (
-                              <StaticItemRenderer
-                                item={{
-                                  type: "history-item",
-                                  item,
-                                }}
-                                key={`history-${index}`}
-                              />
-                            ))}
-                            {(modeData.mode === "responding" || modeData.mode === "compacting") &&
-                              (modeData.inflightResponse.reasoningContent ||
-                                modeData.inflightResponse.content) && (
-                                <MessageDisplay item={modeData.inflightResponse} />
+                            <Div
+                              style={{
+                                display: "flex",
+                                whiteSpace: "pre-wrap",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "100%",
+                                flexGrow: 1,
+                                flexShrink: 1,
+                                marginTop: 1,
+                                marginBottom: 1,
+                              }}
+                            >
+                              {staticItems.map((item, index) => (
+                                <StaticItemRenderer item={item} key={`static-${index}`} />
+                              ))}
+                            </Div>
+                            <StaticItemRenderer item={{ type: "slogan" }} />
+                            <Div
+                              key={clearNonce}
+                              style={{
+                                display: "flex",
+                                whiteSpace: "pre-wrap",
+                                flexDirection: "column",
+                              }}
+                            >
+                              {history.map((item, index) => (
+                                <StaticItemRenderer
+                                  item={{
+                                    type: "history-item",
+                                    item,
+                                  }}
+                                  key={`history-${index}`}
+                                />
+                              ))}
+                              {(modeData.mode === "responding" || modeData.mode === "compacting") &&
+                                (modeData.inflightResponse.reasoningContent ||
+                                  modeData.inflightResponse.content) && (
+                                  <MessageDisplay item={modeData.inflightResponse} />
+                                )}
+                              {modeData.mode === "tool-call" && (
+                                <ToolRequestsRenderer
+                                  toolReqs={modeData.toolReqs}
+                                  config={currConfig}
+                                  transport={transport}
+                                  session={session}
+                                />
                               )}
-                            {modeData.mode === "tool-call" && (
-                              <ToolRequestsRenderer
-                                toolReqs={modeData.toolReqs}
-                                config={currConfig}
-                                transport={transport}
-                                session={session}
-                              />
-                            )}
+                            </Div>
                           </Div>
                         </Div>
                         <BottomBar
@@ -1489,8 +1512,8 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
           display: "flex",
           whiteSpace: "pre-wrap",
           marginTop: 1,
-          marginLeft: 1,
           flexDirection: "column",
+          alignItems: "center",
         }}
       >
         <Span
@@ -1540,8 +1563,8 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
           display: "flex",
           whiteSpace: "pre-wrap",
           marginTop: 1,
-          marginLeft: 1,
           flexDirection: "column",
+          alignItems: "center",
         }}
       >
         <Span
@@ -1556,7 +1579,6 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
             display: "flex",
             whiteSpace: "pre-wrap",
             marginTop: 1,
-            marginLeft: 1,
           }}
         >
           <Markdown markdown={item.updates} />
@@ -1584,7 +1606,6 @@ const StaticItemRenderer = ({ item }: { item: StaticItem }) => {
         style={{
           display: "flex",
           whiteSpace: "pre-wrap",
-          marginLeft: 1,
         }}
       >
         <Span
