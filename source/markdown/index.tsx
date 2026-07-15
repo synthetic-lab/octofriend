@@ -13,6 +13,23 @@ import {
 import { HighlightedCode } from "./highlight-code.tsx";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "../components/terminal-flex.tsx";
+import {
+  MARKDOWN_BLOCKQUOTE_BORDER_COLOR,
+  MARKDOWN_CHECKED_TASK_COLOR,
+  MARKDOWN_CODE_BLOCK_BORDER_COLOR,
+  MARKDOWN_HEADING_COLORS,
+  MARKDOWN_HORIZONTAL_RULE_COLOR,
+  MARKDOWN_IMAGE_COLOR,
+  MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
+  MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
+  MARKDOWN_LINK_COLOR,
+  MARKDOWN_LIST_MARKER_COLOR,
+  MARKDOWN_STRIKETHROUGH_COLOR,
+  MARKDOWN_TABLE_BORDER_COLOR,
+  MARKDOWN_TABLE_CELL_COLOR,
+  MARKDOWN_TABLE_HEADER_COLOR,
+  MARKDOWN_UNCHECKED_TASK_COLOR,
+} from "../theme.ts";
 export function Markdown({ markdown }: { markdown: string }) {
   const tokens = marked.lexer(markdown);
   return (
@@ -86,7 +103,7 @@ function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
     >
       <Span
         style={{
-          color: "gray",
+          color: MARKDOWN_BLOCKQUOTE_BORDER_COLOR,
         }}
       >
         │{" "}
@@ -119,7 +136,7 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
       >
         <Span
           style={{
-            color: "gray",
+            color: MARKDOWN_CODE_BLOCK_BORDER_COLOR,
           }}
         >
           {langTag}
@@ -134,7 +151,7 @@ function CodeRenderer({ token }: { token: Tokens.Code }) {
         </TerminalFlex>
         <Span
           style={{
-            color: "gray",
+            color: MARKDOWN_CODE_BLOCK_BORDER_COLOR,
           }}
         >
           {footer}
@@ -158,8 +175,8 @@ function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
   return (
     <Span
       style={{
-        color: "#b8c2d1",
-        backgroundColor: "#182b42",
+        color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
+        backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
       }}
     >
       {token.text}
@@ -175,7 +192,7 @@ function DelRenderer({ token }: { token: Tokens.Del }) {
     <Span
       style={{
         textDecoration: "line-through",
-        color: "gray",
+        color: MARKDOWN_STRIKETHROUGH_COLOR,
       }}
     >
       {renderChildren(token.tokens)}
@@ -199,8 +216,8 @@ function EscapeRenderer({ token }: { token: Tokens.Escape }) {
 function HeadingRenderer({ token }: { token: Tokens.Heading }) {
   const indent = Math.max(0, token.depth - 1) * 2; // Convert to padding units
 
-  const colors = ["#d4d4d4", "#c8c8c8", "#bfc3c7", "#b9b8c0", "#b5b0bb", "#afa9b5"];
-  const color = colors[Math.min(token.depth - 1, colors.length - 1)];
+  const color =
+    MARKDOWN_HEADING_COLORS[Math.min(token.depth - 1, MARKDOWN_HEADING_COLORS.length - 1)];
   const marker = "#".repeat(token.depth);
   return (
     <TerminalFlex
@@ -232,7 +249,7 @@ function HrRenderer() {
     >
       <Span
         style={{
-          color: "gray",
+          color: MARKDOWN_HORIZONTAL_RULE_COLOR,
         }}
       >
         {"─".repeat(width)}
@@ -247,7 +264,7 @@ function ImageRenderer({ token }: { token: Tokens.Image }) {
   return (
     <Span
       style={{
-        color: "yellow",
+        color: MARKDOWN_IMAGE_COLOR,
       }}
     >
       [Image: {token.text}]
@@ -260,7 +277,7 @@ function LinkRenderer({ token }: { token: Tokens.Link }) {
   return (
     <Span
       style={{
-        color: "blue",
+        color: MARKDOWN_LINK_COLOR,
       }}
     >
       {linkText} ({token.href}){renderChildren(token.tokens)} ({token.href})
@@ -285,7 +302,7 @@ function ListRenderer({ token }: { token: Tokens.List }) {
         >
           <Span
             style={{
-              color: "cyan",
+              color: MARKDOWN_LIST_MARKER_COLOR,
             }}
           >
             {token.ordered
@@ -315,7 +332,7 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
         >
           <Span
             style={{
-              color: token.checked ? "green" : "gray",
+              color: token.checked ? MARKDOWN_CHECKED_TASK_COLOR : MARKDOWN_UNCHECKED_TASK_COLOR,
             }}
           >
             {token.checked ? "[✓]" : "[ ]"}{" "}
@@ -429,7 +446,7 @@ function TableRenderer({ token }: { token: Tokens.Table }) {
       <TableRowRenderer cells={token.header} columnWidths={columnWidths} isHeader={true} />
       <Span
         style={{
-          color: "gray",
+          color: MARKDOWN_TABLE_BORDER_COLOR,
         }}
       >
         {separator}
@@ -457,7 +474,7 @@ function TableRowRenderer({
     >
       <Span
         style={{
-          color: "gray",
+          color: MARKDOWN_TABLE_BORDER_COLOR,
         }}
       >
         │{" "}
@@ -469,7 +486,7 @@ function TableRowRenderer({
           <React.Fragment key={index}>
             <Span
               style={{
-                color: isHeader ? "cyan" : "white",
+                color: isHeader ? MARKDOWN_TABLE_HEADER_COLOR : MARKDOWN_TABLE_CELL_COLOR,
                 fontWeight: "bold",
               }}
             >
@@ -477,7 +494,7 @@ function TableRowRenderer({
             </Span>
             <Span
               style={{
-                color: "gray",
+                color: MARKDOWN_TABLE_BORDER_COLOR,
               }}
             >
               {" "}

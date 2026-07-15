@@ -2,6 +2,24 @@ import hljs from "highlight.js";
 import React from "react";
 import { readFileSync } from "fs";
 import { Span } from "paintcannon-react";
+import {
+  SYNTAX_ATTRIBUTE_COLOR,
+  SYNTAX_BUILT_IN_COLOR,
+  SYNTAX_COMMENT_COLOR,
+  SYNTAX_KEYWORD_COLOR,
+  SYNTAX_LITERAL_COLOR,
+  SYNTAX_NAME_COLOR,
+  SYNTAX_NUMBER_COLOR,
+  SYNTAX_PROPERTY_COLOR,
+  SYNTAX_SELECTOR_CLASS_COLOR,
+  SYNTAX_SELECTOR_ID_COLOR,
+  SYNTAX_SELECTOR_TAG_COLOR,
+  SYNTAX_STRING_COLOR,
+  SYNTAX_TITLE_COLOR,
+  SYNTAX_TYPE_COLOR,
+  SYNTAX_VALUE_COLOR,
+  SYNTAX_VARIABLE_COLOR,
+} from "../theme.ts";
 export function HighlightedCode({ code, language }: { code: string; language?: string }) {
   try {
     let result;
@@ -163,23 +181,23 @@ function decodeHtmlEntities(text: string): string {
 }
 function getColorForClass(className: string): string | undefined {
   const colorMap: Record<string, string> = {
-    "hljs-keyword": "blue",
-    "hljs-string": "green",
-    "hljs-comment": "gray",
-    "hljs-number": "yellow",
-    "hljs-title": "cyan",
-    "hljs-title function_": "cyan",
-    "hljs-variable": "magenta",
-    "hljs-type": "blue",
-    "hljs-attr": "yellow",
-    "hljs-built_in": "red",
-    "hljs-literal": "cyan",
-    "hljs-name": "cyan",
-    "hljs-selector-tag": "blue",
-    "hljs-selector-class": "yellow",
-    "hljs-selector-id": "magenta",
-    "hljs-property": "cyan",
-    "hljs-value": "green",
+    "hljs-keyword": SYNTAX_KEYWORD_COLOR,
+    "hljs-string": SYNTAX_STRING_COLOR,
+    "hljs-comment": SYNTAX_COMMENT_COLOR,
+    "hljs-number": SYNTAX_NUMBER_COLOR,
+    "hljs-title": SYNTAX_TITLE_COLOR,
+    "hljs-title function_": SYNTAX_TITLE_COLOR,
+    "hljs-variable": SYNTAX_VARIABLE_COLOR,
+    "hljs-type": SYNTAX_TYPE_COLOR,
+    "hljs-attr": SYNTAX_ATTRIBUTE_COLOR,
+    "hljs-built_in": SYNTAX_BUILT_IN_COLOR,
+    "hljs-literal": SYNTAX_LITERAL_COLOR,
+    "hljs-name": SYNTAX_NAME_COLOR,
+    "hljs-selector-tag": SYNTAX_SELECTOR_TAG_COLOR,
+    "hljs-selector-class": SYNTAX_SELECTOR_CLASS_COLOR,
+    "hljs-selector-id": SYNTAX_SELECTOR_ID_COLOR,
+    "hljs-property": SYNTAX_PROPERTY_COLOR,
+    "hljs-value": SYNTAX_VALUE_COLOR,
   };
   return colorMap[className];
 }

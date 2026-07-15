@@ -1,6 +1,12 @@
 import React from "react";
 import { diffLines } from "diff";
-import { DIFF_ADDED, DIFF_REMOVED, CODE_GUTTER_COLOR } from "../theme.ts";
+import {
+  CODE_GUTTER_COLOR,
+  DIFF_ADDED,
+  DIFF_HEADER_COLOR,
+  DIFF_MARKER_COLOR,
+  DIFF_REMOVED,
+} from "../theme.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { Span } from "paintcannon-react";
@@ -79,7 +85,7 @@ export function DiffRenderer({
             >
               <Span
                 style={{
-                  color: "gray",
+                  color: DIFF_HEADER_COLOR,
                 }}
               >
                 Old
@@ -94,7 +100,7 @@ export function DiffRenderer({
             >
               <Span
                 style={{
-                  color: "gray",
+                  color: DIFF_HEADER_COLOR,
                 }}
               >
                 New
@@ -232,7 +238,7 @@ function DiffSet({
         lineCounter={oldLineCounter}
         originalText={oldText}
       >
-        {oldRemoved ? <Span style={{ color: "black" }}> - </Span> : <Span>{"  "}</Span>}
+        {oldRemoved ? <Span style={{ color: DIFF_MARKER_COLOR }}> - </Span> : <Span>{"  "}</Span>}
       </LineSegments>
       <LineSegments
         value={newValue}
@@ -243,7 +249,7 @@ function DiffSet({
         lineCounter={newLineCounter}
         originalText={newText}
       >
-        {newAdded ? <Span style={{ color: "black" }}> + </Span> : <Span>{"  "}</Span>}
+        {newAdded ? <Span style={{ color: DIFF_MARKER_COLOR }}> + </Span> : <Span>{"  "}</Span>}
       </LineSegments>
     </TerminalFlex>
   );
