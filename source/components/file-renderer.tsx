@@ -1,9 +1,9 @@
 import React from "react";
-import { Box, Text } from "ink";
 import { CODE_GUTTER_COLOR } from "../theme.ts";
 import { countLines, numWidth, fileExtLanguage, extractTrim } from "../str.ts";
 import { HighlightedCode } from "../markdown/highlight-code.tsx";
-
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function FileRenderer({
   contents,
   filePath,
@@ -19,36 +19,62 @@ export function FileRenderer({
   const gutterWidth = maxWidth + 1;
   const language = fileExtLanguage(filePath);
   let currentLine = start;
-
   return (
-    <Box paddingX={1} marginBottom={1} flexDirection="column">
+    <TerminalFlex
+      style={{
+        paddingLeft: 1,
+        paddingRight: 1,
+        marginBottom: 1,
+        flexDirection: "column",
+      }}
+    >
       {contents.split("\n").map((line, index) => {
         const lineNumber = currentLine++;
         const matchedLine = extractTrim(line);
-
         return (
-          <Box key={`${index}-${line}`} flexGrow={1}>
-            <Box
-              width={gutterWidth}
-              flexShrink={0}
-              flexGrow={1}
-              backgroundColor={CODE_GUTTER_COLOR}
-              marginRight={1}
+          <TerminalFlex
+            key={`${index}-${line}`}
+            style={{
+              flexGrow: 1,
+            }}
+          >
+            <TerminalFlex
+              style={{
+                width: gutterWidth,
+                flexShrink: 0,
+                flexGrow: 1,
+                backgroundColor: CODE_GUTTER_COLOR,
+                marginRight: 1,
+              }}
             >
-              <Text>{lineNumber}</Text>
-            </Box>
-            <Box flexGrow={1} width="100%" flexDirection="column">
-              <Box flexDirection="row">
-                <Text>{matchedLine[0]}</Text>
-                <Box flexDirection="column">
+              <Span>{lineNumber}</Span>
+            </TerminalFlex>
+            <TerminalFlex
+              style={{
+                flexGrow: 1,
+                width: "100%",
+                flexDirection: "column",
+              }}
+            >
+              <TerminalFlex
+                style={{
+                  flexDirection: "row",
+                }}
+              >
+                <Span>{matchedLine[0]}</Span>
+                <TerminalFlex
+                  style={{
+                    flexDirection: "column",
+                  }}
+                >
                   <HighlightedCode code={matchedLine[1]} language={language} />
-                </Box>
-                <Text>{matchedLine[2]}</Text>
-              </Box>
-            </Box>
-          </Box>
+                </TerminalFlex>
+                <Span>{matchedLine[2]}</Span>
+              </TerminalFlex>
+            </TerminalFlex>
+          </TerminalFlex>
         );
       })}
-    </Box>
+    </TerminalFlex>
   );
 }

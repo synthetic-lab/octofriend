@@ -1,9 +1,7 @@
 import React, { useState, useCallback, useLayoutEffect } from "react";
-import { Box, Text, useInput, useApp } from "ink";
 import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
-import { execSync } from "child_process";
 import TextInput from "./components/text-input.tsx";
 import { Config, Auth, CURRENT_CONFIG_VERSION } from "./config.ts";
 import { useColor } from "./theme.ts";
@@ -17,17 +15,9 @@ import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "./providers.ts";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { recommendedModel } from "./providers.ts";
-import { Platform, getPlatform } from "./platform.ts";
-
-function isBashAvailable(): boolean {
-  try {
-    execSync("bash --version", { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
+import { Span, useApp } from "paintcannon-react";
+import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 type SetupStep =
   | {
       step: "welcome";
@@ -37,29 +27,38 @@ type SetupStep =
     }
   | {
       step: "autofix-complete";
-      autofixConfig: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] };
+      autofixConfig: {
+        diffApply: Config["diffApply"];
+        fixJson: Config["fixJson"];
+      };
     }
   | {
       step: "name";
       models: Config["models"];
-      autofixConfig?: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] };
+      autofixConfig?: {
+        diffApply: Config["diffApply"];
+        fixJson: Config["fixJson"];
+      };
     }
   | {
       step: "add-model";
-      autofixConfig?: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] };
+      autofixConfig?: {
+        diffApply: Config["diffApply"];
+        fixJson: Config["fixJson"];
+      };
     }
   | {
       step: "done";
     };
-
 export function FirstTimeSetup({ configPath }: { configPath: string }) {
-  const [step, setStep] = useState<SetupStep>({ step: "welcome" });
+  const [step, setStep] = useState<SetupStep>({
+    step: "welcome",
+  });
   const [yourName, setYourName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [defaultApiKeyOverrides, setDefaultApiKeyOverrides] = useState<Record<string, string>>({});
   const themeColor = useColor();
   const app = useApp();
-
   const addOverride = useCallback(
     async (override: Record<string, string>) => {
       setDefaultApiKeyOverrides({
@@ -69,46 +68,65 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
     },
     [defaultApiKeyOverrides],
   );
-
   useLayoutEffect(() => {
     if (step.step === "done") app.exit();
   }, [step, app]);
-
   const handleWelcomeContinue = useCallback(() => {
-    setStep({ step: "autofix-setup" });
+    setStep({
+      step: "autofix-setup",
+    });
   }, []);
   const autofixComplete = useCallback(
     (autofixConfig: { diffApply: Config["diffApply"]; fixJson: Config["fixJson"] }) => {
-      setStep({ step: "autofix-complete", autofixConfig });
+      setStep({
+        step: "autofix-complete",
+        autofixConfig,
+      });
     },
     [],
   );
   const autofixSkip = useCallback(() => {
-    setStep({ step: "add-model" });
+    setStep({
+      step: "add-model",
+    });
   }, []);
   const autofixCompleteContinue = useCallback(() => {
     if (step.step === "autofix-complete") {
-      setStep({ step: "add-model", autofixConfig: step.autofixConfig });
+      setStep({
+        step: "add-model",
+        autofixConfig: step.autofixConfig,
+      });
     }
   }, [step]);
   const addModelComplete = useCallback(
     (models: Config["models"]) => {
       if (step.step === "add-model" && step.autofixConfig) {
-        setStep({ step: "name", models, autofixConfig: step.autofixConfig });
+        setStep({
+          step: "name",
+          models,
+          autofixConfig: step.autofixConfig,
+        });
       } else {
-        setStep({ step: "name", models });
+        setStep({
+          step: "name",
+          models,
+        });
       }
     },
     [step],
   );
   const addModelCancel = useCallback(() => {
     if (step.step === "add-model" && step.autofixConfig) {
-      setStep({ step: "autofix-complete", autofixConfig: step.autofixConfig });
+      setStep({
+        step: "autofix-complete",
+        autofixConfig: step.autofixConfig,
+      });
     } else {
-      setStep({ step: "welcome" });
+      setStep({
+        step: "welcome",
+      });
     }
   }, [step]);
-
   if (step.step === "welcome") return <WelcomeScreen onContinue={handleWelcomeContinue} />;
   if (step.step === "autofix-setup") {
     return (
@@ -145,15 +163,28 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
 
   // Assert from typesystem level that we're handled all cases
   const _: "name" = step.step;
-
   return (
     <CenteredBox>
-      <Text color={themeColor}>And finally... What's your name?</Text>
+      <Span
+        style={{
+          color: themeColor,
+        }}
+      >
+        And finally... What's your name?
+      </Span>
 
-      <Box marginTop={1}>
-        <Box marginRight={1}>
-          <Text>Your name:</Text>
-        </Box>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <TerminalFlex
+          style={{
+            marginRight: 1,
+          }}
+        >
+          <Span>Your name:</Span>
+        </TerminalFlex>
         <TextInput
           value={yourName}
           onChange={value => {
@@ -166,7 +197,6 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
               setNameError("Name can't be empty");
               return;
             }
-
             setNameError(null);
             const config: Config = {
               configVersion: CURRENT_CONFIG_VERSION,
@@ -180,28 +210,40 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
               config.diffApply = step.autofixConfig.diffApply;
               config.fixJson = step.autofixConfig.fixJson;
             }
-
             const dir = path.dirname(configPath);
-            await fs.mkdir(dir, { recursive: true });
+            await fs.mkdir(dir, {
+              recursive: true,
+            });
             if (configPath.endsWith("json5")) {
               await fs.writeFile(configPath, json5.stringify(config, null, 2));
             } else {
               await fs.writeFile(configPath, JSON.stringify(config, null, 2));
             }
-            setStep({ step: "done" });
+            setStep({
+              step: "done",
+            });
           }}
         />
-      </Box>
+      </TerminalFlex>
 
       {nameError && (
-        <Box marginTop={1}>
-          <Text color="red">{nameError}</Text>
-        </Box>
+        <TerminalFlex
+          style={{
+            marginTop: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+            }}
+          >
+            {nameError}
+          </Span>
+        </TerminalFlex>
       )}
     </CenteredBox>
   );
 }
-
 type AutofixStates = "choose" | "synthetic-setup" | "diff-apply-custom" | "fix-json-custom";
 function AutofixSetup({
   onComplete,
@@ -214,7 +256,6 @@ function AutofixSetup({
 }) {
   const [autofixStep, setAutofixStep] = useState<AutofixStates>("choose");
   const [diffApplyConfig, setDiffApplyConfig] = useState<Config["diffApply"]>();
-
   const shortcutItems = [
     {
       type: "key" as const,
@@ -234,7 +275,6 @@ function AutofixSetup({
       } as const,
     },
   ] satisfies ShortcutArray<"synthetic" | "custom" | "skip">;
-
   const onSelect = useCallback(
     (item: Item<"synthetic" | "custom" | "skip">) => {
       if (item.value === "synthetic") {
@@ -261,15 +301,22 @@ function AutofixSetup({
     },
     [onComplete, onSkip],
   );
-
   if (autofixStep === "synthetic-setup") {
     return (
       <CustomAuthFlow
         config={null}
-        authData={{ modelType: undefined, baseUrl: SYNTHETIC_PROVIDER.baseUrl }}
+        authData={{
+          modelType: undefined,
+          baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+        }}
         onComplete={async auth => {
           if (auth && auth.type === "env") await onOverrideDefaultApiKey(auth.name);
-          const authField = auth?.type === "command" ? { auth } : {};
+          const authField =
+            auth?.type === "command"
+              ? {
+                  auth,
+                }
+              : {};
           onComplete({
             diffApply: {
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
@@ -287,7 +334,6 @@ function AutofixSetup({
       />
     );
   }
-
   if (autofixStep === "diff-apply-custom") {
     return (
       <AutofixModelMenu
@@ -302,17 +348,16 @@ function AutofixSetup({
         }}
         onCancel={() => setAutofixStep("choose")}
       >
-        <Text>
+        <Span>
           Even good coding models sometimes make minor mistakes generating code diffs, which can
           cause slow retries and can confuse them, since models often aren't trained as well to
           handle edit failures as they are successes. Diff-apply is a fast, small model that fixes
           minor code diff edit inaccuracies. It speeds up iteration and can significantly improve
           model performance.
-        </Text>
+        </Span>
       </AutofixModelMenu>
     );
   }
-
   if (autofixStep === "fix-json-custom") {
     return (
       <AutofixModelMenu
@@ -329,169 +374,154 @@ function AutofixSetup({
         }}
         onCancel={() => setAutofixStep("diff-apply-custom")}
       >
-        <Text>
+        <Span>
           Octo uses tools to work with your underlying codebase. Some model providers don't support
           strict constraints on how tool calls are generated, and models can make mistakes
           generating JSON, the format used for all of Octo's tool calls.
-        </Text>
-        <Text>
+        </Span>
+        <Span>
           The fix-json model can automatically fix broken JSON for Octo, helping models avoid
           failures more quickly and cheaply than retrying the main model. It also may help reduce
           the main model's confusion.
-        </Text>
+        </Span>
       </AutofixModelMenu>
     );
   }
-
   return (
     <KbShortcutPanel
       title="Optional: Enable autofix models"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     >
-      <Box marginBottom={1} flexDirection="column" gap={1}>
-        <Text>
+      <TerminalFlex
+        style={{
+          marginBottom: 1,
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        <Span>
           Before we set up your main coding model, we can optionally enable two small helper models
           that can significantly improve Octo's performance. These are small, fast models trained to
           auto-fix broken tool calls and diff edits from your main coding model, since even fairly
           good coding models can sometimes make mistakes.
-        </Text>
-        <Text>
+        </Span>
+        <Span>
           Auto-fixing mistakes can help reduce model confusion, since models are often
           less-well-trained on error recovery than they are at their happy paths.
-        </Text>
-      </Box>
+        </Span>
+      </TerminalFlex>
     </KbShortcutPanel>
   );
 }
-
 function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
-  useInput((_, key) => {
-    if (key.return) onContinue();
+  useKeyboard(event => {
+    if (event.key === "Enter") onContinue();
   });
-
   return (
     <CenteredBox>
       <MenuHeader title="✨ Autofix models enabled!" />
 
-      <Text>
+      <Span>
         Your autofix models are now set up and ready to go. These will help improve Octo's
         performance by automatically fixing minor mistakes in code diffs and JSON tool calls.
-      </Text>
+      </Span>
 
-      <Box marginTop={1}>
-        <Text>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span>
           Now let's set up your main coding model. This is the LLM that will power Octo's code
           generation, analysis, and conversation capabilities.
-        </Text>
-      </Box>
+        </Span>
+      </TerminalFlex>
 
-      <Box marginTop={2} justifyContent="center">
-        <Text color={THEME_COLOR}>Press enter to continue to model setup.</Text>
-      </Box>
+      <TerminalFlex
+        style={{
+          marginTop: 2,
+          justifyContent: "center",
+        }}
+      >
+        <Span
+          style={{
+            color: THEME_COLOR,
+          }}
+        >
+          Press enter to continue to model setup.
+        </Span>
+      </TerminalFlex>
     </CenteredBox>
   );
 }
-
-function WindowsSetupInstructions({ bashAvailable }: { bashAvailable: boolean | null }) {
-  const app = useApp();
-
-  useLayoutEffect(() => {
-    if (bashAvailable === false) {
-      app.exit();
-    }
-  }, [bashAvailable, app]);
-
-  if (bashAvailable == null) {
-    return (
-      <Box marginTop={1} flexDirection="column">
-        <Text>Detecting Windows shell environment...</Text>
-      </Box>
-    );
-  }
-  return (
-    <Box marginTop={1} flexDirection="column">
-      <Text bold>Windows Setup:</Text>
-      <Box marginTop={1} marginLeft={1} flexDirection="column">
-        <Text>Octo requires a bash shell to run. Install one of the following:</Text>
-        <Box marginTop={1} flexDirection="column">
-          <Text>
-            1. <Text bold>Git Bash</Text>
-          </Text>
-          <Text> Download: https://git-scm.com/downloads</Text>
-        </Box>
-        <Box marginTop={1} flexDirection="column">
-          <Text>
-            2. <Text bold>WSL</Text> (Windows Subsystem for Linux)
-          </Text>
-          <Text> Setup: https://learn.microsoft.com/en-us/windows/wsl/install</Text>
-        </Box>
-      </Box>
-      <Box marginTop={1}>
-        <Text color="gray">
-          Note: After installation, run Octo from Git Bash or WSL, not Command Prompt or PowerShell.
-        </Text>
-      </Box>
-    </Box>
-  );
-}
-
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
-  const platform = getPlatform();
-  const [bashAvailable, setBashAvailable] = useState<boolean | null>(null);
-
-  useLayoutEffect(() => {
-    if (platform === Platform.windows) {
-      setBashAvailable(isBashAvailable());
-    }
-  }, [platform]);
-
-  useInput((_, key) => {
-    if (key.return) onContinue();
+  useKeyboard(event => {
+    if (event.key === "Enter") onContinue();
   });
-
-  if (platform === Platform.windows) {
-    if (bashAvailable !== true) {
-      return <WindowsSetupInstructions bashAvailable={bashAvailable} />;
-    }
-  }
-
   return (
     <CenteredBox>
       <MenuHeader title="Welcome to Octo!" />
 
-      <Text>You don't seem to have a config file, so let's set you up for the first time.</Text>
+      <Span>You don't seem to have a config file, so let's set you up for the first time.</Span>
 
-      <Box marginTop={1}>
-        <Text>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span>
           Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
           model to use with Octo is {recommendedModel("synthetic").nickname}, an open-source coding
           model you can use via Synthetic, a privacy-focused inference company (that we run!). You
           can also add closed-source models from OpenAI and Anthropic, like
           {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
-        </Text>
-      </Box>
+        </Span>
+      </TerminalFlex>
 
-      <Box marginTop={1}>
-        <Text color="gray">
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
           Be forewarned about using OpenRouter for open-source models: OpenRouter doesn't test model
           implementations, and quality can vary drastically. Many are broken. We'd strongly
           recommend using Synthetic instead.
-        </Text>
-      </Box>
+        </Span>
+      </TerminalFlex>
 
-      <Box marginTop={1}>
-        <Text>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span>
           You can add multiple models via Octo's menu: Octo lets you switch models mid-conversation
           as needed to handle different problems. It's often helpful to add a couple of strong
           models; if one gets stuck, another may often be able to solve your problem. Octo works
           with any OpenAI- or Anthropic-compatible API.
-        </Text>
-      </Box>
+        </Span>
+      </TerminalFlex>
 
-      <Box marginTop={2} justifyContent="center">
-        <Text color={THEME_COLOR}>Press enter when you're ready to begin setup.</Text>
-      </Box>
+      <TerminalFlex
+        style={{
+          marginTop: 2,
+          justifyContent: "center",
+        }}
+      >
+        <Span
+          style={{
+            color: THEME_COLOR,
+          }}
+        >
+          Press enter when you're ready to begin setup.
+        </Span>
+      </TerminalFlex>
     </CenteredBox>
   );
 }

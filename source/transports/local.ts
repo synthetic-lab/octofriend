@@ -1,7 +1,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { spawn } from "child_process";
-import { Transport, AbortError, CommandFailedError, TransportError } from "./transport-common.ts";
+import {
+  Transport,
+  AbortError,
+  CommandFailedError,
+  MAX_SHELL_OUTPUT_LENGTH,
+  ShellOutput,
+  TransportError,
+} from "./transport-common.ts";
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
@@ -84,7 +91,7 @@ export class LocalTransport implements Transport {
         detached: true,
       });
 
-      let output = "";
+      const output = new ShellOutput();
       let aborted = false;
       let timedOut = false;
       let killed = false;
@@ -131,11 +138,11 @@ export class LocalTransport implements Transport {
       signal.addEventListener("abort", onAbort);
 
       child.stdout.on("data", data => {
-        output += data.toString();
+        if (!output.append(data)) killGroup();
       });
 
       child.stderr.on("data", data => {
-        output += data.toString();
+        if (!output.append(data)) killGroup();
       });
 
       child.on("close", code => {
@@ -144,30 +151,39 @@ export class LocalTransport implements Transport {
           reject(new AbortError());
           return;
         }
+        const commandOutput = output.getOutput();
+        if (commandOutput == null) {
+          reject(
+            new CommandFailedError(
+              `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
+            ),
+          );
+          return;
+        }
         if (timedOut) {
           reject(
             new CommandFailedError(
               `Command timed out.
-output: ${output}`,
+output: ${commandOutput}`,
             ),
           );
           return;
         }
         if (code === 0) {
-          resolve(output);
+          resolve(commandOutput);
         } else {
           if (code == null) {
             reject(
               new CommandFailedError(
                 `Command killed by signal.
-output: ${output}`,
+output: ${commandOutput}`,
               ),
             );
           } else {
             reject(
               new CommandFailedError(
                 `Command exited with code: ${code}
-output: ${output}`,
+output: ${commandOutput}`,
                 code,
               ),
             );

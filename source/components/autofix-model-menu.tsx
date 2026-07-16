@@ -1,5 +1,4 @@
 import React, { useState, useCallback } from "react";
-import { Box, useInput } from "ink";
 import { Config, readAuthForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
@@ -7,7 +6,8 @@ import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
-
+import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { TerminalFlex } from "./terminal-flex.tsx";
 export type AutofixModelProps = {
   config: Config | null;
   onComplete: (diffApply: Exclude<Config["diffApply"], undefined>) => any;
@@ -21,9 +21,7 @@ export type AutofixWrapperProps = Omit<
   AutofixModelProps,
   "defaultModel" | "modelNickname" | "children"
 >;
-
 const SYNTH_KEY = keyFromName(SYNTHETIC_PROVIDER.name);
-
 export function AutofixModelMenu({
   config,
   onComplete,
@@ -34,11 +32,9 @@ export function AutofixModelMenu({
   children,
 }: AutofixModelProps) {
   const [step, setStep] = useState<"choose" | "custom" | "missing-auth">("choose");
-
-  useInput((_, key) => {
-    if (key.escape) onCancel();
+  useKeyboard(event => {
+    if (event.key === "Escape") onCancel();
   });
-
   const shortcutItems = [
     {
       type: "key" as const,
@@ -58,7 +54,6 @@ export function AutofixModelMenu({
       } as const,
     },
   ] satisfies ShortcutArray<"synthetic" | "custom" | "back">;
-
   const onSelect = useCallback(
     async (item: Item<"synthetic" | "custom" | "back">) => {
       if (item.value === "synthetic") {
@@ -66,7 +61,6 @@ export function AutofixModelMenu({
 
         // Check if there's an override for the API key
         const envVar = config?.defaultApiKeyOverrides?.[SYNTH_KEY] || defaultEnvVar;
-
         if (process.env[envVar]) {
           onComplete({
             baseUrl: SYNTHETIC_PROVIDER.baseUrl,
@@ -74,7 +68,12 @@ export function AutofixModelMenu({
             model: defaultModel,
           });
         } else {
-          const auth = await readAuthForModel({ baseUrl: SYNTHETIC_PROVIDER.baseUrl }, config);
+          const auth = await readAuthForModel(
+            {
+              baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+            },
+            config,
+          );
           if (auth.ok) {
             onComplete({
               baseUrl: SYNTHETIC_PROVIDER.baseUrl,
@@ -86,13 +85,11 @@ export function AutofixModelMenu({
         }
         return;
       }
-
       if (item.value === "custom") setStep("custom");
       else onCancel();
     },
     [config, onCancel, onComplete],
   );
-
   if (step === "custom") {
     return (
       <CustomAutofixFlow
@@ -110,12 +107,14 @@ export function AutofixModelMenu({
       />
     );
   }
-
   if (step === "missing-auth") {
     return (
       <CustomAuthFlow
         config={config}
-        authData={{ modelType: undefined, baseUrl: SYNTHETIC_PROVIDER.baseUrl }}
+        authData={{
+          modelType: undefined,
+          baseUrl: SYNTHETIC_PROVIDER.baseUrl,
+        }}
         onCancel={() => setStep("choose")}
         onComplete={async auth => {
           if (auth && auth.type === "env") {
@@ -140,16 +139,21 @@ export function AutofixModelMenu({
       />
     );
   }
-
   return (
     <KbShortcutPanel
       title={`Enable ${modelNickname} model`}
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     >
-      <Box marginBottom={1} flexDirection="column" gap={1}>
+      <TerminalFlex
+        style={{
+          marginBottom: 1,
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
         {children}
-      </Box>
+      </TerminalFlex>
     </KbShortcutPanel>
   );
 }

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Box, Text } from "ink";
-import Spinner from "./ink/spinner.tsx";
+import Spinner from "./spinner.tsx";
 import { useColor } from "../theme.ts";
-
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 const DEFAULT_LOADING_STRINGS = [
   "Scheming",
   "Plotting",
@@ -21,13 +21,11 @@ export const LONGEST_LOADING_STRING = (() => {
   }
   return longest;
 })();
-
 export default function Loading({ overrideStrings }: { overrideStrings?: Array<string> }) {
   const [idx, setIndex] = useState(0);
   const [dotCount, setDotCount] = useState(0);
   const themeColor = useColor();
   const loadingStrings = overrideStrings || DEFAULT_LOADING_STRINGS;
-
   useEffect(() => {
     let fired = false;
     const timer = setTimeout(() => {
@@ -39,20 +37,28 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
       }
       setDotCount(dotCount + 1);
     }, 300);
-
     return () => {
       if (!fired) clearTimeout(timer);
     };
   }, [idx, dotCount]);
-
   return (
-    <Box>
-      <Text color="gray">
+    <TerminalFlex>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
         <Spinner type="binary" />
-      </Text>
-      <Text> </Text>
-      <Text color={themeColor}>{loadingStrings[idx]}</Text>
-      <Text>{".".repeat(dotCount)}</Text>
-    </Box>
+      </Span>
+      <Span> </Span>
+      <Span
+        style={{
+          color: themeColor,
+        }}
+      >
+        {loadingStrings[idx]}
+      </Span>
+      <Span>{".".repeat(dotCount)}</Span>
+    </TerminalFlex>
   );
 }

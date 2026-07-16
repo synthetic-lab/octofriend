@@ -1,5 +1,41 @@
 import { quote } from "shell-quote";
 
+export const MAX_SHELL_OUTPUT_LENGTH = 100_000_000;
+
+export class ShellOutput {
+  private readonly chunks: string[] = [];
+  private length = 0;
+  private exceededLimit = false;
+
+  constructor(maxLength = MAX_SHELL_OUTPUT_LENGTH) {
+    if (!Number.isSafeInteger(maxLength) || maxLength < 1) {
+      throw new RangeError("maxLength must be a positive safe integer");
+    }
+    this.maxLength = maxLength;
+  }
+
+  private readonly maxLength: number;
+
+  append(chunk: string | Buffer): boolean {
+    if (this.exceededLimit) return false;
+    const value = chunk.toString();
+    if (value.length > this.maxLength - this.length) {
+      this.exceededLimit = true;
+      this.chunks.length = 0;
+      this.length = 0;
+      return false;
+    }
+    this.chunks.push(value);
+    this.length += value.length;
+    return true;
+  }
+
+  getOutput(): string | null {
+    if (this.exceededLimit) return null;
+    return this.chunks.join("");
+  }
+}
+
 export interface Transport {
   readonly cwd: string;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;

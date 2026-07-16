@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { isDeepStrictEqual } from "node:util";
-import { Box, Text, useInput } from "ink";
 import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
 // Allowable A-Z hotkeys, minus reserved keys
+import { Span } from "paintcannon-react";
+import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { TerminalFlex } from "../terminal-flex.tsx";
 export type Hotkey =
   | "a"
   | "b"
@@ -28,9 +30,7 @@ export type Hotkey =
   | "x"
   | "y"
   | "z";
-
 export type Keymap<V> = Partial<Record<Hotkey, Item<V>>>;
-
 export type Item<V> = {
   label: string;
   value: V;
@@ -60,14 +60,12 @@ type AutolistShortcutType<V> = {
   type: "auto-list";
   order: Array<Item<V>>;
 };
-
 export type ShortcutArray<V> =
   | [MapShortcutType<V>]
   | [AutolistShortcutType<V>]
   | [MapShortcutType<V>, AutolistShortcutType<V>]
   | [AutolistShortcutType<V>, MapShortcutType<V>]
   | [MapShortcutType<V>, AutolistShortcutType<V>, MapShortcutType<V>];
-
 type KbSelectProps<V> = {
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
@@ -75,14 +73,12 @@ type KbSelectProps<V> = {
 const PAGE_SIZE = 10;
 export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
   const [page, setPage] = useState(0);
-
   let items = useMemo(() => {
     const result: Array<{
       item: Item<V | "next-page" | "prev-page">;
       shortcut: string;
       isNavItem?: boolean;
     }> = [];
-
     shortcutItems.forEach(shortcutType => {
       if (shortcutType.type === "key") {
         Object.entries(shortcutType.mapping).forEach(([k, v]) => {
@@ -99,38 +95,39 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         const totalPages = Math.ceil(totalItems / PAGE_SIZE);
         const hasPrev = page > 0;
         const hasNext = page < totalPages - 1;
-
         const start = page * PAGE_SIZE;
         const end = Math.min(start + PAGE_SIZE, totalItems);
         const pageItems = shortcutType.order.slice(start, end);
-
         pageItems.forEach((item, index) => {
           result.push({
             item: item,
             shortcut: `${index}`,
           });
         });
-
         if (hasPrev) {
           result.push({
-            item: { label: "Previous page", value: "prev-page" },
+            item: {
+              label: "Previous page",
+              value: "prev-page",
+            },
             shortcut: "h",
             isNavItem: true,
           });
         }
         if (hasNext) {
           result.push({
-            item: { label: "Next page", value: "next-page" },
+            item: {
+              label: "Next page",
+              value: "next-page",
+            },
             shortcut: "l",
             isNavItem: true,
           });
         }
       }
     });
-
     return result;
   }, [shortcutItems, page]);
-
   const initialIndex = 0;
   const lastIndex = items.length - 1;
   const [rotateIndex, setRotateIndex] = useState(
@@ -140,17 +137,14 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
   );
   const previousShortcutItems = useRef(shortcutItems);
-
   useEffect(() => {
     if (!isDeepStrictEqual(previousShortcutItems.current, shortcutItems)) {
       setRotateIndex(0);
       setSelectedIndex(0);
       setPage(0);
     }
-
     previousShortcutItems.current = shortcutItems;
   }, [shortcutItems]);
-
   const handleSelect = useCallback(
     (item: Item<V | "next-page" | "prev-page">) => {
       if (item.value === "next-page" || item.value === "prev-page") {
@@ -160,11 +154,9 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     },
     [onSelect],
   );
-
-  useInput((input, key) => {
-    if (key.ctrl) return;
-
-    if (input === "l") {
+  useKeyboard(event => {
+    if (event.ctrlKey) return;
+    if (event.key === "l") {
       const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
       if (hasNext) {
         setPage(prev => prev + 1);
@@ -173,7 +165,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         return;
       }
     }
-    if (input === "h") {
+    if (event.key === "h") {
       const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
       if (hasPrev && page > 0) {
         setPage(prev => prev - 1);
@@ -182,59 +174,55 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
         return;
       }
     }
-
     for (const item of items) {
-      if (item.shortcut.toLowerCase() === input.toLowerCase()) {
+      if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
         handleSelect(item.item);
         return;
       }
     }
-    if (input === "k" || key.upArrow) {
+    if (event.key === "k" || event.key === "ArrowUp") {
       const lastIndex = items.length - 1;
       const atFirstIndex = selectedIndex === 0;
       const nextIndex = lastIndex;
       const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
       const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
-
       setRotateIndex(nextRotateIndex);
       setSelectedIndex(nextSelectedIndex);
     }
-
-    if (input === "j" || key.downArrow) {
+    if (event.key === "j" || event.key === "ArrowDown") {
       const atLastIndex = selectedIndex === items.length - 1;
       const nextIndex = 0;
       const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
       const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
-
       setRotateIndex(nextRotateIndex);
       setSelectedIndex(nextSelectedIndex);
     }
-
-    if (key.return) {
+    if (event.key === "Enter") {
       handleSelect(items[selectedIndex].item);
     }
   });
-
   return (
-    <Box flexDirection="column">
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
       {items.map((item, index) => {
         const isSelected = index === selectedIndex;
-
         return (
-          <Box key={`kb-select-${index}`}>
+          <TerminalFlex key={`kb-select-${index}`}>
             <IndicatorComponent isSelected={isSelected} />
             <UnderlineItem
               isSelected={isSelected}
               label={item.item.label}
               shortcut={item.shortcut}
             />
-          </Box>
+          </TerminalFlex>
         );
       })}
-    </Box>
+    </TerminalFlex>
   );
 }
-
 function UnderlineItem({
   isSelected = false,
   label,
@@ -247,22 +235,44 @@ function UnderlineItem({
   const themeColor = useColor();
   const color = isSelected ? themeColor : undefined;
   const isNumeric = !isNaN(parseInt(shortcut, 10));
-
   if (isNumeric) {
     return (
       <>
-        <Text color="gray">{shortcut}:</Text>
-        <Text> </Text>
-        <Text color={color}>{label}</Text>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {shortcut}:
+        </Span>
+        <Span> </Span>
+        <Span
+          style={{
+            color: color,
+          }}
+        >
+          {label}
+        </Span>
       </>
     );
   }
-
   return (
     <>
-      <Text color={color}>{label}</Text>
-      <Text> </Text>
-      <Text color="gray">({shortcut})</Text>
+      <Span
+        style={{
+          color: color,
+        }}
+      >
+        {label}
+      </Span>
+      <Span> </Span>
+      <Span
+        style={{
+          color: "gray",
+        }}
+      >
+        ({shortcut})
+      </Span>
     </>
   );
 }

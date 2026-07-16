@@ -1,7 +1,6 @@
 import React, { useCallback } from "react";
-import { Box } from "ink";
 import { KbShortcutSelect, Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
-
+import { TerminalFlex } from "./terminal-flex.tsx";
 export function ConfirmDialog({
   confirmLabel,
   rejectLabel,
@@ -41,15 +40,17 @@ export function ConfirmDialog({
           },
     },
   ] satisfies ShortcutArray<"confirm" | "reject">;
-
   const onSelect = useCallback((item: Item<"confirm" | "reject">) => {
     if (item.value === "confirm") return onConfirm();
     return onReject();
   }, []);
-
   return (
-    <Box justifyContent="center">
+    <TerminalFlex
+      style={{
+        justifyContent: "center",
+      }}
+    >
       <KbShortcutSelect shortcutItems={items} onSelect={onSelect} />
-    </Box>
+    </TerminalFlex>
   );
 }

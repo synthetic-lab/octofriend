@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { Text, Box } from "ink";
 import { apiKeyFromAuth, readAuthForModel, useConfig } from "../config.ts";
 import { useModel, useAppStore } from "../state.ts";
 import type { QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntil } from "../time.ts";
-
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
   try {
     const response = await fetch("https://api.synthetic.new/v2/quotas", {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
     });
     if (!response.ok) return null;
     return parseQuotaJson(await response.text()) ?? null;
@@ -17,51 +19,59 @@ async function fetchQuota(apiKey: string): Promise<QuotaData | null> {
     return null;
   }
 }
-
 type QuotaRowProps = {
   label: string;
   entry: QuotaEntry;
 };
-
 function formatQuotaNumber(value: number): string {
   if (Number.isInteger(value)) return value.toString();
   return Math.floor(value * 10) / 10 + "";
 }
-
 function QuotaRow({ label, entry }: QuotaRowProps) {
   const tickPercent = formatQuotaNumber(entry.tickPercent * 100);
   const showNextRegen = entry.remaining < entry.max;
-
   return (
-    <Box flexDirection="column">
-      <Text>{`${label}: ${formatQuotaNumber(entry.remaining)} / ${formatQuotaNumber(entry.max)} remaining`}</Text>
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <Span>{`${label}: ${formatQuotaNumber(entry.remaining)} / ${formatQuotaNumber(entry.max)} remaining`}</Span>
       {showNextRegen ? (
-        <Text color="gray">{`Next regen: ${tickPercent}% ${formatTimeUntil(entry.nextTickAt)}`}</Text>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >{`Next regen: ${tickPercent}% ${formatTimeUntil(entry.nextTickAt)}`}</Span>
       ) : null}
-    </Box>
+    </TerminalFlex>
   );
 }
-
 type WeeklyQuotaRowProps = {
   label: string;
   entry: WeeklyEntry;
 };
-
 function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
   const showNextRegen = entry.remainingCredits !== entry.maxCredits;
-
   return (
-    <Box flexDirection="column">
-      <Text>{`${label}: ${entry.remainingCredits} / ${entry.maxCredits} remaining`}</Text>
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <Span>{`${label}: ${entry.remainingCredits} / ${entry.maxCredits} remaining`}</Span>
       {showNextRegen ? (
-        <Text color="gray">
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
           {`Next regen: ${entry.nextRegenCredits} ${formatTimeUntil(entry.nextRegenAt)}`}
-        </Text>
+        </Span>
       ) : null}
-    </Box>
+    </TerminalFlex>
   );
 }
-
 export const MenuQuotaIndicator = () => {
   const config = useConfig();
   const model = useModel();
@@ -88,23 +98,35 @@ export const MenuQuotaIndicator = () => {
       cancelled = true;
     };
   }, [storeQuota, model, config]);
-
   const quota = storeQuota ?? fetchedQuota;
-
   if (!quota) return null;
   if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) return null;
-
   return (
-    <Box flexDirection="column" alignItems="center">
-      <Text bold>Synthetic Quota</Text>
-      <Box flexDirection="column">
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+        alignItems: "center",
+      }}
+    >
+      <Span
+        style={{
+          fontWeight: "bold",
+        }}
+      >
+        Synthetic Quota
+      </Span>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+        }}
+      >
         {quota.weeklyTokenLimit ? (
           <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
         ) : null}
         {quota.rollingFiveHourLimit ? (
           <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
         ) : null}
-      </Box>
-    </Box>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };

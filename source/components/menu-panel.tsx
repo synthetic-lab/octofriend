@@ -1,9 +1,9 @@
 import React from "react";
-import { Box, Text } from "ink";
-import SelectInput from "./ink/select-input.tsx";
+import SelectInput from "./selection/select-input.tsx";
 import { IndicatorComponent, ItemComponent } from "./select.tsx";
 import { Octo } from "./octo.tsx";
-
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "./terminal-flex.tsx";
 type Item<V> = {
   label: string;
   value: V;
@@ -14,39 +14,74 @@ type MenuPanelProps<V> = {
   title: string;
   children?: React.ReactNode;
 };
-
 export const MenuHeader = ({ title }: { title: string }) => {
   return (
-    <Box justifyContent="center" marginBottom={1}>
-      <Box justifyContent="center" width={80}>
+    <TerminalFlex
+      style={{
+        justifyContent: "center",
+        marginBottom: 1,
+      }}
+    >
+      <TerminalFlex
+        style={{
+          justifyContent: "center",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: 80,
+        }}
+      >
         <Octo />
-        <Box marginLeft={1}>
-          <Text>{title}</Text>
-        </Box>
-      </Box>
-    </Box>
+        <TerminalFlex
+          style={{
+            marginLeft: 1,
+          }}
+        >
+          <Span>{title}</Span>
+        </TerminalFlex>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 };
-
 export function MenuPanel<V>({ items, onSelect, title, children }: MenuPanelProps<V>) {
   return (
-    <Box flexDirection="column">
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
       <MenuHeader title={title} />
       {children && (
-        <Box justifyContent="center" alignItems="center" marginBottom={1}>
-          <Box flexDirection="column" width={80}>
+        <TerminalFlex
+          style={{
+            justifyContent: "center",
+            alignItems: "center",
+            marginBottom: 1,
+          }}
+        >
+          <TerminalFlex
+            style={{
+              flexDirection: "column",
+              width: "100%",
+              minWidth: 0,
+              maxWidth: 80,
+            }}
+          >
             {children}
-          </Box>
-        </Box>
+          </TerminalFlex>
+        </TerminalFlex>
       )}
-      <Box justifyContent="center">
+      <TerminalFlex
+        style={{
+          justifyContent: "center",
+        }}
+      >
         <SelectInput
           items={items}
           onSelect={onSelect}
           indicatorComponent={IndicatorComponent}
           itemComponent={ItemComponent}
         />
-      </Box>
-    </Box>
+      </TerminalFlex>
+    </TerminalFlex>
   );
 }

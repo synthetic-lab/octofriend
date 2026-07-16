@@ -1,13 +1,18 @@
 import * as React from "react";
-import { Text } from "ink";
-
+import { Span } from "paintcannon-react";
 export type Props = {
   readonly isSelected?: boolean;
   readonly label: string;
 };
-
 function Item({ isSelected = false, label }: Props) {
-  return <Text color={isSelected ? "blue" : undefined}>{label}</Text>;
+  return (
+    <Span
+      style={{
+        color: isSelected ? "blue" : undefined,
+      }}
+    >
+      {label}
+    </Span>
+  );
 }
-
 export default Item;

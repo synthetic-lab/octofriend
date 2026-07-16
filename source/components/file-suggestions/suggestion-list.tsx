@@ -1,33 +1,41 @@
 import React from "react";
-import { Box, Text } from "ink";
-
+import { Span } from "paintcannon-react";
+import { TerminalFlex } from "../terminal-flex.tsx";
+import { BACKGROUND_COLOR, FOREGROUND_COLOR } from "../../theme.ts";
 interface SuggestionListProps {
   items: string[];
   selectedIndex: number;
   onSelect: (filename: string) => void;
 }
-
 export function SuggestionList({ items, selectedIndex }: SuggestionListProps) {
   return (
-    <Box flexDirection="column">
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
       {items.map((item, index) => {
         const isSelected = index === selectedIndex;
         const displayPath = item.length > 50 ? "..." + item.slice(-47) : item;
-
         return (
-          <Box key={item}>
+          <TerminalFlex key={item}>
             {isSelected ? (
-              <Text inverse>
+              <Span
+                style={{
+                  color: BACKGROUND_COLOR,
+                  backgroundColor: FOREGROUND_COLOR,
+                }}
+              >
                 {">"} {displayPath}
-              </Text>
+              </Span>
             ) : (
-              <Text>
+              <Span>
                 {"  "} {displayPath}
-              </Text>
+              </Span>
             )}
-          </Box>
+          </TerminalFlex>
         );
       })}
-    </Box>
+    </TerminalFlex>
   );
 }

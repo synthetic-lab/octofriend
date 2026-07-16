@@ -1,10 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import React, { type FC, useState, useEffect, useRef, useCallback } from "react";
 import arrayToRotated from "to-rotated";
-import { Box, useInput } from "ink";
 import Indicator, { type Props as IndicatorProps } from "./select-indicator.tsx";
 import ItemComponent, { type Props as ItemProps } from "./select-item.tsx";
-
+import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { TerminalFlex } from "../terminal-flex.tsx";
 type Props<V> = {
   /**
    * Items to display in a list. Each item must be an object and have `label` and `value` props, it may also optionally have a `key` prop.
@@ -51,13 +51,11 @@ type Props<V> = {
    */
   readonly onHighlight?: (item: Item<V>) => void;
 };
-
 export type Item<V> = {
   key?: string;
   label: string;
   value: V;
 };
-
 function SelectInput<V>({
   items = [],
   isFocused = true,
@@ -78,7 +76,6 @@ function SelectInput<V>({
     initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
   );
   const previousItems = useRef<Array<Item<V>>>(items);
-
   useEffect(() => {
     if (
       !isDeepStrictEqual(
@@ -89,58 +86,47 @@ function SelectInput<V>({
       setRotateIndex(0);
       setSelectedIndex(0);
     }
-
     previousItems.current = items;
   }, [items]);
-
-  useInput(
+  useKeyboard(
     useCallback(
-      (input, key) => {
-        if (input === "k" || key.upArrow) {
+      event => {
+        if (event.key === "k" || event.key === "ArrowUp") {
           const lastIndex = (hasLimit ? limit : items.length) - 1;
           const atFirstIndex = selectedIndex === 0;
           const nextIndex = hasLimit ? selectedIndex : lastIndex;
           const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
           const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
-
           setRotateIndex(nextRotateIndex);
           setSelectedIndex(nextSelectedIndex);
-
           const slicedItems = hasLimit
             ? arrayToRotated(items, nextRotateIndex).slice(0, limit)
             : items;
-
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
         }
-
-        if (input === "j" || key.downArrow) {
+        if (event.key === "j" || event.key === "ArrowDown") {
           const atLastIndex = selectedIndex === (hasLimit ? limit : items.length) - 1;
           const nextIndex = hasLimit ? selectedIndex : 0;
           const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
           const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
-
           setRotateIndex(nextRotateIndex);
           setSelectedIndex(nextSelectedIndex);
-
           const slicedItems = hasLimit
             ? arrayToRotated(items, nextRotateIndex).slice(0, limit)
             : items;
-
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
         }
 
         // Enable selection directly from number keys.
-        if (/^[1-9]$/.test(input)) {
-          const targetIndex = Number.parseInt(input, 10) - 1;
-
+        if (/^[1-9]$/.test(event.key)) {
+          const targetIndex = Number.parseInt(event.key, 10) - 1;
           const visibleItems = hasLimit
             ? arrayToRotated(items, rotateIndex).slice(0, limit)
             : items;
-
           if (targetIndex >= 0 && targetIndex < visibleItems.length) {
             const selectedItem = visibleItems[targetIndex];
             if (selectedItem) {
@@ -148,10 +134,8 @@ function SelectInput<V>({
             }
           }
         }
-
-        if (key.return) {
+        if (event.key === "Enter") {
           const slicedItems = hasLimit ? arrayToRotated(items, rotateIndex).slice(0, limit) : items;
-
           if (typeof onSelect === "function") {
             onSelect(slicedItems[selectedIndex]!);
           }
@@ -159,28 +143,32 @@ function SelectInput<V>({
       },
       [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight],
     ),
-    { isActive: isFocused },
+    isFocused,
   );
-
   const slicedItems: Item<V>[] = hasLimit
     ? arrayToRotated(items, rotateIndex).slice(0, limit)
     : items;
-
   return (
-    <Box flexDirection="column">
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
       {slicedItems.map((item, index) => {
         const isSelected = index === selectedIndex;
-
         return (
-          // @ts-expect-error - `key` can't be optional but `item.value` is generic T
-          <Box key={item.key ?? item.value}>
-            {React.createElement(indicatorComponent, { isSelected })}
-            {React.createElement(itemComponent, { ...item, isSelected })}
-          </Box>
+          <TerminalFlex key={item.key ?? String(item.value)}>
+            {React.createElement(indicatorComponent, {
+              isSelected,
+            })}
+            {React.createElement(itemComponent, {
+              ...item,
+              isSelected,
+            })}
+          </TerminalFlex>
         );
       })}
-    </Box>
+    </TerminalFlex>
   );
 }
-
 export default SelectInput;
