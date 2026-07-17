@@ -1,4 +1,12 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef, useContext } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useContext,
+} from "react";
 import type { DivElement } from "paintcannon";
 import clipboardy from "clipboardy";
 import { t } from "structural";
@@ -174,6 +182,9 @@ export default function App({
   const { paintCannon } = useApp();
   const transcriptRef = useRef<DivElement>(null);
   const followTranscriptRef = useRef(true);
+  const scrollTranscriptToBottom = useCallback(() => {
+    if (followTranscriptRef.current) scrollToBottom(transcriptRef.current);
+  }, []);
   const [currConfig, setCurrConfig] = useState(config);
   const [session, setSession] = useState(initialSession);
   const handleSessionChange = useCallback(
@@ -239,9 +250,8 @@ export default function App({
     modeData.mode === "responding" || modeData.mode === "compacting"
       ? modeData.inflightResponse
       : null;
-  useEffect(() => {
-    if (!followTranscriptRef.current) return;
-    scrollToBottom(transcriptRef.current);
+  useLayoutEffect(() => {
+    scrollTranscriptToBottom();
   }, [
     clearNonce,
     history.length,
@@ -249,6 +259,7 @@ export default function App({
     inflightResponse?.reasoningContent,
     modeData.mode,
     bootItems.length,
+    scrollTranscriptToBottom,
   ]);
   useEffect(() => {
     let resizeFrame: number | undefined;
@@ -257,7 +268,7 @@ export default function App({
       if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
       resizeFrame = paintCannon.requestAnimationFrame(() => {
         resizeFrame = undefined;
-        scrollToBottom(transcriptRef.current);
+        scrollTranscriptToBottom();
       });
     };
 
@@ -266,7 +277,7 @@ export default function App({
       paintCannon.removeEventListener("resize", handleResize);
       if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
     };
-  }, [paintCannon]);
+  }, [paintCannon, scrollTranscriptToBottom]);
   return (
     <InputPriorityProvider>
       <UnchainedShiftTabHandler
@@ -359,6 +370,7 @@ export default function App({
                                   config={currConfig}
                                   transport={transport}
                                   session={session}
+                                  onContentLayout={scrollTranscriptToBottom}
                                 />
                               )}
                             </TerminalFlex>
@@ -1167,14 +1179,19 @@ function ToolRequestsRenderer({
   config,
   transport,
   session,
+  onContentLayout,
 }: {
   toolReqs: ToolCallRequest[];
+  onContentLayout: () => void;
 } & RunArgs) {
   const runAgent = useAppStore(state => state.runAgent);
   const [currentIndex, setCurrentIndex] = useState(0);
   const onDone = useCallback(() => {
     setCurrentIndex(i => i + 1);
   }, []);
+  useLayoutEffect(() => {
+    onContentLayout();
+  }, [currentIndex, onContentLayout]);
   if (currentIndex >= toolReqs.length) {
     return (
       <FinishToolRequests
@@ -1199,6 +1216,7 @@ function ToolRequestsRenderer({
         transport={transport}
         session={session}
         onDone={onDone}
+        onContentLayout={onContentLayout}
       />
     </TerminalFlex>
   );
@@ -1226,9 +1244,11 @@ function ToolRequestRenderer({
   transport,
   session,
   onDone,
+  onContentLayout,
 }: {
   toolReq: ToolCallRequest;
   onDone: () => void;
+  onContentLayout: () => void;
 } & RunArgs) {
   const themeColor = useColor();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
@@ -1402,6 +1422,9 @@ function ToolRequestRenderer({
     modeData.mode === "tool-call" && modeData.runningToolCallId === toolReq.toolCallId;
   const noConfirmationNeeded =
     unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
+  useLayoutEffect(() => {
+    onContentLayout();
+  }, [isRunning, noConfirmationNeeded, onContentLayout]);
   useEffect(() => {
     if (noConfirmationNeeded) {
       runTool({
