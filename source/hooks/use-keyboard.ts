@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import type { PaintKeyboardEvent } from "paintcannon";
 import { Div } from "paintcannon-react";
+import { registry } from "antipattern";
 
 type KeyboardListener = (event: PaintKeyboardEvent) => void;
 type KeyboardContextValue = {
@@ -39,7 +40,7 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useKeyboard(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
+function useKeyboardImpl(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
   const context = useContext(KeyboardContext);
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
@@ -53,4 +54,12 @@ export function useKeyboard(callback: (event: PaintKeyboardEvent) => void, isAct
     };
     return context.register(handleKeyDown);
   }, [context, isActive]);
+}
+
+export const keyboardDeps = registry({
+  useKeyboard: useKeyboardImpl,
+});
+
+export function useKeyboard(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
+  keyboardDeps.useKeyboard(callback, isActive);
 }
