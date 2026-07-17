@@ -92,6 +92,7 @@ function SelectInput<V>({
     useCallback(
       event => {
         if (event.key === "k" || event.key === "ArrowUp") {
+          event.preventDefault();
           const lastIndex = (hasLimit ? limit : items.length) - 1;
           const atFirstIndex = selectedIndex === 0;
           const nextIndex = hasLimit ? selectedIndex : lastIndex;
@@ -107,6 +108,7 @@ function SelectInput<V>({
           }
         }
         if (event.key === "j" || event.key === "ArrowDown") {
+          event.preventDefault();
           const atLastIndex = selectedIndex === (hasLimit ? limit : items.length) - 1;
           const nextIndex = hasLimit ? selectedIndex : 0;
           const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
@@ -128,6 +130,7 @@ function SelectInput<V>({
             ? arrayToRotated(items, rotateIndex).slice(0, limit)
             : items;
           if (targetIndex >= 0 && targetIndex < visibleItems.length) {
+            event.preventDefault();
             const selectedItem = visibleItems[targetIndex];
             if (selectedItem) {
               onSelect?.(selectedItem);
@@ -135,6 +138,7 @@ function SelectInput<V>({
           }
         }
         if (event.key === "Enter") {
+          event.preventDefault();
           const slicedItems = hasLimit ? arrayToRotated(items, rotateIndex).slice(0, limit) : items;
           if (typeof onSelect === "function") {
             onSelect(slicedItems[selectedIndex]!);
