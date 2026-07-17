@@ -325,6 +325,7 @@ export default function App({
                               flexDirection: "column",
                               minHeight: "100%",
                               flexShrink: 0,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             <TerminalFlex
