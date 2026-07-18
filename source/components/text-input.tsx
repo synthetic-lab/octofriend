@@ -3,6 +3,7 @@ import type { PaintFile, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { useScrollTranscriptToBottom } from "../transcript-scroll.ts";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -50,6 +51,7 @@ export default function TextInput({
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
   const vimHandler = useVimKeyHandler(vimMode, setVimMode ?? (() => {}));
+  const scrollTranscriptToBottom = useScrollTranscriptToBottom();
 
   useEffect(() => {
     if (focus) textareaRef.current?.focus();
@@ -115,6 +117,15 @@ export default function TextInput({
           }
         }}
         onKeyDown={event => {
+          const hasModifier = event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
+          const scrolledTranscript =
+            (event.key === "Enter" || !hasModifier) && scrollTranscriptToBottom();
+          if (event.key === "Enter" && scrolledTranscript) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+
           const textarea = textareaRef.current;
           if (!textarea) return;
 
