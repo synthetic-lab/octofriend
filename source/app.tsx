@@ -246,15 +246,17 @@ export default function App({
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
-  const { history, modeData, setVimMode, clearNonce, cancelNotifyReadyForInput } = useAppStore(
-    useShallow(state => ({
-      history: state.history,
-      modeData: state.modeData,
-      setVimMode: state.setVimMode,
-      clearNonce: state.clearNonce,
-      cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
-    })),
-  );
+  const { history, modeData, setVimMode, clearNonce, cancelNotifyReadyForInput, query } =
+    useAppStore(
+      useShallow(state => ({
+        history: state.history,
+        modeData: state.modeData,
+        setVimMode: state.setVimMode,
+        clearNonce: state.clearNonce,
+        cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
+        query: state.query,
+      })),
+    );
   useKeyboard(event => {
     cancelNotifyReadyForInput();
   });
@@ -306,6 +308,7 @@ export default function App({
     inflightResponse?.reasoningContent,
     modeData.mode,
     bootItems.length,
+    query,
     scrollTranscriptToBottom,
   ]);
   useEffect(() => {
