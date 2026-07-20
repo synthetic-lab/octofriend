@@ -403,16 +403,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ query });
   },
 
-  setModelOverride: (model, session) => {
-    set({
-      modelOverride: model,
-      history: appendAndPersistHistory(session, get().history, [
-        {
-          type: "notification",
-          content: `Model: ${model}`,
-        },
-      ]),
-    });
+  setModelOverride: (model, _session) => {
+    set({ modelOverride: model });
   },
 
   notify: (notif, session) => {
