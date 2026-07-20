@@ -125,7 +125,6 @@ type TranscriptItem =
   | {
       type: "version";
       metadata: Metadata;
-      config: Config;
     }
   | {
       type: "updates";
@@ -278,7 +277,6 @@ export default function App({
       {
         type: "version" as const,
         metadata,
-        config: currConfig,
       },
       ...skillNotifs.map(s => ({
         type: "boot-notification" as const,
@@ -294,7 +292,7 @@ export default function App({
         : []),
     ];
     return items;
-  }, [currConfig, skillNotifs, updates]);
+  }, [metadata, skillNotifs, updates]);
   const inflightResponse =
     modeData.mode === "responding" || modeData.mode === "compacting"
       ? modeData.inflightResponse
@@ -754,9 +752,16 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       <TerminalFlex
         style={{
           marginLeft: 1,
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
         }}
       >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Model: {model.nickname}
+        </Span>
         <Span
           style={{
             color: "gray",
@@ -1523,7 +1528,6 @@ function ToolRequestRenderer({
 }
 const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
   const themeColor = useColor();
-  const model = useModel();
   const unchained = useUnchained();
   if (item.type === "header") return <Header unchained={unchained} />;
   if (item.type === "version") {
@@ -1535,13 +1539,6 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
           alignItems: "center",
         }}
       >
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          Model: {model.nickname}
-        </Span>
         <Span
           style={{
             color: "gray",
