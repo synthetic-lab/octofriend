@@ -125,10 +125,22 @@ async function toResponseInput<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
   modalities?: CompilerModalities,
 ): Promise<ResponseInput> {
-  const output: ResponseInput = [];
-
+  const items: ResponseInput = [];
   for (const ir of messages) {
-    output.push(...responseInputFromIr(ir, modalities));
+    items.push(...responseInputFromIr(ir, modalities));
+  }
+
+  const answeredCalls = new Set<string>();
+  for (const item of items) {
+    if (item.type === "function_call_output") answeredCalls.add(item.call_id);
+  }
+
+  const output: ResponseInput = [];
+  for (const item of items) {
+    output.push(item);
+    if (item.type === "function_call" && !answeredCalls.has(item.call_id)) {
+      output.push({ type: "function_call_output", call_id: item.call_id, output: "Aborted" });
+    }
   }
 
   return output;
