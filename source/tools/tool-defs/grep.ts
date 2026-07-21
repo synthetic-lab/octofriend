@@ -9,20 +9,18 @@ import { ok, err, toErrString } from "../../libocto/result.ts";
 export default TOOL.declare({
   name: "grep",
   description: "Searches file contents using grep. Prefer this to shelling out to `grep` directly.",
-  ArgumentsSchema: t.partial(
-    t.subtype({
-      pattern: t.str.comment(
-        "The search pattern. Internally uses grep with the -E flag (extended regex).",
-      ),
-      path: t.str.comment(
-        "Directory or file to search in. Defaults to the current working directory.",
-      ),
-      caseInsensitive: t.bool.comment("Case-insensitive search"),
-      context: t.num.comment("Number of context lines around each match"),
-      maxResults: t.num.comment("Max number of results to return"),
-      timeout: t.num.comment("Timeout in milliseconds (defaults to 30000)"),
-    }),
-  ),
+  ArgumentsSchema: t.subtype({
+    pattern: t.str.comment(
+      "The search pattern. Internally uses grep with the -E flag (extended regex).",
+    ),
+    path: t.optional(
+      t.str.comment("Directory or file to search in. Defaults to the current working directory."),
+    ),
+    caseInsensitive: t.optional(t.bool.comment("Case-insensitive search")),
+    context: t.optional(t.num.comment("Number of context lines around each match")),
+    maxResults: t.optional(t.num.comment("Max number of results to return")),
+    timeout: t.optional(t.num.comment("Timeout in milliseconds (defaults to 30000)")),
+  }),
 }).define(async () => ({
   async run({ signal, transport, toolCall, data }) {
     const search = toolCall.parsed.arguments;
