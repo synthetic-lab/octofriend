@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef } from "react";
-import type { PaintFile, TextAreaElement } from "paintcannon";
+import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { ImageInfo } from "../utils/image-utils.ts";
@@ -23,6 +23,7 @@ type Props = {
   readonly setVimMode?: (mode: "NORMAL" | "INSERT") => void;
   readonly attachedImages?: ImageInfo[];
   readonly onRemoveLastImage?: () => unknown;
+  readonly onKeyDown?: (event: PaintKeyboardEvent) => void;
 };
 
 function characterIndexToStringIndex(value: string, characterIndex: number): number {
@@ -46,6 +47,7 @@ export default function TextInput({
   vimEnabled = false,
   vimMode = "NORMAL",
   setVimMode,
+  onKeyDown,
 }: Props) {
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
@@ -115,7 +117,8 @@ export default function TextInput({
           }
         }}
         onKeyDown={event => {
-          if (event.key === "Enter") event.stopPropagation();
+          onKeyDown?.(event);
+          if (event.defaultPrevented) return;
 
           const textarea = textareaRef.current;
           if (!textarea) return;
