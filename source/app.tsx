@@ -1519,6 +1519,8 @@ function ToolRequestRenderer({
         items={items}
         onSelect={onSelect}
         onKeyDown={event => {
+          // If you're scrolled offscreen during the permission prompt rendering, Enter should not
+          // accept the permission request, and should instead scroll to the bottom
           if (event.key === "Enter" && scrollTranscriptToBottomIfNeeded()) {
             event.preventDefault();
           }
