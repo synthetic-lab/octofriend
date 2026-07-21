@@ -130,6 +130,13 @@ async function toResponseInput<A extends Agent<any, any, any>>(
     items.push(...responseInputFromIr(ir, modalities));
   }
 
+  /*
+   * The OpenAI Responses API mandates that all function calls *must* have function call outputs
+   * associated with them on requests, unlike other APIs which allow you to simply leave them out if
+   * you want to (e.g. if you didn't run them). To normalize this behavior, we insert "Aborted"
+   * function call outputs that are synthesized if the LLMIR has no tool output for the tool call;
+   * this can happen e.g. if Octo crashed.
+   */
   const answeredCalls = new Set<string>();
   for (const item of items) {
     if (item.type === "function_call_output") answeredCalls.add(item.call_id);
