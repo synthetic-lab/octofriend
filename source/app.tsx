@@ -94,7 +94,10 @@ import { HistoryNode } from "./session-history/index.ts";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
-import { ScrollTranscriptToBottomContext } from "./transcript-scroll.ts";
+import {
+  ScrollTranscriptToBottomContext,
+  useScrollTranscriptToBottom,
+} from "./transcript-scroll.ts";
 type LoadedToolFrom<T extends (...args: any) => any> = Exclude<Awaited<ReturnType<T>>, null>;
 type ParsedToolSchemaFrom<T extends (...args: any) => any> = {
   name: LoadedToolFrom<T>["name"];
@@ -342,12 +345,6 @@ export default function App({
                     <CwdContext.Provider value={cwd}>
                       <ExitOnDoubleCtrlC>
                         <TerminalFlex
-                          onKeyDown={event => {
-                            if (event.key === "Enter" && scrollTranscriptToBottomIfNeeded()) {
-                              event.preventDefault();
-                              event.stopPropagation();
-                            }
-                          }}
                           style={{
                             flexDirection: "column",
                             width: "100%",
@@ -1316,6 +1313,7 @@ function ToolRequestRenderer({
   onContentLayout: () => void;
 } & RunArgs) {
   const themeColor = useColor();
+  const scrollTranscriptToBottomIfNeeded = useScrollTranscriptToBottom();
   const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
@@ -1520,6 +1518,13 @@ function ToolRequestRenderer({
       <SelectInput
         items={items}
         onSelect={onSelect}
+        onKeyDown={event => {
+          // If you're scrolled offscreen during the permission prompt rendering, Enter should not
+          // accept the permission request, and should instead scroll to the bottom
+          if (event.key === "Enter" && scrollTranscriptToBottomIfNeeded()) {
+            event.preventDefault();
+          }
+        }}
         indicatorComponent={IndicatorComponent}
         itemComponent={ToolRequestItem}
       />

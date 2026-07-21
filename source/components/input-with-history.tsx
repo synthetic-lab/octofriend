@@ -175,6 +175,10 @@ export const InputWithHistory = (props: Props) => {
           onRemoveLastImage={props.onRemoveLastImage}
           onImageFilesAttached={props.onImageFilesAttached}
           onSubmit={handleSubmit}
+          onKeyDown={event => {
+            // Prevent literal newlines from being inserted when accepting suggestions
+            if (event.key === "Enter" && suggestionState?.isVisible) event.preventDefault();
+          }}
           vimEnabled={props.vimEnabled}
           vimMode={props.vimMode}
           setVimMode={props.setVimMode}

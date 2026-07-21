@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import React, { type FC, useState, useEffect, useRef, useCallback } from "react";
+import type { PaintKeyboardEvent } from "paintcannon";
 import arrayToRotated from "to-rotated";
 import Indicator, { type Props as IndicatorProps } from "./select-indicator.tsx";
 import ItemComponent, { type Props as ItemProps } from "./select-item.tsx";
@@ -50,6 +51,8 @@ type Props<V> = {
    * Function to call when user highlights an item. Item object is passed to that function as an argument.
    */
   readonly onHighlight?: (item: Item<V>) => void;
+
+  readonly onKeyDown?: (event: PaintKeyboardEvent) => void;
 };
 export type Item<V> = {
   key?: string;
@@ -65,6 +68,7 @@ function SelectInput<V>({
   limit: customLimit,
   onSelect,
   onHighlight,
+  onKeyDown,
 }: Props<V>) {
   const hasLimit = typeof customLimit === "number" && items.length > customLimit;
   const limit = hasLimit ? Math.min(customLimit, items.length) : items.length;
@@ -91,6 +95,9 @@ function SelectInput<V>({
   useKeyboard(
     useCallback(
       event => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented) return;
+
         if (event.key === "k" || event.key === "ArrowUp") {
           event.preventDefault();
           const lastIndex = (hasLimit ? limit : items.length) - 1;
@@ -145,7 +152,7 @@ function SelectInput<V>({
           }
         }
       },
-      [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight],
+      [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight, onKeyDown],
     ),
     isFocused,
   );
