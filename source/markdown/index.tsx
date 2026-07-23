@@ -303,6 +303,7 @@ function ListRenderer({ token }: { token: Tokens.List }) {
           <Span
             style={{
               color: MARKDOWN_LIST_MARKER_COLOR,
+              flexShrink: 0,
             }}
           >
             {token.ordered
