@@ -8,7 +8,7 @@ const SearchResultsSchema = t.subtype({
     t.subtype({
       url: t.str,
       title: t.optional(t.str.or(t.nil)),
-      text: t.str,
+      highlights: t.array(t.str),
       published: t.optional(t.str.or(t.nil)),
     }),
   ),

@@ -40,6 +40,7 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "list",
   "skill",
   "web-search",
+  "fetch",
   "glob",
   "grep",
   "lsp-definition",
