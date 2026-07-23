@@ -10,10 +10,26 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const trees = sqliteTable("trees", {
-  id: integer().primaryKey({ autoIncrement: true }),
-  name: text().notNull().unique(),
-  cwd: text().notNull(),
+export const trees = sqliteTable(
+  "trees",
+  {
+    id: integer().primaryKey({ autoIncrement: true }),
+    name: text().notNull().unique(),
+    cwd: text().notNull(),
+    updatedAt: integer()
+      .notNull()
+      .$onUpdate(() => Date.now()),
+  },
+  table => [index("trees_cwd_updated_at_idx").on(table.cwd, sql`${table.updatedAt} DESC`)],
+);
+
+export const previews = sqliteTable("previews", {
+  sessionId: text()
+    .notNull()
+    .primaryKey()
+    .references(() => trees.name, { onDelete: "cascade" }),
+  preview: text(),
+  previewType: text({ enum: ["latest-user-message"] }).notNull(),
   updatedAt: integer()
     .notNull()
     .$onUpdate(() => Date.now()),
@@ -143,8 +159,16 @@ export const treeNodes = sqliteTable(
   ],
 );
 
-export const treesRelations = relations(trees, ({ many }) => ({
+export const treesRelations = relations(trees, ({ many, one }) => ({
   nodes: many(treeNodes),
+  preview: one(previews),
+}));
+
+export const previewsRelations = relations(previews, ({ one }) => ({
+  tree: one(trees, {
+    fields: [previews.sessionId],
+    references: [trees.name],
+  }),
 }));
 
 export const treeNodesRelations = relations(treeNodes, ({ one }) => ({

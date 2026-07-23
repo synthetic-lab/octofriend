@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { setupDb } from "../db/setup.ts";
 setupDb();
+
 import React from "react";
 import path from "path";
 import os from "os";
@@ -28,19 +29,23 @@ import { timeout } from "../signals.ts";
 import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
-import { loadSession } from "../session-history/index.ts";
+import { listSessions, loadSession } from "../session-history/index.ts";
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { BACKGROUND_COLOR, FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
+import { formatTimeAgo } from "../time.ts";
 import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { AppFocusOverlay } from "../components/app-focus-overlay.tsx";
 import { render, type CreateRootOptions } from "paintcannon-react";
+
 const __dirname = import.meta.dirname;
+
 const INTERACTIVE_RENDER_OPTIONS = {
   alternateScreen: true,
   captureMouse: true,
   captureCtrlC: true,
 } satisfies CreateRootOptions;
+
 function renderInteractive(element: React.ReactNode) {
   const root = render(
     <KeyboardProvider>
@@ -53,8 +58,10 @@ function renderInteractive(element: React.ReactNode) {
   root.container.style.color = FOREGROUND_COLOR;
   return root;
 }
+
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
+
 const cli = withOctoFlags(
   new Command().description("If run with no subcommands, runs Octo interactively."),
 )
@@ -86,6 +93,7 @@ const cli = withOctoFlags(
         },
       };
     }
+
     try {
       // Set terminal title for tmux
       process.title = "\\_o_O.//";
@@ -96,6 +104,7 @@ const cli = withOctoFlags(
       await runConfig.transport.close();
     }
   });
+
 const docker = cli.command("docker").description("Sandbox Octo inside Docker");
 withOctoFlags(docker.command("connect"))
   .description("Sandbox Octo inside an already-running container")
@@ -120,6 +129,7 @@ withOctoFlags(docker.command("connect"))
       await transport.close();
     }
   });
+
 withOctoFlags(docker.command("run"))
   .description(
     "Run a Docker image and sandbox Octo inside it, shutting it down when Octo shuts down",
@@ -130,6 +140,7 @@ withOctoFlags(docker.command("run"))
       type: "image",
       image: await manageContainer(args),
     });
+
     try {
       await runMain({
         transport,
@@ -145,6 +156,7 @@ withOctoFlags(docker.command("run"))
       await transport.close();
     }
   });
+
 async function buildConfigForResuming(
   resumeSessionId: string,
   overrides: {
@@ -162,6 +174,7 @@ async function buildConfigForResuming(
     console.error(`No session found with ID ${resumeSessionId}.`);
     process.exit(1);
   }
+
   const storedCliArgs = loadedSession.session.metadata.cliArgs;
   let effectiveCliArgs = replaceOctoFlags(storedCliArgs, overrides);
   if (overrides.dockerRunArgs != null) {
@@ -174,10 +187,12 @@ async function buildConfigForResuming(
       effectiveCliArgs = replaceDockerRunArgs(effectiveCliArgs, overrides.dockerRunArgs);
     }
   }
+
   const shared = {
     parsedCliArgs: effectiveCliArgs,
     loadedSession,
   };
+
   switch (effectiveCliArgs.kind) {
     case "local":
       return {
@@ -202,6 +217,7 @@ async function buildConfigForResuming(
       };
   }
 }
+
 async function runMain(opts: {
   parsedCliArgs: ParsedCliArgs;
   transport: Transport;
@@ -220,6 +236,7 @@ async function runMain(opts: {
   } else {
     session = useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
   }
+
   try {
     let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
@@ -245,8 +262,10 @@ async function runMain(opts: {
       }
       console.log("MCP server initialization complete.");
     }
+
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
+
     const { waitUntilExit } = renderInteractive(
       <App
         bootSkills={skills.map(s => s.name)}
@@ -264,12 +283,14 @@ async function runMain(opts: {
         inputHistory={await loadInputHistory()}
       />,
     );
+
     await waitUntilExit();
     const { history } = useAppStore.getState();
     if (history.some(item => item.type === "llm-ir")) {
       const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
       console.log(`\nResume this session with ${resumeCommand}`);
     }
+
     console.log("\nApprox. tokens used:");
     if (Object.keys(tokenCounts()).length === 0) {
       console.log("0");
@@ -285,18 +306,21 @@ async function runMain(opts: {
     await shutdownMcpClients();
   }
 }
+
 cli
   .command("version")
   .description("Prints the current version")
   .action(async () => {
     console.log(APP_METADATA.version);
   });
+
 cli
   .command("init")
   .description("Create a fresh config file for Octo")
   .action(() => {
     renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
   });
+
 cli
   .command("changelog")
   .description("List the changelog")
@@ -304,6 +328,7 @@ cli
     const changelog = await fs.readFile(path.join(__dirname, "../../../CHANGELOG.md"), "utf8");
     console.log(changelog);
   });
+
 cli
   .command("list")
   .description("List all models you've configured with Octo")
@@ -311,6 +336,37 @@ cli
     const { config } = await loadConfigWithoutReauth();
     console.log(config.models.map(m => m.nickname).join("\n"));
   });
+
+const sessionCommand = cli.command("session").description("Manage Octo sessions");
+sessionCommand
+  .command("list")
+  .description("List sessions for the current working directory")
+  .action(() => {
+    const sessions = listSessions(process.cwd());
+    if (sessions.length === 0) return;
+
+    const sessionIdWidth = Math.max("SESSION ID".length, ...sessions.map(s => s.sessionId.length));
+    const now = new Date();
+    const octoTheme = chalk.hex(THEME_COLOR);
+    const rows = sessions.map(session => ({
+      ...session,
+      updatedAtText: formatTimeAgo(new Date(session.updatedAt), now),
+    }));
+    const previewWidth = Math.max("PREVIEW".length, ...rows.map(row => (row.preview ?? "").length));
+    console.log(`Resume a session with: ${octoTheme("octo --resume <session-id>")}\n`);
+    console.log(
+      `${"SESSION ID".padEnd(sessionIdWidth)}  ${"PREVIEW".padEnd(previewWidth)}  LAST UPDATED`,
+    );
+    console.log(
+      `${"─".repeat(sessionIdWidth)}  ${"─".repeat(previewWidth)}  ${"─".repeat("LAST UPDATED".length)}`,
+    );
+    for (const row of rows) {
+      console.log(
+        `${octoTheme(row.sessionId.padEnd(sessionIdWidth))}  ${chalk.dim((row.preview ?? "").padEnd(previewWidth))}  ${chalk.white(row.updatedAtText)}`,
+      );
+    }
+  });
+
 const bench = cli.command("bench");
 bench
   .command("tps")
@@ -330,12 +386,14 @@ bench
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
+
     if (model == null) {
       console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
       console.error("The available models are:");
       console.error("- " + config.models.map(m => m.nickname).join("\n- "));
       process.exit(1);
     }
+
     const concurrency = Math.max(1, parseInt(opts.concurrency ?? "1", 10));
     let modelData: ModelData;
     if (model.type === "codex") {
@@ -362,6 +420,7 @@ bench
       };
     }
     const autofixJson = makeAutofixJson(config);
+
     console.log(
       `Benchmarking ${model.nickname} with ${concurrency} concurrent request${concurrency > 1 ? "s" : ""}`,
     );
@@ -369,6 +428,7 @@ bench
     const timer = setInterval(() => {
       console.log("Still working...");
     }, 5000);
+
     type SuccessfulBenchmark = {
       tokens: number;
       ttft: number;
@@ -376,15 +436,19 @@ bench
       interTokenLatencies: number[];
       success: true;
     };
+
     type FailedBenchmark = {
       success: false;
       error: string;
     };
+
     type BenchmarkResult = SuccessfulBenchmark | FailedBenchmark;
+
     async function runSingleBenchmark(): Promise<BenchmarkResult> {
       const start = new Date();
       let firstToken: Date | null = null;
       const tokenTimestamps: Date[] = [];
+
       const result = await run({
         modelData,
         autofixJson,
@@ -412,6 +476,7 @@ bench
         abortSignal: abortController.signal,
         transport,
       });
+
       if (!result.success) {
         return {
           success: false,
@@ -419,21 +484,27 @@ bench
             result.error.type === "auth-error" ? result.error.authError : result.error.requestError,
         };
       }
+
       const end = new Date();
+
       if (firstToken == null) {
         return {
           success: false,
           error: "No tokens received",
         };
       }
+
       const ttft = (firstToken as Date).getTime() - start.getTime();
       const tokenElapsed = end.getTime() - (firstToken as Date).getTime();
+
       const tokens = result.data.usage.output;
+
       const interTokenLatencies: number[] = [];
       for (let i = 1; i < tokenTimestamps.length; i++) {
         const latency = tokenTimestamps[i].getTime() - tokenTimestamps[i - 1].getTime();
         interTokenLatencies.push(latency);
       }
+
       return {
         tokens,
         ttft,
@@ -442,6 +513,7 @@ bench
         success: true,
       };
     }
+
     const benchmarkStart = new Date();
     const results = await Promise.all(
       Array.from(
@@ -452,7 +524,9 @@ bench
       ),
     );
     const benchmarkEnd = new Date();
+
     clearInterval(timer);
+
     const failures = results.filter((r): r is FailedBenchmark => !r.success);
     if (failures.length > 0) {
       console.error(`\n${failures.length} request(s) failed:`);
@@ -463,19 +537,25 @@ bench
         process.exit(1);
       }
     }
+
     const successes = results.filter((r): r is SuccessfulBenchmark => r.success);
+
     if (successes.length === 0) {
       console.log("No successful requests");
       process.exit(1);
     }
+
     const totalTokens = successes.reduce((sum, r) => sum + r.tokens, 0);
     const avgTokens = totalTokens / successes.length;
     const avgTtft = successes.reduce((sum, r) => sum + r.ttft, 0) / successes.length;
+
     const allInterTokenLatencies = successes.flatMap(r => r.interTokenLatencies);
     const avgTokenElapsed =
       successes.reduce((sum, r) => sum + r.tokenElapsed, 0) / successes.length;
+
     const totalTime = (benchmarkEnd.getTime() - benchmarkStart.getTime()) / 1000;
     const tps = totalTokens / totalTime;
+
     console.log(`\n
 Successful requests: ${successes.length}/${concurrency}
 Total tokens: ${totalTokens}
@@ -483,6 +563,7 @@ Avg tokens per request: ${avgTokens.toFixed(2)}
 Total time: ${totalTime.toFixed(2)}s
 Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
 `);
+
     if (allInterTokenLatencies.length > 0) {
       let minLatency = allInterTokenLatencies[0];
       let maxLatency = allInterTokenLatencies[0];
@@ -493,6 +574,7 @@ Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
         total += latency;
       }
       const avgLatency = total / allInterTokenLatencies.length;
+
       console.log(`Inter-token latencies (${allInterTokenLatencies.length} total):
   Min: ${minLatency}ms
   Max: ${maxLatency}ms
@@ -500,10 +582,12 @@ Avg time to first token: ${(avgTtft / 1000).toFixed(3)}s
   Avg stream time per request: ${(avgTokenElapsed / 1000).toFixed(3)}s
 `);
     }
+
     console.log(`Tok/sec output (overall): ${tps.toFixed(2)}
 Tok/sec output (per-request avg): ${successes.map(r => r.tokens / (r.tokenElapsed / 1000)).reduce((a, b) => a + b, 0) / successes.length}
 `);
   });
+
 cli
   .command("prompt")
   .description("Sends a prompt to a model")
@@ -519,18 +603,21 @@ cli
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
       : config.models[0];
+
     if (model == null) {
       console.error(`No model with the nickname ${opts.model} found. Did you add it to Octo?`);
       console.error("The available models are:");
       console.error("- " + config.models.map(m => m.nickname).join("\n- "));
       process.exit(1);
     }
+
     let modelData: ModelData;
     if (model.type === "codex") {
       const authResult = await readAuthForModel(model, config);
       if (!authResult.ok) {
         console.error(`${model.nickname} doesn't have auth set up.`);
         const error = authResult.error;
+
         if (error.type === "missing") {
           console.error(`${error.message}`);
         } else if (error.type === "command_failed") {
@@ -544,6 +631,7 @@ cli
         } else if (error.type === "invalid") {
           console.error(`Invalid auth configuration: ${error.message}`);
         }
+
         process.exit(1);
       }
       modelData = {
@@ -556,6 +644,7 @@ cli
       if (!authResult.ok) {
         console.error(`${model.nickname} doesn't have auth set up.`);
         const error = authResult.error;
+
         if (error.type === "missing") {
           console.error(`${error.message}`);
           if (model.auth?.type === "env") {
@@ -572,6 +661,7 @@ cli
         } else if (error.type === "invalid") {
           console.error(`Invalid auth configuration: ${error.message}`);
         }
+
         process.exit(1);
       }
       modelData = {
@@ -591,13 +681,16 @@ cli
         ],
       },
     ];
+
     let systemPrompt: undefined | (() => Promise<string>) = undefined;
     if (opts.system) {
       const sys = opts.system;
       systemPrompt = async () => sys;
     }
+
     const autofixJson = makeAutofixJson(config);
     const abortController = new AbortController();
+
     let seenReasoning = false;
     let seenContent = false;
     const result = await run({
@@ -608,10 +701,12 @@ cli
       handlers: {
         onTokens: (chunk, type) => {
           if (type === "reasoning") seenReasoning = true;
+
           if (seenReasoning && type === "content" && !seenContent) {
             seenContent = true;
             process.stderr.write("\n\n");
           }
+
           if (type === "reasoning") process.stderr.write(chunk);
           else process.stdout.write(chunk);
         },
@@ -629,8 +724,10 @@ cli
       }
       process.exit(1);
     }
+
     process.stdout.write("\n");
   });
+
 async function loadConfig(path?: string) {
   let { config, configPath } = await loadConfigWithoutReauth(path);
   let defaultModel = config.models[0];
@@ -650,6 +747,7 @@ async function loadConfig(path?: string) {
     defaultModel = config.models[0];
     if (!(await readAuthForModel(defaultModel, config)).ok) process.exit(1);
   }
+
   for (const key of AUTOFIX_KEYS) {
     let autofixModel = config[key];
     if (autofixModel) {
@@ -671,17 +769,20 @@ async function loadConfig(path?: string) {
       }
     }
   }
+
   return {
     config,
     configPath,
   };
 }
+
 async function loadConfigWithoutReauth(configPath?: string) {
   if (configPath)
     return {
       configPath,
       config: await readConfig(configPath),
     };
+
   if (await fileExists(CONFIG_JSON5_FILE)) {
     return {
       configPath: CONFIG_JSON5_FILE,
@@ -693,14 +794,17 @@ async function loadConfigWithoutReauth(configPath?: string) {
   await markUpdatesSeen();
   const { waitUntilExit } = renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
   await waitUntilExit();
+
   if (await fileExists(CONFIG_JSON5_FILE)) {
     return {
       configPath: CONFIG_JSON5_FILE,
       config: await readConfig(CONFIG_JSON5_FILE),
     };
   }
+
   process.exit(1);
 }
+
 migrate().then(() => {
   cli.parse();
 });
