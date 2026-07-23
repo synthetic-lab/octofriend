@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatTimeUntil } from "./time.ts";
+import { formatTimeAgo, formatTimeUntil } from "./time.ts";
 
 describe("formatTimeUntil", () => {
   const now = new Date("2026-03-02T12:00:00Z");
@@ -107,5 +107,29 @@ describe("formatTimeUntil", () => {
   it("should handle negative days as 0 minutes", () => {
     const expiresAt = new Date("2026-02-28T12:00:00Z");
     expect(formatTimeUntil(expiresAt, now)).toBe("in 0 minutes");
+  });
+});
+
+describe("formatTimeAgo", () => {
+  const now = new Date("2026-03-02T12:00:00Z");
+
+  it.each([
+    ["less than a minute", 30 * 1000, "just now"],
+    ["one minute", 60 * 1000, "1 minute ago"],
+    ["multiple minutes", 10 * 60 * 1000, "10 minutes ago"],
+    ["one hour", 60 * 60 * 1000, "1 hour ago"],
+    ["multiple hours", 10 * 60 * 60 * 1000, "10 hours ago"],
+    ["one day", 24 * 60 * 60 * 1000, "1 day ago"],
+    ["multiple days", 10 * 24 * 60 * 60 * 1000, "10 days ago"],
+    ["one month", 30 * 24 * 60 * 60 * 1000, "1 month ago"],
+    ["multiple months", 90 * 24 * 60 * 60 * 1000, "3 months ago"],
+    ["one year", 365 * 24 * 60 * 60 * 1000, "1 year ago"],
+    ["multiple years", 2 * 365 * 24 * 60 * 60 * 1000, "2 years ago"],
+  ])("formats %s", (_description, elapsedMs, expected) => {
+    expect(formatTimeAgo(new Date(now.getTime() - elapsedMs), now)).toBe(expected);
+  });
+
+  it("treats future timestamps as just now", () => {
+    expect(formatTimeAgo(new Date(now.getTime() + 60 * 1000), now)).toBe("just now");
   });
 });
