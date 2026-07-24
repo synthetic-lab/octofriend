@@ -27,6 +27,8 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import {
   BACKGROUND_COLOR,
+  DIMMED_BACKGROUND_COLOR,
+  DIMMED_SCROLLBAR_COLOR,
   SCROLLBAR_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
   UnchainedContext,
@@ -184,6 +186,7 @@ export default function App({
   bootSkills,
 }: Props) {
   const { paintCannon } = useApp();
+  const [hasFocus, setHasFocus] = useState(paintCannon.hasFocus);
   const transcriptRef = useRef<DivElement>(null);
   const followTranscriptRef = useRef(true);
   const keyboardScrollActiveRef = useRef(false);
@@ -192,6 +195,17 @@ export default function App({
   const { time: keyboardScrollTime } = useAnimation({
     isActive: isKeyboardScrollActive,
   });
+  useEffect(() => {
+    const handleBlur = () => setHasFocus(false);
+    const handleFocus = () => setHasFocus(true);
+
+    paintCannon.addEventListener("blur", handleBlur);
+    paintCannon.addEventListener("focus", handleFocus);
+    return () => {
+      paintCannon.removeEventListener("blur", handleBlur);
+      paintCannon.removeEventListener("focus", handleFocus);
+    };
+  }, [paintCannon]);
   const scrollTranscriptToBottom = useCallback(() => {
     if (followTranscriptRef.current) scrollToBottom(transcriptRef.current);
   }, []);
@@ -329,6 +343,8 @@ export default function App({
       if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
     };
   }, [paintCannon, scrollTranscriptToBottom]);
+  const appBackgroundColor = hasFocus ? BACKGROUND_COLOR : DIMMED_BACKGROUND_COLOR;
+  const appScrollbarColor = hasFocus ? SCROLLBAR_COLOR : DIMMED_SCROLLBAR_COLOR;
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
       <InputPriorityProvider>
@@ -361,8 +377,8 @@ export default function App({
                               minWidth: 0,
                               minHeight: 0,
                               border: "chunky-rounded",
-                              borderColor: BACKGROUND_COLOR,
-                              backgroundColor: BACKGROUND_COLOR,
+                              borderColor: appBackgroundColor,
+                              backgroundColor: appBackgroundColor,
                             }}
                           >
                             <TerminalFlex
@@ -383,7 +399,7 @@ export default function App({
                                 minHeight: 0,
                                 overflowY: "scroll",
                                 scrollbarGutter: "stable",
-                                scrollbarColor: SCROLLBAR_COLOR,
+                                scrollbarColor: appScrollbarColor,
                               }}
                             >
                               <TerminalFlex
