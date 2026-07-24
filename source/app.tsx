@@ -56,7 +56,8 @@ import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
-import type { Session } from "./session-history/index.ts";
+import { SessionNotFoundError } from "./session-history/index.ts";
+import type { HistoryNode, Session } from "./session-history/index.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
@@ -93,11 +94,11 @@ import path from "path";
 import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
-import { HistoryNode } from "./session-history/index.ts";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
+import { useToast } from "./components/toast.tsx";
 import {
   ScrollTranscriptToBottomContext,
   useScrollTranscriptToBottom,
@@ -631,6 +632,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const model = useModel();
   const transport = useContext(TransportContext);
   const session = useSession();
+  const showToast = useToast();
   const vimEnabled = !!config.vimEmulation?.enabled;
   const {
     modeData,
@@ -680,15 +682,27 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     async (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
       setQuery("");
-      await input({
-        query: finalQuery,
-        config,
-        transport,
-        session,
-        images,
-      });
+      try {
+        await input({
+          query: finalQuery,
+          config,
+          transport,
+          session,
+          images,
+        });
+      } catch (error) {
+        if (error instanceof SessionNotFoundError) {
+          showToast(
+            <Span style={{ color: "red" }}>
+              Could not send message. Session {error.sessionId} does not exist.
+            </Span>,
+          );
+          return;
+        }
+        throw error;
+      }
     },
-    [query, config, transport, session, setQuery],
+    [query, config, transport, session, setQuery, showToast],
   );
   if (modeData.mode === "responding" || modeData.mode === "compacting") {
     return (

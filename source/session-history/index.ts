@@ -1,12 +1,14 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db, DbTransaction, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
 import {
   compactionFailedItems,
+  dockerLaunches,
   historyItems,
   launches,
   llmIrs,
+  localLaunches,
   notifications,
   previews,
   requestFailedItems,
@@ -51,6 +53,13 @@ export type SessionSummary = {
   preview: string | null;
 };
 
+export class SessionNotFoundError extends Error {
+  constructor(readonly sessionId: string) {
+    super(`Session ${sessionId} does not exist.`);
+    this.name = "SessionNotFoundError";
+  }
+}
+
 export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
   return {
     metadata: { sessionId: null, cwd, cliArgs },
@@ -71,6 +80,51 @@ export function listSessions(cwd: string): SessionSummary[] {
     .where(eq(trees.cwd, cwd))
     .orderBy(desc(trees.updatedAt))
     .all();
+}
+
+export function deleteSession(sessionId: string): boolean {
+  return db().transaction(tx => {
+    const sessionLaunches = tx
+      .selectDistinct({ id: treeNodes.launchId })
+      .from(trees)
+      .innerJoin(treeNodes, eq(treeNodes.treeId, trees.id))
+      .where(eq(trees.name, sessionId))
+      .all();
+
+    const deletedTree = tx.delete(trees).where(eq(trees.name, sessionId)).run();
+    if (deletedTree.changes === 0) return false;
+    if (sessionLaunches.length === 0) return true;
+
+    const deletedLaunches = tx
+      .delete(launches)
+      .where(
+        inArray(
+          launches.id,
+          sessionLaunches.map(launch => launch.id),
+        ),
+      )
+      .returning({
+        dockerLaunchId: launches.dockerLaunchId,
+        localLaunchId: launches.localLaunchId,
+      })
+      .all();
+
+    const dockerLaunchIds = deletedLaunches.flatMap(launch =>
+      launch.dockerLaunchId == null ? [] : [launch.dockerLaunchId],
+    );
+    if (dockerLaunchIds.length > 0) {
+      tx.delete(dockerLaunches).where(inArray(dockerLaunches.id, dockerLaunchIds)).run();
+    }
+
+    const localLaunchIds = deletedLaunches.flatMap(launch =>
+      launch.localLaunchId == null ? [] : [launch.localLaunchId],
+    );
+    if (localLaunchIds.length > 0) {
+      tx.delete(localLaunches).where(inArray(localLaunches.id, localLaunchIds)).run();
+    }
+
+    return true;
+  });
 }
 
 export function loadSession(sessionId: string): LoadedSession | null {
@@ -246,7 +300,7 @@ export function insertHistoryItems(
 
   const result = db().transaction(tx => {
     // we don't create a session tree or uuid until at least one history item is available
-    const treeId = session.treeId ?? createTree(tx, session.metadata);
+    const treeId = treeIdForHistoryInsert(tx, session, sessionId);
     const launchId = session.launchId ?? createLaunch(tx, session.metadata.cliArgs);
 
     const insertedNodes: HistoryNode[] = [];
@@ -275,6 +329,15 @@ export function insertHistoryItems(
   session.treeId = result.treeId;
   session.launchId = result.launchId;
   return result.insertedNodes;
+}
+
+function treeIdForHistoryInsert(tx: DbTransaction, session: Session, sessionId: string): number {
+  const treeId = session.treeId;
+  if (treeId == null) return createTree(tx, session.metadata);
+
+  const tree = tx.select({ name: trees.name }).from(trees).where(eq(trees.id, treeId)).get();
+  if (tree?.name !== sessionId) throw new SessionNotFoundError(sessionId);
+  return treeId;
 }
 
 function createTree(tx: DbTransaction, metadata: SessionMetadata): number {
