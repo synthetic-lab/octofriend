@@ -1594,6 +1594,8 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
         <TerminalFlex
           style={{
             marginTop: 1,
+            alignSelf: "stretch",
+            minWidth: 0,
           }}
         >
           <Markdown markdown={item.updates} />
@@ -1911,6 +1913,7 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
         <TerminalFlex
           style={{
             marginRight: 1,
+            flexShrink: 0,
           }}
         >
           <Span
