@@ -94,6 +94,7 @@ import { HistoryNode } from "./session-history/index.ts";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
+import { ToolCallRow } from "./components/tool-call-row.tsx";
 import {
   ScrollTranscriptToBottomContext,
   useScrollTranscriptToBottom,
@@ -2129,50 +2130,16 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
   );
 }
 function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
-  const themeColor = useColor();
-  return (
-    <TerminalFlex>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        {item.name}:{" "}
-      </Span>
-      <Span
-        style={{
-          color: themeColor,
-        }}
-      >
-        {item.arguments.url}
-      </Span>
-    </TerminalFlex>
-  );
+  return <ToolCallRow name={item.name}>{item.arguments.url}</ToolCallRow>;
 }
 function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> }) {
-  const themeColor = useColor();
   return (
     <TerminalFlex
       style={{
         flexDirection: "column",
       }}
     >
-      <TerminalFlex>
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          {item.name}:{" "}
-        </Span>
-        <Span
-          style={{
-            color: themeColor,
-          }}
-        >
-          {item.arguments.cmd}
-        </Span>
-      </TerminalFlex>
+      <ToolCallRow name={item.name}>{item.arguments.cmd}</ToolCallRow>
       <Span
         style={{
           color: "gray",
@@ -2184,46 +2151,10 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
   );
 }
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
-  const themeColor = useColor();
-  return (
-    <TerminalFlex>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        {item.name}:{" "}
-      </Span>
-      <Span
-        style={{
-          color: themeColor,
-        }}
-      >
-        {item.arguments.filePath}
-      </Span>
-    </TerminalFlex>
-  );
+  return <ToolCallRow name={item.name}>{item.arguments.filePath}</ToolCallRow>;
 }
 function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
-  const themeColor = useColor();
-  return (
-    <TerminalFlex>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        {item.name}:{" "}
-      </Span>
-      <Span
-        style={{
-          color: themeColor,
-        }}
-      >
-        {item?.arguments?.dirPath || process.cwd()}
-      </Span>
-    </TerminalFlex>
-  );
+  return <ToolCallRow name={item.name}>{item?.arguments?.dirPath || process.cwd()}</ToolCallRow>;
 }
 function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
@@ -2316,29 +2247,15 @@ function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof create
   );
 }
 function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
-  const themeColor = useColor();
   return (
     <TerminalFlex
       style={{
         flexDirection: "column",
       }}
     >
-      <TerminalFlex>
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          {item.name}:{" "}
-        </Span>
-        <Span
-          style={{
-            color: themeColor,
-          }}
-        >
-          Server: {item.arguments.server}, Tool: {item.arguments.tool}
-        </Span>
-      </TerminalFlex>
+      <ToolCallRow name={item.name}>
+        Server: {item.arguments.server}, Tool: {item.arguments.tool}
+      </ToolCallRow>
       <Span
         style={{
           color: "gray",
