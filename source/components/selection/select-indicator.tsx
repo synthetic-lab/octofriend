@@ -10,6 +10,7 @@ function Indicator({ isSelected = false }: Props) {
     <TerminalFlex
       style={{
         marginRight: 1,
+        flexShrink: 0,
       }}
     >
       {isSelected ? (

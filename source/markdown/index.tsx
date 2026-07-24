@@ -36,6 +36,9 @@ export function Markdown({ markdown }: { markdown: string }) {
     <TerminalFlex
       style={{
         flexDirection: "column",
+        minWidth: 0,
+        maxWidth: "100%",
+        overflowWrap: "anywhere",
       }}
     >
       {tokens.map((token, index) => (
@@ -104,6 +107,7 @@ function BlockquoteRenderer({ token }: { token: Tokens.Blockquote }) {
       <Span
         style={{
           color: MARKDOWN_BLOCKQUOTE_BORDER_COLOR,
+          flexShrink: 0,
         }}
       >
         │{" "}
@@ -334,6 +338,7 @@ function ListItemRenderer({ token }: { token: Tokens.ListItem }) {
           <Span
             style={{
               color: token.checked ? MARKDOWN_CHECKED_TASK_COLOR : MARKDOWN_UNCHECKED_TASK_COLOR,
+              flexShrink: 0,
             }}
           >
             {token.checked ? "[✓]" : "[ ]"}{" "}
