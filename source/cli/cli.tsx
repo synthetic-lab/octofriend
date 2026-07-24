@@ -36,6 +36,7 @@ import { FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
 import { formatTimeAgo } from "../time.ts";
 import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
+import { ToastProvider } from "../components/toast.tsx";
 
 const __dirname = import.meta.dirname;
 
@@ -46,8 +47,16 @@ const INTERACTIVE_RENDER_OPTIONS = {
 } satisfies CreateRootOptions;
 
 function renderInteractive(element: React.ReactNode) {
-  const root = render(<KeyboardProvider>{element}</KeyboardProvider>, INTERACTIVE_RENDER_OPTIONS);
+  const root = render(
+    <ToastProvider>
+      <KeyboardProvider>
+        {element}
+      </KeyboardProvider>
+    </ToastProvider>,
+    INTERACTIVE_RENDER_OPTIONS,
+  );
   root.container.style.position = "relative";
+  root.container.style.overflowX = "hidden";
   root.container.style.color = FOREGROUND_COLOR;
   return root;
 }
