@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
+import { LocalTransport } from "./local.ts";
 import { ShellOutput } from "./transport-common.ts";
+
+describe("LocalTransport", () => {
+  it("does not pass NODE_ENV to child processes", async () => {
+    const previousNodeEnv = process.env["NODE_ENV"];
+    const previousTestEnv = process.env["OCTO_TEST_TRANSPORT_ENV"];
+    process.env["NODE_ENV"] = "production";
+    process.env["OCTO_TEST_TRANSPORT_ENV"] = "retained";
+
+    try {
+      const transport = new LocalTransport();
+      const output = await transport.shell(
+        new AbortController().signal,
+        `printf '%s:%s' "\${NODE_ENV-unset}" "$OCTO_TEST_TRANSPORT_ENV"`,
+        5000,
+      );
+
+      expect(output).toBe("unset:retained");
+    } finally {
+      if (previousNodeEnv == null) delete process.env["NODE_ENV"];
+      else process.env["NODE_ENV"] = previousNodeEnv;
+      if (previousTestEnv == null) delete process.env["OCTO_TEST_TRANSPORT_ENV"];
+      else process.env["OCTO_TEST_TRANSPORT_ENV"] = previousTestEnv;
+    }
+  });
+});
 
 describe("ShellOutput", () => {
   it("preserves output that fits within the limit", () => {

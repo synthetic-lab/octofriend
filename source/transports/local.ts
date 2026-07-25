@@ -84,11 +84,14 @@ export class LocalTransport implements Transport {
 
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
     return new Promise<string>((resolve, reject) => {
+      const env = { ...process.env };
+      delete env["NODE_ENV"];
       const child = spawn(cmd, {
         cwd: process.cwd(),
         shell: "bash",
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
+        env,
       });
 
       const output = new ShellOutput();
