@@ -26,8 +26,8 @@ optionally use (and we recommend using) ML models we custom-trained and
 open-sourced ([1](https://huggingface.co/syntheticlab/diff-apply),
 [2](https://huggingface.co/syntheticlab/fix-json)) to automatically handle tool
 call and code edit failures from the main coding models you're working with:
-the autofix models work with any coding LLM. Octo works great with Kimi K2.5,
-MiniMax M2.5, GPT-5.3, and Claude 4.6 (although pretty much any agentic
+the autofix models work with any coding LLM. Octo works great with Kimi
+K2.7-Code, GLM-5.2, GPT-5.6, and Claude 5 (although pretty much any agentic
 coding model will work). Octo wants to help you because Octo is your friend.
 
 Octo has zero telemetry. Using Octo with a privacy-focused LLM provider (may we

@@ -150,9 +150,11 @@ function codexCompilerModel(model: CodexModelConfig, auth: OAuthLoadedAuth): Ope
 }
 
 function anthropicCompilerModel(model: ApiKeyModelConfig, apiKey: string): AnthropicCompilerModel {
-  const thinking = anthropicThinking(model.reasoning);
+  const reasoningConfig = anthropicReasoningConfig(model.model, model.reasoning);
+  const thinkingBudget =
+    reasoningConfig.thinking?.type === "enabled" ? reasoningConfig.thinking.budget_tokens : 0;
   // TODO: allow this to be configurable. It's set to 32000 because that's Claude 4.1 Opus's max.
-  const maxTokens = Math.min(32 * 1000 - (thinking?.budget_tokens || 0), model.context);
+  const maxTokens = Math.min(32 * 1000 - thinkingBudget, model.context);
   return {
     client: new Anthropic({
       baseURL: model.baseUrl,
@@ -163,15 +165,31 @@ function anthropicCompilerModel(model: ApiKeyModelConfig, apiKey: string): Anthr
     }),
     model: model.model,
     maxTokens,
-    thinking,
+    ...reasoningConfig,
     modalities: compilerModalities(model),
   };
 }
 
-function anthropicThinking(
+export function anthropicReasoningConfig(
+  model: string,
   reasoning: ModelConfig["reasoning"],
+): Pick<AnthropicCompilerModel, "thinking" | "outputConfig"> {
+  if (reasoning == null) return {};
+
+  const majorVersion = Number.parseInt(model.match(/\d+/)?.[0] ?? "", 10);
+  if (majorVersion >= 5) {
+    return {
+      thinking: { type: "adaptive", display: "summarized" },
+      outputConfig: { effort: reasoning },
+    };
+  }
+
+  return { thinking: legacyAnthropicThinking(reasoning) };
+}
+
+function legacyAnthropicThinking(
+  reasoning: NonNullable<ModelConfig["reasoning"]>,
 ): AnthropicCompilerModel["thinking"] {
-  if (reasoning == null) return undefined;
   if (reasoning === "xhigh") return { type: "enabled", budget_tokens: 16384 };
   if (reasoning === "high") return { type: "enabled", budget_tokens: 8192 };
   if (reasoning === "medium") return { type: "enabled", budget_tokens: 4096 };

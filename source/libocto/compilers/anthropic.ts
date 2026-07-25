@@ -29,10 +29,8 @@ export type AnthropicCompilerModel = {
   model: string;
   maxTokens: number;
   modalities?: CompilerModalities;
-  thinking?: {
-    type: "enabled";
-    budget_tokens: number;
-  };
+  thinking?: Anthropic.ThinkingConfigParam;
+  outputConfig?: Anthropic.OutputConfig;
 };
 
 const ThinkingBlockSchema = t.subtype({
@@ -204,8 +202,10 @@ function generateCurlFrom(params: {
   messages: Array<Anthropic.MessageParam>;
   tools?: Array<{ description: string; input_schema: any; name: string }>;
   maxTokens: number;
+  thinking?: Anthropic.ThinkingConfigParam;
+  outputConfig?: Anthropic.OutputConfig;
 }): string {
-  const { baseURL, model, system, messages, tools, maxTokens } = params;
+  const { baseURL, model, system, messages, tools, maxTokens, thinking, outputConfig } = params;
   const requestBody = {
     model,
     system,
@@ -216,6 +216,8 @@ function generateCurlFrom(params: {
       disable_parallel_tool_use: false,
     },
     max_tokens: maxTokens,
+    ...(thinking ? { thinking } : {}),
+    ...(outputConfig ? { output_config: outputConfig } : {}),
     stream: true,
   };
 
@@ -265,7 +267,10 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             tools: toolDefinitions,
           };
 
-    const thinking = model.thinking ? { thinking: model.thinking } : {};
+    const modelOptions = {
+      ...(model.thinking ? { thinking: model.thinking } : {}),
+      ...(model.outputConfig ? { output_config: model.outputConfig } : {}),
+    };
 
     const curl = generateCurlFrom({
       baseURL: model.client.baseURL,
@@ -274,6 +279,8 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
       messages,
       ...toolParams,
       maxTokens: model.maxTokens,
+      thinking: model.thinking,
+      outputConfig: model.outputConfig,
     });
 
     try {
@@ -289,7 +296,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             disable_parallel_tool_use: false,
           },
           max_tokens: model.maxTokens,
-          ...thinking,
+          ...modelOptions,
           stream: true,
         })
         .withResponse();

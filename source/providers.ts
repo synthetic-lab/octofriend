@@ -35,8 +35,13 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/v1",
     models: [
       {
-        model: "hf:moonshotai/Kimi-K2.5",
-        nickname: "Kimi K2.5",
+        model: "hf:zai-org/GLM-5.2",
+        nickname: "GLM-5.2",
+        context: 384 * 1024,
+      },
+      {
+        model: "hf:moonshotai/Kimi-K2.7-Code",
+        nickname: "Kimi K2.7-Code",
         context: 256 * 1024,
         modalities: {
           image: {
@@ -47,14 +52,16 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "hf:MiniMaxAI/MiniMax-M2.5",
-        nickname: "MiniMax M2.5",
-        context: 192 * 1024,
-      },
-      {
-        model: "hf:zai-org/GLM-4.7",
-        nickname: "GLM-4.7",
-        context: 198 * 1024,
+        model: "hf:Qwen/Qwen3.6-27B",
+        nickname: "Qwen 3.6 27B",
+        context: 128 * 1024,
+        modalities: {
+          image: {
+            enabled: true,
+            maxSizeMB: 10,
+            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        },
       },
     ],
     testModel: "hf:MiniMaxAI/MiniMax-M2.1",
@@ -68,9 +75,9 @@ export const PROVIDERS = {
     baseUrl: "https://chatgpt.com/backend-api/codex",
     models: [
       {
-        model: "gpt-5.5",
-        nickname: "GPT-5.5",
-        context: 200 * 1024,
+        model: "gpt-5.6-sol",
+        nickname: "GPT-5.6 Sol",
+        context: 384 * 1024,
         reasoning: "xhigh",
         modalities: {
           image: {
@@ -81,7 +88,7 @@ export const PROVIDERS = {
         },
       },
     ],
-    testModel: "gpt-5.5",
+    testModel: "gpt-5.6-sol",
   } satisfies ProviderConfig,
 
   openai: {
@@ -92,10 +99,10 @@ export const PROVIDERS = {
     baseUrl: "https://api.openai.com/v1",
     models: [
       {
-        model: "gpt-5.5",
-        nickname: "GPT-5.5",
-        context: 200 * 1024,
-        reasoning: "medium",
+        model: "gpt-5.6",
+        nickname: "GPT-5.6 Sol",
+        context: 384 * 1024,
+        reasoning: "xhigh",
         modalities: {
           image: {
             enabled: true,
@@ -105,34 +112,8 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "gpt-5.2-pro",
-        nickname: "GPT-5.2 Pro",
-        context: 200 * 1024,
-        reasoning: "medium",
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 20,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
-      {
-        model: "gpt-5.2",
-        nickname: "GPT-5.2",
-        context: 200 * 1024,
-        reasoning: "medium",
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 20,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
-      {
-        model: "gpt-5-mini",
-        nickname: "GPT-5 Mini",
+        model: "gpt-5.6-luna",
+        nickname: "GPT-5.6 Luna",
         context: 200 * 1024,
         reasoning: "medium",
         modalities: {
@@ -144,7 +125,7 @@ export const PROVIDERS = {
         },
       },
     ],
-    testModel: "gpt-5-mini-2025-08-07",
+    testModel: "gpt-5.6-luna",
   } satisfies ProviderConfig,
 
   anthropic: {
@@ -155,8 +136,8 @@ export const PROVIDERS = {
     baseUrl: "https://api.anthropic.com",
     models: [
       {
-        model: "claude-sonnet-4-6",
-        nickname: "Claude 4.5 Sonnet",
+        model: "claude-fable-5",
+        nickname: "Claude Fable 5",
         context: 200 * 1000,
         reasoning: "medium",
         modalities: {
@@ -168,8 +149,8 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "claude-opus-4-6",
-        nickname: "Claude 4.6 Opus",
+        model: "claude-opus-5",
+        nickname: "Claude Opus 5",
         context: 200 * 1000,
         reasoning: "medium",
         modalities: {
@@ -181,7 +162,7 @@ export const PROVIDERS = {
         },
       },
       {
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-4-5-20251001",
         nickname: "Claude 4.5 Haiku",
         context: 200 * 1000,
         reasoning: "medium",
