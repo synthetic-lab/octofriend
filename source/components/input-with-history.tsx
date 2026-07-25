@@ -163,6 +163,8 @@ export const InputWithHistory = (props: Props) => {
         style={{
           width: "100%",
           minWidth: 0,
+          paddingLeft: 1,
+          paddingRight: 1,
           border: "rounded",
           borderColor: themeColor,
         }}
