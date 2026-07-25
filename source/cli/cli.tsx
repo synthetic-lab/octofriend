@@ -33,7 +33,12 @@ import { deleteSession, listSessions, loadSession } from "../session-history/ind
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
-import { formatTimeAgo } from "../time.ts";
+import {
+  SESSION_ID_HEADER,
+  SESSION_PREVIEW_HEADER,
+  SESSION_UPDATED_HEADER,
+  sessionListTable,
+} from "../session-history/session-list.ts";
 import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
@@ -345,20 +350,14 @@ sessionCommand
     const sessions = listSessions(process.cwd());
     if (sessions.length === 0) return;
 
-    const sessionIdWidth = Math.max("SESSION ID".length, ...sessions.map(s => s.sessionId.length));
-    const now = new Date();
+    const { rows, sessionIdWidth, previewWidth } = sessionListTable(sessions);
     const octoTheme = chalk.hex(THEME_COLOR);
-    const rows = sessions.map(session => ({
-      ...session,
-      updatedAtText: formatTimeAgo(new Date(session.updatedAt), now),
-    }));
-    const previewWidth = Math.max("PREVIEW".length, ...rows.map(row => (row.preview ?? "").length));
     console.log(`Resume a session with: ${octoTheme("octo --resume <session-id>")}\n`);
     console.log(
-      `${"SESSION ID".padEnd(sessionIdWidth)}  ${"PREVIEW".padEnd(previewWidth)}  LAST UPDATED`,
+      `${SESSION_ID_HEADER.padEnd(sessionIdWidth)}  ${SESSION_PREVIEW_HEADER.padEnd(previewWidth)}  ${SESSION_UPDATED_HEADER}`,
     );
     console.log(
-      `${"─".repeat(sessionIdWidth)}  ${"─".repeat(previewWidth)}  ${"─".repeat("LAST UPDATED".length)}`,
+      `${"─".repeat(sessionIdWidth)}  ${"─".repeat(previewWidth)}  ${"─".repeat(SESSION_UPDATED_HEADER.length)}`,
     );
     for (const row of rows) {
       console.log(

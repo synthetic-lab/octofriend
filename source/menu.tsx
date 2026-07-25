@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useModel } from "./state.ts";
 import { useSession } from "./session-context.ts";
-import type { Session } from "./session-history/index.ts";
+import { listPreviousSessions, type Session } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
@@ -16,8 +16,10 @@ import { MenuQuotaIndicator } from "./components/menu-quota-indicator.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { LoadSessionMenu } from "./session-history/load-session-menu.tsx";
 type MenuMode =
   | "main-menu"
+  | "load-session"
   | "settings-menu"
   | "model-select"
   | "add-model"
@@ -41,12 +43,18 @@ const useMenuState = create<MenuState>((set, _) => ({
   },
 }));
 export function Menu({ onSessionChange }: { onSessionChange: (session: Session) => void }) {
-  const { menuMode } = useMenuState(
+  const { menuMode, setMenuMode } = useMenuState(
     useShallow(state => ({
       menuMode: state.menuMode,
+      setMenuMode: state.setMenuMode,
     })),
   );
   if (menuMode === "main-menu") return <MainMenu />;
+  if (menuMode === "load-session") {
+    return (
+      <LoadSessionMenu onBack={() => setMenuMode("main-menu")} onSessionChange={onSessionChange} />
+    );
+  }
   if (menuMode === "settings-menu") return <SettingsMenu />;
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
@@ -360,6 +368,8 @@ function MainMenu() {
     })),
   );
   const session = useSession();
+  const hasPreviousSessions =
+    listPreviousSessions(session.metadata.cwd, session.metadata.sessionId).length > 0;
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
@@ -376,6 +386,7 @@ function MainMenu() {
   type Value =
     | "model-select"
     | "add-model"
+    | "load-session"
     | "vim-toggle"
     | "return"
     | "quit"
@@ -398,6 +409,15 @@ function MainMenu() {
       value: "clear-confirm" as const,
     },
   };
+  if (hasPreviousSessions) {
+    items = {
+      ...items,
+      s: {
+        label: "⥻ Load previous session",
+        value: "load-session" as const,
+      },
+    };
+  }
   if (config.vimEmulation?.enabled) {
     items = {
       ...items,
