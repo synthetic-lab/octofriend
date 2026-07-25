@@ -18,6 +18,7 @@ import { recommendedModel } from "./providers.ts";
 import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
+import { AppShell } from "./components/app-shell.tsx";
 type SetupStep =
   | {
       step: "welcome";
@@ -51,6 +52,27 @@ type SetupStep =
       step: "done";
     };
 export function FirstTimeSetup({ configPath }: { configPath: string }) {
+  return (
+    <AppShell>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          minHeight: 0,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <FirstTimeSetupContent configPath={configPath} />
+      </TerminalFlex>
+    </AppShell>
+  );
+}
+
+function FirstTimeSetupContent({ configPath }: { configPath: string }) {
   const [step, setStep] = useState<SetupStep>({
     step: "welcome",
   });
@@ -176,54 +198,69 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
       <TerminalFlex
         style={{
           marginTop: 1,
+          width: "100%",
+          minWidth: 0,
+          alignItems: "center",
         }}
       >
         <TerminalFlex
           style={{
             marginRight: 1,
+            flexShrink: 0,
           }}
         >
           <Span>Your name:</Span>
         </TerminalFlex>
-        <TextInput
-          value={yourName}
-          onChange={value => {
-            setYourName(value);
-            setNameError(null);
+        <TerminalFlex
+          style={{
+            flexGrow: 1,
+            flexShrink: 1,
+            flexBasis: 0,
+            minWidth: 0,
+            border: "rounded",
+            borderColor: themeColor,
           }}
-          onSubmit={async () => {
-            const trimmedName = yourName.trim();
-            if (!trimmedName) {
-              setNameError("Name can't be empty");
-              return;
-            }
-            setNameError(null);
-            const config: Config = {
-              configVersion: CURRENT_CONFIG_VERSION,
-              yourName: trimmedName,
-              models: step.models,
-            };
-            if (defaultApiKeyOverrides) {
-              config.defaultApiKeyOverrides = defaultApiKeyOverrides;
-            }
-            if (step.autofixConfig) {
-              config.diffApply = step.autofixConfig.diffApply;
-              config.fixJson = step.autofixConfig.fixJson;
-            }
-            const dir = path.dirname(configPath);
-            await fs.mkdir(dir, {
-              recursive: true,
-            });
-            if (configPath.endsWith("json5")) {
-              await fs.writeFile(configPath, json5.stringify(config, null, 2));
-            } else {
-              await fs.writeFile(configPath, JSON.stringify(config, null, 2));
-            }
-            setStep({
-              step: "done",
-            });
-          }}
-        />
+        >
+          <TextInput
+            value={yourName}
+            onChange={value => {
+              setYourName(value);
+              setNameError(null);
+            }}
+            onSubmit={async () => {
+              const trimmedName = yourName.trim();
+              if (!trimmedName) {
+                setNameError("Name can't be empty");
+                return;
+              }
+              setNameError(null);
+              const config: Config = {
+                configVersion: CURRENT_CONFIG_VERSION,
+                yourName: trimmedName,
+                models: step.models,
+              };
+              if (defaultApiKeyOverrides) {
+                config.defaultApiKeyOverrides = defaultApiKeyOverrides;
+              }
+              if (step.autofixConfig) {
+                config.diffApply = step.autofixConfig.diffApply;
+                config.fixJson = step.autofixConfig.fixJson;
+              }
+              const dir = path.dirname(configPath);
+              await fs.mkdir(dir, {
+                recursive: true,
+              });
+              if (configPath.endsWith("json5")) {
+                await fs.writeFile(configPath, json5.stringify(config, null, 2));
+              } else {
+                await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+              }
+              setStep({
+                step: "done",
+              });
+            }}
+          />
+        </TerminalFlex>
       </TerminalFlex>
 
       {nameError && (
@@ -474,7 +511,7 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
           Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
           model to use with Octo is {recommendedModel("synthetic").nickname}, an open-source coding
           model you can use via Synthetic, a privacy-focused inference company (that we run!). You
-          can also add closed-source models from OpenAI and Anthropic, like
+          can also add closed-source models from OpenAI and Anthropic, like{" "}
           {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
         </Span>
       </TerminalFlex>

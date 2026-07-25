@@ -26,8 +26,6 @@ import {
 import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import {
-  BACKGROUND_COLOR,
-  DIMMED_BACKGROUND_COLOR,
   DIMMED_SCROLLBAR_COLOR,
   SCROLLBAR_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
@@ -97,6 +95,7 @@ import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
+import { AppShell } from "./components/app-shell.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
 import { useToast } from "./components/toast.tsx";
 import {
@@ -346,7 +345,6 @@ export default function App({
       if (resizeFrame !== undefined) paintCannon.cancelAnimationFrame(resizeFrame);
     };
   }, [paintCannon, scrollTranscriptToBottom]);
-  const appBackgroundColor = hasFocus ? BACKGROUND_COLOR : DIMMED_BACKGROUND_COLOR;
   const appScrollbarColor = hasFocus ? SCROLLBAR_COLOR : DIMMED_SCROLLBAR_COLOR;
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
@@ -363,15 +361,16 @@ export default function App({
                   <SessionContext.Provider value={session}>
                     <CwdContext.Provider value={cwd}>
                       <ExitOnDoubleCtrlC>
-                        <TerminalFlex
-                          style={{
-                            flexDirection: "column",
-                            width: "100%",
-                            height: "100%",
-                            padding: 1,
-                          }}
-                        >
+                        <AppShell>
                           <TerminalFlex
+                            ref={transcriptRef}
+                            onScroll={event => {
+                              followTranscriptRef.current = isScrolledToBottom(
+                                event.scrollTop,
+                                event.scrollHeight,
+                                transcriptRef.current?.clientHeight ?? 1,
+                              );
+                            }}
                             style={{
                               flexDirection: "column",
                               flexGrow: 1,
@@ -379,98 +378,76 @@ export default function App({
                               flexBasis: 0,
                               minWidth: 0,
                               minHeight: 0,
-                              border: "chunky-rounded",
-                              borderColor: appBackgroundColor,
-                              backgroundColor: appBackgroundColor,
+                              overflowY: "scroll",
+                              scrollbarGutter: "stable",
+                              scrollbarColor: appScrollbarColor,
                             }}
                           >
                             <TerminalFlex
-                              ref={transcriptRef}
-                              onScroll={event => {
-                                followTranscriptRef.current = isScrolledToBottom(
-                                  event.scrollTop,
-                                  event.scrollHeight,
-                                  transcriptRef.current?.clientHeight ?? 1,
-                                );
-                              }}
                               style={{
                                 flexDirection: "column",
-                                flexGrow: 1,
-                                flexShrink: 1,
-                                flexBasis: 0,
-                                minWidth: 0,
-                                minHeight: 0,
-                                overflowY: "scroll",
-                                scrollbarGutter: "stable",
-                                scrollbarColor: appScrollbarColor,
+                                minHeight: "100%",
+                                flexShrink: 0,
+                                overflowWrap: "anywhere",
                               }}
                             >
                               <TerminalFlex
                                 style={{
                                   flexDirection: "column",
-                                  minHeight: "100%",
-                                  flexShrink: 0,
-                                  overflowWrap: "anywhere",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "100%",
+                                  flexGrow: 1,
+                                  flexShrink: 1,
+                                  marginTop: 1,
+                                  marginBottom: 1,
                                 }}
                               >
-                                <TerminalFlex
-                                  style={{
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    width: "100%",
-                                    flexGrow: 1,
-                                    flexShrink: 1,
-                                    marginTop: 1,
-                                    marginBottom: 1,
-                                  }}
-                                >
-                                  {bootItems.map((item, index) => (
-                                    <TranscriptItemRenderer item={item} key={`boot-${index}`} />
-                                  ))}
-                                </TerminalFlex>
-                                <TranscriptItemRenderer item={{ type: "slogan" }} />
-                                <TerminalFlex
-                                  key={clearNonce}
-                                  style={{
-                                    flexDirection: "column",
-                                  }}
-                                >
-                                  {history.map((item, index) => (
-                                    <TranscriptItemRenderer
-                                      item={{
-                                        type: "history-item",
-                                        item,
-                                      }}
-                                      key={`history-${index}`}
-                                    />
-                                  ))}
-                                  {(modeData.mode === "responding" ||
-                                    modeData.mode === "compacting") &&
-                                    (modeData.inflightResponse.reasoningContent ||
-                                      modeData.inflightResponse.content) && (
-                                      <MessageDisplay item={modeData.inflightResponse} />
-                                    )}
-                                  {modeData.mode === "tool-call" && (
-                                    <ToolRequestsRenderer
-                                      toolReqs={modeData.toolReqs}
-                                      config={currConfig}
-                                      transport={transport}
-                                      session={session}
-                                      onContentLayout={scrollTranscriptToBottom}
-                                    />
+                                {bootItems.map((item, index) => (
+                                  <TranscriptItemRenderer item={item} key={`boot-${index}`} />
+                                ))}
+                              </TerminalFlex>
+                              <TranscriptItemRenderer item={{ type: "slogan" }} />
+                              <TerminalFlex
+                                key={clearNonce}
+                                style={{
+                                  flexDirection: "column",
+                                }}
+                              >
+                                {history.map((item, index) => (
+                                  <TranscriptItemRenderer
+                                    item={{
+                                      type: "history-item",
+                                      item,
+                                    }}
+                                    key={`history-${index}`}
+                                  />
+                                ))}
+                                {(modeData.mode === "responding" ||
+                                  modeData.mode === "compacting") &&
+                                  (modeData.inflightResponse.reasoningContent ||
+                                    modeData.inflightResponse.content) && (
+                                    <MessageDisplay item={modeData.inflightResponse} />
                                   )}
-                                </TerminalFlex>
+                                {modeData.mode === "tool-call" && (
+                                  <ToolRequestsRenderer
+                                    toolReqs={modeData.toolReqs}
+                                    config={currConfig}
+                                    transport={transport}
+                                    session={session}
+                                    onContentLayout={scrollTranscriptToBottom}
+                                  />
+                                )}
                               </TerminalFlex>
                             </TerminalFlex>
-                            <BottomBar
-                              inputHistory={inputHistory}
-                              metadata={metadata}
-                              tempNotification={tempNotification}
-                              onSessionChange={handleSessionChange}
-                            />
                           </TerminalFlex>
-                        </TerminalFlex>
+                          <BottomBar
+                            inputHistory={inputHistory}
+                            metadata={metadata}
+                            tempNotification={tempNotification}
+                            onSessionChange={handleSessionChange}
+                          />
+                        </AppShell>
                       </ExitOnDoubleCtrlC>
                     </CwdContext.Provider>
                   </SessionContext.Provider>

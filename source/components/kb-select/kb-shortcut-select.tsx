@@ -198,6 +198,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
       setSelectedIndex(nextSelectedIndex);
     }
     if (event.key === "Enter") {
+      event.preventDefault();
       handleSelect(items[selectedIndex].item);
     }
   });

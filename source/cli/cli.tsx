@@ -51,12 +51,15 @@ const INTERACTIVE_RENDER_OPTIONS = {
   captureCtrlC: true,
 } satisfies CreateRootOptions;
 
-function renderInteractive(element: React.ReactNode) {
+function renderInteractive(element: React.ReactNode, options: { captureCtrlC: boolean }) {
   const root = render(
     <ToastProvider>
       <KeyboardProvider>{element}</KeyboardProvider>
     </ToastProvider>,
-    INTERACTIVE_RENDER_OPTIONS,
+    {
+      ...INTERACTIVE_RENDER_OPTIONS,
+      captureCtrlC: options.captureCtrlC,
+    },
   );
   root.container.style.position = "relative";
   root.container.style.overflowX = "hidden";
@@ -287,6 +290,7 @@ async function runMain(opts: {
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
       />,
+      { captureCtrlC: true },
     );
 
     await waitUntilExit();
@@ -323,7 +327,9 @@ cli
   .command("init")
   .description("Create a fresh config file for Octo")
   .action(() => {
-    renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
+    renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />, {
+      captureCtrlC: false,
+    });
   });
 
 cli
@@ -750,6 +756,7 @@ async function loadConfig(path?: string) {
         config={config}
         configPath={configPath}
       />,
+      { captureCtrlC: true },
     );
     await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path);
@@ -770,6 +777,7 @@ async function loadConfig(path?: string) {
             config={config}
             configPath={configPath}
           />,
+          { captureCtrlC: true },
         );
         await waitUntilExit();
         const reloaded = await loadConfigWithoutReauth(path);
@@ -803,7 +811,9 @@ async function loadConfigWithoutReauth(configPath?: string) {
 
   // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
   await markUpdatesSeen();
-  const { waitUntilExit } = renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />);
+  const { waitUntilExit } = renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />, {
+    captureCtrlC: false,
+  });
   await waitUntilExit();
 
   if (await fileExists(CONFIG_JSON5_FILE)) {

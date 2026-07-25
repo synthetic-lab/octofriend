@@ -50,7 +50,6 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
           style={{
             justifyContent: "center",
             alignItems: "center",
-            marginBottom: 1,
           }}
         >
           <TerminalFlex
@@ -68,6 +67,7 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
       <TerminalFlex
         style={{
           justifyContent: "center",
+          marginTop: children ? 1 : 0,
         }}
       >
         <KbShortcutSelect shortcutItems={shortcutItems} onSelect={onSelect} />

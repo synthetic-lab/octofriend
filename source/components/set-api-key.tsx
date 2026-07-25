@@ -6,6 +6,7 @@ import { writeKeyForModel } from "../config.ts";
 import { PROVIDERS } from "../providers.ts";
 import { Span } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { useColor } from "../theme.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
 export function SetApiKey({
   baseUrl,
@@ -21,6 +22,7 @@ export function SetApiKey({
     return provider.baseUrl === baseUrl;
   });
   const name = provider?.name || baseUrl;
+  const themeColor = useColor();
   const [saving, setSaving] = useState(false);
   const [varValue, setVarValue] = useState("");
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
@@ -76,17 +78,30 @@ export function SetApiKey({
           width: "100%",
           minWidth: 0,
           maxWidth: 80,
+          alignItems: "center",
         }}
       >
         <TerminalFlex
           style={{
             marginRight: 1,
+            flexShrink: 0,
           }}
         >
           <Span>API key:</Span>
         </TerminalFlex>
 
-        <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
+        <TerminalFlex
+          style={{
+            flexGrow: 1,
+            flexShrink: 1,
+            flexBasis: 0,
+            minWidth: 0,
+            border: "rounded",
+            borderColor: themeColor,
+          }}
+        >
+          <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
+        </TerminalFlex>
       </TerminalFlex>
       {errorMessage && (
         <TerminalFlex

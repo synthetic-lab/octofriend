@@ -1209,17 +1209,30 @@ function Step<T>(props: AddModelStep<T>) {
           width: "100%",
           minWidth: 0,
           maxWidth: 80,
+          alignItems: "center",
         }}
       >
         <TerminalFlex
           style={{
             marginRight: 1,
+            flexShrink: 0,
           }}
         >
           <Span>{props.prompt}</Span>
         </TerminalFlex>
 
-        <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
+        <TerminalFlex
+          style={{
+            flexGrow: 1,
+            flexShrink: 1,
+            flexBasis: 0,
+            minWidth: 0,
+            border: "rounded",
+            borderColor: themeColor,
+          }}
+        >
+          <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
+        </TerminalFlex>
       </TerminalFlex>
 
       {errorMessage && (
