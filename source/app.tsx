@@ -529,7 +529,14 @@ function BottomBar({
             </Span>
           )}
         </TerminalFlex>
-        <Span style={{ color: themeColor }}>{versionCheck}</Span>
+        <Span
+          style={{
+            color: themeColor,
+            visibility: versionCheck === "" ? "hidden" : "visible",
+          }}
+        >
+          {versionCheck}
+        </Span>
       </TerminalFlex>
 
       <TerminalFlex style={{ minHeight: 1 }}>
