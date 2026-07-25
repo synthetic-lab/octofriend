@@ -14,6 +14,7 @@ export const THOUGHTBOX_COLOR = "#6b6b6b";
 export const SCROLLBAR_COLOR = "#64748b #1e293b";
 export const DIMMED_SCROLLBAR_COLOR = "#475569 #0f172a";
 export const SUBTLE_SCROLLBAR_COLOR = "#475569 #1e293b";
+export const TOAST_Z_INDEX = 2147483647;
 export const MARKDOWN_BLOCKQUOTE_BORDER_COLOR = "gray";
 export const MARKDOWN_CODE_BLOCK_BORDER_COLOR = "gray";
 export const MARKDOWN_HEADING_COLORS = [
