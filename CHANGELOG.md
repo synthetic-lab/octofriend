@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.56] - 07-25-2046
+
+### Changed
+
+- Improved reliability for partial file reads
+
 ## [0.0.55] - 07-24-2046
 
 ### Changed
