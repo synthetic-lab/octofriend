@@ -37,6 +37,7 @@ export async function loadTools(
 
 export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "read",
+  "partial-read",
   "list",
   "skill",
   "web-search",

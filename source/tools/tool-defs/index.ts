@@ -1,4 +1,5 @@
 import read from "./read.ts";
+import partialRead from "./partial-read.ts";
 import list from "./list.ts";
 import shell from "./bash.ts";
 import edit from "./edit.ts";
@@ -21,6 +22,7 @@ import lspOutgoingCalls from "./lsp-outgoing-calls.ts";
 
 export default {
   read,
+  "partial-read": partialRead,
   list,
   shell,
   edit,

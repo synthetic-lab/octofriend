@@ -38,6 +38,7 @@ import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
 import read from "./tools/tool-defs/read.ts";
+import partialRead from "./tools/tool-defs/partial-read.ts";
 import list from "./tools/tool-defs/list.ts";
 import edit from "./tools/tool-defs/edit.ts";
 import rewrite from "./tools/tool-defs/rewrite.ts";
@@ -1317,6 +1318,7 @@ function ToolRequestRenderer({
     const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
       case "read":
+      case "partial-read":
       case "list":
         return "read:*";
       case "create":
@@ -1377,6 +1379,7 @@ function ToolRequestRenderer({
         );
       case "skill":
       case "read":
+      case "partial-read":
       case "shell":
       case "fetch":
       case "list":
@@ -1986,6 +1989,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
   switch (item.name) {
     case "read":
       return <ReadToolRenderer item={parsedToolSchema(item)} />;
+    case "partial-read":
+      return <PartialReadToolRenderer item={parsedToolSchema(item)} />;
     case "list":
       return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
@@ -2140,6 +2145,14 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
 }
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
   return <ToolCallRow name={item.name}>{item.arguments.filePath}</ToolCallRow>;
+}
+function PartialReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof partialRead> }) {
+  return (
+    <ToolCallRow name={item.name}>
+      {item.arguments.filePath}:{item.arguments.offset}-
+      {item.arguments.offset + item.arguments.limit - 1}
+    </ToolCallRow>
+  );
 }
 function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
   return <ToolCallRow name={item.name}>{item?.arguments?.dirPath || process.cwd()}</ToolCallRow>;
@@ -2353,7 +2366,8 @@ function WhitelistAllowDescription({ toolCallRequest }: { toolCallRequest: ToolC
       return <Span> Web Searches during this session.</Span>;
     }
     case "list":
-    case "read": {
+    case "read":
+    case "partial-read": {
       return (
         <Span>
           <Span> file reads in </Span>

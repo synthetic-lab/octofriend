@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { toJSONSchema } from "structural";
 import readToolFactory from "./read.ts";
+import partialReadToolFactory from "./partial-read.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { unwrap } from "../../libocto/result.ts";
 import type { Transport } from "../../transports/transport-common.ts";
@@ -55,13 +57,21 @@ async function createReadTool(transport: Transport) {
     transport,
     data: {} as never,
   });
-  if (!tool) {
-    throw new Error("read tool did not load");
-  }
+  if (!tool) throw new Error("read tool did not load");
   return tool;
 }
 
-function readToolCall(args: { filePath: string; offset?: number; limit?: number }) {
+async function createPartialReadTool(transport: Transport) {
+  const tool = await partialReadToolFactory({
+    signal: new AbortController().signal,
+    transport,
+    data: {} as never,
+  });
+  if (!tool) throw new Error("partial-read tool did not load");
+  return tool;
+}
+
+function readToolCall(args: { filePath: string }) {
   return {
     toolCallId: "test-call",
     original: { name: "read" as const, arguments: args },
@@ -69,33 +79,27 @@ function readToolCall(args: { filePath: string; offset?: number; limit?: number 
   };
 }
 
+function partialReadToolCall(args: { filePath: string; offset: number; limit: number }) {
+  return {
+    toolCallId: "test-call",
+    original: { name: "partial-read" as const, arguments: args },
+    parsed: { name: "partial-read" as const, arguments: args },
+  };
+}
+
+type ObjectJsonSchema = {
+  properties?: Record<string, unknown>;
+  required?: string[];
+};
+
 describe("read tool", () => {
-  it("returns partial reads as ordinary tool output", async () => {
-    const signal = new AbortController().signal;
-    const transport = createTransport({
-      "/repo/notes.txt": "one\ntwo\nthree\nfour\nfive",
-    });
+  it("only exposes filePath in its arguments", async () => {
+    const transport = createTransport({ "/repo/full.txt": "contents" });
     const tool = await createReadTool(transport);
+    const schema = toJSONSchema("ignore", tool.ArgumentsSchema) as ObjectJsonSchema;
 
-    const result = unwrap(
-      await tool.run({
-        signal,
-        transport,
-        toolCall: readToolCall({ filePath: "notes.txt", offset: 2, limit: 2 }),
-        data: {} as never,
-      }),
-    );
-
-    expect(result).toEqual({
-      type: "output",
-      content: [
-        {
-          type: "text",
-          content: "Showing lines 2-3 of 5 from notes.txt\n2: two\n3: three",
-        },
-      ],
-      lines: 5,
-    });
+    expect(Object.keys(schema.properties ?? {})).toEqual(["filePath"]);
+    expect(schema.required).toEqual(["filePath"]);
   });
 
   it("returns full reads as file-read IR", async () => {
@@ -121,19 +125,68 @@ describe("read tool", () => {
       path: "full.txt",
     });
   });
+});
+
+describe("partial-read tool", () => {
+  it("requires filePath, offset, and limit", async () => {
+    const transport = createTransport({ "/repo/notes.txt": "contents" });
+    const tool = await createPartialReadTool(transport);
+    const schema = toJSONSchema("ignore", tool.ArgumentsSchema) as ObjectJsonSchema;
+
+    expect(Object.keys(schema.properties ?? {})).toEqual(["filePath", "offset", "limit"]);
+    expect(schema.required).toEqual(["filePath", "offset", "limit"]);
+    expect(() =>
+      tool.ArgumentsSchema.slice({ filePath: "notes.txt", limit: 1 } as never),
+    ).toThrow();
+    expect(() =>
+      tool.ArgumentsSchema.slice({ filePath: "notes.txt", offset: 1 } as never),
+    ).toThrow();
+  });
+
+  it("returns the requested range as ordinary tool output", async () => {
+    const signal = new AbortController().signal;
+    const transport = createTransport({
+      "/repo/notes.txt": "one\ntwo\nthree\nfour\nfive",
+    });
+    const tool = await createPartialReadTool(transport);
+
+    const result = unwrap(
+      await tool.run({
+        signal,
+        transport,
+        toolCall: partialReadToolCall({ filePath: "notes.txt", offset: 2, limit: 2 }),
+        data: {} as never,
+      }),
+    );
+
+    expect(result).toEqual({
+      type: "output",
+      content: [
+        {
+          type: "text",
+          content: "Showing lines 2-3 of 5 from notes.txt\n2: two\n3: three",
+        },
+      ],
+      lines: 5,
+    });
+  });
 
   it("does not mark files outdated after only a partial read", async () => {
     const signal = new AbortController().signal;
     const transport = createTransport({
       "/repo/partial-only.txt": "one\ntwo\nthree",
     });
-    const tool = await createReadTool(transport);
+    const tool = await createPartialReadTool(transport);
 
     unwrap(
       await tool.run({
         signal,
         transport,
-        toolCall: readToolCall({ filePath: "partial-only.txt", offset: 1, limit: 1 }),
+        toolCall: partialReadToolCall({
+          filePath: "partial-only.txt",
+          offset: 1,
+          limit: 1,
+        }),
         data: {} as never,
       }),
     );
@@ -148,10 +201,11 @@ describe("read tool", () => {
     const transport = createTransport({
       "/repo/already-full.txt": "one\ntwo\nthree",
     });
-    const tool = await createReadTool(transport);
+    const readTool = await createReadTool(transport);
+    const partialReadTool = await createPartialReadTool(transport);
 
     unwrap(
-      await tool.run({
+      await readTool.run({
         signal,
         transport,
         toolCall: readToolCall({ filePath: "already-full.txt" }),
@@ -160,10 +214,10 @@ describe("read tool", () => {
     );
 
     const result = unwrap(
-      await tool.run({
+      await partialReadTool.run({
         signal,
         transport,
-        toolCall: readToolCall({ filePath: "already-full.txt", offset: 2, limit: 1 }),
+        toolCall: partialReadToolCall({ filePath: "already-full.txt", offset: 2, limit: 1 }),
         data: {} as never,
       }),
     );
