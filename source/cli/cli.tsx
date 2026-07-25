@@ -756,7 +756,7 @@ async function loadConfig(path?: string) {
         config={config}
         configPath={configPath}
       />,
-      { captureCtrlC: true },
+      { captureCtrlC: false },
     );
     await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path);
@@ -777,7 +777,7 @@ async function loadConfig(path?: string) {
             config={config}
             configPath={configPath}
           />,
-          { captureCtrlC: true },
+          { captureCtrlC: false },
         );
         await waitUntilExit();
         const reloaded = await loadConfigWithoutReauth(path);

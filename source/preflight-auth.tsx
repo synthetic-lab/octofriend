@@ -13,6 +13,128 @@ import { HeightlessCenteredBox } from "./components/centered-box.tsx";
 import { Span, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
+import { AppShell } from "./components/app-shell.tsx";
+
+function PreflightShell({ children }: { children: React.ReactNode }) {
+  return (
+    <AppShell>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          minHeight: 0,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        {children}
+      </TerminalFlex>
+    </AppShell>
+  );
+}
+
+function ModelDetails({
+  name,
+  model,
+  baseUrl,
+}: {
+  name: string;
+  model?: string;
+  baseUrl?: string;
+}) {
+  const displayName = model && model !== name ? `${name} (${model})` : name;
+  return (
+    <HeightlessCenteredBox>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+        }}
+      >
+        <Span>Model: {displayName}</Span>
+        {baseUrl && <Span>Base URL: {baseUrl}</Span>}
+      </TerminalFlex>
+    </HeightlessCenteredBox>
+  );
+}
+
+function AuthErrorPanel({ error, isRetrying }: { error: AuthError; isRetrying: boolean }) {
+  const title = (() => {
+    if (error.type === "missing") return "Auth is still missing";
+    if (error.type === "invalid") return "Your auth configuration is invalid";
+    return "Your auth command failed";
+  })();
+  return (
+    <HeightlessCenteredBox>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        <TerminalFlex
+          style={{
+            justifyContent: "center",
+          }}
+        >
+          <Span
+            style={{
+              color: "red",
+            }}
+          >
+            {title}
+          </Span>
+        </TerminalFlex>
+        <TerminalFlex
+          style={{
+            justifyContent: "center",
+          }}
+        >
+          <Span
+            style={{
+              color: "yellow",
+            }}
+          >
+            {error.message}
+          </Span>
+        </TerminalFlex>
+        {error.type === "command_failed" && error.stderr && (
+          <TerminalFlex
+            style={{
+              justifyContent: "center",
+            }}
+          >
+            <Span
+              style={{
+                color: "gray",
+              }}
+            >
+              stderr: {error.stderr}
+            </Span>
+          </TerminalFlex>
+        )}
+        <TerminalFlex
+          style={{
+            justifyContent: "center",
+            marginTop: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {error.type === "command_failed" ? "[R]etry | " : ""}[ESC] to go back
+            {isRetrying ? " (retrying...)" : ""}
+          </Span>
+        </TerminalFlex>
+      </TerminalFlex>
+    </HeightlessCenteredBox>
+  );
+}
+
 function matchCodex<T>(
   model: Config["models"][number],
   arms: {
@@ -110,38 +232,15 @@ export function PreflightModelAuth({
     return true;
   };
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-        gap: 1,
-      }}
-    >
-      {error && (
-        <HeightlessCenteredBox>
-          <TerminalFlex
-            style={{
-              justifyContent: "center",
-            }}
-          >
-            <Span
-              style={{
-                color: "red",
-              }}
-            >
-              {error}
-            </Span>
-          </TerminalFlex>
-        </HeightlessCenteredBox>
-      )}
-
-      {authError && authError.type === "command_failed" && (
-        <HeightlessCenteredBox>
-          <TerminalFlex
-            style={{
-              flexDirection: "column",
-              gap: 1,
-            }}
-          >
+    <PreflightShell>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        {error && (
+          <HeightlessCenteredBox>
             <TerminalFlex
               style={{
                 justifyContent: "center",
@@ -152,153 +251,107 @@ export function PreflightModelAuth({
                   color: "red",
                 }}
               >
-                Your auth command failed
+                {error}
               </Span>
             </TerminalFlex>
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-              }}
-            >
-              <Span
-                style={{
-                  color: "yellow",
-                }}
-              >
-                {authError.message}
-              </Span>
-            </TerminalFlex>
-            {authError.stderr && (
-              <TerminalFlex
-                style={{
-                  justifyContent: "center",
-                }}
-              >
-                <Span
-                  style={{
-                    color: "gray",
-                  }}
-                >
-                  stderr: {authError.stderr}
-                </Span>
-              </TerminalFlex>
-            )}
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-                marginTop: 1,
-              }}
-            >
-              <Span
-                style={{
-                  color: "gray",
-                }}
-              >
-                [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
-              </Span>
-            </TerminalFlex>
-          </TerminalFlex>
-        </HeightlessCenteredBox>
-      )}
+          </HeightlessCenteredBox>
+        )}
 
-      {!authError && (
-        <CustomAuthFlow
-          config={config}
-          authData={
-            model.type === "codex"
-              ? {
-                  modelType: "codex",
-                }
-              : {
-                  modelType: model.type,
-                  baseUrl: model.baseUrl,
-                }
-          }
-          onCancel={() => {
-            setExitMessage("Press CTRL-C to exit");
-          }}
-          onComplete={async auth => {
-            let index = config.models.indexOf(model);
-            let updatedModel = model;
-            if (index >= 0 && auth) {
-              await matchCodex(model, {
-                codex: async model => {
-                  if (auth.type === "codex") {
-                    const updatedModels = [...config.models];
-                    updatedModel = {
-                      ...model,
-                      auth,
-                    };
-                    updatedModels[index] = updatedModel;
-                    await writeConfig(
-                      {
-                        ...config,
-                        models: updatedModels,
-                      },
-                      configPath,
-                    );
-                  }
-                },
-                others: async model => {
-                  if (auth.type === "env") {
-                    await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
-                  } else if (auth.type === "command") {
-                    const updatedModels = [...config.models];
-                    updatedModel = {
-                      ...model,
-                      auth,
-                    };
-                    updatedModels[index] = updatedModel;
-                    await writeConfig(
-                      {
-                        ...config,
-                        models: updatedModels,
-                      },
-                      configPath,
-                    );
-                  }
-                },
-              });
-            }
-            setCurrentModel(updatedModel);
-            // Reload config to ensure we validate against the updated state
-            const reloadedConfig = await readConfig(configPath);
-            const resolvedModel = resolveModelFromConfig(reloadedConfig, updatedModel);
-            setCurrentModel(resolvedModel);
-            const result = await readAuthForModel(resolvedModel, reloadedConfig);
-            if (result.ok) {
-              app.exit();
-            } else {
-              setAuthError(result.error);
-            }
-          }}
+        <ModelDetails
+          name={model.nickname}
+          model={model.type === "codex" ? undefined : model.model}
+          baseUrl={model.type === "codex" ? undefined : model.baseUrl}
         />
-      )}
 
-      {isRetrying && (
-        <HeightlessCenteredBox>
-          <Span
-            style={{
-              color: "gray",
-            }}
-          >
-            Retrying...
-          </Span>
-        </HeightlessCenteredBox>
-      )}
+        {authError && <AuthErrorPanel error={authError} isRetrying={isRetrying} />}
 
-      {!authError && exitMessage && (
-        <HeightlessCenteredBox>
-          <Span
-            style={{
-              color: "gray",
+        {!authError && (
+          <CustomAuthFlow
+            config={config}
+            authData={
+              model.type === "codex"
+                ? {
+                    modelType: "codex",
+                  }
+                : {
+                    modelType: model.type,
+                    baseUrl: model.baseUrl,
+                  }
+            }
+            onCancel={() => {
+              setExitMessage("Press CTRL-C to exit");
             }}
-          >
-            {exitMessage}
-          </Span>
-        </HeightlessCenteredBox>
-      )}
-    </TerminalFlex>
+            onComplete={async auth => {
+              let index = config.models.indexOf(model);
+              let updatedModel = model;
+              if (index >= 0 && auth) {
+                await matchCodex(model, {
+                  codex: async model => {
+                    if (auth.type === "codex") {
+                      const updatedModels = [...config.models];
+                      updatedModel = {
+                        ...model,
+                        auth,
+                      };
+                      updatedModels[index] = updatedModel;
+                      await writeConfig(
+                        {
+                          ...config,
+                          models: updatedModels,
+                        },
+                        configPath,
+                      );
+                    }
+                  },
+                  others: async model => {
+                    if (auth.type === "env") {
+                      await writeConfig(mergeEnvVar(config, model, auth.name), configPath);
+                    } else if (auth.type === "command") {
+                      const updatedModels = [...config.models];
+                      updatedModel = {
+                        ...model,
+                        auth,
+                      };
+                      updatedModels[index] = updatedModel;
+                      await writeConfig(
+                        {
+                          ...config,
+                          models: updatedModels,
+                        },
+                        configPath,
+                      );
+                    }
+                  },
+                });
+              }
+              setCurrentModel(updatedModel);
+              // Reload config to ensure we validate against the updated state
+              const reloadedConfig = await readConfig(configPath);
+              const resolvedModel = resolveModelFromConfig(reloadedConfig, updatedModel);
+              setCurrentModel(resolvedModel);
+              const result = await readAuthForModel(resolvedModel, reloadedConfig);
+              if (result.ok) {
+                app.exit();
+              } else {
+                setAuthError(result.error);
+              }
+            }}
+          />
+        )}
+
+        {!authError && exitMessage && (
+          <HeightlessCenteredBox>
+            <Span
+              style={{
+                color: "gray",
+              }}
+            >
+              {exitMessage}
+            </Span>
+          </HeightlessCenteredBox>
+        )}
+      </TerminalFlex>
+    </PreflightShell>
   );
 }
 export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
@@ -347,47 +400,18 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
     return "fix-json";
   })();
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-        gap: 1,
-      }}
-    >
-      {authError && authError.type === "command_failed" && (
-        <HeightlessCenteredBox>
-          <TerminalFlex
-            style={{
-              flexDirection: "column",
-              gap: 1,
-            }}
-          >
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-              }}
-            >
-              <Span
-                style={{
-                  color: "red",
-                }}
-              >
-                Your auth command failed
-              </Span>
-            </TerminalFlex>
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-              }}
-            >
-              <Span
-                style={{
-                  color: "yellow",
-                }}
-              >
-                {authError.message}
-              </Span>
-            </TerminalFlex>
-            {authError.stderr && (
+    <PreflightShell>
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          gap: 1,
+        }}
+      >
+        {authError && <AuthErrorPanel error={authError} isRetrying={isRetrying} />}
+
+        {!authError && (
+          <>
+            <HeightlessCenteredBox>
               <TerminalFlex
                 style={{
                   justifyContent: "center",
@@ -395,121 +419,77 @@ export function PreflightAutofixAuth<K extends "diffApply" | "fixJson">({
               >
                 <Span
                   style={{
-                    color: "gray",
+                    color: "red",
                   }}
                 >
-                  stderr: {authError.stderr}
+                  {`It looks like we need to set up auth for the ${modelName} model`}
                 </Span>
               </TerminalFlex>
-            )}
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-                marginTop: 1,
-              }}
-            >
-              <Span
-                style={{
-                  color: "gray",
-                }}
-              >
-                [R]etry | [ESC] to go back{isRetrying ? " (retrying...)" : ""}
-              </Span>
-            </TerminalFlex>
-          </TerminalFlex>
-        </HeightlessCenteredBox>
-      )}
+            </HeightlessCenteredBox>
 
-      {!authError && (
-        <>
-          <HeightlessCenteredBox>
-            <TerminalFlex
-              style={{
-                justifyContent: "center",
-              }}
-            >
-              <Span
-                style={{
-                  color: "red",
-                }}
-              >
-                {`It looks like we need to set up auth for the ${modelName} model`}
-              </Span>
-            </TerminalFlex>
-          </HeightlessCenteredBox>
+            <ModelDetails name={modelName} model={model.model} baseUrl={model.baseUrl} />
 
-          <CustomAuthFlow
-            config={config}
-            authData={{
-              modelType: undefined,
-              baseUrl: model.baseUrl,
-            }}
-            onCancel={() => {
-              setExitMessage("Press CTRL-C to exit");
-            }}
-            onComplete={async auth => {
-              let updatedModel = model;
-              if (auth) {
-                if (auth.type === "env") {
-                  await writeConfig(
-                    mergeAutofixEnvVar(config, autofixKey, model, auth.name),
-                    configPath,
-                  );
-                } else if (auth.type === "command") {
-                  const merged = {
-                    ...config,
-                  };
-                  updatedModel = {
-                    ...model,
-                    auth,
-                  };
-                  merged[autofixKey] = updatedModel;
-                  await writeConfig(merged, configPath);
+            <CustomAuthFlow
+              config={config}
+              authData={{
+                modelType: undefined,
+                baseUrl: model.baseUrl,
+              }}
+              onCancel={() => {
+                setExitMessage("Press CTRL-C to exit");
+              }}
+              onComplete={async auth => {
+                let updatedModel = model;
+                if (auth) {
+                  if (auth.type === "env") {
+                    await writeConfig(
+                      mergeAutofixEnvVar(config, autofixKey, model, auth.name),
+                      configPath,
+                    );
+                  } else if (auth.type === "command") {
+                    const merged = {
+                      ...config,
+                    };
+                    updatedModel = {
+                      ...model,
+                      auth,
+                    };
+                    merged[autofixKey] = updatedModel;
+                    await writeConfig(merged, configPath);
+                  }
                 }
-              }
-              setCurrentModel(updatedModel);
-              // Reload config to ensure we validate against the updated state
-              const reloadedConfig = await readConfig(configPath);
-              const resolvedModel = resolveAutofixModelFromConfig(
-                reloadedConfig,
-                updatedModel,
-                autofixKey,
-              );
-              setCurrentModel(resolvedModel);
-              const result = await readAuthForModel(resolvedModel, reloadedConfig);
-              if (result.ok) {
-                app.exit();
-              } else {
-                setAuthError(result.error);
-              }
-            }}
-          />
-        </>
-      )}
+                setCurrentModel(updatedModel);
+                // Reload config to ensure we validate against the updated state
+                const reloadedConfig = await readConfig(configPath);
+                const resolvedModel = resolveAutofixModelFromConfig(
+                  reloadedConfig,
+                  updatedModel,
+                  autofixKey,
+                );
+                setCurrentModel(resolvedModel);
+                const result = await readAuthForModel(resolvedModel, reloadedConfig);
+                if (result.ok) {
+                  app.exit();
+                } else {
+                  setAuthError(result.error);
+                }
+              }}
+            />
+          </>
+        )}
 
-      {isRetrying && (
-        <HeightlessCenteredBox>
-          <Span
-            style={{
-              color: "gray",
-            }}
-          >
-            Retrying...
-          </Span>
-        </HeightlessCenteredBox>
-      )}
-
-      {!authError && exitMessage && (
-        <HeightlessCenteredBox>
-          <Span
-            style={{
-              color: "gray",
-            }}
-          >
-            {exitMessage}
-          </Span>
-        </HeightlessCenteredBox>
-      )}
-    </TerminalFlex>
+        {!authError && exitMessage && (
+          <HeightlessCenteredBox>
+            <Span
+              style={{
+                color: "gray",
+              }}
+            >
+              {exitMessage}
+            </Span>
+          </HeightlessCenteredBox>
+        )}
+      </TerminalFlex>
+    </PreflightShell>
   );
 }

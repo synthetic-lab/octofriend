@@ -9,6 +9,7 @@ import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
+import { registry } from "antipattern";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -609,6 +610,18 @@ export async function readAuthForBaseUrl(
   baseUrl: string,
   config: Config | null,
 ): Promise<AuthResult> {
+  for (const candidate of equivalentBaseUrls(baseUrl)) {
+    const result = await readAuthForExactBaseUrl(candidate, config);
+    if (result.ok) return result;
+  }
+
+  return { ok: false, error: { type: "missing", message: `No auth found for ${baseUrl}` } };
+}
+
+async function readAuthForExactBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<AuthResult> {
   // Is it a URL for a built-in provider? Check those first
   const provider = providerForBaseUrl(baseUrl);
   if (provider) {
@@ -663,6 +676,21 @@ export async function readAuthForBaseUrl(
 }
 
 async function readApiKeyAuthForBaseUrl(
+  baseUrl: string,
+  config: Config | null,
+): Promise<ApiKeyAuthResult> {
+  for (const candidate of equivalentBaseUrls(baseUrl)) {
+    const result = await readApiKeyAuthForExactBaseUrl(candidate, config);
+    if (result.ok) return result;
+  }
+
+  return {
+    ok: false,
+    error: { type: "missing", message: `No API key auth found for ${baseUrl}` },
+  };
+}
+
+async function readApiKeyAuthForExactBaseUrl(
   baseUrl: string,
   config: Config | null,
 ): Promise<ApiKeyAuthResult> {
@@ -730,26 +758,16 @@ const SYNTHETIC_BASE_URLS = [
   "https://glhf.chat/api/openai/v1",
 ];
 
-/**
- * Checks if there's existing auth available for a given base URL.
- * For Synthetic, checks all known base URLs since they've changed over time.
- */
+function equivalentBaseUrls(baseUrl: string): string[] {
+  if (!SYNTHETIC_BASE_URLS.includes(baseUrl)) return [baseUrl];
+  return [baseUrl, ...SYNTHETIC_BASE_URLS.filter(candidate => candidate !== baseUrl)];
+}
+
 export async function hasExistingAuthForBaseUrl(
   baseUrl: string,
   config: Config | null,
 ): Promise<boolean> {
-  const result = await readAuthForBaseUrl(baseUrl, config);
-  if (result.ok) return true;
-
-  if (SYNTHETIC_BASE_URLS.includes(baseUrl)) {
-    for (const url of SYNTHETIC_BASE_URLS) {
-      if (url !== baseUrl) {
-        const syntheticResult = await readAuthForBaseUrl(url, config);
-        if (syntheticResult.ok) return true;
-      }
-    }
-  }
-  return false;
+  return (await readAuthForBaseUrl(baseUrl, config)).ok;
 }
 
 export async function writeKeyForModel(model: { baseUrl: string }, apiKey: string) {
@@ -761,11 +779,19 @@ export async function writeKeyForModel(model: { baseUrl: string }, apiKey: strin
   });
 }
 
-async function readKeys() {
+async function readKeysFromDisk() {
   const exists = await fileExists(KEY_FILE);
   if (!exists) return {};
   const keyFile = await fs.readFile(KEY_FILE, "utf8");
   return KeyConfigSchema.slice(json5.parse(keyFile));
+}
+
+export const configDeps = registry({
+  readKeys: readKeysFromDisk,
+});
+
+function readKeys() {
+  return configDeps.readKeys();
 }
 
 export function getModelFromConfig(config: Config, modelOverride: string | null) {
