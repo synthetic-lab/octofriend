@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { MODAL_Z_INDEX, BACKGROUND_COLOR, THEME_COLOR } from "../theme.ts";
+import { TOAST_Z_INDEX, BACKGROUND_COLOR, THEME_COLOR } from "../theme.ts";
 
 export const DEFAULT_TOAST_DURATION_MS = 5000;
 const TOAST_SLIDE_DURATION_MS = 300;
@@ -55,7 +55,7 @@ export function Toast({ children, phase }: { children: React.ReactNode; phase: T
         position: "absolute",
         top: 1,
         right,
-        zIndex: MODAL_Z_INDEX,
+        zIndex: TOAST_Z_INDEX,
         flexDirection: "column",
         maxWidth: TOAST_MAX_WIDTH,
         paddingLeft: 1,
