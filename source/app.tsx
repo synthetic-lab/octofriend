@@ -31,6 +31,7 @@ import {
   DIMMED_SCROLLBAR_COLOR,
   SCROLLBAR_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
+  THOUGHTBOX_COLOR,
   UnchainedContext,
   useColor,
   useUnchained,
@@ -2573,7 +2574,7 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
           scrollbarGutter: "stable",
           scrollbarColor: SUBTLE_SCROLLBAR_COLOR,
           flexDirection: "column",
-          borderColor: "gray",
+          borderColor: THOUGHTBOX_COLOR,
           border: "rounded",
         }}
       >
@@ -2586,7 +2587,7 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
         >
           <Span
             style={{
-              color: "gray",
+              color: THOUGHTBOX_COLOR,
             }}
           >
             {thoughts}
