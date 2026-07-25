@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.55] - 07-24-2046
+
+### Changed
+
+- Bugfix for inherited `NODE_ENV`
+
 ## [0.0.54] - 07-24-2046
 
 ### Added
