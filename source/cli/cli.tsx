@@ -29,7 +29,7 @@ import { timeout } from "../signals.ts";
 import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
-import { listSessions, loadSession } from "../session-history/index.ts";
+import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
@@ -49,9 +49,7 @@ const INTERACTIVE_RENDER_OPTIONS = {
 function renderInteractive(element: React.ReactNode) {
   const root = render(
     <ToastProvider>
-      <KeyboardProvider>
-        {element}
-      </KeyboardProvider>
+      <KeyboardProvider>{element}</KeyboardProvider>
     </ToastProvider>,
     INTERACTIVE_RENDER_OPTIONS,
   );
@@ -367,6 +365,18 @@ sessionCommand
         `${octoTheme(row.sessionId.padEnd(sessionIdWidth))}  ${chalk.dim((row.preview ?? "").padEnd(previewWidth))}  ${chalk.white(row.updatedAtText)}`,
       );
     }
+  });
+sessionCommand
+  .command("delete")
+  .description("Delete a session")
+  .argument("<session-id>", "The session ID to delete")
+  .action(sessionId => {
+    if (!deleteSession(sessionId)) {
+      console.error(`No session found with ID ${sessionId}.`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Deleted session ${sessionId}.`);
   });
 
 const bench = cli.command("bench");
