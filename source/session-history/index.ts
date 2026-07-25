@@ -1,5 +1,5 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db, DbTransaction, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
 import {
@@ -8,13 +8,17 @@ import {
   launches,
   llmIrs,
   notifications,
+  previews,
   requestFailedItems,
   treeNodes,
   trees,
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import { excerpt } from "./preview.ts";
 
 export type TransportKind = "local" | "docker-connect" | "docker-run";
+
+export type SessionPreviewType = "latest-user-message";
 
 export type HistoryItem =
   | { type: "request-failed" }
@@ -41,12 +45,32 @@ export type LoadedSession = {
   history: readonly HistoryNode[];
 };
 
+export type SessionSummary = {
+  sessionId: string;
+  updatedAt: number;
+  preview: string | null;
+};
+
 export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
   return {
     metadata: { sessionId: null, cwd, cliArgs },
     treeId: null,
     launchId: null,
   };
+}
+
+export function listSessions(cwd: string): SessionSummary[] {
+  return db()
+    .select({
+      sessionId: trees.name,
+      updatedAt: trees.updatedAt,
+      preview: previews.preview,
+    })
+    .from(trees)
+    .leftJoin(previews, eq(previews.sessionId, trees.name))
+    .where(eq(trees.cwd, cwd))
+    .orderBy(desc(trees.updatedAt))
+    .all();
 }
 
 export function loadSession(sessionId: string): LoadedSession | null {
@@ -171,6 +195,42 @@ function cliArgsFromRow(node: SessionTreeNode): ParsedCliArgs {
   };
 }
 
+function updateSessionPreview(
+  tx: DbTransaction,
+  sessionId: string,
+  previewStr: string,
+  previewType: SessionPreviewType,
+) {
+  tx.insert(previews)
+    .values({
+      preview: previewStr,
+      sessionId,
+      previewType,
+    })
+    .onConflictDoUpdate({
+      target: previews.sessionId,
+      set: {
+        preview: previewStr,
+        previewType,
+      },
+    })
+    .run();
+}
+
+// If the historyItem is a user message with some non-empty text update the session's preview to be an excerpt of that.
+function maybeUpdateSessionPreview(tx: DbTransaction, sessionId: string, historyItem: HistoryItem) {
+  if (historyItem.type === "llm-ir") {
+    if (historyItem.ir.role === "user") {
+      const userMessageContent = historyItem.ir.content.find(
+        content => content.type == "text",
+      )?.content;
+      if (userMessageContent) {
+        updateSessionPreview(tx, sessionId, excerpt(userMessageContent), "latest-user-message");
+      }
+    }
+  }
+}
+
 export function insertHistoryItems(
   session: Session,
   parentNodeId: number | null,
@@ -179,8 +239,9 @@ export function insertHistoryItems(
   if (itemsToInsert.length === 0) return [];
 
   // sessionId is null until the first durable history item is persisted; generate it lazily.
+  const sessionId = session.metadata.sessionId ?? crypto.randomUUID();
   if (session.metadata.sessionId == null) {
-    session.metadata = { ...session.metadata, sessionId: crypto.randomUUID() };
+    session.metadata = { ...session.metadata, sessionId };
   }
 
   const result = db().transaction(tx => {
@@ -192,6 +253,7 @@ export function insertHistoryItems(
     let currParentId = parentNodeId;
     for (const historyItem of itemsToInsert) {
       const insertedHistoryItemId = insertHistoryItem(tx, historyItem);
+      maybeUpdateSessionPreview(tx, sessionId, historyItem);
       const insertedTreeNode = tx
         .insert(treeNodes)
         .values({
@@ -206,6 +268,7 @@ export function insertHistoryItems(
       insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id });
       currParentId = insertedTreeNode.id;
     }
+    tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
     return { treeId, launchId, insertedNodes };
   });
 
