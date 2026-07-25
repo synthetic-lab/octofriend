@@ -532,12 +532,7 @@ function BottomBar({
   if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
   const unchained = useUnchained();
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-        width: "100%",
-      }}
-    >
+    <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
       <BottomBarContent inputHistory={inputHistory} />
       <TerminalFlex
         style={{
@@ -548,62 +543,22 @@ function BottomBar({
           flexGrow: 1,
         }}
       >
-        <TerminalFlex
-          style={{
-            height: 1,
-          }}
-        >
-          <Span
-            style={{
-              color: themeColor,
-            }}
-          >
-            {ctrlCPressed && "Press Ctrl+C again to exit."}
-          </Span>
+        <TerminalFlex style={{ height: 1 }}>
+          <Span style={{ color: themeColor }}>{ctrlCPressed && "Press Ctrl+C again to exit."}</Span>
           {!ctrlCPressed && (
-            <Span
-              style={{
-                color: "gray",
-              }}
-            >
+            <Span style={{ color: "gray" }}>
               {unchained ? "⚡ Unchained mode" : "Collaboration mode"}{" "}
-              <Span
-                style={{
-                  color: "gray",
-                }}
-              >
-                (Shift+Tab to toggle)
-              </Span>
+              <Span style={{ color: "gray" }}>(Shift+Tab to toggle)</Span>
             </Span>
           )}
         </TerminalFlex>
-        <Span
-          style={{
-            color: themeColor,
-            visibility: versionCheck === "" ? "hidden" : "visible",
-          }}
-        >
-          {versionCheck}
-        </Span>
+        <Span style={{ color: themeColor }}>{versionCheck}</Span>
       </TerminalFlex>
-      <TerminalFlex
-        style={{
-          minHeight: 1,
-        }}
-      >
+
+      <TerminalFlex style={{ minHeight: 1 }}>
         {displayedTempNotification && (
-          <TerminalFlex
-            style={{
-              width: "100%",
-              flexShrink: 0,
-            }}
-          >
-            <Span
-              style={{
-                color: themeColor,
-                whiteSpace: "pre-wrap",
-              }}
-            >
+          <TerminalFlex style={{ width: "100%", flexShrink: 0 }}>
+            <Span style={{ color: themeColor, whiteSpace: "pre-wrap" }}>
               {displayedTempNotification}
             </Span>
           </TerminalFlex>
@@ -2585,7 +2540,7 @@ function ThoughtBox({ thoughts }: { thoughts: string }) {
           maxWidth: MAX_THOUGHTBOX_WIDTH,
           maxHeight: MAX_THOUGHTBOX_HEIGHT,
           overflowY: "scroll",
-          scrollbarGutter: "stable",
+          scrollbarGutter: "auto",
           scrollbarColor: SUBTLE_SCROLLBAR_COLOR,
           flexDirection: "column",
           borderColor: THOUGHTBOX_COLOR,
