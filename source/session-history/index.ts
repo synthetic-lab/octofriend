@@ -127,6 +127,13 @@ export function deleteSession(sessionId: string): boolean {
   });
 }
 
+export function listPreviousSessions(
+  cwd: string,
+  currentSessionId: string | null,
+): SessionSummary[] {
+  return listSessions(cwd).filter(session => session.sessionId !== currentSessionId);
+}
+
 export function loadSession(sessionId: string): LoadedSession | null {
   const tree = loadSessionTree(sessionId);
   if (tree == null) return null;

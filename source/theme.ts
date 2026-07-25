@@ -11,6 +11,7 @@ export const BACKGROUND_COLOR = "#0f172a";
 export const DIMMED_BACKGROUND_COLOR = "#020617";
 export const FOREGROUND_COLOR = "#bababa";
 export const THOUGHTBOX_COLOR = "#6b6b6b";
+export const TABLE_SELECTED_ROW_BACKGROUND_COLOR = "#1e293b";
 export const SCROLLBAR_COLOR = "#64748b #1e293b";
 export const DIMMED_SCROLLBAR_COLOR = "#475569 #0f172a";
 export const SUBTLE_SCROLLBAR_COLOR = "#475569 #1e293b";
