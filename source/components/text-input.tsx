@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
+import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
 function getImageBadgeText(index: number): string {
@@ -208,7 +209,7 @@ export default function TextInput({
           minHeight: 1,
           flexGrow: 1,
           whiteSpace: "pre-wrap",
-          color: "white",
+          color: FOREGROUND_COLOR,
           placeholderColor: "gray",
           overflowY: "visible",
         }}
