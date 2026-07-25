@@ -32,7 +32,7 @@ export const PROVIDERS = {
     shortcut: "s" as const,
     name: "Synthetic",
     envVar: "SYNTHETIC_API_KEY",
-    baseUrl: "https://api.synthetic.new/v1",
+    baseUrl: "https://api.synthetic.new/openai/v1",
     models: [
       {
         model: "hf:zai-org/GLM-5.2",
