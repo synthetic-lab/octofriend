@@ -4,8 +4,8 @@
   "license": "MIT",
   "repository": "github:synthetic-lab/octofriend",
   "bin": {
-    "octofriend": "dist/source/cli/cli.js",
-    "octo": "dist/source/cli/cli.js"
+    "octofriend": "dist/source/cli/bin.js",
+    "octo": "dist/source/cli/bin.js"
   },
   "type": "module",
   "preferGlobal": true,
@@ -16,6 +16,7 @@
     "build": "rm -rf dist && babel source -d dist/source --extensions \".ts,.tsx\" && tsc --emitDeclarationOnly",
     "dev": "npm run build -- --watch",
     "exec": "npm run build && node ./dist/source/cli/cli.js",
+    "exec:prod": "npm run build && node ./dist/source/cli/bin.js",
     "test": "vitest",
     "test:run": "vitest run",
     "prepublishOnly": "npm run build",

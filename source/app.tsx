@@ -98,6 +98,7 @@ import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
 import { useToast } from "./components/toast.tsx";
+import { ReactDevelopmentBuildToast } from "./components/react-development-build-toast.tsx";
 import {
   ScrollTranscriptToBottomContext,
   useScrollTranscriptToBottom,
@@ -348,6 +349,7 @@ export default function App({
   const appScrollbarColor = hasFocus ? SCROLLBAR_COLOR : DIMMED_SCROLLBAR_COLOR;
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
+      <ReactDevelopmentBuildToast />
       <InputPriorityProvider>
         <UnchainedShiftTabHandler
           setIsUnchained={setIsUnchained}
