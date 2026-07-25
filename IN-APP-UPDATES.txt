@@ -1,10 +1,8 @@
-- Octo now supports image input! For multimodal models, try dragging and
-  dropping images into your terminal
-- Added @-autocompletion for file names: type @ and a snazzy new filepicker will
-  open up
-- In Collaboration Mode, you can whitelist tools for Octo to auto-accept with
-  the new "Always allow..." menu item in the permission prompt
-- Added support for using shell commands to access API keys, for better
-  password-manager support.
-- Improved Vim emulation
+- Octo now auto-saves your session and allows resuming saved sessions later.
+- Octo's rendering backend was rewritten in Rust! Octo should be much faster
+  and prettier.
+- Octo learned to auto-detect and use many common LSP servers.
+- You can now log into OpenAI Codex subscriptions in Octo, and Octo will use
+  your Codex subscription instead of per-token API pricing. As usual,
+  Synthetic.new subscriptions always use your subscription.
 - And a lot more! Run `octo changelog` to see the full list.

@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.54] - 07-24-2046
+
+### Added
+
+- Octo automatically saves sessions and allows easy session resume. Once you
+  start chatting with Octo, feel free to quit and resume your session from the
+  "Load previous session" menu later.
+
+- You can now log into OpenAI Codex subscriptions, and Octo will use your Codex
+  susbcription instead of paying per-token. (As usual, Synthetic.new
+  subscriptions will automatically use your subscription instead of per-token
+  fees.)
+
+- If you have LSP servers installed, Octo can automatically detect and use
+  common ones like TypeScript, Rust, Go, Ruby, and Bash.
+
+- Octo can use new `grep` and `glob` tools to safely search for files without
+  requiring permission prompts.
+
+- LLMs can issue parallel tool calls for faster performance.
+
+- Octo's file read tool can now parse images into formats that vision-capable
+  LLMs like Kimi and ChatGPT can see.
+
+### Changed
+
+- Octo uses a new, flicker-free, Rust-based rendering backend called
+  [Paintcannon](https://github.com/synthetic-lab/paintcannon). This fixes many
+  rendering bugs and dramatically improves rendering performance.
+
+- LLMs can now issue partial file reads, instead of always reading entire
+  files, to help preserve context space.
+
+- Many prompt optimizations and bugfixes.
+
 ## [0.0.53] - 02-27-2026
 
 ### Added
