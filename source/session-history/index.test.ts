@@ -5,6 +5,7 @@ import {
   createSession,
   deleteSession,
   insertHistoryItems,
+  latestModelNickname,
   loadSession,
   SessionNotFoundError,
   type HistoryItem,
@@ -33,7 +34,7 @@ function countRows() {
 describe("deleteSession", () => {
   it("deletes an existing session", () => {
     const session = createSession("/test/delete-session", LOCAL_CLI_ARGS);
-    insertHistoryItems(session, null, [userMessage("Delete me")]);
+    insertHistoryItems(session, null, [userMessage("Delete me")], "test-model");
     const sessionId = session.metadata.sessionId;
     expect(sessionId).not.toBeNull();
 
@@ -44,14 +45,24 @@ describe("deleteSession", () => {
 
   it("reports a deleted session before inserting more history", () => {
     const session = createSession("/test/stale-session", LOCAL_CLI_ARGS);
-    const history = insertHistoryItems(session, null, [userMessage("Initial message")]);
+    const history = insertHistoryItems(
+      session,
+      null,
+      [userMessage("Initial message")],
+      "test-model",
+    );
     const sessionId = session.metadata.sessionId;
     expect(sessionId).not.toBeNull();
     expect(deleteSession(sessionId!)).toBe(true);
 
     let thrown: unknown;
     try {
-      insertHistoryItems(session, history.at(-1)!.nodeId, [userMessage("Late message")]);
+      insertHistoryItems(
+        session,
+        history.at(-1)!.nodeId,
+        [userMessage("Late message")],
+        "test-model",
+      );
     } catch (error) {
       thrown = error;
     }
@@ -97,5 +108,38 @@ describe("deleteSession", () => {
       .map(row => row.json);
     expect(remaining.some(json => json.includes("Keep me"))).toBe(true);
     expect(remaining.some(json => json.includes("Drop me"))).toBe(false);
+  });
+});
+
+describe("model nicknames", () => {
+  it("persists the model nickname on history nodes", () => {
+    const session = createSession("/test/model-nickname", LOCAL_CLI_ARGS);
+    insertHistoryItems(session, null, [userMessage("Hello")], "smart-model");
+    const sessionId = session.metadata.sessionId!;
+
+    const loaded = loadSession(sessionId);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.history.map(node => node.modelNickname)).toEqual(["smart-model"]);
+    expect(latestModelNickname(loaded!.history)).toBe("smart-model");
+  });
+
+  it("resumes with the most recently persisted nickname", () => {
+    const session = createSession("/test/model-switch", LOCAL_CLI_ARGS);
+    const first = insertHistoryItems(session, null, [userMessage("Hello")], "smart-model");
+    insertHistoryItems(session, first.at(-1)!.nodeId, [userMessage("Switch")], "fast-model");
+    const sessionId = session.metadata.sessionId!;
+
+    const loaded = loadSession(sessionId)!;
+    expect(loaded.history.map(node => node.modelNickname)).toEqual(["smart-model", "fast-model"]);
+    expect(latestModelNickname(loaded.history)).toBe("fast-model");
+  });
+
+  it("returns null when no node has a nickname", () => {
+    const session = createSession("/test/model-legacy", LOCAL_CLI_ARGS);
+    insertHistoryItems(session, null, [userMessage("Hello")], null);
+    const sessionId = session.metadata.sessionId!;
+
+    const loaded = loadSession(sessionId)!;
+    expect(latestModelNickname(loaded.history)).toBeNull();
   });
 });

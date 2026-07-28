@@ -271,17 +271,27 @@ export default function App({
   const [tempNotification, setTempNotification] = useState<string | null>(
     isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
-  const { history, modeData, setVimMode, clearNonce, cancelNotifyReadyForInput, query } =
-    useAppStore(
-      useShallow(state => ({
-        history: state.history,
-        modeData: state.modeData,
-        setVimMode: state.setVimMode,
-        clearNonce: state.clearNonce,
-        cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
-        query: state.query,
-      })),
-    );
+  const {
+    history,
+    modeData,
+    setVimMode,
+    clearNonce,
+    sessionHydrationNonce,
+    modelOverride,
+    cancelNotifyReadyForInput,
+    query,
+  } = useAppStore(
+    useShallow(state => ({
+      history: state.history,
+      modeData: state.modeData,
+      setVimMode: state.setVimMode,
+      clearNonce: state.clearNonce,
+      sessionHydrationNonce: state.sessionHydrationNonce,
+      modelOverride: state.modelOverride,
+      cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
+      query: state.query,
+    })),
+  );
   useKeyboard(() => {
     cancelNotifyReadyForInput();
   });
@@ -289,6 +299,16 @@ export default function App({
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
+  const showToast = useToast();
+  useEffect(() => {
+    if (modelOverride == null) return;
+    if (currConfig.models.some(model => model.nickname === modelOverride)) return;
+    showToast(
+      <Span style={{ color: "red" }}>
+        {`This session used the model "${modelOverride}", which is no longer in your config. Falling back to the default model.`}
+      </Span>,
+    );
+  }, [currConfig.models, modelOverride, sessionHydrationNonce, showToast]);
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {
     skillNotifs.push(" ");
@@ -617,7 +637,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         setVimMode("NORMAL");
         return;
       }
-      abortResponse(session);
+      abortResponse(session, config);
       if (modeData.mode === "menu") closeMenu();
     }
     if (event.ctrlKey && event.key === "p") {
@@ -1447,7 +1467,7 @@ function ToolRequestRenderer({
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
-        rejectTool(toolReq, session);
+        rejectTool(toolReq, session, config);
       } else if (item.value === "yes-whitelist") {
         await addToWhitelist(whitelistKey);
         await runTool({

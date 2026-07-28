@@ -109,24 +109,29 @@ async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
 
 function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
   const session = createSession(process.cwd(), { kind: "local" });
-  const nodes = insertHistoryItems(session, null, [
-    {
-      type: "llm-ir",
-      ir: {
-        role: "user",
-        content: [{ type: "text", content: "Run these two commands" }],
+  const nodes = insertHistoryItems(
+    session,
+    null,
+    [
+      {
+        type: "llm-ir",
+        ir: {
+          role: "user",
+          content: [{ type: "text", content: "Run these two commands" }],
+        },
       },
-    },
-    {
-      type: "llm-ir",
-      ir: {
-        role: "assistant",
-        content: "On it.",
-        usage: compilerUsage(0, 0),
-        toolCalls: [callA, callB],
+      {
+        type: "llm-ir",
+        ir: {
+          role: "assistant",
+          content: "On it.",
+          usage: compilerUsage(0, 0),
+          toolCalls: [callA, callB],
+        },
       },
-    },
-  ]);
+    ],
+    config.models[0].nickname,
+  );
   useAppStore.getState().hydrateSession(nodes);
   const abortController = new AbortController();
   useAppStore.setState({
@@ -152,7 +157,7 @@ describe("aborting a tool batch", () => {
     // The user presses ESC while call_b is still pending. The UI drops the remaining requests
     // (ToolRequestsRenderer unmounts), so the store must record that call_b never ran —
     // otherwise the next request sends an assistant message with an unanswered tool call.
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
     expect(useAppStore.getState().modeData.mode).toBe("input");
@@ -172,7 +177,7 @@ describe("aborting a tool batch", () => {
 
     // Wait for the shell command to actually start, then ESC mid-run.
     await waitFor(() => existsSync(marker));
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
     await running;
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
@@ -197,7 +202,7 @@ describe("aborting a tool batch", () => {
      * settle, so the store must synchronously mark every unanswered call as skipped —
      * including the running one. Assert before `running` resolves.
      */
-    useAppStore.getState().abortResponse(session, { exiting: true });
+    useAppStore.getState().abortResponse(session, config, { exiting: true });
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
 
     await running;

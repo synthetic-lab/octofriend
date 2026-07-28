@@ -683,9 +683,16 @@ const nickname = fullFlow
           prompt="Nickname:"
           defaultValue={defaultNickname}
           parse={val => val}
-          validate={() => ({
-            valid: true,
-          })}
+          validate={nickname => {
+            const taken = props.config?.models.some(model => model.nickname === nickname) ?? false;
+            if (taken) {
+              return {
+                valid: false,
+                error: `You already have a model named "${nickname}".`,
+              };
+            }
+            return { valid: true };
+          }}
           onSubmit={nickname =>
             router.context({
               ...props,

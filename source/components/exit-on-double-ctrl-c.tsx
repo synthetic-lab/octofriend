@@ -37,7 +37,7 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
        */
       const state = useAppStore.getState();
       if (state.modeData.mode === "menu") state.closeMenu();
-      state.abortResponse(session, { exiting: true });
+      state.abortResponse(session, config, { exiting: true });
       exit();
     } else {
       if (!isInsertMode) {

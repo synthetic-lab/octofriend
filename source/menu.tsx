@@ -113,7 +113,7 @@ function AutofixToggle({
           await setConfig(newconf);
           setMenuMode("main-menu");
           toggleMenu();
-          notify(disableNotification, session);
+          notify(disableNotification, session, config);
         }}
         onConfirm={() => {
           setMenuMode("main-menu");
@@ -142,7 +142,7 @@ function AutofixToggle({
         });
         setMenuMode("main-menu");
         toggleMenu();
-        notify(enableNotification, session);
+        notify(enableNotification, session, config);
       }}
       onCancel={() => {
         setMenuMode("main-menu");
@@ -504,7 +504,7 @@ function MainMenu() {
         }
 
         // Notify user
-        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`, session);
+        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`, session, config);
         return;
       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
       else setMenuMode(item.value);
@@ -651,6 +651,7 @@ function QuitConfirm() {
   );
   const app = useApp();
   const session = useSession();
+  const config = useConfig();
   return (
     <ConfirmDialog
       confirmLabel="Yes, quit"
@@ -663,7 +664,7 @@ function QuitConfirm() {
          */
         const state = useAppStore.getState();
         state.closeMenu();
-        state.abortResponse(session, { exiting: true });
+        state.abortResponse(session, config, { exiting: true });
         app.exit();
       }}
       onReject={() => setMenuMode("main-menu")}
@@ -688,6 +689,7 @@ function ClearConversationConfirm({
     })),
   );
   const session = useSession();
+  const config = useConfig();
   return (
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
@@ -702,7 +704,7 @@ function ClearConversationConfirm({
           oldSessionId != null
             ? ` To resume the previous session, run \`octo --resume ${oldSessionId}\``
             : "";
-        notify(`New conversation started.${resumeHint}`, newSession);
+        notify(`New conversation started.${resumeHint}`, newSession, config);
       }}
       onReject={() => setMenuMode("main-menu")}
     />

@@ -43,6 +43,13 @@
       "when": 1784836672681,
       "tag": "0005_clean_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785201616377,
+      "tag": "0006_history_item_model_nickname",
+      "breakpoints": true
     }
   ]
 }
