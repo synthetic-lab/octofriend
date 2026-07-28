@@ -612,7 +612,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         setVimMode("NORMAL");
         return;
       }
-      abortResponse();
+      abortResponse(session);
       if (modeData.mode === "menu") closeMenu();
     }
     if (event.ctrlKey && event.key === "p") {

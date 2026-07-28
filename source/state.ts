@@ -122,7 +122,7 @@ export type UiState = {
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCall: ToolCallRequest, session: Session) => void;
-  abortResponse: () => void;
+  abortResponse: (session: Session, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
@@ -335,9 +335,70 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  abortResponse: () => {
+  abortResponse: (session: Session, opts?: { exiting?: boolean }) => {
     const { modeData } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
+    if (modeData.mode !== "tool-call") return;
+
+    /*
+     * Aborting a tool batch mid-flight leaves every request that never ran unanswered in
+     * history; Anthropic hard-400s on unanswered tool calls, and chat-completions models find
+     * them out-of-distribution. Mark any unanswered requests as skipped so the next request is
+     * well-formed. Normally the currently-running tool is excluded, since it appends its own
+     * output when it settles — but when the process is exiting it will never settle, so mark
+     * it as skipped too.
+     */
+    const answered = new Set<string>();
+    for (const item of get().history) {
+      if (item.type !== "llm-ir") continue;
+      const ir = item.ir;
+      if (
+        ir.role === "tool-output" ||
+        ir.role === "tool-skip-output" ||
+        ir.role === "tool-runtime-error" ||
+        ir.role === "tool-validation-error" ||
+        ir.role === "tool-reject" ||
+        ir.role === "file-read" ||
+        ir.role === "file-mutate"
+      ) {
+        answered.add(ir.toolCall.toolCallId);
+      }
+    }
+
+    const skipped: HistoryItem[] = [];
+    for (const req of modeData.toolReqs) {
+      if (req.type !== "tool-call") continue;
+      if (answered.has(req.toolCallId)) continue;
+      const isRunning = req.toolCallId === modeData.runningToolCallId;
+      if (isRunning && !opts?.exiting) continue;
+      skipped.push({
+        type: "llm-ir",
+        ir: {
+          role: "tool-skip-output",
+          toolCall: req,
+          reason: isRunning
+            ? "The user exited while this tool was running, so its output was not recorded"
+            : "The user aborted the response, so this tool was skipped",
+        },
+      });
+    }
+
+    if (skipped.length > 0) {
+      set({ history: appendAndPersistHistory(session, get().history, skipped) });
+    }
+
+    /*
+     * If no tool is currently running, nothing else will flip the mode back to input, so do it
+     * here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool settles.
+     */
+    if (modeData.runningToolCallId == null) {
+      set({
+        modeData: {
+          mode: "input",
+          vimMode: "INSERT",
+        },
+      });
+    }
   },
 
   _maybeHandleAbort: (signal: AbortSignal): boolean => {

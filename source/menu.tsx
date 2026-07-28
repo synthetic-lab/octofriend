@@ -650,11 +650,22 @@ function QuitConfirm() {
     })),
   );
   const app = useApp();
+  const session = useSession();
   return (
     <ConfirmDialog
       confirmLabel="Yes, quit"
       rejectLabel="Never mind, take me back"
-      onConfirm={() => app.exit()}
+      onConfirm={() => {
+        /*
+         * Restore the stashed pre-menu state (which may be an in-flight tool batch), then
+         * record skip markers for any un-run tool calls so the session history stays
+         * well-formed after exit.
+         */
+        const state = useAppStore.getState();
+        state.closeMenu();
+        state.abortResponse(session, { exiting: true });
+        app.exit();
+      }}
       onReject={() => setMenuMode("main-menu")}
       rejectFirst={true}
     />

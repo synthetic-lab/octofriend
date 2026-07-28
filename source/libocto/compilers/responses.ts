@@ -99,26 +99,51 @@ function responseContentParts(
 }
 
 function responseToolOutput(
+  toolCallId: string,
   content: IRContent["content"],
   modalities?: CompilerModalities,
-): string {
-  const visibleParts = content.map(part => {
-    if (part.type === "text") return { type: "text" as const, text: part.content };
-    if (!modalities?.includes("vision")) {
-      return { type: "text" as const, text: imagePlaceholderContent() };
+): ResponseInput {
+  /*
+   * The Responses API only allows plain-string function call outputs, unlike chat completions
+   * and Anthropic which support image content in tool outputs. Text parts go into the output
+   * string; images for vision models are delivered in a user message immediately after the
+   * function call output, keeping the call/output adjacency intact without inlining base64
+   * into the output string.
+   */
+  const textParts: string[] = [];
+  const imageParts: ResponseInputContent[] = [];
+  for (const part of content) {
+    if (part.type === "text") {
+      textParts.push(part.content);
+      continue;
     }
-    return {
-      type: "image" as const,
-      mimeType: part.image.mimeType,
-      dataUrl: part.image.dataUrl,
-    };
-  });
-
-  if (visibleParts.every(part => part.type === "text")) {
-    return visibleParts.map(part => part.text).join("\n");
+    if (modalities?.includes("vision")) {
+      imageParts.push({
+        type: "input_image",
+        detail: "auto",
+        image_url: part.image.dataUrl,
+      });
+    } else {
+      textParts.push(imagePlaceholderContent());
+    }
   }
 
-  return JSON.stringify(visibleParts);
+  const output: ResponseInput = [
+    {
+      type: "function_call_output",
+      call_id: toolCallId,
+      output: textParts.join("\n"),
+    },
+  ];
+
+  if (imageParts.length > 0) {
+    output.push({
+      role: "user",
+      content: [{ type: "input_text", text: irPrompts.toolImageOutputPreamble() }, ...imageParts],
+    });
+  }
+
+  return output;
 }
 
 async function toResponseInput<A extends Agent<any, any, any>>(
@@ -192,13 +217,7 @@ function responseInputFromIr<A extends Agent<any, any, any>>(
   }
 
   if (ir.role === "tool-output") {
-    return [
-      {
-        type: "function_call_output",
-        call_id: ir.toolCall.toolCallId,
-        output: responseToolOutput(ir.content, modalities),
-      },
-    ];
+    return responseToolOutput(ir.toolCall.toolCallId, ir.content, modalities);
   }
 
   if (ir.role === "tool-skip-output") {

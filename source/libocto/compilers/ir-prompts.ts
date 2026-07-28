@@ -9,6 +9,10 @@ export function imageAttachmentPlaceholderText() {
   return "[An image was attached here. Since images are not supported by your model, the source to the image is omitted. There might be future context that allows you to make a guess about what the image was, so keep that in mind as you process the rest of the messages.]";
 }
 
+export function toolImageOutputPreamble() {
+  return "The tool call above returned the following image:";
+}
+
 export function openTag(tag: string, attrs?: Record<string, string>) {
   if (!attrs || Object.keys(attrs).length === 0) return "<" + tag + ">";
 

@@ -60,7 +60,7 @@ describe("optimizeFiles", () => {
     ]);
   });
 
-  it("turns displayable image reads into user messages with images", () => {
+  it("answers displayable image reads with a tool output containing the image", () => {
     const image: ImageInfo = {
       mimeType: "image/png",
       base64Data: "abc",
@@ -90,9 +90,10 @@ describe("optimizeFiles", () => {
       ),
     ).toEqual([
       {
-        role: "user",
+        role: "tool-output",
+        toolCall: toolCall("image-read"),
         content: [
-          { type: "text", content: "[Tool result for call image-read]: image contents" },
+          { type: "text", content: "image contents" },
           { type: "image", image },
         ],
       },

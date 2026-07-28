@@ -36,13 +36,17 @@ function optimizeFileIR(
 
     const imageCheck = ir.image ? canDisplayImage(modalities, ir.image) : null;
     if (ir.image && imageCheck?.ok) {
+      /*
+       * The read tool call must still be answered by a tool-output-shaped IR: converting it
+       * into a user message would leave the assistant's tool call dangling, which Anthropic
+       * hard-400s on (and is out-of-distribution for chat-completions models). Vision models
+       * support images in tool outputs, so attach the image to the tool output directly.
+       */
       return {
-        role: "user",
+        role: "tool-output",
+        toolCall: ir.toolCall,
         content: [
-          {
-            type: "text",
-            content: `[Tool result for call ${ir.toolCall.toolCallId}]: ${ir.content}`,
-          },
+          { type: "text", content: irPrompts.fileRead(ir.content, seenPath, imageCheck) },
           { type: "image", image: ir.image },
         ],
       };
