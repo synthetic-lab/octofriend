@@ -176,4 +176,28 @@ describe("aborting a tool batch", () => {
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
     expect(useAppStore.getState().modeData.mode).toBe("input");
   }, 30_000);
+
+  it("marks even the running tool call as answered when exiting", async () => {
+    const transport = new LocalTransport();
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
+    tempDirs.push(dir);
+    const marker = path.join(dir, "started");
+
+    const callA = shellCall("call_a", `touch ${marker} && sleep 30`);
+    const callB = shellCall("call_b", "echo b");
+    const { session } = setupToolBatch(callA, callB);
+
+    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
+    await waitFor(() => existsSync(marker));
+
+    /*
+     * On exit (double Ctrl+C, menu quit) the process can't wait for the running tool to
+     * settle, so the store must synchronously mark every unanswered call as skipped —
+     * including the running one. Assert before `running` resolves.
+     */
+    useAppStore.getState().abortResponse(session, { exiting: true });
+    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+
+    await running;
+  }, 30_000);
 });
