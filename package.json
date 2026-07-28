@@ -45,7 +45,7 @@
     "@commander-js/extra-typings": "^13.1.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "antipattern": "^0.0.7",
-    "better-sqlite3": "^12.2.0",
+    "better-sqlite3": "^13.0.1",
     "chalk": "^5.4.1",
     "cli-spinners": "^2.7.0",
     "clipboardy": "^5.0.0",
@@ -74,10 +74,12 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@babel/cli": "^7.28.3",
-    "@babel/core": "^7.28.5",
-    "@babel/preset-react": "^7.28.5",
-    "@babel/preset-typescript": "^7.28.5",
+    "@babel/cli": "^8.0.4",
+    "@babel/core": "^8.0.1",
+    "@babel/plugin-transform-runtime": "^8.0.1",
+    "@babel/preset-react": "^8.0.1",
+    "@babel/preset-typescript": "^8.0.1",
+    "@babel/runtime": "^8.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/figlet": "^1.7.0",
     "@types/html-to-text": "^9.0.4",
@@ -87,7 +89,8 @@
     "@types/react-test-renderer": "^19.1.0",
     "@types/shell-quote": "^1.7.5",
     "@types/which": "^3.0.4",
-    "@vitejs/plugin-react": "^5.1.2",
+    "@rolldown/plugin-babel": "^0.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "babel-plugin-react-compiler": "^1.0.0",
     "babel-plugin-replace-import-extension": "^1.1.5",
     "drizzle-kit": "^0.31.4",
@@ -96,20 +99,24 @@
     "parse-git-diff": "^0.0.19",
     "prettier": "3.7.4",
     "react-test-renderer": "^19.2.6",
-    "tsx": "^4.20.3",
+    "rolldown": "^1.2.0",
+    "tsx": "^4.21.3",
     "typescript": "^5.8.3",
-    "vite": "^7.3.1",
-    "vitest": "^3.2.4"
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
   },
   "overrides": {
+    "@modelcontextprotocol/sdk": {
+      "@hono/node-server": "^2.0.12"
+    },
     "@esbuild-kit/core-utils": {
-      "esbuild": "0.25.0"
+      "esbuild": "0.28.1"
     },
     "@esbuild-kit/esm-loader": {
-      "esbuild": "0.25.0"
+      "esbuild": "0.28.1"
     },
     "drizzle-kit": {
-      "esbuild": "0.25.0"
+      "esbuild": "0.28.1"
     }
   }
 }
