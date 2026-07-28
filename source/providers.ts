@@ -15,6 +15,7 @@ export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic" | "codex";
   name: string;
+  description?: string;
   envVar: string;
   baseUrl: string;
   models: Array<{
@@ -31,17 +32,36 @@ export const PROVIDERS = {
   synthetic: {
     shortcut: "s" as const,
     name: "Synthetic",
+    description:
+      "Synthetic offers syn: aliases that auto-route to the latest recommended models, so these never go stale. \n\nFor more details, see https://dev.synthetic.new/docs/api/overview",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/openai/v1",
     models: [
       {
-        model: "hf:zai-org/GLM-5.2",
-        nickname: "GLM-5.2",
-        context: 384 * 1024,
+        model: "syn:large:text",
+        nickname: "syn:large:text",
+        context: 512 * 1024,
       },
       {
-        model: "hf:moonshotai/Kimi-K2.7-Code",
-        nickname: "Kimi K2.7-Code",
+        model: "syn:small:text",
+        nickname: "syn:small:text",
+        context: 192 * 1024,
+      },
+      {
+        model: "syn:large:vision",
+        nickname: "syn:large:vision",
+        context: 512 * 1024,
+        modalities: {
+          image: {
+            enabled: true,
+            maxSizeMB: 10,
+            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        },
+      },
+      {
+        model: "syn:small:vision",
+        nickname: "syn:small:vision",
         context: 256 * 1024,
         modalities: {
           image: {
@@ -51,20 +71,8 @@ export const PROVIDERS = {
           },
         },
       },
-      {
-        model: "hf:Qwen/Qwen3.6-27B",
-        nickname: "Qwen 3.6 27B",
-        context: 128 * 1024,
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 10,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
     ],
-    testModel: "hf:MiniMaxAI/MiniMax-M2.1",
+    testModel: "syn:small:text",
   } satisfies ProviderConfig,
 
   codex: {
@@ -202,7 +210,7 @@ export const PROVIDERS = {
 };
 
 export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
-  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Kimi K2.5";
+  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Syn Large Vision";
 
 export type CanDisplayImageResult = { ok: true } | { ok: false; reason: string };
 
