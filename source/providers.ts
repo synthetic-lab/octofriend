@@ -35,13 +35,30 @@ export const PROVIDERS = {
     baseUrl: "https://api.synthetic.new/openai/v1",
     models: [
       {
-        model: "hf:zai-org/GLM-5.2",
-        nickname: "GLM-5.2",
-        context: 384 * 1024,
+        model: "syn:large:text",
+        nickname: "Syn Large Text",
+        context: 512 * 1024,
       },
       {
-        model: "hf:moonshotai/Kimi-K2.7-Code",
-        nickname: "Kimi K2.7-Code",
+        model: "syn:small:text",
+        nickname: "Syn Small Text",
+        context: 192 * 1024,
+      },
+      {
+        model: "syn:large:vision",
+        nickname: "Syn Large Vision",
+        context: 512 * 1024,
+        modalities: {
+          image: {
+            enabled: true,
+            maxSizeMB: 10,
+            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          },
+        },
+      },
+      {
+        model: "syn:small:vision",
+        nickname: "Syn Small Vision",
         context: 256 * 1024,
         modalities: {
           image: {
@@ -51,20 +68,8 @@ export const PROVIDERS = {
           },
         },
       },
-      {
-        model: "hf:Qwen/Qwen3.6-27B",
-        nickname: "Qwen 3.6 27B",
-        context: 128 * 1024,
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 10,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
     ],
-    testModel: "hf:MiniMaxAI/MiniMax-M2.1",
+    testModel: "syn:small:text",
   } satisfies ProviderConfig,
 
   codex: {
@@ -202,7 +207,7 @@ export const PROVIDERS = {
 };
 
 export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
-  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Kimi K2.5";
+  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Syn Large Vision";
 
 export type CanDisplayImageResult = { ok: true } | { ok: false; reason: string };
 
