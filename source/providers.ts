@@ -15,6 +15,7 @@ export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic" | "codex";
   name: string;
+  description?: string;
   envVar: string;
   baseUrl: string;
   models: Array<{
@@ -31,22 +32,24 @@ export const PROVIDERS = {
   synthetic: {
     shortcut: "s" as const,
     name: "Synthetic",
+    description:
+      "Synthetic offers syn: aliases that auto-route to the latest recommended models, so these never go stale. \n\nFor more details, see https://dev.synthetic.new/docs/api/overview",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/openai/v1",
     models: [
       {
         model: "syn:large:text",
-        nickname: "Syn Large Text",
+        nickname: "syn:large:text",
         context: 512 * 1024,
       },
       {
         model: "syn:small:text",
-        nickname: "Syn Small Text",
+        nickname: "syn:small:text",
         context: 192 * 1024,
       },
       {
         model: "syn:large:vision",
-        nickname: "Syn Large Vision",
+        nickname: "syn:large:vision",
         context: 512 * 1024,
         modalities: {
           image: {
@@ -58,7 +61,7 @@ export const PROVIDERS = {
       },
       {
         model: "syn:small:vision",
-        nickname: "Syn Small Vision",
+        nickname: "syn:small:vision",
         context: 256 * 1024,
         modalities: {
           image: {

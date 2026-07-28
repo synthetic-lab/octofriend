@@ -518,6 +518,21 @@ function ImportModelsFrom({
       >
         <Span>Which of the following models would you like to import?</Span>
       </TerminalFlex>
+      {provider.description ? (
+        <TerminalFlex
+          style={{
+            marginBottom: 1,
+          }}
+        >
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {provider.description}
+          </Span>
+        </TerminalFlex>
+      ) : null}
 
       <SelectInput
         items={items}
