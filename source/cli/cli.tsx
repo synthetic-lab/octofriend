@@ -42,6 +42,7 @@ import {
 import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
+import { setOctoTitles } from "./titles.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -102,15 +103,7 @@ const cli = withOctoFlags(
       };
     }
 
-    try {
-      // Set terminal title for tmux
-      process.title = "\\_o_O.//";
-      // Set terminal title for xterm-compatible term emulators
-      process.stdout.write("\x1b]0;" + "\\\\_o_O.//" + "\x07");
-      await runMain(runConfig);
-    } finally {
-      await runConfig.transport.close();
-    }
+    await runMain(runConfig);
   });
 
 const docker = cli.command("docker").description("Sandbox Octo inside Docker");
@@ -122,20 +115,16 @@ withOctoFlags(docker.command("connect"))
       type: "container",
       container: target,
     });
-    try {
-      await runMain({
-        transport,
-        loadedSession: null,
-        parsedCliArgs: {
-          kind: "docker-connect",
-          target,
-          config: opts.config,
-          unchained: opts.unchained,
-        },
-      });
-    } finally {
-      await transport.close();
-    }
+    await runMain({
+      transport,
+      loadedSession: null,
+      parsedCliArgs: {
+        kind: "docker-connect",
+        target,
+        config: opts.config,
+        unchained: opts.unchained,
+      },
+    });
   });
 
 withOctoFlags(docker.command("run"))
@@ -149,20 +138,16 @@ withOctoFlags(docker.command("run"))
       image: await manageContainer(args),
     });
 
-    try {
-      await runMain({
-        transport,
-        loadedSession: null,
-        parsedCliArgs: {
-          kind: "docker-run",
-          dockerRunArgs: args,
-          config: opts.config,
-          unchained: opts.unchained,
-        },
-      });
-    } finally {
-      await transport.close();
-    }
+    await runMain({
+      transport,
+      loadedSession: null,
+      parsedCliArgs: {
+        kind: "docker-run",
+        dockerRunArgs: args,
+        config: opts.config,
+        unchained: opts.unchained,
+      },
+    });
   });
 
 async function buildConfigForResuming(
@@ -231,6 +216,7 @@ async function runMain(opts: {
   transport: Transport;
   loadedSession?: LoadedSession | null;
 }) {
+  const restoreTitles = setOctoTitles();
   let session: Session;
   if (opts.loadedSession != null) {
     session = {
@@ -313,6 +299,8 @@ async function runMain(opts: {
   } finally {
     await shutdownLspClients();
     await shutdownMcpClients();
+    restoreTitles();
+    await opts.transport.close();
   }
 }
 
