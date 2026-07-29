@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useAnimation } from "paintcannon-react";
+import { Span, useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { TOAST_Z_INDEX, BACKGROUND_COLOR, THEME_COLOR } from "../theme.ts";
 
@@ -77,7 +77,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const showToast = useCallback<ToastFn>((children, options) => {
     setToast({
       id: nextToastId.current++,
-      children,
+      children: typeof children === "string" ? <Span>{children}</Span> : children,
       visibilityDurationMs: options?.durationMs ?? DEFAULT_TOAST_DURATION_MS,
       phase: "entering",
     });

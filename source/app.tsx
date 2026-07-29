@@ -190,6 +190,7 @@ export default function App({
   bootSkills,
 }: Props) {
   const { paintCannon } = useApp();
+  const showToast = useToast();
   const [hasFocus, setHasFocus] = useState(paintCannon.hasFocus);
   const transcriptRef = useRef<DivElement>(null);
   const followTranscriptRef = useRef(true);
@@ -203,11 +204,15 @@ export default function App({
     const handleBlur = () => setHasFocus(false);
     const handleFocus = () => setHasFocus(true);
 
+    const handleClipboardWrite = () => showToast("Copied to clipboard");
+
     paintCannon.addEventListener("blur", handleBlur);
     paintCannon.addEventListener("focus", handleFocus);
+    paintCannon.addEventListener("clipboardWrite", handleClipboardWrite);
     return () => {
       paintCannon.removeEventListener("blur", handleBlur);
       paintCannon.removeEventListener("focus", handleFocus);
+      paintCannon.removeEventListener("clipboardWrite", handleClipboardWrite);
     };
   }, [paintCannon]);
   const scrollTranscriptToBottom = useCallback(() => {
