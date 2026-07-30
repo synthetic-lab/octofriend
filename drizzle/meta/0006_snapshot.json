@@ -112,8 +112,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "model_nickname": {
-          "name": "model_nickname",
+        "model_json": {
+          "name": "model_json",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

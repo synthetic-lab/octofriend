@@ -30,7 +30,7 @@ export type HistoryItem =
 
 export type HistoryNode = HistoryItem & {
   nodeId: number;
-  modelNickname: string | null;
+  modelJson: string | null;
 };
 
 export type SessionMetadata = {
@@ -63,8 +63,8 @@ export class SessionNotFoundError extends Error {
   }
 }
 
-export function latestModelNickname(history: readonly HistoryNode[]): string | null {
-  return history.at(-1)?.modelNickname ?? null;
+export function latestModelJson(history: readonly HistoryNode[]): string | null {
+  return history.at(-1)?.modelJson ?? null;
 }
 
 export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
@@ -220,11 +220,11 @@ type SessionTreeNode = SessionTree["nodes"][number];
 
 function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
   const item = node.historyItem;
-  const modelNickname = item.modelNickname ?? null;
+  const modelJson = item.modelJson ?? null;
   if (item.llmIr != null) {
     return {
       nodeId: node.id,
-      modelNickname,
+      modelJson,
       type: "llm-ir",
       ir: deserializeLlmIr(item.llmIr.json),
     };
@@ -232,16 +232,16 @@ function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
   if (item.notification != null) {
     return {
       nodeId: node.id,
-      modelNickname,
+      modelJson,
       type: "notification",
       content: item.notification.content,
     };
   }
   if (item.requestFailedItem != null) {
-    return { nodeId: node.id, modelNickname, type: "request-failed" };
+    return { nodeId: node.id, modelJson, type: "request-failed" };
   }
   if (item.compactionFailedItem != null) {
-    return { nodeId: node.id, modelNickname, type: "compaction-failed" };
+    return { nodeId: node.id, modelJson, type: "compaction-failed" };
   }
   throw new Error(`History node ${node.id} has no payload.`);
 }
@@ -318,7 +318,7 @@ export function insertHistoryItems(
   session: Session,
   parentNodeId: number | null,
   itemsToInsert: HistoryItem[],
-  modelNickname: string | null,
+  modelJson: string | null,
 ): HistoryNode[] {
   if (itemsToInsert.length === 0) return [];
 
@@ -336,7 +336,7 @@ export function insertHistoryItems(
     const insertedNodes: HistoryNode[] = [];
     let currParentId = parentNodeId;
     for (const historyItem of itemsToInsert) {
-      const insertedHistoryItemId = insertHistoryItem(tx, historyItem, modelNickname);
+      const insertedHistoryItemId = insertHistoryItem(tx, historyItem, modelJson);
       maybeUpdateSessionPreview(tx, sessionId, historyItem);
       const insertedTreeNode = tx
         .insert(treeNodes)
@@ -349,7 +349,7 @@ export function insertHistoryItems(
         })
         .returning({ id: treeNodes.id })
         .get();
-      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id, modelNickname });
+      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id, modelJson });
       currParentId = insertedTreeNode.id;
     }
     tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
@@ -419,11 +419,7 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
     .get().id;
 }
 
-function insertHistoryItem(
-  tx: DbTransaction,
-  item: HistoryItem,
-  modelNickname: string | null,
-): number {
+function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: string | null): number {
   let requestFailedId: number | null = null;
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
@@ -469,7 +465,7 @@ function insertHistoryItem(
 
   const insertedHistoryItem = tx
     .insert(historyItems)
-    .values({ modelNickname, requestFailedId, compactionFailedId, notificationId, llmIrId })
+    .values({ modelJson, requestFailedId, compactionFailedId, notificationId, llmIrId })
     .returning({ id: historyItems.id })
     .get();
   return insertedHistoryItem.id;

@@ -5,13 +5,24 @@ import {
   createSession,
   deleteSession,
   insertHistoryItems,
-  latestModelNickname,
+  latestModelJson,
   loadSession,
   SessionNotFoundError,
   type HistoryItem,
 } from "./index.ts";
+import { serializeModelJson } from "./model-json.ts";
+import type { ModelConfig } from "../config.ts";
 
 const LOCAL_CLI_ARGS = { kind: "local" } as const;
+
+function testModel(nickname: string): ModelConfig {
+  return {
+    nickname,
+    model: nickname,
+    context: 128_000,
+    baseUrl: "http://localhost",
+  };
+}
 
 function userMessage(content: string): HistoryItem {
   return {
@@ -111,35 +122,38 @@ describe("deleteSession", () => {
   });
 });
 
-describe("model nicknames", () => {
-  it("persists the model nickname on history nodes", () => {
-    const session = createSession("/test/model-nickname", LOCAL_CLI_ARGS);
-    insertHistoryItems(session, null, [userMessage("Hello")], "smart-model");
+describe("model identifiers", () => {
+  it("persists the serialized model on history nodes", () => {
+    const session = createSession("/test/model-json", LOCAL_CLI_ARGS);
+    const smartModelJson = serializeModelJson(testModel("smart-model"));
+    insertHistoryItems(session, null, [userMessage("Hello")], smartModelJson);
     const sessionId = session.metadata.sessionId!;
 
     const loaded = loadSession(sessionId);
     expect(loaded).not.toBeNull();
-    expect(loaded!.history.map(node => node.modelNickname)).toEqual(["smart-model"]);
-    expect(latestModelNickname(loaded!.history)).toBe("smart-model");
+    expect(loaded!.history.map(node => node.modelJson)).toEqual([smartModelJson]);
+    expect(latestModelJson(loaded!.history)).toBe(smartModelJson);
   });
 
-  it("resumes with the most recently persisted nickname", () => {
+  it("resumes with the most recently persisted model", () => {
     const session = createSession("/test/model-switch", LOCAL_CLI_ARGS);
-    const first = insertHistoryItems(session, null, [userMessage("Hello")], "smart-model");
-    insertHistoryItems(session, first.at(-1)!.nodeId, [userMessage("Switch")], "fast-model");
+    const smartModelJson = serializeModelJson(testModel("smart-model"));
+    const fastModelJson = serializeModelJson(testModel("fast-model"));
+    const first = insertHistoryItems(session, null, [userMessage("Hello")], smartModelJson);
+    insertHistoryItems(session, first.at(-1)!.nodeId, [userMessage("Switch")], fastModelJson);
     const sessionId = session.metadata.sessionId!;
 
     const loaded = loadSession(sessionId)!;
-    expect(loaded.history.map(node => node.modelNickname)).toEqual(["smart-model", "fast-model"]);
-    expect(latestModelNickname(loaded.history)).toBe("fast-model");
+    expect(loaded.history.map(node => node.modelJson)).toEqual([smartModelJson, fastModelJson]);
+    expect(latestModelJson(loaded.history)).toBe(fastModelJson);
   });
 
-  it("returns null when no node has a nickname", () => {
+  it("returns null when no node has a model", () => {
     const session = createSession("/test/model-legacy", LOCAL_CLI_ARGS);
     insertHistoryItems(session, null, [userMessage("Hello")], null);
     const sessionId = session.metadata.sessionId!;
 
     const loaded = loadSession(sessionId)!;
-    expect(latestModelNickname(loaded.history)).toBeNull();
+    expect(latestModelJson(loaded.history)).toBeNull();
   });
 });

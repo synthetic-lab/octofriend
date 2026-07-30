@@ -224,7 +224,7 @@ function SwitchModelMenu() {
         setPendingModel(model);
         return;
       }
-      setModelOverride(target, session);
+      setModelOverride(model, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
@@ -273,7 +273,7 @@ function SwitchModelMenu() {
               });
             }
           }
-          setModelOverride(pendingModel.nickname, session);
+          setModelOverride(pendingModel, session);
           setPendingModel(null);
           setMenuMode("main-menu");
           toggleMenu();
@@ -762,7 +762,7 @@ function SetDefaultModelMenu() {
         ...config,
         models: [model, ...rest],
       });
-      setModelOverride(target, session);
+      setModelOverride(model, session);
       setMenuMode("main-menu");
       toggleMenu();
     },
@@ -828,7 +828,7 @@ function RemoveModelMenu() {
         models: [...rest],
       });
       const current = rest[0];
-      setModelOverride(current.nickname, session);
+      setModelOverride(current, session);
       setMenuMode("main-menu");
       toggleMenu();
     },

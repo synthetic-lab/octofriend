@@ -1,6 +1,7 @@
 import {
   AuthError,
   Config,
+  ModelConfig,
   useConfig,
   getModelFromConfig,
   readAuthForModel,
@@ -11,10 +12,11 @@ import {
   createSession,
   HistoryNode,
   insertHistoryItems,
-  latestModelNickname,
+  latestModelJson,
   HistoryItem,
   Session,
 } from "./session-history/index.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
@@ -138,7 +140,7 @@ export type UiState = {
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   resetPreMenuVimMode: () => void;
-  setModelOverride: (m: string, session: Session) => void;
+  setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
@@ -159,12 +161,12 @@ function appendAndPersistHistory(
   session: Session,
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
-  modelNickname: string,
+  model: ModelConfig,
 ): HistoryNode[] {
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
   return [
     ...prevHistory,
-    ...insertHistoryItems(session, parentNodeId, itemsToInsert, modelNickname),
+    ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
   ];
 }
 
@@ -305,7 +307,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     };
 
     const model = getModelFromConfig(config, get().modelOverride);
-    const history = appendAndPersistHistory(session, get().history, [userMessage], model.nickname);
+    const history = appendAndPersistHistory(session, get().history, [userMessage], model);
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport, session });
   },
@@ -413,7 +415,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
           ...skippedCalls,
         ],
-        model.nickname,
+        model,
       ),
       modeData: {
         mode: "input",
@@ -460,7 +462,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     if (skipped.length > 0) {
       const model = getModelFromConfig(config, get().modelOverride);
-      set({ history: appendAndPersistHistory(session, get().history, skipped, model.nickname) });
+      set({ history: appendAndPersistHistory(session, get().history, skipped, model) });
     }
 
     /*
@@ -541,7 +543,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setModelOverride: (model, _session) => {
-    set({ modelOverride: model });
+    set({ modelOverride: serializeModelJson(model) });
   },
 
   notify: (notif, session, config) => {
@@ -556,7 +558,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             content: notif,
           },
         ],
-        model.nickname,
+        model,
       ),
     });
   },
@@ -564,7 +566,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   hydrateSession: history => {
     set(state => ({
       history,
-      modelOverride: latestModelNickname(history),
+      modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
@@ -644,7 +646,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               },
             },
           ],
-          model.nickname,
+          model,
         ),
       });
     } else {
@@ -658,7 +660,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               ir: toolRunResultToIR(result.data, toolReq),
             },
           ],
-          model.nickname,
+          model,
         ),
       });
     }
@@ -784,12 +786,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               ir: event.checkpoint,
             };
             set({
-              history: appendAndPersistHistory(
-                session,
-                historyCopy,
-                [checkpointItem],
-                model.nickname,
-              ),
+              history: appendAndPersistHistory(session, historyCopy, [checkpointItem], model),
             });
           },
 
@@ -822,7 +819,7 @@ export const useAppStore = create<UiState>((set, get) => ({
                 session,
                 historyCopy,
                 outputToHistory(event.irs),
-                model.nickname,
+                model,
               ),
             });
           },
@@ -830,12 +827,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
       throttle.flush();
       set({
-        history: appendAndPersistHistory(
-          session,
-          historyCopy,
-          outputToHistory(finish.irs),
-          model.nickname,
-        ),
+        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
       });
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
@@ -891,7 +883,7 @@ export const useAppStore = create<UiState>((set, get) => ({
                 type: "compaction-failed",
               },
             ],
-            model.nickname,
+            model,
           ),
         });
         return;

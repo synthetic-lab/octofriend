@@ -1,0 +1,1 @@
+ALTER TABLE `history_items` ADD `model_json` text;

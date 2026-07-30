@@ -18,7 +18,7 @@ import {
   ConfigContext,
   ConfigPathContext,
   SetConfigContext,
-  getModelFromConfig,
+  matchModelFromConfig,
   mergeEnvVar,
   readAuthForModel,
   useConfig,
@@ -58,6 +58,7 @@ import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.t
 import { useAppStore, RunArgs, useModel, InflightResponseType, nextToolAction } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
+import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
@@ -301,18 +302,21 @@ export default function App({
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
   const showToast = useToast();
-  const currentModel = getModelFromConfig(currConfig, modelOverride);
-  const currentModelRef = useRef(currentModel);
-  currentModelRef.current = currentModel;
+  const matchedModel =
+    modelOverride == null ? null : matchModelFromConfig(currConfig, modelOverride);
+  const matchedModelRef = useRef(matchedModel);
+  matchedModelRef.current = matchedModel;
   useEffect(() => {
     if (modelOverride == null) return;
-    if (currentModelRef.current.nickname === modelOverride) return;
+    if (matchedModelRef.current != null) return;
+    const sessionModel = tryDeserializeModelJson(modelOverride);
+    const modelDescription = sessionModel ? `"${sessionModel.nickname},"` : "a model";
     showToast(
       <Span style={{ color: "red" }}>
-        {`This session used the model "${modelOverride}", which is no longer in your config. Falling back to the default model.`}
+        {`This session used ${modelDescription} which is no longer in your config. Falling back to the default model.`}
       </Span>,
     );
-  }, [currentModelRef, sessionHydrationNonce, showToast]);
+  }, [matchedModelRef, sessionHydrationNonce, showToast]);
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {
     skillNotifs.push(" ");

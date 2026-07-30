@@ -7,6 +7,7 @@ import { useAppStore, nextToolAction } from "./state.ts";
 import type { Config } from "./config.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
@@ -130,7 +131,7 @@ function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
         },
       },
     ],
-    config.models[0].nickname,
+    serializeModelJson(config.models[0]),
   );
   useAppStore.getState().hydrateSession(nodes);
   const abortController = new AbortController();

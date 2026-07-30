@@ -1,1 +1,0 @@
-ALTER TABLE `history_items` ADD `model_nickname` text;

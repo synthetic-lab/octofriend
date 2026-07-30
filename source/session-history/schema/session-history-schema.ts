@@ -107,7 +107,7 @@ export const historyItems = sqliteTable(
   "history_items",
   {
     id: integer().primaryKey({ autoIncrement: true }),
-    modelNickname: text(),
+    modelJson: text(),
     requestFailedId: integer().references(() => requestFailedItems.id, { onDelete: "restrict" }),
     compactionFailedId: integer().references(() => compactionFailedItems.id, {
       onDelete: "restrict",
