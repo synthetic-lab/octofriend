@@ -2,6 +2,9 @@ import type { ModelConfig } from "../config.ts";
 
 export const CURRENT_MODEL_JSON_VERSION = "octo-model/v1" as const;
 
+// Stored in place of a model JSON for history items written before we started recording models.
+export const NO_MODEL_RECORDED = "octo-no-model-recorded" as const;
+
 type VersionedModelJson = {
   version: typeof CURRENT_MODEL_JSON_VERSION;
   model: ModelConfig;

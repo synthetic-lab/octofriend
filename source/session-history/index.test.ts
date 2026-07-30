@@ -10,7 +10,7 @@ import {
   SessionNotFoundError,
   type HistoryItem,
 } from "./index.ts";
-import { serializeModelJson } from "./model-json.ts";
+import { NO_MODEL_RECORDED, serializeModelJson } from "./model-json.ts";
 import type { ModelConfig } from "../config.ts";
 
 const LOCAL_CLI_ARGS = { kind: "local" } as const;
@@ -148,12 +148,13 @@ describe("model identifiers", () => {
     expect(latestModelJson(loaded.history)).toBe(fastModelJson);
   });
 
-  it("returns null when no node has a model", () => {
+  it("treats the legacy sentinel as no recorded model", () => {
     const session = createSession("/test/model-legacy", LOCAL_CLI_ARGS);
-    insertHistoryItems(session, null, [userMessage("Hello")], null);
+    insertHistoryItems(session, null, [userMessage("Hello")], NO_MODEL_RECORDED);
     const sessionId = session.metadata.sessionId!;
 
     const loaded = loadSession(sessionId)!;
+    expect(loaded.history.map(node => node.modelJson)).toEqual([null]);
     expect(latestModelJson(loaded.history)).toBeNull();
   });
 });

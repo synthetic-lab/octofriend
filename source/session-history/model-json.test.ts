@@ -1,6 +1,13 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ApiKeyModelConfig, CodexModelConfig, ModelConfig } from "../config.ts";
-import { serializeModelJson } from "./model-json.ts";
+import { NO_MODEL_RECORDED, serializeModelJson, tryDeserializeModelJson } from "./model-json.ts";
+
+const MODEL_JSON_MIGRATION = path.join(
+  import.meta.dirname,
+  "../../drizzle/0006_history_item_model_json.sql",
+);
 
 /*
  * Fails to compile if ModelConfigSchema gains a new variant beyond the API-key and Codex ones:
@@ -68,5 +75,19 @@ describe("model JSON versioning", () => {
       version: "octo-model/v1",
       model: FULL_CODEX_MODEL,
     });
+  });
+
+  it("never confuses the no-model-recorded sentinel for a real model JSON", () => {
+    // The migration uses this sentinel to backfill rows written before models were recorded; it
+    // must never be valid model JSON.
+    expect(() => JSON.parse(NO_MODEL_RECORDED)).toThrow();
+    expect(tryDeserializeModelJson(NO_MODEL_RECORDED)).toBeNull();
+  });
+
+  it("uses the same sentinel in the backfill migration", () => {
+    // The migration is a static SQL file, so the sentinel is duplicated there; this keeps the two
+    // copies from drifting.
+    const sql = readFileSync(MODEL_JSON_MIGRATION, "utf8");
+    expect(sql).toContain(`'${NO_MODEL_RECORDED}'`);
   });
 });

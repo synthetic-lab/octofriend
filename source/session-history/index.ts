@@ -16,6 +16,7 @@ import {
   trees,
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import { NO_MODEL_RECORDED } from "./model-json.ts";
 import { excerpt } from "./preview.ts";
 
 export type TransportKind = "local" | "docker-connect" | "docker-run";
@@ -220,7 +221,7 @@ type SessionTreeNode = SessionTree["nodes"][number];
 
 function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
   const item = node.historyItem;
-  const modelJson = item.modelJson ?? null;
+  const modelJson = item.modelJson === NO_MODEL_RECORDED ? null : item.modelJson;
   if (item.llmIr != null) {
     return {
       nodeId: node.id,
@@ -318,7 +319,7 @@ export function insertHistoryItems(
   session: Session,
   parentNodeId: number | null,
   itemsToInsert: HistoryItem[],
-  modelJson: string | null,
+  modelJson: string,
 ): HistoryNode[] {
   if (itemsToInsert.length === 0) return [];
 
@@ -419,7 +420,7 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
     .get().id;
 }
 
-function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: string | null): number {
+function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: string): number {
   let requestFailedId: number | null = null;
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
