@@ -18,6 +18,7 @@ import {
   ConfigContext,
   ConfigPathContext,
   SetConfigContext,
+  getModelFromConfig,
   mergeEnvVar,
   readAuthForModel,
   useConfig,
@@ -300,15 +301,18 @@ export default function App({
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
   const showToast = useToast();
+  const currentModel = getModelFromConfig(currConfig, modelOverride);
+  const currentModelRef = useRef(currentModel);
+  currentModelRef.current = currentModel;
   useEffect(() => {
     if (modelOverride == null) return;
-    if (currConfig.models.some(model => model.nickname === modelOverride)) return;
+    if (currentModelRef.current.nickname === modelOverride) return;
     showToast(
       <Span style={{ color: "red" }}>
         {`This session used the model "${modelOverride}", which is no longer in your config. Falling back to the default model.`}
       </Span>,
     );
-  }, [currConfig.models, modelOverride, sessionHydrationNonce, showToast]);
+  }, [currentModelRef, sessionHydrationNonce, showToast]);
   const skillNotifs: string[] = [];
   if (bootSkills.length > 0) {
     skillNotifs.push(" ");
