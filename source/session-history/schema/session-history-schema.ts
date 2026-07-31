@@ -95,6 +95,14 @@ export const llmIrs = sqliteTable("llm_irs", {
   json: text().notNull(),
 });
 
+/*
+ * Deletion of history items and their payloads is handled by AFTER DELETE triggers in
+ * drizzle/0003_tree_node_triggers.sql, NOT by FK cascades — drizzle schemas can't express
+ * triggers, so you must read that migration file to see the full deletion behavior. (The FK
+ * arrows here point from each row to the rows it was built from, which is opposite the
+ * deletion order, so cascades can't express it.) The `restrict` actions below make the trigger
+ * chain the only deletion path: payloads can't be deleted while a history item references them.
+ */
 export const historyItems = sqliteTable(
   "history_items",
   {
@@ -125,6 +133,9 @@ export const treeNodes = sqliteTable(
   "tree_nodes",
   {
     id: integer().primaryKey({ autoIncrement: true }),
+    // No onDelete action here on purpose: deleting a tree node must delete its history item
+    // (a child delete propagating to the parent), which FKs can't express. The
+    // tree_nodes_delete_history_item trigger handles it; see the comment above historyItems.
     historyItemId: integer()
       .notNull()
       .references(() => historyItems.id),
