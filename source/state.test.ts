@@ -253,12 +253,12 @@ describe("nextToolAction", () => {
   const base = [assistantNode(batch, 1)];
 
   it("runs the first tool when nothing is answered", () => {
-    expect(nextToolAction(batch, null, base)).toEqual({ kind: "pending", req: callA });
+    expect(nextToolAction(batch, null, base)).toEqual({ kind: "ready", req: callA });
   });
 
   it("runs the first unanswered tool", () => {
     expect(nextToolAction(batch, null, [...base, toolOutputNode(callA, 2)])).toEqual({
-      kind: "pending",
+      kind: "ready",
       req: callB,
     });
   });
@@ -269,12 +269,12 @@ describe("nextToolAction", () => {
   });
 
   it("waits for the in-flight tool rather than re-running it", () => {
-    expect(nextToolAction(batch, "call_a", base)).toEqual({ kind: "wait", req: callA });
+    expect(nextToolAction(batch, "call_a", base)).toEqual({ kind: "in-flight", req: callA });
   });
 
   it("ignores a stale running ID for an already-answered tool", () => {
     expect(nextToolAction(batch, "call_a", [...base, toolOutputNode(callA, 2)])).toEqual({
-      kind: "pending",
+      kind: "ready",
       req: callB,
     });
   });
@@ -288,7 +288,7 @@ describe("nextToolAction", () => {
         ir: { role: "tool-skip-output", toolCall: callA, reason: "skipped" },
       },
     ];
-    expect(nextToolAction(batch, null, history)).toEqual({ kind: "pending", req: callB });
+    expect(nextToolAction(batch, null, history)).toEqual({ kind: "ready", req: callB });
   });
 });
 
@@ -309,7 +309,7 @@ describe("menu round-trips during a tool batch", () => {
     const state = useAppStore.getState();
     if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
     expect(nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history)).toEqual(
-      { kind: "pending", req: callB },
+      { kind: "ready", req: callB },
     );
 
     await useAppStore.getState().runTool({ config, transport, session, toolReq: callB });
@@ -338,7 +338,7 @@ describe("menu round-trips during a tool batch", () => {
     const state = useAppStore.getState();
     if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
     expect(nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history)).toEqual(
-      { kind: "wait", req: callA },
+      { kind: "in-flight", req: callA },
     );
 
     // Clean up: abort the batch so the test doesn't wait on the sleeping tool.
@@ -378,7 +378,7 @@ describe("menu round-trips during a tool batch", () => {
       if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
       expect(
         nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history),
-      ).toEqual({ kind: "pending", req: callB });
+      ).toEqual({ kind: "ready", req: callB });
 
       // The canary double-run guard must not fire when running the next tool.
       await useAppStore.getState().runTool({ config, transport, session, toolReq: callB });

@@ -173,8 +173,8 @@ export function answeredToolCallIds(history: readonly HistoryNode[]): Set<string
 }
 
 export type ToolAction =
-  | { kind: "wait"; req: ToolCallRequest }
-  | { kind: "pending"; req: ToolCallRequest }
+  | { kind: "in-flight"; req: ToolCallRequest }
+  | { kind: "ready"; req: ToolCallRequest }
   | { kind: "done" };
 
 /*
@@ -182,8 +182,8 @@ export type ToolAction =
  * cursor in component state. ToolRequestsRenderer unmounts when the menu opens, and a
  * component-local cursor would reset to 0 on remount, re-running tools that already executed.
  * Deriving from history makes unmount/remount cycles safe: a remounted renderer re-derives the
- * same action. An unanswered in-flight tool yields "wait" so the renderer shows progress without
- * re-invoking the tool.
+ * same action. An unanswered in-flight tool yields "in-flight" so the renderer shows progress
+ * without re-invoking the tool.
  */
 export function nextToolAction(
   toolReqs: ToolCallRequest[],
@@ -191,13 +191,15 @@ export function nextToolAction(
   history: readonly HistoryNode[],
 ): ToolAction {
   const answered = answeredToolCallIds(history);
-  const pending = toolReqs.filter(req => req.type === "tool-call" && !answered.has(req.toolCallId));
+  const unanswered = toolReqs.filter(
+    req => req.type === "tool-call" && !answered.has(req.toolCallId),
+  );
   if (runningToolCallId != null) {
-    const running = pending.find(req => req.toolCallId === runningToolCallId);
-    if (running) return { kind: "wait", req: running };
+    const running = unanswered.find(req => req.toolCallId === runningToolCallId);
+    if (running) return { kind: "in-flight", req: running };
   }
-  const [first] = pending;
-  if (first) return { kind: "pending", req: first };
+  const [first] = unanswered;
+  if (first) return { kind: "ready", req: first };
   return { kind: "done" };
 }
 
@@ -519,6 +521,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
+      // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
+      runningToolCallId: null,
     }));
   },
 
@@ -538,6 +542,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       sessionAutoNotify: false,
       modeData: { mode: "input", vimMode: "INSERT" },
       preMenuModeData: null,
+      // An aborted tool clears this itself when it settles, but until it does the new session
+      // must not see the old session's in-flight ID.
+      runningToolCallId: null,
     }));
     return createSession(cwd, cliArgs);
   },
