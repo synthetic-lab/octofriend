@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createSession,
+  deleteHistorySubtree,
   deleteSession,
   insertHistoryItems,
   loadSession,
@@ -51,5 +52,50 @@ describe("deleteSession", () => {
       sessionId,
       message: `Session ${sessionId} does not exist.`,
     });
+  });
+});
+
+describe("deleteHistorySubtree", () => {
+  it("lets a new root be inserted after deleting the entire history (edit & retry)", () => {
+    const session = createSession("/test/delete-subtree-root", LOCAL_CLI_ARGS);
+    const [root] = insertHistoryItems(session, null, [userMessage("Original first message")]);
+    insertHistoryItems(session, root.nodeId, [userMessage("Follow-up")]);
+
+    // Edit & retry from the first message truncates the whole in-memory history; the discarded
+    // branch must be deleted from the DB, or resending tries to create a second root node and
+    // violates tree_nodes_one_root_unique.
+    deleteHistorySubtree(session, root.nodeId);
+
+    const sessionId = session.metadata.sessionId!;
+    const [newRoot] = insertHistoryItems(session, null, [userMessage("Edited first message")]);
+    expect(newRoot.nodeId).not.toBe(root.nodeId);
+
+    const loaded = loadSession(sessionId);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.history).toHaveLength(1);
+    expect(loaded!.history[0]).toMatchObject({
+      type: "llm-ir",
+      ir: { role: "user", content: [{ type: "text", content: "Edited first message" }] },
+    });
+  });
+
+  it("deletes descendants so the discarded branch can't resurrect on reload", () => {
+    const session = createSession("/test/delete-subtree-branch", LOCAL_CLI_ARGS);
+    const [root] = insertHistoryItems(session, null, [userMessage("Keep me")]);
+    const [discarded] = insertHistoryItems(session, root.nodeId, [userMessage("Discard me")]);
+    insertHistoryItems(session, discarded.nodeId, [userMessage("Discard me too")]);
+
+    deleteHistorySubtree(session, discarded.nodeId);
+
+    const sessionId = session.metadata.sessionId!;
+    insertHistoryItems(session, root.nodeId, [userMessage("Replacement branch")]);
+
+    const loaded = loadSession(sessionId);
+    expect(loaded).not.toBeNull();
+    const messages = loaded!.history.map(item => {
+      if (item.type !== "llm-ir" || item.ir.role !== "user") return null;
+      return item.ir.content.find(content => content.type === "text")?.content ?? null;
+    });
+    expect(messages).toEqual(["Keep me", "Replacement branch"]);
   });
 });

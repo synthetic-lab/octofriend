@@ -54,7 +54,7 @@ import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
-import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
+import { useAppStore, RunArgs, useModel, InflightResponseType, RetryCountdown } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
 import { Octo } from "./components/octo.tsx";
@@ -712,6 +712,15 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "request-error") {
+    if (modeData.retrying) {
+      return (
+        <RetryCountdownScreen
+          mode="request-error"
+          contextualMessage="It looks like you've hit a request error!"
+          retrying={modeData.retrying}
+        />
+      );
+    }
     return (
       <RequestErrorScreen
         mode="request-error"
@@ -722,6 +731,15 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "compaction-error") {
+    if (modeData.retrying) {
+      return (
+        <RetryCountdownScreen
+          mode="compaction-error"
+          contextualMessage="History compaction failed due to a request error!"
+          retrying={modeData.retrying}
+        />
+      );
+    }
     return (
       <RequestErrorScreen
         mode="compaction-error"
@@ -946,6 +964,79 @@ function AuthErrorScreen({
         onCancel={clearAuthError}
       />
     </TerminalFlex>
+  );
+}
+function RetryCountdownScreen({
+  mode,
+  contextualMessage,
+  retrying,
+}: {
+  mode: "request-error" | "compaction-error";
+  contextualMessage: string;
+  retrying: RetryCountdown;
+}) {
+  const config = useConfig();
+  const transport = useContext(TransportContext);
+  const session = useSession();
+  const { retryFrom, cancelRetry } = useAppStore(
+    useShallow(state => ({
+      retryFrom: state.retryFrom,
+      cancelRetry: state.cancelRetry,
+    })),
+  );
+  const shortcutItems: ShortcutArray<"retry-now" | "dont-retry"> = [
+    {
+      type: "key" as const,
+      mapping: {
+        r: {
+          label: "Retry now",
+          value: "retry-now",
+        },
+        d: {
+          label: "Don't retry",
+          value: "dont-retry",
+        },
+      },
+    },
+  ];
+  const onSelect = useCallback(
+    (item: Item<"retry-now" | "dont-retry">) => {
+      if (item.value === "retry-now") {
+        retryFrom(mode, {
+          config,
+          transport,
+          session,
+        });
+      } else {
+        cancelRetry();
+      }
+    },
+    [mode, config, transport, session, retryFrom, cancelRetry],
+  );
+  return (
+    <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        {contextualMessage}
+      </Span>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Retrying {retrying.retriesLeft} more {retrying.retriesLeft === 1 ? "time" : "times"} in{" "}
+          {retrying.secondsLeft} {retrying.secondsLeft === 1 ? "second" : "seconds"}...
+        </Span>
+      </TerminalFlex>
+    </KbShortcutPanel>
   );
 }
 function RequestErrorScreen({

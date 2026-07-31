@@ -3,12 +3,15 @@ import {
   Config,
   useConfig,
   getModelFromConfig,
+  getRetryConfig,
   readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
+import { sleep } from "./sleep.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistorySubtree,
   HistoryNode,
   insertHistoryItems,
   HistoryItem,
@@ -42,6 +45,10 @@ export type InflightResponseType = {
   type: "inflight-response";
   content: string;
   reasoningContent?: string | null;
+};
+export type RetryCountdown = {
+  retriesLeft: number;
+  secondsLeft: number;
 };
 export type UiState = {
   preMenuModeData: UiState["modeData"] | null;
@@ -84,11 +91,13 @@ export type UiState = {
         mode: "request-error";
         error: string;
         curlCommand: string | null;
+        retrying?: RetryCountdown;
       }
     | {
         mode: "compaction-error";
         error: string;
         curlCommand: string | null;
+        retrying?: RetryCountdown;
       }
     | {
         mode: "diff-apply";
@@ -134,6 +143,7 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
+  cancelRetry: () => void;
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string, session: Session) => void;
@@ -142,7 +152,8 @@ export type UiState = {
   hydrateSession: (history: readonly HistoryNode[]) => void;
   startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  runAgent: (args: RunArgs) => Promise<void>;
+  runAgent: (args: RunArgs, opts?: { retriesLeft?: number }) => Promise<void>;
+  _runAgentAttempt: (args: RunArgs) => Promise<void>;
 };
 
 function appendAndPersistHistory(
@@ -230,9 +241,26 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   retryFrom: async (mode, args) => {
-    if (get().modeData.mode === mode) {
-      await get().runAgent(args);
-    }
+    const { modeData } = get();
+    if (modeData.mode !== mode) return;
+    // If a retry countdown is active, "Retry now" consumes one of the remaining retries, so the
+    // countdown keeps counting down instead of restarting from the full retry count.
+    const retrying =
+      modeData.mode === "request-error" || modeData.mode === "compaction-error"
+        ? modeData.retrying
+        : undefined;
+    await get().runAgent(
+      args,
+      retrying ? { retriesLeft: Math.max(0, retrying.retriesLeft - 1) } : undefined,
+    );
+  },
+
+  cancelRetry: () => {
+    const { modeData } = get();
+    if (modeData.mode !== "request-error" && modeData.mode !== "compaction-error") return;
+    if (!modeData.retrying) return;
+    const { retrying: _retrying, ...withoutRetrying } = modeData;
+    set({ modeData: withoutRetrying });
   },
 
   clearAuthError: () => {
@@ -240,7 +268,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ modeData: { mode: "input", vimMode: "INSERT" } });
   },
 
-  editAndRetryFrom: (mode, _args) => {
+  editAndRetryFrom: (mode, args) => {
     if (get().modeData.mode !== mode) {
       return;
     }
@@ -265,6 +293,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
       return;
     }
+
+    // The in-memory history is truncated below, so delete the discarded branch from the database
+    // too. Otherwise resending from an emptied history would try to create a second root node in
+    // the session's tree, and reloading the session could resurrect the discarded branch.
+    deleteHistorySubtree(args.session, lastUserItem.nodeId);
 
     const filteredHistory = history.slice(0, lastUserPromptIndex);
     const textPart = lastUserItem.ir.content.find(part => part.type === "text");
@@ -573,7 +606,46 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  runAgent: async ({ config, transport, session }) => {
+  runAgent: async (args, opts) => {
+    const { config } = args;
+    const { retryCount, retryIntervalMs } = getRetryConfig(config);
+
+    let retriesLeft = opts?.retriesLeft ?? retryCount;
+    while (true) {
+      await get()._runAgentAttempt(args);
+
+      const failedModeData = get().modeData;
+      if (failedModeData.mode !== "request-error" && failedModeData.mode !== "compaction-error") {
+        return;
+      }
+      if (retriesLeft <= 0) return;
+
+      const deadline = Date.now() + retryIntervalMs;
+      let retryModeData: typeof failedModeData = failedModeData;
+      while (true) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) break;
+        retryModeData = {
+          ...failedModeData,
+          retrying: {
+            retriesLeft,
+            secondsLeft: Math.ceil(remainingMs / 1000),
+          },
+        };
+        set({ modeData: retryModeData });
+        await sleep(Math.min(1000, remainingMs));
+        // Bail if the user did something while we were waiting (e.g. manually retried, edited, or
+        // cancelled the retry): any state change replaces the modeData object, so an identity
+        // mismatch means we should stop the countdown.
+        if (get().modeData !== retryModeData) return;
+      }
+      // Final check in case the user intervened in the last moments of the countdown
+      if (get().modeData !== retryModeData) return;
+      retriesLeft--;
+    }
+  },
+
+  _runAgentAttempt: async ({ config, transport, session }) => {
     const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;
