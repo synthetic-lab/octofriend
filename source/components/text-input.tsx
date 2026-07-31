@@ -143,8 +143,11 @@ export default function TextInput({
                     start: characterIndexToStringIndex(value, nativeVisualLineRange.start),
                     end: characterIndexToStringIndex(value, nativeVisualLineRange.end),
                   };
+            // Don't intercept vertical movement while a vim operator is pending
+            // (e.g. the j in dj): the key belongs to the vim handler instead.
             if (
               vimMode === "NORMAL" &&
+              !vimHandler.hasPendingCommand() &&
               (event.key === "j" ||
                 event.key === "ArrowDown" ||
                 event.key === "k" ||

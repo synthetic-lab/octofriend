@@ -6,13 +6,8 @@ import { TerminalFlex } from "./terminal-flex.tsx";
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
 const isWordChar = (char: string): boolean => /[a-zA-Z0-9_]/.test(char);
-const trimNewlinesFromEnd = (text: string, start: number, end: number): number => {
-  let trimmedEnd = end;
-  for (; trimmedEnd > start; trimmedEnd--) {
-    if (!isNewline(text[trimmedEnd - 1])) break;
-  }
-  return trimmedEnd;
-};
+// Note: charwise deletions that cross lines (e.g. dw on "foo\nbar") include
+// the trailing newline, joining the lines - matching real vim.
 const clampToVimBounds = (pos: number, textLength: number): number => {
   return Math.min(Math.max(0, pos), Math.max(0, textLength - 1));
 };
@@ -96,6 +91,39 @@ const includeFollowingNewline = (text: string, range: VisualLineRange): VisualLi
   if (text[end] === "\r" && text[end + 1] === "\n") end += 2;
   else if (isNewline(text[end])) end += 1;
   return { start: range.start, end };
+};
+// The rightmost position a NORMAL-mode cursor may occupy: the last character,
+// or just past it when the buffer ends with a newline (an empty last line)
+const getMaxNormalCursorPosition = (text: string): number =>
+  text.length > 0 && isNewline(text[text.length - 1]) ? text.length : Math.max(0, text.length - 1);
+// Finds the end of the current or next word, vim-style: a "word" is either a
+// run of letters/digits/underscores or a run of other non-blank characters
+// (punctuation), and the two classes are distinct - "foo.bar" contains the
+// words "foo", ".", and "bar".
+const findWordEnd = (text: string, cursorPosition: number): number => {
+  const textLength = text.length;
+  let position = cursorPosition;
+  const currentChar = text[position];
+  const nextChar = position + 1 < textLength ? text[position + 1] : "";
+  const atWordEnd =
+    !isWhitespace(currentChar) &&
+    (position === textLength - 1 ||
+      isWhitespace(nextChar) ||
+      isWordChar(nextChar) !== isWordChar(currentChar));
+  // If already at a word end, move forward to find the next one
+  if (atWordEnd) position++;
+  while (position < textLength && isWhitespace(text[position])) position++;
+  if (position < textLength) {
+    const isWord = isWordChar(text[position]);
+    while (
+      position + 1 < textLength &&
+      !isWhitespace(text[position + 1]) &&
+      isWordChar(text[position + 1]) === isWord
+    ) {
+      position++;
+    }
+  }
+  return position;
 };
 type Motion = (
   text: string,
@@ -272,33 +300,9 @@ const motions: Record<string, Motion> = {
     };
   },
   e: (text, cursorPosition) => {
-    const textLength = text.length;
-    const currentChar = text[cursorPosition];
-    const nextChar = cursorPosition + 1 < textLength ? text[cursorPosition + 1] : "";
-    const atWordEnd =
-      !isWhitespace(currentChar) && (cursorPosition === textLength - 1 || isWhitespace(nextChar));
-    let endPos: number;
-    if (atWordEnd) {
-      endPos = cursorPosition + 1;
-      while (endPos < textLength && isWhitespace(text[endPos])) {
-        endPos++;
-      }
-      while (endPos < textLength && !isWhitespace(text[endPos])) {
-        endPos++;
-      }
-    } else {
-      endPos = cursorPosition;
-      while (endPos < textLength && isWhitespace(text[endPos])) {
-        endPos++;
-      }
-      while (endPos < textLength && !isWhitespace(text[endPos])) {
-        endPos++;
-      }
-    }
-    const vimEndPos = Math.max(0, endPos - 1);
     return {
       start: cursorPosition,
-      end: vimEndPos + 1,
+      end: findWordEnd(text, cursorPosition) + 1,
     };
   },
   "0": (text, cursorPosition, visualLineRange) => {
@@ -319,41 +323,85 @@ const motions: Record<string, Motion> = {
     const lineRange = getCurrentLineRange(text, cursorPosition, visualLineRange);
     const position = getFirstNonWhitespaceInRange(text, lineRange);
     return {
-      start: cursorPosition,
-      end: position,
+      start: Math.min(position, cursorPosition),
+      end: Math.max(position, cursorPosition),
+    };
+  },
+  // G is a linewise motion: it covers from the start of the current logical
+  // line through the end of the buffer.
+  G: (text, cursorPosition) => {
+    const currentLineInfo = getLineInfo(text, cursorPosition);
+    return {
+      start: getLineStart(text, currentLineInfo.lineIndex),
+      end: text.length,
     };
   },
 };
+// Motions that delete whole logical lines: dj, dk, dgg, dG, and dd when the
+// visual line spans the entire logical line. (A dd that deletes only a
+// soft-wrapped portion of a logical line is charwise instead.)
+const logicalLinewiseMotions = new Set(["j", "k", "gg", "G", "dd"]);
 const operators: Record<string, Operator> = {
   d: (text, { start, end }, motionChar) => {
-    let actualEnd = Math.min(end, text.length);
-    const actualStart = Math.min(start, actualEnd);
+    const actualEnd = Math.min(end, text.length);
+    let actualStart = Math.min(start, actualEnd);
 
-    // Don't delete newlines at the end of the range for motion-based deletions (de, d$, etc.)
-    // But do delete newlines for line-based deletions (dd)
-    if (motionChar !== "d") {
-      actualEnd = trimNewlinesFromEnd(text, actualStart, actualEnd);
-    }
-    const newText = text.slice(0, actualStart) + text.slice(actualEnd);
-    let newCursorPosition = actualStart;
-    if (newText.length === 0) {
-      newCursorPosition = 0;
-    } else if (newCursorPosition >= newText.length) {
-      newCursorPosition = newText.length - 1;
-    }
-
-    // Don't leave the cursor on a newline character (unless it's line deletion)
-    // Also skip this if the cursor is on an empty line (newline is the only valid position)
-    if (motionChar !== "d") {
-      const cursorLineInfo = getLineInfo(newText, newCursorPosition);
-      const cursorLine = getLineText(newText, cursorLineInfo.lineIndex);
-      while (
-        newCursorPosition > 0 &&
-        isNewline(newText[newCursorPosition]) &&
-        cursorLine.length > 0
-      ) {
-        newCursorPosition--;
+    if (motionChar !== undefined && logicalLinewiseMotions.has(motionChar)) {
+      // Linewise deletions remove whole lines. When the range runs to the end
+      // of the buffer there is no following newline to consume, so consume
+      // the preceding newline instead - otherwise an empty line would be left
+      // behind, which never happens in vim.
+      if (actualEnd >= text.length && actualStart > 0 && isNewline(text[actualStart - 1])) {
+        actualStart--;
       }
+      const newText = text.slice(0, actualStart) + text.slice(actualEnd);
+      if (newText.length === 0) {
+        return {
+          newText,
+          newCursorPosition: 0,
+        };
+      }
+      // Vim leaves the cursor on the first non-blank of the surviving line
+      const clamped = Math.min(actualStart, newText.length - 1);
+      const lineInfo = getLineInfo(newText, clamped);
+      const lineStart = getLineStart(newText, lineInfo.lineIndex);
+      const newCursorPosition = getFirstNonWhitespaceInRange(newText, {
+        start: lineStart,
+        end: lineStart + getLineText(newText, lineInfo.lineIndex).length,
+      });
+      return {
+        newText,
+        newCursorPosition,
+      };
+    }
+
+    const newText = text.slice(0, actualStart) + text.slice(actualEnd);
+    if (newText.length === 0) {
+      return {
+        newText,
+        newCursorPosition: 0,
+      };
+    }
+    // If the deletion emptied the end of the buffer (e.g. D on the last
+    // line), the cursor rests on that empty final line, just past the last
+    // newline character
+    if (actualStart >= newText.length && isNewline(newText[newText.length - 1])) {
+      return {
+        newText,
+        newCursorPosition: newText.length,
+      };
+    }
+    let newCursorPosition = Math.min(actualStart, newText.length - 1);
+    // Don't leave the cursor on a newline character (unless it's an empty
+    // line, where the newline is the only valid position)
+    const cursorLineInfo = getLineInfo(newText, newCursorPosition);
+    const cursorLine = getLineText(newText, cursorLineInfo.lineIndex);
+    while (
+      newCursorPosition > 0 &&
+      isNewline(newText[newCursorPosition]) &&
+      cursorLine.length > 0
+    ) {
+      newCursorPosition--;
     }
     return {
       newText,
@@ -421,6 +469,11 @@ export function useVimKeyHandler(
   setVimMode: (mode: "NORMAL" | "INSERT") => void,
 ) {
   const pendingCommandRef = React.useRef<PendingCommand | null>(null);
+  // Set after pressing "g" (with or without a pending operator), waiting for the
+  // second key of a g-prefixed command like gg.
+  const pendingGRef = React.useRef<{
+    pending: PendingCommand | null;
+  } | null>(null);
   const undoStackRef = React.useRef<TextState[]>([]);
   const redoStackRef = React.useRef<TextState[]>([]);
   const insertStartStateRef = React.useRef<TextState | null>(null);
@@ -499,6 +552,73 @@ export function useVimKeyHandler(
         };
       }
 
+      const runPendingOperator = (
+        pending: PendingCommand,
+        range: {
+          start: number;
+          end: number;
+        },
+        motionChar: string,
+      ) => {
+        const result = pending.operator(currentValue, range, motionChar);
+        let finalCursorPosition = result.newCursorPosition;
+        if (finalCursorPosition !== undefined) {
+          finalCursorPosition = Math.min(
+            Math.max(0, finalCursorPosition),
+            getMaxNormalCursorPosition(result.newText),
+          );
+        }
+        const response: {
+          consumed: boolean;
+          newCursorPosition?: number;
+          newValue?: string;
+        } = {
+          consumed: true,
+          newValue: result.newText,
+        };
+        if (finalCursorPosition !== undefined) {
+          response.newCursorPosition = finalCursorPosition;
+        }
+        if (result.enterInsertMode) {
+          enterInsertMode(currentValue, cursorPosition);
+        } else {
+          saveState(currentValue, cursorPosition);
+        }
+        return response;
+      };
+
+      // Check if we're waiting for the second key of a g-prefixed command (gg)
+      if (pendingGRef.current) {
+        const { pending } = pendingGRef.current;
+        pendingGRef.current = null;
+        if (input !== "g") {
+          // Unknown g-prefixed command: swallow it and move on
+          return {
+            consumed: true,
+          };
+        }
+        if (pending) {
+          // Operator + gg (e.g. dgg): operate linewise from the first line
+          // through the current logical line
+          const contentRange = getLogicalLineContentRange(currentValue, cursorPosition);
+          const lineRange = {
+            start: 0,
+            end:
+              pending.operatorChar === "d"
+                ? includeFollowingNewline(currentValue, contentRange).end
+                : contentRange.end,
+          };
+          return runPendingOperator(pending, lineRange, "gg");
+        }
+        // gg: jump to the first non-whitespace character of the first line
+        const firstLineRange = {
+          start: 0,
+          end: getLineText(currentValue, 0).length,
+        };
+        const position = getFirstNonWhitespaceInRange(currentValue, firstLineRange);
+        return vimCommandResult(position, valueLength);
+      }
+
       // Check if we have a pending operator waiting for a motion
       if (pendingCommandRef.current) {
         const pending = pendingCommandRef.current;
@@ -506,60 +626,69 @@ export function useVimKeyHandler(
         // Check if the same operator is pressed again (dd, cc, etc.) - operate on the current line
         if (input === pending.operatorChar) {
           const contentRange = getCurrentLineRange(currentValue, cursorPosition, visualLineRange);
+          // A dd that covers the entire logical line (i.e. not just a
+          // soft-wrapped portion of it) is linewise, like dj/dgg
+          const logicalRange = getLogicalLineContentRange(currentValue, cursorPosition);
+          const spansLogicalLine =
+            contentRange.start === logicalRange.start && contentRange.end === logicalRange.end;
           const lineRange =
             input === "d" ? includeFollowingNewline(currentValue, contentRange) : contentRange;
-          const result = pending.operator(currentValue, lineRange, input);
           pendingCommandRef.current = null;
-          let finalCursorPosition = result.newCursorPosition;
-          if (finalCursorPosition !== undefined) {
-            finalCursorPosition = clampToVimBounds(finalCursorPosition, result.newText.length);
-          }
-          const response: {
-            consumed: boolean;
-            newCursorPosition?: number;
-            newValue?: string;
-          } = {
-            consumed: true,
-            newValue: result.newText,
+          return runPendingOperator(
+            pending,
+            lineRange,
+            input === "d" && spansLogicalLine ? "dd" : input,
+          );
+        }
+
+        // g after an operator (e.g. dg): wait for the second key of the g-command
+        if (input === "g") {
+          pendingGRef.current = {
+            pending,
           };
-          if (finalCursorPosition !== undefined) {
-            response.newCursorPosition = finalCursorPosition;
-          }
-          if (result.enterInsertMode) {
-            enterInsertMode(currentValue, cursorPosition);
-          } else {
-            saveState(currentValue, cursorPosition);
-          }
-          return response;
+          pendingCommandRef.current = null;
+          return {
+            consumed: true,
+          };
+        }
+
+        // j/k after an operator (dj, dk, cj, ck) are linewise: they operate on
+        // the current logical line plus the line below (j) or above (k)
+        const verticalDirection =
+          input === "j" || input === "ArrowDown"
+            ? "j"
+            : input === "k" || input === "ArrowUp"
+              ? "k"
+              : null;
+        if (verticalDirection) {
+          const currentLineInfo = getLineInfo(currentValue, cursorPosition);
+          const lineCount = currentValue.split("\n").length;
+          const otherLineIndex =
+            verticalDirection === "j"
+              ? Math.min(currentLineInfo.lineIndex + 1, lineCount - 1)
+              : Math.max(0, currentLineInfo.lineIndex - 1);
+          const startLineIndex = Math.min(currentLineInfo.lineIndex, otherLineIndex);
+          const endLineIndex = Math.max(currentLineInfo.lineIndex, otherLineIndex);
+          const contentRange = {
+            start: getLineStart(currentValue, startLineIndex),
+            end:
+              getLineStart(currentValue, endLineIndex) +
+              getLineText(currentValue, endLineIndex).length,
+          };
+          const lineRange =
+            pending.operatorChar === "d"
+              ? includeFollowingNewline(currentValue, contentRange)
+              : contentRange;
+          pendingCommandRef.current = null;
+          return runPendingOperator(pending, lineRange, verticalDirection);
         }
 
         // Check if the input is a motion
         if (input in motions) {
           const motion = motions[input];
           const range = motion(currentValue, cursorPosition, visualLineRange);
-          const result = pending.operator(currentValue, range, input);
           pendingCommandRef.current = null;
-          let finalCursorPosition = result.newCursorPosition;
-          if (finalCursorPosition !== undefined) {
-            finalCursorPosition = clampToVimBounds(finalCursorPosition, result.newText.length);
-          }
-          const response: {
-            consumed: boolean;
-            newCursorPosition?: number;
-            newValue?: string;
-          } = {
-            consumed: true,
-            newValue: result.newText,
-          };
-          if (finalCursorPosition !== undefined) {
-            response.newCursorPosition = finalCursorPosition;
-          }
-          if (result.enterInsertMode) {
-            enterInsertMode(currentValue, cursorPosition);
-          } else {
-            saveState(currentValue, cursorPosition);
-          }
-          return response;
+          return runPendingOperator(pending, range, input);
         }
 
         // Not a motion, cancel the pending operator
@@ -582,6 +711,16 @@ export function useVimKeyHandler(
           consumed: true,
           newValue: state.text,
           newCursorPosition: state.cursorPosition,
+        };
+      }
+
+      // Start a g-prefixed command (e.g. gg): wait for the second key
+      if (input === "g") {
+        pendingGRef.current = {
+          pending: null,
+        };
+        return {
+          consumed: true,
         };
       }
 
@@ -723,7 +862,10 @@ export function useVimKeyHandler(
           };
         },
         x: () => {
-          if (valueLength > 0) {
+          const char = currentValue[cursorPosition];
+          // x can't delete a newline (on an empty line it's a no-op), and does
+          // nothing at the end of the buffer
+          if (cursorPosition < valueLength && char !== undefined && !isNewline(char)) {
             saveState(currentValue, cursorPosition);
             const beforeCursor = currentValue.slice(0, cursorPosition);
             const afterCursor = currentValue.slice(cursorPosition + 1);
@@ -877,31 +1019,7 @@ export function useVimKeyHandler(
         e: () => {
           const earlyExit = vimEarlyExit(cursorPosition >= valueLength - 1);
           if (earlyExit) return earlyExit;
-          const currentChar = currentValue[cursorPosition];
-          const nextChar = cursorPosition + 1 < valueLength ? currentValue[cursorPosition + 1] : "";
-          const atWordEnd =
-            !isWhitespace(currentChar) &&
-            (cursorPosition === valueLength - 1 || isWhitespace(nextChar));
-          let wordEnd: number;
-          if (atWordEnd) {
-            wordEnd = cursorPosition + 1;
-            while (wordEnd < valueLength && isWhitespace(currentValue[wordEnd])) {
-              wordEnd++;
-            }
-            while (wordEnd < valueLength && !isWhitespace(currentValue[wordEnd])) {
-              wordEnd++;
-            }
-          } else {
-            wordEnd = cursorPosition;
-            while (wordEnd < valueLength && isWhitespace(currentValue[wordEnd])) {
-              wordEnd++;
-            }
-            while (wordEnd < valueLength && !isWhitespace(currentValue[wordEnd])) {
-              wordEnd++;
-            }
-          }
-          const vimPos = Math.max(0, wordEnd - 1);
-          return vimCommandResult(vimPos, valueLength);
+          return vimCommandResult(findWordEnd(currentValue, cursorPosition), valueLength);
         },
         "0": () => {
           const lineRange = getCurrentLineRange(currentValue, cursorPosition, visualLineRange);
@@ -924,6 +1042,26 @@ export function useVimKeyHandler(
             consumed: true,
             newCursorPosition: position,
           };
+        },
+        G: () => {
+          const lines = currentValue.split("\n");
+          const lastLineIndex = lines.length - 1;
+          const lastLineStart = getLineStart(currentValue, lastLineIndex);
+          const lastLine = lines[lastLineIndex];
+          if (lastLine.length === 0) {
+            // An empty last line's only valid cursor position is its start,
+            // which is just past the final newline character
+            return {
+              consumed: true,
+              newCursorPosition: Math.min(lastLineStart, valueLength),
+            };
+          }
+          const lastLineRange = {
+            start: lastLineStart,
+            end: lastLineStart + lastLine.length,
+          };
+          const position = getFirstNonWhitespaceInRange(currentValue, lastLineRange);
+          return vimCommandResult(position, valueLength);
         },
         I: () => {
           const lineRange = getCurrentLineRange(currentValue, cursorPosition, visualLineRange);
@@ -949,9 +1087,9 @@ export function useVimKeyHandler(
           return {
             consumed: true,
             newValue: result.newText,
-            newCursorPosition: clampToVimBounds(
-              result.newCursorPosition ?? cursorPosition,
-              result.newText.length,
+            newCursorPosition: Math.min(
+              Math.max(0, result.newCursorPosition ?? cursorPosition),
+              getMaxNormalCursorPosition(result.newText),
             ),
           };
         },
@@ -994,6 +1132,13 @@ export function useVimKeyHandler(
       return {
         consumed: true,
       };
+    },
+    // True while the handler is waiting for the rest of a multi-key command
+    // (e.g. an operator's motion, or the second key of a g-prefixed command).
+    // Callers should route keys to `handle` instead of intercepting them while
+    // this is true.
+    hasPendingCommand() {
+      return pendingCommandRef.current !== null || pendingGRef.current !== null;
     },
   };
 }
