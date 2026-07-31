@@ -1,6 +1,5 @@
 import fs from "fs/promises";
 import path from "path";
-import { spawn } from "child_process";
 import {
   Transport,
   AbortError,
@@ -9,13 +8,19 @@ import {
   ShellOutput,
   TransportError,
 } from "./transport-common.ts";
+import { OctoProcessManager } from "../octo-process.ts";
+
+const KILL_GRACE_MS = 500;
 
 const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OCTO"];
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
+  private readonly octoProcessManager = new OctoProcessManager();
 
-  async close() {}
+  async close() {
+    this.octoProcessManager.terminateAll({ graceMs: KILL_GRACE_MS });
+  }
 
   async writeFile(_: AbortSignal, file: string, contents: string) {
     return await fs.writeFile(file, contents, "utf8");
@@ -88,13 +93,19 @@ export class LocalTransport implements Transport {
     return new Promise<string>((resolve, reject) => {
       const env = { ...process.env };
       for (const name of STRIPPED_ENV_VARS) delete env[name];
-      const child = spawn(cmd, {
+
+      const octoProcess = this.octoProcessManager.spawn(cmd, {
         cwd: process.cwd(),
         shell: "bash",
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
         env,
       });
+      const childProcess = octoProcess.childProcess;
+      if (!childProcess.stdout || !childProcess.stderr) {
+        reject(new Error("Failed to spawn shell process with piped stdio"));
+        return;
+      }
 
       const output = new ShellOutput();
       let aborted = false;
@@ -104,24 +115,7 @@ export class LocalTransport implements Transport {
       function killGroup() {
         if (killed) return;
         killed = true;
-        // Kill the entire process group to handle child processes
-        try {
-          // First, try to kill the process group with SIGTERM
-          process.kill(-child.pid!, "SIGTERM");
-        } catch (e) {
-          // Fallback to just killing the main process if process group doesn't exist
-          child.kill("SIGTERM");
-        }
-        // Fallback to SIGKILL if it doesn't exit quickly
-        setTimeout(() => {
-          try {
-            process.kill(-child.pid!, "SIGKILL");
-          } catch {
-            try {
-              child.kill("SIGKILL");
-            } catch {}
-          }
-        }, 500).unref?.();
+        octoProcess.terminate({ graceMs: KILL_GRACE_MS });
       }
 
       function onAbort() {
@@ -142,15 +136,15 @@ export class LocalTransport implements Transport {
       if (signal.aborted) onAbort();
       signal.addEventListener("abort", onAbort);
 
-      child.stdout.on("data", data => {
+      childProcess.stdout.on("data", data => {
         if (!output.append(data)) killGroup();
       });
 
-      child.stderr.on("data", data => {
+      childProcess.stderr.on("data", data => {
         if (!output.append(data)) killGroup();
       });
 
-      child.on("close", code => {
+      childProcess.on("close", code => {
         cleanup();
         if (aborted) {
           reject(new AbortError());
@@ -196,7 +190,7 @@ output: ${commandOutput}`,
         }
       });
 
-      child.on("error", err => {
+      childProcess.on("error", err => {
         cleanup();
         if (aborted) {
           reject(new AbortError());

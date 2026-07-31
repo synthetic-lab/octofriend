@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import json5 from "json5";
-import { execFile, spawn } from "child_process";
+import { OctoProcessManager } from "./octo-process.ts";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
@@ -207,6 +207,7 @@ const AUTH_COMMAND_TIMEOUT_MS = 15_000;
 const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 
 const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
+const octoProcessManager = new OctoProcessManager();
 
 export async function runNotifyCommand(config: Config): Promise<void> {
   const cmd = config.notifications?.notifyCommand;
@@ -214,13 +215,13 @@ export async function runNotifyCommand(config: Config): Promise<void> {
   const shell = process.env["SHELL"] || "/bin/sh";
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(shell, ["-c", cmd], {
+    const octoProcess = octoProcessManager.spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
     });
 
-    child.on("close", (code: number | null) => {
+    octoProcess.childProcess.on("close", (code: number | null) => {
       if (code !== 0) {
         reject(new Error(`notifyFinishCommand exited with code ${code}`));
         return;
@@ -228,7 +229,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
       resolve();
     });
 
-    child.on("error", reject);
+    octoProcess.childProcess.on("error", reject);
   });
 }
 
@@ -301,7 +302,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     let stderr = "";
     let resolved = false;
 
-    const child = execFile(
+    const octoProcess = octoProcessManager.execFile(
       cmd,
       args,
       {
@@ -344,11 +345,13 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
       },
     );
 
+    const childProcess = octoProcess.childProcess;
+
     // execFile should kill on timeout, but just to be safe
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        child.kill("SIGKILL");
+        childProcess.kill("SIGKILL");
         resolve({
           ok: false,
           error: {
