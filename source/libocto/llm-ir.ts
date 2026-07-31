@@ -1,6 +1,14 @@
 import { ImageInfo } from "../utils/image-utils.ts";
+import { BUILTIN_IR_ROLES } from "./ir-roles.ts";
+import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { CompilerUsage } from "./compilers/compiler-interface.ts";
-import type { ToolCall, ToolFactoryRequirements, ToolMap, ToolSubagentNames } from "./tool-def.ts";
+import type {
+  ToolCall,
+  ToolExtensionIR,
+  ToolFactoryRequirements,
+  ToolMap,
+  ToolSubagentNames,
+} from "./tool-def.ts";
 
 /*
  * LLM IR
@@ -19,7 +27,7 @@ import type { ToolCall, ToolFactoryRequirements, ToolMap, ToolSubagentNames } fr
  * have, and what extended IRs they use.
  */
 export type Agent<
-  Extra,
+  Extra extends ToolExtensionIR<any>,
   SubagentDirectory extends AgentDirectory,
   Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
 > = {
@@ -290,6 +298,73 @@ type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["
 export type LlmIR<A extends Agent<any, any, any>> =
   | CheckpointedIRWithTrajectories<A>
   | AgentExtra<A>;
+
+/*
+ * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
+ *
+ * The parameter is expressed in terms of the genuinely generic IR types rather than a single
+ * "all built-in IRs" union type: AgentTrajectory is invariant in its agent directory, so no
+ * monomorphic AgentTrajectory instantiation (even AgentTrajectory<any, any>) accepts every
+ * trajectory — the type parameters must be quantified at the function level.
+ *
+ * Every tool extension IR (see ToolExtensionIR) carries the tool call it answers by definition,
+ * so non-built-in IRs are answered unconditionally. The built-in shapes are switched
+ * exhaustively: adding a new built-in IR role breaks compilation of the default branch,
+ * forcing an explicit decision here.
+ */
+function isBuiltinRole(role: string): role is BuiltinIRRole {
+  return role in BUILTIN_IR_ROLES;
+}
+
+function isBuiltinIR<Role extends string, T extends AgentDirectory, Name extends keyof T>(
+  ir: LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> | ToolExtensionIR<Role>,
+): ir is LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> {
+  return isBuiltinRole(ir.role);
+}
+
+export function answeredToolCallId<
+  Role extends string,
+  T extends AgentDirectory,
+  Name extends keyof T,
+>(
+  ir: LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> | ToolExtensionIR<Role>,
+): string | null {
+  if (!isBuiltinIR(ir)) return ir.toolCall.toolCallId;
+  switch (ir.role) {
+    case "tool-parse-error":
+      return ir.malformedRequest.toolCallId;
+    case "assistant":
+    case "user":
+    case "checkpoint":
+    case "lowered-checkpoint":
+    case "trajectory":
+      return null;
+    case "tool-output":
+    case "tool-runtime-error":
+    case "tool-validation-error":
+    case "tool-skip-output":
+      return ir.toolCall.toolCallId;
+    default: {
+      const _exhaustive: never = ir;
+      return _exhaustive;
+    }
+  }
+}
+
+type AssertNever<T extends never> = T;
+// Keeps BUILTIN_IR_ROLES in sync with the roles of the built-in IR shapes handled above.
+// Indexed access (rather than assignability) keeps this insensitive to AgentTrajectory's
+// invariance in its agent directory.
+type _BuiltinIRRolesMatch = AssertNever<
+  | Exclude<
+      LoweredIR<any>["role"] | Checkpoint["role"] | AgentTrajectory<any, any>["role"],
+      BuiltinIRRole
+    >
+  | Exclude<
+      BuiltinIRRole,
+      LoweredIR<any>["role"] | Checkpoint["role"] | AgentTrajectory<any, any>["role"]
+    >
+>;
 
 /*
  * Agent dependency compile-time validation/branding
