@@ -48,7 +48,9 @@ beforeEach(() => {
     preMenuModeData: null,
     lastUserPromptIndex: null,
     runningToolCallId: null,
-    modeData: { mode: "input", vimMode: "INSERT" },
+    queuedUserMessages: [],
+    modeData: { mode: "ready-for-request" },
+    vimMode: "INSERT",
   });
 });
 
@@ -163,7 +165,7 @@ describe("aborting a tool batch", () => {
     useAppStore.getState().abortResponse(session, config);
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 
   it("marks pending tool calls as answered when aborting a running tool", async () => {
@@ -184,7 +186,7 @@ describe("aborting a tool batch", () => {
     await running;
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   }, 30_000);
 
   it("marks even the running tool call as answered when exiting", async () => {
@@ -598,4 +600,30 @@ describe("menu round-trips during a tool batch", () => {
       else process.env["CANARY_OCTO"] = prevCanary;
     }
   }, 30_000);
+});
+
+describe("message queue", () => {
+  it("coalesces queued messages into a single user message on flush", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.getState().enqueueUserMessage({ content: "one" });
+    useAppStore.getState().enqueueUserMessage({ content: "two" });
+    expect(useAppStore.getState().history).toHaveLength(0);
+
+    useAppStore.getState()._sendQueuedUserMessages(session);
+
+    const { history, queuedUserMessages: queuedMessages } = useAppStore.getState();
+    expect(queuedMessages).toHaveLength(0);
+    expect(history).toHaveLength(1);
+    const item = history[0];
+    if (item.type !== "llm-ir" || item.ir.role !== "user") throw new Error("expected user IR");
+    expect(item.ir.content).toEqual([{ type: "text", content: "one\ntwo" }]);
+  });
+
+  it("clears the queue on abort without persisting", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.getState().enqueueUserMessage({ content: "one" });
+    useAppStore.getState().abortResponse(session);
+    expect(useAppStore.getState().queuedUserMessages).toHaveLength(0);
+    expect(useAppStore.getState().history).toHaveLength(0);
+  });
 });

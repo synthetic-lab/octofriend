@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { excerpt, MAX_PREVIEW_CHARACTERS } from "./preview.ts";
+import { excerpt, MAX_PREVIEW_CHARACTERS } from "./str.ts";
 
 describe("excerpt", () => {
-  it("adds an ellipsis to short text", () => {
-    expect(excerpt("Fix the migration first.")).toBe("Fix the migration first.…");
+  it("omits the ellipsis when the text fits", () => {
+    expect(excerpt("Fix the migration first.")).toBe("Fix the migration first.");
+  });
+
+  it("only adds an ellipsis when it truncates", () => {
+    const fits = "a".repeat(MAX_PREVIEW_CHARACTERS);
+    expect(excerpt(fits)).toBe(fits);
+
+    const tooLong = "a".repeat(MAX_PREVIEW_CHARACTERS + 1);
+    const result = excerpt(tooLong);
+    expect(result.endsWith("…")).toBe(true);
+    expect(result).toHaveLength(MAX_PREVIEW_CHARACTERS);
   });
 
   it("prefers a nearby word boundary", () => {

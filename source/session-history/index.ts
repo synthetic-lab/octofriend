@@ -17,7 +17,7 @@ import {
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
 import { NO_MODEL_RECORDED } from "./model-json.ts";
-import { excerpt } from "./preview.ts";
+import { excerpt } from "../str.ts";
 
 export type TransportKind = "local" | "docker-connect" | "docker-run";
 
