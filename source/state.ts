@@ -3,7 +3,6 @@ import {
   Config,
   useConfig,
   getModelFromConfig,
-  getRetryConfig,
   readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
@@ -48,9 +47,24 @@ export type InflightResponseType = {
   reasoningContent?: string | null;
 };
 export type RetryCountdown = {
-  retriesLeft: number;
+  attempt: number;
   secondsLeft: number;
 };
+
+export const RETRY_INTERVAL_MS = 5000;
+export const MAX_RETRY_INTERVAL_MS = 10 * 60 * 1000;
+export const RETRIES_BEFORE_BACKOFF = 2;
+
+/*
+ * The first couple of retries use a fixed short interval; after that the interval doubles each
+ * attempt, capped at MAX_RETRY_INTERVAL_MS. Retries continue until the request succeeds or the
+ * user stops them.
+ */
+export function retryIntervalForAttempt(attempt: number): number {
+  if (attempt <= RETRIES_BEFORE_BACKOFF) return RETRY_INTERVAL_MS;
+  const backoff = RETRY_INTERVAL_MS * 2 ** (attempt - RETRIES_BEFORE_BACKOFF);
+  return Math.min(backoff, MAX_RETRY_INTERVAL_MS);
+}
 export type UiState = {
   preMenuModeData: UiState["modeData"] | null;
   _notifyTimer: NodeJS.Timeout | null;
@@ -160,7 +174,7 @@ export type UiState = {
   hydrateSession: (history: readonly HistoryNode[]) => void;
   startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  runAgent: (args: RunArgs, opts?: { retriesLeft?: number }) => Promise<void>;
+  runAgent: (args: RunArgs, opts?: { attempt?: number }) => Promise<void>;
   _runAgentAttempt: (args: RunArgs) => Promise<void>;
 };
 
@@ -293,16 +307,13 @@ export const useAppStore = create<UiState>((set, get) => ({
   retryFrom: async (mode, args) => {
     const { modeData } = get();
     if (modeData.mode !== mode) return;
-    // If a retry countdown is active, "Retry now" consumes one of the remaining retries, so the
-    // countdown keeps counting down instead of restarting from the full retry count.
+    // If a retry countdown is active, "Retry now" performs the pending attempt immediately, so
+    // the backoff schedule continues from the current attempt instead of starting over.
     const retrying =
       modeData.mode === "request-error" || modeData.mode === "compaction-error"
         ? modeData.retrying
         : undefined;
-    await get().runAgent(
-      args,
-      retrying ? { retriesLeft: Math.max(0, retrying.retriesLeft - 1) } : undefined,
-    );
+    await get().runAgent(args, retrying ? { attempt: retrying.attempt } : undefined);
   },
 
   cancelRetry: () => {
@@ -644,10 +655,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runAgent: async (args, opts) => {
-    const { config } = args;
-    const { retryCount, retryIntervalMs } = getRetryConfig(config);
-
-    let retriesLeft = opts?.retriesLeft ?? retryCount;
+    let attempt = opts?.attempt ?? 0;
     while (true) {
       await get()._runAgentAttempt(args);
 
@@ -655,9 +663,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       if (failedModeData.mode !== "request-error" && failedModeData.mode !== "compaction-error") {
         return;
       }
-      if (retriesLeft <= 0) return;
 
-      const deadline = Date.now() + retryIntervalMs;
+      attempt++;
+      const deadline = Date.now() + retryIntervalForAttempt(attempt);
       let retryModeData: typeof failedModeData = failedModeData;
       while (true) {
         const remainingMs = deadline - Date.now();
@@ -665,20 +673,19 @@ export const useAppStore = create<UiState>((set, get) => ({
         retryModeData = {
           ...failedModeData,
           retrying: {
-            retriesLeft,
+            attempt,
             secondsLeft: Math.ceil(remainingMs / 1000),
           },
         };
         set({ modeData: retryModeData });
         await sleep(Math.min(1000, remainingMs));
         // Bail if the user did something while we were waiting (e.g. manually retried, edited, or
-        // cancelled the retry): any state change replaces the modeData object, so an identity
+        // stopped the retries): any state change replaces the modeData object, so an identity
         // mismatch means we should stop the countdown.
         if (get().modeData !== retryModeData) return;
       }
       // Final check in case the user intervened in the last moments of the countdown
       if (get().modeData !== retryModeData) return;
-      retriesLeft--;
     }
   },
 

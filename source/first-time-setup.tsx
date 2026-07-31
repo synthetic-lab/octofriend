@@ -3,13 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import json5 from "json5";
 import TextInput from "./components/text-input.tsx";
-import {
-  Config,
-  Auth,
-  CURRENT_CONFIG_VERSION,
-  DEFAULT_RETRY_COUNT,
-  DEFAULT_RETRY_INTERVAL_MS,
-} from "./config.ts";
+import { Config, Auth, CURRENT_CONFIG_VERSION } from "./config.ts";
 import { useColor } from "./theme.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
@@ -244,10 +238,6 @@ function FirstTimeSetupContent({ configPath }: { configPath: string }) {
                 configVersion: CURRENT_CONFIG_VERSION,
                 yourName: trimmedName,
                 models: step.models,
-                retry: {
-                  retryCount: DEFAULT_RETRY_COUNT,
-                  retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-                },
               };
               if (defaultApiKeyOverrides) {
                 config.defaultApiKeyOverrides = defaultApiKeyOverrides;

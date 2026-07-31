@@ -18,11 +18,8 @@ const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
 const KeyConfigSchema = t.dict(t.str);
 export const DEFAULT_AUTOCOMPACT_THRESHOLD = 0.8;
 
-export const DEFAULT_RETRY_COUNT = 2;
-export const DEFAULT_RETRY_INTERVAL_MS = 5000;
-
 export const APP_METADATA = await readMetadata();
-export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_CONFIG_VERSION = 2;
 
 type Migration = (raw: Record<string, any>) => Record<string, any>;
 
@@ -50,14 +47,6 @@ const MIGRATIONS: Record<number, Migration> = {
       },
     };
   },
-  3: raw => ({
-    ...raw,
-    retry: {
-      retryCount: DEFAULT_RETRY_COUNT,
-      retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-      ...(typeof raw["retry"] === "object" && raw["retry"] !== null ? raw["retry"] : {}),
-    },
-  }),
 };
 
 function migrateConfig(raw: Record<string, any>): Record<string, any> {
@@ -207,21 +196,8 @@ const ConfigSchema = t.exact({
       alwaysNotify: t.optional(t.bool),
     }),
   ),
-  retry: t.optional(
-    t.subtype({
-      retryCount: t.optional(t.num),
-      retryIntervalMs: t.optional(t.num),
-    }),
-  ),
 });
 export type Config = t.GetType<typeof ConfigSchema>;
-
-export function getRetryConfig(config: Config) {
-  return {
-    retryCount: config.retry?.retryCount ?? DEFAULT_RETRY_COUNT,
-    retryIntervalMs: config.retry?.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS,
-  };
-}
 export const AUTOFIX_KEYS = ["diffApply", "fixJson"] as const;
 
 // In-memory cache for command-based auth (keyed by command joined with null byte)

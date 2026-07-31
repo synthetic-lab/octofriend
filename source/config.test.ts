@@ -3,15 +3,11 @@ import { withMock } from "antipattern";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import json5 from "json5";
 import {
   configDeps,
   hasExistingAuthForBaseUrl,
   readAuthForModel,
   readConfig,
-  CURRENT_CONFIG_VERSION,
-  DEFAULT_RETRY_COUNT,
-  DEFAULT_RETRY_INTERVAL_MS,
   type Config,
 } from "./config.ts";
 
@@ -158,56 +154,3 @@ async function writeConfigFixture(config: unknown): Promise<string> {
   await fs.writeFile(configPath, JSON.stringify(config));
   return configPath;
 }
-
-describe("config migrations", () => {
-  const model = {
-    nickname: "test model",
-    baseUrl: "https://example.test/v1",
-    model: "test-model",
-    context: 10_000,
-  };
-
-  it("writes the default retry config when upgrading from a version without it", async () => {
-    const configPath = await writeConfigFixture({
-      configVersion: 2,
-      yourName: "test",
-      models: [model],
-    });
-
-    const config = await readConfig(configPath);
-    expect(config.retry).toEqual({
-      retryCount: DEFAULT_RETRY_COUNT,
-      retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-    });
-
-    const written = json5.parse(await fs.readFile(configPath, "utf8"));
-    expect(written.retry).toEqual({
-      retryCount: DEFAULT_RETRY_COUNT,
-      retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-    });
-    expect(written.configVersion).toBe(CURRENT_CONFIG_VERSION);
-  });
-
-  it("preserves existing retry settings when upgrading", async () => {
-    const configPath = await writeConfigFixture({
-      configVersion: 2,
-      yourName: "test",
-      models: [model],
-      retry: {
-        retryCount: 3,
-      },
-    });
-
-    const config = await readConfig(configPath);
-    expect(config.retry).toEqual({
-      retryCount: 3,
-      retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-    });
-
-    const written = json5.parse(await fs.readFile(configPath, "utf8"));
-    expect(written.retry).toEqual({
-      retryCount: 3,
-      retryIntervalMs: DEFAULT_RETRY_INTERVAL_MS,
-    });
-  });
-});

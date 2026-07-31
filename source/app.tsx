@@ -973,6 +973,11 @@ function AuthErrorScreen({
     </TerminalFlex>
   );
 }
+function formatRetryCountdown(seconds: number): string {
+  if (seconds < 60) return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
 function RetryCountdownScreen({
   mode,
   contextualMessage,
@@ -991,7 +996,7 @@ function RetryCountdownScreen({
       cancelRetry: state.cancelRetry,
     })),
   );
-  const shortcutItems: ShortcutArray<"retry-now" | "dont-retry"> = [
+  const shortcutItems: ShortcutArray<"retry-now" | "stop-retrying"> = [
     {
       type: "key" as const,
       mapping: {
@@ -999,15 +1004,15 @@ function RetryCountdownScreen({
           label: "Retry now",
           value: "retry-now",
         },
-        d: {
-          label: "Don't retry",
-          value: "dont-retry",
+        s: {
+          label: "Stop retrying",
+          value: "stop-retrying",
         },
       },
     },
   ];
   const onSelect = useCallback(
-    (item: Item<"retry-now" | "dont-retry">) => {
+    (item: Item<"retry-now" | "stop-retrying">) => {
       if (item.value === "retry-now") {
         retryFrom(mode, {
           config,
@@ -1039,8 +1044,19 @@ function RetryCountdownScreen({
             color: "gray",
           }}
         >
-          Retrying {retrying.retriesLeft} more {retrying.retriesLeft === 1 ? "time" : "times"} in{" "}
-          {retrying.secondsLeft} {retrying.secondsLeft === 1 ? "second" : "seconds"}...
+          Octo will keep retrying automatically until the request goes through, waiting longer
+          between each attempt (up to 10 minutes apart). Press S to stop retrying and go back to the
+          error menu.
+        </Span>
+      </TerminalFlex>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span>
+          Next retry in {formatRetryCountdown(retrying.secondsLeft)} (attempt {retrying.attempt}
+          )...
         </Span>
       </TerminalFlex>
     </KbShortcutPanel>
