@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import {
   Transport,
   AbortError,
@@ -7,24 +6,31 @@ import {
   ShellOutput,
   TransportError,
 } from "./transport-common.ts";
+import { OctoProcessManager, registerCleanup } from "../octo-process.ts";
 
 export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
 
+  const octoProcessManager = new OctoProcessManager();
   const { stdout } = await new Promise<{
     stdout: string;
   }>((resolve, reject) => {
     const stdout: string[] = [];
     let error = false;
-    const child = spawn("docker", ["run", ...args], {
+    const octoProcess = octoProcessManager.spawn("docker", ["run", ...args], {
       stdio: ["ignore", "pipe", "inherit"],
     });
-    child.on("error", e => {
+    const childProcess = octoProcess.childProcess;
+    if (!childProcess.stdout) {
+      reject(new Error("Failed to spawn docker process with piped stdout"));
+      return;
+    }
+    childProcess.on("error", e => {
       error = true;
       reject(e);
     });
-    child.stdout.on("data", data => stdout.push(data));
-    child.on("close", code => {
+    childProcess.stdout.on("data", data => stdout.push(data));
+    childProcess.on("close", code => {
       if (code != null && code !== 0) {
         if (!error) reject("Command exited with non-zero exit code: " + code);
       } else if (!error) {
@@ -36,10 +42,21 @@ export async function manageContainer(args: string[]) {
   });
 
   const name = stdout.trim();
+  const killContainer = () => {
+    try {
+      const octoProcess = octoProcessManager.spawn("docker", ["kill", name], { stdio: "ignore" });
+      octoProcess.childProcess.unref();
+    } catch {}
+  };
+  const unregisterCleanup = registerCleanup(killContainer);
+  let closed = false;
   return {
     container: name,
     close: async () => {
-      spawn("docker", ["kill", name]);
+      if (closed) return;
+      closed = true;
+      unregisterCleanup();
+      killContainer();
     },
   };
 }
@@ -57,10 +74,15 @@ async function runDockerCommand(
   const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
 
   return new Promise<string>((resolve, reject) => {
-    const child = spawn(dockerCmd[0], dockerCmd.slice(1), {
+    const octoProcess = new OctoProcessManager().spawn(dockerCmd[0], dockerCmd.slice(1), {
       timeout,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    const childProcess = octoProcess.childProcess;
+    if (!childProcess.stdout || !childProcess.stderr) {
+      reject(new Error("Failed to spawn docker process with piped stdio"));
+      return;
+    }
 
     const output = new ShellOutput();
     let aborted = false;
@@ -69,14 +91,7 @@ async function runDockerCommand(
     const killChild = () => {
       if (killed) return;
       killed = true;
-      // Try graceful termination first
-      child.kill("SIGTERM");
-      // Fallback to SIGKILL if it doesn't exit quickly
-      setTimeout(() => {
-        try {
-          child.kill("SIGKILL");
-        } catch {}
-      }, 500).unref?.();
+      octoProcess.terminate({ graceMs: 500 });
     };
 
     const onAbort = () => {
@@ -91,15 +106,15 @@ async function runDockerCommand(
       signal.removeEventListener("abort", onAbort);
     };
 
-    child.stdout.on("data", data => {
+    childProcess.stdout.on("data", data => {
       if (!output.append(data)) killChild();
     });
 
-    child.stderr.on("data", data => {
+    childProcess.stderr.on("data", data => {
       if (!output.append(data)) killChild();
     });
 
-    child.on("close", code => {
+    childProcess.on("close", code => {
       cleanup();
       if (aborted) {
         reject(new AbortError());
@@ -136,7 +151,7 @@ output: ${commandOutput}`,
       }
     });
 
-    child.on("error", err => {
+    childProcess.on("error", err => {
       cleanup();
       if (aborted) {
         reject(new AbortError());

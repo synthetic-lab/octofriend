@@ -43,6 +43,7 @@ import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
 import { setOctoTitles } from "./titles.ts";
+import { installGlobalProcessSignalHandlers, registerCleanup } from "../octo-process.ts";
 
 const __dirname = import.meta.dirname;
 
@@ -70,6 +71,8 @@ function renderInteractive(element: React.ReactNode, options: { captureCtrlC: bo
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
+
+installGlobalProcessSignalHandlers();
 
 const cli = withOctoFlags(
   new Command().description("If run with no subcommands, runs Octo interactively."),
@@ -231,6 +234,17 @@ async function runMain(opts: {
     session = useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
   }
 
+  let cleanedUp = false;
+  const cleanup = async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    await shutdownLspClients();
+    await shutdownMcpClients();
+    restoreTitles();
+    await opts.transport.close();
+  };
+  const markCleanupAsComplete = registerCleanup(cleanup);
+
   try {
     let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
@@ -297,10 +311,8 @@ async function runMain(opts: {
       }
     }
   } finally {
-    await shutdownLspClients();
-    await shutdownMcpClients();
-    restoreTitles();
-    await opts.transport.close();
+    markCleanupAsComplete();
+    await cleanup();
   }
 }
 
