@@ -24,6 +24,7 @@ import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import type { ModelData } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
+import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
@@ -61,7 +62,6 @@ export type UiState = {
     | {
         mode: "tool-call";
         toolReqs: ToolCallRequest[];
-        runningToolCallId: string | null;
         abortController: AbortController;
       }
     | {
@@ -106,6 +106,14 @@ export type UiState = {
     | {
         mode: "menu";
       };
+
+  /*
+   * The currently in-flight tool call, if any. Tracked at the top level rather than inside the
+   * tool-call modeData: modeData gets stashed in preMenuModeData when the menu opens, and
+   * maintainers reasonably treat that stash as UI-only state. The running tool keeps executing
+   * while the menu is open, so its ID must live outside UI mode transitions.
+   */
+  runningToolCallId: string | null;
 
   modelOverride: string | null;
   quotaData: QuotaData | null;
@@ -154,6 +162,47 @@ function appendAndPersistHistory(
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
 
+export function answeredToolCallIds(history: readonly HistoryNode[]): Set<string> {
+  const answered = new Set<string>();
+  for (const item of history) {
+    if (item.type !== "llm-ir") continue;
+    const id = answeredToolCallId(item.ir);
+    if (id != null) answered.add(id);
+  }
+  return answered;
+}
+
+export type ToolAction =
+  | { kind: "in-flight"; req: ToolCallRequest }
+  | { kind: "ready"; req: ToolCallRequest }
+  | { kind: "done" };
+
+/*
+ * Derives what the tool renderer should do for a batch from the history, rather than tracking a
+ * cursor in component state. ToolRequestsRenderer unmounts when the menu opens, and a
+ * component-local cursor would reset to 0 on remount, re-running tools that already executed.
+ * Deriving from history makes unmount/remount cycles safe: a remounted renderer re-derives the
+ * same action. An unanswered in-flight tool yields "in-flight" so the renderer shows progress
+ * without re-invoking the tool.
+ */
+export function nextToolAction(
+  toolReqs: ToolCallRequest[],
+  runningToolCallId: string | null,
+  history: readonly HistoryNode[],
+): ToolAction {
+  const answered = answeredToolCallIds(history);
+  const unanswered = toolReqs.filter(
+    req => req.type === "tool-call" && !answered.has(req.toolCallId),
+  );
+  if (runningToolCallId != null) {
+    const running = unanswered.find(req => req.toolCallId === runningToolCallId);
+    if (running) return { kind: "in-flight", req: running };
+  }
+  const [first] = unanswered;
+  if (first) return { kind: "ready", req: first };
+  return { kind: "done" };
+}
+
 export const useAppStore = create<UiState>((set, get) => ({
   preMenuModeData: null,
   _notifyTimer: null,
@@ -163,6 +212,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     mode: "input" as const,
     vimMode: "INSERT" as const,
   },
+  runningToolCallId: null,
   history: [],
   modelOverride: null,
   quotaData: null,
@@ -336,7 +386,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   abortResponse: (session: Session, opts?: { exiting?: boolean }) => {
-    const { modeData } = get();
+    const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     if (modeData.mode !== "tool-call") return;
 
@@ -348,28 +398,13 @@ export const useAppStore = create<UiState>((set, get) => ({
      * output when it settles — but when the process is exiting it will never settle, so mark
      * it as skipped too.
      */
-    const answered = new Set<string>();
-    for (const item of get().history) {
-      if (item.type !== "llm-ir") continue;
-      const ir = item.ir;
-      if (
-        ir.role === "tool-output" ||
-        ir.role === "tool-skip-output" ||
-        ir.role === "tool-runtime-error" ||
-        ir.role === "tool-validation-error" ||
-        ir.role === "tool-reject" ||
-        ir.role === "file-read" ||
-        ir.role === "file-mutate"
-      ) {
-        answered.add(ir.toolCall.toolCallId);
-      }
-    }
+    const answered = answeredToolCallIds(get().history);
 
     const skipped: HistoryItem[] = [];
     for (const req of modeData.toolReqs) {
       if (req.type !== "tool-call") continue;
       if (answered.has(req.toolCallId)) continue;
-      const isRunning = req.toolCallId === modeData.runningToolCallId;
+      const isRunning = req.toolCallId === runningToolCallId;
       if (isRunning && !opts?.exiting) continue;
       skipped.push({
         type: "llm-ir",
@@ -391,7 +426,7 @@ export const useAppStore = create<UiState>((set, get) => ({
      * If no tool is currently running, nothing else will flip the mode back to input, so do it
      * here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool settles.
      */
-    if (modeData.runningToolCallId == null) {
+    if (runningToolCallId == null) {
       set({
         modeData: {
           mode: "input",
@@ -486,6 +521,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
+      // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
+      runningToolCallId: null,
     }));
   },
 
@@ -505,6 +542,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       sessionAutoNotify: false,
       modeData: { mode: "input", vimMode: "INSERT" },
       preMenuModeData: null,
+      // An aborted tool clears this itself when it settles, but until it does the new session
+      // must not see the old session's in-flight ID.
+      runningToolCallId: null,
     }));
     return createSession(cwd, cliArgs);
   },
@@ -521,11 +561,11 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runTool: async ({ config, toolReq, transport, session }) => {
-    let { modeData } = get();
+    const { modeData } = get();
     if (modeData.mode !== "tool-call") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
-    if (modeData.runningToolCallId != null) {
+    if (get().runningToolCallId != null) {
       if (process.env["CANARY_OCTO"] === "1") {
         throw new Error(
           "Canary build error: attempted to run a tool when a tool was already running",
@@ -534,7 +574,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     const abortController = modeData.abortController;
-    set({ modeData: { ...modeData, runningToolCallId: toolReq.toolCallId } });
+    set({ runningToolCallId: toolReq.toolCallId });
 
     const tools = await loadTools(transport, abortController.signal, config);
 
@@ -563,13 +603,10 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
     }
 
+    set({ runningToolCallId: null });
+
     if (get()._maybeHandleAbort(abortController.signal)) {
       return;
-    }
-
-    ({ modeData } = get());
-    if (modeData.mode === "tool-call") {
-      set({ modeData: { ...modeData, runningToolCallId: null } });
     }
   },
 
@@ -784,9 +821,9 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: {
           mode: "tool-call",
           toolReqs: finishReason.toolCalls,
-          runningToolCallId: null,
           abortController: new AbortController(),
         },
+        runningToolCallId: null,
       });
     } catch (e) {
       if (get()._maybeHandleAbort(abortController.signal)) {

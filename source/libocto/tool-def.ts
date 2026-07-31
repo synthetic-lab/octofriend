@@ -1,6 +1,7 @@
 import { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
 import { Result, ok } from "./result.ts";
+import type { BuiltinIRRole } from "./ir-roles.ts";
 import type { Content } from "./llm-ir.ts";
 
 /*
@@ -200,6 +201,21 @@ type AnySubagentNames = any;
 type AnyCustomIR = any;
 type AnyToolData = any;
 
+/*
+ * Tool extension IRs are, by definition, tool-output-shaped IRs: they exist only as the result
+ * of running a tool call, so they must carry the tool call they answer. Constraining extension
+ * IRs to this shape lets libocto treat every extension IR as a tool output without clients
+ * re-deriving that decision.
+ */
+export type ToolExtensionIR<Role extends string> = Role extends BuiltinIRRole
+  ? never
+  : {
+      role: Role;
+      toolCall: {
+        toolCallId: string;
+      };
+    };
+
 // Public tool factories are the precise raw factory type plus the capability brand. Keeping the raw
 // factory in the intersection preserves literal tool names and parsed argument types.
 export type ToolFactory<
@@ -207,7 +223,7 @@ export type ToolFactory<
   S extends AnyToolSchema,
   Parsed,
   SubagentNames extends string,
-  Extra,
+  Extra extends ToolExtensionIR<any>,
 > = RawToolFactory<Data, S, Parsed, SubagentNames, Extra> &
   ToolFactoryRequirements<SubagentNames, Extra>;
 
@@ -311,7 +327,7 @@ export class DeclaredTool<
   Arguments,
   Parsed,
   SubagentNames extends string,
-  Extra,
+  Extra extends ToolExtensionIR<any>,
   RequiresParse extends boolean,
   CustomIR,
 > {
@@ -416,11 +432,11 @@ export class DeclaredTool<
 // A shared tool builder for callers that do not need a dedicated builder instance.
 export const TOOL_BUILDER = new ToolBuilder();
 
-export type ToolMap<SubagentNames extends string, Extra> = {
+export type ToolMap<SubagentNames extends string, Extra extends ToolExtensionIR<any>> = {
   [key: string]: ToolFactory<AnyToolData, AnyToolSchema, AnyParsedArguments, SubagentNames, Extra>;
 };
 
-type CustomIRBuilderMap = Record<string, (toolCall: any) => (args: any) => any>;
+type CustomIRBuilderMap = Record<string, (toolCall: any) => (args: any) => ToolExtensionIR<any>>;
 
 type DeclaredToolMap<
   Data,
@@ -428,7 +444,7 @@ type DeclaredToolMap<
   Arguments,
   Parsed,
   SubagentNames extends string,
-  Extra,
+  Extra extends ToolExtensionIR<any>,
 > = {
   [K in Name]: ToolFactory<Data, { name: K; arguments: Arguments }, Parsed, SubagentNames, Extra>;
 };
@@ -443,7 +459,9 @@ type DeclaredToolCall<
 
 type CustomIRData<Builders extends CustomIRBuilderMap, Call> = {
   [K in keyof Builders]: Builders[K] extends (toolCall: Call) => (args: any) => infer IR
-    ? IR
+    ? IR extends ToolExtensionIR<any>
+      ? IR
+      : never
     : never;
 }[keyof Builders];
 
@@ -529,7 +547,10 @@ type Covariant<T> = () => T;
 
 // Required phantom fields keep Extra and SubagentNames visible when checking assignability to a
 // ToolMap. They are never read or written at runtime.
-export type ToolFactoryRequirements<SubagentNames extends string, Extra> = {
+export type ToolFactoryRequirements<
+  SubagentNames extends string,
+  Extra extends ToolExtensionIR<any>,
+> = {
   readonly [toolFactoryExtra]: Covariant<Extra>;
   readonly [toolFactorySubagents]: Covariant<SubagentNames>;
 };

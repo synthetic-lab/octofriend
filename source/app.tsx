@@ -54,7 +54,7 @@ import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
-import { useAppStore, RunArgs, useModel, InflightResponseType } from "./state.ts";
+import { useAppStore, RunArgs, useModel, InflightResponseType, nextToolAction } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
 import { Octo } from "./components/octo.tsx";
@@ -1242,14 +1242,23 @@ function ToolRequestsRenderer({
   onContentLayout: () => void;
 } & RunArgs) {
   const runAgent = useAppStore(state => state.runAgent);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const onDone = useCallback(() => {
-    setCurrentIndex(i => i + 1);
-  }, []);
+  const { history, runningToolCallId } = useAppStore(
+    useShallow(state => ({
+      history: state.history,
+      runningToolCallId: state.runningToolCallId,
+    })),
+  );
+  /*
+   * Derive the current action from history rather than tracking a cursor in component state:
+   * this component unmounts when the menu opens, and a cursor would reset to 0 on remount,
+   * re-running tools that already executed.
+   */
+  const action = nextToolAction(toolReqs, runningToolCallId, history);
+  const actionKey = action.kind === "done" ? "done" : `${action.kind}:${action.req.toolCallId}`;
   useLayoutEffect(() => {
     onContentLayout();
-  }, [currentIndex, onContentLayout]);
-  if (currentIndex >= toolReqs.length) {
+  }, [actionKey, onContentLayout]);
+  if (action.kind === "done") {
     return (
       <FinishToolRequests
         runAgent={runAgent}
@@ -1259,7 +1268,7 @@ function ToolRequestsRenderer({
       />
     );
   }
-  const currentToolReq = toolReqs[currentIndex];
+  const currentToolReq = action.req;
   return (
     <TerminalFlex
       style={{
@@ -1272,7 +1281,6 @@ function ToolRequestsRenderer({
         config={config}
         transport={transport}
         session={session}
-        onDone={onDone}
         onContentLayout={onContentLayout}
       />
     </TerminalFlex>
@@ -1300,11 +1308,9 @@ function ToolRequestRenderer({
   config,
   transport,
   session,
-  onDone,
   onContentLayout,
 }: {
   toolReq: ToolCallRequest;
-  onDone: () => void;
   onContentLayout: () => void;
 } & RunArgs) {
   const themeColor = useColor();
@@ -1450,7 +1456,6 @@ function ToolRequestRenderer({
           transport,
           session,
         });
-        onDone();
       } else {
         await runTool({
           toolReq,
@@ -1458,45 +1463,32 @@ function ToolRequestRenderer({
           transport,
           session,
         });
-        onDone();
       }
     },
-    [
-      toolReq,
-      config,
-      transport,
-      session,
-      addToWhitelist,
-      runTool,
-      rejectTool,
-      whitelistKey,
-      onDone,
-    ],
+    [toolReq, config, transport, session, addToWhitelist, runTool, rejectTool, whitelistKey],
   );
-  const { modeData } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-    })),
-  );
-  const isRunning =
-    modeData.mode === "tool-call" && modeData.runningToolCallId === toolReq.toolCallId;
+  const runningToolCallId = useAppStore(state => state.runningToolCallId);
+  const isRunning = runningToolCallId === toolReq.toolCallId;
   const noConfirmationNeeded =
     unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
   useLayoutEffect(() => {
     onContentLayout();
   }, [isRunning, noConfirmationNeeded, onContentLayout]);
   useEffect(() => {
+    // Already in flight (e.g. remounted mid-run after the menu closed): render progress without
+    // re-invoking the tool.
+    if (isRunning) return;
     if (noConfirmationNeeded) {
       runTool({
         toolReq,
         config,
         transport,
         session,
-      }).then(onDone);
+      });
     } else {
       notifyReadyForInput(config);
     }
-  }, [toolReq, noConfirmationNeeded, config, transport, session, onDone]);
+  }, [toolReq, isRunning, noConfirmationNeeded, config, transport, session]);
   if (noConfirmationNeeded || isRunning) {
     return (
       <Loading
