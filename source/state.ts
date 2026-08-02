@@ -162,9 +162,32 @@ function appendAndPersistHistory(
   return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
 }
 
-export function answeredToolCallIds(history: readonly HistoryNode[]): Set<string> {
+/*
+ * Finds the index of the current batch's request message: the most recent assistant IR that
+ * requested any of the batch's tool calls.
+ *
+ * Tool call IDs are only guaranteed unique within a single response — some providers recycle
+ * IDs across turns (e.g. per-response counters like call_0), and provider-generated IDs must
+ * never be rewritten. So "has this request been answered?" can only be asked relative to the
+ * current batch: answers appended before this index belong to earlier batches that happen to
+ * share IDs, and must not count.
+ */
+function batchRequestIndex(history: readonly HistoryNode[], toolReqs: ToolCallRequest[]): number {
+  const ids = new Set(toolReqs.map(req => req.toolCallId));
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i];
+    if (item.type !== "llm-ir") continue;
+    const ir = item.ir;
+    if (ir.role !== "assistant") continue;
+    if ((ir.toolCalls ?? []).some(call => ids.has(call.toolCallId))) return i;
+  }
+  return -1;
+}
+
+export function answeredToolCallIds(history: readonly HistoryNode[], afterIndex = -1): Set<string> {
   const answered = new Set<string>();
-  for (const item of history) {
+  for (let i = afterIndex + 1; i < history.length; i++) {
+    const item = history[i];
     if (item.type !== "llm-ir") continue;
     const id = answeredToolCallId(item.ir);
     if (id != null) answered.add(id);
@@ -190,7 +213,7 @@ export function nextToolAction(
   runningToolCallId: string | null,
   history: readonly HistoryNode[],
 ): ToolAction {
-  const answered = answeredToolCallIds(history);
+  const answered = answeredToolCallIds(history, batchRequestIndex(history, toolReqs));
   const unanswered = toolReqs.filter(
     req => req.type === "tool-call" && !answered.has(req.toolCallId),
   );
@@ -398,7 +421,10 @@ export const useAppStore = create<UiState>((set, get) => ({
      * output when it settles — but when the process is exiting it will never settle, so mark
      * it as skipped too.
      */
-    const answered = answeredToolCallIds(get().history);
+    const answered = answeredToolCallIds(
+      get().history,
+      batchRequestIndex(get().history, modeData.toolReqs),
+    );
 
     const skipped: HistoryItem[] = [];
     for (const req of modeData.toolReqs) {
