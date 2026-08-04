@@ -345,9 +345,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   input: async ({ config, query, transport, session, images }) => {
     const model = getModelFromConfig(config, get().modelOverride);
 
-    const history = appendAndPersistHistory(session, get().history, [
-      userMessageItem(query, images),
-    ], model);
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport, session });
   },
@@ -374,6 +377,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
+        queuedUserMessages: [],
         modeData: { mode: "ready-for-request" },
         vimMode: "INSERT",
       });
@@ -385,6 +389,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
+        queuedUserMessages: [],
         modeData: { mode: "ready-for-request" },
         vimMode: "INSERT",
       });
@@ -397,6 +402,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: filteredHistory,
       query: textPart?.content ?? "",
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
       modeData: { mode: "ready-for-request" },
       vimMode: "INSERT",
@@ -590,9 +596,12 @@ export const useAppStore = create<UiState>((set, get) => ({
     const model = getModelFromConfig(config, get().modelOverride);
     if (queuedMessages.length === 0) return;
     const { query, images } = coalesceQueuedUserMessages(queuedMessages);
-    const history = appendAndPersistHistory(session, get().history, [
-      userMessageItem(query, images),
-    ], model);
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
     set({ history, lastUserPromptIndex: history.length - 1, queuedUserMessages: [] });
   },
 

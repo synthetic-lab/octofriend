@@ -628,3 +628,80 @@ describe("message queue", () => {
     expect(useAppStore.getState().history).toHaveLength(0);
   });
 });
+
+describe("edit and retry", () => {
+  const transport = new LocalTransport();
+
+  function userNode(content: string, nodeId: number): HistoryNode {
+    return {
+      type: "llm-ir",
+      nodeId,
+      modelJson: testModelJson,
+      ir: {
+        role: "user",
+        content: [{ type: "text", content }],
+      },
+    };
+  }
+
+  it("discards queued messages when rewinding to edit the last prompt", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [userNode("original prompt", 1), assistantNode([], 2)],
+      lastUserPromptIndex: 0,
+      queuedUserMessages: [
+        { id: 1, content: "queued one" },
+        { id: 2, content: "queued two" },
+      ],
+      modeData: { mode: "request-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("original prompt");
+    // The last user prompt and the failed response after it are both rewound past.
+    expect(state.history).toHaveLength(0);
+  });
+
+  it("discards queued messages even when there is no last prompt to rewind to", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [],
+      lastUserPromptIndex: null,
+      queuedUserMessages: [{ id: 1, content: "queued one" }],
+      modeData: { mode: "request-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("");
+  });
+
+  it("discards queued messages when rewinding from a compaction error", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [
+        userNode("original prompt", 1),
+        { type: "compaction-failed", nodeId: 2, modelJson: testModelJson },
+      ],
+      lastUserPromptIndex: 0,
+      queuedUserMessages: [{ id: 1, content: "queued one" }],
+      modeData: { mode: "compaction-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("compaction-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("original prompt");
+    // The compaction-failed marker and the last user prompt are both rewound past.
+    expect(state.history).toHaveLength(0);
+  });
+});
