@@ -391,6 +391,7 @@ describe("tool call IDs reused across batches", () => {
   });
 
   it("rejects and skips within the current batch when IDs collide with an earlier batch", () => {
+    const transport = new LocalTransport();
     const session = createSession(process.cwd(), { kind: "local" });
     const secondBatchSecondCall = shellCall("call_1", "echo later");
     const nodes = insertHistoryItems(
@@ -438,13 +439,13 @@ describe("tool call IDs reused across batches", () => {
 
     // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip only
     // this batch's remaining call — the earlier batch's answered call_0 must not confuse it.
-    useAppStore.getState().rejectTool(secondBatchCall, session, config);
+    useAppStore.getState().rejectTool(secondBatchCall, { config, transport, session });
 
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_0: 2, // earlier output + this batch's reject marker
       call_1: 1, // this batch's skip marker
     });
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 
   it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
@@ -497,7 +498,7 @@ describe("tool call IDs reused across batches", () => {
     // The new call_0 gets its own skip marker, not silently treated as answered by the old one:
     // otherwise the aborted batch leaves a dangling tool call that Anthropic hard-400s on.
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_0: 2 });
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 });
 
@@ -609,7 +610,7 @@ describe("message queue", () => {
     useAppStore.getState().enqueueUserMessage({ content: "two" });
     expect(useAppStore.getState().history).toHaveLength(0);
 
-    useAppStore.getState()._sendQueuedUserMessages(session);
+    useAppStore.getState()._sendQueuedUserMessages(session, config);
 
     const { history, queuedUserMessages: queuedMessages } = useAppStore.getState();
     expect(queuedMessages).toHaveLength(0);
@@ -622,7 +623,7 @@ describe("message queue", () => {
   it("clears the queue on abort without persisting", () => {
     const session = createSession(process.cwd(), { kind: "local" });
     useAppStore.getState().enqueueUserMessage({ content: "one" });
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
     expect(useAppStore.getState().queuedUserMessages).toHaveLength(0);
     expect(useAppStore.getState().history).toHaveLength(0);
   });
