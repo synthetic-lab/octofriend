@@ -7,6 +7,7 @@ import { useAppStore, nextToolAction } from "./state.ts";
 import type { Config } from "./config.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
@@ -36,6 +37,8 @@ const config: Config = {
     },
   ],
 };
+
+const testModelJson = serializeModelJson(config.models[0]);
 
 const tempDirs: string[] = [];
 
@@ -109,24 +112,29 @@ async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
 
 function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
   const session = createSession(process.cwd(), { kind: "local" });
-  const nodes = insertHistoryItems(session, null, [
-    {
-      type: "llm-ir",
-      ir: {
-        role: "user",
-        content: [{ type: "text", content: "Run these two commands" }],
+  const nodes = insertHistoryItems(
+    session,
+    null,
+    [
+      {
+        type: "llm-ir",
+        ir: {
+          role: "user",
+          content: [{ type: "text", content: "Run these two commands" }],
+        },
       },
-    },
-    {
-      type: "llm-ir",
-      ir: {
-        role: "assistant",
-        content: "On it.",
-        usage: compilerUsage(0, 0),
-        toolCalls: [callA, callB],
+      {
+        type: "llm-ir",
+        ir: {
+          role: "assistant",
+          content: "On it.",
+          usage: compilerUsage(0, 0),
+          toolCalls: [callA, callB],
+        },
       },
-    },
-  ]);
+    ],
+    testModelJson,
+  );
   useAppStore.getState().hydrateSession(nodes);
   const abortController = new AbortController();
   useAppStore.setState({
@@ -152,7 +160,7 @@ describe("aborting a tool batch", () => {
     // The user presses ESC while call_b is still pending. The UI drops the remaining requests
     // (ToolRequestsRenderer unmounts), so the store must record that call_b never ran —
     // otherwise the next request sends an assistant message with an unanswered tool call.
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
     expect(useAppStore.getState().modeData.mode).toBe("input");
@@ -172,7 +180,7 @@ describe("aborting a tool batch", () => {
 
     // Wait for the shell command to actually start, then ESC mid-run.
     await waitFor(() => existsSync(marker));
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
     await running;
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
@@ -197,7 +205,7 @@ describe("aborting a tool batch", () => {
      * settle, so the store must synchronously mark every unanswered call as skipped —
      * including the running one. Assert before `running` resolves.
      */
-    useAppStore.getState().abortResponse(session, { exiting: true });
+    useAppStore.getState().abortResponse(session, config, { exiting: true });
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
 
     await running;
@@ -225,6 +233,7 @@ function assistantNode(calls: ShellToolCall[], nodeId: number): HistoryNode {
   return {
     type: "llm-ir",
     nodeId,
+    modelJson: testModelJson,
     ir: {
       role: "assistant",
       content: "On it.",
@@ -238,6 +247,7 @@ function toolOutputNode(call: ShellToolCall, nodeId: number): HistoryNode {
   return {
     type: "llm-ir",
     nodeId,
+    modelJson: testModelJson,
     ir: {
       role: "tool-output",
       toolCall: call,
@@ -285,6 +295,7 @@ describe("nextToolAction", () => {
       {
         type: "llm-ir",
         nodeId: 2,
+        modelJson: testModelJson,
         ir: { role: "tool-skip-output", toolCall: callA, reason: "skipped" },
       },
     ];
@@ -325,34 +336,39 @@ describe("tool call IDs reused across batches", () => {
   it("runs a colliding tool call to completion", async () => {
     const transport = new LocalTransport();
     const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -375,34 +391,39 @@ describe("tool call IDs reused across batches", () => {
   it("rejects and skips within the current batch when IDs collide with an earlier batch", () => {
     const session = createSession(process.cwd(), { kind: "local" });
     const secondBatchSecondCall = shellCall("call_1", "echo later");
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall, secondBatchSecondCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall, secondBatchSecondCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -415,7 +436,7 @@ describe("tool call IDs reused across batches", () => {
 
     // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip only
     // this batch's remaining call — the earlier batch's answered call_0 must not confuse it.
-    useAppStore.getState().rejectTool(secondBatchCall, session);
+    useAppStore.getState().rejectTool(secondBatchCall, session, config);
 
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_0: 2, // earlier output + this batch's reject marker
@@ -426,34 +447,39 @@ describe("tool call IDs reused across batches", () => {
 
   it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
     const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -464,7 +490,7 @@ describe("tool call IDs reused across batches", () => {
       runningToolCallId: null,
     });
 
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
 
     // The new call_0 gets its own skip marker, not silently treated as answered by the old one:
     // otherwise the aborted batch leaves a dangling tool call that Anthropic hard-400s on.
@@ -523,7 +549,7 @@ describe("menu round-trips during a tool batch", () => {
     );
 
     // Clean up: abort the batch so the test doesn't wait on the sleeping tool.
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
     await running;
 
     // Exactly one answer for the in-flight tool: it was never re-run.

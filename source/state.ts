@@ -1,6 +1,7 @@
 import {
   AuthError,
   Config,
+  ModelConfig,
   useConfig,
   getModelFromConfig,
   readAuthForModel,
@@ -11,9 +12,11 @@ import {
   createSession,
   HistoryNode,
   insertHistoryItems,
+  latestModelJson,
   HistoryItem,
   Session,
 } from "./session-history/index.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
@@ -121,6 +124,7 @@ export type UiState = {
   query: string;
   readonly history: readonly HistoryNode[];
   clearNonce: number;
+  sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
@@ -129,14 +133,14 @@ export type UiState = {
   setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCall: ToolCallRequest, session: Session) => void;
-  abortResponse: (session: Session, opts?: { exiting?: boolean }) => void;
+  rejectTool: (toolCall: ToolCallRequest, session: Session, config: Config) => void;
+  abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   resetPreMenuVimMode: () => void;
-  setModelOverride: (m: string, session: Session) => void;
+  setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
@@ -144,7 +148,7 @@ export type UiState = {
   ) => Promise<void>;
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
-  notify: (notif: string, session: Session) => void;
+  notify: (notif: string, session: Session, config: Config) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
   hydrateSession: (history: readonly HistoryNode[]) => void;
@@ -157,9 +161,13 @@ function appendAndPersistHistory(
   session: Session,
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
+  model: ModelConfig,
 ): HistoryNode[] {
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
-  return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
+  return [
+    ...prevHistory,
+    ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
+  ];
 }
 
 /*
@@ -242,6 +250,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   byteCount: 0,
   query: "",
   clearNonce: 0,
+  sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
   whitelist: new Set<string>(),
 
@@ -297,7 +306,8 @@ export const useAppStore = create<UiState>((set, get) => ({
       },
     };
 
-    const history = appendAndPersistHistory(session, get().history, [userMessage]);
+    const model = getModelFromConfig(config, get().modelOverride);
+    const history = appendAndPersistHistory(session, get().history, [userMessage], model);
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport, session });
   },
@@ -350,7 +360,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  rejectTool: (toolCall, session) => {
+  rejectTool: (toolCall, session, config) => {
     const history = get().history;
 
     // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
@@ -390,17 +400,23 @@ export const useAppStore = create<UiState>((set, get) => ({
         }
       }
     }
+    const model = getModelFromConfig(config, get().modelOverride);
     set({
-      history: appendAndPersistHistory(session, get().history, [
-        {
-          type: "llm-ir",
-          ir: {
-            role: "tool-reject",
-            toolCall,
+      history: appendAndPersistHistory(
+        session,
+        get().history,
+        [
+          {
+            type: "llm-ir",
+            ir: {
+              role: "tool-reject",
+              toolCall,
+            },
           },
-        },
-        ...skippedCalls,
-      ]),
+          ...skippedCalls,
+        ],
+        model,
+      ),
       modeData: {
         mode: "input",
         vimMode: "INSERT",
@@ -408,7 +424,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     });
   },
 
-  abortResponse: (session: Session, opts?: { exiting?: boolean }) => {
+  abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     if (modeData.mode !== "tool-call") return;
@@ -445,7 +461,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     if (skipped.length > 0) {
-      set({ history: appendAndPersistHistory(session, get().history, skipped) });
+      const model = getModelFromConfig(config, get().modelOverride);
+      set({ history: appendAndPersistHistory(session, get().history, skipped, model) });
     }
 
     /*
@@ -526,26 +543,34 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setModelOverride: (model, _session) => {
-    set({ modelOverride: model });
+    set({ modelOverride: serializeModelJson(model) });
   },
 
-  notify: (notif, session) => {
+  notify: (notif, session, config) => {
+    const model = getModelFromConfig(config, get().modelOverride);
     set({
-      history: appendAndPersistHistory(session, get().history, [
-        {
-          type: "notification",
-          content: notif,
-        },
-      ]),
+      history: appendAndPersistHistory(
+        session,
+        get().history,
+        [
+          {
+            type: "notification",
+            content: notif,
+          },
+        ],
+        model,
+      ),
     });
   },
 
   hydrateSession: history => {
     set(state => ({
       history,
+      modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
       byteCount: 0,
       clearNonce: state.clearNonce + 1,
+      sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
       // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
       runningToolCallId: null,
@@ -605,27 +630,38 @@ export const useAppStore = create<UiState>((set, get) => ({
     const tools = await loadTools(transport, abortController.signal, config);
 
     const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    const model = getModelFromConfig(config, get().modelOverride);
     if (!result.success) {
       set({
-        history: appendAndPersistHistory(session, get().history, [
-          {
-            type: "llm-ir",
-            ir: {
-              role: "tool-runtime-error",
-              error: result.error,
-              toolCall: toolReq,
+        history: appendAndPersistHistory(
+          session,
+          get().history,
+          [
+            {
+              type: "llm-ir",
+              ir: {
+                role: "tool-runtime-error",
+                error: result.error,
+                toolCall: toolReq,
+              },
             },
-          },
-        ]),
+          ],
+          model,
+        ),
       });
     } else {
       set({
-        history: appendAndPersistHistory(session, get().history, [
-          {
-            type: "llm-ir",
-            ir: toolRunResultToIR(result.data, toolReq),
-          },
-        ]),
+        history: appendAndPersistHistory(
+          session,
+          get().history,
+          [
+            {
+              type: "llm-ir",
+              ir: toolRunResultToIR(result.data, toolReq),
+            },
+          ],
+          model,
+        ),
       });
     }
 
@@ -750,7 +786,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               ir: event.checkpoint,
             };
             set({
-              history: appendAndPersistHistory(session, historyCopy, [checkpointItem]),
+              history: appendAndPersistHistory(session, historyCopy, [checkpointItem], model),
             });
           },
 
@@ -779,14 +815,19 @@ export const useAppStore = create<UiState>((set, get) => ({
           retryTool: event => {
             throttle.flush();
             set({
-              history: appendAndPersistHistory(session, historyCopy, outputToHistory(event.irs)),
+              history: appendAndPersistHistory(
+                session,
+                historyCopy,
+                outputToHistory(event.irs),
+                model,
+              ),
             });
           },
         },
       });
       throttle.flush();
       set({
-        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs)),
+        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
       });
       const finishReason = finish.reason;
       if (finishReason.type === "abort" || finishReason.type === "needs-response") {
@@ -834,11 +875,16 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: finishReason.requestError,
             curlCommand: finishReason.curl,
           },
-          history: appendAndPersistHistory(session, get().history, [
-            {
-              type: "compaction-failed",
-            },
-          ]),
+          history: appendAndPersistHistory(
+            session,
+            get().history,
+            [
+              {
+                type: "compaction-failed",
+              },
+            ],
+            model,
+          ),
         });
         return;
       }

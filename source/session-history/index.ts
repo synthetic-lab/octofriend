@@ -16,6 +16,7 @@ import {
   trees,
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
+import { NO_MODEL_RECORDED } from "./model-json.ts";
 import { excerpt } from "./preview.ts";
 
 export type TransportKind = "local" | "docker-connect" | "docker-run";
@@ -28,7 +29,10 @@ export type HistoryItem =
   | { type: "notification"; content: string }
   | { type: "llm-ir"; ir: OctoIR };
 
-export type HistoryNode = HistoryItem & { nodeId: number };
+export type HistoryNode = HistoryItem & {
+  nodeId: number;
+  modelJson: string | null;
+};
 
 export type SessionMetadata = {
   sessionId: string | null;
@@ -58,6 +62,10 @@ export class SessionNotFoundError extends Error {
     super(`Session ${sessionId} does not exist.`);
     this.name = "SessionNotFoundError";
   }
+}
+
+export function latestModelJson(history: readonly HistoryNode[]): string | null {
+  return history.at(-1)?.modelJson ?? null;
 }
 
 export function createSession(cwd: string, cliArgs: ParsedCliArgs): Session {
@@ -213,14 +221,29 @@ type SessionTreeNode = SessionTree["nodes"][number];
 
 function historyNodeFromRow(node: SessionTreeNode): HistoryNode {
   const item = node.historyItem;
+  const modelJson = item.modelJson === NO_MODEL_RECORDED ? null : item.modelJson;
   if (item.llmIr != null) {
-    return { nodeId: node.id, type: "llm-ir", ir: deserializeLlmIr(item.llmIr.json) };
+    return {
+      nodeId: node.id,
+      modelJson,
+      type: "llm-ir",
+      ir: deserializeLlmIr(item.llmIr.json),
+    };
   }
   if (item.notification != null) {
-    return { nodeId: node.id, type: "notification", content: item.notification.content };
+    return {
+      nodeId: node.id,
+      modelJson,
+      type: "notification",
+      content: item.notification.content,
+    };
   }
-  if (item.requestFailedItem != null) return { nodeId: node.id, type: "request-failed" };
-  if (item.compactionFailedItem != null) return { nodeId: node.id, type: "compaction-failed" };
+  if (item.requestFailedItem != null) {
+    return { nodeId: node.id, modelJson, type: "request-failed" };
+  }
+  if (item.compactionFailedItem != null) {
+    return { nodeId: node.id, modelJson, type: "compaction-failed" };
+  }
   throw new Error(`History node ${node.id} has no payload.`);
 }
 
@@ -296,6 +319,7 @@ export function insertHistoryItems(
   session: Session,
   parentNodeId: number | null,
   itemsToInsert: HistoryItem[],
+  modelJson: string,
 ): HistoryNode[] {
   if (itemsToInsert.length === 0) return [];
 
@@ -313,7 +337,7 @@ export function insertHistoryItems(
     const insertedNodes: HistoryNode[] = [];
     let currParentId = parentNodeId;
     for (const historyItem of itemsToInsert) {
-      const insertedHistoryItemId = insertHistoryItem(tx, historyItem);
+      const insertedHistoryItemId = insertHistoryItem(tx, historyItem, modelJson);
       maybeUpdateSessionPreview(tx, sessionId, historyItem);
       const insertedTreeNode = tx
         .insert(treeNodes)
@@ -326,7 +350,7 @@ export function insertHistoryItems(
         })
         .returning({ id: treeNodes.id })
         .get();
-      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id });
+      insertedNodes.push({ ...historyItem, nodeId: insertedTreeNode.id, modelJson });
       currParentId = insertedTreeNode.id;
     }
     tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
@@ -396,7 +420,7 @@ function createLaunch(tx: DbTransaction, cliArgs: ParsedCliArgs): number {
     .get().id;
 }
 
-function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
+function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: string): number {
   let requestFailedId: number | null = null;
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
@@ -442,7 +466,7 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem): number {
 
   const insertedHistoryItem = tx
     .insert(historyItems)
-    .values({ requestFailedId, compactionFailedId, notificationId, llmIrId })
+    .values({ modelJson, requestFailedId, compactionFailedId, notificationId, llmIrId })
     .returning({ id: historyItems.id })
     .get();
   return insertedHistoryItem.id;
