@@ -24,6 +24,8 @@ function testModel(nickname: string): ModelConfig {
   };
 }
 
+const TEST_MODEL_JSON = serializeModelJson(testModel("test-model"));
+
 function userMessage(content: string): HistoryItem {
   return {
     type: "llm-ir",
@@ -45,7 +47,7 @@ function countRows() {
 describe("deleteSession", () => {
   it("deletes an existing session", () => {
     const session = createSession("/test/delete-session", LOCAL_CLI_ARGS);
-    insertHistoryItems(session, null, [userMessage("Delete me")], "test-model");
+    insertHistoryItems(session, null, [userMessage("Delete me")], TEST_MODEL_JSON);
     const sessionId = session.metadata.sessionId;
     expect(sessionId).not.toBeNull();
 
@@ -60,7 +62,7 @@ describe("deleteSession", () => {
       session,
       null,
       [userMessage("Initial message")],
-      "test-model",
+      TEST_MODEL_JSON,
     );
     const sessionId = session.metadata.sessionId;
     expect(sessionId).not.toBeNull();
@@ -72,7 +74,7 @@ describe("deleteSession", () => {
         session,
         history.at(-1)!.nodeId,
         [userMessage("Late message")],
-        "test-model",
+        TEST_MODEL_JSON,
       );
     } catch (error) {
       thrown = error;
@@ -89,10 +91,12 @@ describe("deleteSession", () => {
     const session = createSession("/test/delete-payloads", LOCAL_CLI_ARGS);
     const baseline = countRows();
 
-    insertHistoryItems(session, null, [
-      userMessage("Garbage collect me"),
-      { type: "notification", content: "and me" },
-    ]);
+    insertHistoryItems(
+      session,
+      null,
+      [userMessage("Garbage collect me"), { type: "notification", content: "and me" }],
+      TEST_MODEL_JSON,
+    );
     expect(countRows()).toEqual({
       historyItems: baseline.historyItems + 2,
       llmIrs: baseline.llmIrs + 1,
@@ -105,9 +109,9 @@ describe("deleteSession", () => {
 
   it("leaves other sessions' history rows intact", () => {
     const keep = createSession("/test/keep-session", LOCAL_CLI_ARGS);
-    insertHistoryItems(keep, null, [userMessage("Keep me")]);
+    insertHistoryItems(keep, null, [userMessage("Keep me")], TEST_MODEL_JSON);
     const drop = createSession("/test/drop-session", LOCAL_CLI_ARGS);
-    insertHistoryItems(drop, null, [userMessage("Drop me")]);
+    insertHistoryItems(drop, null, [userMessage("Drop me")], TEST_MODEL_JSON);
 
     expect(deleteSession(drop.metadata.sessionId!)).toBe(true);
 

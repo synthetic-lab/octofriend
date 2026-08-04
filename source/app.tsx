@@ -301,7 +301,6 @@ export default function App({
     if (updates != null) markUpdatesSeen();
     if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
-  const showToast = useToast();
   const matchedModel =
     modelOverride == null ? null : matchModelFromConfig(currConfig, modelOverride);
   const matchedModelRef = useRef(matchedModel);

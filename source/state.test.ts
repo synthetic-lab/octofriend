@@ -38,6 +38,8 @@ const config: Config = {
   ],
 };
 
+const testModelJson = serializeModelJson(config.models[0]);
+
 const tempDirs: string[] = [];
 
 beforeEach(() => {
@@ -131,7 +133,7 @@ function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
         },
       },
     ],
-    serializeModelJson(config.models[0]),
+    testModelJson,
   );
   useAppStore.getState().hydrateSession(nodes);
   const abortController = new AbortController();
@@ -231,6 +233,7 @@ function assistantNode(calls: ShellToolCall[], nodeId: number): HistoryNode {
   return {
     type: "llm-ir",
     nodeId,
+    modelJson: testModelJson,
     ir: {
       role: "assistant",
       content: "On it.",
@@ -244,6 +247,7 @@ function toolOutputNode(call: ShellToolCall, nodeId: number): HistoryNode {
   return {
     type: "llm-ir",
     nodeId,
+    modelJson: testModelJson,
     ir: {
       role: "tool-output",
       toolCall: call,
@@ -291,6 +295,7 @@ describe("nextToolAction", () => {
       {
         type: "llm-ir",
         nodeId: 2,
+        modelJson: testModelJson,
         ir: { role: "tool-skip-output", toolCall: callA, reason: "skipped" },
       },
     ];
@@ -331,34 +336,39 @@ describe("tool call IDs reused across batches", () => {
   it("runs a colliding tool call to completion", async () => {
     const transport = new LocalTransport();
     const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -381,34 +391,39 @@ describe("tool call IDs reused across batches", () => {
   it("rejects and skips within the current batch when IDs collide with an earlier batch", () => {
     const session = createSession(process.cwd(), { kind: "local" });
     const secondBatchSecondCall = shellCall("call_1", "echo later");
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall, secondBatchSecondCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall, secondBatchSecondCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -421,7 +436,7 @@ describe("tool call IDs reused across batches", () => {
 
     // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip only
     // this batch's remaining call — the earlier batch's answered call_0 must not confuse it.
-    useAppStore.getState().rejectTool(secondBatchCall, session);
+    useAppStore.getState().rejectTool(secondBatchCall, session, config);
 
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_0: 2, // earlier output + this batch's reject marker
@@ -432,34 +447,39 @@ describe("tool call IDs reused across batches", () => {
 
   it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
     const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(session, null, [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "First.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [firstBatchCall],
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "First.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [firstBatchCall],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "tool-output",
-          toolCall: firstBatchCall,
-          content: [{ type: "text", content: "first" }],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: firstBatchCall,
+            content: [{ type: "text", content: "first" }],
+          },
         },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "Second.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [secondBatchCall],
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "Second.",
+            usage: compilerUsage(0, 0),
+            toolCalls: [secondBatchCall],
+          },
         },
-      },
-    ]);
+      ],
+      testModelJson,
+    );
     useAppStore.getState().hydrateSession(nodes);
     useAppStore.setState({
       modeData: {
@@ -470,7 +490,7 @@ describe("tool call IDs reused across batches", () => {
       runningToolCallId: null,
     });
 
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
 
     // The new call_0 gets its own skip marker, not silently treated as answered by the old one:
     // otherwise the aborted batch leaves a dangling tool call that Anthropic hard-400s on.
@@ -529,7 +549,7 @@ describe("menu round-trips during a tool batch", () => {
     );
 
     // Clean up: abort the batch so the test doesn't wait on the sleeping tool.
-    useAppStore.getState().abortResponse(session);
+    useAppStore.getState().abortResponse(session, config);
     await running;
 
     // Exactly one answer for the in-flight tool: it was never re-run.
