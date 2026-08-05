@@ -175,7 +175,7 @@ export type UiState = {
   setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
   enqueueUserMessage: (msg: Omit<QueuedUserMessage, "id">) => void;
-  _sendQueuedUserMessages: (session: Session, config: Config) => void;
+  _appendQueuedUserMessages: (session: Session, config: Config) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
@@ -591,7 +591,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  _sendQueuedUserMessages: (session, config) => {
+  _appendQueuedUserMessages: (session, config) => {
     const { queuedUserMessages: queuedMessages } = get();
     const model = getModelFromConfig(config, get().modelOverride);
     if (queuedMessages.length === 0) return;
@@ -739,7 +739,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runAgent: async ({ config, transport, session }) => {
-    get()._sendQueuedUserMessages(session, config);
+    get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;

@@ -610,7 +610,7 @@ describe("message queue", () => {
     useAppStore.getState().enqueueUserMessage({ content: "two" });
     expect(useAppStore.getState().history).toHaveLength(0);
 
-    useAppStore.getState()._sendQueuedUserMessages(session, config);
+    useAppStore.getState()._appendQueuedUserMessages(session, config);
 
     const { history, queuedUserMessages: queuedMessages } = useAppStore.getState();
     expect(queuedMessages).toHaveLength(0);
