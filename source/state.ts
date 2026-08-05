@@ -10,6 +10,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   HistoryNode,
   insertHistoryItems,
   latestModelJson,
@@ -160,6 +161,13 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
+  /*
+   * Set when an abort rewound the just-submitted prompt out of history (see abortResponse).
+   * The in-flight runAgent still holds a history copy containing that prompt; this tells it
+   * not to persist the stale copy (or the partially-streamed response) when the aborted arc
+   * settles.
+   */
+  promptRewindPending: boolean;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -305,6 +313,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
   sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
+  promptRewindPending: false,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -485,6 +494,42 @@ export const useAppStore = create<UiState>((set, get) => ({
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     set({ queuedUserMessages: [] });
+
+    /*
+     * ESC before the model has streamed any non-reasoning tokens — while it's still
+     * thinking, or before it responded at all — means "I want to change my prompt": drop the
+     * just-submitted user message from history (in-memory and persisted) and put its text
+     * and attached images back in the input field.
+     *
+     * Only rewinds when the user message is the newest history item: mid-trajectory aborts
+     * (e.g. after tool calls) leave history alone.
+     */
+    if (
+      !opts?.exiting &&
+      modeData.mode === "responding" &&
+      modeData.inflightResponse.content.trim() === ""
+    ) {
+      const history = get().history;
+      const last = history.at(-1);
+      if (last && last.type === "llm-ir" && last.ir.role === "user") {
+        const query = last.ir.content
+          .filter(part => part.type === "text")
+          .map(part => part.content)
+          .join("\n");
+        const attachedImages = last.ir.content
+          .filter(part => part.type === "image")
+          .map(part => part.image);
+        deleteHistoryNodes(session, [last.nodeId]);
+        set({
+          history: history.slice(0, -1),
+          query,
+          attachedImages,
+          lastUserPromptIndex: null,
+          promptRewindPending: true,
+        });
+      }
+    }
+
     if (modeData.mode !== "tool-call") return;
 
     /*
@@ -542,6 +587,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (signal.aborted) {
       set({
         queuedUserMessages: [],
+        promptRewindPending: false,
         modeData: {
           mode: "ready-for-request",
         },
@@ -648,6 +694,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       history,
       modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
+      promptRewindPending: false,
       byteCount: 0,
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
@@ -669,6 +716,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     set(state => ({
       history: [],
       lastUserPromptIndex: null,
+      promptRewindPending: false,
       byteCount: 0,
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
@@ -910,9 +958,23 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      set({
-        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
-      });
+      if (get().promptRewindPending) {
+        /*
+         * The prompt that kicked off this arc was rewound when the user aborted: don't
+         * re-persist the stale history copy (which still contains the prompt) or the
+         * partially-streamed response.
+         */
+        set({ promptRewindPending: false });
+      } else {
+        set({
+          history: appendAndPersistHistory(
+            session,
+            historyCopy,
+            outputToHistory(finish.irs),
+            model,
+          ),
+        });
+      }
       const finishReason = finish.reason;
       if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);
