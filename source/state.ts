@@ -629,8 +629,8 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const tools = await loadTools(transport, abortController.signal, config);
 
-    const result = await runTool(abortController.signal, transport, tools, toolReq, config);
     const model = getModelFromConfig(config, get().modelOverride);
+    const result = await runTool(abortController.signal, transport, tools, toolReq, config, model);
     if (!result.success) {
       set({
         history: appendAndPersistHistory(
