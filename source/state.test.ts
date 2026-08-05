@@ -49,6 +49,8 @@ beforeEach(() => {
     lastUserPromptIndex: null,
     runningToolCallId: null,
     queuedUserMessages: [],
+    query: "",
+    attachedImages: [],
     modeData: { mode: "ready-for-request" },
     vimMode: "INSERT",
   });
