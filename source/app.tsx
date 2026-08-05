@@ -55,7 +55,15 @@ import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
-import { useAppStore, RunArgs, useModel, InflightResponseType, nextToolAction } from "./state.ts";
+import {
+  useAppStore,
+  RunArgs,
+  useModel,
+  InflightResponseType,
+  nextToolAction,
+  QueuedUserMessage,
+  inputFieldAvailable,
+} from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
@@ -78,7 +86,7 @@ import { InputHistory } from "./input-history/index.ts";
 import { MultimediaInput } from "./components/multimedia-input.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
-import { LINE_SPLIT_REGEX } from "./str.ts";
+import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
@@ -601,6 +609,19 @@ async function getLatestVersion() {
     return null;
   }
 }
+function QueuedUserMessages({ messages }: { messages: readonly QueuedUserMessage[] }) {
+  if (messages.length === 0) return null;
+  const preview = excerpt(messages.map(m => m.content.split("\n")[0]).join(" · "));
+  return (
+    <Span
+      style={{
+        color: "gray",
+      }}
+    >
+      Queued ({messages.length}): {preview}
+    </Span>
+  );
+}
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const model = useModel();
@@ -616,8 +637,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     closeMenu,
     byteCount,
     setVimMode,
+    vimMode: storedVimMode,
     query,
     setQuery,
+    queuedMessages,
+    queueMessage,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -627,12 +651,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       openMenu: state.openMenu,
       byteCount: state.byteCount,
       setVimMode: state.setVimMode,
+      vimMode: state.vimMode,
       query: state.query,
       setQuery: state.setQuery,
+      queuedMessages: state.queuedUserMessages,
+      queueMessage: state.enqueueUserMessage,
     })),
   );
-  const vimMode =
-    vimEnabled && vimEnabled && modeData.mode === "input" ? modeData.vimMode : "NORMAL";
+  const vimMode = vimEnabled ? storedVimMode : "NORMAL";
   useCtrlC(() => {
     if (vimEnabled) return;
     setQuery("");
@@ -640,7 +666,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   useKeyboard(event => {
     if (event.key === "Escape") {
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
-      if (vimEnabled && vimMode === "INSERT" && modeData.mode === "input") {
+      if (vimEnabled && vimMode === "INSERT" && inputFieldAvailable(modeData)) {
         setVimMode("NORMAL");
         return;
       }
@@ -656,6 +682,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     async (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
       setQuery("");
+      if (modeData.mode !== "ready-for-request" && modeData.mode !== "menu") {
+        queueMessage({ content: finalQuery, images });
+        return;
+      }
       try {
         await input({
           query: finalQuery,
@@ -676,51 +706,68 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         throw error;
       }
     },
-    [query, config, transport, session, setQuery, showToast],
+    [query, modeData.mode, config, transport, session, setQuery, showToast],
   );
-  if (modeData.mode === "responding" || modeData.mode === "compacting") {
+  if (
+    modeData.mode === "responding" ||
+    modeData.mode === "compacting" ||
+    modeData.mode === "diff-apply" ||
+    modeData.mode === "fix-json"
+  ) {
+    const overrideStrings = (() => {
+      if (modeData.mode === "compacting") return ["Compacting history to save context tokens"];
+      if (modeData.mode === "diff-apply") return ["Auto-fixing diff"];
+      if (modeData.mode === "fix-json") return ["Auto-fixing JSON"];
+      return undefined;
+    })();
     return (
       <TerminalFlex
         style={{
-          justifyContent: "space-between",
+          flexDirection: "column",
         }}
       >
-        <Loading
-          overrideStrings={
-            modeData.mode === "compacting"
-              ? ["Compacting history to save context tokens"]
-              : undefined
-          }
-        />
-        <TerminalFlex>
-          {byteCount === 0 ? null : (
+        <TerminalFlex
+          style={{
+            justifyContent: "space-between",
+          }}
+        >
+          <Loading overrideStrings={overrideStrings} />
+          <TerminalFlex>
+            {byteCount === 0 ? null : (
+              <Span
+                style={{
+                  color: color,
+                }}
+              >
+                ⇩ {byteCount} bytes
+              </Span>
+            )}
+            <Span> </Span>
             <Span
               style={{
-                color: color,
+                color: "gray",
               }}
             >
-              ⇩ {byteCount} bytes
+              (Press ESC to interrupt)
             </Span>
-          )}
-          <Span> </Span>
-          <Span
-            style={{
-              color: "gray",
-            }}
-          >
-            (Press ESC to interrupt)
-          </Span>
+          </TerminalFlex>
         </TerminalFlex>
+        <QueuedUserMessages messages={queuedMessages} />
+        <MultimediaInput
+          inputHistory={inputHistory}
+          value={query}
+          onChange={setQuery}
+          onSubmit={onSubmit}
+          vimEnabled={vimEnabled}
+          vimMode={vimMode}
+          setVimMode={setVimMode}
+          modalities={model.modalities}
+        />
+        <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
       </TerminalFlex>
     );
   }
   if (modeData.mode === "error-recovery") return <Loading />;
-  if (modeData.mode === "diff-apply") {
-    return <Loading overrideStrings={["Auto-fixing diff"]} />;
-  }
-  if (modeData.mode === "fix-json") {
-    return <Loading overrideStrings={["Auto-fixing JSON"]} />;
-  }
   if (modeData.mode === "payment-error") {
     return <PaymentErrorScreen error={modeData.error} />;
   }
@@ -761,7 +808,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   if (modeData.mode === "tool-call") {
     return null;
   }
-  const _: "menu" | "input" = modeData.mode;
+  const _: "menu" | "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex
       style={{
@@ -789,6 +836,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           (Ctrl+p to enter the menu)
         </Span>
       </TerminalFlex>
+      <QueuedUserMessages messages={queuedMessages} />
       <MultimediaInput
         inputHistory={inputHistory}
         value={query}
@@ -1474,7 +1522,7 @@ function ToolRequestRenderer({
   const onSelect = useCallback(
     async (item: (typeof items)[number]) => {
       if (item.value === "no") {
-        rejectTool(toolReq, session, config);
+        rejectTool(toolReq, { config, transport, session });
       } else if (item.value === "yes-whitelist") {
         await addToWhitelist(whitelistKey);
         await runTool({

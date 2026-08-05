@@ -40,6 +40,38 @@ export type RunArgs = {
   session: Session;
 };
 
+export type QueuedUserMessage = {
+  id: number;
+  content: string;
+  images?: ImageInfo[];
+};
+
+let nextQueuedMessageId = 1;
+
+export function coalesceQueuedUserMessages(messages: readonly QueuedUserMessage[]): {
+  query: string;
+  images?: ImageInfo[];
+} {
+  const images = messages.flatMap(m => m.images ?? []);
+  return {
+    query: messages.map(m => m.content).join("\n"),
+    ...(images.length > 0 ? { images } : {}),
+  };
+}
+
+function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
+  return {
+    type: "llm-ir",
+    ir: {
+      role: "user",
+      content: [
+        { type: "text", content: query },
+        ...(images ?? []).map(image => ({ type: "image" as const, image })),
+      ],
+    },
+  };
+}
+
 type ToolCallRequest = ToolCall<typeof toolMap>;
 
 export type InflightResponseType = {
@@ -54,8 +86,7 @@ export type UiState = {
   notifyOnce: boolean;
   modeData:
     | {
-        mode: "input";
-        vimMode: "NORMAL" | "INSERT";
+        mode: "ready-for-request";
       }
     | {
         mode: "responding";
@@ -121,7 +152,9 @@ export type UiState = {
   modelOverride: string | null;
   quotaData: QuotaData | null;
   byteCount: number;
+  vimMode: "NORMAL" | "INSERT";
   query: string;
+  queuedUserMessages: readonly QueuedUserMessage[];
   readonly history: readonly HistoryNode[];
   clearNonce: number;
   sessionHydrationNonce: number;
@@ -133,15 +166,16 @@ export type UiState = {
   setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCall: ToolCallRequest, session: Session, config: Config) => void;
+  rejectTool: (toolCall: ToolCallRequest, args: RunArgs) => void;
   abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
-  resetPreMenuVimMode: () => void;
   setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
+  enqueueUserMessage: (msg: Omit<QueuedUserMessage, "id">) => void;
+  _appendQueuedUserMessages: (session: Session, config: Config) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
@@ -156,6 +190,19 @@ export type UiState = {
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
 };
+
+export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
+  switch (modeData.mode) {
+    case "ready-for-request":
+    case "responding":
+    case "compacting":
+    case "diff-apply":
+    case "fix-json":
+      return true;
+    default:
+      return false;
+  }
+}
 
 function appendAndPersistHistory(
   session: Session,
@@ -240,15 +287,16 @@ export const useAppStore = create<UiState>((set, get) => ({
   sessionAutoNotify: false,
   notifyOnce: false,
   modeData: {
-    mode: "input" as const,
-    vimMode: "INSERT" as const,
+    mode: "ready-for-request" as const,
   },
+  vimMode: "INSERT" as const,
   runningToolCallId: null,
   history: [],
   modelOverride: null,
   quotaData: null,
   byteCount: 0,
   query: "",
+  queuedUserMessages: [],
   clearNonce: 0,
   sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
@@ -295,19 +343,14 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   input: async ({ config, query, transport, session, images }) => {
-    const userMessage: HistoryItem = {
-      type: "llm-ir",
-      ir: {
-        role: "user",
-        content: [
-          { type: "text", content: query },
-          ...(images ?? []).map(image => ({ type: "image" as const, image })),
-        ],
-      },
-    };
-
     const model = getModelFromConfig(config, get().modelOverride);
-    const history = appendAndPersistHistory(session, get().history, [userMessage], model);
+
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport, session });
   },
@@ -320,7 +363,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   clearAuthError: () => {
     if (get().modeData.mode !== "auth-error") return;
-    set({ modeData: { mode: "input", vimMode: "INSERT" } });
+    set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
   },
 
   editAndRetryFrom: (mode, _args) => {
@@ -334,7 +377,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
-        modeData: { mode: "input", vimMode: "INSERT" },
+        queuedUserMessages: [],
+        modeData: { mode: "ready-for-request" },
+        vimMode: "INSERT",
       });
       return;
     }
@@ -344,7 +389,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
-        modeData: { mode: "input", vimMode: "INSERT" },
+        queuedUserMessages: [],
+        modeData: { mode: "ready-for-request" },
+        vimMode: "INSERT",
       });
       return;
     }
@@ -355,12 +402,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: filteredHistory,
       query: textPart?.content ?? "",
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
-      modeData: { mode: "input", vimMode: "INSERT" },
+      modeData: { mode: "ready-for-request" },
+      vimMode: "INSERT",
     }));
   },
 
-  rejectTool: (toolCall, session, config) => {
+  rejectTool: (toolCall, args) => {
     const history = get().history;
 
     // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
@@ -400,10 +449,10 @@ export const useAppStore = create<UiState>((set, get) => ({
         }
       }
     }
-    const model = getModelFromConfig(config, get().modelOverride);
+    const model = getModelFromConfig(args.config, get().modelOverride);
     set({
       history: appendAndPersistHistory(
-        session,
+        args.session,
         get().history,
         [
           {
@@ -418,15 +467,19 @@ export const useAppStore = create<UiState>((set, get) => ({
         model,
       ),
       modeData: {
-        mode: "input",
-        vimMode: "INSERT",
+        mode: "ready-for-request",
       },
+      vimMode: "INSERT",
     });
+    if (get().queuedUserMessages.length > 0) {
+      get().runAgent(args);
+    }
   },
 
   abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
+    set({ queuedUserMessages: [] });
     if (modeData.mode !== "tool-call") return;
 
     /*
@@ -466,15 +519,16 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     /*
-     * If no tool is currently running, nothing else will flip the mode back to input, so do it
-     * here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool settles.
+     * If no tool is currently running, nothing else will flip the mode back to ready-for-request,
+     * so do it here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool
+     * settles.
      */
     if (runningToolCallId == null) {
       set({
         modeData: {
-          mode: "input",
-          vimMode: "INSERT",
+          mode: "ready-for-request",
         },
+        vimMode: "INSERT",
       });
     }
   },
@@ -482,10 +536,11 @@ export const useAppStore = create<UiState>((set, get) => ({
   _maybeHandleAbort: (signal: AbortSignal): boolean => {
     if (signal.aborted) {
       set({
+        queuedUserMessages: [],
         modeData: {
-          mode: "input",
-          vimMode: "INSERT",
+          mode: "ready-for-request",
         },
+        vimMode: "INSERT",
       });
       return true;
     }
@@ -494,7 +549,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   toggleMenu: () => {
     const { modeData } = get();
-    if (modeData.mode === "input") {
+    if (modeData.mode === "ready-for-request") {
       set({
         modeData: { mode: "menu" },
         preMenuModeData: modeData,
@@ -502,7 +557,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     } else if (modeData.mode === "menu") {
       const { preMenuModeData } = get();
       set({
-        modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+        modeData: preMenuModeData ?? { mode: "ready-for-request" },
         preMenuModeData: null,
       });
     }
@@ -510,7 +565,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   closeMenu: () => {
     const { preMenuModeData } = get();
     set({
-      modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+      modeData: preMenuModeData ?? { mode: "ready-for-request" },
       preMenuModeData: null,
     });
   },
@@ -523,23 +578,31 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setVimMode: (vimMode: "INSERT" | "NORMAL") => {
-    const { modeData } = get();
-    if (modeData.mode === "input") {
-      set({
-        modeData: { mode: "input", vimMode },
-      });
-    }
-  },
-
-  resetPreMenuVimMode: () => {
-    const { preMenuModeData } = get();
-    if (preMenuModeData?.mode === "input") {
-      set({ preMenuModeData: { ...preMenuModeData, vimMode: "INSERT" } });
-    }
+    set({ vimMode });
   },
 
   setQuery: query => {
     set({ query });
+  },
+
+  enqueueUserMessage: msg => {
+    set(state => ({
+      queuedUserMessages: [...state.queuedUserMessages, { ...msg, id: nextQueuedMessageId++ }],
+    }));
+  },
+
+  _appendQueuedUserMessages: (session, config) => {
+    const { queuedUserMessages: queuedMessages } = get();
+    const model = getModelFromConfig(config, get().modelOverride);
+    if (queuedMessages.length === 0) return;
+    const { query, images } = coalesceQueuedUserMessages(queuedMessages);
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
+    set({ history, lastUserPromptIndex: history.length - 1, queuedUserMessages: [] });
   },
 
   setModelOverride: (model, _session) => {
@@ -569,6 +632,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
       sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
@@ -589,9 +653,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [],
       lastUserPromptIndex: null,
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      modeData: { mode: "input", vimMode: "INSERT" },
+      modeData: { mode: "ready-for-request" },
+      vimMode: "INSERT",
       preMenuModeData: null,
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
@@ -673,6 +739,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runAgent: async ({ config, transport, session }) => {
+    get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;
@@ -830,9 +897,22 @@ export const useAppStore = create<UiState>((set, get) => ({
         history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
       });
       const finishReason = finish.reason;
-      if (finishReason.type === "abort" || finishReason.type === "needs-response") {
+      if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);
-        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        set({
+          queuedUserMessages: [],
+          modeData: { mode: "ready-for-request" },
+          vimMode: "INSERT",
+        });
+        return;
+      }
+      if (finishReason.type === "needs-response") {
+        if (get().queuedUserMessages.length > 0) {
+          await get().runAgent({ config, transport, session });
+          return;
+        }
+        get().notifyReadyForInput(config);
+        set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
         return;
       }
 

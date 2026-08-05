@@ -360,11 +360,11 @@ function filterSettings(config: Config) {
   return items;
 }
 function MainMenu() {
-  const { toggleMenu, notify, resetPreMenuVimMode } = useAppStore(
+  const { toggleMenu, notify, setVimMode } = useAppStore(
     useShallow(state => ({
       toggleMenu: state.toggleMenu,
       notify: state.notify,
-      resetPreMenuVimMode: state.resetPreMenuVimMode,
+      setVimMode: state.setVimMode,
     })),
   );
   const session = useSession();
@@ -500,7 +500,7 @@ function MainMenu() {
 
         // When switching from Emacs to Vim, default to INSERT mode
         if (!wasEnabled) {
-          resetPreMenuVimMode();
+          setVimMode("INSERT");
         }
 
         // Notify user

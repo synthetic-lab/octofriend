@@ -48,7 +48,9 @@ beforeEach(() => {
     preMenuModeData: null,
     lastUserPromptIndex: null,
     runningToolCallId: null,
-    modeData: { mode: "input", vimMode: "INSERT" },
+    queuedUserMessages: [],
+    modeData: { mode: "ready-for-request" },
+    vimMode: "INSERT",
   });
 });
 
@@ -163,7 +165,7 @@ describe("aborting a tool batch", () => {
     useAppStore.getState().abortResponse(session, config);
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 
   it("marks pending tool calls as answered when aborting a running tool", async () => {
@@ -184,7 +186,7 @@ describe("aborting a tool batch", () => {
     await running;
 
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   }, 30_000);
 
   it("marks even the running tool call as answered when exiting", async () => {
@@ -389,6 +391,7 @@ describe("tool call IDs reused across batches", () => {
   });
 
   it("rejects and skips within the current batch when IDs collide with an earlier batch", () => {
+    const transport = new LocalTransport();
     const session = createSession(process.cwd(), { kind: "local" });
     const secondBatchSecondCall = shellCall("call_1", "echo later");
     const nodes = insertHistoryItems(
@@ -436,13 +439,13 @@ describe("tool call IDs reused across batches", () => {
 
     // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip only
     // this batch's remaining call — the earlier batch's answered call_0 must not confuse it.
-    useAppStore.getState().rejectTool(secondBatchCall, session, config);
+    useAppStore.getState().rejectTool(secondBatchCall, { config, transport, session });
 
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_0: 2, // earlier output + this batch's reject marker
       call_1: 1, // this batch's skip marker
     });
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 
   it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
@@ -495,7 +498,7 @@ describe("tool call IDs reused across batches", () => {
     // The new call_0 gets its own skip marker, not silently treated as answered by the old one:
     // otherwise the aborted batch leaves a dangling tool call that Anthropic hard-400s on.
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_0: 2 });
-    expect(useAppStore.getState().modeData.mode).toBe("input");
+    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
   });
 });
 
@@ -598,4 +601,107 @@ describe("menu round-trips during a tool batch", () => {
       else process.env["CANARY_OCTO"] = prevCanary;
     }
   }, 30_000);
+});
+
+describe("message queue", () => {
+  it("coalesces queued messages into a single user message on flush", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.getState().enqueueUserMessage({ content: "one" });
+    useAppStore.getState().enqueueUserMessage({ content: "two" });
+    expect(useAppStore.getState().history).toHaveLength(0);
+
+    useAppStore.getState()._appendQueuedUserMessages(session, config);
+
+    const { history, queuedUserMessages: queuedMessages } = useAppStore.getState();
+    expect(queuedMessages).toHaveLength(0);
+    expect(history).toHaveLength(1);
+    const item = history[0];
+    if (item.type !== "llm-ir" || item.ir.role !== "user") throw new Error("expected user IR");
+    expect(item.ir.content).toEqual([{ type: "text", content: "one\ntwo" }]);
+  });
+
+  it("clears the queue on abort without persisting", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.getState().enqueueUserMessage({ content: "one" });
+    useAppStore.getState().abortResponse(session, config);
+    expect(useAppStore.getState().queuedUserMessages).toHaveLength(0);
+    expect(useAppStore.getState().history).toHaveLength(0);
+  });
+});
+
+describe("edit and retry", () => {
+  const transport = new LocalTransport();
+
+  function userNode(content: string, nodeId: number): HistoryNode {
+    return {
+      type: "llm-ir",
+      nodeId,
+      modelJson: testModelJson,
+      ir: {
+        role: "user",
+        content: [{ type: "text", content }],
+      },
+    };
+  }
+
+  it("discards queued messages when rewinding to edit the last prompt", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [userNode("original prompt", 1), assistantNode([], 2)],
+      lastUserPromptIndex: 0,
+      queuedUserMessages: [
+        { id: 1, content: "queued one" },
+        { id: 2, content: "queued two" },
+      ],
+      modeData: { mode: "request-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("original prompt");
+    // The last user prompt and the failed response after it are both rewound past.
+    expect(state.history).toHaveLength(0);
+  });
+
+  it("discards queued messages even when there is no last prompt to rewind to", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [],
+      lastUserPromptIndex: null,
+      queuedUserMessages: [{ id: 1, content: "queued one" }],
+      modeData: { mode: "request-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("");
+  });
+
+  it("discards queued messages when rewinding from a compaction error", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    useAppStore.setState({
+      history: [
+        userNode("original prompt", 1),
+        { type: "compaction-failed", nodeId: 2, modelJson: testModelJson },
+      ],
+      lastUserPromptIndex: 0,
+      queuedUserMessages: [{ id: 1, content: "queued one" }],
+      modeData: { mode: "compaction-error", error: "boom", curlCommand: null },
+    });
+
+    useAppStore.getState().editAndRetryFrom("compaction-error", { config, transport, session });
+
+    const state = useAppStore.getState();
+    expect(state.queuedUserMessages).toHaveLength(0);
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.query).toBe("original prompt");
+    // The compaction-failed marker and the last user prompt are both rewound past.
+    expect(state.history).toHaveLength(0);
+  });
 });
