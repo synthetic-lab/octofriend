@@ -9,6 +9,8 @@ import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
+import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
+import { isDeepStrictEqual } from "node:util";
 import { registry } from "antipattern";
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
@@ -796,9 +798,41 @@ function readKeys() {
 
 export function getModelFromConfig(config: Config, modelOverride: string | null) {
   if (modelOverride == null) return config.models[0];
-  const matching = config.models.find(m => m.nickname === modelOverride);
-  if (matching) return matching;
-  return config.models[0];
+  return matchModelFromConfig(config, modelOverride) ?? config.models[0];
+}
+
+/*
+ * Resolves a persisted versioned model JSON blob (see session-history/model-json.ts) back to a
+ * model in the current config, trying progressively looser matches:
+ *   1. exact serialized match;
+ *   2. fuzzy match on baseUrl, model, and auth fields (e.g. the model was renamed);
+ *   3. loose match on just baseUrl and model (e.g. the model was re-authenticated).
+ * Returns null if no tier matches.
+ */
+export function matchModelFromConfig(config: Config, modelJson: string): ModelConfig | null {
+  const exact = config.models.find(model => serializeModelJson(model) === modelJson);
+  if (exact) return exact;
+
+  const persisted = tryDeserializeModelJson(modelJson);
+  if (persisted == null) return null;
+  const fuzzy = config.models.find(candidate => fuzzyMatchModel(candidate, persisted));
+  if (fuzzy) return fuzzy;
+  return config.models.find(candidate => looseMatchModel(candidate, persisted)) ?? null;
+}
+
+function fuzzyMatchModel(candidate: ModelConfig, persisted: ModelConfig): boolean {
+  if (!looseMatchModel(candidate, persisted)) return false;
+  return isDeepStrictEqual(getAuthForModel(candidate), getAuthForModel(persisted));
+}
+
+function looseMatchModel(candidate: ModelConfig, persisted: ModelConfig): boolean {
+  if (candidate.model !== persisted.model) return false;
+  return modelBaseUrl(candidate) === modelBaseUrl(persisted);
+}
+
+function modelBaseUrl(model: ModelConfig): string | null {
+  if (model.type === "codex") return null;
+  return model.baseUrl;
 }
 
 export async function readConfig(filePath: string): Promise<Config> {

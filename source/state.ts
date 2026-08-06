@@ -1,6 +1,7 @@
 import {
   AuthError,
   Config,
+  ModelConfig,
   useConfig,
   getModelFromConfig,
   readAuthForModel,
@@ -13,9 +14,11 @@ import {
   deleteHistorySubtree,
   HistoryNode,
   insertHistoryItems,
+  latestModelJson,
   HistoryItem,
   Session,
 } from "./session-history/index.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
@@ -38,6 +41,38 @@ export type RunArgs = {
   transport: Transport;
   session: Session;
 };
+
+export type QueuedUserMessage = {
+  id: number;
+  content: string;
+  images?: ImageInfo[];
+};
+
+let nextQueuedMessageId = 1;
+
+export function coalesceQueuedUserMessages(messages: readonly QueuedUserMessage[]): {
+  query: string;
+  images?: ImageInfo[];
+} {
+  const images = messages.flatMap(m => m.images ?? []);
+  return {
+    query: messages.map(m => m.content).join("\n"),
+    ...(images.length > 0 ? { images } : {}),
+  };
+}
+
+function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
+  return {
+    type: "llm-ir",
+    ir: {
+      role: "user",
+      content: [
+        { type: "text", content: query },
+        ...(images ?? []).map(image => ({ type: "image" as const, image })),
+      ],
+    },
+  };
+}
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
 
@@ -72,8 +107,7 @@ export type UiState = {
   notifyOnce: boolean;
   modeData:
     | {
-        mode: "input";
-        vimMode: "NORMAL" | "INSERT";
+        mode: "ready-for-request";
       }
     | {
         mode: "responding";
@@ -141,9 +175,13 @@ export type UiState = {
   modelOverride: string | null;
   quotaData: QuotaData | null;
   byteCount: number;
+  vimMode: "NORMAL" | "INSERT";
   query: string;
+  attachedImages: ImageInfo[];
+  queuedUserMessages: readonly QueuedUserMessage[];
   readonly history: readonly HistoryNode[];
   clearNonce: number;
+  sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
@@ -152,15 +190,19 @@ export type UiState = {
   setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCall: ToolCallRequest, session: Session) => void;
-  abortResponse: (session: Session, opts?: { exiting?: boolean }) => void;
+  rejectTool: (toolCall: ToolCallRequest, args: RunArgs) => void;
+  abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
-  resetPreMenuVimMode: () => void;
-  setModelOverride: (m: string, session: Session) => void;
+  setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
+  addAttachedImage: (image: ImageInfo) => void;
+  removeLastAttachedImage: () => void;
+  clearAttachedImages: () => void;
+  enqueueUserMessage: (msg: Omit<QueuedUserMessage, "id">) => void;
+  _appendQueuedUserMessages: (session: Session, config: Config) => void;
   retryFrom: (
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
@@ -168,7 +210,7 @@ export type UiState = {
   cancelRetry: () => void;
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
-  notify: (notif: string, session: Session) => void;
+  notify: (notif: string, session: Session, config: Config) => void;
   addToWhitelist: (whitelistKey: string) => Promise<void>;
   isWhitelisted: (whitelistKey: string) => Promise<boolean>;
   hydrateSession: (history: readonly HistoryNode[]) => void;
@@ -178,18 +220,58 @@ export type UiState = {
   _runAgentAttempt: (args: RunArgs) => Promise<void>;
 };
 
+export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
+  switch (modeData.mode) {
+    case "ready-for-request":
+    case "responding":
+    case "compacting":
+    case "diff-apply":
+    case "fix-json":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function appendAndPersistHistory(
   session: Session,
   prevHistory: readonly HistoryNode[],
   itemsToInsert: HistoryItem[],
+  model: ModelConfig,
 ): HistoryNode[] {
   const parentNodeId = prevHistory.at(-1)?.nodeId ?? null;
-  return [...prevHistory, ...insertHistoryItems(session, parentNodeId, itemsToInsert)];
+  return [
+    ...prevHistory,
+    ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
+  ];
 }
 
-export function answeredToolCallIds(history: readonly HistoryNode[]): Set<string> {
+/*
+ * Finds the index of the current batch's request message: the most recent assistant IR that
+ * requested any of the batch's tool calls.
+ *
+ * Tool call IDs are only guaranteed unique within a single response — some providers recycle
+ * IDs across turns (e.g. per-response counters like call_0), and provider-generated IDs must
+ * never be rewritten. So "has this request been answered?" can only be asked relative to the
+ * current batch: answers appended before this index belong to earlier batches that happen to
+ * share IDs, and must not count.
+ */
+function batchRequestIndex(history: readonly HistoryNode[], toolReqs: ToolCallRequest[]): number {
+  const ids = new Set(toolReqs.map(req => req.toolCallId));
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i];
+    if (item.type !== "llm-ir") continue;
+    const ir = item.ir;
+    if (ir.role !== "assistant") continue;
+    if ((ir.toolCalls ?? []).some(call => ids.has(call.toolCallId))) return i;
+  }
+  return -1;
+}
+
+export function answeredToolCallIds(history: readonly HistoryNode[], afterIndex = -1): Set<string> {
   const answered = new Set<string>();
-  for (const item of history) {
+  for (let i = afterIndex + 1; i < history.length; i++) {
+    const item = history[i];
     if (item.type !== "llm-ir") continue;
     const id = answeredToolCallId(item.ir);
     if (id != null) answered.add(id);
@@ -215,7 +297,7 @@ export function nextToolAction(
   runningToolCallId: string | null,
   history: readonly HistoryNode[],
 ): ToolAction {
-  const answered = answeredToolCallIds(history);
+  const answered = answeredToolCallIds(history, batchRequestIndex(history, toolReqs));
   const unanswered = toolReqs.filter(
     req => req.type === "tool-call" && !answered.has(req.toolCallId),
   );
@@ -234,16 +316,19 @@ export const useAppStore = create<UiState>((set, get) => ({
   sessionAutoNotify: false,
   notifyOnce: false,
   modeData: {
-    mode: "input" as const,
-    vimMode: "INSERT" as const,
+    mode: "ready-for-request" as const,
   },
+  vimMode: "INSERT" as const,
   runningToolCallId: null,
   history: [],
   modelOverride: null,
   quotaData: null,
   byteCount: 0,
   query: "",
+  attachedImages: [],
+  queuedUserMessages: [],
   clearNonce: 0,
+  sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
   whitelist: new Set<string>(),
 
@@ -288,18 +373,14 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   input: async ({ config, query, transport, session, images }) => {
-    const userMessage: HistoryItem = {
-      type: "llm-ir",
-      ir: {
-        role: "user",
-        content: [
-          { type: "text", content: query },
-          ...(images ?? []).map(image => ({ type: "image" as const, image })),
-        ],
-      },
-    };
+    const model = getModelFromConfig(config, get().modelOverride);
 
-    const history = appendAndPersistHistory(session, get().history, [userMessage]);
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
     set({ history, lastUserPromptIndex: history.length - 1 });
     await get().runAgent({ config, transport, session });
   },
@@ -326,7 +407,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   clearAuthError: () => {
     if (get().modeData.mode !== "auth-error") return;
-    set({ modeData: { mode: "input", vimMode: "INSERT" } });
+    set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
   },
 
   editAndRetryFrom: (mode, args) => {
@@ -340,7 +421,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
-        modeData: { mode: "input", vimMode: "INSERT" },
+        queuedUserMessages: [],
+        modeData: { mode: "ready-for-request" },
+        vimMode: "INSERT",
       });
       return;
     }
@@ -350,7 +433,9 @@ export const useAppStore = create<UiState>((set, get) => ({
       set({
         query: "",
         byteCount: 0,
-        modeData: { mode: "input", vimMode: "INSERT" },
+        queuedUserMessages: [],
+        modeData: { mode: "ready-for-request" },
+        vimMode: "INSERT",
       });
       return;
     }
@@ -366,12 +451,14 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: filteredHistory,
       query: textPart?.content ?? "",
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
-      modeData: { mode: "input", vimMode: "INSERT" },
+      modeData: { mode: "ready-for-request" },
+      vimMode: "INSERT",
     }));
   },
 
-  rejectTool: (toolCall, session) => {
+  rejectTool: (toolCall, args) => {
     const history = get().history;
 
     // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
@@ -411,27 +498,37 @@ export const useAppStore = create<UiState>((set, get) => ({
         }
       }
     }
+    const model = getModelFromConfig(args.config, get().modelOverride);
     set({
-      history: appendAndPersistHistory(session, get().history, [
-        {
-          type: "llm-ir",
-          ir: {
-            role: "tool-reject",
-            toolCall,
+      history: appendAndPersistHistory(
+        args.session,
+        get().history,
+        [
+          {
+            type: "llm-ir",
+            ir: {
+              role: "tool-reject",
+              toolCall,
+            },
           },
-        },
-        ...skippedCalls,
-      ]),
+          ...skippedCalls,
+        ],
+        model,
+      ),
       modeData: {
-        mode: "input",
-        vimMode: "INSERT",
+        mode: "ready-for-request",
       },
+      vimMode: "INSERT",
     });
+    if (get().queuedUserMessages.length > 0) {
+      get().runAgent(args);
+    }
   },
 
-  abortResponse: (session: Session, opts?: { exiting?: boolean }) => {
+  abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
+    set({ queuedUserMessages: [] });
     if (modeData.mode !== "tool-call") return;
 
     /*
@@ -442,7 +539,10 @@ export const useAppStore = create<UiState>((set, get) => ({
      * output when it settles — but when the process is exiting it will never settle, so mark
      * it as skipped too.
      */
-    const answered = answeredToolCallIds(get().history);
+    const answered = answeredToolCallIds(
+      get().history,
+      batchRequestIndex(get().history, modeData.toolReqs),
+    );
 
     const skipped: HistoryItem[] = [];
     for (const req of modeData.toolReqs) {
@@ -463,19 +563,21 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     if (skipped.length > 0) {
-      set({ history: appendAndPersistHistory(session, get().history, skipped) });
+      const model = getModelFromConfig(config, get().modelOverride);
+      set({ history: appendAndPersistHistory(session, get().history, skipped, model) });
     }
 
     /*
-     * If no tool is currently running, nothing else will flip the mode back to input, so do it
-     * here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool settles.
+     * If no tool is currently running, nothing else will flip the mode back to ready-for-request,
+     * so do it here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool
+     * settles.
      */
     if (runningToolCallId == null) {
       set({
         modeData: {
-          mode: "input",
-          vimMode: "INSERT",
+          mode: "ready-for-request",
         },
+        vimMode: "INSERT",
       });
     }
   },
@@ -483,10 +585,11 @@ export const useAppStore = create<UiState>((set, get) => ({
   _maybeHandleAbort: (signal: AbortSignal): boolean => {
     if (signal.aborted) {
       set({
+        queuedUserMessages: [],
         modeData: {
-          mode: "input",
-          vimMode: "INSERT",
+          mode: "ready-for-request",
         },
+        vimMode: "INSERT",
       });
       return true;
     }
@@ -495,7 +598,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   toggleMenu: () => {
     const { modeData } = get();
-    if (modeData.mode === "input") {
+    if (modeData.mode === "ready-for-request") {
       set({
         modeData: { mode: "menu" },
         preMenuModeData: modeData,
@@ -503,7 +606,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     } else if (modeData.mode === "menu") {
       const { preMenuModeData } = get();
       set({
-        modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+        modeData: preMenuModeData ?? { mode: "ready-for-request" },
         preMenuModeData: null,
       });
     }
@@ -511,7 +614,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   closeMenu: () => {
     const { preMenuModeData } = get();
     set({
-      modeData: preMenuModeData ?? { mode: "input", vimMode: "INSERT" },
+      modeData: preMenuModeData ?? { mode: "ready-for-request" },
       preMenuModeData: null,
     });
   },
@@ -524,46 +627,75 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   setVimMode: (vimMode: "INSERT" | "NORMAL") => {
-    const { modeData } = get();
-    if (modeData.mode === "input") {
-      set({
-        modeData: { mode: "input", vimMode },
-      });
-    }
-  },
-
-  resetPreMenuVimMode: () => {
-    const { preMenuModeData } = get();
-    if (preMenuModeData?.mode === "input") {
-      set({ preMenuModeData: { ...preMenuModeData, vimMode: "INSERT" } });
-    }
+    set({ vimMode });
   },
 
   setQuery: query => {
     set({ query });
   },
 
-  setModelOverride: (model, _session) => {
-    set({ modelOverride: model });
+  addAttachedImage: image => {
+    set(state => ({ attachedImages: [...state.attachedImages, image] }));
   },
 
-  notify: (notif, session) => {
+  removeLastAttachedImage: () => {
+    set(state => ({ attachedImages: state.attachedImages.slice(0, -1) }));
+  },
+
+  clearAttachedImages: () => {
+    set({ attachedImages: [] });
+  },
+
+  enqueueUserMessage: msg => {
+    set(state => ({
+      queuedUserMessages: [...state.queuedUserMessages, { ...msg, id: nextQueuedMessageId++ }],
+    }));
+  },
+
+  _appendQueuedUserMessages: (session, config) => {
+    const { queuedUserMessages: queuedMessages } = get();
+    const model = getModelFromConfig(config, get().modelOverride);
+    if (queuedMessages.length === 0) return;
+    const { query, images } = coalesceQueuedUserMessages(queuedMessages);
+    const history = appendAndPersistHistory(
+      session,
+      get().history,
+      [userMessageItem(query, images)],
+      model,
+    );
+    set({ history, lastUserPromptIndex: history.length - 1, queuedUserMessages: [] });
+  },
+
+  setModelOverride: (model, _session) => {
+    set({ modelOverride: serializeModelJson(model) });
+  },
+
+  notify: (notif, session, config) => {
+    const model = getModelFromConfig(config, get().modelOverride);
     set({
-      history: appendAndPersistHistory(session, get().history, [
-        {
-          type: "notification",
-          content: notif,
-        },
-      ]),
+      history: appendAndPersistHistory(
+        session,
+        get().history,
+        [
+          {
+            type: "notification",
+            content: notif,
+          },
+        ],
+        model,
+      ),
     });
   },
 
   hydrateSession: history => {
     set(state => ({
       history,
+      modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
+      sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
       // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
       runningToolCallId: null,
@@ -582,9 +714,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: [],
       lastUserPromptIndex: null,
       byteCount: 0,
+      queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
-      modeData: { mode: "input", vimMode: "INSERT" },
+      modeData: { mode: "ready-for-request" },
+      vimMode: "INSERT",
       preMenuModeData: null,
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
@@ -622,28 +756,39 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const tools = await loadTools(transport, abortController.signal, config);
 
-    const result = await runTool(abortController.signal, transport, tools, toolReq, config);
+    const model = getModelFromConfig(config, get().modelOverride);
+    const result = await runTool(abortController.signal, transport, tools, toolReq, config, model);
     if (!result.success) {
       set({
-        history: appendAndPersistHistory(session, get().history, [
-          {
-            type: "llm-ir",
-            ir: {
-              role: "tool-runtime-error",
-              error: result.error,
-              toolCall: toolReq,
+        history: appendAndPersistHistory(
+          session,
+          get().history,
+          [
+            {
+              type: "llm-ir",
+              ir: {
+                role: "tool-runtime-error",
+                error: result.error,
+                toolCall: toolReq,
+              },
             },
-          },
-        ]),
+          ],
+          model,
+        ),
       });
     } else {
       set({
-        history: appendAndPersistHistory(session, get().history, [
-          {
-            type: "llm-ir",
-            ir: toolRunResultToIR(result.data, toolReq),
-          },
-        ]),
+        history: appendAndPersistHistory(
+          session,
+          get().history,
+          [
+            {
+              type: "llm-ir",
+              ir: toolRunResultToIR(result.data, toolReq),
+            },
+          ],
+          model,
+        ),
       });
     }
 
@@ -655,6 +800,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   runAgent: async (args, opts) => {
+    get()._appendQueuedUserMessages(args.session, args.config);
     let attempt = opts?.attempt ?? 0;
     while (true) {
       await get()._runAgentAttempt(args);
@@ -803,7 +949,7 @@ export const useAppStore = create<UiState>((set, get) => ({
               ir: event.checkpoint,
             };
             set({
-              history: appendAndPersistHistory(session, historyCopy, [checkpointItem]),
+              history: appendAndPersistHistory(session, historyCopy, [checkpointItem], model),
             });
           },
 
@@ -832,19 +978,37 @@ export const useAppStore = create<UiState>((set, get) => ({
           retryTool: event => {
             throttle.flush();
             set({
-              history: appendAndPersistHistory(session, historyCopy, outputToHistory(event.irs)),
+              history: appendAndPersistHistory(
+                session,
+                historyCopy,
+                outputToHistory(event.irs),
+                model,
+              ),
             });
           },
         },
       });
       throttle.flush();
       set({
-        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs)),
+        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
       });
       const finishReason = finish.reason;
-      if (finishReason.type === "abort" || finishReason.type === "needs-response") {
+      if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);
-        set({ modeData: { mode: "input", vimMode: "INSERT" } });
+        set({
+          queuedUserMessages: [],
+          modeData: { mode: "ready-for-request" },
+          vimMode: "INSERT",
+        });
+        return;
+      }
+      if (finishReason.type === "needs-response") {
+        if (get().queuedUserMessages.length > 0) {
+          await get().runAgent({ config, transport, session });
+          return;
+        }
+        get().notifyReadyForInput(config);
+        set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
         return;
       }
 
@@ -887,11 +1051,16 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: finishReason.requestError,
             curlCommand: finishReason.curl,
           },
-          history: appendAndPersistHistory(session, get().history, [
-            {
-              type: "compaction-failed",
-            },
-          ]),
+          history: appendAndPersistHistory(
+            session,
+            get().history,
+            [
+              {
+                type: "compaction-failed",
+              },
+            ],
+            model,
+          ),
         });
         return;
       }

@@ -5,11 +5,15 @@ import os from "os";
 import path from "path";
 import {
   configDeps,
+  getModelFromConfig,
   hasExistingAuthForBaseUrl,
+  matchModelFromConfig,
   readAuthForModel,
   readConfig,
   type Config,
+  type ModelConfig,
 } from "./config.ts";
+import { serializeModelJson } from "./session-history/model-json.ts";
 
 const ENV_NAME = "OCTO_TEST_AUTH";
 const MISSING_ENV_NAME = "OCTO_TEST_MISSING_AUTH";
@@ -154,3 +158,89 @@ async function writeConfigFixture(config: unknown): Promise<string> {
   await fs.writeFile(configPath, JSON.stringify(config));
   return configPath;
 }
+
+describe("matchModelFromConfig", () => {
+  const smartModel: ModelConfig = {
+    nickname: "smart-model",
+    baseUrl: "https://example.test/v1",
+    model: "smart",
+    context: 128_000,
+    auth: { type: "env", name: ENV_NAME },
+  };
+  const fastModel: ModelConfig = {
+    nickname: "fast-model",
+    baseUrl: "https://example.test/v1",
+    model: "fast",
+    context: 32_000,
+  };
+  const config: Config = {
+    yourName: "test",
+    models: [smartModel, fastModel],
+  };
+
+  it("returns the default model when there is no override", () => {
+    expect(getModelFromConfig(config, null)).toBe(smartModel);
+  });
+
+  it("exactly matches an unchanged serialized model", () => {
+    expect(matchModelFromConfig(config, serializeModelJson(fastModel))).toBe(fastModel);
+  });
+
+  it("fuzzy-matches on baseUrl, model, and auth when other fields changed", () => {
+    const renamed: ModelConfig = {
+      ...smartModel,
+      nickname: "renamed-smart-model",
+      context: 64_000,
+      reasoning: "high",
+    };
+    expect(matchModelFromConfig(config, serializeModelJson(renamed))).toBe(smartModel);
+  });
+
+  it("treats legacy apiEnvVar as equivalent to env auth", () => {
+    const legacy: ModelConfig = {
+      nickname: "smart-model",
+      baseUrl: "https://example.test/v1",
+      model: "smart",
+      context: 128_000,
+      apiEnvVar: ENV_NAME,
+    };
+    expect(matchModelFromConfig(config, serializeModelJson(legacy))).toBe(smartModel);
+  });
+
+  it("loosely matches on baseUrl and model when auth fields differ", () => {
+    const reauthed: ModelConfig = {
+      ...smartModel,
+      auth: { type: "env", name: MISSING_ENV_NAME },
+    };
+    expect(matchModelFromConfig(config, serializeModelJson(reauthed))).toBe(smartModel);
+  });
+
+  it("does not match when the base URL differs", () => {
+    const moved: ModelConfig = {
+      ...smartModel,
+      baseUrl: "https://elsewhere.test/v1",
+    };
+    expect(matchModelFromConfig(config, serializeModelJson(moved))).toBeNull();
+  });
+
+  it("does not match when the model string differs", () => {
+    const swapped: ModelConfig = {
+      ...smartModel,
+      model: "some-other-model",
+    };
+    expect(matchModelFromConfig(config, serializeModelJson(swapped))).toBeNull();
+  });
+
+  it("falls back to the default model when nothing matches", () => {
+    const moved: ModelConfig = {
+      ...smartModel,
+      baseUrl: "https://elsewhere.test/v1",
+    };
+    expect(getModelFromConfig(config, serializeModelJson(moved))).toBe(smartModel);
+  });
+
+  it("returns null for an unparseable override", () => {
+    expect(matchModelFromConfig(config, "not json")).toBeNull();
+    expect(getModelFromConfig(config, "not json")).toBe(smartModel);
+  });
+});

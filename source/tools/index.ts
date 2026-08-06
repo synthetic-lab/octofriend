@@ -1,7 +1,8 @@
 import toolMap from "./tool-defs/index.ts";
-import { Config } from "../config.ts";
+import { Config, ModelConfig } from "../config.ts";
 import { Transport } from "../transports/transport-common.ts";
 import { Result, ok, err } from "../libocto/result.ts";
+import { estimateTokens } from "../ir/count-ir-tokens.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,
@@ -56,12 +57,16 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
 
 export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = ["shell"];
 
+// Cap tool outputs so one huge result can't push history past the context limit and break autocompaction
+export const MAX_TOOL_OUTPUT_CONTEXT_FRACTION = 0.2;
+
 export async function runTool(
   abortSignal: AbortSignal,
   transport: Transport,
   loaded: Partial<LoadedTools>,
   call: ToolCall,
   config: Config,
+  model: ModelConfig,
 ): Promise<Result<ToolRunResult, string>> {
   const def = lookup(loaded, call);
   if (!def.success) return def;
@@ -75,7 +80,54 @@ export async function runTool(
     },
     data: config,
   });
+  if (!output.success) return output;
+
+  const maxTokens = Math.floor(model.context * MAX_TOOL_OUTPUT_CONTEXT_FRACTION);
+  const tokens = toolOutputTokens(output.data);
+  if (tokens >= maxTokens) {
+    const preview = outputPreview(output.data, PREVIEW_CHARS);
+    return err(
+      `Tool output was too large: approximately ${tokens} tokens, which is ` +
+        `${MAX_TOOL_OUTPUT_CONTEXT_FRACTION * 100}% or more of the model's ` +
+        `${model.context}-token context window. The output was discarded to protect the ` +
+        `context window. Retry with a more targeted approach: page through the file with ` +
+        `partial-read using offset/limit, narrow searches with tighter patterns or ` +
+        `maxResults, or limit shell output (e.g. pipe through head/tail/grep). Before it ` +
+        `was discarded, the first ${PREVIEW_CHARS} characters were preserved so you can ` +
+        `inspect them; here they are:\n${preview}`,
+    );
+  }
   return output;
+}
+
+const PREVIEW_CHARS = 200;
+
+function outputPreview(result: ToolRunResult, maxChars: number): string {
+  let text = "";
+  if (result.type === "output") {
+    for (const part of result.content) {
+      if (part.type !== "text") continue;
+      text += part.content.slice(0, maxChars - text.length);
+      if (text.length >= maxChars) break;
+    }
+  } else if (result.type === "custom-ir") {
+    text = result.data.content.slice(0, maxChars);
+  }
+  return text;
+}
+
+function toolOutputTokens(result: ToolRunResult): number {
+  if (result.type === "output") {
+    let tokens = 0;
+    for (const part of result.content) {
+      if (part.type === "text") tokens += estimateTokens(part.content);
+    }
+    return tokens;
+  }
+  if (result.type === "custom-ir") {
+    return estimateTokens(result.data.content);
+  }
+  return 0;
 }
 
 export async function validateTool(

@@ -15,6 +15,10 @@ interface Props {
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
+  attachedImages: ImageInfo[];
+  addAttachedImage: (image: ImageInfo) => void;
+  removeLastAttachedImage: () => void;
+  clearAttachedImages: () => void;
   onSubmit: (text: string, images: ImageInfo[]) => any;
   vimEnabled?: boolean;
   vimMode?: "NORMAL" | "INSERT";
@@ -22,17 +26,16 @@ interface Props {
   modalities?: MultimodalConfig;
 }
 export const MultimediaInput = (props: Props) => {
-  const [attachedImages, setAttachedImages] = useState<ImageInfo[]>([]);
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
   useCtrlC(() => {
     if (props.vimEnabled) return;
-    setAttachedImages([]);
+    props.clearAttachedImages();
     setErrorMessages([]);
   });
   const handleRemoveLastImage = useCallback(() => {
-    setAttachedImages(prev => prev.slice(0, -1));
-  }, []);
+    props.removeLastAttachedImage();
+  }, [props.removeLastAttachedImage]);
   const handleImageFilesAttached = useCallback(
     async (files: PaintFile[]) => {
       if (!props.modalities?.image?.enabled) {
@@ -47,7 +50,7 @@ export const MultimediaInput = (props: Props) => {
         try {
           const image = await loadImageFromPaintFile(file);
           const imageCheck = canDisplayImage(props.modalities, image);
-          if (imageCheck.ok) setAttachedImages(prev => [...prev, image]);
+          if (imageCheck.ok) props.addAttachedImage(image);
           else setErrorMessages(prev => [...prev, imageCheck.reason]);
         } catch (error) {
           setErrorMessages(prev => [
@@ -59,15 +62,15 @@ export const MultimediaInput = (props: Props) => {
         }
       }
     },
-    [props.modalities],
+    [props.modalities, props.addAttachedImage],
   );
   const handleSubmit = useCallback(() => {
-    if (props.value.trim() || attachedImages.length > 0) {
-      props.onSubmit(props.value, attachedImages);
-      setAttachedImages([]);
+    if (props.value.trim() || props.attachedImages.length > 0) {
+      props.onSubmit(props.value, props.attachedImages);
+      props.clearAttachedImages();
       setErrorMessages([]);
     }
-  }, [props, attachedImages]);
+  }, [props]);
   return (
     <TerminalFlex
       style={{
@@ -93,7 +96,7 @@ export const MultimediaInput = (props: Props) => {
         </TerminalFlex>
       ))}
       <InputWithHistory
-        attachedImages={attachedImages}
+        attachedImages={props.attachedImages}
         showLoadingImageBadge={showLoadingImageBadge}
         inputHistory={props.inputHistory}
         value={props.value}

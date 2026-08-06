@@ -17,6 +17,7 @@ import type {
 } from "./compiler-interface.ts";
 import { compilerUsage, defineCompiler } from "./compiler-interface.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
+import { answeredToolCallId } from "../llm-ir.ts";
 import type {
   Agent,
   AssistantMessage,
@@ -146,36 +147,71 @@ function responseToolOutput(
   return output;
 }
 
-async function toResponseInput<A extends Agent<any, any, any>>(
+export async function toResponseInput<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
   modalities?: CompilerModalities,
 ): Promise<ResponseInput> {
-  const items: ResponseInput = [];
-  for (const ir of messages) {
-    items.push(...responseInputFromIr(ir, modalities));
-  }
-
   /*
    * The OpenAI Responses API mandates that all function calls *must* have function call outputs
    * associated with them on requests, unlike other APIs which allow you to simply leave them out if
-   * you want to (e.g. if you didn't run them). To normalize this behavior, we insert "Aborted"
-   * function call outputs that are synthesized if the LLMIR has no tool output for the tool call;
-   * this can happen e.g. if Octo crashed.
+   * you want to (e.g. if you didn't run them). To normalize this behavior, we synthesize skip
+   * outputs for any tool call with no tool-output-shaped IR answering it; this can happen e.g. if
+   * Octo crashed.
+   *
+   * Call IDs are only unique within a single response: providers may recycle them across turns,
+   * and provider-generated IDs must never be rewritten. So matching walks backwards instead of
+   * keying a global set by ID: tool outputs accumulate into a pending list until the assistant IR
+   * that requested them. That assistant emits its outputs in tool-call order — real outputs where
+   * they exist, synthesized skips where they don't — and the list resets, so answers can never
+   * leak across batches and a stale output from an earlier turn can't suppress synthesis for a
+   * later, genuinely unanswered call that happens to share the ID.
    */
-  const answeredCalls = new Set<string>();
-  for (const item of items) {
-    if (item.type === "function_call_output") answeredCalls.add(item.call_id);
-  }
-
-  const output: ResponseInput = [];
-  for (const item of items) {
-    output.push(item);
-    if (item.type === "function_call" && !answeredCalls.has(item.call_id)) {
-      output.push({ type: "function_call_output", call_id: item.call_id, output: "Aborted" });
+  const withSynthesized: Array<CompilerIR<A>> = [];
+  let pendingOutputs: Array<CompilerIR<A>> = [];
+  const dropOrphanOutputs = () => {
+    if (pendingOutputs.length === 0) return;
+    if (process.env["CANARY_OCTO"] === "1") {
+      throw new Error("Canary build error: tool output IRs with no originating tool call");
+    }
+    pendingOutputs = [];
+  };
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const ir = messages[i];
+    if (ir.role === "assistant") {
+      const outputsInCallOrder: Array<CompilerIR<A>> = [];
+      for (const toolCall of ir.toolCalls ?? []) {
+        const matchIndex = pendingOutputs.findIndex(
+          pending => answeredToolCallId(pending) === toolCall.toolCallId,
+        );
+        if (matchIndex >= 0) {
+          outputsInCallOrder.push(...pendingOutputs.splice(matchIndex, 1));
+        } else if (toolCall.type === "tool-call") {
+          outputsInCallOrder.push({
+            role: "tool-skip-output",
+            toolCall,
+            reason: "Aborted",
+          });
+        }
+      }
+      dropOrphanOutputs();
+      withSynthesized.unshift(ir, ...outputsInCallOrder);
+      continue;
+    }
+    if (answeredToolCallId(ir) != null) {
+      // Walking backwards, so unshift to keep the pending list in original (forward) order.
+      pendingOutputs.unshift(ir);
+    } else {
+      withSynthesized.unshift(ir);
     }
   }
+  dropOrphanOutputs();
 
-  return output;
+  const items: ResponseInput = [];
+  for (const ir of withSynthesized) {
+    items.push(...responseInputFromIr(ir, modalities));
+  }
+
+  return items;
 }
 
 function responseInputFromIr<A extends Agent<any, any, any>>(

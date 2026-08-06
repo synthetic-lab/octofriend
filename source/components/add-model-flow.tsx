@@ -683,9 +683,7 @@ const nickname = fullFlow
           prompt="Nickname:"
           defaultValue={defaultNickname}
           parse={val => val}
-          validate={() => ({
-            valid: true,
-          })}
+          validate={() => ({ valid: true })}
           onSubmit={nickname =>
             router.context({
               ...props,

@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import OpenAI from "openai";
 import { octoAgent } from "../../ir/octo-ir.ts";
 import type { Transport } from "../../transports/transport-common.ts";
-import { runResponsesAgent } from "./responses.ts";
+import { runResponsesAgent, toResponseInput } from "./responses.ts";
 import {
   normalizeOpenAIStrictFunctionArguments,
   openAIStrictFunctionParameters,
 } from "./responses.ts";
+import { compilerUsage } from "./compiler-interface.ts";
+import type { LoweredIR } from "../llm-ir.ts";
+import type { ToolCall } from "../tool-def.ts";
+import type toolMap from "../../tools/tool-defs/index.ts";
 
 describe("openAIStrictFunctionParameters", () => {
   it("closes object schemas for OpenAI strict function calling", () => {
@@ -177,6 +181,126 @@ describe("runResponsesAgent", () => {
         input: { cached: 0, uncached: 1, total: 1 },
         output: 1,
       });
+    }
+  });
+});
+
+type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
+type Ir = LoweredIR<typeof toolMap>;
+
+function shellCall(id: string, cmd: string): ShellToolCall {
+  return {
+    type: "tool-call",
+    name: "shell",
+    toolCallId: id,
+    original: { cmd, timeout: 60_000 },
+    parsed: { cmd, timeout: 60_000 },
+  };
+}
+
+function assistantWith(calls: ShellToolCall[]): Ir {
+  return {
+    role: "assistant",
+    content: "On it.",
+    usage: compilerUsage(0, 0),
+    toolCalls: calls,
+  };
+}
+
+function outputFor(call: ShellToolCall, output = "done"): Ir {
+  return {
+    role: "tool-output",
+    toolCall: call,
+    content: [{ type: "text", content: output }],
+  };
+}
+
+type TraceEntry =
+  | { kind: "call"; callId: string }
+  | { kind: "output"; callId: string; output: string }
+  | { kind: "other" };
+
+async function trace(messages: Ir[]): Promise<TraceEntry[]> {
+  const input = await toResponseInput<typeof octoAgent>(messages);
+  return input.map(item => {
+    if (item.type === "function_call") {
+      return { kind: "call", callId: item.call_id };
+    }
+    if (item.type === "function_call_output") {
+      return { kind: "output", callId: item.call_id, output: item.output };
+    }
+    return { kind: "other" };
+  });
+}
+
+function outputsOf(traceEntries: TraceEntry[]): Array<Extract<TraceEntry, { kind: "output" }>> {
+  return traceEntries.filter(
+    (entry): entry is Extract<TraceEntry, { kind: "output" }> => entry.kind === "output",
+  );
+}
+
+describe("toResponseInput tool-call answering", () => {
+  it("synthesizes a skip output for an unanswered tool call", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const result = outputsOf(await trace([assistantWith([callA])]));
+    expect(result).toEqual([{ kind: "output", callId: "call_a", output: expect.any(String) }]);
+    expect(result[0].output).toContain("skipped");
+  });
+
+  it("keeps real outputs and synthesizes nothing when calls are answered", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const result = outputsOf(await trace([assistantWith([callA]), outputFor(callA)]));
+    expect(result).toEqual([{ kind: "output", callId: "call_a", output: "done" }]);
+  });
+
+  it("emits outputs in tool-call order, synthesizing gaps in order", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    const callC = shellCall("call_c", "echo c");
+    const result = outputsOf(
+      await trace([assistantWith([callA, callB, callC]), outputFor(callA), outputFor(callC)]),
+    );
+    expect(result.map(entry => entry.callId)).toEqual(["call_a", "call_b", "call_c"]);
+    expect(result[0].output).toBe("done");
+    expect(result[1].output).toContain("skipped");
+    expect(result[2].output).toBe("done");
+  });
+
+  /*
+   * Regression test: call IDs are only unique within a single response, and providers may
+   * recycle them across turns. A stale output from an earlier batch must not suppress synthesis
+   * for a later, genuinely unanswered call that reuses the ID — the Responses API rejects
+   * requests with unanswered function calls.
+   */
+  it("synthesizes for a later batch that reuses an earlier batch's IDs", async () => {
+    const firstBatchCall = shellCall("call_0", "echo first");
+    const secondBatchCall = shellCall("call_0", "echo second");
+    const result = outputsOf(
+      await trace([
+        assistantWith([firstBatchCall]),
+        outputFor(firstBatchCall, "first output"),
+        assistantWith([secondBatchCall]),
+      ]),
+    );
+    expect(result.map(entry => entry.callId)).toEqual(["call_0", "call_0"]);
+    expect(result[0].output).toBe("first output");
+    expect(result[1].output).toContain("skipped");
+  });
+
+  it("drops outputs with no originating tool call", async () => {
+    const orphan = shellCall("call_orphan", "echo orphan");
+    expect(await trace([outputFor(orphan)])).toEqual([]);
+  });
+
+  it("throws on orphan outputs in canary builds", async () => {
+    const orphan = shellCall("call_orphan", "echo orphan");
+    const prevCanary = process.env["CANARY_OCTO"];
+    process.env["CANARY_OCTO"] = "1";
+    try {
+      await expect(trace([outputFor(orphan)])).rejects.toThrow("no originating tool call");
+    } finally {
+      if (prevCanary == null) delete process.env["CANARY_OCTO"];
+      else process.env["CANARY_OCTO"] = prevCanary;
     }
   });
 });
