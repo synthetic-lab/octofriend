@@ -165,11 +165,8 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
-  /*
-   * Set when an abort rewound the just-submitted prompt out of history (see abortResponse).
-   * The in-flight runAgent still holds a history copy containing that prompt; this tells it
-   * not to persist the stale copy (or the partially-streamed response) when the aborted arc
-   * settles.
+  /**
+   * If true, the user rewound their last prompt: don't persist stale history.
    */
   promptRewindPending: boolean;
   whitelist: Set<string>;
