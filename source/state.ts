@@ -161,11 +161,8 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
-  /*
-   * Set when an abort rewound the just-submitted prompt out of history (see abortResponse).
-   * The in-flight runAgent still holds a history copy containing that prompt; this tells it
-   * not to persist the stale copy (or the partially-streamed response) when the aborted arc
-   * settles.
+  /**
+   * If true, the user rewound their last prompt: don't persist stale history.
    */
   promptRewindPending: boolean;
   whitelist: Set<string>;
@@ -958,12 +955,11 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
+      /*
+       * If the last prompt was rewound, don't persist the stale history item with the previous
+       * prompt and any stale in-flight response tokens.
+       */
       if (get().promptRewindPending) {
-        /*
-         * The prompt that kicked off this arc was rewound when the user aborted: don't
-         * re-persist the stale history copy (which still contains the prompt) or the
-         * partially-streamed response.
-         */
         set({ promptRewindPending: false });
       } else {
         set({
