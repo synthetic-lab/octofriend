@@ -640,6 +640,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     vimMode: storedVimMode,
     query,
     setQuery,
+    attachedImages,
+    addAttachedImage,
+    removeLastAttachedImage,
+    clearAttachedImages,
     queuedMessages,
     queueMessage,
   } = useAppStore(
@@ -654,6 +658,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       vimMode: state.vimMode,
       query: state.query,
       setQuery: state.setQuery,
+      attachedImages: state.attachedImages,
+      addAttachedImage: state.addAttachedImage,
+      removeLastAttachedImage: state.removeLastAttachedImage,
+      clearAttachedImages: state.clearAttachedImages,
       queuedMessages: state.queuedUserMessages,
       queueMessage: state.enqueueUserMessage,
     })),
@@ -757,6 +765,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
+          attachedImages={attachedImages}
+          addAttachedImage={addAttachedImage}
+          removeLastAttachedImage={removeLastAttachedImage}
+          clearAttachedImages={clearAttachedImages}
           onSubmit={onSubmit}
           vimEnabled={vimEnabled}
           vimMode={vimMode}
@@ -841,6 +853,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}
+        attachedImages={attachedImages}
+        addAttachedImage={addAttachedImage}
+        removeLastAttachedImage={removeLastAttachedImage}
+        clearAttachedImages={clearAttachedImages}
         onSubmit={onSubmit}
         vimEnabled={vimEnabled}
         vimMode={vimMode}

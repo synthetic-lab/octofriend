@@ -154,6 +154,7 @@ export type UiState = {
   byteCount: number;
   vimMode: "NORMAL" | "INSERT";
   query: string;
+  attachedImages: ImageInfo[];
   queuedUserMessages: readonly QueuedUserMessage[];
   readonly history: readonly HistoryNode[];
   clearNonce: number;
@@ -174,6 +175,9 @@ export type UiState = {
   setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
+  addAttachedImage: (image: ImageInfo) => void;
+  removeLastAttachedImage: () => void;
+  clearAttachedImages: () => void;
   enqueueUserMessage: (msg: Omit<QueuedUserMessage, "id">) => void;
   _appendQueuedUserMessages: (session: Session, config: Config) => void;
   retryFrom: (
@@ -296,6 +300,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   quotaData: null,
   byteCount: 0,
   query: "",
+  attachedImages: [],
   queuedUserMessages: [],
   clearNonce: 0,
   sessionHydrationNonce: 0,
@@ -583,6 +588,18 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   setQuery: query => {
     set({ query });
+  },
+
+  addAttachedImage: image => {
+    set(state => ({ attachedImages: [...state.attachedImages, image] }));
+  },
+
+  removeLastAttachedImage: () => {
+    set(state => ({ attachedImages: state.attachedImages.slice(0, -1) }));
+  },
+
+  clearAttachedImages: () => {
+    set({ attachedImages: [] });
   },
 
   enqueueUserMessage: msg => {
