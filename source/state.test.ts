@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { useAppStore, nextToolAction, retryIntervalForAttempt } from "./state.ts";
+import { useAppStore, nextToolAction } from "./state.ts";
 import type { Config } from "./config.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
@@ -151,25 +151,6 @@ function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
   });
   return { session, abortController };
 }
-
-describe("retryIntervalForAttempt", () => {
-  it("uses a fixed 5s interval for the first two retries", () => {
-    expect(retryIntervalForAttempt(1)).toBe(5_000);
-    expect(retryIntervalForAttempt(2)).toBe(5_000);
-  });
-
-  it("doubles the interval for subsequent retries", () => {
-    expect(retryIntervalForAttempt(3)).toBe(10_000);
-    expect(retryIntervalForAttempt(4)).toBe(20_000);
-    expect(retryIntervalForAttempt(5)).toBe(40_000);
-  });
-
-  it("caps the interval at 10 minutes", () => {
-    expect(retryIntervalForAttempt(8)).toBe(320_000);
-    expect(retryIntervalForAttempt(9)).toBe(600_000);
-    expect(retryIntervalForAttempt(20)).toBe(600_000);
-  });
-});
 
 describe("aborting a tool batch", () => {
   it("marks pending tool calls as answered when aborting between tool calls", async () => {

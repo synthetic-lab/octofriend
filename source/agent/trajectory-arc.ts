@@ -34,6 +34,32 @@ const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no too
 
 type ToolCallRequest = ToolCall<typeof toolMap>;
 
+export type RetryCountdown = {
+  attempt: number;
+  secondsLeft: number;
+};
+
+export const RETRY_INTERVAL_MS = 5000;
+export const MAX_RETRY_INTERVAL_MS = 10 * 60 * 1000;
+export const RETRIES_BEFORE_BACKOFF = 2;
+
+/*
+ * The first couple of retries use a fixed short interval; after that the interval doubles each
+ * attempt, capped at MAX_RETRY_INTERVAL_MS. Retries continue until the request succeeds or the
+ * user stops them.
+ */
+export function retryIntervalForAttempt(attempt: number): number {
+  if (attempt <= RETRIES_BEFORE_BACKOFF) return RETRY_INTERVAL_MS;
+  const backoff = RETRY_INTERVAL_MS * 2 ** (attempt - RETRIES_BEFORE_BACKOFF);
+  return Math.min(backoff, MAX_RETRY_INTERVAL_MS);
+}
+
+/*
+ * Abort reason for the retryCountdown abortController that skips the rest of the countdown and
+ * retries immediately. Aborting with any other reason (or none) stops retrying entirely.
+ */
+export const RETRY_NOW = "octo-retry-now";
+
 export type TrajectoryOutputIR =
   | AssistantMessage<typeof toolMap>
   | {
@@ -92,6 +118,11 @@ export type StateEvents = {
   retryTool: {
     irs: TrajectoryOutputIR[];
   };
+  retryCountdown: {
+    failure: "request-error" | "compaction-error";
+    countdown: RetryCountdown;
+    abortController: AbortController;
+  };
   onQuotaUpdated: QuotaData;
 };
 
@@ -128,18 +159,7 @@ type Finish = {
       };
 };
 
-/*
- * Given some LLM IR, it runs the next arc of the trajectory until one of the finish reasons defined
- * above is hit.
- */
-export async function trajectoryArc({
-  modelData,
-  messages,
-  config,
-  transport,
-  abortSignal,
-  handler,
-}: {
+type TrajectoryArcArgs = {
   modelData: ModelData;
   messages: OctoIR[];
   config: Config;
@@ -148,7 +168,99 @@ export async function trajectoryArc({
   handler: {
     [K in AnyState]: (state: StateEvents[K]) => void;
   };
-}): Promise<Finish> {
+};
+
+/*
+ * Given some LLM IR, it runs the next arc of the trajectory until one of the finish reasons defined
+ * above is hit.
+ *
+ * Request and compaction errors don't require the harness to take action, so they're retried here
+ * with backoff rather than surfaced immediately: each countdown tick fires the retryCountdown
+ * handler with an abortController — aborting it with RETRY_NOW skips the rest of the countdown,
+ * and aborting with any other reason stops retrying and finishes with the error.
+ */
+export async function trajectoryArc(args: TrajectoryArcArgs): Promise<Finish> {
+  let messages = args.messages;
+  let irs: TrajectoryOutputIR[] = [];
+  let attempt = 0;
+  while (true) {
+    const finish = await trajectoryArcAttempt({ ...args, messages });
+    irs = irs.concat(finish.irs);
+    const { reason } = finish;
+    if (reason.type !== "request-error" && reason.type !== "compaction-error") {
+      return { type: "finish", irs, reason };
+    }
+
+    attempt++;
+    const outcome = await retryCountdown({
+      attempt,
+      failure: reason.type,
+      abortSignal: args.abortSignal,
+      handler: args.handler,
+    });
+    if (outcome === "aborted") return { type: "finish", irs, reason: { type: "abort" } };
+    if (outcome === "stopped") return { type: "finish", irs, reason };
+    // Failed attempts still happened: the model may have streamed partial content before the
+    // request died, so subsequent attempts need the failed attempt's IRs in context.
+    messages = messages.concat(finish.irs);
+  }
+}
+
+async function retryCountdown({
+  attempt,
+  failure,
+  abortSignal,
+  handler,
+}: {
+  attempt: number;
+  failure: "request-error" | "compaction-error";
+  abortSignal: AbortSignal;
+  handler: TrajectoryArcArgs["handler"];
+}): Promise<"retry" | "stopped" | "aborted"> {
+  const abortController = new AbortController();
+  const deadline = Date.now() + retryIntervalForAttempt(attempt);
+  while (true) {
+    if (abortSignal.aborted) return "aborted";
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return "retry";
+    handler.retryCountdown({
+      failure,
+      countdown: {
+        attempt,
+        secondsLeft: Math.ceil(remainingMs / 1000),
+      },
+      abortController,
+    });
+    await sleepUnlessAborted(Math.min(1000, remainingMs), [abortController.signal, abortSignal]);
+    if (abortController.signal.aborted) {
+      return abortController.signal.reason === RETRY_NOW ? "retry" : "stopped";
+    }
+  }
+}
+
+function sleepUnlessAborted(ms: number, signals: AbortSignal[]): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(finish, ms);
+    function finish() {
+      clearTimeout(timer);
+      for (const signal of signals) signal.removeEventListener("abort", finish);
+      resolve();
+    }
+    for (const signal of signals) {
+      if (signal.aborted) return finish();
+      signal.addEventListener("abort", finish);
+    }
+  });
+}
+
+async function trajectoryArcAttempt({
+  modelData,
+  messages,
+  config,
+  transport,
+  abortSignal,
+  handler,
+}: TrajectoryArcArgs): Promise<Finish> {
   if (abortSignal.aborted) return abort([]);
 
   const messagesCopy = [...messages];
@@ -296,7 +408,7 @@ export async function trajectoryArc({
     }
 
     handler.retryTool({ irs });
-    const retried = await trajectoryArc({
+    const retried = await trajectoryArcAttempt({
       modelData,
       config,
       transport,
@@ -431,7 +543,7 @@ export async function trajectoryArc({
   if (needsRetry) {
     const fullRetryTrajectory = [...irs, ...retryIrs];
     handler.retryTool({ irs: fullRetryTrajectory });
-    const retried = await trajectoryArc({
+    const retried = await trajectoryArcAttempt({
       modelData,
       config,
       transport,

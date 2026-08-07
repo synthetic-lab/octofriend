@@ -61,10 +61,10 @@ import {
   useModel,
   InflightResponseType,
   nextToolAction,
-  RetryCountdown,
   QueuedUserMessage,
   inputFieldAvailable,
 } from "./state.ts";
+import { RETRY_NOW, type RetryCountdown } from "./agent/trajectory-arc.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
@@ -799,15 +799,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "request-error") {
-    if (modeData.retrying) {
-      return (
-        <RetryCountdownScreen
-          mode="request-error"
-          contextualMessage="It looks like you've hit a request error!"
-          retrying={modeData.retrying}
-        />
-      );
-    }
     return (
       <RequestErrorScreen
         mode="request-error"
@@ -818,21 +809,25 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "compaction-error") {
-    if (modeData.retrying) {
-      return (
-        <RetryCountdownScreen
-          mode="compaction-error"
-          contextualMessage="History compaction failed due to a request error!"
-          retrying={modeData.retrying}
-        />
-      );
-    }
     return (
       <RequestErrorScreen
         mode="compaction-error"
         contextualMessage="History compaction failed due to a request error!"
         error={modeData.error}
         curlCommand={modeData.curlCommand}
+      />
+    );
+  }
+  if (modeData.mode === "retrying") {
+    return (
+      <RetryCountdownScreen
+        contextualMessage={
+          modeData.failure === "request-error"
+            ? "It looks like you've hit a request error!"
+            : "History compaction failed due to a request error!"
+        }
+        retrying={modeData.countdown}
+        abortController={modeData.abortController}
       />
     );
   }
@@ -1064,23 +1059,14 @@ function formatRetryCountdown(seconds: number): string {
   return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
 }
 function RetryCountdownScreen({
-  mode,
   contextualMessage,
   retrying,
+  abortController,
 }: {
-  mode: "request-error" | "compaction-error";
   contextualMessage: string;
   retrying: RetryCountdown;
+  abortController: AbortController;
 }) {
-  const config = useConfig();
-  const transport = useContext(TransportContext);
-  const session = useSession();
-  const { retryFrom, cancelRetry } = useAppStore(
-    useShallow(state => ({
-      retryFrom: state.retryFrom,
-      cancelRetry: state.cancelRetry,
-    })),
-  );
   const shortcutItems: ShortcutArray<"retry-now" | "stop-retrying"> = [
     {
       type: "key" as const,
@@ -1099,16 +1085,12 @@ function RetryCountdownScreen({
   const onSelect = useCallback(
     (item: Item<"retry-now" | "stop-retrying">) => {
       if (item.value === "retry-now") {
-        retryFrom(mode, {
-          config,
-          transport,
-          session,
-        });
+        abortController.abort(RETRY_NOW);
       } else {
-        cancelRetry();
+        abortController.abort();
       }
     },
-    [mode, config, transport, session, retryFrom, cancelRetry],
+    [abortController],
   );
   return (
     <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>

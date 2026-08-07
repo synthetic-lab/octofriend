@@ -7,7 +7,6 @@ import {
   readAuthForModel,
   runNotifyCommand,
 } from "./config.ts";
-import { sleep } from "./sleep.ts";
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
@@ -26,7 +25,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { trajectoryArc } from "./agent/trajectory-arc.ts";
+import { trajectoryArc, type RetryCountdown } from "./agent/trajectory-arc.ts";
 import type { ModelData } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
@@ -81,25 +80,6 @@ export type InflightResponseType = {
   content: string;
   reasoningContent?: string | null;
 };
-export type RetryCountdown = {
-  attempt: number;
-  secondsLeft: number;
-};
-
-export const RETRY_INTERVAL_MS = 5000;
-export const MAX_RETRY_INTERVAL_MS = 10 * 60 * 1000;
-export const RETRIES_BEFORE_BACKOFF = 2;
-
-/*
- * The first couple of retries use a fixed short interval; after that the interval doubles each
- * attempt, capped at MAX_RETRY_INTERVAL_MS. Retries continue until the request succeeds or the
- * user stops them.
- */
-export function retryIntervalForAttempt(attempt: number): number {
-  if (attempt <= RETRIES_BEFORE_BACKOFF) return RETRY_INTERVAL_MS;
-  const backoff = RETRY_INTERVAL_MS * 2 ** (attempt - RETRIES_BEFORE_BACKOFF);
-  return Math.min(backoff, MAX_RETRY_INTERVAL_MS);
-}
 export type UiState = {
   preMenuModeData: UiState["modeData"] | null;
   _notifyTimer: NodeJS.Timeout | null;
@@ -139,13 +119,17 @@ export type UiState = {
         mode: "request-error";
         error: string;
         curlCommand: string | null;
-        retrying?: RetryCountdown;
       }
     | {
         mode: "compaction-error";
         error: string;
         curlCommand: string | null;
-        retrying?: RetryCountdown;
+      }
+    | {
+        mode: "retrying";
+        failure: "request-error" | "compaction-error";
+        countdown: RetryCountdown;
+        abortController: AbortController;
       }
     | {
         mode: "diff-apply";
@@ -207,7 +191,6 @@ export type UiState = {
     mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
     args: RunArgs,
   ) => Promise<void>;
-  cancelRetry: () => void;
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string, session: Session, config: Config) => void;
@@ -216,8 +199,7 @@ export type UiState = {
   hydrateSession: (history: readonly HistoryNode[]) => void;
   startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  runAgent: (args: RunArgs, opts?: { attempt?: number }) => Promise<void>;
-  _runAgentAttempt: (args: RunArgs) => Promise<void>;
+  runAgent: (args: RunArgs) => Promise<void>;
 };
 
 export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
@@ -388,21 +370,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   retryFrom: async (mode, args) => {
     const { modeData } = get();
     if (modeData.mode !== mode) return;
-    // If a retry countdown is active, "Retry now" performs the pending attempt immediately, so
-    // the backoff schedule continues from the current attempt instead of starting over.
-    const retrying =
-      modeData.mode === "request-error" || modeData.mode === "compaction-error"
-        ? modeData.retrying
-        : undefined;
-    await get().runAgent(args, retrying ? { attempt: retrying.attempt } : undefined);
-  },
-
-  cancelRetry: () => {
-    const { modeData } = get();
-    if (modeData.mode !== "request-error" && modeData.mode !== "compaction-error") return;
-    if (!modeData.retrying) return;
-    const { retrying: _retrying, ...withoutRetrying } = modeData;
-    set({ modeData: withoutRetrying });
+    await get().runAgent(args);
   },
 
   clearAuthError: () => {
@@ -799,43 +767,8 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  runAgent: async (args, opts) => {
-    get()._appendQueuedUserMessages(args.session, args.config);
-    let attempt = opts?.attempt ?? 0;
-    while (true) {
-      await get()._runAgentAttempt(args);
-
-      const failedModeData = get().modeData;
-      if (failedModeData.mode !== "request-error" && failedModeData.mode !== "compaction-error") {
-        return;
-      }
-
-      attempt++;
-      const deadline = Date.now() + retryIntervalForAttempt(attempt);
-      let retryModeData: typeof failedModeData = failedModeData;
-      while (true) {
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) break;
-        retryModeData = {
-          ...failedModeData,
-          retrying: {
-            attempt,
-            secondsLeft: Math.ceil(remainingMs / 1000),
-          },
-        };
-        set({ modeData: retryModeData });
-        await sleep(Math.min(1000, remainingMs));
-        // Bail if the user did something while we were waiting (e.g. manually retried, edited, or
-        // stopped the retries): any state change replaces the modeData object, so an identity
-        // mismatch means we should stop the countdown.
-        if (get().modeData !== retryModeData) return;
-      }
-      // Final check in case the user intervened in the last moments of the countdown
-      if (get().modeData !== retryModeData) return;
-    }
-  },
-
-  _runAgentAttempt: async ({ config, transport, session }) => {
+  runAgent: async ({ config, transport, session }) => {
+    get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
     const abortController = new AbortController();
     let compactionByteCount = 0;
@@ -974,6 +907,18 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           onQuotaUpdated: quota => set({ quotaData: quota }),
+
+          retryCountdown: event => {
+            throttle.flush();
+            set({
+              modeData: {
+                mode: "retrying",
+                failure: event.failure,
+                countdown: event.countdown,
+                abortController: event.abortController,
+              },
+            });
+          },
 
           retryTool: event => {
             throttle.flush();
