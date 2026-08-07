@@ -165,10 +165,6 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
-  /**
-   * If true, the user rewound their last prompt: don't persist stale history.
-   */
-  promptRewindPending: boolean;
   whitelist: Set<string>;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
@@ -228,6 +224,20 @@ function appendAndPersistHistory(
     ...prevHistory,
     ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
   ];
+}
+
+/*
+ * Whether `prefix` is still a prefix of `full`, by node identity. An in-flight arc captures
+ * a history copy at start; the arc's own handlers only ever append to the live history, so
+ * at settle time the copy remains a prefix — unless something external (a prompt rewind, a
+ * new session) changed history underneath the arc.
+ */
+function isHistoryPrefix(prefix: readonly HistoryNode[], full: readonly HistoryNode[]): boolean {
+  if (prefix.length > full.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (prefix[i].nodeId !== full[i].nodeId) return false;
+  }
+  return true;
 }
 
 /*
@@ -314,7 +324,6 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
   sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
-  promptRewindPending: false,
   whitelist: new Set<string>(),
 
   setNotifyOnce: notifyOnce => {
@@ -504,6 +513,11 @@ export const useAppStore = create<UiState>((set, get) => ({
      *
      * Only rewinds when the user message is the newest history item: mid-trajectory aborts
      * (e.g. after tool calls) leave history alone.
+     *
+     * The in-flight arc still holds a history copy whose tip is the deleted node. When it
+     * settles, runAgent sees the copy is no longer a prefix of the live history and drops it
+     * (SQLite would reject the append anyway: the deleted tip violates the tree's foreign
+     * key constraint). The rewind needs no bookkeeping of its own.
      */
     if (
       !opts?.exiting &&
@@ -526,7 +540,6 @@ export const useAppStore = create<UiState>((set, get) => ({
           query,
           attachedImages,
           lastUserPromptIndex: null,
-          promptRewindPending: true,
         });
       }
     }
@@ -588,7 +601,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     if (signal.aborted) {
       set({
         queuedUserMessages: [],
-        promptRewindPending: false,
         modeData: {
           mode: "ready-for-request",
         },
@@ -699,7 +711,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       history: repairedHistory,
       modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
-      promptRewindPending: false,
       byteCount: 0,
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
@@ -721,7 +732,6 @@ export const useAppStore = create<UiState>((set, get) => ({
     set(state => ({
       history: [],
       lastUserPromptIndex: null,
-      promptRewindPending: false,
       byteCount: 0,
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
@@ -941,11 +951,13 @@ export const useAppStore = create<UiState>((set, get) => ({
           onMessage: ir => {
             throttle.flush();
             /*
-             * The prompt that kicked off this arc was rewound when the user aborted: don't
-             * persist anything else this arc emits — its history copy still contains the
-             * removed prompt, and these IRs are the response to it.
+             * If the user rewound the prompt that kicked off this arc, this arc's captured
+             * history copy is no longer a prefix of the live history: drop anything else the
+             * arc emits instead of resurrecting the prompt or its response. SQLite would
+             * reject a stale append under the deleted tip anyway (foreign key constraint) —
+             * the prefix check keeps in-memory state consistent too.
              */
-            if (get().promptRewindPending) return;
+            if (!isHistoryPrefix(historyCopy, get().history)) return;
             set({
               history: appendAndPersistHistory(
                 session,
@@ -963,7 +975,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         get().notifyReadyForInput(config);
         set({
           queuedUserMessages: [],
-          promptRewindPending: false,
           modeData: { mode: "ready-for-request" },
           vimMode: "INSERT",
         });
