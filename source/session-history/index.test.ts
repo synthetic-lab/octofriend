@@ -3,9 +3,11 @@ import { db } from "../db/db.ts";
 import { historyItems, llmIrs, notifications } from "./schema/session-history-schema.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   deleteSession,
   insertHistoryItems,
   latestModelJson,
+  listSessions,
   loadSession,
   SessionNotFoundError,
   type HistoryItem,
@@ -123,6 +125,68 @@ describe("deleteSession", () => {
       .map(row => row.json);
     expect(remaining.some(json => json.includes("Keep me"))).toBe(true);
     expect(remaining.some(json => json.includes("Drop me"))).toBe(false);
+  });
+});
+
+describe("deleteHistoryNodes", () => {
+  it("deletes a leaf node and its payload rows", () => {
+    const session = createSession("/test/delete-leaf", LOCAL_CLI_ARGS);
+    const baseline = countRows();
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [userMessage("First"), userMessage("Second")],
+      TEST_MODEL_JSON,
+    );
+
+    deleteHistoryNodes(session, [nodes[1]!.nodeId]);
+
+    expect(countRows()).toEqual({
+      historyItems: baseline.historyItems + 1,
+      llmIrs: baseline.llmIrs + 1,
+      notifications: baseline.notifications,
+    });
+    const loaded = loadSession(session.metadata.sessionId!)!;
+    expect(loaded.history).toHaveLength(1);
+    expect(loaded.history[0].type).toBe("llm-ir");
+    if (loaded.history[0].type === "llm-ir" && loaded.history[0].ir.role === "user") {
+      expect(loaded.history[0].ir.content).toEqual([{ type: "text", content: "First" }]);
+    } else {
+      throw new Error("expected the remaining node to be the first user message");
+    }
+  });
+
+  it("refuses to delete a node that has children", () => {
+    const session = createSession("/test/delete-non-leaf", LOCAL_CLI_ARGS);
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [userMessage("First"), userMessage("Second")],
+      TEST_MODEL_JSON,
+    );
+
+    deleteHistoryNodes(session, [nodes[0]!.nodeId]);
+
+    const loaded = loadSession(session.metadata.sessionId!)!;
+    expect(loaded.history).toHaveLength(2);
+  });
+
+  it("updates the session preview to the latest remaining user message", () => {
+    const cwd = "/test/delete-preview";
+    const session = createSession(cwd, LOCAL_CLI_ARGS);
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [userMessage("First"), userMessage("Second")],
+      TEST_MODEL_JSON,
+    );
+    expect(listSessions(cwd)[0]?.preview).toBe("Second");
+
+    deleteHistoryNodes(session, [nodes[1]!.nodeId]);
+    expect(listSessions(cwd)[0]?.preview).toBe("First");
+
+    deleteHistoryNodes(session, [nodes[0]!.nodeId]);
+    expect(listSessions(cwd)[0]?.preview).toBeNull();
   });
 });
 

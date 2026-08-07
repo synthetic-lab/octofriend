@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useAppStore, nextToolAction } from "./state.ts";
 import type { Config } from "./config.ts";
 import type { HistoryNode } from "./session-history/index.ts";
-import { createSession, insertHistoryItems } from "./session-history/index.ts";
+import { createSession, insertHistoryItems, loadSession } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
 import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";
+import type { ImageInfo } from "./utils/image-utils.ts";
 
 /*
  * Regression tests for BUGS.md #2: aborting a multi-tool batch must not leave dangling tool
@@ -628,6 +629,247 @@ describe("message queue", () => {
     useAppStore.getState().abortResponse(session, config);
     expect(useAppStore.getState().queuedUserMessages).toHaveLength(0);
     expect(useAppStore.getState().history).toHaveLength(0);
+  });
+});
+
+/*
+ * ESC before the model has streamed any non-reasoning tokens means "I want to change my
+ * prompt": the just-submitted user message is removed from history (in-memory and persisted)
+ * and its text is restored to the input field. Once real content streams, ESC is a plain
+ * interrupt and history keeps both the prompt and the partial response.
+ */
+describe("rewinding an unanswered prompt on abort", () => {
+  function setupResponding(content: string, reasoningContent?: string) {
+    const session = createSession(process.cwd(), { kind: "local" });
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "user",
+            content: [{ type: "text", content: "first prompt" }],
+          },
+        },
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "first response",
+            usage: compilerUsage(0, 0),
+          },
+        },
+        {
+          type: "llm-ir",
+          ir: {
+            role: "user",
+            content: [{ type: "text", content: "second prompt" }],
+          },
+        },
+      ],
+      testModelJson,
+    );
+    useAppStore.getState().hydrateSession(nodes);
+    useAppStore.setState({
+      lastUserPromptIndex: 2,
+      modeData: {
+        mode: "responding",
+        inflightResponse: { type: "inflight-response", content, reasoningContent },
+        abortController: new AbortController(),
+      },
+    });
+    return session;
+  }
+
+  it("removes the prompt from history and restores it to the input", () => {
+    const session = setupResponding("");
+    useAppStore.getState().abortResponse(session, config);
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("second prompt");
+    expect(state.history).toHaveLength(2);
+    expect(state.lastUserPromptIndex).toBeNull();
+
+    // The persisted session no longer contains the rewound prompt either.
+    const loaded = loadSession(session.metadata.sessionId!)!;
+    expect(loaded.history).toHaveLength(2);
+    const persisted = JSON.stringify(loaded.history);
+    expect(persisted).not.toContain("second prompt");
+  });
+
+  it("rewinds while the model is still reasoning", () => {
+    const session = setupResponding("", "thinking out loud...");
+    useAppStore.getState().abortResponse(session, config);
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("second prompt");
+    expect(state.history).toHaveLength(2);
+  });
+
+  it("restores attached images alongside the prompt text", () => {
+    const session = createSession(process.cwd(), { kind: "local" });
+    const image: ImageInfo = {
+      mimeType: "image/png",
+      base64Data: "aGVsbG8=",
+      dataUrl: "data:image/png;base64,aGVsbG8=",
+      filePath: "/tmp/pasted.png",
+      sizeBytes: 5,
+    };
+    const nodes = insertHistoryItems(
+      session,
+      null,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "user",
+            content: [
+              { type: "text", content: "what is this?" },
+              { type: "image", image },
+            ],
+          },
+        },
+      ],
+      testModelJson,
+    );
+    useAppStore.getState().hydrateSession(nodes);
+    useAppStore.setState({
+      modeData: {
+        mode: "responding",
+        inflightResponse: { type: "inflight-response", content: "" },
+        abortController: new AbortController(),
+      },
+    });
+
+    useAppStore.getState().abortResponse(session, config);
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("what is this?");
+    expect(state.attachedImages).toEqual([image]);
+    expect(state.history).toHaveLength(0);
+  });
+
+  it("keeps the prompt in history once the model streams content", () => {
+    const session = setupResponding("partial response");
+    useAppStore.getState().abortResponse(session, config);
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("");
+    expect(state.history).toHaveLength(3);
+    const loaded = loadSession(session.metadata.sessionId!)!;
+    expect(loaded.history).toHaveLength(3);
+  });
+
+  it("does not rewind mid-trajectory, when the newest history item isn't the prompt", () => {
+    const session = setupResponding("");
+    const callA = shellCall("call_a", "echo a");
+    const extra = insertHistoryItems(
+      session,
+      useAppStore.getState().history.at(-1)!.nodeId,
+      [
+        {
+          type: "llm-ir",
+          ir: {
+            role: "assistant",
+            content: "",
+            usage: compilerUsage(0, 0),
+            toolCalls: [callA],
+          },
+        },
+        {
+          type: "llm-ir",
+          ir: {
+            role: "tool-output",
+            toolCall: callA,
+            content: [{ type: "text", content: "done" }],
+          },
+        },
+      ],
+      testModelJson,
+    );
+    useAppStore.getState().hydrateSession([...useAppStore.getState().history, ...extra]);
+    useAppStore.setState({
+      modeData: {
+        mode: "responding",
+        inflightResponse: { type: "inflight-response", content: "" },
+        abortController: new AbortController(),
+      },
+    });
+
+    useAppStore.getState().abortResponse(session, config);
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("");
+    expect(state.history).toHaveLength(5);
+  });
+
+  /*
+   * The rewind needs no bookkeeping flag: the in-flight arc's history copy stops being a
+   * prefix of the live history, so when the arc settles its stale copy (and any partial
+   * response) is dropped instead of resurrecting the prompt. SQLite independently rejects
+   * the stale append via the tree's foreign key constraint (see tree-node-fk.test.ts).
+   */
+  it("drops the stale history copy when the rewound arc settles", async () => {
+    const prevEnv = process.env["OCTO_STATE_TEST_API_KEY"];
+    process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
+    try {
+      const authConfig: Config = {
+        yourName: "Test",
+        models: [
+          {
+            nickname: "test-model",
+            model: "test-model",
+            context: 128_000,
+            baseUrl: "http://localhost:1",
+            auth: { type: "env", name: "OCTO_STATE_TEST_API_KEY" },
+          },
+        ],
+      };
+      const session = createSession(process.cwd(), { kind: "local" });
+      const nodes = insertHistoryItems(
+        session,
+        null,
+        [
+          {
+            type: "llm-ir",
+            ir: { role: "user", content: [{ type: "text", content: "change me" }] },
+          },
+        ],
+        testModelJson,
+      );
+      useAppStore.getState().hydrateSession(nodes);
+      useAppStore.setState({ modelOverride: null });
+
+      // ESC the moment the response starts — synchronously, before the request goes out.
+      const unsubscribe = useAppStore.subscribe(state => {
+        if (state.modeData.mode !== "responding") return;
+        unsubscribe();
+        useAppStore.getState().abortResponse(session, authConfig);
+      });
+
+      const transport = new LocalTransport();
+      await useAppStore.getState().runAgent({ config: authConfig, transport, session });
+
+      const state = useAppStore.getState();
+      expect(state.query).toBe("change me");
+      expect(state.modeData.mode).toBe("ready-for-request");
+      // The rewound prompt was not resurrected — in state or in the persisted session.
+      expect(state.history).toHaveLength(0);
+      expect(loadSession(session.metadata.sessionId!)).toBeNull();
+    } finally {
+      if (prevEnv == null) delete process.env["OCTO_STATE_TEST_API_KEY"];
+      else process.env["OCTO_STATE_TEST_API_KEY"] = prevEnv;
+    }
+  }, 30_000);
+
+  it("does not rewind when exiting", () => {
+    const session = setupResponding("");
+    useAppStore.getState().abortResponse(session, config, { exiting: true });
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("");
+    expect(state.history).toHaveLength(3);
   });
 });
 

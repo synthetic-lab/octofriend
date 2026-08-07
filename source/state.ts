@@ -10,6 +10,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   HistoryNode,
   insertHistoryItems,
   latestModelJson,
@@ -219,6 +220,20 @@ function appendAndPersistHistory(
     ...prevHistory,
     ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
   ];
+}
+
+/*
+ * Whether `prefix` is still a prefix of `full`, by node identity. An in-flight arc captures
+ * a history copy at start; the arc's own handlers only ever append to the live history, so
+ * at settle time the copy remains a prefix — unless something external (a prompt rewind, a
+ * new session) changed history underneath the arc.
+ */
+function isHistoryPrefix(prefix: readonly HistoryNode[], full: readonly HistoryNode[]): boolean {
+  if (prefix.length > full.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (prefix[i].nodeId !== full[i].nodeId) return false;
+  }
+  return true;
 }
 
 /*
@@ -485,6 +500,41 @@ export const useAppStore = create<UiState>((set, get) => ({
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     set({ queuedUserMessages: [] });
+
+    /*
+     * ESC before the model has streamed any non-reasoning tokens — while it's still
+     * thinking, or before it responded at all — means "I want to change my prompt": drop the
+     * just-submitted user message from history (in-memory and persisted) and put its text
+     * and attached images back in the input field.
+     *
+     * Only rewinds when the user message is the newest history item: mid-trajectory aborts
+     * (e.g. after tool calls) leave history alone.
+     */
+    if (
+      !opts?.exiting &&
+      modeData.mode === "responding" &&
+      modeData.inflightResponse.content.trim() === ""
+    ) {
+      const history = get().history;
+      const last = history.at(-1);
+      if (last && last.type === "llm-ir" && last.ir.role === "user") {
+        const query = last.ir.content
+          .filter(part => part.type === "text")
+          .map(part => part.content)
+          .join("\n");
+        const attachedImages = last.ir.content
+          .filter(part => part.type === "image")
+          .map(part => part.image);
+        deleteHistoryNodes(session, [last.nodeId]);
+        set({
+          history: history.slice(0, -1),
+          query,
+          attachedImages,
+          lastUserPromptIndex: null,
+        });
+      }
+    }
+
     if (modeData.mode !== "tool-call") return;
 
     /*
@@ -910,9 +960,20 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      set({
-        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
-      });
+      /*
+       * If the user rewound the prompt that kicked off this arc, this arc's captured history
+       * copy is no longer a prefix of the live history. Drop the stale copy.
+       */
+      if (isHistoryPrefix(historyCopy, get().history)) {
+        set({
+          history: appendAndPersistHistory(
+            session,
+            historyCopy,
+            outputToHistory(finish.irs),
+            model,
+          ),
+        });
+      }
       const finishReason = finish.reason;
       if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);

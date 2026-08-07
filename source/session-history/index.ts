@@ -1,5 +1,5 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, DbTransaction, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
 import {
@@ -360,6 +360,54 @@ export function insertHistoryItems(
   session.treeId = result.treeId;
   session.launchId = result.launchId;
   return result.insertedNodes;
+}
+
+export function deleteHistoryNodes(session: Session, nodeIds: readonly number[]): void {
+  if (nodeIds.length === 0) return;
+  db().transaction(tx => {
+    for (const nodeId of nodeIds) {
+      /*
+       * Only leaves may be deleted: tree_nodes_parent_same_tree_fk cascades deletes to a
+       * node's children, so deleting a node with children would wipe later history that
+       * branched off it. Deleting a leaf deletes its history item and payload via the
+       * tree_nodes_delete_history_item trigger chain.
+       */
+      tx.delete(treeNodes)
+        .where(and(eq(treeNodes.id, nodeId), eq(treeNodes.isLeaf, true)))
+        .run();
+    }
+    const treeId = session.treeId;
+    const sessionId = session.metadata.sessionId;
+    if (treeId == null || sessionId == null) return;
+    tx.update(trees).set({ updatedAt: Date.now() }).where(eq(trees.id, treeId)).run();
+    refreshUserMessagePreview(tx, sessionId, treeId);
+  });
+}
+
+/*
+ * The session list preview shows the latest user message; after removing history nodes the
+ * stored preview may point at a message that no longer exists. Re-derive it from the most
+ * recent remaining user message, or clear it if none remain.
+ */
+function refreshUserMessagePreview(tx: DbTransaction, sessionId: string, treeId: number) {
+  const rows = tx
+    .select({ json: llmIrs.json })
+    .from(treeNodes)
+    .innerJoin(historyItems, eq(historyItems.id, treeNodes.historyItemId))
+    .innerJoin(llmIrs, eq(llmIrs.id, historyItems.llmIrId))
+    .where(eq(treeNodes.treeId, treeId))
+    .orderBy(desc(treeNodes.id))
+    .all();
+  for (const row of rows) {
+    const ir = deserializeLlmIr(row.json);
+    if (ir.role !== "user") continue;
+    const userMessageContent = ir.content.find(content => content.type === "text")?.content;
+    if (userMessageContent) {
+      updateSessionPreview(tx, sessionId, excerpt(userMessageContent), "latest-user-message");
+      return;
+    }
+  }
+  tx.delete(previews).where(eq(previews.sessionId, sessionId)).run();
 }
 
 function treeIdForHistoryInsert(tx: DbTransaction, session: Session, sessionId: string): number {
