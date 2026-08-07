@@ -48,7 +48,6 @@ beforeEach(() => {
     history: [],
     preMenuModeData: null,
     lastUserPromptIndex: null,
-    promptRewindPending: false,
     runningToolCallId: null,
     queuedUserMessages: [],
     query: "",
@@ -803,22 +802,66 @@ describe("rewinding an unanswered prompt on abort", () => {
     const state = useAppStore.getState();
     expect(state.query).toBe("");
     expect(state.history).toHaveLength(5);
-    expect(state.promptRewindPending).toBe(false);
   });
 
-  it("flags the rewind so the settling arc doesn't re-persist the prompt", () => {
-    const session = setupResponding("");
-    useAppStore.getState().abortResponse(session, config);
-    expect(useAppStore.getState().promptRewindPending).toBe(true);
+  /*
+   * The rewind needs no bookkeeping flag: the in-flight arc's history copy stops being a
+   * prefix of the live history, so when the arc settles its stale copy (and any partial
+   * response) is dropped instead of resurrecting the prompt. SQLite independently rejects
+   * the stale append via the tree's foreign key constraint (see tree-node-fk.test.ts).
+   */
+  it("drops the stale history copy when the rewound arc settles", async () => {
+    const prevEnv = process.env["OCTO_STATE_TEST_API_KEY"];
+    process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
+    try {
+      const authConfig: Config = {
+        yourName: "Test",
+        models: [
+          {
+            nickname: "test-model",
+            model: "test-model",
+            context: 128_000,
+            baseUrl: "http://localhost:1",
+            auth: { type: "env", name: "OCTO_STATE_TEST_API_KEY" },
+          },
+        ],
+      };
+      const session = createSession(process.cwd(), { kind: "local" });
+      const nodes = insertHistoryItems(
+        session,
+        null,
+        [
+          {
+            type: "llm-ir",
+            ir: { role: "user", content: [{ type: "text", content: "change me" }] },
+          },
+        ],
+        testModelJson,
+      );
+      useAppStore.getState().hydrateSession(nodes);
+      useAppStore.setState({ modelOverride: null });
 
-    // The aborted arc settled with an exception rather than an abort finish: the flag must
-    // be cleared so the next run doesn't skip persisting its response.
-    const controller = new AbortController();
-    controller.abort();
-    expect(useAppStore.getState()._maybeHandleAbort(controller.signal)).toBe(true);
-    expect(useAppStore.getState().promptRewindPending).toBe(false);
-    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-  });
+      // ESC the moment the response starts — synchronously, before the request goes out.
+      const unsubscribe = useAppStore.subscribe(state => {
+        if (state.modeData.mode !== "responding") return;
+        unsubscribe();
+        useAppStore.getState().abortResponse(session, authConfig);
+      });
+
+      const transport = new LocalTransport();
+      await useAppStore.getState().runAgent({ config: authConfig, transport, session });
+
+      const state = useAppStore.getState();
+      expect(state.query).toBe("change me");
+      expect(state.modeData.mode).toBe("ready-for-request");
+      // The rewound prompt was not resurrected — in state or in the persisted session.
+      expect(state.history).toHaveLength(0);
+      expect(loadSession(session.metadata.sessionId!)).toBeNull();
+    } finally {
+      if (prevEnv == null) delete process.env["OCTO_STATE_TEST_API_KEY"];
+      else process.env["OCTO_STATE_TEST_API_KEY"] = prevEnv;
+    }
+  }, 30_000);
 
   it("does not rewind when exiting", () => {
     const session = setupResponding("");
@@ -827,7 +870,6 @@ describe("rewinding an unanswered prompt on abort", () => {
     const state = useAppStore.getState();
     expect(state.query).toBe("");
     expect(state.history).toHaveLength(3);
-    expect(state.promptRewindPending).toBe(false);
   });
 });
 
