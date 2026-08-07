@@ -509,11 +509,6 @@ export const useAppStore = create<UiState>((set, get) => ({
      *
      * Only rewinds when the user message is the newest history item: mid-trajectory aborts
      * (e.g. after tool calls) leave history alone.
-     *
-     * The in-flight arc still holds a history copy whose tip is the deleted node. When it
-     * settles, runAgent sees the copy is no longer a prefix of the live history and drops it
-     * (SQLite would reject the append anyway: the deleted tip violates the tree's foreign
-     * key constraint). The rewind needs no bookkeeping of its own.
      */
     if (
       !opts?.exiting &&
@@ -965,14 +960,9 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      const finishReason = finish.reason;
       /*
        * If the user rewound the prompt that kicked off this arc, this arc's captured history
-       * copy is no longer a prefix of the live history. Drop the stale copy (and any partial
-       * response) instead of resurrecting the prompt: nothing is persisted, and state keeps
-       * the rewound history. SQLite independently rejects the stale append when there are
-       * output IRs to write — the deleted tip violates the tree's foreign key constraint —
-       * but with zero IRs there'd be no write to reject, so the prefix check is the guard.
+       * copy is no longer a prefix of the live history. Drop the stale copy.
        */
       if (isHistoryPrefix(historyCopy, get().history)) {
         set({
@@ -984,6 +974,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           ),
         });
       }
+      const finishReason = finish.reason;
       if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);
         set({
