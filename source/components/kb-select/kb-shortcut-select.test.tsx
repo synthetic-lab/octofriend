@@ -52,4 +52,62 @@ describe("KbShortcutSelect", () => {
       act(() => renderer!.unmount());
     });
   });
+
+  it("prevents the default action for letter shortcuts so they don't leak into the prompt", async () => {
+    let keyboardHandler: ((event: PaintKeyboardEvent) => void) | undefined;
+    const useKeyboard = vi.fn((callback: (event: PaintKeyboardEvent) => void) => {
+      keyboardHandler = callback;
+    });
+    const onSelect = vi.fn();
+    const preventDefault = vi.fn();
+
+    await withMock(keyboardDeps, "useKeyboard", useKeyboard, async () => {
+      let renderer: TestRenderer.ReactTestRenderer;
+      act(() => {
+        renderer = TestRenderer.create(
+          <KbShortcutSelect
+            shortcutItems={[
+              {
+                type: "key",
+                mapping: {
+                  a: { label: "Enter an API key", value: "api-key" },
+                  e: { label: "Use an environment variable", value: "env-var" },
+                },
+              },
+            ]}
+            onSelect={onSelect}
+          />,
+        );
+      });
+
+      // Selecting via a letter shortcut consumes the keypress: otherwise, when the selection
+      // transitions back to the prompt, the newly-focused textarea's default action inserts the
+      // shortcut letter into it.
+      act(() => {
+        keyboardHandler?.({
+          key: "e",
+          preventDefault,
+        } as unknown as PaintKeyboardEvent);
+      });
+
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(onSelect).toHaveBeenCalledWith({
+        label: "Use an environment variable",
+        value: "env-var",
+      });
+
+      // Unmapped keys are not consumed
+      const unrelatedPreventDefault = vi.fn();
+      act(() => {
+        keyboardHandler?.({
+          key: "z",
+          preventDefault: unrelatedPreventDefault,
+        } as unknown as PaintKeyboardEvent);
+      });
+
+      expect(unrelatedPreventDefault).not.toHaveBeenCalled();
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      act(() => renderer!.unmount());
+    });
+  });
 });

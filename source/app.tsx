@@ -64,6 +64,7 @@ import {
   QueuedUserMessage,
   inputFieldAvailable,
 } from "./state.ts";
+import { RETRY_NOW, type RetryCountdown } from "./agent/trajectory-arc.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
@@ -817,6 +818,19 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       />
     );
   }
+  if (modeData.mode === "retrying") {
+    return (
+      <RetryCountdownScreen
+        contextualMessage={
+          modeData.failure === "request-error"
+            ? "It looks like you've hit a request error!"
+            : "History compaction failed due to a request error!"
+        }
+        retrying={modeData.countdown}
+        abortController={modeData.abortController}
+      />
+    );
+  }
   if (modeData.mode === "tool-call") {
     return null;
   }
@@ -1037,6 +1051,82 @@ function AuthErrorScreen({
         onCancel={clearAuthError}
       />
     </TerminalFlex>
+  );
+}
+function formatRetryCountdown(seconds: number): string {
+  if (seconds < 60) return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+}
+function RetryCountdownScreen({
+  contextualMessage,
+  retrying,
+  abortController,
+}: {
+  contextualMessage: string;
+  retrying: RetryCountdown;
+  abortController: AbortController;
+}) {
+  const shortcutItems: ShortcutArray<"retry-now" | "stop-retrying"> = [
+    {
+      type: "key" as const,
+      mapping: {
+        r: {
+          label: "Retry now",
+          value: "retry-now",
+        },
+        s: {
+          label: "Stop retrying",
+          value: "stop-retrying",
+        },
+      },
+    },
+  ];
+  const onSelect = useCallback(
+    (item: Item<"retry-now" | "stop-retrying">) => {
+      if (item.value === "retry-now") {
+        abortController.abort(RETRY_NOW);
+      } else {
+        abortController.abort();
+      }
+    },
+    [abortController],
+  );
+  return (
+    <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
+      <Span
+        style={{
+          color: "red",
+        }}
+      >
+        {contextualMessage}
+      </Span>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Octo will keep retrying automatically until the request goes through, waiting longer
+          between each attempt (up to 10 minutes apart). Press S to stop retrying and go back to the
+          error menu.
+        </Span>
+      </TerminalFlex>
+      <TerminalFlex
+        style={{
+          marginTop: 1,
+        }}
+      >
+        <Span>
+          Next retry in {formatRetryCountdown(retrying.secondsLeft)} (attempt {retrying.attempt}
+          )...
+        </Span>
+      </TerminalFlex>
+    </KbShortcutPanel>
   );
 }
 function RequestErrorScreen({

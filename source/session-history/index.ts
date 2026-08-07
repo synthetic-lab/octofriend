@@ -1,5 +1,5 @@
 import { ParsedCliArgs } from "../cli/cli-args.ts";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, DbTransaction, schema } from "../db/db.ts";
 import { OctoIR } from "../ir/octo-ir.ts";
 import {
@@ -313,6 +313,20 @@ function maybeUpdateSessionPreview(tx: DbTransaction, sessionId: string, history
       }
     }
   }
+}
+
+/**
+ * Deletes a history node and everything after it (the parent FK cascades to descendants).
+ * Used when truncating in-memory history, e.g. edit & retry, so the discarded branch doesn't
+ * linger in the database — and so resending from an emptied history doesn't try to create a
+ * second root node in the same tree (which would violate tree_nodes_one_root_unique).
+ */
+export function deleteHistorySubtree(session: Session, nodeId: number) {
+  if (session.treeId == null) return;
+  db()
+    .delete(treeNodes)
+    .where(and(eq(treeNodes.id, nodeId), eq(treeNodes.treeId, session.treeId)))
+    .run();
 }
 
 export function insertHistoryItems(

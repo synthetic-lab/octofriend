@@ -176,6 +176,10 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     }
     for (const item of items) {
       if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
+        // Prevent the keypress's default action: if the selection transitions back to the prompt,
+        // the textarea mounts and takes focus during this event's dispatch, and the default action
+        // would otherwise insert the shortcut letter into the prompt.
+        event.preventDefault();
         handleSelect(item.item);
         return;
       }

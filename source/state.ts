@@ -10,6 +10,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistorySubtree,
   HistoryNode,
   insertHistoryItems,
   latestModelJson,
@@ -24,7 +25,7 @@ import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { trajectoryArc } from "./agent/trajectory-arc.ts";
+import { trajectoryArc, type RetryCountdown } from "./agent/trajectory-arc.ts";
 import type { ModelData } from "./compilers/run.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
@@ -123,6 +124,12 @@ export type UiState = {
         mode: "compaction-error";
         error: string;
         curlCommand: string | null;
+      }
+    | {
+        mode: "retrying";
+        failure: "request-error" | "compaction-error";
+        countdown: RetryCountdown;
+        abortController: AbortController;
       }
     | {
         mode: "diff-apply";
@@ -361,9 +368,9 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   retryFrom: async (mode, args) => {
-    if (get().modeData.mode === mode) {
-      await get().runAgent(args);
-    }
+    const { modeData } = get();
+    if (modeData.mode !== mode) return;
+    await get().runAgent(args);
   },
 
   clearAuthError: () => {
@@ -371,7 +378,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
   },
 
-  editAndRetryFrom: (mode, _args) => {
+  editAndRetryFrom: (mode, args) => {
     if (get().modeData.mode !== mode) {
       return;
     }
@@ -400,6 +407,11 @@ export const useAppStore = create<UiState>((set, get) => ({
       });
       return;
     }
+
+    // The in-memory history is truncated below, so delete the discarded branch from the database
+    // too. Otherwise resending from an emptied history would try to create a second root node in
+    // the session's tree, and reloading the session could resurrect the discarded branch.
+    deleteHistorySubtree(args.session, lastUserItem.nodeId);
 
     const filteredHistory = history.slice(0, lastUserPromptIndex);
     const textPart = lastUserItem.ir.content.find(part => part.type === "text");
@@ -895,6 +907,18 @@ export const useAppStore = create<UiState>((set, get) => ({
           },
 
           onQuotaUpdated: quota => set({ quotaData: quota }),
+
+          retryCountdown: event => {
+            throttle.flush();
+            set({
+              modeData: {
+                mode: "retrying",
+                failure: event.failure,
+                countdown: event.countdown,
+                abortController: event.abortController,
+              },
+            });
+          },
 
           retryTool: event => {
             throttle.flush();
