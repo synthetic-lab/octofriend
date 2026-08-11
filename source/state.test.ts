@@ -885,7 +885,7 @@ describe("runAgent history persistence (BUGS.md #8, #12)", () => {
     const session = createSession(process.cwd(), { kind: "local" });
     const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
       handler.onMessage(checkpointIr);
-      useAppStore.getState().notify("bug8-notify-marker", session);
+      useAppStore.getState().notify("bug8-notify-marker", session, agentConfig);
       handler.onMessage(assistantIr);
       return { type: "finish", reason: { type: "needs-response" } };
     };
