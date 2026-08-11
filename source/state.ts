@@ -17,6 +17,10 @@ import {
   Session,
 } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
+import {
+  assertToolCallPairing,
+  repairOrphanedToolOutputs,
+} from "./session-history/tool-pairing.ts";
 import type { ParsedCliArgs } from "./cli/cli-args.ts";
 import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
@@ -644,8 +648,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   hydrateSession: history => {
+    const repairedHistory = repairOrphanedToolOutputs(history);
+    // Canary builds fail loudly on any remaining pairing violation: after repair, any dangling
+    // tool output is an unknown bug we want to hear about rather than resume around.
+    if (process.env["CANARY_OCTO"] === "1") assertToolCallPairing(repairedHistory);
     set(state => ({
-      history,
+      history: repairedHistory,
       modelOverride: latestModelJson(history),
       lastUserPromptIndex: null,
       byteCount: 0,
