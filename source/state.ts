@@ -22,7 +22,7 @@ import { runTool } from "./tools/index.ts";
 import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
-import { toLlmIR, outputToHistory } from "./ir/convert-history-ir.ts";
+import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import type { ModelData } from "./compilers/run.ts";
@@ -794,7 +794,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
-      const finish = await trajectoryArc({
+      const finish = await trajectoryArc.run({
         modelData,
         messages: toLlmIR(historyCopy),
         config,
@@ -863,17 +863,6 @@ export const useAppStore = create<UiState>((set, get) => ({
             });
           },
 
-          compactionParsed: event => {
-            throttle.flush();
-            const checkpointItem: HistoryItem = {
-              type: "llm-ir",
-              ir: event.checkpoint,
-            };
-            set({
-              history: appendAndPersistHistory(session, historyCopy, [checkpointItem], model),
-            });
-          },
-
           autofixingJson: () => {
             throttle.flush();
             set({
@@ -896,13 +885,13 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           onQuotaUpdated: quota => set({ quotaData: quota }),
 
-          retryTool: event => {
+          onMessage: ir => {
             throttle.flush();
             set({
               history: appendAndPersistHistory(
                 session,
-                historyCopy,
-                outputToHistory(event.irs),
+                get().history,
+                [{ type: "llm-ir", ir }],
                 model,
               ),
             });
@@ -910,9 +899,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         },
       });
       throttle.flush();
-      set({
-        history: appendAndPersistHistory(session, historyCopy, outputToHistory(finish.irs), model),
-      });
       const finishReason = finish.reason;
       if (finishReason.type === "abort") {
         get().notifyReadyForInput(config);

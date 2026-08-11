@@ -3,16 +3,29 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { withMock } from "antipattern";
 import { useAppStore, nextToolAction } from "./state.ts";
 import type { Config } from "./config.ts";
+import { db } from "./db/db.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
+import {
+  historyItems,
+  llmIrs,
+  treeNodes,
+  trees,
+} from "./session-history/schema/session-history-schema.ts";
 import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
+import { trajectoryArc } from "./agent/trajectory-arc.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";
+
+type TrajectoryArcArgs = Parameters<typeof trajectoryArc.run>[0];
+type TrajectoryArcFinish = Awaited<ReturnType<typeof trajectoryArc.run>>;
 
 /*
  * Regression tests for BUGS.md #2: aborting a multi-tool batch must not leave dangling tool
@@ -705,5 +718,201 @@ describe("edit and retry", () => {
     expect(state.query).toBe("original prompt");
     // The compaction-failed marker and the last user prompt are both rewound past.
     expect(state.history).toHaveLength(0);
+  });
+});
+
+function dbNodeCount(sessionId: string): number {
+  return db()
+    .select({ id: treeNodes.id })
+    .from(treeNodes)
+    .innerJoin(trees, eq(trees.id, treeNodes.treeId))
+    .where(eq(trees.name, sessionId))
+    .all().length;
+}
+
+function dbLlmIrCount(sessionId: string, marker: string): number {
+  return db()
+    .select({ json: llmIrs.json })
+    .from(llmIrs)
+    .innerJoin(historyItems, eq(historyItems.llmIrId, llmIrs.id))
+    .innerJoin(treeNodes, eq(treeNodes.historyItemId, historyItems.id))
+    .innerJoin(trees, eq(trees.id, treeNodes.treeId))
+    .where(eq(trees.name, sessionId))
+    .all()
+    .filter(row => row.json.includes(marker)).length;
+}
+
+function historyRoles(): string[] {
+  return useAppStore
+    .getState()
+    .history.map(node => (node.type === "llm-ir" ? node.ir.role : node.type));
+}
+
+describe("runAgent history persistence (BUGS.md #8, #12)", () => {
+  const agentConfig: Config = {
+    yourName: "Test",
+    models: [
+      {
+        nickname: "test-model",
+        model: "test-model",
+        context: 128_000,
+        baseUrl: "http://localhost",
+        apiEnvVar: "OCTO_STATE_TEST_API_KEY",
+      },
+    ],
+  };
+
+  const checkpointIr = {
+    role: "checkpoint" as const,
+    content: [{ type: "text" as const, content: "bug8-checkpoint-marker" }],
+  };
+  const assistantIr = {
+    role: "assistant" as const,
+    content: "bug8-assistant-marker",
+    usage: compilerUsage(0, 0),
+  };
+
+  beforeEach(() => {
+    process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
+  });
+
+  it("persists a compaction checkpoint exactly once", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.onMessage(checkpointIr);
+      handler.onMessage(assistantIr);
+      return { type: "finish", reason: { type: "needs-response" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    });
+
+    expect(historyRoles()).toEqual(["user", "checkpoint", "assistant"]);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-assistant-marker")).toBe(1);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(3);
+  });
+
+  it("persists retried-arc IRs exactly once", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+
+    const retriedAssistant = {
+      role: "assistant" as const,
+      content: "bug8-retry-assistant-marker",
+      usage: compilerUsage(0, 0),
+    };
+    const parseError = {
+      role: "tool-parse-error" as const,
+      malformedRequest: {
+        type: "malformed-tool-request" as const,
+        error: "bad json",
+        call: { original: { name: "shell", arguments: "{oops" } },
+        toolCallId: "call_bad",
+      },
+    };
+    const finalAssistant = {
+      role: "assistant" as const,
+      content: "bug8-retry-final-marker",
+      usage: compilerUsage(0, 0),
+    };
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.onMessage(retriedAssistant);
+      handler.onMessage(parseError);
+      handler.onMessage(finalAssistant);
+      return { type: "finish", reason: { type: "needs-response" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    });
+
+    expect(historyRoles()).toEqual(["user", "assistant", "tool-parse-error", "assistant"]);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-retry-assistant-marker")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "call_bad")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-retry-final-marker")).toBe(1);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(4);
+  });
+
+  it("persists each IR exactly once when compaction and retry happen in the same run", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+
+    const retriedAssistant = {
+      role: "assistant" as const,
+      content: "bug8-mixed-retry-marker",
+      usage: compilerUsage(0, 0),
+    };
+    const parseError = {
+      role: "tool-parse-error" as const,
+      malformedRequest: {
+        type: "malformed-tool-request" as const,
+        error: "bad json",
+        call: { original: { name: "shell", arguments: "{oops" } },
+        toolCallId: "call_mixed",
+      },
+    };
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.onMessage(checkpointIr);
+      handler.onMessage(retriedAssistant);
+      handler.onMessage(parseError);
+      handler.onMessage(assistantIr);
+      return { type: "finish", reason: { type: "needs-response" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    });
+
+    expect(historyRoles()).toEqual([
+      "user",
+      "checkpoint",
+      "assistant",
+      "tool-parse-error",
+      "assistant",
+    ]);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-mixed-retry-marker")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "call_mixed")).toBe(1);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-assistant-marker")).toBe(1);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(5);
+  });
+
+  it("keeps notifications appended mid-run on the same branch", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.onMessage(checkpointIr);
+      useAppStore.getState().notify("bug8-notify-marker", session);
+      handler.onMessage(assistantIr);
+      return { type: "finish", reason: { type: "needs-response" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    });
+
+    expect(historyRoles()).toEqual(["user", "checkpoint", "notification", "assistant"]);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(4);
+  });
+
+  it("keeps the compaction checkpoint when the run aborts before any tokens stream", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.onMessage(checkpointIr);
+      return { type: "finish", reason: { type: "abort" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    });
+
+    expect(historyRoles()).toEqual(["user", "checkpoint"]);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(2);
   });
 });
