@@ -1,13 +1,5 @@
 import type { OctoIR } from "./octo-ir.ts";
-import type { TrajectoryOutputIR } from "../agent/trajectory-arc.ts";
 import type { HistoryItem } from "../session-history/index.ts";
-
-export function outputToHistory(output: TrajectoryOutputIR[]): HistoryItem[] {
-  return output.map(ir => ({
-    type: "llm-ir",
-    ir,
-  }));
-}
 
 export function toLlmIR(history: HistoryItem[]): OctoIR[] {
   const irs: OctoIR[] = [];

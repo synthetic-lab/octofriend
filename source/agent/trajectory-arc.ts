@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { registry } from "antipattern";
 import type { OctoIR } from "../ir/octo-ir.ts";
 import type {
   Content,
@@ -86,12 +87,9 @@ export type StateEvents = {
   };
   startCompaction: null;
   compactionProgress: AutocompactionStream;
-  compactionParsed: CompactionType;
   autofixingJson: null;
   autofixingDiff: null;
-  retryTool: {
-    irs: TrajectoryOutputIR[];
-  };
+  onMessage: TrajectoryOutputIR;
   onQuotaUpdated: QuotaData;
 };
 
@@ -99,7 +97,6 @@ export type AnyState = keyof StateEvents;
 
 type Finish = {
   type: "finish";
-  irs: TrajectoryOutputIR[];
   reason:
     | {
         type: "abort";
@@ -132,330 +129,311 @@ type Finish = {
  * Given some LLM IR, it runs the next arc of the trajectory until one of the finish reasons defined
  * above is hit.
  */
-export async function trajectoryArc({
-  modelData,
-  messages,
-  config,
-  transport,
-  abortSignal,
-  handler,
-}: {
-  modelData: ModelData;
-  messages: OctoIR[];
-  config: Config;
-  transport: Transport;
-  abortSignal: AbortSignal;
-  handler: {
-    [K in AnyState]: (state: StateEvents[K]) => void;
-  };
-}): Promise<Finish> {
-  if (abortSignal.aborted) return abort([]);
-
-  const messagesCopy = [...messages];
-  const autofixJson = makeAutofixJson(config);
-  let irs: TrajectoryOutputIR[] = [];
-  const tools = await loadTools(transport, abortSignal, config);
-  const { model } = modelData;
-
-  const parsedCompaction = await maybeAutocompact({
+export const trajectoryArc = registry({
+  async run({
     modelData,
-    abortSignal,
+    messages,
+    config,
     transport,
-    autofixJson,
-    messages: messagesCopy,
+    abortSignal,
+    handler,
+  }: {
+    modelData: ModelData;
+    messages: OctoIR[];
+    config: Config;
+    transport: Transport;
+    abortSignal: AbortSignal;
     handler: {
-      startCompaction: () => handler.startCompaction(null),
-      compactionProgress: stream => handler.compactionProgress(stream),
-    },
-  });
-  if (!parsedCompaction.success) {
-    if (
-      isRecoverableRequestError(parsedCompaction.error) ||
-      parsedCompaction.error.type === "auth-error"
-    ) {
-      return {
-        type: "finish",
-        irs,
-        reason: parsedCompaction.error,
-      };
-    }
+      [K in AnyState]: (state: StateEvents[K]) => void;
+    };
+  }): Promise<Finish> {
+    const messagesCopy = [...messages];
+    const autofixJson = makeAutofixJson(config);
+    let irs: TrajectoryOutputIR[] = [];
+    const emitIrs = (delta: TrajectoryOutputIR[]) => {
+      for (const ir of delta) handler.onMessage(ir);
+    };
+    const finishWith = (reason: Finish["reason"], remaining: TrajectoryOutputIR[] = []): Finish => {
+      emitIrs(remaining);
+      return { type: "finish", reason };
+    };
+    if (abortSignal.aborted) return finishWith({ type: "abort" });
 
-    return {
-      type: "finish",
-      irs,
-      reason: {
+    const tools = await loadTools(transport, abortSignal, config);
+    const { model } = modelData;
+
+    const parsedCompaction = await maybeAutocompact({
+      modelData,
+      abortSignal,
+      transport,
+      autofixJson,
+      messages: messagesCopy,
+      handler: {
+        startCompaction: () => handler.startCompaction(null),
+        compactionProgress: stream => handler.compactionProgress(stream),
+      },
+    });
+    if (!parsedCompaction.success) {
+      if (
+        isRecoverableRequestError(parsedCompaction.error) ||
+        parsedCompaction.error.type === "auth-error"
+      ) {
+        return finishWith(parsedCompaction.error);
+      }
+
+      return finishWith({
         type: "compaction-error",
         requestError: parsedCompaction.error.requestError,
         curl: parsedCompaction.error.curl,
+      });
+    }
+
+    if (parsedCompaction.data) {
+      emitIrs([parsedCompaction.data.checkpoint]);
+      messagesCopy.push(parsedCompaction.data.checkpoint);
+    }
+    if (abortSignal.aborted) return finishWith({ type: "abort" });
+
+    handler.startResponse(null);
+
+    let buffer: AssistantBuffer<ResponseTokenTypes> = {};
+    const loweredMessages = lowerOcto(messagesCopy, model.modalities);
+    const result = await run({
+      modelData,
+      autofixJson,
+      abortSignal,
+      transport,
+      tools,
+      messages: loweredMessages,
+      handlers: {
+        onTokens: (tokens, type) => {
+          if (!buffer[type]) buffer[type] = "";
+          buffer[type] += tokens;
+          handler.responseProgress({
+            buffer,
+            delta: { type, value: tokens },
+          });
+        },
+        onAutofixJson: () => {
+          handler.autofixingJson(null);
+        },
       },
-    };
-  }
-
-  if (parsedCompaction.data) {
-    handler.compactionParsed(parsedCompaction.data);
-    messagesCopy.push(parsedCompaction.data.checkpoint);
-    irs.push(parsedCompaction.data.checkpoint);
-  }
-  if (abortSignal.aborted) return abort([]);
-
-  handler.startResponse(null);
-
-  let buffer: AssistantBuffer<ResponseTokenTypes> = {};
-  const loweredMessages = lowerOcto(messagesCopy, model.modalities);
-  const result = await run({
-    modelData,
-    autofixJson,
-    abortSignal,
-    transport,
-    tools,
-    messages: loweredMessages,
-    handlers: {
-      onTokens: (tokens, type) => {
-        if (!buffer[type]) buffer[type] = "";
-        buffer[type] += tokens;
-        handler.responseProgress({
-          buffer,
-          delta: { type, value: tokens },
+      systemPrompt: async () => {
+        return systemPrompt({
+          config,
+          transport,
+          signal: abortSignal,
         });
       },
-      onAutofixJson: () => {
-        handler.autofixingJson(null);
-      },
-    },
-    systemPrompt: async () => {
-      return systemPrompt({
+    });
+
+    function maybeBufferedMessage(): TrajectoryOutputIR[] {
+      if (buffer.content || buffer.reasoning || buffer.tool) {
+        return [
+          ...irs,
+          {
+            role: "assistant",
+            content: buffer.content || "",
+            reasoningContent: buffer.reasoning,
+            usage: compilerUsage(0, 0),
+          },
+        ];
+      }
+      return [];
+    }
+
+    const headers = result.success
+      ? result.data.headers
+      : "headers" in result.error
+        ? result.error.headers
+        : undefined;
+    const quota = parseQuotaFromHeaders(headers);
+    if (quota) handler.onQuotaUpdated(quota);
+
+    if (abortSignal.aborted) return finishWith({ type: "abort" }, maybeBufferedMessage());
+
+    if (!result.success) {
+      return finishWith(compilerErrorToFinishReason(result.error), maybeBufferedMessage());
+    }
+
+    let assistantMessage = result.data.output;
+    irs = [...irs, assistantMessage];
+
+    // Retry malformed tool calls
+    let malformedRequests = false;
+    for (const call of assistantMessage.toolCalls || []) {
+      if (call.type === "malformed-tool-request") {
+        malformedRequests = true;
+        break;
+      }
+    }
+
+    if (malformedRequests) {
+      // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
+      // is kept in terms of input ordering vs output message ordering
+      for (const call of assistantMessage.toolCalls || []) {
+        if (call.type === "tool-call") {
+          irs.push({
+            role: "tool-skip-output",
+            toolCall: call,
+            reason: "Another tool call in this batch was malformed, so this tool call was skipped",
+          });
+        } else {
+          const _: "malformed-tool-request" = call.type;
+          irs.push({
+            role: "tool-parse-error",
+            malformedRequest: call,
+          });
+        }
+      }
+
+      emitIrs(irs);
+      const retried = await trajectoryArc.run({
+        modelData,
         config,
         transport,
-        signal: abortSignal,
+        abortSignal,
+        messages: messagesCopy.concat(irs),
+        handler,
       });
-    },
-  });
 
-  function maybeBufferedMessage(): TrajectoryOutputIR[] {
-    if (buffer.content || buffer.reasoning || buffer.tool) {
-      return [
-        ...irs,
+      return finishWith(retried.reason);
+    }
+
+    const { toolCalls } = assistantMessage;
+
+    if (toolCalls == null) {
+      return finishWith({ type: "needs-response" }, irs);
+    }
+
+    let retryIrs: TrajectoryOutputIR[] = [];
+    const wellformedToolCalls: Array<ToolCallRequest> = [];
+    for (const toolCall of toolCalls) {
+      if (toolCall.type === "malformed-tool-request") {
+        throw new Error(
+          "Impossible tool ordering: encountered a malformed tool with no malformed response",
+        );
+      }
+      wellformedToolCalls.push(toolCall);
+    }
+
+    // TODO: use Promise.all to do this in parallel
+    // Requires changing the signature somewhat; currently we expect that the handlers are called
+    // sequentially (i.e. we only autofix one tool at a time), but this would imply we could call the
+    // handlers multiple times within a single validation step
+    for (const toolCall of wellformedToolCalls) {
+      const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
+
+      if (validation.success) {
+        // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
+        // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
+        // are invalid).
+        retryIrs.push({
+          role: "tool-skip-output",
+          toolCall: toolCall,
+          reason: SKIP_INVALID_REASON,
+        });
+        continue;
+      }
+
+      const validationError = validation.error;
+      const fn = toolCall;
+      if (fn.name === "edit") {
+        handler.autofixingDiff(null);
+        const path = fn.parsed.filePath;
+        const file = await fs.readFile(path, "utf8");
+        const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
+
+        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
+        // tool call
+        if (abortSignal.aborted) {
+          return finishWith({ type: "abort" }, [
+            ...irs.slice(0, -1),
+            {
+              role: "tool-validation-error",
+              toolCall: toolCall,
+              error: validationError,
+              aborted: true,
+            },
+          ]);
+        }
+
+        if (fix) {
+          // Validate that the edit applies before marking as fixed
+          const fixed = {
+            ...fn.parsed,
+            ...fix,
+          } as const;
+
+          const fixedValidation = await validateTool(
+            abortSignal,
+            transport,
+            tools,
+            { ...fn, parsed: fixed },
+            config,
+          );
+          if (fixedValidation.success) {
+            // If we got this far, it's valid: update the state and keep going
+            fn.parsed = {
+              ...fn.parsed,
+              ...fix,
+            };
+
+            // Push a tool skip proactively
+            retryIrs.push({
+              role: "tool-skip-output",
+              toolCall: toolCall,
+              reason: SKIP_INVALID_REASON,
+            });
+
+            continue;
+          }
+        }
+      }
+
+      retryIrs = [
+        ...retryIrs,
         {
-          role: "assistant",
-          content: buffer.content || "",
-          reasoningContent: buffer.reasoning,
-          usage: compilerUsage(0, 0),
+          role: "tool-validation-error" as const,
+          toolCall: toolCall,
+          error: validationError,
+          aborted: false,
         },
       ];
     }
-    return [];
-  }
 
-  const headers = result.success
-    ? result.data.headers
-    : "headers" in result.error
-      ? result.error.headers
-      : undefined;
-  const quota = parseQuotaFromHeaders(headers);
-  if (quota) handler.onQuotaUpdated(quota);
-
-  if (abortSignal.aborted) return abort(maybeBufferedMessage());
-
-  if (!result.success) {
-    return {
-      type: "finish",
-      irs: maybeBufferedMessage(),
-      reason: compilerErrorToFinishReason(result.error),
-    };
-  }
-
-  let assistantMessage = result.data.output;
-  irs = [...irs, assistantMessage];
-
-  // Retry malformed tool calls
-  let malformedRequests = false;
-  for (const call of assistantMessage.toolCalls || []) {
-    if (call.type === "malformed-tool-request") {
-      malformedRequests = true;
-      break;
-    }
-  }
-
-  if (malformedRequests) {
-    // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
-    // is kept in terms of input ordering vs output message ordering
-    for (const call of assistantMessage.toolCalls || []) {
-      if (call.type === "tool-call") {
-        irs.push({
-          role: "tool-skip-output",
-          toolCall: call,
-          reason: "Another tool call in this batch was malformed, so this tool call was skipped",
-        });
-      } else {
-        const _: "malformed-tool-request" = call.type;
-        irs.push({
-          role: "tool-parse-error",
-          malformedRequest: call,
-        });
+    // If you have any IRs that need to be retried, retry them
+    let needsRetry = false;
+    for (const ir of retryIrs) {
+      if (ir.role !== "tool-skip-output") {
+        needsRetry = true;
+        break;
       }
     }
+    if (needsRetry) {
+      const fullRetryTrajectory = [...irs, ...retryIrs];
+      emitIrs(fullRetryTrajectory);
+      const retried = await trajectoryArc.run({
+        modelData,
+        config,
+        transport,
+        abortSignal,
+        messages: messagesCopy.concat(fullRetryTrajectory),
+        handler,
+      });
+      return finishWith(retried.reason);
+    }
 
-    handler.retryTool({ irs });
-    const retried = await trajectoryArc({
-      modelData,
-      config,
-      transport,
-      abortSignal,
-      messages: messagesCopy.concat(irs),
-      handler,
-    });
-
-    return {
-      type: "finish",
-      irs: [...irs, ...retried.irs],
-      reason: retried.reason,
-    };
-  }
-
-  const { toolCalls } = assistantMessage;
-
-  if (toolCalls == null) {
-    return {
-      type: "finish",
-      reason: {
-        type: "needs-response",
+    // Got this far? Everything validated. Return the tool calls
+    return finishWith(
+      {
+        type: "request-tool",
+        toolCalls: wellformedToolCalls,
       },
       irs,
-    };
-  }
-
-  let retryIrs: TrajectoryOutputIR[] = [];
-  const wellformedToolCalls: Array<ToolCallRequest> = [];
-  for (const toolCall of toolCalls) {
-    if (toolCall.type === "malformed-tool-request") {
-      throw new Error(
-        "Impossible tool ordering: encountered a malformed tool with no malformed response",
-      );
-    }
-    wellformedToolCalls.push(toolCall);
-  }
-
-  // TODO: use Promise.all to do this in parallel
-  // Requires changing the signature somewhat; currently we expect that the handlers are called
-  // sequentially (i.e. we only autofix one tool at a time), but this would imply we could call the
-  // handlers multiple times within a single validation step
-  for (const toolCall of wellformedToolCalls) {
-    const validation = await validateTool(abortSignal, transport, tools, toolCall, config);
-
-    if (validation.success) {
-      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output IR for
-      // it, in case other tool calls fail to validate (since all tool calls will be skipped if any
-      // are invalid).
-      retryIrs.push({
-        role: "tool-skip-output",
-        toolCall: toolCall,
-        reason: SKIP_INVALID_REASON,
-      });
-      continue;
-    }
-
-    const validationError = validation.error;
-    const fn = toolCall;
-    if (fn.name === "edit") {
-      handler.autofixingDiff(null);
-      const path = fn.parsed.filePath;
-      const file = await fs.readFile(path, "utf8");
-      const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
-
-      // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-      // tool call
-      if (abortSignal.aborted) {
-        return abort([
-          ...irs.slice(0, -1),
-          {
-            role: "tool-validation-error",
-            toolCall: toolCall,
-            error: validationError,
-            aborted: true,
-          },
-        ]);
-      }
-
-      if (fix) {
-        // Validate that the edit applies before marking as fixed
-        const fixed = {
-          ...fn.parsed,
-          ...fix,
-        } as const;
-
-        const fixedValidation = await validateTool(
-          abortSignal,
-          transport,
-          tools,
-          { ...fn, parsed: fixed },
-          config,
-        );
-        if (fixedValidation.success) {
-          // If we got this far, it's valid: update the state and keep going
-          fn.parsed = {
-            ...fn.parsed,
-            ...fix,
-          };
-
-          // Push a tool skip proactively
-          retryIrs.push({
-            role: "tool-skip-output",
-            toolCall: toolCall,
-            reason: SKIP_INVALID_REASON,
-          });
-
-          continue;
-        }
-      }
-    }
-
-    retryIrs = [
-      ...retryIrs,
-      {
-        role: "tool-validation-error" as const,
-        toolCall: toolCall,
-        error: validationError,
-        aborted: false,
-      },
-    ];
-  }
-
-  // If you have any IRs that need to be retried, retry them
-  let needsRetry = false;
-  for (const ir of retryIrs) {
-    if (ir.role !== "tool-skip-output") {
-      needsRetry = true;
-      break;
-    }
-  }
-  if (needsRetry) {
-    const fullRetryTrajectory = [...irs, ...retryIrs];
-    handler.retryTool({ irs: fullRetryTrajectory });
-    const retried = await trajectoryArc({
-      modelData,
-      config,
-      transport,
-      abortSignal,
-      messages: messagesCopy.concat(fullRetryTrajectory),
-      handler,
-    });
-    return {
-      type: "finish",
-      irs: [...fullRetryTrajectory, ...retried.irs],
-      reason: retried.reason,
-    };
-  }
-
-  // Got this far? Everything validated. Return the tool calls
-  return {
-    type: "finish",
-    reason: {
-      type: "request-tool",
-      toolCalls: wellformedToolCalls,
-    },
-    irs,
-  };
-}
+    );
+  },
+});
 
 function parseQuotaFromHeaders(headers: Headers | undefined): QuotaData | undefined {
   const raw = headers?.get("x-synthetic-quotas");
@@ -535,12 +513,4 @@ async function maybeAutocompact({
       content: checkpointContent.data,
     },
   });
-}
-
-function abort(irs: TrajectoryOutputIR[]): Finish {
-  return {
-    type: "finish",
-    reason: { type: "abort" },
-    irs,
-  };
 }
