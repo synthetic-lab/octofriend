@@ -344,11 +344,14 @@ export const trajectoryArc = registry({
         const file = await fs.readFile(path, "utf8");
         const fix = await autofixEdit(config, file, fn.parsed, abortSignal);
 
-        // If we aborted the autofix, slice off the messed up tool call and replace it with a failed
-        // tool call
+        // If we aborted the autofix, end the turn with a failed tool call. The assistant message
+        // must stay in history: the tool-validation-error answers one of its tool calls, and
+        // emitting the answer without the call orphans the tool message — strict backends reject
+        // requests where a tool message's tool_call_id doesn't resolve to a preceding assistant
+        // tool_call, and any session containing this history 400s on every resumed request.
         if (abortSignal.aborted) {
           return finishWith({ type: "abort" }, [
-            ...irs.slice(0, -1),
+            ...irs,
             {
               role: "tool-validation-error",
               toolCall: toolCall,

@@ -137,7 +137,7 @@ ${JSON.stringify(requestBody)}
 JSON`;
 }
 
-async function toLlmMessages<A extends Agent<any, any, any>>(
+export async function toLlmMessages<A extends Agent<any, any, any>>(
   messages: Array<CompilerIR<A>>,
   systemPrompt?: () => Promise<string>,
   modalities?: CompilerModalities,
@@ -168,7 +168,15 @@ function llmFromIr<A extends Agent<any, any, any>>(
     const reasoning: { reasoning_content?: string } = {};
     if (ir.reasoningContent) reasoning.reasoning_content = ir.reasoningContent;
 
-    if (toolCalls == null || toolCalls.length === 0) {
+    /*
+     * Malformed tool requests are dropped from tool_calls entirely: their arguments may be
+     * unparseable (e.g. a connection died mid-stream, leaving half a JSON string), and
+     * backends that validate historical tool call arguments would reject the request. The
+     * failure is re-delivered as a user message by the tool-parse-error branch below, so the
+     * model still learns its call malformed and can recover.
+     */
+    const validToolCalls = (toolCalls ?? []).filter((t: any) => t.type === "tool-call");
+    if (validToolCalls.length === 0) {
       return {
         ...reasoning,
         role: "assistant",
@@ -179,18 +187,16 @@ function llmFromIr<A extends Agent<any, any, any>>(
       ...reasoning,
       role: "assistant",
       content: ir.content,
-      tool_calls: toolCalls
-        .filter((t: any) => t.type === "tool-call")
-        .map((tc: any) => {
-          return {
-            type: "function" as const,
-            function: {
-              name: tc.name,
-              arguments: tc.original ? JSON.stringify(tc.original) : "{}",
-            },
-            id: tc.toolCallId,
-          };
-        }),
+      tool_calls: validToolCalls.map((tc: any) => {
+        return {
+          type: "function" as const,
+          function: {
+            name: tc.name,
+            arguments: tc.original ? JSON.stringify(tc.original) : "{}",
+          },
+          id: tc.toolCallId,
+        };
+      }),
     };
   }
   if (ir.role === "user") {
@@ -213,10 +219,16 @@ function llmFromIr<A extends Agent<any, any, any>>(
     };
   }
 
+  /*
+   * A tool-parse-error's malformed call is not re-emitted as an assistant tool_call (see the
+   * assistant branch above), so there is nothing for a tool message's tool_call_id to resolve
+   * to — and strict backends hard-reject tool messages without a matching preceding tool_call.
+   * Deliver the failure as a plain user message instead; a user message is always legal, and
+   * the model can see its call malformed and recover.
+   */
   if (ir.role === "tool-parse-error") {
     return {
-      role: "tool",
-      tool_call_id: ir.malformedRequest.toolCallId,
+      role: "user",
       content: [
         {
           type: "text",
