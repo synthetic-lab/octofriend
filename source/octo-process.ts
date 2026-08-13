@@ -1,7 +1,7 @@
 import {
   execFile,
   spawn,
-  type ChildProcess,
+  ChildProcess,
   type ExecFileException,
   type ExecFileOptions,
   type SpawnOptions,
@@ -10,9 +10,9 @@ import {
 /**
  * Child process lifecycle management, over `child_process`.
  *
- * All spawning goes through {@link OctoProcessManager}; every process it
- * spawns carries a `terminate` callback and is terminated when Octo exits
- * (unless spawned with `surviveExit`). {@link registerCleanup} and
+ * All spawning goes through {@link OctoProcessManager}, so spawned processes
+ * can be terminated when Octo exits (unless spawned with
+ * `surviveAfterOctoExit`). {@link registerCleanup} and
  * {@link installGlobalProcessSignalHandlers} run shutdown logic even on
  * SIGINT/SIGTERM/SIGHUP, where `try/finally` blocks never run.
  */
@@ -27,10 +27,32 @@ type OctoProcessOptions = {
   surviveAfterOctoExit?: boolean;
 };
 
-export type OctoProcess = OctoProcessOptions & {
-  childProcess: ChildProcess;
-  terminate(opts?: { graceMs?: number }): void;
-};
+export class OctoProcess extends ChildProcess {
+  /** signal the whole process group on terminate */
+  declare detached?: boolean;
+  /** don't kill when Octo exits */
+  declare surviveAfterOctoExit?: boolean;
+
+  constructor(childProcess: ChildProcess, options: OctoProcessOptions) {
+    super();
+    // Since Node creates processes via factories (spawn), we can't use `extends` directly
+    const octoProcess = childProcess as OctoProcess;
+    Object.setPrototypeOf(octoProcess, OctoProcess.prototype);
+    octoProcess.detached = options.detached;
+    octoProcess.surviveAfterOctoExit = options.surviveAfterOctoExit;
+    return octoProcess;
+  }
+
+  terminate(opts: { graceMs?: number } = {}): void {
+    signalOctoProcess(this, "SIGTERM");
+    const timer = setTimeout(
+      () => signalOctoProcess(this, "SIGKILL"),
+      opts.graceMs ?? SIGKILL_GRACE_MS,
+    );
+    // The escalation timer must not keep the event loop alive on its own.
+    timer.unref?.();
+  }
+}
 
 export type OctoSpawnOptions = SpawnOptions & OctoProcessOptions;
 export type OctoExecFileOptions = ExecFileOptions & OctoProcessOptions;
@@ -129,44 +151,30 @@ export class OctoProcessManager {
   }
 
   private manage(childProcess: ChildProcess, options: OctoProcessOptions): OctoProcess {
-    const terminate = (opts: { graceMs?: number } = {}) => {
-      signalOctoProcess(octoProcess, "SIGTERM");
-      const timer = setTimeout(
-        () => signalOctoProcess(octoProcess, "SIGKILL"),
-        opts.graceMs ?? SIGKILL_GRACE_MS,
-      );
-      // The escalation timer must not keep the event loop alive on its own.
-      timer.unref?.();
-    };
-    const octoProcess: OctoProcess = {
-      ...options,
-      childProcess,
-      terminate,
-    };
+    const octoProcess = new OctoProcess(childProcess, options);
 
     this.processes.add(octoProcess);
-    octoProcess.childProcess.once("close", () => this.processes.delete(octoProcess));
+    octoProcess.once("close", () => this.processes.delete(octoProcess));
     if (!options.surviveAfterOctoExit) {
       octoProcesses.add(octoProcess);
-      octoProcess.childProcess.once("close", () => octoProcesses.delete(octoProcess));
+      octoProcess.once("close", () => octoProcesses.delete(octoProcess));
     }
     return octoProcess;
   }
 }
 
 function signalOctoProcess(octoProcess: OctoProcess, signal: NodeJS.Signals) {
-  const childProcess = octoProcess.childProcess;
-  if (octoProcess.detached && childProcess.pid != null) {
+  if (octoProcess.detached && octoProcess.pid != null) {
     try {
       // Negative PID signals the whole process group
-      process.kill(-childProcess.pid, signal);
+      process.kill(-octoProcess.pid, signal);
       return;
     } catch {
       // Fall through to signaling just the process
     }
   }
   try {
-    childProcess.kill(signal);
+    octoProcess.kill(signal);
   } catch {}
 }
 

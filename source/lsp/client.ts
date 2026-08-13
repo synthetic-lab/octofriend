@@ -141,13 +141,13 @@ export class LspClient {
       stdio: ["pipe", "pipe", "ignore"],
       env: process.env,
     });
-    const childProcess = this.octoProcess.childProcess;
+    const octoProcess = this.octoProcess;
 
-    const stdout = childProcess.stdout;
+    const stdout = octoProcess.stdout;
     if (!stdout) throw new Error(`LSP server "${this.serverConfig.serverName}" has no stdout`);
     stdout.on("data", (chunk: Buffer) => this.onData(chunk));
 
-    childProcess.on("error", err => {
+    octoProcess.on("error", err => {
       for (const [, req] of this.pendingRequests) {
         req.reject(
           new Error(`LSP server "${this.serverConfig.serverName}" crashed: ${err.message}`),
@@ -156,7 +156,7 @@ export class LspClient {
       this.pendingRequests.clear();
     });
 
-    childProcess.on("exit", () => {
+    octoProcess.on("exit", () => {
       for (const [, req] of this.pendingRequests) {
         req.reject(new Error(`LSP server "${this.serverConfig.serverName}" exited unexpectedly`));
       }
@@ -339,7 +339,7 @@ export class LspClient {
     timeoutMs: number = REQUEST_TIMEOUT_MS,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      const stdin = this.octoProcess?.childProcess.stdin;
+      const stdin = this.octoProcess?.stdin;
       if (!stdin?.writable) {
         reject(new Error(`LSP server "${this.serverConfig.serverName}" is not running`));
         return;
@@ -367,7 +367,7 @@ export class LspClient {
 
   // used for LSP methods `initialized`, `exit`, `textDocument/didOpen`, `textDocument/didChange`
   private notify(method: string, params: any): void {
-    const stdin = this.octoProcess?.childProcess.stdin;
+    const stdin = this.octoProcess?.stdin;
     if (!stdin?.writable) return;
     this.send(stdin, { jsonrpc: "2.0", method, params });
   }
