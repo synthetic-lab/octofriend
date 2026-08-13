@@ -31,7 +31,7 @@ describe("OctoProcessManager.spawn", () => {
     const octoProcess = new mod.OctoProcessManager().spawn(process.execPath, { stdio: "ignore" });
 
     const code = await new Promise<number | null>(resolve => {
-      octoProcess.childProcess.once("close", code => resolve(code));
+      octoProcess.once("close", code => resolve(code));
     });
 
     expect(code).toBe(0);
@@ -43,7 +43,7 @@ describe("OctoProcessManager.spawn", () => {
 
     mod.killAllOctoProcesses();
 
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("does not exit-track processes spawned with surviveAfterOctoExit", async () => {
@@ -54,18 +54,18 @@ describe("OctoProcessManager.spawn", () => {
     // Give any mis-sent signal a chance to land
     await new Promise(resolve => setTimeout(resolve, 250));
 
-    expect(isAlive(octoProcess.childProcess.pid!)).toBe(true);
+    expect(isAlive(octoProcess.pid!)).toBe(true);
 
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("stops tracking processes when they close", async () => {
     const mod = await freshLifecycle();
     const octoProcesses = new mod.OctoProcessManager();
     const octoProcess = octoProcesses.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
-    await new Promise(resolve => octoProcess.childProcess.once("close", resolve));
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    await new Promise(resolve => octoProcess.once("close", resolve));
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcesses.terminateAll();
     mod.killAllOctoProcesses();
@@ -79,7 +79,7 @@ describe("OctoProcess.terminate", () => {
     const mod = await freshLifecycle();
     const octoProcess = spawnSleeper(new mod.OctoProcessManager());
     vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate({ graceMs: 100 });
 
@@ -93,8 +93,8 @@ describe("OctoProcess.terminate", () => {
 
     kill.mockRestore();
     vi.useRealTimers();
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it.skipIf(process.platform === "win32")(
@@ -109,14 +109,14 @@ describe("OctoProcess.terminate", () => {
 
       octoProcess.terminate();
 
-      expect(killSpy).toHaveBeenCalledWith(-octoProcess.childProcess.pid!, "SIGTERM");
+      expect(killSpy).toHaveBeenCalledWith(-octoProcess.pid!, "SIGTERM");
 
       // Actually kill the real process, since process.kill was mocked
       killSpy.mockRestore();
       try {
-        process.kill(-octoProcess.childProcess.pid!, "SIGKILL");
+        process.kill(-octoProcess.pid!, "SIGKILL");
       } catch {}
-      await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+      await waitFor(() => !isAlive(octoProcess.pid!));
     },
   );
 
@@ -124,7 +124,7 @@ describe("OctoProcess.terminate", () => {
     const mod = await freshLifecycle();
     const octoProcess = spawnSleeper(new mod.OctoProcessManager());
     const processKillSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate();
 
@@ -132,8 +132,8 @@ describe("OctoProcess.terminate", () => {
     expect(kill).toHaveBeenCalledWith("SIGTERM");
 
     vi.restoreAllMocks();
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it.skipIf(process.platform === "win32")(
@@ -148,7 +148,7 @@ describe("OctoProcess.terminate", () => {
         if (pid < 0) throw new Error("ESRCH: no such process group");
         return true;
       }) as typeof process.kill);
-      const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+      const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
       octoProcess.terminate();
 
@@ -156,10 +156,10 @@ describe("OctoProcess.terminate", () => {
 
       vi.restoreAllMocks();
       try {
-        process.kill(-octoProcess.childProcess.pid!, "SIGKILL");
-        octoProcess.childProcess.kill("SIGKILL");
+        process.kill(-octoProcess.pid!, "SIGKILL");
+        octoProcess.kill("SIGKILL");
       } catch {}
-      await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+      await waitFor(() => !isAlive(octoProcess.pid!));
     },
   );
 
@@ -167,7 +167,7 @@ describe("OctoProcess.terminate", () => {
     const mod = await freshLifecycle();
     const octoProcess = spawnSleeper(new mod.OctoProcessManager());
     vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate();
 
@@ -179,15 +179,15 @@ describe("OctoProcess.terminate", () => {
 
     kill.mockRestore();
     vi.useRealTimers();
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("is safe to call on a closed process and to call twice", async () => {
     const mod = await freshLifecycle();
     const octoProcesses = new mod.OctoProcessManager();
     const exited = octoProcesses.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
-    await new Promise(resolve => exited.childProcess.once("close", resolve));
+    await new Promise(resolve => exited.once("close", resolve));
     expect(() => exited.terminate()).not.toThrow();
 
     const sleeper = spawnSleeper(octoProcesses);
@@ -196,7 +196,7 @@ describe("OctoProcess.terminate", () => {
       sleeper.terminate();
     }).not.toThrow();
 
-    await waitFor(() => !isAlive(sleeper.childProcess.pid!));
+    await waitFor(() => !isAlive(sleeper.pid!));
   });
 
   it("works on processes spawned with surviveAfterOctoExit", async () => {
@@ -205,7 +205,7 @@ describe("OctoProcess.terminate", () => {
 
     octoProcess.terminate({ graceMs: 100 });
 
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 });
 
@@ -216,8 +216,8 @@ describe("OctoProcessManager.terminateAll", () => {
     const there = new mod.OctoProcessManager();
     const mine = spawnSleeper(here);
     const theirs = spawnSleeper(there);
-    const killMine = vi.spyOn(mine.childProcess, "kill").mockReturnValue(true);
-    const killTheirs = vi.spyOn(theirs.childProcess, "kill").mockReturnValue(true);
+    const killMine = vi.spyOn(mine, "kill").mockReturnValue(true);
+    const killTheirs = vi.spyOn(theirs, "kill").mockReturnValue(true);
 
     here.terminateAll({ graceMs: 5000 });
 
@@ -225,9 +225,9 @@ describe("OctoProcessManager.terminateAll", () => {
     expect(killTheirs).not.toHaveBeenCalled();
 
     vi.restoreAllMocks();
-    mine.childProcess.kill("SIGKILL");
-    theirs.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(mine.childProcess.pid!) && !isAlive(theirs.childProcess.pid!));
+    mine.kill("SIGKILL");
+    theirs.kill("SIGKILL");
+    await waitFor(() => !isAlive(mine.pid!) && !isAlive(theirs.pid!));
   });
 
   it("escalates to SIGKILL after the given graceMs", async () => {
@@ -235,7 +235,7 @@ describe("OctoProcessManager.terminateAll", () => {
     const octoProcesses = new mod.OctoProcessManager();
     const octoProcess = spawnSleeper(octoProcesses);
     vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcesses.terminateAll({ graceMs: 100 });
 
@@ -245,8 +245,8 @@ describe("OctoProcessManager.terminateAll", () => {
 
     kill.mockRestore();
     vi.useRealTimers();
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 });
 
@@ -272,7 +272,7 @@ describe("OctoProcessManager.execFile", () => {
         (error, stdout) => (error ? reject(error) : resolve(stdout)),
       );
       // node with no args reads stdin as a script; close it so it sees EOF and exits
-      octoProcess.childProcess.stdin!.end();
+      octoProcess.stdin!.end();
     });
 
     expect((await stdoutPromise).toString()).toBe("");
@@ -317,10 +317,10 @@ describe("OctoProcessManager.execFile", () => {
     // Give any mis-sent signal a chance to land
     await new Promise(resolve => setTimeout(resolve, 250));
 
-    expect(isAlive(octoProcess.childProcess.pid!)).toBe(true);
+    expect(isAlive(octoProcess.pid!)).toBe(true);
 
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("exit-tracks spawned processes so killAllOctoProcesses terminates them", async () => {
@@ -332,7 +332,7 @@ describe("OctoProcessManager.execFile", () => {
 
     mod.killAllOctoProcesses();
 
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 });
 
@@ -350,7 +350,7 @@ describe("runCleanups", () => {
       throw new Error("a failing cleanup must not block the others");
     });
     const octoProcess = spawnSleeper(new mod.OctoProcessManager());
-    const kill = vi.spyOn(octoProcess.childProcess, "kill").mockReturnValue(true);
+    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     await mod.runCleanups();
 
@@ -361,8 +361,8 @@ describe("runCleanups", () => {
     expect(calls.sort()).toEqual(["async", "sync"]);
 
     kill.mockRestore();
-    octoProcess.childProcess.kill("SIGKILL");
-    await waitFor(() => !isAlive(octoProcess.childProcess.pid!));
+    octoProcess.kill("SIGKILL");
+    await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("does not run unregistered cleanups", async () => {

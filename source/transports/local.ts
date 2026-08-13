@@ -99,8 +99,7 @@ export class LocalTransport implements Transport {
         detached: true,
         env,
       });
-      const childProcess = octoProcess.childProcess;
-      if (!childProcess.stdout || !childProcess.stderr) {
+      if (!octoProcess.stdout || !octoProcess.stderr) {
         reject(new Error("Failed to spawn shell process with piped stdio"));
         return;
       }
@@ -134,15 +133,15 @@ export class LocalTransport implements Transport {
       if (signal.aborted) onAbort();
       signal.addEventListener("abort", onAbort);
 
-      childProcess.stdout.on("data", data => {
+      octoProcess.stdout.on("data", data => {
         if (!output.append(data)) killGroup();
       });
 
-      childProcess.stderr.on("data", data => {
+      octoProcess.stderr.on("data", data => {
         if (!output.append(data)) killGroup();
       });
 
-      childProcess.on("close", code => {
+      octoProcess.on("close", code => {
         cleanup();
         if (aborted) {
           reject(new AbortError());
@@ -188,7 +187,7 @@ output: ${commandOutput}`,
         }
       });
 
-      childProcess.on("error", err => {
+      octoProcess.on("error", err => {
         cleanup();
         if (aborted) {
           reject(new AbortError());

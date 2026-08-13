@@ -223,7 +223,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
       env: process.env,
     });
 
-    octoProcess.childProcess.on("close", (code: number | null) => {
+    octoProcess.on("close", (code: number | null) => {
       if (code !== 0) {
         reject(new Error(`notifyFinishCommand exited with code ${code}`));
         return;
@@ -231,7 +231,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
       resolve();
     });
 
-    octoProcess.childProcess.on("error", reject);
+    octoProcess.on("error", reject);
   });
 }
 
@@ -347,13 +347,11 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
       },
     );
 
-    const childProcess = octoProcess.childProcess;
-
     // execFile should kill on timeout, but just to be safe
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        childProcess.kill("SIGKILL");
+        octoProcess.kill("SIGKILL");
         resolve({
           ok: false,
           error: {

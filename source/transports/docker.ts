@@ -20,17 +20,16 @@ export async function manageContainer(args: string[]) {
     const octoProcess = octoProcessManager.spawn("docker", ["run", ...args], {
       stdio: ["ignore", "pipe", "inherit"],
     });
-    const childProcess = octoProcess.childProcess;
-    if (!childProcess.stdout) {
+    if (!octoProcess.stdout) {
       reject(new Error("Failed to spawn docker process with piped stdout"));
       return;
     }
-    childProcess.on("error", e => {
+    octoProcess.on("error", e => {
       error = true;
       reject(e);
     });
-    childProcess.stdout.on("data", data => stdout.push(data));
-    childProcess.on("close", code => {
+    octoProcess.stdout.on("data", data => stdout.push(data));
+    octoProcess.on("close", code => {
       if (code != null && code !== 0) {
         if (!error) reject("Command exited with non-zero exit code: " + code);
       } else if (!error) {
@@ -45,7 +44,7 @@ export async function manageContainer(args: string[]) {
   const killContainer = () => {
     try {
       const octoProcess = octoProcessManager.spawn("docker", ["kill", name], { stdio: "ignore" });
-      octoProcess.childProcess.unref();
+      octoProcess.unref();
     } catch {}
   };
   const unregisterCleanup = registerCleanup(killContainer);
@@ -78,8 +77,7 @@ async function runDockerCommand(
       timeout,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const childProcess = octoProcess.childProcess;
-    if (!childProcess.stdout || !childProcess.stderr) {
+    if (!octoProcess.stdout || !octoProcess.stderr) {
       reject(new Error("Failed to spawn docker process with piped stdio"));
       return;
     }
@@ -106,15 +104,15 @@ async function runDockerCommand(
       signal.removeEventListener("abort", onAbort);
     };
 
-    childProcess.stdout.on("data", data => {
+    octoProcess.stdout.on("data", data => {
       if (!output.append(data)) killChild();
     });
 
-    childProcess.stderr.on("data", data => {
+    octoProcess.stderr.on("data", data => {
       if (!output.append(data)) killChild();
     });
 
-    childProcess.on("close", code => {
+    octoProcess.on("close", code => {
       cleanup();
       if (aborted) {
         reject(new AbortError());
@@ -151,7 +149,7 @@ output: ${commandOutput}`,
       }
     });
 
-    childProcess.on("error", err => {
+    octoProcess.on("error", err => {
       cleanup();
       if (aborted) {
         reject(new AbortError());

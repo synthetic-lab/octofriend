@@ -12,11 +12,11 @@ export function spawnBrowser(url: string): Promise<boolean> {
       surviveAfterOctoExit: true, // browser shouldn't be tied to Octo's state
     });
 
-    octoProcess.childProcess.once("spawn", () => {
-      octoProcess.childProcess.unref();
+    octoProcess.once("spawn", () => {
+      octoProcess.unref();
       resolve(true);
     });
-    octoProcess.childProcess.once("error", () => {
+    octoProcess.once("error", () => {
       resolve(false);
     });
   });
