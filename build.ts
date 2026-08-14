@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
 import { writeMigrationsModule } from "./source/db/migrations.codegen.ts";
@@ -114,32 +115,44 @@ function rustNapiBindingVersion(binding: string): string {
 }
 
 async function ensureRustNapiBinding(t: Target): Promise<string> {
-  const dir = path.join(
-    root,
-    "node_modules/@syntheticlab",
-    "paintcannon-native-" + t.rustNapiBinding,
-  );
+  const bindingName = "paintcannon-native-" + t.rustNapiBinding;
+  const dir = path.join(root, "node_modules/@syntheticlab", bindingName);
   if (fs.existsSync(dir) && fs.readdirSync(dir).some(file => file.endsWith(".node"))) {
     return dir;
   }
-  const name = "@syntheticlab/paintcannon-native-" + t.rustNapiBinding;
-  console.log(
-    "Fetching " + name + "@" + rustNapiBindingVersion(t.rustNapiBinding) + " (foreign platform)...",
-  );
-  await run([
-    "bun",
-    "add",
-    "--no-save",
-    "--os=" + t.platform,
-    "--cpu=" + t.arch,
-    ...(t.platform === "linux" ? ["--libc=" + (t.musl ? "musl" : "glibc")] : []),
-    name + "@" + rustNapiBindingVersion(t.rustNapiBinding),
-  ]);
+  const pkg = "@syntheticlab/" + bindingName;
+  const version = rustNapiBindingVersion(t.rustNapiBinding);
+  console.log("Fetching " + pkg + "@" + version + " (foreign platform)...");
+  // Install in a scratch dir so compiling never dirties package.json, bun.lock,
+  // or the repo's node_modules beyond the binding directory itself.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "octo-binding-"));
+  try {
+    fs.writeFileSync(
+      path.join(scratch, "package.json"),
+      JSON.stringify({ name: "octofriend-binding-fetch", version: "0.0.0" }),
+    );
+    await run(
+      [
+        "bun",
+        "add",
+        "--os=" + t.platform,
+        "--cpu=" + t.arch,
+        ...(t.platform === "linux" ? ["--libc=" + (t.musl ? "musl" : "glibc")] : []),
+        pkg + "@" + version,
+      ],
+      scratch,
+    );
+    fs.cpSync(path.join(scratch, "node_modules/@syntheticlab", bindingName), dir, {
+      recursive: true,
+    });
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
   return dir;
 }
 
-async function run(args: string[]): Promise<void> {
-  const proc = Bun.spawn(args, { cwd: root, stdout: "inherit", stderr: "inherit" });
+async function run(args: string[], cwd = root): Promise<void> {
+  const proc = Bun.spawn(args, { cwd, stdout: "inherit", stderr: "inherit" });
   const code = await proc.exited;
   if (code !== 0) {
     throw new Error(args.join(" ") + " failed with exit code " + code);
