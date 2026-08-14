@@ -1,14 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
+import { writeMigrationsModule } from "./source/db/migrations.codegen.ts";
 
 // Cross-compile standalone binaries with `bun build --compile`.
 //
-// Each binary embeds the drizzle migrations, paintcannon-react's package.json
-// (its reconciler locates it at startup to report the renderer version), and
-// the paintcannon native binding for the target platform. Host installs skip
-// foreign-platform bindings via npm's os/cpu/libc restrictions, so missing
-// ones are force-installed on demand (--no-save, no lockfile changes).
+// Everything the binary needs travels inside the bundle so this works on
+// stable bun (no 1.4-only `--asset`):
+// - drizzle migrations are baked into source/db/migrations.generated.ts
+//   (regenerated here on every compile; migrate.test.ts keeps it fresh).
+// - the paintcannon native binding is copied to dist/build-assets/
+//   paintcannon.node and embedded by bin.ts via a `with { type: "file" }`
+//   import, as is paintcannon-react's package.json (its reconciler locates
+//   it at startup to report the renderer version).
+//
+// Host installs skip foreign-platform bindings via npm's os/cpu/libc
+// restrictions, so missing ones are force-installed on demand (--no-save,
+// no lockfile changes).
 //
 // `--bytecode` is intentionally absent: bun's bytecode compilation rejects
 // top-level await, which this codebase uses.
@@ -18,7 +26,7 @@ const root = import.meta.dir;
 type Target = {
   /** Output directory: `dist/<name>/` */
   name: string;
-  /** Passed to `bun build --compile --target` */
+  /** Passed as `compile.target` to Bun.build */
   bunTarget: string;
   /**
    * paintcannon Rust napi-rs binding variant this target needs
@@ -163,8 +171,17 @@ new Command()
       selected = [hostTarget()];
     }
 
+    if (writeMigrationsModule()) {
+      console.log("Regenerated source/db/migrations.generated.ts");
+    }
+
     // Start from a clean slate so stale targets never linger in dist/.
     fs.rmSync(path.join(root, "dist"), { recursive: true, force: true });
+
+    // The embedded binding import in bin.ts resolves to this stable path;
+    // staged per target since every platform needs its own .node.
+    const stagedBinding = path.join(root, "dist/build-assets/paintcannon.node");
+    fs.mkdirSync(path.dirname(stagedBinding), { recursive: true });
 
     const failed: string[] = [];
     for (const t of selected) {
@@ -173,34 +190,31 @@ new Command()
       if (bindingFile == null) {
         throw new Error("No .node binding in " + bindingDir);
       }
-      // --asset embeds by basename: <dir> lands at /$bunfs/root/<basename>.
-      const embeddedBinding = "/$bunfs/root/" + path.basename(bindingDir) + "/" + bindingFile;
+      fs.copyFileSync(path.join(bindingDir, bindingFile), stagedBinding);
+
       const outdir = path.join(root, "dist", t.name);
       fs.mkdirSync(outdir, { recursive: true });
       const outfile = path.join(outdir, "octo");
       console.log("Building " + path.relative(root, outfile) + " (" + t.bunTarget + ")...");
       try {
-        // Not all runtime variants are downloadable for canary bun versions
-        // (e.g. baseline); keep going so one missing target doesn't block the rest.
-        // The cast covers `compile.assets`: a 1.4-only API not yet present in
-        // @types/bun 1.3.x types.
+        // Keep going when one target fails so the rest of the matrix builds.
         const result = await Bun.build({
           entrypoints: ["./source/cli/bin.ts"],
           compile: {
-            target: t.bunTarget,
+            target: t.bunTarget as Bun.Build.CompileTarget,
             outfile,
-            assets: [
-              "./drizzle",
-              "./" + path.relative(root, bindingDir),
-              "./node_modules/paintcannon-react/package.json",
-            ],
           },
           minify: true,
           sourcemap: "linked",
+          // Lets bun-env.ts's isStandaloneExecutable() distinguish compiled
+          // binaries from dev runs.
           define: {
-            OCTO_EMBEDDED_PAINTCANNON_BINDING: JSON.stringify(embeddedBinding),
+            OCTO_STANDALONE_EXECUTABLE: JSON.stringify("true"),
           },
-        } as Parameters<typeof Bun.build>[0]);
+          // Embedded file assets get content hashes in their $bunfs names by
+          // default; paintcannon-react's startup walk needs an exact filename.
+          naming: { asset: "[name].[ext]" },
+        });
         if (!result.success) {
           for (const message of result.logs) console.error(message);
           throw new Error("bun build failed for " + t.name);

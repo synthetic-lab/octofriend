@@ -2,16 +2,29 @@
 
 import { isStandaloneExecutable } from "../bun-env.ts";
 
-// Injected at build time by build.ts (`bun build --define`), pointing at the
-// paintcannon native binding embedded via --asset. Only referenced inside the
-// standalone-executable branch below, so it never evaluates at dev time.
-declare const OCTO_EMBEDDED_PAINTCANNON_BINDING: string;
-
 process.env["NODE_ENV"] = "production";
 
-// Point paintcannon's napi-rs loader at the binding embedded via --asset.
-if (isStandaloneExecutable() && process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] == null) {
-  process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] = OCTO_EMBEDDED_PAINTCANNON_BINDING;
+if (isStandaloneExecutable()) {
+  // Paintcannon's napi-rs loader needs a path to the native binding. build.ts
+  // copies the target's binding to dist/build-assets/paintcannon.node; this
+  // import embeds the file into the binary and resolves to its $bunfs path.
+  if (process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] == null) {
+    const binding = await import("../../dist/build-assets/paintcannon.node", {
+      with: { type: "file" },
+    });
+    process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] = binding.default;
+  }
+
+  // Similarly, build.ts bakes the drizzle migrations into
+  // migrations.generated.ts so the migrator can run without the drizzle/ dir.
+  const { EMBEDDED_MIGRATIONS } = await import("../db/migrations.generated.js");
+  const { setEmbeddedMigrations } = await import("../db/migrate.js");
+  setEmbeddedMigrations(EMBEDDED_MIGRATIONS);
+
+  // paintcannon-react locates its own package.json at startup (for the React
+  // renderer version); embedding it puts it at /$bunfs/root/package.json,
+  // where its walk from the bundle's dir finds it immediately.
+  await import("../../node_modules/paintcannon-react/package.json", { with: { type: "file" } });
 }
-// Dynamic import so the env var above is set before paintcannon's napi loader runs.
+// Dynamic import so everything above happens before paintcannon's napi loader runs.
 await import("./cli.js");
