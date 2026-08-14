@@ -4,8 +4,8 @@
   "license": "MIT",
   "repository": "github:synthetic-lab/octofriend",
   "bin": {
-    "octofriend": "source/cli/bin.ts",
-    "octo": "source/cli/bin.ts"
+    "octofriend": "bin/octo.sh",
+    "octo": "bin/octo.sh"
   },
   "type": "module",
   "preferGlobal": true,
@@ -19,6 +19,7 @@
     "test": "bun test source --watch --preload ./source/test/setup.ts --timeout 30000",
     "test:run": "bun test source --preload ./source/test/setup.ts --timeout 30000",
     "compile": "bun build.ts",
+    "prepublishOnly": "bun run compile -- --all",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"
@@ -30,6 +31,8 @@
   },
   "files": [
     "source",
+    "bin",
+    "dist",
     "drizzle",
     "drizzle.config.ts",
     "CHANGELOG.md",
@@ -99,9 +102,5 @@
     "drizzle-kit": {
       "esbuild": "0.28.1"
     }
-  },
-  "volta": {
-    "node": "24.18.0",
-    "npm": "12.0.1"
   }
 }

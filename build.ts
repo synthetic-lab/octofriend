@@ -224,6 +224,8 @@ new Command()
         failed.push(t.name);
       }
     }
+    // The staging dir only feeds the build inputs; don't ship it in dist/.
+    fs.rmSync(path.dirname(stagedBinding), { recursive: true, force: true });
     if (failed.length > 0) {
       console.error("Failed targets: " + failed.join(", "));
       process.exit(1);
