@@ -6,10 +6,10 @@ import migration3 from "../../drizzle/0003_tree_node_triggers.sql" with { type: 
 import migration4 from "../../drizzle/0004_tree_nodes_tree_id_index.sql" with { type: "text" };
 import migration5 from "../../drizzle/0005_clean_red_shift.sql" with { type: "text" };
 import migration6 from "../../drizzle/0006_history_item_model_json.sql" with { type: "text" };
-import journal from "../../drizzle/meta/_journal.json" with { type: "text" };
+import journalJson from "../../drizzle/meta/_journal.json" with { type: "json" };
 
 export const EMBEDDED_MIGRATIONS = {
-  journal,
+  journal: JSON.stringify(journalJson),
   migrations: [
     { name: "0000_mean_magdalene", sql: migration0 },
     { name: "0001_icy_husk", sql: migration1 },
