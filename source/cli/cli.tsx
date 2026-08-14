@@ -43,8 +43,7 @@ import { KeyboardProvider } from "../hooks/use-keyboard.ts";
 import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
 import { setOctoTitles } from "./titles.ts";
-
-const __dirname = import.meta.dirname;
+import changelog from "../../CHANGELOG.md" with { type: "text" };
 
 const INTERACTIVE_RENDER_OPTIONS = {
   alternateScreen: true,
@@ -324,7 +323,6 @@ cli
   .command("changelog")
   .description("List the changelog")
   .action(async () => {
-    const changelog = await fs.readFile(path.join(__dirname, "../../../CHANGELOG.md"), "utf8");
     console.log(changelog);
   });
 

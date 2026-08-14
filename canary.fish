@@ -9,13 +9,6 @@
 set -g _OCTOFRIEND_DIR (status dirname)
 
 function canary-octo
-    set -l old_dir (pwd)
-    cd "$_OCTOFRIEND_DIR"
-    if not npm run build
-        cd "$old_dir"
-        return 1
-    end
-    cd "$old_dir"
     set -gx CANARY_OCTO 1
-    node "$_OCTOFRIEND_DIR/dist/source/cli/cli.js" $argv
+    bun "$_OCTOFRIEND_DIR/source/cli/cli.tsx" $argv
 end

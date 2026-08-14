@@ -20,6 +20,10 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
+function asFetch(impl: () => Promise<Response>): typeof globalThis.fetch {
+  return impl as unknown as typeof globalThis.fetch;
+}
+
 function jwt(payload: unknown): string {
   return ["{}", JSON.stringify(payload), "signature"]
     .map(part => Buffer.from(part).toString("base64url"))
@@ -37,12 +41,14 @@ describe("codex oauth", () => {
   });
 
   it("starts device authorization with the Codex client id", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({
-        device_auth_id: "device-1",
-        user_code: "ABCD-EFGH",
-        interval: "2",
-      }),
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      asFetch(async () =>
+        jsonResponse({
+          device_auth_id: "device-1",
+          user_code: "ABCD-EFGH",
+          interval: "2",
+        }),
+      ),
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
@@ -64,8 +70,8 @@ describe("codex oauth", () => {
   });
 
   it("validates malformed device authorization responses", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ user_code: "ABCD-EFGH" }),
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      asFetch(async () => jsonResponse({ user_code: "ABCD-EFGH" })),
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
@@ -122,11 +128,13 @@ describe("codex oauth", () => {
   });
 
   it("refreshes access tokens and preserves refresh token and account id fallbacks", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({
-        access_token: "new-access-token",
-        expires_in: 1800,
-      }),
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      asFetch(async () =>
+        jsonResponse({
+          access_token: "new-access-token",
+          expires_in: 1800,
+        }),
+      ),
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {

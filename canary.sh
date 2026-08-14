@@ -15,6 +15,5 @@ else
 fi
 
 function canary-octo() {
-  (cd "$_OCTOFRIEND_DIR" && npm run build) || return 1
-  CANARY_OCTO=1 node "$_OCTOFRIEND_DIR/dist/source/cli/cli.js" "$@"
+  CANARY_OCTO=1 bun "$_OCTOFRIEND_DIR/source/cli/cli.tsx" "$@"
 }

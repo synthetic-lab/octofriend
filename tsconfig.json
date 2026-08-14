@@ -2,10 +2,11 @@
   "include": ["source", "training", "*.ts"],
   "exclude": ["training/repos", "node_modules"],
   "compilerOptions": {
+    "types": ["bun"],
     "skipLibCheck": true,
     "outDir": "dist",
-    "module": "node16",
-    "moduleResolution": "node16",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "moduleDetection": "force",
     "target": "esnext",
     "lib": [
@@ -13,7 +14,7 @@
       "DOM.Iterable",
       "ES2022" // Node.js 18
     ],
-    "resolveJsonModule": false, // ESM doesn't yet support JSON modules.
+    "resolveJsonModule": true,
     "jsx": "react",
     "declaration": true,
     "newLine": "lf",
