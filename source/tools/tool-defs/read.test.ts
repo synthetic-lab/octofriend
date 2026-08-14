@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { toJSONSchema } from "structural";
 import readToolFactory from "./read.ts";
 import partialReadToolFactory from "./partial-read.ts";

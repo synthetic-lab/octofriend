@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { db } from "../db/db.ts";
 import { historyItems, llmIrs, notifications } from "./schema/session-history-schema.ts";
 import {

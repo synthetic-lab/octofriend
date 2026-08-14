@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "bun:test";
 import { db } from "../db/db.ts";
 import { inputHistoryTable } from "./schema/input-history-table.ts";
 import { _exportedForTest, InputHistory, loadInputHistory } from "./index.ts";

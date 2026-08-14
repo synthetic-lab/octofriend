@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, mock } from "bun:test";
 import { t } from "structural";
 import { ok } from "../result.ts";
 import { parseToolCall } from "./parse-tool-call.ts";
@@ -33,7 +33,7 @@ describe("parseToolCall", () => {
         args: JSON.stringify({ query: "needle" }),
       },
       toolDefs: { search: searchTool() },
-      autofixJson: vi.fn(),
+      autofixJson: mock(),
       abortSignal: new AbortController().signal,
       transport: {} as any,
     });
@@ -58,7 +58,7 @@ describe("parseToolCall", () => {
         args: "{query:",
       },
       toolDefs: { search: searchTool() },
-      autofixJson: vi.fn(async () => ({ success: true, fixed: { query: "fixed" } })),
+      autofixJson: mock(async () => ({ success: true, fixed: { query: "fixed" } })),
       abortSignal: new AbortController().signal,
       transport: {} as any,
     });
@@ -95,7 +95,7 @@ describe("parseToolCall", () => {
         args: "{not json",
       },
       toolDefs: { search: searchTool() },
-      autofixJson: vi.fn(),
+      autofixJson: mock(),
       abortSignal: new AbortController().signal,
       transport: {} as any,
     });

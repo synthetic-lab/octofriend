@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import OpenAI from "openai";
 import { octoAgent } from "../../ir/octo-ir.ts";
 import type { Transport } from "../../transports/transport-common.ts";

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { sql } from "drizzle-orm";
-import { expect, test } from "vitest";
+import { expect, test } from "bun:test";
 import { db } from "./db.ts";
 import { migrate, setEmbeddedMigrations } from "./migrate.ts";
 import { EMBEDDED_MIGRATIONS } from "./migrations.generated.ts";

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
 import {
   CODEX_OAUTH_CLIENT_ID,
@@ -12,6 +12,8 @@ import {
 } from "./codex-oauth.ts";
 import { fetchDeps } from "./fetch.ts";
 
+type FetchArgs = Parameters<typeof globalThis.fetch>;
+
 function jsonResponse(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -20,7 +22,7 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
-function asFetch(impl: () => Promise<Response>): typeof globalThis.fetch {
+function asFetch(impl: (...args: FetchArgs) => Promise<Response>): typeof globalThis.fetch {
   return impl as unknown as typeof globalThis.fetch;
 }
 
@@ -32,24 +34,24 @@ function jwt(payload: unknown): string {
 
 describe("codex oauth", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-06-17T00:00:00.000Z"));
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-06-17T00:00:00.000Z"));
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    jest.useRealTimers();
   });
 
   it("starts device authorization with the Codex client id", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      asFetch(async () =>
-        jsonResponse({
-          device_auth_id: "device-1",
-          user_code: "ABCD-EFGH",
-          interval: "2",
-        }),
-      ),
-    );
+    const calls: FetchArgs[] = [];
+    const fetch = asFetch(async (...args: FetchArgs) => {
+      calls.push(args);
+      return jsonResponse({
+        device_auth_id: "device-1",
+        user_code: "ABCD-EFGH",
+        interval: "2",
+      });
+    });
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
       const result = await startCodexDeviceAuthorization();
@@ -64,15 +66,13 @@ describe("codex oauth", () => {
         });
     });
 
-    expect(fetch).toHaveBeenCalledOnce();
-    const [_url, init] = fetch.mock.calls[0]!;
+    expect(calls).toHaveLength(1);
+    const [_url, init] = calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({ client_id: CODEX_OAUTH_CLIENT_ID });
   });
 
   it("validates malformed device authorization responses", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      asFetch(async () => jsonResponse({ user_code: "ABCD-EFGH" })),
-    );
+    const fetch = asFetch(async () => jsonResponse({ user_code: "ABCD-EFGH" }));
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
       const result = await startCodexDeviceAuthorization();
@@ -84,22 +84,23 @@ describe("codex oauth", () => {
   });
 
   it("polls device authorization and exchanges the authorization code for tokens", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authorization_code: "auth-code",
-          code_verifier: "verifier",
-        }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          access_token: "access-token",
-          refresh_token: "refresh-token",
-          expires_in: 3600,
-          id_token: jwt({ chatgpt_account_id: "account-1" }),
-        }),
-      );
+    const responses = [
+      jsonResponse({
+        authorization_code: "auth-code",
+        code_verifier: "verifier",
+      }),
+      jsonResponse({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        expires_in: 3600,
+        id_token: jwt({ chatgpt_account_id: "account-1" }),
+      }),
+    ];
+    const calls: FetchArgs[] = [];
+    const fetch = asFetch(async (...args: FetchArgs) => {
+      calls.push(args);
+      return responses.shift()!;
+    });
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
       const result = await pollCodexDeviceAuthorization({
@@ -119,22 +120,18 @@ describe("codex oauth", () => {
         });
     });
 
-    expect(fetch).toHaveBeenCalledTimes(2);
-    expect(String(fetch.mock.calls[0][0])).toBe(
-      `${CODEX_OAUTH_ISSUER}/api/accounts/deviceauth/token`,
-    );
-    expect(String(fetch.mock.calls[1][0])).toBe(`${CODEX_OAUTH_ISSUER}/oauth/token`);
-    expect(String(fetch.mock.calls[1][1]?.body)).toContain(`client_id=${CODEX_OAUTH_CLIENT_ID}`);
+    expect(calls).toHaveLength(2);
+    expect(String(calls[0]![0])).toBe(`${CODEX_OAUTH_ISSUER}/api/accounts/deviceauth/token`);
+    expect(String(calls[1]![0])).toBe(`${CODEX_OAUTH_ISSUER}/oauth/token`);
+    expect(String(calls[1]![1]?.body)).toContain(`client_id=${CODEX_OAUTH_CLIENT_ID}`);
   });
 
   it("refreshes access tokens and preserves refresh token and account id fallbacks", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(
-      asFetch(async () =>
-        jsonResponse({
-          access_token: "new-access-token",
-          expires_in: 1800,
-        }),
-      ),
+    const fetch = asFetch(async () =>
+      jsonResponse({
+        access_token: "new-access-token",
+        expires_in: 1800,
+      }),
     );
 
     await withMock(fetchDeps, "fetch", fetch, async () => {
@@ -157,7 +154,11 @@ describe("codex oauth", () => {
   });
 
   it("opens the browser through the mockable browser dependency", async () => {
-    const openBrowser = vi.fn(async () => true);
+    const openBrowserCalls: string[] = [];
+    const openBrowser = async (url: string) => {
+      openBrowserCalls.push(url);
+      return true;
+    };
 
     await withMock(codexOAuthDeps, "openBrowser", openBrowser, async () => {
       const result = await openDefaultBrowser(CODEX_OAUTH_DEVICE_URL);
@@ -166,6 +167,6 @@ describe("codex oauth", () => {
       if (result.success) expect(result.data).toBe(true);
     });
 
-    expect(openBrowser).toHaveBeenCalledWith(CODEX_OAUTH_DEVICE_URL);
+    expect(openBrowserCalls).toEqual([CODEX_OAUTH_DEVICE_URL]);
   });
 });

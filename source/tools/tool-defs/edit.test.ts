@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import editToolFactory from "./edit.ts";
 import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";

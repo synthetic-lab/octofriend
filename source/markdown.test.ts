@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "bun:test";
 import React from "react";
 import { renderPaintcannon } from "./test-utils/render-paintcannon.tsx";
 import { Markdown } from "./markdown/index.tsx";
