@@ -39,6 +39,7 @@
     "IN-APP-UPDATES.txt",
     "package.json",
     "package-lock.json",
+    "bun.lock",
     "tsconfig.json"
   ],
   "dependencies": {
