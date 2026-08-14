@@ -1,4 +1,4 @@
-import { Command, CommandUnknownOpts } from "@commander-js/extra-typings";
+import { Command } from "@commander-js/extra-typings";
 
 export const CLI_ARGS_JSON_V1 = "octo-cli-args/v1" as const;
 
@@ -76,14 +76,6 @@ export function replaceDockerRunArgs(
   dockerRunArgs: string[],
 ): DockerRunCommand {
   return { ...command, dockerRunArgs };
-}
-
-function octoFlags(command: CommandUnknownOpts): OctoFlags {
-  const opts = command.optsWithGlobals() as OctoFlags;
-  return {
-    config: opts.config,
-    unchained: opts.unchained,
-  };
 }
 
 export function serializeCliArgs(cliArgs: ParsedCliArgs): string {

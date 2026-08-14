@@ -1,6 +1,5 @@
 import hljs from "highlight.js";
 import React from "react";
-import { readFileSync } from "fs";
 import { Span } from "paintcannon-react";
 import {
   SYNTAX_ATTRIBUTE_COLOR,

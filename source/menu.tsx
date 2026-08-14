@@ -537,7 +537,7 @@ function SettingsMenu() {
     if (event.key === "Escape") setMenuMode("main-menu");
   });
   const settingsItems = filterSettings(config);
-  let items: Keymap<SettingsValues | "back"> = {
+  const items: Keymap<SettingsValues | "back"> = {
     ...settingsItems,
     b: {
       label: "Back",

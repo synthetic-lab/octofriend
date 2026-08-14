@@ -196,7 +196,7 @@ export const trajectoryArc = registry({
 
     handler.startResponse(null);
 
-    let buffer: AssistantBuffer<ResponseTokenTypes> = {};
+    const buffer: AssistantBuffer<ResponseTokenTypes> = {};
     const loweredMessages = lowerOcto(messagesCopy, model.modalities);
     const result = await run({
       modelData,
@@ -256,7 +256,7 @@ export const trajectoryArc = registry({
       return finishWith(compilerErrorToFinishReason(result.error), maybeBufferedMessage());
     }
 
-    let assistantMessage = result.data.output;
+    const assistantMessage = result.data.output;
     irs = [...irs, assistantMessage];
 
     // Retry malformed tool calls

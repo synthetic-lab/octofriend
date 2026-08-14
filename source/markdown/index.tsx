@@ -187,7 +187,7 @@ function CodespanRenderer({ token }: { token: Tokens.Codespan }) {
     </Span>
   );
 }
-function DefRenderer({ token }: { token: Tokens.Def }) {
+function DefRenderer(_props: { token: Tokens.Def }) {
   // Don't render definition links which are usually referenced elsewhere.
   return <></>;
 }

@@ -8,39 +8,6 @@ const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
 const GITIGNORE_CACHE_TTL = 300000;
 
-const FOLDERS = new Set([
-  "node_modules",
-  "bower_components",
-  ".pnpm-store",
-  "vendor",
-  ".npm",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  "target",
-  "bin",
-  "obj",
-  ".git",
-  ".svn",
-  ".hg",
-  ".vscode",
-  ".idea",
-  ".turbo",
-  ".output",
-  "desktop",
-  ".sst",
-  ".cache",
-  ".webkit-cache",
-  "__pycache__",
-  ".pytest_cache",
-  "mypy_cache",
-  ".history",
-  ".gradle",
-]);
-
-const FOLDER_PATTERNS = [...FOLDERS].map(f => `${f}/**`);
-
 type FileListEntry = {
   files: string[];
   timestamp: number;

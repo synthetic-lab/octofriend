@@ -1,5 +1,4 @@
 import path from "path";
-import { t } from "structural";
 import { Config } from "../config.ts";
 import { getMcpClient } from "../tools/tool-defs/mcp.ts";
 import { tagged } from "../xml.ts";

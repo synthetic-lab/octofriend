@@ -286,6 +286,7 @@ function renderToString(markdown: string): string {
 }
 
 function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex -- intentionally strips ANSI escape sequences
   return str.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
