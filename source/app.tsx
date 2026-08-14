@@ -38,6 +38,7 @@ import {
 import { DiffRenderer } from "./components/diff-renderer.tsx";
 import { FileRenderer } from "./components/file-renderer.tsx";
 import shell from "./tools/tool-defs/bash.ts";
+import backgroundProcess from "./tools/tool-defs/background-process.ts";
 import read from "./tools/tool-defs/read.ts";
 import partialRead from "./tools/tool-defs/partial-read.ts";
 import list from "./tools/tool-defs/list.ts";
@@ -2083,6 +2084,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
       return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
       return <ShellToolRenderer item={parsedToolSchema(item)} />;
+    case "background-process":
+      return <BackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
     case "edit":
       return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
@@ -2228,6 +2231,33 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
       >
         timeout: {item.arguments.timeout}
       </Span>
+    </TerminalFlex>
+  );
+}
+function BackgroundProcessToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof backgroundProcess>;
+}) {
+  const { action, name, command, global: survivesRestart } = item.arguments;
+  const title =
+    action === "spawn" ? `spawn ${name}: ${command}` : `${action}${name ? ` ${name}` : ""}`;
+  return (
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <ToolCallRow name={item.name}>{title}</ToolCallRow>
+      {action === "spawn" && survivesRestart ? (
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          survives Octo restarts
+        </Span>
+      ) : null}
     </TerminalFlex>
   );
 }

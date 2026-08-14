@@ -2,6 +2,7 @@ import read from "./read.ts";
 import partialRead from "./partial-read.ts";
 import list from "./list.ts";
 import shell from "./bash.ts";
+import backgroundProcess from "./background-process.ts";
 import edit from "./edit.ts";
 import create from "./create.ts";
 import mcp from "./mcp.ts";
@@ -25,6 +26,7 @@ export default {
   "partial-read": partialRead,
   list,
   shell,
+  "background-process": backgroundProcess,
   edit,
   create,
   mcp,
