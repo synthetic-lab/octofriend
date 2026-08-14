@@ -86,25 +86,23 @@ const cli = withOctoFlags(
       process.exitCode = 1;
       return;
     }
-    let runConfig = null;
-    if (resumeSessionId != null) {
-      runConfig = await buildConfigForResuming(resumeSessionId, {
-        config: opts.config,
-        unchained: opts.unchained,
-        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
-      });
-      if (runConfig == null) return;
-    } else {
-      runConfig = {
-        loadedSession: null,
-        transport: new LocalTransport(),
-        parsedCliArgs: {
-          kind: "local" as const,
-          config: opts.config,
-          unchained: opts.unchained,
-        },
-      };
-    }
+    const runConfig =
+      resumeSessionId != null
+        ? await buildConfigForResuming(resumeSessionId, {
+            config: opts.config,
+            unchained: opts.unchained,
+            dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
+          })
+        : {
+            loadedSession: null,
+            transport: new LocalTransport(),
+            parsedCliArgs: {
+              kind: "local" as const,
+              config: opts.config,
+              unchained: opts.unchained,
+            },
+          };
+    if (runConfig == null) return;
 
     await runMain(runConfig);
   });
@@ -246,7 +244,7 @@ async function runMain(opts: {
   const markCleanupAsComplete = registerCleanup(cleanup);
 
   try {
-    let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
+    const { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {

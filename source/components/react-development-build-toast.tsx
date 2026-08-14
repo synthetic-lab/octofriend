@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { createRequire } from "node:module";
 import { basename } from "node:path";
 import { useToast } from "./toast.tsx";

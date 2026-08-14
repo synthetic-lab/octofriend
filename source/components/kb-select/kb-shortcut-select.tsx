@@ -73,7 +73,7 @@ type KbSelectProps<V> = {
 const PAGE_SIZE = 10;
 export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
   const [page, setPage] = useState(0);
-  let items = useMemo(() => {
+  const items = useMemo(() => {
     const result: Array<{
       item: Item<V | "next-page" | "prev-page">;
       shortcut: string;

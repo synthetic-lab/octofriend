@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import React from "react";
 import { renderPaintcannon } from "./test-utils/render-paintcannon.tsx";
 import { Markdown } from "./markdown/index.tsx";
@@ -286,7 +286,8 @@ function renderToString(markdown: string): string {
 }
 
 function stripAnsi(str: string): string {
-  return str.replace(/\u001b\[[0-9;]*m/g, "");
+  // eslint-disable-next-line no-control-regex -- intentionally strips ANSI escape sequences
+  return str.replace(/\[[0-9;]*m/g, "");
 }
 
 function hasFormatting(str: string): boolean {

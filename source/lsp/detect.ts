@@ -150,7 +150,7 @@ export async function detectLspServerForFile(
   return { status: "no-server" };
 }
 
-async function isLspUsableInProject(server: InstalledLspConfig, config: Config): Promise<Boolean> {
+async function isLspUsableInProject(server: InstalledLspConfig, config: Config): Promise<boolean> {
   if (isLspGloballyDisabled(config)) {
     return false;
   }

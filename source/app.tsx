@@ -331,7 +331,7 @@ export default function App({
     skillNotifs.push(...bootSkills.map(s => `- ${s}`));
   }
   const bootItems: TranscriptItem[] = useMemo(() => {
-    let items = [
+    const items = [
       {
         type: "header" as const,
       },
@@ -1238,7 +1238,7 @@ function RateLimitErrorScreen({ error }: { error: string }) {
       retryFrom: state.retryFrom,
     })),
   );
-  useKeyboard(event => {
+  useKeyboard(() => {
     retryFrom("rate-limit-error", {
       config,
       transport,
@@ -1274,7 +1274,7 @@ function PaymentErrorScreen({ error }: { error: string }) {
       retryFrom: state.retryFrom,
     })),
   );
-  useKeyboard(event => {
+  useKeyboard(() => {
     retryFrom("payment-error", {
       config,
       transport,
@@ -2564,8 +2564,8 @@ function CompactionRenderer({ item }: { item: AssistantDisplayItem }) {
   );
 }
 function AssistantMessageRenderer({ item }: { item: AssistantDisplayItem }) {
-  let thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
-  let content = item.content.trim();
+  const thoughts = item.reasoningContent ? item.reasoningContent.trim() : item.reasoningContent;
+  const content = item.content.trim();
   const showThoughts = thoughts && thoughts !== "";
   return (
     <OctoMessageRenderer>

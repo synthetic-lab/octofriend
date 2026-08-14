@@ -324,7 +324,7 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
       ...toolsParam,
     });
     return await handleKnownErrors(curl, async () => {
-      let reasoning: {
+      const reasoning: {
         reasoning_effort?: "low" | "medium" | "high";
       } = {};
       if (model.reasoningEffort)
@@ -350,13 +350,13 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
 
       let content = "";
       let reasoningContent: undefined | string = undefined;
-      let usage = {
+      const usage = {
         input: 0,
         cachedInput: 0,
         output: 0,
       };
 
-      let toolCallMap = new Map<number, Partial<ResponseToolCall>>();
+      const toolCallMap = new Map<number, Partial<ResponseToolCall>>();
 
       try {
         for await (const chunk of res) {

@@ -1,11 +1,10 @@
-import { t, toJSONSchema } from "structural";
+import { toJSONSchema } from "structural";
 import type {
   FunctionTool,
   ResponseCreateParamsStreaming,
   ResponseFunctionToolCall,
   ResponseInput,
   ResponseInputContent,
-  ResponseInputItem,
   ResponseOutputItem,
   ResponseReasoningItem,
 } from "openai/resources/responses/responses";
@@ -399,7 +398,7 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
       let reasoningId: string | undefined = undefined;
       let reasoningContent: string | undefined = undefined;
       let encryptedReasoningContent: string | undefined = undefined;
-      let usage = {
+      const usage = {
         input: 0,
         cachedInput: 0,
         output: 0,

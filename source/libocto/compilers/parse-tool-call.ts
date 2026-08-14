@@ -112,7 +112,8 @@ async function parseJsonArguments(
   { success: true; args: unknown } | { success: false; status: "error"; message: string }
 > {
   const source = rawArgs === "" ? "{}" : rawArgs;
-  let [err, args] = tryexpr(() => JSON.parse(source));
+  const [err, initialArgs] = tryexpr(() => JSON.parse(source));
+  let args = initialArgs;
 
   if (err) {
     if (!autofixJson) {

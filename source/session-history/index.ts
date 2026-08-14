@@ -425,7 +425,6 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: stri
   let compactionFailedId: number | null = null;
   let notificationId: number | null = null;
   let llmIrId: number | null = null;
-  let persistedItem: HistoryItem;
 
   switch (item.type) {
     case "llm-ir": {
@@ -435,13 +434,11 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: stri
         .returning()
         .get();
       llmIrId = row.id;
-      persistedItem = { type: "llm-ir", ir: deserializeLlmIr(row.json) };
       break;
     }
     case "notification": {
       const row = tx.insert(notifications).values({ content: item.content }).returning().get();
       notificationId = row.id;
-      persistedItem = { type: "notification", content: row.content };
       break;
     }
     case "request-failed": {
@@ -450,7 +447,6 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: stri
         .values({})
         .returning({ id: requestFailedItems.id })
         .get().id;
-      persistedItem = { type: "request-failed" };
       break;
     }
     case "compaction-failed": {
@@ -459,7 +455,6 @@ function insertHistoryItem(tx: DbTransaction, item: HistoryItem, modelJson: stri
         .values({})
         .returning({ id: compactionFailedItems.id })
         .get().id;
-      persistedItem = { type: "compaction-failed" };
       break;
     }
   }

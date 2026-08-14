@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "../db/db.ts";
 import { inputHistoryTable } from "./schema/input-history-table.ts";
-import { _exportedForTest, InputHistory, loadInputHistory } from "./index.ts";
+import { _exportedForTest, loadInputHistory } from "./index.ts";
 import { count } from "drizzle-orm";
 
 describe("Input History", () => {

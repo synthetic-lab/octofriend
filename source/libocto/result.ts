@@ -102,7 +102,7 @@ function isResult(value: unknown): value is Result<any, any> {
 }
 
 export class Ok<T> implements IResult<T, any> {
-  success: true = true;
+  success = true as const;
   constructor(readonly data: T) {}
 
   map<New>(fn: (t: T) => New) {
@@ -127,7 +127,7 @@ export class Ok<T> implements IResult<T, any> {
 }
 
 export class Err<E> implements IResult<any, E> {
-  success: false = false;
+  success = false as const;
   constructor(readonly error: E) {}
 
   map<New>(_: (t: any) => New) {

@@ -93,6 +93,7 @@ const ApiKeyAuthConfigSchema = EnvAuthSchema.or(CommandAuthSchema);
 const CodexAuthConfigSchema = t.exact({
   type: t.value("codex"),
 });
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used only to derive the `Auth` type
 const AuthSchema = ApiKeyAuthConfigSchema.or(CodexAuthConfigSchema);
 export type Auth = t.GetType<typeof AuthSchema>;
 export type ApiKeyAuthConfig = t.GetType<typeof ApiKeyAuthConfigSchema>;
@@ -379,12 +380,6 @@ function getAuthForModel(model: {
   return null;
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return String(error);
-}
-
 export const ConfigContext = React.createContext<Config>({
   yourName: "unknown",
   models: [],
@@ -416,7 +411,7 @@ export function withAllServersDisabled(config: Config): Config {
 
 export function mergeEnvVar(config: Config, model: ApiKeyModelConfig, apiEnvVar: string) {
   const provider = providerForBaseUrl(model.baseUrl);
-  let merged = { ...config, models: [...config.models] };
+  const merged = { ...config, models: [...config.models] };
   const index = merged.models.indexOf(model);
   if (index < 0) throw new Error("Couldn't find model in models list");
 
@@ -448,7 +443,7 @@ export function mergeAutofixEnvVar<K extends (typeof AUTOFIX_KEYS)[number]>(
   apiEnvVar: string,
 ) {
   const provider = providerForBaseUrl(model.baseUrl);
-  let merged = { ...config };
+  const merged = { ...config };
   if (provider) {
     const providerKey = keyFromName(provider.name);
     const defaultEnvVar = getDefaultEnvVar(provider, config);

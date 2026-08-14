@@ -282,7 +282,7 @@ export function PreflightModelAuth({
               setExitMessage("Press CTRL-C to exit");
             }}
             onComplete={async auth => {
-              let index = config.models.indexOf(model);
+              const index = config.models.indexOf(model);
               let updatedModel = model;
               if (index >= 0 && auth) {
                 await matchCodex(model, {
