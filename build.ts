@@ -14,9 +14,9 @@ import { writeMigrationsModule } from "./source/db/migrations.codegen.ts";
 //   import, as is paintcannon-react's package.json (its reconciler locates
 //   it at startup to report the renderer version).
 //
-// Host installs skip foreign-platform bindings via npm's os/cpu/libc
-// restrictions, so missing ones are force-installed on demand (--no-save,
-// no lockfile changes).
+// Host installs skip foreign-platform bindings via os/cpu/libc restrictions,
+// so missing ones are installed on demand with explicit --os/--cpu/--libc
+// flags (--no-save, no lockfile changes).
 //
 // `--bytecode` is intentionally absent: bun's bytecode compilation rejects
 // top-level await, which this codebase uses.
@@ -113,26 +113,27 @@ function rustNapiBindingVersion(binding: string): string {
   return version;
 }
 
-async function ensureRustNapiBinding(binding: string): Promise<string> {
-  const dir = path.join(root, "node_modules/@syntheticlab", "paintcannon-native-" + binding);
+async function ensureRustNapiBinding(t: Target): Promise<string> {
+  const dir = path.join(
+    root,
+    "node_modules/@syntheticlab",
+    "paintcannon-native-" + t.rustNapiBinding,
+  );
   if (fs.existsSync(dir) && fs.readdirSync(dir).some(file => file.endsWith(".node"))) {
     return dir;
   }
-  const name = "@syntheticlab/paintcannon-native-" + binding;
+  const name = "@syntheticlab/paintcannon-native-" + t.rustNapiBinding;
   console.log(
-    "Fetching " +
-      name +
-      "@" +
-      rustNapiBindingVersion(binding) +
-      " (npm skips foreign platforms)...",
+    "Fetching " + name + "@" + rustNapiBindingVersion(t.rustNapiBinding) + " (foreign platform)...",
   );
   await run([
-    "npm",
-    "install",
+    "bun",
+    "add",
     "--no-save",
-    "--package-lock=false",
-    "--force",
-    name + "@" + rustNapiBindingVersion(binding),
+    "--os=" + t.platform,
+    "--cpu=" + t.arch,
+    ...(t.platform === "linux" ? ["--libc=" + (t.musl ? "musl" : "glibc")] : []),
+    name + "@" + rustNapiBindingVersion(t.rustNapiBinding),
   ]);
   return dir;
 }
@@ -185,7 +186,7 @@ new Command()
 
     const failed: string[] = [];
     for (const t of selected) {
-      const bindingDir = await ensureRustNapiBinding(t.rustNapiBinding);
+      const bindingDir = await ensureRustNapiBinding(t);
       const bindingFile = fs.readdirSync(bindingDir).find(file => file.endsWith(".node"));
       if (bindingFile == null) {
         throw new Error("No .node binding in " + bindingDir);

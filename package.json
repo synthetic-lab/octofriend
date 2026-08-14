@@ -90,17 +90,7 @@
     "typescript": "^5.8.3"
   },
   "overrides": {
-    "@modelcontextprotocol/sdk": {
-      "@hono/node-server": "^2.0.12"
-    },
-    "@esbuild-kit/core-utils": {
-      "esbuild": "0.28.1"
-    },
-    "@esbuild-kit/esm-loader": {
-      "esbuild": "0.28.1"
-    },
-    "drizzle-kit": {
-      "esbuild": "0.28.1"
-    }
+    "@hono/node-server": "^2.0.12",
+    "esbuild": "0.28.1"
   }
 }
