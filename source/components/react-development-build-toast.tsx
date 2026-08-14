@@ -1,16 +1,11 @@
 import React, { useEffect } from "react";
-import { createRequire } from "node:module";
-import { basename } from "node:path";
 import { useToast } from "./toast.tsx";
 
-const nodeRequire = createRequire(import.meta.url);
-
 function isReactDevelopmentBuild(): boolean {
-  const reactModule = nodeRequire.cache[nodeRequire.resolve("react")];
-  return (
-    reactModule?.children.some(child => basename(child.filename) === "react.development.js") ??
-    false
-  );
+  // Which react build runs is decided by NODE_ENV (react's cjs entry branches
+  // on it, and compiled binaries fold the branch at build time via the
+  // NODE_ENV burned in from the build environment).
+  return process.env.NODE_ENV !== "production";
 }
 
 export function ReactDevelopmentBuildToast() {

@@ -224,6 +224,9 @@ new Command()
           // binaries from dev runs.
           define: {
             OCTO_STANDALONE_EXECUTABLE: JSON.stringify("true"),
+            ...(process.env["NODE_ENV"] != null
+              ? { "process.env.NODE_ENV": JSON.stringify(process.env["NODE_ENV"]) }
+              : {}),
           },
           // Embedded file assets get content hashes in their $bunfs names by
           // default; paintcannon-react's startup walk needs an exact filename.

@@ -2,8 +2,6 @@
 
 import { isStandaloneExecutable } from "../bun-env.ts";
 
-process.env["NODE_ENV"] = "production";
-
 if (isStandaloneExecutable()) {
   // Paintcannon's napi-rs loader needs a path to the native binding. build.ts
   // copies the target's binding to dist/build-assets/paintcannon.node; this
