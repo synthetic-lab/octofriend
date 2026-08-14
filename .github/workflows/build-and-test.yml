@@ -18,4 +18,8 @@ jobs:
 
       - run: bun install
 
+      - run: bun x tsc --noEmit
+
       - run: bun run test:run
+
+      - run: bun run compile -- --all
