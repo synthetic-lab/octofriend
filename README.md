@@ -71,6 +71,65 @@ If you don't configure the `search` config, and you don't configure any
 Synthetic API keys, Octo's harness will automatically hide the web search tool
 so Octo doesn't try to call it.
 
+## Resuming and switching sessions
+
+Octo automatically saves your conversations per-directory. When you exit a
+session with conversation history, Octo prints out the command you'll need to
+pick up right where you left off:
+
+```bash
+octo --resume <session-id>
+```
+
+To see all of your saved sessions for the current directory along with their
+session IDs, run:
+
+```bash
+octo session list
+```
+
+You can also switch sessions without leaving the app: press `Ctrl+p` to open
+the menu and select "Load previous session". You'll see a list of previous
+sessions for the current directory: pick one to switch over to it. Your
+current session isn't lost: you can always switch back to it later, since it
+was saved too.
+
+If you started a session inside a Docker container with `octo docker run`,
+you can resume it the same way and optionally replace the original `docker
+run` arguments:
+
+```bash
+octo --resume <session-id> [new docker run args...]
+```
+
+## Attaching images
+
+If your currently-selected model has image input enabled, you can attach
+pictures to your messages: just paste an image from your clipboard into the input box. Each attached image will show up as a badge alongside the input,
+and will be sent along with your message when you hit Enter. You can attach
+multiple images to a single message.
+
+Press `Backspace` with your cursor after the image to delete it, or press `Ctrl+c` to clear all attached images.
+
+If you want to enable image input for a custom model, add a `modalities`
+entry for it in `~/.config/octofriend/octofriend.json5`:
+
+```json5
+{
+  nickname: "My vision model",
+  baseUrl: "http://localhost:SOME_PORT",
+  apiEnvVar: "SOME_ENV_VAR_FOR_AUTH",
+  model: "some-model-string",
+  modalities: {
+    image: {
+      enabled: true,
+      maxSizeMB: 10,
+      acceptedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/gif"],
+    },
+  },
+}
+```
+
 ## Demo
 
 [![Octo asciicast](https://raw.githubusercontent.com/synthetic-lab/octofriend/main/octo-asciicast.svg)](https://asciinema.org/a/728456)
@@ -219,6 +278,53 @@ mcpServers: {
     command: "npx",
     args: [ "-y", "mcp-remote", "https://mcp.linear.app/sse" ],
   },
+},
+```
+
+## Language servers (LSP tools)
+
+Octo can use language servers to give your coding model IDE-grade navigation
+tools: jumping to definitions, finding references, listing symbols in a file,
+hovering for type info, and more. If an LSP server for a file's extension is
+installed on your machine, Octo will automatically detect it and expose the
+corresponding tools to the model: there's no configuration required.
+
+Octo knows how to detect a bunch of popular language servers out of the box,
+including `typescript-language-server`, `gopls`, `rust-analyzer`,
+`bash-language-server`, `lua-language-server`, `ruby-lsp`, `jdtls`, `hls`,
+`clojure-lsp`, `yaml-language-server`, and several others: just install the
+one you want via your usual package manager and Octo will pick it up.
+
+To add support for a language server Octo doesn't know about (or to override
+the command Octo uses for one of the built-in servers), add an entry to the
+`lsp` block in `~/.config/octofriend/octofriend.json5`:
+
+```json5
+lsp: {
+  pyright: {
+    // The command to start the language server (must speak stdio LSP)
+    command: ["pyright-langserver", "--stdio"],
+    // File extensions this server should handle
+    extensions: [".py"],
+    // Files used to find the project root, searching upwards from the file
+    // being edited. Can be an empty list if the server doesn't need one.
+    rootCandidates: ["pyproject.toml", "setup.py", ".git"],
+  },
+},
+```
+
+Custom servers take precedence over Octo's built-in ones when both claim the
+same file extension.
+
+You can also disable language servers entirely, or disable individual servers:
+
+```json5
+// Disable all LSP tools:
+lsp: false,
+
+// Or, disable a single server:
+lsp: {
+  "typescript-language-server": { disabled: true },
 },
 ```
 
