@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
+import { reactCompiler } from "bun-plugin-react-compiler";
 import { writeMigrationsModule } from "./source/db/migrations.codegen.ts";
 
 // Cross-compile standalone binaries with `bun build --compile`.
@@ -220,6 +221,7 @@ new Command()
           },
           minify: true,
           sourcemap: "linked",
+          plugins: [reactCompiler()],
           // Lets bun-env.ts's isStandaloneExecutable() distinguish compiled
           // binaries from dev runs.
           define: {

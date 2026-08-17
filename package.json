@@ -80,6 +80,7 @@
     "@types/react-test-renderer": "^19.1.0",
     "@types/shell-quote": "^1.7.5",
     "@types/which": "^3.0.4",
+    "bun-plugin-react-compiler": "^0.3.9",
     "drizzle-kit": "^0.31.4",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
