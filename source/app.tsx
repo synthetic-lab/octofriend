@@ -1611,7 +1611,7 @@ function ToolRequestRenderer({
     </TerminalFlex>
   );
 }
-const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
+const TranscriptItemRenderer = React.memo(({ item }: { item: TranscriptItem }) => {
   const themeColor = useColor();
   const unchained = useUnchained();
   if (item.type === "header") return <Header unchained={unchained} />;
@@ -1711,7 +1711,8 @@ const TranscriptItemRenderer = ({ item }: { item: TranscriptItem }) => {
     );
   }
   return <MessageDisplay item={item.item} />;
-};
+});
+
 const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
   return (
     <TerminalFlex
