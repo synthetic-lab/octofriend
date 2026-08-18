@@ -31,10 +31,10 @@ git clone https://github.com/your-username/octofriend.git
 cd octofriend
 
 # Install dependencies:
-npm install
+bun install
 
-# Build & run the project:
-npm run exec
+# Run the project:
+bun run exec
 ```
 
 **Canary builds:**
@@ -58,9 +58,9 @@ canary-octo
 
 1. **Keep PRs focused.** One fix or feature per PR. Large, sprawling PRs are hard to review and more likely to be closed.
 2. **Write a clear description.** Explain what the change does and why. Link to any related issues using `fixes #123` or `closes #123`.
-3. **Make sure the build passes.** Run `npm run build` before submitting.
-4. **Run tests.** Run `npm run test:run` and make sure nothing is broken.
-5. **Format your code.** Run `npm run format` before pushing.
+3. **Make sure it typechecks.** Run `bun x tsc --noEmit` before submitting.
+4. **Run tests.** Run `bun run test:run` and make sure nothing is broken.
+5. **Format your code.** Run `bun run format` before pushing.
 6. **Screenshots.** If your PR changes something visible (UI layout, terminal output, formatting, error messages, or any user-facing behavior), please include screenshots or terminal recordings in the PR description.
 7. **Run your PR through an AI code-review agent** Code-review agents help catch any obvious bugs or nits, requiring less back-and-forth for everyone!
 8. **Mark drafts as drafts.** If your PR isn't ready for review, open it as a Draft.
@@ -84,7 +84,7 @@ We're a small team. We do our best to review PRs promptly, but please give us so
 
 ## Code Style
 
-- Prettier handles formatting automatically. Just run `npm run format`.
+- Prettier handles formatting automatically. Just run `bun run format`.
 - Prefer `type Blah = { ... }` over `interface Blah { ... }` unless you specifically need an interface (i.e., it's designed for classes to implement).
 - Keep things simple. Don't add abstractions, helpers, or generalization for hypothetical future needs.
 - Remove redundant comments that restate what the code already says. If your AI assistant added them, delete them before submitting. For example, delete these kinds of comments:

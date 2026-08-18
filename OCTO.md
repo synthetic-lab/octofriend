@@ -1,8 +1,8 @@
-This project contains your (Octo's) source code: the code to build you, Octo.
+This project contains your (Octo's) source code: the code to run you, Octo.
 
-This project can take up to 20s to build via `npm run build`. Make sure your
-timeouts are long enough. Check your work before saying something is done: run
-`npm run build` to make sure it builds cleanly and typechecks.
+There is no build step: Octo runs its TypeScript source directly under Bun.
+Check your work before saying something is done: run `bun x tsc --noEmit` to
+typecheck, and `bun run test:run` to run the tests.
 
 Prefer `type Blah = { ... }` to `interface Blah { ... }` unless you _need_ an
 interface: i.e. if it's designed for classes to implement. If it's not, just

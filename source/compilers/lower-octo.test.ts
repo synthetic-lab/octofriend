@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { lowerOcto } from "./lower-octo.ts";
 import type { LoweredIR } from "../libocto/llm-ir.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";

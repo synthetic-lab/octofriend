@@ -1,22 +1,12 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "bun:test";
 import { renderPaintcannon } from "../test-utils/render-paintcannon.tsx";
 import { DiffRenderer } from "./diff-renderer.tsx";
-import { readFileSync } from "fs";
-
-vi.mock("fs", () => ({
-  readFileSync: vi.fn(),
-}));
 
 describe("DiffRenderer", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("renders diff when it can find oldText in file content", () => {
     // The diff function uses oldText to find where the changes start
     const oldText = "line 1\nline 2\nline 3\n";
-    vi.mocked(readFileSync).mockReturnValue(oldText);
 
     const { text: output } = renderPaintcannon(
       <DiffRenderer

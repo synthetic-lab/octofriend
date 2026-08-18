@@ -2,7 +2,7 @@ import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { withMock } from "antipattern";
 import type { PaintKeyboardEvent } from "paintcannon";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, mock } from "bun:test";
 import { keyboardDeps } from "../../hooks/use-keyboard.ts";
 import { KbShortcutSelect } from "./kb-shortcut-select.tsx";
 
@@ -12,11 +12,11 @@ import { KbShortcutSelect } from "./kb-shortcut-select.tsx";
 describe("KbShortcutSelect", () => {
   it("prevents the default Enter action when selecting an item", async () => {
     let keyboardHandler: ((event: PaintKeyboardEvent) => void) | undefined;
-    const useKeyboard = vi.fn((callback: (event: PaintKeyboardEvent) => void) => {
+    const useKeyboard = mock((callback: (event: PaintKeyboardEvent) => void) => {
       keyboardHandler = callback;
     });
-    const onSelect = vi.fn();
-    const preventDefault = vi.fn();
+    const onSelect = mock();
+    const preventDefault = mock();
 
     await withMock(keyboardDeps, "useKeyboard", useKeyboard, async () => {
       let renderer: TestRenderer.ReactTestRenderer;
@@ -44,7 +44,7 @@ describe("KbShortcutSelect", () => {
         } as unknown as PaintKeyboardEvent);
       });
 
-      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(preventDefault).toHaveBeenCalledTimes(1);
       expect(onSelect).toHaveBeenCalledWith({
         label: "Enter an API key",
         value: "api-key",

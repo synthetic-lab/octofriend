@@ -1,21 +1,21 @@
 # To opt into canary builds, source this file in your config.fish
 # Usage: source /path/to/canary.fish
 #
-# This creates a canary-octo function that will build whatever you have in your
-# current octofriend checkout and run it, allowing you to use the main branch
-# without waiting for new octo releases, or to use an in-development branch
-# easily.
+# This creates a canary-octo function that compiles a fresh binary from
+# whatever you have in your current octofriend checkout and runs it, allowing
+# you to use the main branch without waiting for new octo releases, or to use
+# an in-development branch easily.
 
 set -g _OCTOFRIEND_DIR (status dirname)
 
 function canary-octo
-    set -l old_dir (pwd)
-    cd "$_OCTOFRIEND_DIR"
-    if not npm run build
-        cd "$old_dir"
-        return 1
-    end
-    cd "$old_dir"
     set -gx CANARY_OCTO 1
-    node "$_OCTOFRIEND_DIR/dist/source/cli/cli.js" $argv
+    pushd "$_OCTOFRIEND_DIR" >/dev/null; or return 1
+    bun run compile
+    set -l compile_status $status
+    popd >/dev/null
+    if test $compile_status -ne 0
+        return $compile_status
+    end
+    "$_OCTOFRIEND_DIR/bin/octo.sh" $argv
 end

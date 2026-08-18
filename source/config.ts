@@ -3,7 +3,6 @@ import { t } from "structural";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { fileURLToPath } from "url";
 import json5 from "json5";
 import { execFile, spawn } from "child_process";
 import { fileExists } from "./fs-utils.ts";
@@ -12,8 +11,7 @@ import { getCodexOAuthTokens } from "./codex-oauth.ts";
 import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { isDeepStrictEqual } from "node:util";
 import { registry } from "antipattern";
-
-const __dir = path.dirname(fileURLToPath(import.meta.url));
+import packageJson from "../package.json" with { type: "json" };
 
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
 const KEY_FILE = path.join(CONFIG_DIR, "keys.json5");
@@ -852,21 +850,7 @@ export type Metadata = {
 };
 
 async function readMetadata(): Promise<Metadata> {
-  const packagePath = await firstExistingPath([
-    path.join(__dir, "../../package.json"),
-    path.join(__dir, "../package.json"),
-  ]);
-  const packageFile = await fs.readFile(packagePath, "utf8");
-  const packageJson = JSON.parse(packageFile);
-
   return {
-    version: packageJson["version"],
+    version: packageJson.version,
   };
-}
-
-async function firstExistingPath(paths: string[]): Promise<string> {
-  for (const candidate of paths) {
-    if (await fileExists(candidate)) return candidate;
-  }
-  return paths[0]!;
 }

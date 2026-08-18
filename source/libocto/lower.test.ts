@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { octoAgent } from "../ir/octo-ir.ts";
 import type { CheckpointedIRWithTrajectories, Content, LoweredIR } from "./llm-ir.ts";
 import { lower } from "./lower.ts";
@@ -64,7 +64,7 @@ describe("lower", () => {
   it("passes through lowered IR", () => {
     const messages: TestIR[] = [userMessage("hello")];
 
-    expect(lower<typeof octoAgent>(messages)).toEqual(messages);
+    expect(lower<typeof octoAgent>(messages)).toEqual<TestIR[]>(messages);
   });
 
   it("throws when a trajectory reaches the default lowering path", () => {
@@ -84,7 +84,7 @@ describe("lower", () => {
         assistantMessage("I'm good"),
       ];
 
-      expect(lower<typeof octoAgent>(messages)).toEqual(messages);
+      expect(lower<typeof octoAgent>(messages)).toEqual<TestIR[]>(messages);
     });
 
     it("keeps a single checkpoint and following messages", () => {

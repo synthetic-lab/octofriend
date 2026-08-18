@@ -99,8 +99,13 @@ export function deleteSession(sessionId: string): boolean {
       .where(eq(trees.name, sessionId))
       .all();
 
-    const deletedTree = tx.delete(trees).where(eq(trees.name, sessionId)).run();
-    if (deletedTree.changes === 0) return false;
+    const treeExists = tx
+      .select({ id: trees.id })
+      .from(trees)
+      .where(eq(trees.name, sessionId))
+      .get();
+    if (treeExists == null) return false;
+    tx.delete(trees).where(eq(trees.name, sessionId)).run();
     if (sessionLaunches.length === 0) return true;
 
     const deletedLaunches = tx

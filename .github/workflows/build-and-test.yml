@@ -14,11 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - uses: oven-sh/setup-bun@v2
 
-      - run: npm ci
+      - run: bun install
 
-      - run: npm run test:run
+      - run: bun x tsc --noEmit
+
+      - run: bun run test:run
+
+      - run: bun run compile -- --all

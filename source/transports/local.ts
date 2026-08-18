@@ -10,6 +10,8 @@ import {
   TransportError,
 } from "./transport-common.ts";
 
+const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OCTO"];
+
 export class LocalTransport implements Transport {
   cwd = process.cwd();
 
@@ -85,7 +87,7 @@ export class LocalTransport implements Transport {
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
     return new Promise<string>((resolve, reject) => {
       const env = { ...process.env };
-      delete env["NODE_ENV"];
+      for (const name of STRIPPED_ENV_VARS) delete env[name];
       const child = spawn(cmd, {
         cwd: process.cwd(),
         shell: "bash",

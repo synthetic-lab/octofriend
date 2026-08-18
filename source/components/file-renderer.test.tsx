@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "bun:test";
 import { renderPaintcannon } from "../test-utils/render-paintcannon.tsx";
 import { FileRenderer } from "./file-renderer.tsx";
 

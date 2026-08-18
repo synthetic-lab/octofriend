@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import type { ApiKeyModelConfig, CodexModelConfig, ModelConfig } from "../config.ts";
 import { NO_MODEL_RECORDED, serializeModelJson, tryDeserializeModelJson } from "./model-json.ts";
 

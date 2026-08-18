@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import { excerpt, MAX_PREVIEW_CHARACTERS } from "./str.ts";
 
 describe("excerpt", () => {
