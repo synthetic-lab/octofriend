@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import json5 from "json5";
-import { OctoProcessManager } from "./octo-process.ts";
+import { processes } from "./octo-process.ts";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
@@ -207,7 +207,6 @@ const AUTH_COMMAND_TIMEOUT_MS = 15_000;
 const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 
 const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
-const octoProcessManager = new OctoProcessManager();
 
 export async function runNotifyCommand(config: Config): Promise<void> {
   const cmd = config.notifications?.notifyCommand;
@@ -215,7 +214,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
   const shell = process.env["SHELL"] || "/bin/sh";
 
   await new Promise<void>((resolve, reject) => {
-    const octoProcess = octoProcessManager.spawn(shell, ["-c", cmd], {
+    const octoProcess = processes.manager().spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
@@ -302,7 +301,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     let stderr = "";
     let resolved = false;
 
-    const octoProcess = octoProcessManager.execFile(
+    const octoProcess = processes.manager().execFile(
       cmd,
       args,
       {

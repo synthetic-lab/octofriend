@@ -6,12 +6,12 @@ import {
   ShellOutput,
   TransportError,
 } from "./transport-common.ts";
-import { OctoProcessManager, registerCleanup } from "../octo-process.ts";
+import { processes } from "../octo-process.ts";
 
 export async function manageContainer(args: string[]) {
   console.log("Spawning Docker container...");
 
-  const octoProcessManager = new OctoProcessManager();
+  const octoProcessManager = processes.manager();
   const { stdout } = await new Promise<{
     stdout: string;
   }>((resolve, reject) => {
@@ -47,7 +47,7 @@ export async function manageContainer(args: string[]) {
       octoProcess.unref();
     } catch {}
   };
-  const unregisterCleanup = registerCleanup(killContainer);
+  const unregisterCleanup = octoProcessManager.registerCleanup(killContainer);
   let closed = false;
   return {
     container: name,
@@ -73,7 +73,7 @@ async function runDockerCommand(
   const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
 
   return new Promise<string>((resolve, reject) => {
-    const octoProcess = new OctoProcessManager().spawn(dockerCmd[0], dockerCmd.slice(1), {
+    const octoProcess = processes.manager().spawn(dockerCmd[0], dockerCmd.slice(1), {
       timeout,
       stdio: ["ignore", "pipe", "pipe"],
     });

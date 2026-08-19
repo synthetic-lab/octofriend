@@ -44,7 +44,7 @@ import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
-import { installGlobalProcessSignalHandlers, registerCleanup } from "../octo-process.ts";
+import { processes } from "../octo-process.ts";
 
 const INTERACTIVE_RENDER_OPTIONS = {
   alternateScreen: true,
@@ -71,7 +71,7 @@ function renderInteractive(element: React.ReactNode, options: { captureCtrlC: bo
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
 
-installGlobalProcessSignalHandlers();
+processes.manager().installGlobalProcessSignalHandlers();
 
 const cli = withOctoFlags(
   new Command().description("If run with no subcommands, runs Octo interactively."),
@@ -242,7 +242,7 @@ async function runMain(opts: {
     restoreTitles();
     await opts.transport.close();
   };
-  const markCleanupAsComplete = registerCleanup(cleanup);
+  const unregisterCleanup = processes.manager().registerCleanup(cleanup);
 
   try {
     let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
@@ -310,7 +310,7 @@ async function runMain(opts: {
       }
     }
   } finally {
-    markCleanupAsComplete();
+    unregisterCleanup();
     await cleanup();
   }
 }

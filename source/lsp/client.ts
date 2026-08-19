@@ -11,7 +11,7 @@ import type {
   Range,
 } from "vscode-languageserver-types";
 import { DiagnosticSeverity, SymbolKind } from "vscode-languageserver-types";
-import { type OctoProcess, OctoProcessManager } from "../octo-process.ts";
+import { type OctoProcess, processes } from "../octo-process.ts";
 
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
 const HEADER_DELIMITER_STRING = "\r\n\r\n";
@@ -118,7 +118,7 @@ const CLIENT_CAPABILITIES = {
 };
 
 export class LspClient {
-  private readonly octoProcessManager = new OctoProcessManager();
+  private readonly octoProcessManager = processes.manager();
   private octoProcess: OctoProcess | null = null;
   private requestIdCounter = 1;
   private pendingRequests = new Map<number, PendingRequest>(); // indexed by requestId

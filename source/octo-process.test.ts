@@ -1,14 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { OctoProcess, OctoProcessManager } from "./octo-process.ts";
+import { afterEach, describe, expect, it, jest } from "bun:test";
+import { OctoProcessManager, type OctoProcess } from "./octo-process.ts";
 
 /**
- * The module under test keeps process-global state (the process registry, the
- * cleanup registry, once-only flags), so each test imports a fresh copy.
+ * Each OctoProcessManager owns its own state (tracked processes, registered
+ * cleanups, once-only flags), so tests construct their own instances and can't
+ * leak state into each other — there's no shared module-global state to reset.
  */
-async function freshLifecycle() {
-  vi.resetModules();
-  return await import("./octo-process.ts");
-}
 
 function spawnSleeper(
   octoProcesses: OctoProcessManager,
@@ -21,14 +18,13 @@ function spawnSleeper(
 }
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
+  jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 describe("OctoProcessManager.spawn", () => {
   it("supports omitting the args array, like child_process.spawn", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = new mod.OctoProcessManager().spawn(process.execPath, { stdio: "ignore" });
+    const octoProcess = new OctoProcessManager().spawn(process.execPath, { stdio: "ignore" });
 
     const code = await new Promise<number | null>(resolve => {
       octoProcess.once("close", code => resolve(code));
@@ -37,20 +33,20 @@ describe("OctoProcessManager.spawn", () => {
     expect(code).toBe(0);
   });
 
-  it("exit-tracks spawned processes so killAllOctoProcesses terminates them", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager());
+  it("exit-tracks spawned processes so runCleanups terminates them", async () => {
+    const manager = new OctoProcessManager();
+    const octoProcess = spawnSleeper(manager);
 
-    mod.killAllOctoProcesses();
+    await manager.runCleanups();
 
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("does not exit-track processes spawned with surviveAfterOctoExit", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager(), true);
+    const manager = new OctoProcessManager();
+    const octoProcess = spawnSleeper(manager, true);
 
-    mod.killAllOctoProcesses();
+    await manager.runCleanups();
     // Give any mis-sent signal a chance to land
     await new Promise(resolve => setTimeout(resolve, 250));
 
@@ -61,14 +57,13 @@ describe("OctoProcessManager.spawn", () => {
   });
 
   it("stops tracking processes when they close", async () => {
-    const mod = await freshLifecycle();
-    const octoProcesses = new mod.OctoProcessManager();
-    const octoProcess = octoProcesses.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    const manager = new OctoProcessManager();
+    const octoProcess = manager.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
     await new Promise(resolve => octoProcess.once("close", resolve));
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
-    octoProcesses.terminateAll();
-    mod.killAllOctoProcesses();
+    manager.terminateAll();
+    await manager.runCleanups();
 
     expect(kill).not.toHaveBeenCalled();
   });
@@ -76,23 +71,22 @@ describe("OctoProcessManager.spawn", () => {
 
 describe("OctoProcess.terminate", () => {
   it("sends SIGTERM immediately and escalates to SIGKILL after graceMs", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager());
-    vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const octoProcess = spawnSleeper(new OctoProcessManager());
+    jest.useFakeTimers();
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate({ graceMs: 100 });
 
     expect(kill).toHaveBeenCalledWith("SIGTERM");
     expect(kill).not.toHaveBeenCalledWith("SIGKILL");
 
-    vi.advanceTimersByTime(99);
+    jest.advanceTimersByTime(99);
     expect(kill).not.toHaveBeenCalledWith("SIGKILL");
-    vi.advanceTimersByTime(1);
+    jest.advanceTimersByTime(1);
     expect(kill).toHaveBeenCalledWith("SIGKILL");
 
     kill.mockRestore();
-    vi.useRealTimers();
+    jest.useRealTimers();
     octoProcess.kill("SIGKILL");
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
@@ -100,12 +94,11 @@ describe("OctoProcess.terminate", () => {
   it.skipIf(process.platform === "win32")(
     "signals the whole process group for detached processes",
     async () => {
-      const mod = await freshLifecycle();
-      const octoProcess = new mod.OctoProcessManager().spawn("sleep", ["30"], {
+      const octoProcess = new OctoProcessManager().spawn("sleep", ["30"], {
         detached: true,
         stdio: "ignore",
       });
-      const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+      const killSpy = jest.spyOn(process, "kill").mockImplementation(() => true);
 
       octoProcess.terminate();
 
@@ -121,17 +114,16 @@ describe("OctoProcess.terminate", () => {
   );
 
   it("signals only the process itself when not detached", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager());
-    const processKillSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const octoProcess = spawnSleeper(new OctoProcessManager());
+    const processKillSpy = jest.spyOn(process, "kill").mockImplementation(() => true);
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate();
 
     expect(processKillSpy).not.toHaveBeenCalled();
     expect(kill).toHaveBeenCalledWith("SIGTERM");
 
-    vi.restoreAllMocks();
+    jest.restoreAllMocks();
     octoProcess.kill("SIGKILL");
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
@@ -139,22 +131,21 @@ describe("OctoProcess.terminate", () => {
   it.skipIf(process.platform === "win32")(
     "falls back to signaling just the process if the group signal fails",
     async () => {
-      const mod = await freshLifecycle();
-      const octoProcess = new mod.OctoProcessManager().spawn("sleep", ["30"], {
+      const octoProcess = new OctoProcessManager().spawn("sleep", ["30"], {
         detached: true,
         stdio: "ignore",
       });
-      vi.spyOn(process, "kill").mockImplementation(((pid: number) => {
+      jest.spyOn(process, "kill").mockImplementation(((pid: number) => {
         if (pid < 0) throw new Error("ESRCH: no such process group");
         return true;
       }) as typeof process.kill);
-      const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+      const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
       octoProcess.terminate();
 
       expect(kill).toHaveBeenCalledWith("SIGTERM");
 
-      vi.restoreAllMocks();
+      jest.restoreAllMocks();
       try {
         process.kill(-octoProcess.pid!, "SIGKILL");
         octoProcess.kill("SIGKILL");
@@ -164,33 +155,31 @@ describe("OctoProcess.terminate", () => {
   );
 
   it("escalates to SIGKILL after the default grace period", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager());
-    vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const octoProcess = spawnSleeper(new OctoProcessManager());
+    jest.useFakeTimers();
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
     octoProcess.terminate();
 
     expect(kill).toHaveBeenCalledWith("SIGTERM");
-    vi.advanceTimersByTime(999);
+    jest.advanceTimersByTime(999);
     expect(kill).not.toHaveBeenCalledWith("SIGKILL");
-    vi.advanceTimersByTime(1);
+    jest.advanceTimersByTime(1);
     expect(kill).toHaveBeenCalledWith("SIGKILL");
 
     kill.mockRestore();
-    vi.useRealTimers();
+    jest.useRealTimers();
     octoProcess.kill("SIGKILL");
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
   it("is safe to call on a closed process and to call twice", async () => {
-    const mod = await freshLifecycle();
-    const octoProcesses = new mod.OctoProcessManager();
-    const exited = octoProcesses.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    const manager = new OctoProcessManager();
+    const exited = manager.spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
     await new Promise(resolve => exited.once("close", resolve));
     expect(() => exited.terminate()).not.toThrow();
 
-    const sleeper = spawnSleeper(octoProcesses);
+    const sleeper = spawnSleeper(manager);
     expect(() => {
       sleeper.terminate();
       sleeper.terminate();
@@ -200,8 +189,7 @@ describe("OctoProcess.terminate", () => {
   });
 
   it("works on processes spawned with surviveAfterOctoExit", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager(), true);
+    const octoProcess = spawnSleeper(new OctoProcessManager(), true);
 
     octoProcess.terminate({ graceMs: 100 });
 
@@ -211,40 +199,38 @@ describe("OctoProcess.terminate", () => {
 
 describe("OctoProcessManager.terminateAll", () => {
   it("terminates only the manager's own processes", async () => {
-    const mod = await freshLifecycle();
-    const here = new mod.OctoProcessManager();
-    const there = new mod.OctoProcessManager();
+    const here = new OctoProcessManager();
+    const there = new OctoProcessManager();
     const mine = spawnSleeper(here);
     const theirs = spawnSleeper(there);
-    const killMine = vi.spyOn(mine, "kill").mockReturnValue(true);
-    const killTheirs = vi.spyOn(theirs, "kill").mockReturnValue(true);
+    const killMine = jest.spyOn(mine, "kill").mockReturnValue(true);
+    const killTheirs = jest.spyOn(theirs, "kill").mockReturnValue(true);
 
     here.terminateAll({ graceMs: 5000 });
 
     expect(killMine).toHaveBeenCalledWith("SIGTERM");
     expect(killTheirs).not.toHaveBeenCalled();
 
-    vi.restoreAllMocks();
+    jest.restoreAllMocks();
     mine.kill("SIGKILL");
     theirs.kill("SIGKILL");
     await waitFor(() => !isAlive(mine.pid!) && !isAlive(theirs.pid!));
   });
 
   it("escalates to SIGKILL after the given graceMs", async () => {
-    const mod = await freshLifecycle();
-    const octoProcesses = new mod.OctoProcessManager();
-    const octoProcess = spawnSleeper(octoProcesses);
-    vi.useFakeTimers();
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const manager = new OctoProcessManager();
+    const octoProcess = spawnSleeper(manager);
+    jest.useFakeTimers();
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
-    octoProcesses.terminateAll({ graceMs: 100 });
+    manager.terminateAll({ graceMs: 100 });
 
     expect(kill).toHaveBeenCalledWith("SIGTERM");
-    vi.advanceTimersByTime(100);
+    jest.advanceTimersByTime(100);
     expect(kill).toHaveBeenCalledWith("SIGKILL");
 
     kill.mockRestore();
-    vi.useRealTimers();
+    jest.useRealTimers();
     octoProcess.kill("SIGKILL");
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
@@ -252,9 +238,8 @@ describe("OctoProcessManager.terminateAll", () => {
 
 describe("OctoProcessManager.execFile", () => {
   it("buffers output to the callback, like child_process.execFile", async () => {
-    const mod = await freshLifecycle();
     const stdout = await new Promise<string | Buffer>((resolve, reject) => {
-      new mod.OctoProcessManager().execFile(
+      new OctoProcessManager().execFile(
         process.execPath,
         ["-e", "console.log('hello')"],
         (error, stdout) => (error ? reject(error) : resolve(stdout)),
@@ -265,11 +250,11 @@ describe("OctoProcessManager.execFile", () => {
   });
 
   it("supports omitting the args array and options, like child_process.execFile", async () => {
-    const mod = await freshLifecycle();
     const stdoutPromise = new Promise<string | Buffer>((resolve, reject) => {
-      const octoProcess = new mod.OctoProcessManager().execFile(
-        process.execPath,
-        (error, stdout) => (error ? reject(error) : resolve(stdout)),
+      // Can't use process.execPath here like the other tests: under `bun test`
+      // that's the bun binary, and only node reads stdin as a script with no args.
+      const octoProcess = new OctoProcessManager().execFile("node", (error, stdout) =>
+        error ? reject(error) : resolve(stdout),
       );
       // node with no args reads stdin as a script; close it so it sees EOF and exits
       octoProcess.stdin!.end();
@@ -279,9 +264,8 @@ describe("OctoProcessManager.execFile", () => {
   });
 
   it("passes options through to child_process.execFile", async () => {
-    const mod = await freshLifecycle();
     const stdout = await new Promise<string | Buffer>((resolve, reject) => {
-      new mod.OctoProcessManager().execFile(
+      new OctoProcessManager().execFile(
         process.execPath,
         ["-e", "process.stdout.write('buffered')"],
         { encoding: "buffer" },
@@ -294,26 +278,23 @@ describe("OctoProcessManager.execFile", () => {
   });
 
   it("reports spawn failures to the callback, like child_process.execFile", async () => {
-    const mod = await freshLifecycle();
     const error = await new Promise<Error | null>(resolve => {
-      new mod.OctoProcessManager().execFile(process.execPath, ["-e", "process.exit(3)"], error =>
+      new OctoProcessManager().execFile(process.execPath, ["-e", "process.exit(3)"], error =>
         resolve(error),
       );
     });
 
     expect(error).not.toBeNull();
-    expect((error as NodeJS.ErrnoException & { code: number }).code).toBe(3);
+    expect((error as unknown as { code: number }).code).toBe(3);
   });
 
   it("does not exit-track processes spawned with surviveAfterOctoExit", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = new mod.OctoProcessManager().execFile(
-      process.execPath,
-      ["-e", "setTimeout(() => {}, 30000)"],
-      { surviveAfterOctoExit: true },
-    );
+    const manager = new OctoProcessManager();
+    const octoProcess = manager.execFile(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+      surviveAfterOctoExit: true,
+    });
 
-    mod.killAllOctoProcesses();
+    await manager.runCleanups();
     // Give any mis-sent signal a chance to land
     await new Promise(resolve => setTimeout(resolve, 250));
 
@@ -323,41 +304,38 @@ describe("OctoProcessManager.execFile", () => {
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
 
-  it("exit-tracks spawned processes so killAllOctoProcesses terminates them", async () => {
-    const mod = await freshLifecycle();
-    const octoProcess = new mod.OctoProcessManager().execFile(process.execPath, [
-      "-e",
-      "setTimeout(() => {}, 30000)",
-    ]);
+  it("exit-tracks spawned processes so runCleanups terminates them", async () => {
+    const manager = new OctoProcessManager();
+    const octoProcess = manager.execFile(process.execPath, ["-e", "setTimeout(() => {}, 30000)"]);
 
-    mod.killAllOctoProcesses();
+    await manager.runCleanups();
 
     await waitFor(() => !isAlive(octoProcess.pid!));
   });
 });
 
-describe("runCleanups", () => {
+describe("OctoProcessManager.runCleanups", () => {
   it("runs registered cleanups once, tolerates failures, and terminates remaining processes", async () => {
-    const mod = await freshLifecycle();
+    const manager = new OctoProcessManager();
     const calls: string[] = [];
-    mod.registerCleanup(() => {
+    manager.registerCleanup(() => {
       calls.push("sync");
     });
-    mod.registerCleanup(async () => {
+    manager.registerCleanup(async () => {
       calls.push("async");
     });
-    mod.registerCleanup(() => {
+    manager.registerCleanup(() => {
       throw new Error("a failing cleanup must not block the others");
     });
-    const octoProcess = spawnSleeper(new mod.OctoProcessManager());
-    const kill = vi.spyOn(octoProcess, "kill").mockReturnValue(true);
+    const octoProcess = spawnSleeper(manager);
+    const kill = jest.spyOn(octoProcess, "kill").mockReturnValue(true);
 
-    await mod.runCleanups();
+    await manager.runCleanups();
 
     expect(calls.sort()).toEqual(["async", "sync"]);
     expect(kill).toHaveBeenCalledWith("SIGTERM");
 
-    await mod.runCleanups();
+    await manager.runCleanups();
     expect(calls.sort()).toEqual(["async", "sync"]);
 
     kill.mockRestore();
@@ -366,32 +344,43 @@ describe("runCleanups", () => {
   });
 
   it("does not run unregistered cleanups", async () => {
-    const mod = await freshLifecycle();
-    const cleanup = vi.fn();
-    const unregister = mod.registerCleanup(cleanup);
+    const manager = new OctoProcessManager();
+    const cleanup = jest.fn();
+    const unregister = manager.registerCleanup(cleanup);
 
     unregister();
     // Unregistering twice must be harmless
     expect(() => unregister()).not.toThrow();
-    await mod.runCleanups();
+    await manager.runCleanups();
+
+    expect(cleanup).not.toHaveBeenCalled();
+  });
+
+  it("does not share cleanups between manager instances", async () => {
+    const here = new OctoProcessManager();
+    const there = new OctoProcessManager();
+    const cleanup = jest.fn();
+    there.registerCleanup(cleanup);
+
+    await here.runCleanups();
 
     expect(cleanup).not.toHaveBeenCalled();
   });
 
   it("bounds hung cleanups by a timeout so shutdown can't be blocked", async () => {
-    vi.useFakeTimers();
-    const mod = await freshLifecycle();
-    mod.registerCleanup(() => new Promise<void>(() => {}));
+    jest.useFakeTimers();
+    const manager = new OctoProcessManager();
+    manager.registerCleanup(() => new Promise<void>(() => {}));
 
-    const promise = mod.runCleanups();
-    await vi.advanceTimersByTimeAsync(5000);
+    const promise = manager.runCleanups();
+    jest.advanceTimersByTime(5000);
 
     // Resolves thanks to the cleanup timeout rather than hanging forever
     await promise;
   });
 });
 
-describe("installProcessSignalHandlers", () => {
+describe("OctoProcessManager.installGlobalProcessSignalHandlers", () => {
   it("installs one handler per termination signal and is idempotent", async () => {
     const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
     const listenersBefore = new Map(
@@ -399,17 +388,17 @@ describe("installProcessSignalHandlers", () => {
     );
     const exitListenersBefore = process.listeners("exit");
 
-    const mod = await freshLifecycle();
+    const manager = new OctoProcessManager();
     try {
-      mod.installGlobalProcessSignalHandlers();
-      mod.installGlobalProcessSignalHandlers();
+      manager.installGlobalProcessSignalHandlers();
+      manager.installGlobalProcessSignalHandlers();
 
       for (const signal of signals) {
         expect(process.listenerCount(signal)).toBe(listenersBefore.get(signal)!.length + 1);
       }
       expect(process.listenerCount("exit")).toBe(exitListenersBefore.length + 1);
     } finally {
-      // Remove the module's listeners so a stray signal during the test run
+      // Remove the manager's listeners so a stray signal during the test run
       // can't trigger the real shutdown path.
       for (const signal of signals) {
         for (const listener of process.listeners(signal)) {
@@ -435,14 +424,14 @@ describe("installProcessSignalHandlers", () => {
     const listenersBefore = new Map(
       [...signals, "exit"].map(signal => [signal, listeners(signal)] as const),
     );
-    const mod = await freshLifecycle();
-    const cleanup = vi.fn();
-    mod.registerCleanup(cleanup);
+    const manager = new OctoProcessManager();
+    const cleanup = jest.fn();
+    manager.registerCleanup(cleanup);
     // Swallow the re-raised signal and intercept exit so the test runner survives
-    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const kill = jest.spyOn(process, "kill").mockImplementation(() => true);
+    const exit = jest.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     try {
-      mod.installGlobalProcessSignalHandlers();
+      manager.installGlobalProcessSignalHandlers();
       const handler = process
         .listeners("SIGTERM")
         .find(listener => !listenersBefore.get("SIGTERM")!.includes(listener)) as () => void;
