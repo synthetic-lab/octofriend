@@ -100,22 +100,26 @@ export function findToolPairingViolations(history: readonly HistoryNode[]): Pair
  *
  * Orphan answers are converted into user messages: a user message is always legal for any
  * backend, keeps the information visible to the model, and synthesizes no assistant history.
- * Only true orphans are repaired — answers whose tool call appears nowhere in history. Any
- * remaining violation is an unknown bug and is left for assertToolCallPairing to report loudly.
+ *
+ * An answer is orphaned when no assistant call with its ID precedes it: answers are only ever
+ * appended after the call they answer, so a matching call later in history can never pair with
+ * it. That can happen because provider-generated IDs are only unique within a single response
+ * and some providers recycle IDs across turns — a later turn can coincidentally reuse the ID of
+ * an answer whose original call was sliced away. Only true orphans are repaired; any remaining
+ * violation is an unknown bug and is left for assertToolCallPairing to report loudly.
  */
 export function repairOrphanedToolOutputs(history: readonly HistoryNode[]): HistoryNode[] {
-  const requestedIds = new Set<string>();
-  for (const item of history) {
-    if (item.type !== "llm-ir" || item.ir.role !== "assistant") continue;
-    for (const call of item.ir.toolCalls ?? []) {
-      requestedIds.add(call.toolCallId);
-    }
-  }
-
+  const precedingCallIds = new Set<string>();
   return history.map(item => {
     if (item.type !== "llm-ir") return item;
+    if (item.ir.role === "assistant") {
+      for (const call of item.ir.toolCalls ?? []) {
+        precedingCallIds.add(call.toolCallId);
+      }
+      return item;
+    }
     const callId = answeredToolCallId(item.ir as any);
-    if (callId == null || requestedIds.has(callId)) return item;
+    if (callId == null || precedingCallIds.has(callId)) return item;
     return { ...item, ir: orphanAnswerToUserMessage(item.ir) };
   });
 }
