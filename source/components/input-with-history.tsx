@@ -20,7 +20,7 @@ interface Props {
   vimMode?: "NORMAL" | "INSERT";
   setVimMode?: (mode: "NORMAL" | "INSERT") => void;
 }
-export const InputWithHistory = (props: Props) => {
+export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
@@ -188,7 +188,8 @@ export const InputWithHistory = (props: Props) => {
       </TerminalFlex>
     </TerminalFlex>
   );
-};
+});
+
 function replaceSelectedMentions(input: string, selectedSuggestions: Set<string>): string {
   let output = input;
   for (const filename of selectedSuggestions) {
