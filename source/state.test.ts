@@ -818,10 +818,9 @@ describe("rewinding an unanswered prompt on abort", () => {
   });
 
   /*
-   * The rewind needs no bookkeeping flag: the in-flight arc's history copy stops being a
-   * prefix of the live history, so when the arc settles its stale copy (and any partial
-   * response) is dropped instead of resurrecting the prompt. SQLite independently rejects
-   * the stale append via the tree's foreign key constraint (see tree-node-fk.test.ts).
+   * The rewind needs no bookkeeping: the arc's emissions chain under the rewound (deleted)
+   * node, and SQLite's foreign key constraint rejects them — the settling arc can't
+   * resurrect the prompt or its partial response (see tree-node-fk.test.ts).
    */
   it("drops the stale history copy when the rewound arc settles", async () => {
     const prevEnv = process.env["OCTO_STATE_TEST_API_KEY"];
@@ -1156,5 +1155,40 @@ describe("runAgent history persistence (BUGS.md #8, #12)", () => {
     expect(historyRoles()).toEqual(["user", "checkpoint"]);
     expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
     expect(dbNodeCount(session.metadata.sessionId!)).toBe(2);
+  });
+
+  it("drops arc emissions after the prompt is rewound, rejected by SQLite", async () => {
+    const transport = new LocalTransport();
+    const session = createSession(process.cwd(), { kind: "local" });
+    const reasoningAssistant = {
+      role: "assistant" as const,
+      content: "",
+      reasoningContent: "bug8-rewound-reasoning-marker",
+      usage: compilerUsage(0, 0),
+    };
+    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+      handler.startResponse(null);
+      /*
+       * ESC while the model is still reasoning (no content tokens): the prompt is rewound
+       * and its node deleted, so this emission chains under a deleted parent and SQLite
+       * rejects it.
+       */
+      useAppStore.getState().abortResponse(session, agentConfig);
+      handler.onMessage(reasoningAssistant);
+      return { type: "finish", reason: { type: "abort" } };
+    };
+
+    await withMock(trajectoryArc, "run", fakeArc, async () => {
+      await useAppStore
+        .getState()
+        .input({ config: agentConfig, transport, session, query: "change me" });
+    });
+
+    const state = useAppStore.getState();
+    expect(state.query).toBe("change me");
+    expect(state.modeData.mode).toBe("ready-for-request");
+    expect(state.history).toHaveLength(0);
+    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-rewound-reasoning-marker")).toBe(0);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(0);
   });
 });

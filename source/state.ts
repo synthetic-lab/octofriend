@@ -227,17 +227,12 @@ function appendAndPersistHistory(
 }
 
 /*
- * Whether `prefix` is still a prefix of `full`, by node identity. An in-flight arc captures
- * a history copy at start; the arc's own handlers only ever append to the live history, so
- * at settle time the copy remains a prefix — unless something external (a prompt rewind, a
- * new session) changed history underneath the arc.
+ * better-sqlite3 surfaces foreign key violations as a plain Error whose message is
+ * "FOREIGN KEY constraint failed" — there's no error code to match on, so match the
+ * message. Appending history under a deleted tree node (e.g. a rewound prompt) hits this.
  */
-function isHistoryPrefix(prefix: readonly HistoryNode[], full: readonly HistoryNode[]): boolean {
-  if (prefix.length > full.length) return false;
-  for (let i = 0; i < prefix.length; i++) {
-    if (prefix[i].nodeId !== full[i].nodeId) return false;
-  }
-  return true;
+function isForeignKeyViolation(e: unknown): boolean {
+  return e instanceof Error && /FOREIGN KEY constraint failed/i.test(e.message);
 }
 
 /*
@@ -816,6 +811,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   runAgent: async ({ config, transport, session }) => {
     get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
+    /*
+     * The tip of this arc's history chain. Emissions are chained under it (see onMessage)
+     * rather than the live history tip, so that if the arc's context is deleted mid-flight
+     * (a prompt rewind), SQLite rejects the arc's appends.
+     */
+    let arcHistoryTip = historyCopy.at(-1)?.nodeId ?? null;
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -946,19 +947,22 @@ export const useAppStore = create<UiState>((set, get) => ({
           onMessage: ir => {
             throttle.flush();
             /*
-             * If the user rewound the prompt that kicked off this arc, this arc's captured
-             * history copy is no longer a prefix of the live history. Drop anything else the
-             * arc emits instead of resurrecting the prompt or its response.
+             * Emissions chain under the arc's own history tip (not the live tip): if the
+             * user rewound the prompt that kicked off this arc, the arc's tip is deleted and
+             * SQLite rejects the append — drop the emission.
              */
-            if (!isHistoryPrefix(historyCopy, get().history)) return;
-            set({
-              history: appendAndPersistHistory(
+            try {
+              const nodes = insertHistoryItems(
                 session,
-                get().history,
+                arcHistoryTip,
                 [{ type: "llm-ir", ir }],
-                model,
-              ),
-            });
+                serializeModelJson(model),
+              );
+              arcHistoryTip = nodes.at(-1)!.nodeId;
+              set({ history: [...get().history, ...nodes] });
+            } catch (e) {
+              if (!isForeignKeyViolation(e)) throw e;
+            }
           },
         },
       });
