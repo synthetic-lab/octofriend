@@ -8,7 +8,7 @@ import {
   ShellOutput,
   TransportError,
 } from "./transport-common.ts";
-import { processes } from "../octo-process.ts";
+import { OctoProcessManager } from "../octo-process.ts";
 
 const KILL_GRACE_MS = 500;
 
@@ -16,7 +16,7 @@ const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OC
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
-  private readonly octoProcessManager = processes.manager();
+  private readonly octoProcessManager = new OctoProcessManager();
 
   async close() {
     this.octoProcessManager.terminateAll({ graceMs: KILL_GRACE_MS });
