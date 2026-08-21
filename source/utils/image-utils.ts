@@ -48,7 +48,7 @@ async function readImageFile(filePath: string): Promise<Buffer> {
   try {
     return await fs.readFile(filePath);
   } catch (error) {
-    throw new Error(`Failed to read image file ${filePath}: ${error}`, { cause: error });
+    throw new Error(`Failed to read image file ${filePath}: ${error}`);
   }
 }
 

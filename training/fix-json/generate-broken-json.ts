@@ -349,7 +349,7 @@ function stringifyNode(node: JSONASTNode, outputNodes: OutputNode[]): string {
     case "boolean":
       return JSON.stringify(node.value);
 
-    case "array": {
+    case "array":
       const arr = [ "[" ];
       if(node.children.length === 0) arr.push(randomWhitespace());
       else {
@@ -359,9 +359,8 @@ function stringifyNode(node: JSONASTNode, outputNodes: OutputNode[]): string {
       }
       arr.push("]");
       return arr.join("");
-    }
 
-    case "object": {
+    case "object":
       const obj = [ "{" ];
       if(node.children.length === 0) obj.push(randomWhitespace());
       else {
@@ -379,7 +378,6 @@ function stringifyNode(node: JSONASTNode, outputNodes: OutputNode[]): string {
       }
       obj.push("}");
       return obj.join("");
-    }
   }
 }
 

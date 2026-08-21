@@ -197,7 +197,7 @@ export async function getFileContentsBeforeAfter(filePath: string, commitSha: st
 
     return [before, after];
   } catch (error) {
-    throw new Error(`Error reading file ${filePath}: ${error}`, { cause: error });
+    throw new Error(`Error reading file ${filePath}: ${error}`);
   }
 }
 

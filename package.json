@@ -18,9 +18,8 @@
     "compile": "bun build.ts",
     "compile:production": "NODE_ENV=production bun run compile",
     "prepublishOnly": "bun x tsc --noEmit && bun run test:run && bun run compile:production -- --all",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "lint": "eslint . && prettier --check .",
+    "format": "eslint . --fix && prettier --write .",
     "prepare": "husky"
   },
   "lint-staged": {

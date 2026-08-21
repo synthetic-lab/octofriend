@@ -84,23 +84,25 @@ const cli = withOctoFlags(
       process.exitCode = 1;
       return;
     }
-    const runConfig =
-      resumeSessionId != null
-        ? await buildConfigForResuming(resumeSessionId, {
-            config: opts.config,
-            unchained: opts.unchained,
-            dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
-          })
-        : {
-            loadedSession: null,
-            transport: new LocalTransport(),
-            parsedCliArgs: {
-              kind: "local" as const,
-              config: opts.config,
-              unchained: opts.unchained,
-            },
-          };
-    if (runConfig == null) return;
+    let runConfig = null;
+    if (resumeSessionId != null) {
+      runConfig = await buildConfigForResuming(resumeSessionId, {
+        config: opts.config,
+        unchained: opts.unchained,
+        dockerRunArgs: dockerRunArgs.length > 0 ? dockerRunArgs : undefined,
+      });
+      if (runConfig == null) return;
+    } else {
+      runConfig = {
+        loadedSession: null,
+        transport: new LocalTransport(),
+        parsedCliArgs: {
+          kind: "local" as const,
+          config: opts.config,
+          unchained: opts.unchained,
+        },
+      };
+    }
 
     await runMain(runConfig);
   });

@@ -279,7 +279,7 @@ export class JSONFuzzerParser {
           case 't':
             value += '\t';
             break;
-          case 'u': {
+          case 'u':
             // Unicode escape
             this.position++;
             const hex = this.input.substr(this.position, 4);
@@ -289,7 +289,6 @@ export class JSONFuzzerParser {
             value += String.fromCharCode(parseInt(hex, 16));
             this.position += 3; // we'll increment by 1 at the end of the loop
             break;
-          }
           default:
             throw new Error(`Invalid escape sequence '\\${escapeChar}'`);
         }
