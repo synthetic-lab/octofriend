@@ -10,6 +10,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   HistoryNode,
   insertHistoryItems,
   latestModelJson,
@@ -223,6 +224,15 @@ function appendAndPersistHistory(
     ...prevHistory,
     ...insertHistoryItems(session, parentNodeId, itemsToInsert, serializeModelJson(model)),
   ];
+}
+
+/*
+ * better-sqlite3 surfaces foreign key violations as a plain Error whose message is
+ * "FOREIGN KEY constraint failed" — there's no error code to match on, so match the
+ * message. Appending history under a deleted tree node (e.g. a rewound prompt) hits this.
+ */
+function isForeignKeyViolation(e: unknown): boolean {
+  return e instanceof Error && /FOREIGN KEY constraint failed/i.test(e.message);
 }
 
 /*
@@ -489,6 +499,41 @@ export const useAppStore = create<UiState>((set, get) => ({
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     set({ queuedUserMessages: [] });
+
+    /*
+     * ESC before the model has streamed any non-reasoning tokens — while it's still
+     * thinking, or before it responded at all — means "I want to change my prompt": drop the
+     * just-submitted user message from history (in-memory and persisted) and put its text
+     * and attached images back in the input field.
+     *
+     * Only rewinds when the user message is the newest history item: mid-trajectory aborts
+     * (e.g. after tool calls) leave history alone.
+     */
+    if (
+      !opts?.exiting &&
+      modeData.mode === "responding" &&
+      modeData.inflightResponse.content.trim() === ""
+    ) {
+      const history = get().history;
+      const last = history.at(-1);
+      if (last && last.type === "llm-ir" && last.ir.role === "user") {
+        const query = last.ir.content
+          .filter(part => part.type === "text")
+          .map(part => part.content)
+          .join("\n");
+        const attachedImages = last.ir.content
+          .filter(part => part.type === "image")
+          .map(part => part.image);
+        deleteHistoryNodes(session, [last.nodeId]);
+        set({
+          history: history.slice(0, -1),
+          query,
+          attachedImages,
+          lastUserPromptIndex: null,
+        });
+      }
+    }
+
     if (modeData.mode !== "tool-call") return;
 
     /*
@@ -766,6 +811,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   runAgent: async ({ config, transport, session }) => {
     get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
+    /*
+     * The tip of this arc's history chain. Emissions are chained under it (see onMessage)
+     * rather than the live history tip, so that if the arc's context is deleted mid-flight
+     * (a prompt rewind), SQLite rejects the arc's appends.
+     */
+    let arcHistoryTip = historyCopy.at(-1)?.nodeId ?? null;
     const abortController = new AbortController();
     let compactionByteCount = 0;
     let responseByteCount = 0;
@@ -895,14 +946,23 @@ export const useAppStore = create<UiState>((set, get) => ({
 
           onMessage: ir => {
             throttle.flush();
-            set({
-              history: appendAndPersistHistory(
+            /*
+             * Emissions chain under the arc's own history tip (not the live tip): if the
+             * user rewound the prompt that kicked off this arc, the arc's tip is deleted and
+             * SQLite rejects the append — drop the emission.
+             */
+            try {
+              const nodes = insertHistoryItems(
                 session,
-                get().history,
+                arcHistoryTip,
                 [{ type: "llm-ir", ir }],
-                model,
-              ),
-            });
+                serializeModelJson(model),
+              );
+              arcHistoryTip = nodes.at(-1)!.nodeId;
+              set({ history: [...get().history, ...nodes] });
+            } catch (e) {
+              if (!isForeignKeyViolation(e)) throw e;
+            }
           },
         },
       });
