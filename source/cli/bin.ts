@@ -13,12 +13,6 @@ if (isStandaloneExecutable()) {
     process.env["NAPI_RS_NATIVE_LIBRARY_PATH"] = binding.default;
   }
 
-  // Similarly, build.ts bakes the drizzle migrations into
-  // migrations.generated.ts so the migrator can run without the drizzle/ dir.
-  const { EMBEDDED_MIGRATIONS } = await import("../db/migrations.generated.js");
-  const { setEmbeddedMigrations } = await import("../db/migrate.js");
-  setEmbeddedMigrations(EMBEDDED_MIGRATIONS);
-
   // paintcannon-react locates its own package.json at startup (for the React
   // renderer version); embedding it puts it at /$bunfs/root/package.json,
   // where its walk from the bundle's dir finds it immediately.

@@ -31,6 +31,9 @@ export function setOctoTitles() {
   process.once("exit", restoreTitles);
 
   return () => {
+    // @ts-expect-error @types/node declares `on`/`once` overloads for process
+    // events but omits the `off` overload, despite Process being an
+    // EventEmitter.
     process.off("exit", restoreTitles);
     restoreTitles();
   };

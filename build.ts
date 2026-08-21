@@ -3,14 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
 import { reactCompiler } from "bun-plugin-react-compiler";
-import { writeMigrationsModule } from "./source/db/migrations.codegen.ts";
 
 // Cross-compile standalone binaries with `bun build --compile`.
 //
-// Everything the binary needs travels inside the bundle so this works on
-// stable bun (no 1.4-only `--asset`):
-// - drizzle migrations are baked into source/db/migrations.generated.ts
-//   (regenerated here on every compile; migrate.test.ts keeps it fresh).
+// Everything the binary needs travels inside the bundle:
+// - the drizzle migrations directory is embedded via bun 1.4's
+//   `compile.assets`, so the migrator reads it from the in-bundle filesystem
+//   at its original relative path.
 // - the paintcannon native binding is copied to dist/build-assets/
 //   paintcannon.node and embedded by bin.ts via a `with { type: "file" }`
 //   import, as is paintcannon-react's package.json (its reconciler locates
@@ -186,10 +185,6 @@ new Command()
       selected = [hostTarget()];
     }
 
-    if (writeMigrationsModule()) {
-      console.log("Regenerated source/db/migrations.generated.ts");
-    }
-
     // Start from a clean slate so stale targets never linger in dist/.
     fs.rmSync(path.join(root, "dist"), { recursive: true, force: true });
 
@@ -218,6 +213,10 @@ new Command()
           compile: {
             target: t.bunTarget as Bun.Build.CompileTarget,
             outfile,
+            // Embed the drizzle migrations at their original relative path;
+            // migrate.ts reads them via node:fs, which hits the in-bundle
+            // filesystem first.
+            assets: ["./drizzle"],
           },
           minify: true,
           sourcemap: "linked",

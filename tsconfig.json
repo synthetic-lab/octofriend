@@ -2,7 +2,7 @@
   "include": ["source", "training", "*.ts"],
   "exclude": ["training/repos", "node_modules"],
   "compilerOptions": {
-    "types": ["bun"],
+    "types": ["bun-types"],
     "skipLibCheck": true,
     "outDir": "dist",
     "module": "nodenext",
