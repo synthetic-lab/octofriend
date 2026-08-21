@@ -1,20 +1,21 @@
-import { spawn } from "child_process";
+import { processes } from "./octo-process.ts";
 
 export function spawnBrowser(url: string): Promise<boolean> {
   const command = browserOpenCommand(url);
   if (!command) return Promise.resolve(false);
 
   return new Promise(resolve => {
-    const child = spawn(command.command, command.args, {
+    const octoProcess = processes.manager().spawn(command.command, command.args, {
       detached: true,
       stdio: "ignore",
+      surviveAfterOctoExit: true, // browser shouldn't be tied to Octo's state
     });
 
-    child.once("spawn", () => {
-      child.unref();
+    octoProcess.once("spawn", () => {
+      octoProcess.unref();
       resolve(true);
     });
-    child.once("error", () => {
+    octoProcess.once("error", () => {
       resolve(false);
     });
   });

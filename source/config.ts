@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import json5 from "json5";
-import { execFile, spawn } from "child_process";
+import { processes } from "./octo-process.ts";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
@@ -214,13 +214,13 @@ export async function runNotifyCommand(config: Config): Promise<void> {
   const shell = process.env["SHELL"] || "/bin/sh";
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(shell, ["-c", cmd], {
+    const octoProcess = processes.manager().spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
     });
 
-    child.on("close", (code: number | null) => {
+    octoProcess.on("close", (code: number | null) => {
       if (code !== 0) {
         reject(new Error(`notifyFinishCommand exited with code ${code}`));
         return;
@@ -228,7 +228,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
       resolve();
     });
 
-    child.on("error", reject);
+    octoProcess.on("error", reject);
   });
 }
 
@@ -301,7 +301,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     let stderr = "";
     let resolved = false;
 
-    const child = execFile(
+    const octoProcess = processes.manager().execFile(
       cmd,
       args,
       {
@@ -348,7 +348,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        child.kill("SIGKILL");
+        octoProcess.kill("SIGKILL");
         resolve({
           ok: false,
           error: {
