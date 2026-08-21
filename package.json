@@ -18,8 +18,8 @@
     "compile": "bun build.ts",
     "compile:production": "NODE_ENV=production bun run compile",
     "prepublishOnly": "bun x tsc --noEmit && bun run test:run && bun run compile:production -- --all",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "lint": "eslint . && prettier --check .",
+    "format": "eslint . --fix && prettier --write .",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -73,6 +73,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "bun-types": "^1.4.0",
     "@types/html-to-text": "^9.0.4",
     "@types/json-schema": "^7.0.15",
@@ -82,12 +83,14 @@
     "@types/which": "^3.0.4",
     "bun-plugin-react-compiler": "^0.3.9",
     "drizzle-kit": "^0.31.4",
+    "eslint": "^10.8.1",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "parse-git-diff": "^0.0.19",
     "prettier": "3.7.4",
     "react-test-renderer": "^19.2.6",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.67.0"
   },
   "overrides": {
     "@hono/node-server": "^2.0.12",

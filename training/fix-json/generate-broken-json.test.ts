@@ -172,7 +172,7 @@ describe('JSON fuzzing functions', () => {
       const testValues = [0]; // First index
       
       await withMock(deps, 'random', mockRandom(testValues), () => {
-        const result = strEscapeQuote(mockStringNode('"Hello \"World""'));
+        const result = strEscapeQuote(mockStringNode('"Hello "World""'));
         expect(result).toBeDefined();
       });
     });

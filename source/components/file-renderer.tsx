@@ -13,7 +13,7 @@ export function FileRenderer({
   filePath: string;
   startLineNr?: number;
 }) {
-  let start = startLineNr || 1;
+  const start = startLineNr || 1;
   const lines = countLines(contents) + start;
   const maxWidth = numWidth(lines);
   const gutterWidth = maxWidth + 1;

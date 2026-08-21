@@ -5,7 +5,6 @@ setupDb();
 import React from "react";
 import path from "path";
 import os from "os";
-import fs from "fs/promises";
 import chalk from "chalk";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "../fs-utils.ts";
@@ -248,7 +247,7 @@ async function runMain(opts: {
   const unregisterCleanup = processes.manager().registerCleanup(cleanup);
 
   try {
-    let { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
+    const { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {

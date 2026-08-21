@@ -87,7 +87,7 @@ export async function getCommitDiff(commitSha: string, gitDir?: string): Promise
     .filter(line => line.startsWith('parent'))
     .map(line => line.split(' ')[1]);
 
-  let args = gitDir ? ['--git-dir', gitDir] : [];
+  const args = gitDir ? ['--git-dir', gitDir] : [];
 
   if (parents.length === 0) {
     // First commit - diff against empty tree
@@ -162,7 +162,7 @@ export async function getFileContentsBeforeAfter(filePath: string, commitSha: st
     });
 
     // Get file contents before the commit
-    const before = await new Promise<string>((resolve, reject) => {
+    const before = await new Promise<string>((resolve, _reject) => {
       const commit = spawn('git', [...args, 'cat-file', '-p', commitSha]);
       let commitData = '';
 
