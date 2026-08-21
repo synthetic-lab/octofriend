@@ -403,12 +403,16 @@ describe("OctoProcessManager.installGlobalProcessSignalHandlers", () => {
       for (const signal of signals) {
         for (const listener of process.listeners(signal)) {
           if (!listenersBefore.get(signal)!.includes(listener)) {
+            // @ts-expect-error @types/node's process.removeListener overloads
+            // omit the signal events, despite Process being an EventEmitter.
             process.removeListener(signal, listener);
           }
         }
       }
       for (const listener of process.listeners("exit")) {
         if (!exitListenersBefore.includes(listener)) {
+          // @ts-expect-error @types/node's process.removeListener overloads
+          // omit the "exit" event, despite Process being an EventEmitter.
           process.removeListener("exit", listener);
         }
       }
@@ -457,6 +461,9 @@ describe("OctoProcessManager.installGlobalProcessSignalHandlers", () => {
       for (const [signal, before] of listenersBefore) {
         for (const listener of listeners(signal)) {
           if (!before.includes(listener)) {
+            // @ts-expect-error @types/node's process.removeListener overloads
+            // omit the signal and "exit" events, despite Process being an
+            // EventEmitter.
             process.removeListener(signal, listener);
           }
         }
