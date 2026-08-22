@@ -24,6 +24,19 @@ import { reactCompiler } from "bun-plugin-react-compiler";
 
 const root = import.meta.dir;
 
+const enginesBun: unknown = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
+  .engines?.bun;
+if (typeof enginesBun !== "string") {
+  console.error("package.json is missing engines.bun");
+  process.exit(1);
+}
+if (!Bun.semver.satisfies(Bun.version, enginesBun)) {
+  console.error(
+    `octofriend requires Bun ${enginesBun} (found ${Bun.version}); run \`bun upgrade\``,
+  );
+  process.exit(1);
+}
+
 type Target = {
   /** Output directory: `dist/<name>/` */
   name: string;
