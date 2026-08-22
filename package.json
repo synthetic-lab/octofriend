@@ -9,6 +9,9 @@
   },
   "type": "module",
   "preferGlobal": true,
+  "engines": {
+    "bun": ">=1.4.0"
+  },
   "scripts": {
     "dev": "bun --watch source/cli/cli.tsx",
     "exec": "bun source/cli/cli.tsx",
