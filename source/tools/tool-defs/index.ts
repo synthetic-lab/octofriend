@@ -9,6 +9,8 @@ import fetch from "./fetch.ts";
 import rewrite from "./rewrite.ts";
 import skill from "./skill.ts";
 import webSearch from "./web-search.ts";
+import backgroundProcess from "./background-process.ts";
+import manageBackgroundProcess from "./manage-background-process.ts";
 import glob from "./glob.ts";
 import grep from "./grep.ts";
 import lspDefinition from "./lsp-definition.ts";
@@ -32,6 +34,8 @@ export default {
   rewrite,
   skill,
   "web-search": webSearch,
+  "background-process": backgroundProcess,
+  "manage-background-process": manageBackgroundProcess,
   glob,
   grep,
   "lsp-definition": lspDefinition,
