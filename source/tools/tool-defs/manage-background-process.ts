@@ -27,7 +27,8 @@ output, kill them, or list the ones still running.
 "poll" returns the process's current status (running, or exited with its exit code/signal) plus
 any stdout/stderr appended since the last poll: output is drained each poll, so poll repeatedly to
 follow along. "kill" sends SIGTERM to the whole process group, escalating to SIGKILL after a grace
-period, and returns the same status/output snapshot. "list" shows all currently-running background processes,
+period, waits for the process to die, and returns its final status plus any remaining output.
+"list" shows all currently-running background processes,
 with its id and command. "poll" and "kill" require id; "list" ignores it.
 `),
   }),
@@ -54,7 +55,7 @@ with its id and command. "poll" and "kill" require id; "list" ignores it.
       }
       case "kill": {
         if (id == null) return err(`The id argument is required to kill a background process`);
-        const backgroundProcess = manager.kill(id);
+        const backgroundProcess = await manager.kill(id);
         if (backgroundProcess == null) return err(`No background process with id ${id}`);
         return ok({
           type: "output",

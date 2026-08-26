@@ -23,6 +23,7 @@ export class BackgroundProcess {
   private _outputExceeded = false;
   private _status: BackgroundProcessStatus = { state: "running" };
   private readonly activityListeners = new Set<() => void>();
+  private readonly processClosedPromise: Promise<void>;
 
   constructor(id: string, octoProcess: OctoProcess, command: string) {
     if (octoProcess.stdout == null || octoProcess.stderr == null) {
@@ -31,6 +32,7 @@ export class BackgroundProcess {
     this.id = id;
     this.octoProcess = octoProcess;
     this.command = command;
+    this.processClosedPromise = new Promise(resolve => octoProcess.once("close", () => resolve()));
 
     octoProcess.stdout.on("data", data => this.appendOutput(data));
     octoProcess.stderr.on("data", data => this.appendOutput(data));
@@ -54,8 +56,9 @@ export class BackgroundProcess {
     return this._outputExceeded;
   }
 
-  kill(): void {
+  async kill(): Promise<void> {
     this.octoProcess.terminate({ graceMs: KILL_GRACE_MS });
+    await this.processClosedPromise;
   }
 
   get hasUnreadOutput(): boolean {
@@ -91,7 +94,7 @@ export class BackgroundProcess {
     }
     this._outputExceeded = true;
     this.emitActivityNotification();
-    this.kill();
+    void this.kill();
   }
 
   private emitActivityNotification(): void {
@@ -125,10 +128,10 @@ export class BackgroundProcessManager {
     return this.backgroundProcesses.get(id) ?? null;
   }
 
-  kill(id: string): BackgroundProcess | null {
+  async kill(id: string): Promise<BackgroundProcess | null> {
     const backgroundProcess = this.backgroundProcesses.get(id);
     if (backgroundProcess == null) return null;
-    backgroundProcess.kill();
+    await backgroundProcess.kill();
     return backgroundProcess;
   }
 

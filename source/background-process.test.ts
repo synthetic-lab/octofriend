@@ -48,9 +48,8 @@ describe("BackgroundProcessManager.kill", () => {
     const backgroundProcess = manager.start("sleep 30");
     expect(manager.poll(backgroundProcess.id)!.status).toEqual({ state: "running" });
 
-    expect(manager.kill(backgroundProcess.id)).toBe(backgroundProcess);
-
-    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+    expect(await manager.kill(backgroundProcess.id)).toBe(backgroundProcess);
+    expect(backgroundProcess.status.state).toBe("exited");
   });
 });
 
@@ -66,8 +65,7 @@ describe("BackgroundProcess.awaitChange", () => {
     expect(elapsed).toBeGreaterThanOrEqual(200);
     expect(backgroundProcess.drainUnreadOutput()).toBe("");
 
-    manager.kill(backgroundProcess.id);
-    await waitFor(() => backgroundProcess.status.state === "exited");
+    await manager.kill(backgroundProcess.id);
   });
 
   it("unblocks when output arrives", async () => {
@@ -108,8 +106,7 @@ describe("BackgroundProcess.awaitChange", () => {
 
     expect(elapsed).toBeLessThan(5_000);
 
-    manager.kill(backgroundProcess.id);
-    await waitFor(() => backgroundProcess.status.state === "exited");
+    await manager.kill(backgroundProcess.id);
   });
 });
 
@@ -126,8 +123,7 @@ describe("BackgroundProcessManager.list", () => {
       { id: second.id, command: "sleep 30", status: { state: "running" } },
     ]);
 
-    manager.kill(second.id);
-    await waitFor(() => manager.poll(second.id)?.status.state === "exited");
+    await manager.kill(second.id);
   });
 
   it("is empty before any process is started", () => {
@@ -138,11 +134,11 @@ describe("BackgroundProcessManager.list", () => {
 });
 
 describe("BackgroundProcessManager unknown ids", () => {
-  it("returns null from poll and kill", () => {
+  it("returns null from poll and kill", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
 
     expect(manager.poll("bg-1")).toBeNull();
-    expect(manager.kill("bg-1")).toBeNull();
+    expect(await manager.kill("bg-1")).toBeNull();
   });
 });
 

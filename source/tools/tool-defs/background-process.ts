@@ -7,8 +7,8 @@ export default TOOL.declare({
   name: "background-process",
   description: `
 Runs a shell command in the background and returns immediately with a process id. The command is
-run by bash in the cwd, not connected to a PTY, and can't read stdin: only run commands that work
-headless.
+run by bash in the cwd, not connected to a PTY, and can't read stdin. You should only run commands in
+this tool that work headless.
 
 Use this for long-running commands you don't want to block on, like dev servers or file watchers.
 For commands that finish quickly, use the shell tool instead.
