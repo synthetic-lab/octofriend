@@ -18,6 +18,11 @@ output, kill them, or list the ones still running.
     id: t.optional(
       t.str.comment("The background process id returned by the background-process tool"),
     ),
+    label: t.optional(
+      t.str.comment(
+        "The background process label. Include it with poll and kill actions so it can be shown in the UI.",
+      ),
+    ),
     timeout: t.optional(
       t.num.comment(
         'Optional, and only used by "poll": wait up to this many milliseconds for new output or exit before returning. If unset, poll returns immediately.',
@@ -28,8 +33,8 @@ output, kill them, or list the ones still running.
 any stdout/stderr appended since the last poll: output is drained each poll, so poll repeatedly to
 follow along. "kill" sends SIGTERM to the whole process group, escalating to SIGKILL after a grace
 period, waits for the process to die, and returns its final status plus any remaining output.
-"list" shows all currently-running background processes,
-with its id and command. "poll" and "kill" require id; "list" ignores it.
+"list" shows all currently-running background processes with their ids, labels, and commands.
+"poll" and "kill" require id and should repeat the process label; "list" ignores both.
 `),
   }),
 }).define(async () => ({
@@ -71,13 +76,13 @@ function formatList(entries: BackgroundProcess[]): string {
   if (running.length === 0) return "No background processes currently running.";
   return [
     "Running background processes:",
-    ...running.map(entry => `${entry.id}: ${entry.command}`),
+    ...running.map(entry => `${entry.label} (${entry.id}): ${entry.command}`),
   ].join("\n");
 }
 
 function formatProcess(backgroundProcess: BackgroundProcess): string {
   const latestOutput = backgroundProcess.drainUnreadOutput();
-  let content = `Background process ${backgroundProcess.id}: ${formatStatus(backgroundProcess.status)}
+  let content = `Background process ${backgroundProcess.label} (${backgroundProcess.id}): ${formatStatus(backgroundProcess.status)}
 Command: ${backgroundProcess.command}`;
   if (backgroundProcess.outputExceeded) {
     content += `\nOutput exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was discarded; the process was terminated.`;
@@ -91,6 +96,7 @@ Command: ${backgroundProcess.command}`;
 
 function formatStatus(status: BackgroundProcessStatus): string {
   if (status.state === "running") return "running";
+  if (status.error != null) return `failed: ${status.error}`;
   if (status.code != null) return `exited with code ${status.code}`;
   if (status.signal != null) return `killed by signal ${status.signal}`;
   return "exited";

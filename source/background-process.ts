@@ -11,10 +11,12 @@ export type BackgroundProcessStatus =
       readonly state: "exited";
       readonly code: number | null;
       readonly signal: NodeJS.Signals | null;
+      readonly error?: string;
     };
 
 export class BackgroundProcess {
   readonly id: string;
+  readonly label: string;
   readonly command: string;
 
   private readonly octoProcess: OctoProcess;
@@ -25,11 +27,12 @@ export class BackgroundProcess {
   private readonly activityListeners = new Set<() => void>();
   private readonly processClosedPromise: Promise<void>;
 
-  constructor(id: string, octoProcess: OctoProcess, command: string) {
+  constructor(id: string, label: string, octoProcess: OctoProcess, command: string) {
     if (octoProcess.stdout == null || octoProcess.stderr == null) {
       throw new Error("Background processes must be spawned with piped stdio");
     }
     this.id = id;
+    this.label = label;
     this.octoProcess = octoProcess;
     this.command = command;
     this.processClosedPromise = new Promise(resolve => octoProcess.once("close", () => resolve()));
@@ -43,7 +46,7 @@ export class BackgroundProcess {
     octoProcess.on("error", error => {
       this.appendOutput(`Spawn error: ${error.message}\n`);
       if (this._status.state === "running") {
-        this._status = { state: "exited", code: null, signal: null };
+        this._status = { state: "exited", code: null, signal: null, error: error.message };
       }
     });
   }
@@ -81,7 +84,7 @@ export class BackgroundProcess {
       onActivity = resolve;
     });
     this.activityListeners.add(onActivity);
-    userAbortSignal.addEventListener("abort", onActivity, { once: true });
+    userAbortSignal.addEventListener("abort", onActivity);
     await Promise.race([activityOccurred, sleep(timeoutMs)]);
     userAbortSignal.removeEventListener("abort", onActivity);
     this.activityListeners.delete(onActivity);
@@ -111,15 +114,15 @@ export class BackgroundProcessManager {
 
   constructor(private readonly octoProcessManager: OctoProcessManager) {}
 
-  start(command: string): BackgroundProcess {
-    const id = `bg-${++this.nextId}`;
+  start(command: string, label: string): BackgroundProcess {
+    const id = `bg-process-${++this.nextId}`;
     const octoProcess = this.octoProcessManager.spawn(command, {
       cwd: process.cwd(),
       shell: "bash",
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
-    const backgroundProcess = new BackgroundProcess(id, octoProcess, command);
+    const backgroundProcess = new BackgroundProcess(id, label, octoProcess, command);
     this.backgroundProcesses.set(id, backgroundProcess);
     return backgroundProcess;
   }

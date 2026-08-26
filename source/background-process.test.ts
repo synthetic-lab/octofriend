@@ -5,7 +5,7 @@ import { BackgroundProcessManager } from "./background-process.ts";
 describe("BackgroundProcessManager.start", () => {
   it("runs the command and polls report the exit", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("echo hello");
+    const backgroundProcess = manager.start("echo hello", "hello");
 
     await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
 
@@ -18,7 +18,7 @@ describe("BackgroundProcessManager.start", () => {
 
   it("polls drain output incrementally", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("echo hello");
+    const backgroundProcess = manager.start("echo hello", "hello");
 
     let drained = "";
     await waitFor(() => {
@@ -32,11 +32,12 @@ describe("BackgroundProcessManager.start", () => {
     expect(backgroundProcess.outputExceeded).toBe(false);
   });
 
-  it("reports the command the process was started with", async () => {
+  it("reports the command and label the process was started with", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("echo hello");
+    const backgroundProcess = manager.start("echo hello", "hello");
 
     expect(manager.poll(backgroundProcess.id)!.command).toBe("echo hello");
+    expect(manager.poll(backgroundProcess.id)!.label).toBe("hello");
 
     await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
   });
@@ -45,7 +46,7 @@ describe("BackgroundProcessManager.start", () => {
 describe("BackgroundProcessManager.kill", () => {
   it("terminates a long-running process", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("sleep 30");
+    const backgroundProcess = manager.start("sleep 30", "sleeper");
     expect(manager.poll(backgroundProcess.id)!.status).toEqual({ state: "running" });
 
     expect(await manager.kill(backgroundProcess.id)).toBe(backgroundProcess);
@@ -56,7 +57,7 @@ describe("BackgroundProcessManager.kill", () => {
 describe("BackgroundProcess.awaitChange", () => {
   it("waits up to the timeout when nothing changes", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("sleep 30");
+    const backgroundProcess = manager.start("sleep 30", "sleeper");
 
     const start = Date.now();
     await backgroundProcess.awaitActivity(250, new AbortController().signal);
@@ -70,7 +71,7 @@ describe("BackgroundProcess.awaitChange", () => {
 
   it("unblocks when output arrives", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("sleep 0.3 && echo late");
+    const backgroundProcess = manager.start("sleep 0.3 && echo late", "late-output");
 
     const start = Date.now();
     await backgroundProcess.awaitActivity(10_000, new AbortController().signal);
@@ -84,7 +85,7 @@ describe("BackgroundProcess.awaitChange", () => {
 
   it("unblocks when the process exits", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("sleep 0.3");
+    const backgroundProcess = manager.start("sleep 0.3", "short-sleep");
 
     const start = Date.now();
     await backgroundProcess.awaitActivity(10_000, new AbortController().signal);
@@ -96,7 +97,7 @@ describe("BackgroundProcess.awaitChange", () => {
 
   it("unblocks on abort", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const backgroundProcess = manager.start("sleep 30");
+    const backgroundProcess = manager.start("sleep 30", "sleeper");
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 50);
 
@@ -111,16 +112,23 @@ describe("BackgroundProcess.awaitChange", () => {
 });
 
 describe("BackgroundProcessManager.list", () => {
-  it("lists started processes with their ids, commands, and statuses", async () => {
+  it("lists started processes with their ids, labels, commands, and statuses", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
-    const first = manager.start("echo hello");
-    const second = manager.start("sleep 30");
+    const first = manager.start("echo hello", "hello");
+    const second = manager.start("sleep 30", "sleeper");
 
     await waitFor(() => manager.poll(first.id)?.status.state === "exited");
 
-    expect(manager.list().map(p => ({ id: p.id, command: p.command, status: p.status }))).toEqual([
-      { id: first.id, command: "echo hello", status: { state: "exited", code: 0, signal: null } },
-      { id: second.id, command: "sleep 30", status: { state: "running" } },
+    expect(
+      manager.list().map(p => ({ id: p.id, label: p.label, command: p.command, status: p.status })),
+    ).toEqual([
+      {
+        id: first.id,
+        label: "hello",
+        command: "echo hello",
+        status: { state: "exited", code: 0, signal: null },
+      },
+      { id: second.id, label: "sleeper", command: "sleep 30", status: { state: "running" } },
     ]);
 
     await manager.kill(second.id);
@@ -137,8 +145,8 @@ describe("BackgroundProcessManager unknown ids", () => {
   it("returns null from poll and kill", async () => {
     const manager = new BackgroundProcessManager(new OctoProcessManager());
 
-    expect(manager.poll("bg-1")).toBeNull();
-    expect(await manager.kill("bg-1")).toBeNull();
+    expect(manager.poll("bg-process-1")).toBeNull();
+    expect(await manager.kill("bg-process-1")).toBeNull();
   });
 });
 

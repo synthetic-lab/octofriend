@@ -2244,7 +2244,7 @@ function BackgroundProcessToolRenderer({
 }: {
   item: ParsedToolSchemaFrom<typeof backgroundProcess>;
 }) {
-  return <ToolCallRow name={item.name}>{item.arguments.cmd}</ToolCallRow>;
+  return <ToolCallRow name={item.name}>{item.arguments.label ?? item.arguments.cmd}</ToolCallRow>;
 }
 
 function ManageBackgroundProcessToolRenderer({
@@ -2254,9 +2254,9 @@ function ManageBackgroundProcessToolRenderer({
 }) {
   return (
     <ToolCallRow name={item.name}>
-      {item.arguments.id == null
+      {item.arguments.label == null
         ? item.arguments.action
-        : `${item.arguments.action} ${item.arguments.id}`}
+        : `${item.arguments.action} ${item.arguments.label}`}
     </ToolCallRow>
   );
 }
