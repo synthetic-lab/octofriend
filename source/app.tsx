@@ -472,7 +472,8 @@ export default function App({
                                     modeData.inflightResponse.content) && (
                                     <MessageDisplay item={modeData.inflightResponse} />
                                   )}
-                                {modeData.mode === "tool-call" && (
+                                {(modeData.mode === "tool-call" ||
+                                  modeData.mode === "tool-call-request") && (
                                   <ToolRequestsRenderer
                                     toolReqs={modeData.toolReqs}
                                     config={currConfig}
@@ -716,6 +717,45 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     },
     [query, modeData.mode, config, transport, session, setQuery, showToast],
   );
+  if (modeData.mode === "error-recovery") return <Loading />;
+  if (modeData.mode === "payment-error") {
+    return <PaymentErrorScreen error={modeData.error} />;
+  }
+  if (modeData.mode === "rate-limit-error") {
+    return <RateLimitErrorScreen error={modeData.error} />;
+  }
+  if (modeData.mode === "auth-error") {
+    return (
+      <AuthErrorScreen
+        model={modeData.model}
+        error={modeData.error}
+        config={config}
+        transport={transport}
+        session={session}
+      />
+    );
+  }
+  if (modeData.mode === "request-error") {
+    return (
+      <RequestErrorScreen
+        mode="request-error"
+        contextualMessage="It looks like you've hit a request error!"
+        error={modeData.error}
+        curlCommand={modeData.curlCommand}
+      />
+    );
+  }
+  if (modeData.mode === "compaction-error") {
+    return (
+      <RequestErrorScreen
+        mode="compaction-error"
+        contextualMessage="History compaction failed due to a request error!"
+        error={modeData.error}
+        curlCommand={modeData.curlCommand}
+      />
+    );
+  }
+  if (!inputFieldAvailable(modeData)) return null;
   if (
     modeData.mode === "responding" ||
     modeData.mode === "compacting" ||
@@ -779,48 +819,32 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
     );
   }
-  if (modeData.mode === "error-recovery") return <Loading />;
-  if (modeData.mode === "payment-error") {
-    return <PaymentErrorScreen error={modeData.error} />;
-  }
-  if (modeData.mode === "rate-limit-error") {
-    return <RateLimitErrorScreen error={modeData.error} />;
-  }
-  if (modeData.mode === "auth-error") {
-    return (
-      <AuthErrorScreen
-        model={modeData.model}
-        error={modeData.error}
-        config={config}
-        transport={transport}
-        session={session}
-      />
-    );
-  }
-  if (modeData.mode === "request-error") {
-    return (
-      <RequestErrorScreen
-        mode="request-error"
-        contextualMessage="It looks like you've hit a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
-      />
-    );
-  }
-  if (modeData.mode === "compaction-error") {
-    return (
-      <RequestErrorScreen
-        mode="compaction-error"
-        contextualMessage="History compaction failed due to a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
-      />
-    );
-  }
   if (modeData.mode === "tool-call") {
-    return null;
+    return (
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+        }}
+      >
+        <QueuedUserMessages messages={queuedMessages} />
+        <MultimediaInput
+          inputHistory={inputHistory}
+          value={query}
+          onChange={setQuery}
+          attachedImages={attachedImages}
+          addAttachedImage={addAttachedImage}
+          removeLastAttachedImage={removeLastAttachedImage}
+          clearAttachedImages={clearAttachedImages}
+          onSubmit={onSubmit}
+          vimEnabled={vimEnabled}
+          vimMode={vimMode}
+          setVimMode={setVimMode}
+          modalities={model.modalities}
+        />
+        <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+      </TerminalFlex>
+    );
   }
-  const _: "menu" | "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex
       style={{
@@ -1406,13 +1430,21 @@ function ToolRequestRenderer({
 } & RunArgs) {
   const themeColor = useColor();
   const scrollTranscriptToBottomIfNeeded = useScrollTranscriptToBottom();
-  const { runTool, rejectTool, isWhitelisted, addToWhitelist, notifyReadyForInput } = useAppStore(
+  const {
+    runTool,
+    rejectTool,
+    isWhitelisted,
+    addToWhitelist,
+    notifyReadyForInput,
+    requestToolPermission,
+  } = useAppStore(
     useShallow(state => ({
       runTool: state.runTool,
       rejectTool: state.rejectTool,
       isWhitelisted: state.isWhitelisted,
       addToWhitelist: state.addToWhitelist,
       notifyReadyForInput: state.notifyReadyForInput,
+      requestToolPermission: state.requestToolPermission,
     })),
   );
   const unchained = useUnchained();
@@ -1577,6 +1609,7 @@ function ToolRequestRenderer({
         session,
       });
     } else {
+      requestToolPermission();
       notifyReadyForInput(config);
     }
   }, [toolReq, isRunning, noConfirmationNeeded, config, transport, session]);

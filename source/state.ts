@@ -103,6 +103,11 @@ export type UiState = {
         abortController: AbortController;
       }
     | {
+        mode: "tool-call-request";
+        toolReqs: ToolCallRequest[];
+        abortController: AbortController;
+      }
+    | {
         mode: "error-recovery";
       }
     | {
@@ -172,6 +177,7 @@ export type UiState = {
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   rejectTool: (toolCall: ToolCallRequest, args: RunArgs) => void;
+  requestToolPermission: () => void;
   abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
@@ -206,8 +212,16 @@ export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
     case "compacting":
     case "diff-apply":
     case "fix-json":
+    case "tool-call":
       return true;
-    default:
+    case "tool-call-request":
+    case "menu":
+    case "error-recovery":
+    case "payment-error":
+    case "rate-limit-error":
+    case "auth-error":
+    case "request-error":
+    case "compaction-error":
       return false;
   }
 }
@@ -485,11 +499,17 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
+  requestToolPermission: () => {
+    const { modeData } = get();
+    if (modeData.mode !== "tool-call") return;
+    set({ modeData: { ...modeData, mode: "tool-call-request" } });
+  },
+
   abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     set({ queuedUserMessages: [] });
-    if (modeData.mode !== "tool-call") return;
+    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-request") return;
 
     /*
      * Aborting a tool batch mid-flight leaves every request that never ran unanswered in
@@ -704,7 +724,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ config, toolReq, transport, session }) => {
     const { modeData } = get();
-    if (modeData.mode !== "tool-call") {
+    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-request") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
     if (get().runningToolCallId != null) {
@@ -716,7 +736,10 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
 
     const abortController = modeData.abortController;
-    set({ runningToolCallId: toolReq.toolCallId });
+    set({
+      modeData: { ...modeData, mode: "tool-call" },
+      runningToolCallId: toolReq.toolCallId,
+    });
 
     const tools = await loadTools(transport, abortController.signal, config);
 
