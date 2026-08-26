@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Config, readAuthForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
-import { CenteredBox } from "./centered-box.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";

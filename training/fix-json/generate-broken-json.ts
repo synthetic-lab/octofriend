@@ -260,7 +260,7 @@ function breakStr(str: string) {
   const ast = parseJson(str);
 
   function isBroken() {
-    let [ err ] = tryexpr(() => JSON.parse(broken));
+    const [ err ] = tryexpr(() => JSON.parse(broken));
     return err != null;
   }
 

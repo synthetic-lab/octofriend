@@ -1169,7 +1169,7 @@ function Step<T>(props: AddModelStep<T>) {
       setErrorMessage(validationResult.error);
       return;
     }
-    let parsed = props.parse(trimmed);
+    const parsed = props.parse(trimmed);
     props.onSubmit(parsed);
   }, [props, varValue]);
   return (

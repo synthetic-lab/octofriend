@@ -87,7 +87,7 @@ function modelMessageFromIr<A extends Agent<any, any, any>>(
   modalities?: CompilerModalities,
 ): Anthropic.MessageParam {
   if (ir.role === "assistant") {
-    let thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
+    const thinkingBlocks = ir.anthropic?.thinkingBlocks || [];
     const toolCalls = ir.toolCalls || [];
     return {
       role: "assistant",
@@ -303,7 +303,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
 
       let content = "";
       let reasoningContent: string | undefined = undefined;
-      let usage = {
+      const usage = {
         input: 0,
         cachedInput: 0,
         output: 0,
@@ -320,7 +320,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             data: string;
           }
       > = [];
-      let inProgressTools = new Map<
+      const inProgressTools = new Map<
         number,
         {
           id: string;
@@ -441,7 +441,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
 
       const compilerTokens = compilerUsage(usage.input, usage.output, usage.cachedInput);
 
-      let anthropic: { anthropic?: AnthropicAssistantData } = {};
+      const anthropic: { anthropic?: AnthropicAssistantData } = {};
       if (thinkingBlocks.length > 0) {
         anthropic.anthropic = {
           thinkingBlocks: thinkingBlocks.map(b => {
