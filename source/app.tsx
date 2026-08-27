@@ -717,50 +717,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     },
     [query, modeData.mode, config, transport, session, setQuery, showToast],
   );
-  if (modeData.mode === "error-recovery") return <Loading />;
-  if (modeData.mode === "payment-error") {
-    return <PaymentErrorScreen error={modeData.error} />;
-  }
-  if (modeData.mode === "rate-limit-error") {
-    return <RateLimitErrorScreen error={modeData.error} />;
-  }
-  if (modeData.mode === "auth-error") {
-    return (
-      <AuthErrorScreen
-        model={modeData.model}
-        error={modeData.error}
-        config={config}
-        transport={transport}
-        session={session}
-      />
-    );
-  }
-  if (modeData.mode === "request-error") {
-    return (
-      <RequestErrorScreen
-        mode="request-error"
-        contextualMessage="It looks like you've hit a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
-      />
-    );
-  }
-  if (modeData.mode === "compaction-error") {
-    return (
-      <RequestErrorScreen
-        mode="compaction-error"
-        contextualMessage="History compaction failed due to a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
-      />
-    );
-  }
-  if (!inputFieldAvailable(modeData)) return null;
   if (
     modeData.mode === "responding" ||
     modeData.mode === "compacting" ||
     modeData.mode === "diff-apply" ||
-    modeData.mode === "fix-json"
+    modeData.mode === "fix-json" ||
+    modeData.mode === "tool-call"
   ) {
     const overrideStrings = (() => {
       if (modeData.mode === "compacting") return ["Compacting history to save context tokens"];
@@ -819,32 +781,46 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
     );
   }
-  if (modeData.mode === "tool-call") {
+  if (modeData.mode === "error-recovery") return <Loading />;
+  if (modeData.mode === "payment-error") {
+    return <PaymentErrorScreen error={modeData.error} />;
+  }
+  if (modeData.mode === "rate-limit-error") {
+    return <RateLimitErrorScreen error={modeData.error} />;
+  }
+  if (modeData.mode === "auth-error") {
     return (
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-        }}
-      >
-        <QueuedUserMessages messages={queuedMessages} />
-        <MultimediaInput
-          inputHistory={inputHistory}
-          value={query}
-          onChange={setQuery}
-          attachedImages={attachedImages}
-          addAttachedImage={addAttachedImage}
-          removeLastAttachedImage={removeLastAttachedImage}
-          clearAttachedImages={clearAttachedImages}
-          onSubmit={onSubmit}
-          vimEnabled={vimEnabled}
-          vimMode={vimMode}
-          setVimMode={setVimMode}
-          modalities={model.modalities}
-        />
-        <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
-      </TerminalFlex>
+      <AuthErrorScreen
+        model={modeData.model}
+        error={modeData.error}
+        config={config}
+        transport={transport}
+        session={session}
+      />
     );
   }
+  if (modeData.mode === "request-error") {
+    return (
+      <RequestErrorScreen
+        mode="request-error"
+        contextualMessage="It looks like you've hit a request error!"
+        error={modeData.error}
+        curlCommand={modeData.curlCommand}
+      />
+    );
+  }
+  if (modeData.mode === "compaction-error") {
+    return (
+      <RequestErrorScreen
+        mode="compaction-error"
+        contextualMessage="History compaction failed due to a request error!"
+        error={modeData.error}
+        curlCommand={modeData.curlCommand}
+      />
+    );
+  }
+  if (modeData.mode === "tool-call-request") return null;
+  const _: "menu" | "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex
       style={{
@@ -1430,23 +1406,16 @@ function ToolRequestRenderer({
 } & RunArgs) {
   const themeColor = useColor();
   const scrollTranscriptToBottomIfNeeded = useScrollTranscriptToBottom();
-  const {
-    runTool,
-    rejectTool,
-    isWhitelisted,
-    addToWhitelist,
-    notifyReadyForInput,
-    requestToolPermission,
-  } = useAppStore(
-    useShallow(state => ({
-      runTool: state.runTool,
-      rejectTool: state.rejectTool,
-      isWhitelisted: state.isWhitelisted,
-      addToWhitelist: state.addToWhitelist,
-      notifyReadyForInput: state.notifyReadyForInput,
-      requestToolPermission: state.requestToolPermission,
-    })),
-  );
+  const { runTool, rejectTool, addToWhitelist, notifyReadyForInput, requestToolPermission } =
+    useAppStore(
+      useShallow(state => ({
+        runTool: state.runTool,
+        rejectTool: state.rejectTool,
+        addToWhitelist: state.addToWhitelist,
+        notifyReadyForInput: state.notifyReadyForInput,
+        requestToolPermission: state.requestToolPermission,
+      })),
+    );
   const unchained = useUnchained();
   const whitelistKey = (() => {
     const fn = parsedToolSchema(toolReq);
@@ -1479,6 +1448,7 @@ function ToolRequestRenderer({
     }
     return `${fn.name}:*`;
   })();
+  const isToolWhitelisted = useAppStore(state => state.whitelist.has(whitelistKey));
   const prompt = (() => {
     const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
@@ -1534,13 +1504,6 @@ function ToolRequestRenderer({
     return null;
   })();
   const toolName = toolReq.name;
-  const [isToolWhitelisted, setIsToolWhitelisted] = useState<boolean | null>(null);
-  useEffect(() => {
-    (async () => {
-      const whitelisted = await isWhitelisted(whitelistKey);
-      setIsToolWhitelisted(whitelisted);
-    })();
-  }, [whitelistKey, isWhitelisted]);
   type SelectItem = {
     label: string;
     value: string;
@@ -1572,13 +1535,14 @@ function ToolRequestRenderer({
       if (item.value === "no") {
         rejectTool(toolReq, { config, transport, session });
       } else if (item.value === "yes-whitelist") {
-        await addToWhitelist(whitelistKey);
-        await runTool({
+        const pendingToolRun = runTool({
           toolReq,
           config,
           transport,
           session,
         });
+        await addToWhitelist(whitelistKey);
+        await pendingToolRun;
       } else {
         await runTool({
           toolReq,
@@ -1593,10 +1557,11 @@ function ToolRequestRenderer({
   const runningToolCallId = useAppStore(state => state.runningToolCallId);
   const isRunning = runningToolCallId === toolReq.toolCallId;
   const noConfirmationNeeded =
-    unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted === true;
+    unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted;
   useLayoutEffect(() => {
+    if (!isRunning && !noConfirmationNeeded) requestToolPermission();
     onContentLayout();
-  }, [isRunning, noConfirmationNeeded, onContentLayout]);
+  }, [isRunning, noConfirmationNeeded, requestToolPermission, onContentLayout]);
   useEffect(() => {
     // Already in flight (e.g. remounted mid-run after the menu closed): render progress without
     // re-invoking the tool.
@@ -1609,16 +1574,20 @@ function ToolRequestRenderer({
         session,
       });
     } else {
-      requestToolPermission();
       notifyReadyForInput(config);
     }
-  }, [toolReq, isRunning, noConfirmationNeeded, config, transport, session]);
+  }, [
+    toolReq,
+    isRunning,
+    noConfirmationNeeded,
+    config,
+    transport,
+    session,
+    runTool,
+    notifyReadyForInput,
+  ]);
   if (noConfirmationNeeded || isRunning) {
-    return (
-      <Loading
-        overrideStrings={["Waiting", "Watching", "Smiling", "Hungering", "Splashing", "Writhing"]}
-      />
-    );
+    return null;
   }
   return (
     <TerminalFlex

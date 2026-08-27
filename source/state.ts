@@ -207,13 +207,6 @@ export type UiState = {
 
 export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
   switch (modeData.mode) {
-    case "ready-for-request":
-    case "responding":
-    case "compacting":
-    case "diff-apply":
-    case "fix-json":
-    case "tool-call":
-      return true;
     case "tool-call-request":
     case "menu":
     case "error-recovery":
@@ -223,6 +216,15 @@ export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
     case "request-error":
     case "compaction-error":
       return false;
+    // DO NOT turn these cases into "default".
+    // each new mode should consider whether the input field should be available
+    case "ready-for-request":
+    case "responding":
+    case "compacting":
+    case "diff-apply":
+    case "fix-json":
+    case "tool-call":
+      return true;
   }
 }
 

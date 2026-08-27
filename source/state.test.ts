@@ -5,7 +5,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
 import { withMock } from "antipattern";
-import { useAppStore, nextToolAction } from "./state.ts";
+import { inputFieldAvailable, nextToolAction, useAppStore } from "./state.ts";
 import type { Config } from "./config.ts";
 import { db } from "./db/db.ts";
 import type { HistoryNode } from "./session-history/index.ts";
@@ -164,6 +164,35 @@ function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
   });
   return { session, abortController };
 }
+
+describe("tool permission mode", () => {
+  it("only hides the input while a permission request is pending", () => {
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    setupToolBatch(callA, callB);
+
+    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
+
+    useAppStore.getState().requestToolPermission();
+
+    expect(useAppStore.getState().modeData.mode).toBe("tool-call-request");
+    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
+  });
+
+  it("restores the input before an approved tool starts", async () => {
+    const transport = new LocalTransport();
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    const { session } = setupToolBatch(callA, callB);
+    useAppStore.getState().requestToolPermission();
+
+    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
+
+    expect(useAppStore.getState().modeData.mode).toBe("tool-call");
+    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
+    await running;
+  });
+});
 
 describe("aborting a tool batch", () => {
   it("marks pending tool calls as answered when aborting between tool calls", async () => {
