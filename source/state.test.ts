@@ -65,7 +65,6 @@ beforeEach(() => {
     query: "",
     attachedImages: [],
     modeData: { mode: "ready-for-request" },
-    vimMode: "INSERT",
   });
 });
 

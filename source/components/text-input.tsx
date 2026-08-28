@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
-import { useVimKeyHandler } from "./vim-mode.tsx";
+import { useVimKeyHandler, type InputMode } from "./vim-mode.tsx";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
@@ -19,8 +19,7 @@ type Props = {
   readonly onImageFilesAttached?: (files: PaintFile[]) => unknown;
   readonly onSubmit?: (value: string) => void;
   readonly showLoadingImageBadge?: boolean;
-  readonly vimEnabled?: boolean;
-  readonly vimMode?: "NORMAL" | "INSERT";
+  readonly inputMode?: InputMode;
   readonly setVimMode?: (mode: "NORMAL" | "INSERT") => void;
   readonly attachedImages?: ImageInfo[];
   readonly onRemoveLastImage?: () => unknown;
@@ -45,14 +44,13 @@ export default function TextInput({
   onImageFilesAttached,
   onRemoveLastImage,
   onSubmit,
-  vimEnabled = false,
-  vimMode = "NORMAL",
+  inputMode = { kind: "emacs" },
   setVimMode,
   onKeyDown,
 }: Props) {
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
-  const vimHandler = useVimKeyHandler(vimMode, setVimMode ?? (() => {}));
+  const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));
 
   useEffect(() => {
     if (focus) textareaRef.current?.focus();
@@ -130,7 +128,7 @@ export default function TextInput({
           }
 
           const cursorPosition = characterIndexToStringIndex(value, textarea.cursorPosition);
-          if (vimEnabled) {
+          if (inputMode.kind === "vim") {
             const cursorVisualPosition = textarea.getCursorVisualPosition();
             const nativeVisualLineRange =
               cursorVisualPosition === null
@@ -144,7 +142,7 @@ export default function TextInput({
                     end: characterIndexToStringIndex(value, nativeVisualLineRange.end),
                   };
             if (
-              vimMode === "NORMAL" &&
+              inputMode.mode === "NORMAL" &&
               (event.key === "j" ||
                 event.key === "ArrowDown" ||
                 event.key === "k" ||
@@ -186,7 +184,7 @@ export default function TextInput({
           }
 
           if (event.key === "Enter") {
-            if (vimEnabled && vimMode === "INSERT") return;
+            if (inputMode.kind === "vim" && inputMode.mode === "INSERT") return;
             event.preventDefault();
             onSubmit?.(value);
             return;
