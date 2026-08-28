@@ -175,7 +175,7 @@ describe("tool permission mode", () => {
 
     useAppStore.getState().requestToolPermission();
 
-    expect(useAppStore.getState().modeData.mode).toBe("tool-call-request");
+    expect(useAppStore.getState().modeData.mode).toBe("tool-call-permission");
     expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
   });
 

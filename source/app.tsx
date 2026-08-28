@@ -473,7 +473,7 @@ export default function App({
                                     <MessageDisplay item={modeData.inflightResponse} />
                                   )}
                                 {(modeData.mode === "tool-call" ||
-                                  modeData.mode === "tool-call-request") && (
+                                  modeData.mode === "tool-call-permission") && (
                                   <ToolRequestsRenderer
                                     toolReqs={modeData.toolReqs}
                                     config={currConfig}
@@ -819,7 +819,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       />
     );
   }
-  if (modeData.mode === "tool-call-request") return null;
+  if (modeData.mode === "tool-call-permission") return null;
   const _: "menu" | "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex

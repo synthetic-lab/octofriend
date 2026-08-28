@@ -103,7 +103,7 @@ export type UiState = {
         abortController: AbortController;
       }
     | {
-        mode: "tool-call-request";
+        mode: "tool-call-permission";
         toolReqs: ToolCallRequest[];
         abortController: AbortController;
       }
@@ -207,7 +207,7 @@ export type UiState = {
 
 export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
   switch (modeData.mode) {
-    case "tool-call-request":
+    case "tool-call-permission":
     case "menu":
     case "error-recovery":
     case "payment-error":
@@ -504,14 +504,14 @@ export const useAppStore = create<UiState>((set, get) => ({
   requestToolPermission: () => {
     const { modeData } = get();
     if (modeData.mode !== "tool-call") return;
-    set({ modeData: { ...modeData, mode: "tool-call-request" } });
+    set({ modeData: { ...modeData, mode: "tool-call-permission" } });
   },
 
   abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
     set({ queuedUserMessages: [] });
-    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-request") return;
+    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-permission") return;
 
     /*
      * Aborting a tool batch mid-flight leaves every request that never ran unanswered in
@@ -726,7 +726,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   runTool: async ({ config, toolReq, transport, session }) => {
     const { modeData } = get();
-    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-request") {
+    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-permission") {
       throw new Error(`Impossible tool mode: ${modeData.mode}`);
     }
     if (get().runningToolCallId != null) {
