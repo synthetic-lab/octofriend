@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
-import { useVimKeyHandler, type InputMode } from "./vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, useVimKeyHandler, type InputMode } from "./vim-mode.tsx";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
@@ -44,7 +44,7 @@ export default function TextInput({
   onImageFilesAttached,
   onRemoveLastImage,
   onSubmit,
-  inputMode = { kind: "emacs" },
+  inputMode = DEFAULT_INPUT_MODE,
   setVimMode,
   onKeyDown,
 }: Props) {

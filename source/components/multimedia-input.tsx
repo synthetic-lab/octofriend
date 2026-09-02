@@ -11,7 +11,7 @@ import {
 } from "../providers.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import type { InputMode } from "./vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode } from "./vim-mode.tsx";
 interface Props {
   inputHistory: InputHistory;
   value: string;
@@ -28,7 +28,7 @@ interface Props {
 export const MultimediaInput = (props: Props) => {
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
-  const inputMode = props.inputMode ?? { kind: "emacs" };
+  const inputMode = props.inputMode ?? DEFAULT_INPUT_MODE;
   useCtrlC(() => {
     if (inputMode.kind === "vim") return;
     props.clearAttachedImages();

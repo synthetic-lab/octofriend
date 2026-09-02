@@ -88,7 +88,7 @@ import { MultimediaInput } from "./components/multimedia-input.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
-import { VimModeIndicator, type InputMode } from "./components/vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, VimModeIndicator, type InputMode } from "./components/vim-mode.tsx";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
@@ -641,7 +641,7 @@ function useInputMode({
 
   const inputMode: InputMode = vimEnabled
     ? { kind: "vim", mode: inputAvailable ? vimMode : "NORMAL" }
-    : { kind: "emacs" };
+    : DEFAULT_INPUT_MODE;
   const inputSubmitted = useCallback(() => {
     if (vimEnabled) setVimMode("INSERT");
   }, [vimEnabled]);
@@ -702,7 +702,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   );
 
   const { inputMode, setVimMode, inputSubmitted } = useInputMode({
-    vimEnabled: config.vimEmulation?.enabled === true,
+    vimEnabled: !!config.vimEmulation?.enabled,
     modeData,
     clearNonce,
   });

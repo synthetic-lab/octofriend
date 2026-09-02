@@ -6,6 +6,8 @@ import { TerminalFlex } from "./terminal-flex.tsx";
 
 export type InputMode = { kind: "emacs" } | { kind: "vim"; mode: "NORMAL" | "INSERT" };
 
+export const DEFAULT_INPUT_MODE: InputMode = { kind: "emacs" };
+
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
 const isWordChar = (char: string): boolean => /[a-zA-Z0-9_]/.test(char);
