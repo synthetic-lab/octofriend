@@ -7,7 +7,7 @@ import { ImageInfo } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import type { InputMode } from "./vim-mode.tsx";
+import type { InputMode, VimMode } from "./input-mode.ts";
 interface Props {
   attachedImages: ImageInfo[];
   inputHistory: InputHistory;
@@ -18,7 +18,7 @@ interface Props {
   onSubmit: (value?: string) => any;
   showLoadingImageBadge?: boolean;
   inputMode?: InputMode;
-  setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  setVimMode?: (mode: VimMode) => void;
 }
 export const InputWithHistory = React.memo((props: Props) => {
   const themeColor = useColor();

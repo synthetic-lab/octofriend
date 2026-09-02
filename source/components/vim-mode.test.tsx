@@ -3,13 +3,14 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, mock } from "bun:test";
 import type { PaintKeyboardEvent } from "paintcannon";
 import { useVimKeyHandler } from "./vim-mode.tsx";
+import type { VimMode } from "./input-mode.ts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
 type VimHandler = ReturnType<typeof useVimKeyHandler>;
 
-function renderVimHandler(mode: "NORMAL" | "INSERT", setMode = mock()) {
+function renderVimHandler(mode: VimMode, setMode = mock()) {
   let handler: VimHandler | null = null;
   function Harness() {
     handler = useVimKeyHandler({ kind: "vim", mode }, setMode);

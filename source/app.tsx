@@ -88,7 +88,8 @@ import { MultimediaInput } from "./components/multimedia-input.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
-import { DEFAULT_INPUT_MODE, VimModeIndicator, type InputMode } from "./components/vim-mode.tsx";
+import { VimModeIndicator } from "./components/vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
@@ -632,7 +633,7 @@ function useInputMode({
   clearNonce: number;
 }) {
   const inputAvailable = inputFieldAvailable(modeData);
-  const [vimMode, setVimMode] = useState<"NORMAL" | "INSERT">("INSERT");
+  const [vimMode, setVimMode] = useState<VimMode>("INSERT");
 
   useEffect(() => {
     if (!vimEnabled) return;

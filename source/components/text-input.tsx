@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
-import { DEFAULT_INPUT_MODE, useVimKeyHandler, type InputMode } from "./vim-mode.tsx";
+import { useVimKeyHandler } from "./vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
@@ -20,7 +21,7 @@ type Props = {
   readonly onSubmit?: (value: string) => void;
   readonly showLoadingImageBadge?: boolean;
   readonly inputMode?: InputMode;
-  readonly setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  readonly setVimMode?: (mode: VimMode) => void;
   readonly attachedImages?: ImageInfo[];
   readonly onRemoveLastImage?: () => unknown;
   readonly onKeyDown?: (event: PaintKeyboardEvent) => void;

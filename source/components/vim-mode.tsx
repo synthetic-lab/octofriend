@@ -3,10 +3,7 @@ import type { CursorVisualPosition, PaintKeyboardEvent, VisualLineRange } from "
 import { useColor } from "../theme.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-
-export type InputMode = { kind: "emacs" } | { kind: "vim"; mode: "NORMAL" | "INSERT" };
-
-export const DEFAULT_INPUT_MODE: InputMode = { kind: "emacs" };
+import type { InputMode, VimMode } from "./input-mode.ts";
 
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
@@ -415,10 +412,7 @@ export function VimModeIndicator({ inputMode }: { inputMode: InputMode }) {
     </TerminalFlex>
   );
 }
-export function useVimKeyHandler(
-  inputMode: InputMode,
-  setVimMode: (mode: "NORMAL" | "INSERT") => void,
-) {
+export function useVimKeyHandler(inputMode: InputMode, setVimMode: (mode: VimMode) => void) {
   const pendingCommandRef = React.useRef<PendingCommand | null>(null);
   const undoStackRef = React.useRef<TextState[]>([]);
   const redoStackRef = React.useRef<TextState[]>([]);

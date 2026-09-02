@@ -11,7 +11,7 @@ import {
 } from "../providers.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { DEFAULT_INPUT_MODE, type InputMode } from "./vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 interface Props {
   inputHistory: InputHistory;
   value: string;
@@ -22,7 +22,7 @@ interface Props {
   clearAttachedImages: () => void;
   onSubmit: (text: string, images: ImageInfo[]) => any;
   inputMode?: InputMode;
-  setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  setVimMode?: (mode: VimMode) => void;
   modalities?: MultimodalConfig;
 }
 export const MultimediaInput = (props: Props) => {
