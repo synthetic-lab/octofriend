@@ -72,6 +72,7 @@ import type { HistoryNode, Session } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
+import { Modal } from "./components/modal.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
@@ -288,6 +289,7 @@ export default function App({
   const {
     history,
     modeData,
+    menuOpen,
     clearNonce,
     sessionHydrationNonce,
     modelOverride,
@@ -297,6 +299,7 @@ export default function App({
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
+      menuOpen: state.menuOpen,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
@@ -474,15 +477,16 @@ export default function App({
                                     <MessageDisplay item={modeData.inflightResponse} />
                                   )}
                                 {(modeData.mode === "tool-call" ||
-                                  modeData.mode === "tool-call-permission") && (
-                                  <ToolRequestsRenderer
-                                    toolReqs={modeData.toolReqs}
-                                    config={currConfig}
-                                    transport={transport}
-                                    session={session}
-                                    onContentLayout={scrollTranscriptToBottom}
-                                  />
-                                )}
+                                  modeData.mode === "tool-call-permission") &&
+                                  !menuOpen && (
+                                    <ToolRequestsRenderer
+                                      toolReqs={modeData.toolReqs}
+                                      config={currConfig}
+                                      transport={transport}
+                                      session={session}
+                                      onContentLayout={scrollTranscriptToBottom}
+                                    />
+                                  )}
                               </TerminalFlex>
                             </TerminalFlex>
                           </TerminalFlex>
@@ -490,10 +494,14 @@ export default function App({
                             inputHistory={inputHistory}
                             metadata={metadata}
                             tempNotification={tempNotification}
-                            onSessionChange={handleSessionChange}
                           />
                         </AppShell>
                       </ExitOnDoubleCtrlC>
+                      {menuOpen && (
+                        <Modal minWidth={50}>
+                          <Menu onSessionChange={handleSessionChange} />
+                        </Modal>
+                      )}
                     </CwdContext.Provider>
                   </SessionContext.Provider>
                 </TransportContext.Provider>
@@ -509,12 +517,10 @@ function BottomBar({
   inputHistory,
   metadata,
   tempNotification,
-  onSessionChange,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
-  onSessionChange: (session: Session) => void;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
   const [versionCheck, setVersionCheck] = useState("Checking for updates...");
@@ -522,11 +528,6 @@ function BottomBar({
     useState<React.ReactNode | null>(null);
   const themeColor = useColor();
   const ctrlCPressed = useCtrlCPressed();
-  const { modeData } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-    })),
-  );
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
       if (latestVersion && metadata.version < latestVersion) {
@@ -551,7 +552,6 @@ function BottomBar({
     }
     return undefined;
   }, [tempNotification]);
-  if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
   const unchained = useUnchained();
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
@@ -661,6 +661,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const {
     modeData,
     clearNonce,
+    menuOpen,
     input,
     abortResponse,
     openMenu,
@@ -678,6 +679,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     useShallow(state => ({
       modeData: state.modeData,
       clearNonce: state.clearNonce,
+      menuOpen: state.menuOpen,
       input: state.input,
       abortResponse: state.abortResponse,
       closeMenu: state.closeMenu,
@@ -701,10 +703,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
 
   useCtrlC(() => {
-    if (inputMode.kind === "vim") return;
+    if (inputMode.kind === "vim" || menuOpen) return;
     setQuery("");
   });
   useKeyboard(event => {
+    if (menuOpen) return;
     if (event.key === "Escape") {
       if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
@@ -713,7 +716,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         return;
       }
       abortResponse(session, config);
-      if (modeData.mode === "menu") closeMenu();
+      closeMenu();
     }
     if (event.ctrlKey && event.key === "p") {
       openMenu();
@@ -725,7 +728,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       const finalQuery = submittedQuery ?? query;
       inputSubmitted();
       setQuery("");
-      if (modeData.mode !== "ready-for-request" && modeData.mode !== "menu") {
+      if (modeData.mode !== "ready-for-request") {
         queueMessage({ content: finalQuery, images });
         return;
       }
@@ -798,6 +801,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         </TerminalFlex>
         <QueuedUserMessages messages={queuedMessages} />
         <MultimediaInput
+          focus={!menuOpen}
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
@@ -853,7 +857,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "tool-call-permission") return null;
-  const _: "menu" | "ready-for-request" = modeData.mode;
+  const _: "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex
       style={{
@@ -883,6 +887,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
       <QueuedUserMessages messages={queuedMessages} />
       <MultimediaInput
+        focus={!menuOpen}
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}

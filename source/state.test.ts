@@ -58,7 +58,7 @@ const tempDirs: string[] = [];
 beforeEach(() => {
   useAppStore.setState({
     history: [],
-    preMenuModeData: null,
+    menuOpen: false,
     lastUserPromptIndex: null,
     runningToolCallId: null,
     queuedUserMessages: [],
@@ -622,8 +622,7 @@ describe("menu round-trips during a tool batch", () => {
       useAppStore.getState().openMenu();
       await running; // settles while the menu is open
 
-      // The running ID is top-level state, cleared on settle even though the tool-call
-      // modeData is stashed in preMenuModeData.
+      // The running ID is top-level state, cleared on settle even while the menu is open.
       expect(useAppStore.getState().runningToolCallId).toBeNull();
 
       useAppStore.getState().closeMenu();
