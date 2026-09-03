@@ -3,6 +3,8 @@ import type { CursorVisualPosition, PaintKeyboardEvent, VisualLineRange } from "
 import { useColor } from "../theme.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
+import type { InputMode, VimMode } from "./input-mode.ts";
+
 const isWhitespace = (char: string): boolean => /\s/.test(char);
 const isNewline = (char: string): boolean => char === "\n";
 const isWordChar = (char: string): boolean => /[a-zA-Z0-9_]/.test(char);
@@ -388,19 +390,13 @@ const operators: Record<string, Operator> = {
     };
   },
 };
-export function VimModeIndicator({
-  vimEnabled,
-  vimMode,
-}: {
-  vimEnabled: boolean;
-  vimMode: "NORMAL" | "INSERT";
-}) {
+export function VimModeIndicator({ inputMode }: { inputMode: InputMode }) {
   const themeColor = useColor();
-  if (!vimEnabled) return null;
+  if (inputMode.kind === "emacs") return null;
   return (
     <TerminalFlex
       style={{
-        visibility: vimMode === "INSERT" ? "visible" : "hidden",
+        visibility: inputMode.mode === "INSERT" ? "visible" : "hidden",
         height: 1,
         flexShrink: 0,
       }}
@@ -416,10 +412,7 @@ export function VimModeIndicator({
     </TerminalFlex>
   );
 }
-export function useVimKeyHandler(
-  vimMode: "NORMAL" | "INSERT",
-  setVimMode: (mode: "NORMAL" | "INSERT") => void,
-) {
+export function useVimKeyHandler(inputMode: InputMode, setVimMode: (mode: VimMode) => void) {
   const pendingCommandRef = React.useRef<PendingCommand | null>(null);
   const undoStackRef = React.useRef<TextState[]>([]);
   const redoStackRef = React.useRef<TextState[]>([]);
@@ -452,7 +445,8 @@ export function useVimKeyHandler(
       newCursorPosition?: number;
       newValue?: string;
     } {
-      if (vimMode === "INSERT") {
+      if (inputMode.kind === "emacs") return { consumed: false };
+      if (inputMode.mode === "INSERT") {
         if (key.key === "Escape" || (key.ctrlKey && input === "c")) {
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
@@ -489,10 +483,17 @@ export function useVimKeyHandler(
           consumed: false,
         };
       }
-      if (key.key === "Enter")
+      if (key.key === "Escape") {
+        pendingCommandRef.current = null;
         return {
           consumed: false,
         };
+      }
+      if (key.key === "Enter") {
+        return {
+          consumed: false,
+        };
+      }
       if (key.ctrlKey && input === "c") {
         return {
           consumed: false,

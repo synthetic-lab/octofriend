@@ -161,7 +161,6 @@ export type UiState = {
   modelOverride: string | null;
   quotaData: QuotaData | null;
   byteCount: number;
-  vimMode: "NORMAL" | "INSERT";
   query: string;
   attachedImages: ImageInfo[];
   queuedUserMessages: readonly QueuedUserMessage[];
@@ -182,7 +181,6 @@ export type UiState = {
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
-  setVimMode: (vimMode: "INSERT" | "NORMAL") => void;
   setModelOverride: (m: ModelConfig, session: Session) => void;
   setQuery: (query: string) => void;
   addAttachedImage: (image: ImageInfo) => void;
@@ -313,7 +311,6 @@ export const useAppStore = create<UiState>((set, get) => ({
   modeData: {
     mode: "ready-for-request" as const,
   },
-  vimMode: "INSERT" as const,
   runningToolCallId: null,
   history: [],
   modelOverride: null,
@@ -388,7 +385,7 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   clearAuthError: () => {
     if (get().modeData.mode !== "auth-error") return;
-    set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
+    set({ modeData: { mode: "ready-for-request" } });
   },
 
   editAndRetryFrom: (mode, _args) => {
@@ -404,7 +401,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         byteCount: 0,
         queuedUserMessages: [],
         modeData: { mode: "ready-for-request" },
-        vimMode: "INSERT",
       });
       return;
     }
@@ -416,7 +412,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         byteCount: 0,
         queuedUserMessages: [],
         modeData: { mode: "ready-for-request" },
-        vimMode: "INSERT",
       });
       return;
     }
@@ -430,7 +425,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
       modeData: { mode: "ready-for-request" },
-      vimMode: "INSERT",
     }));
   },
 
@@ -494,7 +488,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       modeData: {
         mode: "ready-for-request",
       },
-      vimMode: "INSERT",
     });
     if (get().queuedUserMessages.length > 0) {
       get().runAgent(args);
@@ -559,7 +552,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: {
           mode: "ready-for-request",
         },
-        vimMode: "INSERT",
       });
     }
   },
@@ -571,7 +563,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         modeData: {
           mode: "ready-for-request",
         },
-        vimMode: "INSERT",
       });
       return true;
     }
@@ -606,10 +597,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       modeData: { mode: "menu" },
       preMenuModeData: modeData,
     });
-  },
-
-  setVimMode: (vimMode: "INSERT" | "NORMAL") => {
-    set({ vimMode });
   },
 
   setQuery: query => {
@@ -704,7 +691,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
       modeData: { mode: "ready-for-request" },
-      vimMode: "INSERT",
       preMenuModeData: null,
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
@@ -938,7 +924,6 @@ export const useAppStore = create<UiState>((set, get) => ({
         set({
           queuedUserMessages: [],
           modeData: { mode: "ready-for-request" },
-          vimMode: "INSERT",
         });
         return;
       }
@@ -948,7 +933,7 @@ export const useAppStore = create<UiState>((set, get) => ({
           return;
         }
         get().notifyReadyForInput(config);
-        set({ modeData: { mode: "ready-for-request" }, vimMode: "INSERT" });
+        set({ modeData: { mode: "ready-for-request" } });
         return;
       }
 

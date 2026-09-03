@@ -64,6 +64,7 @@ import {
   InflightResponseType,
   nextToolAction,
   QueuedUserMessage,
+  UiState,
   inputFieldAvailable,
 } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
@@ -90,6 +91,7 @@ import { ImageInfo } from "./utils/image-utils.ts";
 import { Markdown } from "./markdown/index.tsx";
 import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
@@ -286,7 +288,6 @@ export default function App({
   const {
     history,
     modeData,
-    setVimMode,
     clearNonce,
     sessionHydrationNonce,
     modelOverride,
@@ -296,7 +297,6 @@ export default function App({
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
-      setVimMode: state.setVimMode,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
@@ -309,7 +309,6 @@ export default function App({
   });
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
-    if (currConfig.vimEmulation?.enabled) setVimMode("INSERT");
   }, []);
   const matchedModel =
     modelOverride == null ? null : matchModelFromConfig(currConfig, modelOverride);
@@ -625,22 +624,48 @@ function QueuedUserMessages({ messages }: { messages: readonly QueuedUserMessage
     </Span>
   );
 }
+
+function useInputMode({
+  vimEnabled,
+  modeData,
+  clearNonce,
+}: {
+  vimEnabled: boolean;
+  modeData: UiState["modeData"];
+  clearNonce: number;
+}) {
+  const inputAvailable = inputFieldAvailable(modeData);
+  const [vimMode, setVimMode] = useState<VimMode>("INSERT");
+
+  useEffect(() => {
+    if (!vimEnabled) return;
+    if (inputAvailable) setVimMode("INSERT");
+  }, [clearNonce, inputAvailable, vimEnabled]);
+
+  const inputMode: InputMode = vimEnabled
+    ? { kind: "vim", mode: inputAvailable ? vimMode : "NORMAL" }
+    : DEFAULT_INPUT_MODE;
+  const inputSubmitted = useCallback(() => {
+    if (vimEnabled) setVimMode("INSERT");
+  }, [vimEnabled]);
+
+  return { inputMode, setVimMode, inputSubmitted };
+}
+
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const config = useConfig();
   const model = useModel();
   const transport = useContext(TransportContext);
   const session = useSession();
   const showToast = useToast();
-  const vimEnabled = !!config.vimEmulation?.enabled;
   const {
     modeData,
+    clearNonce,
     input,
     abortResponse,
     openMenu,
     closeMenu,
     byteCount,
-    setVimMode,
-    vimMode: storedVimMode,
     query,
     setQuery,
     attachedImages,
@@ -652,13 +677,12 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
+      clearNonce: state.clearNonce,
       input: state.input,
       abortResponse: state.abortResponse,
       closeMenu: state.closeMenu,
       openMenu: state.openMenu,
       byteCount: state.byteCount,
-      setVimMode: state.setVimMode,
-      vimMode: state.vimMode,
       query: state.query,
       setQuery: state.setQuery,
       attachedImages: state.attachedImages,
@@ -669,15 +693,22 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       queueMessage: state.enqueueUserMessage,
     })),
   );
-  const vimMode = vimEnabled ? storedVimMode : "NORMAL";
+
+  const { inputMode, setVimMode, inputSubmitted } = useInputMode({
+    vimEnabled: !!config.vimEmulation?.enabled,
+    modeData,
+    clearNonce,
+  });
+
   useCtrlC(() => {
-    if (vimEnabled) return;
+    if (inputMode.kind === "vim") return;
     setQuery("");
   });
   useKeyboard(event => {
     if (event.key === "Escape") {
+      if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
-      if (vimEnabled && vimMode === "INSERT" && inputFieldAvailable(modeData)) {
+      if (inputMode.kind === "vim" && inputMode.mode === "INSERT") {
         setVimMode("NORMAL");
         return;
       }
@@ -692,6 +723,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const onSubmit = useCallback(
     async (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
+      inputSubmitted();
       setQuery("");
       if (modeData.mode !== "ready-for-request" && modeData.mode !== "menu") {
         queueMessage({ content: finalQuery, images });
@@ -717,7 +749,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         throw error;
       }
     },
-    [query, modeData.mode, config, transport, session, setQuery, showToast],
+    [query, modeData.mode, config, transport, session, setQuery, showToast, inputSubmitted],
   );
   if (
     modeData.mode === "responding" ||
@@ -774,12 +806,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           removeLastAttachedImage={removeLastAttachedImage}
           clearAttachedImages={clearAttachedImages}
           onSubmit={onSubmit}
-          vimEnabled={vimEnabled}
-          vimMode={vimMode}
+          inputMode={inputMode}
           setVimMode={setVimMode}
           modalities={model.modalities}
         />
-        <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+        <VimModeIndicator inputMode={inputMode} />
       </TerminalFlex>
     );
   }
@@ -860,12 +891,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         removeLastAttachedImage={removeLastAttachedImage}
         clearAttachedImages={clearAttachedImages}
         onSubmit={onSubmit}
-        vimEnabled={vimEnabled}
-        vimMode={vimMode}
+        inputMode={inputMode}
         setVimMode={setVimMode}
         modalities={model.modalities}
       />
-      <VimModeIndicator vimEnabled={vimEnabled} vimMode={vimMode} />
+      <VimModeIndicator inputMode={inputMode} />
     </TerminalFlex>
   );
 }

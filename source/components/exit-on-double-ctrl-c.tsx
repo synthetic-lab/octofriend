@@ -1,6 +1,5 @@
 import React, { useState, createContext, useContext } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { useAppStore, inputFieldAvailable } from "../state.ts";
+import { useAppStore } from "../state.ts";
 import { useConfig } from "../config.ts";
 import { useSession } from "../session-context.ts";
 import { useApp } from "paintcannon-react";
@@ -21,14 +20,6 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const { exit } = useApp();
   const config = useConfig();
   const session = useSession();
-  const vimEnabled = !!config.vimEmulation?.enabled;
-  const { modeData, vimMode } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-      vimMode: state.vimMode,
-    })),
-  );
-  const isInsertMode = vimEnabled && inputFieldAvailable(modeData) && vimMode === "INSERT";
   useCtrlC(() => {
     if (ctrlCPressed) {
       /*
@@ -41,10 +32,8 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
       state.abortResponse(session, config, { exiting: true });
       exit();
     } else {
-      if (!isInsertMode) {
-        setCtrlCPressed(true);
-        setTimeout(() => setCtrlCPressed(false), 2000);
-      }
+      setCtrlCPressed(true);
+      setTimeout(() => setCtrlCPressed(false), 2000);
     }
   });
   return (

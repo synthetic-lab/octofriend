@@ -3,16 +3,17 @@ import TestRenderer, { act } from "react-test-renderer";
 import { describe, expect, it, mock } from "bun:test";
 import type { PaintKeyboardEvent } from "paintcannon";
 import { useVimKeyHandler } from "./vim-mode.tsx";
+import type { VimMode } from "./input-mode.ts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
 type VimHandler = ReturnType<typeof useVimKeyHandler>;
 
-function renderVimHandler(mode: "NORMAL" | "INSERT", setMode = mock()) {
+function renderVimHandler(mode: VimMode, setMode = mock()) {
   let handler: VimHandler | null = null;
   function Harness() {
-    handler = useVimKeyHandler(mode, setMode);
+    handler = useVimKeyHandler({ kind: "vim", mode }, setMode);
     return null;
   }
 
@@ -92,6 +93,69 @@ describe("useVimKeyHandler Ctrl-C handling", () => {
         row: 0,
         column: 4,
       },
+      { start: 0, end: 5 },
+    );
+
+    expect(result).toEqual({ consumed: false });
+    expect(rendered.setMode).not.toHaveBeenCalled();
+    rendered.unmount();
+  });
+});
+
+describe("useVimKeyHandler Escape handling", () => {
+  const escapeKey = {
+    key: "Escape",
+    ctrlKey: false,
+  } as PaintKeyboardEvent;
+
+  it("consumes Escape in Insert mode and returns to Normal mode", () => {
+    const rendered = renderVimHandler("INSERT");
+
+    const result = rendered.handler.handle(
+      "Escape",
+      escapeKey,
+      5,
+      5,
+      "hello",
+      { row: 0, column: 5 },
+      { start: 0, end: 5 },
+    );
+
+    expect(result).toEqual({ consumed: true, newCursorPosition: 4 });
+    expect(rendered.setMode).toHaveBeenCalledWith("NORMAL");
+    rendered.unmount();
+  });
+
+  it("leaves Escape unconsumed in Normal mode for the app-level interrupt handler", () => {
+    const rendered = renderVimHandler("NORMAL");
+
+    const result = rendered.handler.handle(
+      "Escape",
+      escapeKey,
+      4,
+      5,
+      "hello",
+      { row: 0, column: 4 },
+      { start: 0, end: 5 },
+    );
+
+    expect(result).toEqual({ consumed: false });
+    expect(rendered.setMode).not.toHaveBeenCalled();
+    rendered.unmount();
+  });
+});
+
+describe("useVimKeyHandler submission", () => {
+  it("leaves Enter unconsumed for input submission", () => {
+    const rendered = renderVimHandler("NORMAL");
+
+    const result = rendered.handler.handle(
+      "Enter",
+      { key: "Enter", ctrlKey: false } as PaintKeyboardEvent,
+      5,
+      5,
+      "hello",
+      { row: 0, column: 5 },
       { start: 0, end: 5 },
     );
 

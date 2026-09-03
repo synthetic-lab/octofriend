@@ -11,6 +11,7 @@ import {
 } from "../providers.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
+import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 interface Props {
   inputHistory: InputHistory;
   value: string;
@@ -20,16 +21,16 @@ interface Props {
   removeLastAttachedImage: () => void;
   clearAttachedImages: () => void;
   onSubmit: (text: string, images: ImageInfo[]) => any;
-  vimEnabled?: boolean;
-  vimMode?: "NORMAL" | "INSERT";
-  setVimMode?: (mode: "NORMAL" | "INSERT") => void;
+  inputMode?: InputMode;
+  setVimMode?: (mode: VimMode) => void;
   modalities?: MultimodalConfig;
 }
 export const MultimediaInput = (props: Props) => {
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
+  const inputMode = props.inputMode ?? DEFAULT_INPUT_MODE;
   useCtrlC(() => {
-    if (props.vimEnabled) return;
+    if (inputMode.kind === "vim") return;
     props.clearAttachedImages();
     setErrorMessages([]);
   });
@@ -104,8 +105,7 @@ export const MultimediaInput = (props: Props) => {
         onImageFilesAttached={handleImageFilesAttached}
         onSubmit={handleSubmit}
         onRemoveLastImage={handleRemoveLastImage}
-        vimEnabled={props.vimEnabled}
-        vimMode={props.vimMode}
+        inputMode={inputMode}
         setVimMode={props.setVimMode}
       />
     </TerminalFlex>
