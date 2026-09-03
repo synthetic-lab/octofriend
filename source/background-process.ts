@@ -21,7 +21,6 @@ export class BackgroundProcess {
 
   private readonly octoProcess: OctoProcess;
   private readonly output = new ShellOutput();
-  private readOffset = 0;
   private _outputExceeded = false;
   private _status: BackgroundProcessStatus = { state: "running" };
   private readonly activityListeners = new Set<() => void>();
@@ -64,21 +63,16 @@ export class BackgroundProcess {
     await this.processClosedPromise;
   }
 
-  get hasUnreadOutput(): boolean {
-    const buffered = this.output.getOutput();
-    return buffered != null && buffered.length > this.readOffset;
+  get hasUndrainedOutput(): boolean {
+    return this.output.hasUndrainedOutput();
   }
 
   drainUnreadOutput(): string {
-    const buffered = this.output.getOutput();
-    if (buffered == null) return "";
-    const output = buffered.slice(this.readOffset);
-    this.readOffset = buffered.length;
-    return output;
+    return this.output.drainNewOutput();
   }
 
   async awaitActivity(timeoutMs: number, userAbortSignal: AbortSignal): Promise<void> {
-    if (this._status.state === "exited" || this._outputExceeded || this.hasUnreadOutput) return;
+    if (this._status.state === "exited" || this._outputExceeded || this.hasUndrainedOutput) return;
     let onActivity: () => void = () => {};
     const activityOccurred = new Promise<void>(resolve => {
       onActivity = resolve;

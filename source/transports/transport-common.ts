@@ -6,6 +6,7 @@ export class ShellOutput {
   private readonly chunks: string[] = [];
   private length = 0;
   private exceededLimit = false;
+  private drainedChunkCount = 0;
 
   constructor(maxLength = MAX_SHELL_OUTPUT_LENGTH) {
     if (!Number.isSafeInteger(maxLength) || maxLength < 1) {
@@ -23,6 +24,7 @@ export class ShellOutput {
       this.exceededLimit = true;
       this.chunks.length = 0;
       this.length = 0;
+      this.drainedChunkCount = 0;
       return false;
     }
     this.chunks.push(value);
@@ -33,6 +35,17 @@ export class ShellOutput {
   getOutput(): string | null {
     if (this.exceededLimit) return null;
     return this.chunks.join("");
+  }
+
+  hasUndrainedOutput(): boolean {
+    return !this.exceededLimit && this.drainedChunkCount < this.chunks.length;
+  }
+
+  drainNewOutput(): string {
+    if (this.exceededLimit || this.drainedChunkCount >= this.chunks.length) return "";
+    const output = this.chunks.slice(this.drainedChunkCount).join("");
+    this.drainedChunkCount = this.chunks.length;
+    return output;
   }
 }
 
