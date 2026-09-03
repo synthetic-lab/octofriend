@@ -650,17 +650,7 @@ function useInputMode({
   return { inputMode, setVimMode, inputSubmitted };
 }
 
-function getInterruptHintString(inputMode: InputMode, kittyKeyboardEnabled: boolean): string {
-  if (inputMode.kind === "vim" && inputMode.mode === "INSERT") {
-    return kittyKeyboardEnabled
-      ? "(Press Ctrl+ESC to interrupt)"
-      : "(Press ESC twice to interrupt)";
-  }
-  return "(Press ESC to interrupt)";
-}
-
 function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
-  const { paintCannon } = useApp();
   const config = useConfig();
   const model = useModel();
   const transport = useContext(TransportContext);
@@ -714,11 +704,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
   useKeyboard(event => {
     if (event.key === "Escape") {
-      if (event.ctrlKey) {
-        abortResponse(session, config);
-        if (modeData.mode === "menu") closeMenu();
-        return;
-      }
       if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
       if (inputMode.kind === "vim" && inputMode.mode === "INSERT") {
@@ -805,7 +790,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
                 color: "gray",
               }}
             >
-              {getInterruptHintString(inputMode, paintCannon.kittyKeyboardEnabled)}
+              (Press ESC to interrupt)
             </Span>
           </TerminalFlex>
         </TerminalFlex>

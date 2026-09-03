@@ -103,18 +103,17 @@ describe("useVimKeyHandler Ctrl-C handling", () => {
 });
 
 describe("useVimKeyHandler Escape handling", () => {
-  const escapeKey = (ctrlKey: boolean) =>
-    ({
-      key: "Escape",
-      ctrlKey,
-    }) as PaintKeyboardEvent;
+  const escapeKey = {
+    key: "Escape",
+    ctrlKey: false,
+  } as PaintKeyboardEvent;
 
   it("consumes Escape in Insert mode and returns to Normal mode", () => {
     const rendered = renderVimHandler("INSERT");
 
     const result = rendered.handler.handle(
       "Escape",
-      escapeKey(false),
+      escapeKey,
       5,
       5,
       "hello",
@@ -127,30 +126,12 @@ describe("useVimKeyHandler Escape handling", () => {
     rendered.unmount();
   });
 
-  it("leaves Ctrl-Escape unconsumed in Insert mode for the app-level interrupt handler", () => {
-    const rendered = renderVimHandler("INSERT");
-
-    const result = rendered.handler.handle(
-      "Escape",
-      escapeKey(true),
-      5,
-      5,
-      "hello",
-      { row: 0, column: 5 },
-      { start: 0, end: 5 },
-    );
-
-    expect(result).toEqual({ consumed: false });
-    expect(rendered.setMode).not.toHaveBeenCalled();
-    rendered.unmount();
-  });
-
   it("leaves Escape unconsumed in Normal mode for the app-level interrupt handler", () => {
     const rendered = renderVimHandler("NORMAL");
 
     const result = rendered.handler.handle(
       "Escape",
-      escapeKey(false),
+      escapeKey,
       4,
       5,
       "hello",

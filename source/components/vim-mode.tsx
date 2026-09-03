@@ -447,7 +447,7 @@ export function useVimKeyHandler(inputMode: InputMode, setVimMode: (mode: VimMod
     } {
       if (inputMode.kind === "emacs") return { consumed: false };
       if (inputMode.mode === "INSERT") {
-        if ((key.key === "Escape" && !key.ctrlKey) || (key.ctrlKey && input === "c")) {
+        if (key.key === "Escape" || (key.ctrlKey && input === "c")) {
           let newCursorPosition = cursorPosition;
           if (cursorPosition > 0) {
             const isAtVisualLineStart = cursorVisualPosition?.column === 0;
