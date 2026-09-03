@@ -86,10 +86,11 @@ function formatProcess(backgroundProcess: BackgroundProcess): string {
 Command: ${backgroundProcess.command}`;
   if (backgroundProcess.outputExceeded) {
     content += `\nOutput exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was discarded; the process was terminated.`;
-  } else if (latestOutput.length > 0) {
-    content += `\nNew output:\n${latestOutput}`;
-  } else {
+  } else if (latestOutput.stdout.length === 0 && latestOutput.stderr.length === 0) {
     content += "\nNo new output.";
+  } else {
+    if (latestOutput.stdout.length > 0) content += `\nNew stdout:\n${latestOutput.stdout}`;
+    if (latestOutput.stderr.length > 0) content += `\nNew stderr:\n${latestOutput.stderr}`;
   }
   return content;
 }

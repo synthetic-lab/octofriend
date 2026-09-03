@@ -20,7 +20,8 @@ export class BackgroundProcess {
   readonly command: string;
 
   private readonly octoProcess: OctoProcess;
-  private readonly output = new ShellOutput();
+  private readonly stdout = new ShellOutput();
+  private readonly stderr = new ShellOutput();
   private _outputExceeded = false;
   private _status: BackgroundProcessStatus = { state: "running" };
   private readonly activityListeners = new Set<() => void>();
@@ -36,14 +37,14 @@ export class BackgroundProcess {
     this.command = command;
     this.processClosedPromise = new Promise(resolve => octoProcess.once("close", () => resolve()));
 
-    octoProcess.stdout.on("data", data => this.appendOutput(data));
-    octoProcess.stderr.on("data", data => this.appendOutput(data));
+    octoProcess.stdout.on("data", data => this.appendOutput(this.stdout, data));
+    octoProcess.stderr.on("data", data => this.appendOutput(this.stderr, data));
     octoProcess.on("exit", (code, signal) => {
       this._status = { state: "exited", code, signal };
       this.emitActivityNotification();
     });
     octoProcess.on("error", error => {
-      this.appendOutput(`Spawn error: ${error.message}\n`);
+      this.appendOutput(this.stderr, `Spawn error: ${error.message}\n`);
       if (this._status.state === "running") {
         this._status = { state: "exited", code: null, signal: null, error: error.message };
       }
@@ -64,11 +65,14 @@ export class BackgroundProcess {
   }
 
   get hasUndrainedOutput(): boolean {
-    return this.output.hasUndrainedOutput();
+    return this.stdout.hasUndrainedOutput() || this.stderr.hasUndrainedOutput();
   }
 
-  drainUnreadOutput(): string {
-    return this.output.drainNewOutput();
+  drainUnreadOutput(): { stdout: string; stderr: string } {
+    return {
+      stdout: this.stdout.drainNewOutput(),
+      stderr: this.stderr.drainNewOutput(),
+    };
   }
 
   async awaitActivity(timeoutMs: number, userAbortSignal: AbortSignal): Promise<void> {
@@ -84,8 +88,8 @@ export class BackgroundProcess {
     this.activityListeners.delete(onActivity);
   }
 
-  private appendOutput(data: string | Buffer): void {
-    if (this.output.append(data)) {
+  private appendOutput(output: ShellOutput, data: string | Buffer): void {
+    if (output.append(data)) {
       this.emitActivityNotification();
       return;
     }

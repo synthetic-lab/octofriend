@@ -22,14 +22,40 @@ describe("BackgroundProcessManager.start", () => {
 
     let drained = "";
     await waitFor(() => {
-      drained += manager.poll(backgroundProcess.id)!.drainUnreadOutput();
+      drained += manager.poll(backgroundProcess.id)!.drainUnreadOutput().stdout;
       return drained === "hello\n";
     });
 
     await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
 
-    expect(manager.poll(backgroundProcess.id)!.drainUnreadOutput()).toBe("");
+    expect(manager.poll(backgroundProcess.id)!.drainUnreadOutput()).toEqual({
+      stdout: "",
+      stderr: "",
+    });
     expect(backgroundProcess.outputExceeded).toBe(false);
+  });
+
+  it("keeps stdout and stderr separate", async () => {
+    const manager = new BackgroundProcessManager(new OctoProcessManager());
+    const backgroundProcess = manager.start("echo out && echo err >&2", "both-streams");
+
+    let stdout = "";
+    let stderr = "";
+    await waitFor(() => {
+      const drained = manager.poll(backgroundProcess.id)!.drainUnreadOutput();
+      stdout += drained.stdout;
+      stderr += drained.stderr;
+      return stdout.includes("out") && stderr.includes("err");
+    });
+
+    await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
+
+    expect(stdout).toBe("out\n");
+    expect(stderr).toBe("err\n");
+    expect(manager.poll(backgroundProcess.id)!.drainUnreadOutput()).toEqual({
+      stdout: "",
+      stderr: "",
+    });
   });
 
   it("reports the command and label the process was started with", async () => {
@@ -64,7 +90,7 @@ describe("BackgroundProcess.awaitChange", () => {
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeGreaterThanOrEqual(200);
-    expect(backgroundProcess.drainUnreadOutput()).toBe("");
+    expect(backgroundProcess.drainUnreadOutput()).toEqual({ stdout: "", stderr: "" });
 
     await manager.kill(backgroundProcess.id);
   });
@@ -77,7 +103,7 @@ describe("BackgroundProcess.awaitChange", () => {
     await backgroundProcess.awaitActivity(10_000, new AbortController().signal);
     const elapsed = Date.now() - start;
 
-    expect(backgroundProcess.drainUnreadOutput()).toContain("late");
+    expect(backgroundProcess.drainUnreadOutput().stdout).toContain("late");
     expect(elapsed).toBeLessThan(5_000);
 
     await waitFor(() => backgroundProcess.status.state === "exited");
