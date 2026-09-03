@@ -24,11 +24,10 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
     if (ctrlCPressed) {
       /*
        * Record skip markers for any un-run tool calls before exiting, so the session history
-       * stays well-formed (Anthropic rejects sessions with unanswered tool calls on resume).
-       * If the menu is open, close it first: the in-flight state is stashed in preMenuModeData.
+       * stays well-formed after exit.
        */
       const state = useAppStore.getState();
-      if (state.modeData.mode === "menu") state.closeMenu();
+      state.closeMenu();
       state.abortResponse(session, config, { exiting: true });
       exit();
     } else {

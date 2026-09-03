@@ -3,6 +3,7 @@ import { InputWithHistory } from "./input-with-history.tsx";
 import { InputHistory } from "../input-history/index.ts";
 import { ImageInfo, loadImageFromPaintFile } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
+import { useAppStore } from "../state.ts";
 import { useCtrlC } from "./exit-on-double-ctrl-c.tsx";
 import {
   DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
@@ -13,6 +14,7 @@ import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 interface Props {
+  focus?: boolean;
   inputHistory: InputHistory;
   value: string;
   onChange: (s: string) => any;
@@ -26,11 +28,12 @@ interface Props {
   modalities?: MultimodalConfig;
 }
 export const MultimediaInput = (props: Props) => {
+  const menuOpen = useAppStore(state => state.menuOpen);
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const inputMode = props.inputMode ?? DEFAULT_INPUT_MODE;
   useCtrlC(() => {
-    if (inputMode.kind === "vim") return;
+    if (inputMode.kind === "vim" || menuOpen) return;
     props.clearAttachedImages();
     setErrorMessages([]);
   });
@@ -97,6 +100,7 @@ export const MultimediaInput = (props: Props) => {
         </TerminalFlex>
       ))}
       <InputWithHistory
+        focus={props.focus}
         attachedImages={props.attachedImages}
         showLoadingImageBadge={showLoadingImageBadge}
         inputHistory={props.inputHistory}
