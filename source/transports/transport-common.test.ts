@@ -64,4 +64,32 @@ describe("ShellOutput", () => {
     expect(() => new ShellOutput(0)).toThrow(RangeError);
     expect(() => new ShellOutput(Number.MAX_VALUE)).toThrow(RangeError);
   });
+
+  it("drains only output appended since the last drain", () => {
+    const output = new ShellOutput(100);
+    expect(output.hasUndrainedOutput()).toBe(false);
+    expect(output.drainNewOutput()).toBe("");
+
+    output.append("hello");
+    output.append(" world");
+    expect(output.hasUndrainedOutput()).toBe(true);
+    expect(output.drainNewOutput()).toBe("hello world");
+
+    expect(output.hasUndrainedOutput()).toBe(false);
+    expect(output.drainNewOutput()).toBe("");
+
+    output.append("again");
+    expect(output.hasUndrainedOutput()).toBe(true);
+    expect(output.drainNewOutput()).toBe("again");
+    expect(output.getOutput()).toBe("hello worldagain");
+  });
+
+  it("reports no unread output and drains to empty once the limit is exceeded", () => {
+    const output = new ShellOutput(5);
+    output.append("abcd");
+    expect(output.append("ef")).toBe(false);
+
+    expect(output.hasUndrainedOutput()).toBe(false);
+    expect(output.drainNewOutput()).toBe("");
+  });
 });

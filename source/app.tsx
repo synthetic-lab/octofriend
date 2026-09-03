@@ -50,6 +50,8 @@ import skill from "./tools/tool-defs/skill.ts";
 import webSearch from "./tools/tool-defs/web-search.ts";
 import glob from "./tools/tool-defs/glob.ts";
 import grep from "./tools/tool-defs/grep.ts";
+import backgroundProcess from "./tools/tool-defs/background-process.ts";
+import manageBackgroundProcess from "./tools/tool-defs/manage-background-process.ts";
 import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
@@ -2086,6 +2088,10 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
       return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
       return <ShellToolRenderer item={parsedToolSchema(item)} />;
+    case "background-process":
+      return <BackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
+    case "manage-background-process":
+      return <ManageBackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
     case "edit":
       return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
@@ -2234,6 +2240,29 @@ function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> 
     </TerminalFlex>
   );
 }
+
+function BackgroundProcessToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof backgroundProcess>;
+}) {
+  return <ToolCallRow name={item.name}>{item.arguments.label ?? item.arguments.cmd}</ToolCallRow>;
+}
+
+function ManageBackgroundProcessToolRenderer({
+  item,
+}: {
+  item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
+}) {
+  return (
+    <ToolCallRow name={item.name}>
+      {item.arguments.label == null
+        ? item.arguments.action
+        : `${item.arguments.action} ${item.arguments.label}`}
+    </ToolCallRow>
+  );
+}
+
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
   return <ToolCallRow name={item.name}>{item.arguments.filePath}</ToolCallRow>;
 }

@@ -55,7 +55,10 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "lsp-outgoing-calls",
 ];
 
-export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = ["shell"];
+export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = [
+  "shell",
+  "background-process",
+];
 
 // Cap tool outputs so one huge result can't push history past the context limit and break autocompaction
 export const MAX_TOOL_OUTPUT_CONTEXT_FRACTION = 0.2;
