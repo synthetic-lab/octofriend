@@ -7,7 +7,8 @@ export default TOOL.declare({
   name: "background-process",
   description: `
 Runs a shell command in the background and returns immediately with a process id. Give each process
-a short, descriptive label that is unique among the currently-running background processes. The
+a short, descriptive label that is unique among the currently-running background processes; this label will
+primarily be used by the human user and not by any future LLMs querying running background processes. The
 command is run by bash in the cwd, not connected to a PTY, and can't read stdin. You should only run
 commands in this tool that work headless.
 
@@ -20,7 +21,10 @@ poll output and status, or to kill the process. Background processes are killed 
   ArgumentsSchema: t.subtype({
     cmd: t.str.comment("The command to run in the background"),
     label: t.str.comment(
-      'A short descriptive label unique among active background processes, like "dev-server" or "test-watcher"',
+      `
+A short descriptive label unique among active background processes allowing the user to understand 
+the purpose of the background process, like "dev-server" or "test-watcher"',
+`.trim(),
     ),
   }),
 }).define(async () => ({
