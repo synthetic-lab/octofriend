@@ -3,7 +3,7 @@ import { useAppStore } from "../state.ts";
 import { useConfig } from "../config.ts";
 import { useSession } from "../session-context.ts";
 import { useApp } from "paintcannon-react";
-import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { useGlobalKeyboard, useKeyboard } from "../hooks/use-keyboard.ts";
 export function useCtrlC(callback: () => void) {
   useKeyboard(event => {
     if (!event.defaultPrevented && event.ctrlKey && event.key === "c") {
@@ -20,19 +20,21 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const { exit } = useApp();
   const config = useConfig();
   const session = useSession();
-  useCtrlC(() => {
-    if (ctrlCPressed) {
-      /*
-       * Record skip markers for any un-run tool calls before exiting, so the session history
-       * stays well-formed after exit.
-       */
-      const state = useAppStore.getState();
-      state.closeMenu();
-      state.abortResponse(session, config, { exiting: true });
-      exit();
-    } else {
-      setCtrlCPressed(true);
-      setTimeout(() => setCtrlCPressed(false), 2000);
+  useGlobalKeyboard(event => {
+    if (!event.defaultPrevented && event.ctrlKey && event.key === "c") {
+      if (ctrlCPressed) {
+        /*
+         * Record skip markers for any un-run tool calls before exiting, so the session history
+         * stays well-formed after exit.
+         */
+        const state = useAppStore.getState();
+        state.closeMenu();
+        state.abortResponse(session, config, { exiting: true });
+        exit();
+      } else {
+        setCtrlCPressed(true);
+        setTimeout(() => setCtrlCPressed(false), 2000);
+      }
     }
   });
   return (

@@ -159,6 +159,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     if (event.key === "l") {
       const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
       if (hasNext) {
+        event.preventDefault();
         setPage(prev => prev + 1);
         setSelectedIndex(0);
         setRotateIndex(0);
@@ -168,6 +169,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     if (event.key === "h") {
       const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
       if (hasPrev && page > 0) {
+        event.preventDefault();
         setPage(prev => prev - 1);
         setSelectedIndex(0);
         setRotateIndex(0);
@@ -176,11 +178,13 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     }
     for (const item of items) {
       if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
+        event.preventDefault();
         handleSelect(item.item);
         return;
       }
     }
     if (event.key === "k" || event.key === "ArrowUp") {
+      event.preventDefault();
       const lastIndex = items.length - 1;
       const atFirstIndex = selectedIndex === 0;
       const nextIndex = lastIndex;
@@ -190,6 +194,7 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
       setSelectedIndex(nextSelectedIndex);
     }
     if (event.key === "j" || event.key === "ArrowDown") {
+      event.preventDefault();
       const atLastIndex = selectedIndex === items.length - 1;
       const nextIndex = 0;
       const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;

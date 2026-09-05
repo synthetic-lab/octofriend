@@ -3,6 +3,7 @@ import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
+import { useKeyboardScopeActive } from "../hooks/use-keyboard.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
 
@@ -53,10 +54,13 @@ export default function TextInput({
   const textareaRef = useRef<TextAreaElement>(null);
   const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));
 
+  const scopeActive = useKeyboardScopeActive();
+  const focused = focus && scopeActive;
+
   useEffect(() => {
-    if (focus) textareaRef.current?.focus();
+    if (focused) textareaRef.current?.focus();
     else textareaRef.current?.blur();
-  }, [focus]);
+  }, [focused]);
 
   const setCursorAfterValueChange = useCallback(
     (nextValue: string, stringIndex: number) => {
@@ -107,7 +111,7 @@ export default function TextInput({
         ref={textareaRef}
         value={value}
         placeholder={placeholder}
-        autoFocus={focus}
+        autoFocus={focused}
         onChange={event => onChange(event.target.value)}
         onPaste={event => {
           const files = Array.from(event.clipboardData.files);

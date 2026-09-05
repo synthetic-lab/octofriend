@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import ignore from "ignore";
-import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 
@@ -109,12 +108,13 @@ async function searchFiles(
     .slice(0, 20);
 }
 
-interface UseFileSearchOptions {
-  onSelect: (filename: string) => void;
+type UseFileSearchOptions = {
+  enabled?: boolean;
   debounceMs?: number;
-}
+};
 
-export function useFileSearch(query: string, options: UseFileSearchOptions) {
+export function useFileSearch(query: string, options: UseFileSearchOptions = {}) {
+  const enabled = options.enabled ?? true;
   const [results, setResults] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,6 +134,14 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     abortControllerRef.current = new AbortController();
 
     const thisRequest = ++currentRequestId.current;
+
+    if (!enabled) {
+      setResults([]);
+      setSelectedIndex(0);
+      setIsLoading(false);
+      return;
+    }
+
     const debounceMs = options.debounceMs ?? 100;
 
     timerRef.current = setTimeout(async () => {
@@ -167,7 +175,7 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     return () => {
       clearTimeout(timerRef.current);
     };
-  }, [query, options.debounceMs, transport]);
+  }, [query, enabled, options.debounceMs, transport]);
 
   useEffect(() => {
     return () => {
@@ -177,25 +185,17 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     };
   }, []);
 
-  const selectPrev = () => {
+  const selectPrevious = useCallback(() => {
     setSelectedIndex(prev => Math.max(0, prev - 1));
-  };
+  }, []);
 
-  usePriorityInput(FILE_SUGGESTIONS_PRIORITY, event => {
-    if (event.key === "ArrowUp" || (event.shiftKey && event.key === "Tab")) {
-      event.preventDefault();
-      selectPrev();
-    } else if (event.key === "ArrowDown" || event.key === "Tab") {
-      event.preventDefault();
-      setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const selected = results[selectedIndex];
-      if (selected) {
-        options.onSelect(selected);
-      }
-    }
-  });
+  const selectNext = useCallback(() => {
+    setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
+  }, [results.length]);
 
-  return { results, selectedIndex, isLoading };
+  const selectCurrent = useCallback(() => {
+    return results[selectedIndex] ?? null;
+  }, [results, selectedIndex]);
+
+  return { results, selectedIndex, isLoading, selectPrevious, selectNext, selectCurrent };
 }

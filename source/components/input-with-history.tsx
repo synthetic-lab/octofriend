@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import TextInput from "../components/text-input.tsx";
 import { useColor } from "../theme.ts";
 import { InputHistory } from "../input-history/index.ts";
 import { FileSuggestionBox } from "./file-suggestions/index.js";
+import { useFileSearch } from "./file-suggestions/use-file-search.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
-import type { PaintFile } from "paintcannon";
+import type { PaintFile, PaintKeyboardEvent } from "paintcannon";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
-import { useAppStore } from "../state.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import type { InputMode, VimMode } from "./input-mode.ts";
 interface Props {
@@ -22,20 +22,44 @@ interface Props {
   inputMode?: InputMode;
   setVimMode?: (mode: VimMode) => void;
 }
+type SuggestionState = {
+  triggerPosition: number;
+  query: string;
+};
+function computeSuggestionState(value: string): SuggestionState | null {
+  const triggerPosition = value.lastIndexOf("@");
+  if (triggerPosition === -1) return null;
+  const query = value.slice(triggerPosition + 1);
+  if (!/^[a-zA-Z0-9_./-]*$/.test(query)) return null;
+  return { triggerPosition, query };
+}
 export const InputWithHistory = React.memo((props: Props) => {
-  const menuOpen = useAppStore(state => state.menuOpen);
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
-  const [suggestionState, setSuggestionState] = useState<{
-    isVisible: boolean;
-    triggerPosition: number;
-    query: string;
-  } | null>(null);
+  const [suggestionState, setSuggestionState] = useState<SuggestionState | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
+  const { results, selectedIndex, selectPrevious, selectNext, selectCurrent } = useFileSearch(
+    suggestionState?.query ?? "",
+    { enabled: suggestionState !== null },
+  );
+  const suggestionsVisible = suggestionState !== null && results.length > 0;
+  useEffect(() => {
+    const next = computeSuggestionState(props.value);
+    setSuggestionState(current => {
+      if (next === null) return null;
+      if (
+        current !== null &&
+        current.triggerPosition === next.triggerPosition &&
+        current.query === next.query
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, [props.value]);
   useKeyboard(event => {
-    if (menuOpen) return;
-    if (suggestionState?.isVisible) {
+    if (suggestionState !== null) {
       return;
     }
     if (event.key === "ArrowUp") {
@@ -81,7 +105,7 @@ export const InputWithHistory = React.memo((props: Props) => {
     }
   });
   const handleSubmit = () => {
-    if (suggestionState?.isVisible) {
+    if (suggestionState !== null) {
       return;
     }
     const transformedValue = replaceSelectedMentions(props.value, selectedSuggestions);
@@ -99,26 +123,6 @@ export const InputWithHistory = React.memo((props: Props) => {
       setOriginalInput("");
     }
     props.onChange(value);
-    const atIndex = value.lastIndexOf("@");
-    if (atIndex !== -1) {
-      const query = value.slice(atIndex + 1);
-
-      // Only show suggestion if actively typing a filename after @
-      // Check if query looks like a valid partial filename (no spaces, valid chars)
-      const isTypingFilename = /^[a-zA-Z0-9_./-]*$/.test(query);
-      if (isTypingFilename) {
-        setSuggestionState({
-          isVisible: true,
-          triggerPosition: atIndex,
-          query,
-        });
-      } else {
-        // User moved on (added space or other delimiter) - dismiss suggestion
-        setSuggestionState(null);
-      }
-    } else {
-      setSuggestionState(null);
-    }
   };
   const handleSuggestionSelect = useCallback(
     (filename: string) => {
@@ -139,6 +143,49 @@ export const InputWithHistory = React.memo((props: Props) => {
     },
     [props.value, suggestionState],
   );
+  const handleAutocompleteKeyDown = useCallback(
+    (event: PaintKeyboardEvent) => {
+      if (suggestionState === null) return;
+      if (event.key === "ArrowUp" || (event.shiftKey && event.key === "Tab")) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectPrevious();
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        selectNext();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSuggestionState(null);
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (!suggestionsVisible) return;
+        event.stopPropagation();
+        const selected = selectCurrent();
+        if (selected !== null) handleSuggestionSelect(selected);
+        return;
+      }
+      if (event.ctrlKey && event.key === "c") {
+        setSuggestionState(null);
+        return;
+      }
+    },
+    [
+      suggestionState,
+      suggestionsVisible,
+      selectPrevious,
+      selectNext,
+      selectCurrent,
+      handleSuggestionSelect,
+    ],
+  );
   return (
     <TerminalFlex
       style={{
@@ -153,12 +200,11 @@ export const InputWithHistory = React.memo((props: Props) => {
           justifyContent: "flex-end",
         }}
       >
-        {suggestionState?.isVisible && (
+        {suggestionsVisible && (
           <FileSuggestionBox
-            query={suggestionState.query}
-            isVisible={suggestionState.isVisible}
+            results={results}
+            selectedIndex={selectedIndex}
             onSelect={handleSuggestionSelect}
-            onDismiss={() => setSuggestionState(null)}
           />
         )}
       </TerminalFlex>
@@ -182,12 +228,8 @@ export const InputWithHistory = React.memo((props: Props) => {
           onRemoveLastImage={props.onRemoveLastImage}
           onImageFilesAttached={props.onImageFilesAttached}
           onSubmit={handleSubmit}
-          onKeyDown={event => {
-            // Prevent literal newlines from being inserted when accepting suggestions
-            if (event.key === "Enter" && suggestionState?.isVisible) event.preventDefault();
-          }}
+          onKeyDown={handleAutocompleteKeyDown}
           inputMode={props.inputMode}
-          setVimMode={props.setVimMode}
         />
       </TerminalFlex>
     </TerminalFlex>

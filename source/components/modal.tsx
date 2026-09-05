@@ -1,9 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DivElement } from "paintcannon";
-import { InputElement, TextAreaElement } from "paintcannon";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { FocusTrap } from "../hooks/use-keyboard.ts";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
 
 const BACKDROP_OPACITY = 0.75;
@@ -28,11 +27,6 @@ export function Modal({
   minWidth?: number;
 }) {
   const borderColor = useColor();
-  useKeyboard(event => {
-    if (event.ctrlKey && event.key === "c") return;
-    if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
-    event.preventDefault();
-  });
   const { time } = useAnimation({ isActive: true });
   const backdropOpacity = BACKDROP_OPACITY * fadeProgress(time, BACKDROP_FADE_DURATION_MS);
   const showBox = time >= MODAL_SHOW_DELAY_MS;
@@ -77,19 +71,7 @@ export function Modal({
   });
 
   return (
-    <TerminalFlex
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        zIndex: MODAL_Z_INDEX,
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
+    <FocusTrap>
       <TerminalFlex
         style={{
           position: "absolute",
@@ -97,11 +79,23 @@ export function Modal({
           left: 0,
           width: "100%",
           height: "100%",
-          backgroundColor: DIMMED_BACKGROUND_COLOR,
-          opacity: backdropOpacity,
+          zIndex: MODAL_Z_INDEX,
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
         }}
-      />
-      {showBox && (
+      >
+        <TerminalFlex
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            backgroundColor: DIMMED_BACKGROUND_COLOR,
+            opacity: backdropOpacity,
+          }}
+        />
         <TerminalFlex
           style={{
             position: "relative",
@@ -110,6 +104,7 @@ export function Modal({
             minWidth,
             maxWidth: "100%",
             maxHeight: "100%",
+            visibility: showBox ? "visible" : "hidden",
           }}
         >
           {displayedSize != null && (
@@ -140,7 +135,7 @@ export function Modal({
             {children}
           </TerminalFlex>
         </TerminalFlex>
-      )}
-    </TerminalFlex>
+      </TerminalFlex>
+    </FocusTrap>
   );
 }
