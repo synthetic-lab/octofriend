@@ -355,6 +355,10 @@ export default function App({
     ];
     return items;
   }, [metadata, skillNotifs, updates]);
+  const historyItems: TranscriptItem[] = useMemo(
+    () => history.map(item => ({ type: "history-item", item })),
+    [history],
+  );
   const inflightResponse =
     modeData.mode === "responding" || modeData.mode === "compacting"
       ? modeData.inflightResponse
@@ -458,14 +462,8 @@ export default function App({
                                   flexDirection: "column",
                                 }}
                               >
-                                {history.map((item, index) => (
-                                  <TranscriptItemRenderer
-                                    item={{
-                                      type: "history-item",
-                                      item,
-                                    }}
-                                    key={`history-${index}`}
-                                  />
+                                {historyItems.map((item, index) => (
+                                  <TranscriptItemRenderer item={item} key={`history-${index}`} />
                                 ))}
                                 {(modeData.mode === "responding" ||
                                   modeData.mode === "compacting") &&
