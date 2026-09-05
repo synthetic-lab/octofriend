@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useLayoutEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { useKeyboardActive } from "../hooks/use-keyboard.ts";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -51,12 +52,14 @@ export default function TextInput({
 }: Props) {
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
+  const keyboardActive = useKeyboardActive();
+  const shouldFocus = focus && keyboardActive;
   const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));
 
-  useEffect(() => {
-    if (focus) textareaRef.current?.focus();
+  useLayoutEffect(() => {
+    if (shouldFocus) textareaRef.current?.focus();
     else textareaRef.current?.blur();
-  }, [focus]);
+  }, [shouldFocus]);
 
   const setCursorAfterValueChange = useCallback(
     (nextValue: string, stringIndex: number) => {
@@ -107,9 +110,16 @@ export default function TextInput({
         ref={textareaRef}
         value={value}
         placeholder={placeholder}
-        autoFocus={focus}
+        autoFocus={shouldFocus}
+        onFocus={() => {
+          if (!keyboardActive) textareaRef.current?.blur();
+        }}
         onChange={event => onChange(event.target.value)}
         onPaste={event => {
+          if (!keyboardActive) {
+            event.preventDefault();
+            return;
+          }
           const files = Array.from(event.clipboardData.files);
           if (files.length > 0) {
             event.preventDefault();
@@ -117,6 +127,10 @@ export default function TextInput({
           }
         }}
         onKeyDown={event => {
+          if (!keyboardActive) {
+            event.preventDefault();
+            return;
+          }
           onKeyDown?.(event);
           if (event.defaultPrevented) return;
 

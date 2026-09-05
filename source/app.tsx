@@ -290,6 +290,7 @@ export default function App({
     history,
     modeData,
     menuOpen,
+    closeMenu,
     clearNonce,
     sessionHydrationNonce,
     modelOverride,
@@ -300,6 +301,7 @@ export default function App({
       history: state.history,
       modeData: state.modeData,
       menuOpen: state.menuOpen,
+      closeMenu: state.closeMenu,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
@@ -497,7 +499,7 @@ export default function App({
                         </AppShell>
                       </ExitOnDoubleCtrlC>
                       {menuOpen && (
-                        <Modal minWidth={50}>
+                        <Modal minWidth={50} onClose={closeMenu}>
                           <Menu onSessionChange={handleSessionChange} />
                         </Modal>
                       )}

@@ -1,9 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DivElement } from "paintcannon";
-import { InputElement, TextAreaElement } from "paintcannon";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { ModalKeyboardScope } from "../hooks/use-keyboard.ts";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
 
 const BACKDROP_OPACITY = 0.75;
@@ -20,19 +19,22 @@ function fadeProgress(time: number, durationMs: number): number {
   return Math.min(1, time / durationMs);
 }
 
-export function Modal({
-  children,
-  minWidth = 0,
-}: {
+type ModalProps = {
   children: React.ReactNode;
   minWidth?: number;
-}) {
+  onClose: () => void;
+};
+
+export function Modal(props: ModalProps) {
+  return (
+    <ModalKeyboardScope onClose={props.onClose}>
+      <ModalContent {...props} />
+    </ModalKeyboardScope>
+  );
+}
+
+function ModalContent({ children, minWidth = 0 }: ModalProps) {
   const borderColor = useColor();
-  useKeyboard(event => {
-    if (event.ctrlKey && event.key === "c") return;
-    if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
-    event.preventDefault();
-  });
   const { time } = useAnimation({ isActive: true });
   const backdropOpacity = BACKDROP_OPACITY * fadeProgress(time, BACKDROP_FADE_DURATION_MS);
   const showBox = time >= MODAL_SHOW_DELAY_MS;
