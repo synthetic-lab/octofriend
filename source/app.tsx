@@ -289,7 +289,8 @@ export default function App({
   const {
     history,
     modeData,
-    menuOpen,
+    isMenuOpen,
+    closeMenu,
     clearNonce,
     sessionHydrationNonce,
     modelOverride,
@@ -299,7 +300,8 @@ export default function App({
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
-      menuOpen: state.menuOpen,
+      isMenuOpen: state.isMenuOpen,
+      closeMenu: state.closeMenu,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
@@ -496,8 +498,8 @@ export default function App({
                           />
                         </AppShell>
                       </ExitOnDoubleCtrlC>
-                      {menuOpen && (
-                        <Modal minWidth={50}>
+                      {isMenuOpen && (
+                        <Modal minWidth={50} onClose={closeMenu}>
                           <Menu onSessionChange={handleSessionChange} />
                         </Modal>
                       )}
@@ -660,11 +662,9 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const {
     modeData,
     clearNonce,
-    menuOpen,
     input,
     abortResponse,
     openMenu,
-    closeMenu,
     byteCount,
     query,
     setQuery,
@@ -678,10 +678,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     useShallow(state => ({
       modeData: state.modeData,
       clearNonce: state.clearNonce,
-      menuOpen: state.menuOpen,
       input: state.input,
       abortResponse: state.abortResponse,
-      closeMenu: state.closeMenu,
       openMenu: state.openMenu,
       byteCount: state.byteCount,
       query: state.query,
@@ -702,11 +700,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
 
   useCtrlC(() => {
-    if (inputMode.kind === "vim" || menuOpen) return;
+    if (inputMode.kind === "vim") return;
     setQuery("");
   });
   useKeyboard(event => {
-    if (menuOpen) return;
     if (event.key === "Escape") {
       if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
@@ -715,7 +712,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         return;
       }
       abortResponse(session, config);
-      closeMenu();
     }
     if (event.ctrlKey && event.key === "p") {
       openMenu();
@@ -800,7 +796,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         </TerminalFlex>
         <QueuedUserMessages messages={queuedMessages} />
         <MultimediaInput
-          focus={!menuOpen}
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
@@ -886,7 +881,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
       <QueuedUserMessages messages={queuedMessages} />
       <MultimediaInput
-        focus={!menuOpen}
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}

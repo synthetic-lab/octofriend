@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
 import { Div, Span, Textarea, useApp } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { useKeyboard } from "../hooks/use-keyboard.ts";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -53,11 +54,6 @@ export default function TextInput({
   const textareaRef = useRef<TextAreaElement>(null);
   const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));
 
-  useEffect(() => {
-    if (focus) textareaRef.current?.focus();
-    else textareaRef.current?.blur();
-  }, [focus]);
-
   const setCursorAfterValueChange = useCallback(
     (nextValue: string, stringIndex: number) => {
       const position = stringIndexToCharacterIndex(nextValue, stringIndex);
@@ -66,6 +62,96 @@ export default function TextInput({
       });
     },
     [paintCannon],
+  );
+
+  useKeyboard(
+    event => {
+      onKeyDown?.(event);
+      if (event.defaultPrevented) return;
+
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      if ((event.ctrlKey && event.key === "p") || event.key === "Tab") {
+        event.preventDefault();
+        return;
+      }
+
+      const cursorPosition = characterIndexToStringIndex(value, textarea.cursorPosition);
+      if (inputMode.kind === "vim") {
+        const cursorVisualPosition = textarea.getCursorVisualPosition();
+        const nativeVisualLineRange =
+          cursorVisualPosition === null
+            ? null
+            : textarea.getVisualLineRange(cursorVisualPosition.row);
+        const visualLineRange =
+          nativeVisualLineRange === null
+            ? null
+            : {
+                start: characterIndexToStringIndex(value, nativeVisualLineRange.start),
+                end: characterIndexToStringIndex(value, nativeVisualLineRange.end),
+              };
+        if (
+          inputMode.mode === "NORMAL" &&
+          (event.key === "j" ||
+            event.key === "ArrowDown" ||
+            event.key === "k" ||
+            event.key === "ArrowUp")
+        ) {
+          event.preventDefault();
+          textarea.moveCursorVertically(event.key === "j" || event.key === "ArrowDown" ? 1 : -1);
+          return;
+        }
+
+        const vimResult = vimHandler.handle(
+          event.key,
+          event,
+          cursorPosition,
+          value.length,
+          value,
+          cursorVisualPosition,
+          visualLineRange,
+        );
+        if (vimResult.consumed) {
+          event.preventDefault();
+          const nextValue = vimResult.newValue ?? value;
+          if (vimResult.newValue !== undefined) onChange(nextValue);
+          if (vimResult.newCursorPosition !== undefined) {
+            const position = stringIndexToCharacterIndex(nextValue, vimResult.newCursorPosition);
+            if (vimResult.newValue === undefined) {
+              textarea.cursorPosition = position;
+            } else {
+              setCursorAfterValueChange(nextValue, vimResult.newCursorPosition);
+            }
+          }
+          return;
+        }
+      }
+
+      if (event.key === "Enter") {
+        if (inputMode.kind === "vim" && inputMode.mode === "INSERT") return;
+        event.preventDefault();
+        onSubmit?.(value);
+        return;
+      }
+
+      if (event.key === "Backspace" && textarea.cursorPosition === 0 && attachedImages.length > 0) {
+        event.preventDefault();
+        onRemoveLastImage?.();
+        return;
+      }
+    },
+    focus,
+    {
+      target: textareaRef,
+      onPaste: event => {
+        const files = Array.from(event.clipboardData.files);
+        if (files.length > 0) {
+          event.preventDefault();
+          void onImageFilesAttached?.(files);
+        }
+      },
+    },
   );
 
   return (
@@ -107,100 +193,7 @@ export default function TextInput({
         ref={textareaRef}
         value={value}
         placeholder={placeholder}
-        autoFocus={focus}
         onChange={event => onChange(event.target.value)}
-        onPaste={event => {
-          const files = Array.from(event.clipboardData.files);
-          if (files.length > 0) {
-            event.preventDefault();
-            void onImageFilesAttached?.(files);
-          }
-        }}
-        onKeyDown={event => {
-          onKeyDown?.(event);
-          if (event.defaultPrevented) return;
-
-          const textarea = textareaRef.current;
-          if (!textarea) return;
-
-          if ((event.ctrlKey && event.key === "p") || event.key === "Tab") {
-            event.preventDefault();
-            return;
-          }
-
-          const cursorPosition = characterIndexToStringIndex(value, textarea.cursorPosition);
-          if (inputMode.kind === "vim") {
-            const cursorVisualPosition = textarea.getCursorVisualPosition();
-            const nativeVisualLineRange =
-              cursorVisualPosition === null
-                ? null
-                : textarea.getVisualLineRange(cursorVisualPosition.row);
-            const visualLineRange =
-              nativeVisualLineRange === null
-                ? null
-                : {
-                    start: characterIndexToStringIndex(value, nativeVisualLineRange.start),
-                    end: characterIndexToStringIndex(value, nativeVisualLineRange.end),
-                  };
-            if (
-              inputMode.mode === "NORMAL" &&
-              (event.key === "j" ||
-                event.key === "ArrowDown" ||
-                event.key === "k" ||
-                event.key === "ArrowUp")
-            ) {
-              event.preventDefault();
-              textarea.moveCursorVertically(
-                event.key === "j" || event.key === "ArrowDown" ? 1 : -1,
-              );
-              return;
-            }
-
-            const vimResult = vimHandler.handle(
-              event.key,
-              event,
-              cursorPosition,
-              value.length,
-              value,
-              cursorVisualPosition,
-              visualLineRange,
-            );
-            if (vimResult.consumed) {
-              event.preventDefault();
-              const nextValue = vimResult.newValue ?? value;
-              if (vimResult.newValue !== undefined) onChange(nextValue);
-              if (vimResult.newCursorPosition !== undefined) {
-                const position = stringIndexToCharacterIndex(
-                  nextValue,
-                  vimResult.newCursorPosition,
-                );
-                if (vimResult.newValue === undefined) {
-                  textarea.cursorPosition = position;
-                } else {
-                  setCursorAfterValueChange(nextValue, vimResult.newCursorPosition);
-                }
-              }
-              return;
-            }
-          }
-
-          if (event.key === "Enter") {
-            if (inputMode.kind === "vim" && inputMode.mode === "INSERT") return;
-            event.preventDefault();
-            onSubmit?.(value);
-            return;
-          }
-
-          if (
-            event.key === "Backspace" &&
-            textarea.cursorPosition === 0 &&
-            attachedImages.length > 0
-          ) {
-            event.preventDefault();
-            onRemoveLastImage?.();
-            return;
-          }
-        }}
         style={{
           display: "flex",
           width: "100%",

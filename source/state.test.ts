@@ -58,7 +58,7 @@ const tempDirs: string[] = [];
 beforeEach(() => {
   useAppStore.setState({
     history: [],
-    menuOpen: false,
+    isMenuOpen: false,
     lastUserPromptIndex: null,
     runningToolCallId: null,
     queuedUserMessages: [],

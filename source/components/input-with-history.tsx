@@ -6,11 +6,9 @@ import { FileSuggestionBox } from "./file-suggestions/index.js";
 import { ImageInfo } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
-import { useAppStore } from "../state.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import type { InputMode, VimMode } from "./input-mode.ts";
 interface Props {
-  focus?: boolean;
   attachedImages: ImageInfo[];
   inputHistory: InputHistory;
   value: string;
@@ -23,7 +21,6 @@ interface Props {
   setVimMode?: (mode: VimMode) => void;
 }
 export const InputWithHistory = React.memo((props: Props) => {
-  const menuOpen = useAppStore(state => state.menuOpen);
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
@@ -34,7 +31,6 @@ export const InputWithHistory = React.memo((props: Props) => {
   } | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   useKeyboard(event => {
-    if (menuOpen) return;
     if (suggestionState?.isVisible) {
       return;
     }
@@ -174,7 +170,6 @@ export const InputWithHistory = React.memo((props: Props) => {
         }}
       >
         <TextInput
-          focus={props.focus}
           attachedImages={props.attachedImages}
           showLoadingImageBadge={props.showLoadingImageBadge}
           value={props.value}

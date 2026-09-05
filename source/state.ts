@@ -84,7 +84,7 @@ export type InflightResponseType = {
   reasoningContent?: string | null;
 };
 export type UiState = {
-  menuOpen: boolean;
+  isMenuOpen: boolean;
   _notifyTimer: NodeJS.Timeout | null;
   sessionAutoNotify: boolean;
   notifyOnce: boolean;
@@ -299,7 +299,7 @@ export function nextToolAction(
 }
 
 export const useAppStore = create<UiState>((set, get) => ({
-  menuOpen: false,
+  isMenuOpen: false,
   _notifyTimer: null,
   sessionAutoNotify: false,
   notifyOnce: false,
@@ -565,17 +565,17 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   toggleMenu: () => {
-    if (get().menuOpen) {
-      set({ menuOpen: false });
+    if (get().isMenuOpen) {
+      set({ isMenuOpen: false });
     } else if (get().modeData.mode === "ready-for-request") {
-      set({ menuOpen: true });
+      set({ isMenuOpen: true });
     }
   },
   closeMenu: () => {
-    set({ menuOpen: false });
+    set({ isMenuOpen: false });
   },
   openMenu: () => {
-    set({ menuOpen: true });
+    set({ isMenuOpen: true });
   },
 
   setQuery: query => {
@@ -669,7 +669,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
       modeData: { mode: "ready-for-request" },
-      menuOpen: false,
+      isMenuOpen: false,
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
       runningToolCallId: null,
