@@ -11,7 +11,7 @@ export const KEYBOARD_PRIORITY = {
   FALLBACK: -1,
 } as const;
 
-type KeyboardListener = (event: PaintKeyboardEvent) => boolean | void | Promise<void>;
+type KeyboardListener = (event: PaintKeyboardEvent) => void;
 type KeyboardOptions = {
   isActive?: boolean;
   priority?: number;
@@ -37,7 +37,8 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }) {
   const handleKeyDown = useCallback((event: PaintKeyboardEvent) => {
     const listeners = Array.from(listenersRef.current).sort((a, b) => b.priority - a.priority);
     for (const { listener } of listeners) {
-      if (listener(event) === true) break;
+      listener(event);
+      if (event.propagationStopped) break;
     }
   }, []);
 
@@ -74,7 +75,7 @@ function useKeyboardImpl(
     if (!context) throw new Error("useKeyboard must be used inside KeyboardProvider");
 
     const handleKeyDown = (event: PaintKeyboardEvent) => {
-      return callbackRef.current(event);
+      callbackRef.current(event);
     };
     return context.register(handleKeyDown, priority);
   }, [context, isActive, priority]);

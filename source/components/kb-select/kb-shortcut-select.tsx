@@ -162,31 +162,35 @@ export function KbShortcutSelect<V>({ focus = true, shortcutItems, onSelect }: K
         const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
         if (hasNext) {
           event.preventDefault();
+          event.stopPropagation();
           setPage(prev => prev + 1);
           setSelectedIndex(0);
           setRotateIndex(0);
-          return true;
+          return;
         }
       }
       if (event.key === "h") {
         const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
         if (hasPrev && page > 0) {
           event.preventDefault();
+          event.stopPropagation();
           setPage(prev => prev - 1);
           setSelectedIndex(0);
           setRotateIndex(0);
-          return true;
+          return;
         }
       }
       for (const item of items) {
         if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
           event.preventDefault();
+          event.stopPropagation();
           handleSelect(item.item);
-          return true;
+          return;
         }
       }
       if (event.key === "k" || event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopPropagation();
         const lastIndex = items.length - 1;
         const atFirstIndex = selectedIndex === 0;
         const nextIndex = lastIndex;
@@ -194,24 +198,24 @@ export function KbShortcutSelect<V>({ focus = true, shortcutItems, onSelect }: K
         const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
         setRotateIndex(nextRotateIndex);
         setSelectedIndex(nextSelectedIndex);
-        return true;
+        return;
       }
       if (event.key === "j" || event.key === "ArrowDown") {
         event.preventDefault();
+        event.stopPropagation();
         const atLastIndex = selectedIndex === items.length - 1;
         const nextIndex = 0;
         const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
         const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
         setRotateIndex(nextRotateIndex);
         setSelectedIndex(nextSelectedIndex);
-        return true;
+        return;
       }
       if (event.key === "Enter") {
         event.preventDefault();
+        event.stopPropagation();
         handleSelect(items[selectedIndex].item);
-        return true;
       }
-      return false;
     },
     { isActive: focus },
   );

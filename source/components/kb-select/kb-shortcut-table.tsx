@@ -55,38 +55,43 @@ export function KbShortcutTable<Row>({
     const action = actions.find(candidate => candidate.shortcut === event.key);
     if (action) {
       event.preventDefault();
+      event.stopPropagation();
       action.onSelect();
-      return true;
+      return;
     }
 
     if (event.key === "h" && page > 0) {
       event.preventDefault();
+      event.stopPropagation();
       setPage(current => current - 1);
       setSelectedIndex(0);
-      return true;
+      return;
     }
     if (event.key === "l" && page < pageCount - 1) {
       event.preventDefault();
+      event.stopPropagation();
       setPage(current => current + 1);
       setSelectedIndex(0);
-      return true;
+      return;
     }
     if (event.key === "k" || event.key === "ArrowUp") {
       event.preventDefault();
+      event.stopPropagation();
       setSelectedIndex(current => Math.max(0, current - 1));
-      return true;
+      return;
     }
     if (event.key === "j" || event.key === "ArrowDown") {
       event.preventDefault();
+      event.stopPropagation();
       setSelectedIndex(current => Math.min(visibleRows.length - 1, current + 1));
-      return true;
+      return;
     }
     if (/^[0-9]$/.test(event.key)) {
       const row = visibleRows[Number.parseInt(event.key, 10)];
       if (row !== undefined) {
         event.preventDefault();
+        event.stopPropagation();
         onSelect(row);
-        return true;
       }
       return;
     }
@@ -94,11 +99,10 @@ export function KbShortcutTable<Row>({
       const row = visibleRows[selectedIndex];
       if (row !== undefined) {
         event.preventDefault();
+        event.stopPropagation();
         onSelect(row);
-        return true;
       }
     }
-    return false;
   });
 
   const actionRowStart = visibleRows.length + (rows.length > 0 ? 2 : 1);

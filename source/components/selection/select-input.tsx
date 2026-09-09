@@ -100,6 +100,7 @@ function SelectInput<V>({
 
         if (event.key === "k" || event.key === "ArrowUp") {
           event.preventDefault();
+          event.stopPropagation();
           const lastIndex = (hasLimit ? limit : items.length) - 1;
           const atFirstIndex = selectedIndex === 0;
           const nextIndex = hasLimit ? selectedIndex : lastIndex;
@@ -113,10 +114,11 @@ function SelectInput<V>({
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
-          return true;
+          return;
         }
         if (event.key === "j" || event.key === "ArrowDown") {
           event.preventDefault();
+          event.stopPropagation();
           const atLastIndex = selectedIndex === (hasLimit ? limit : items.length) - 1;
           const nextIndex = hasLimit ? selectedIndex : 0;
           const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
@@ -129,7 +131,7 @@ function SelectInput<V>({
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
-          return true;
+          return;
         }
 
         // Enable selection directly from number keys.
@@ -140,22 +142,22 @@ function SelectInput<V>({
             : items;
           if (targetIndex >= 0 && targetIndex < visibleItems.length) {
             event.preventDefault();
+            event.stopPropagation();
             const selectedItem = visibleItems[targetIndex];
             if (selectedItem) {
               onSelect?.(selectedItem);
             }
-            return true;
+            return;
           }
         }
         if (event.key === "Enter") {
           event.preventDefault();
+          event.stopPropagation();
           const slicedItems = hasLimit ? arrayToRotated(items, rotateIndex).slice(0, limit) : items;
           if (typeof onSelect === "function") {
             onSelect(slicedItems[selectedIndex]!);
           }
-          return true;
         }
-        return false;
       },
       [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight, onKeyDown],
     ),

@@ -33,7 +33,7 @@ export function Modal({
       if (event.ctrlKey && event.key === "c") return;
       if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
       event.preventDefault();
-      return true;
+      event.stopPropagation();
     },
     { priority: KEYBOARD_PRIORITY.FALLBACK },
   );

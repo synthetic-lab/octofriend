@@ -23,10 +23,9 @@ export function FileSuggestionBox({
     event => {
       if (event.key === "Escape" && isVisible) {
         event.preventDefault();
+        event.stopPropagation();
         onDismiss();
-        return true;
       }
-      return false;
     },
     { isActive: isVisible, priority: KEYBOARD_PRIORITY.OVERLAY },
   );

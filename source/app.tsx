@@ -174,6 +174,7 @@ function UnchainedShiftTabHandler({
   useKeyboard(event => {
     if (event.shiftKey && event.key === "Tab") {
       event.preventDefault();
+      event.stopPropagation();
       setIsUnchained(prev => {
         const unchained = !prev;
         if (unchained) {
@@ -183,9 +184,7 @@ function UnchainedShiftTabHandler({
         }
         return unchained;
       });
-      return true;
     }
-    return false;
   });
   return null;
 }

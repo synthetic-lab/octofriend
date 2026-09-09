@@ -43,15 +43,17 @@ export const InputWithHistory = React.memo((props: Props) => {
         const history = props.inputHistory.getCurrentHistory();
         if (history.length === 0) return;
         event.preventDefault();
+        event.stopPropagation();
         const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
         setCurrentIndex(newIndex);
         props.onChange(history[newIndex]);
-        return true;
+        return;
       }
       if (event.key === "ArrowDown") {
         const history = props.inputHistory.getCurrentHistory();
         if (currentIndex === -1 || history.length === 0) return;
         event.preventDefault();
+        event.stopPropagation();
         if (currentIndex < history.length - 1) {
           const newIndex = currentIndex + 1;
           setCurrentIndex(newIndex);
@@ -61,7 +63,7 @@ export const InputWithHistory = React.memo((props: Props) => {
           setCurrentIndex(-1);
           props.onChange(originalInput);
         }
-        return true;
+        return;
       }
 
       // Reset navigation state when user types anything else
@@ -77,7 +79,6 @@ export const InputWithHistory = React.memo((props: Props) => {
           setOriginalInput("");
         }
       }
-      return false;
     },
     { isActive: props.focus },
   );

@@ -41,6 +41,7 @@ describe("KbShortcutSelect", () => {
         keyboardHandler?.({
           key: "Enter",
           preventDefault,
+          stopPropagation: mock(),
         } as unknown as PaintKeyboardEvent);
       });
 

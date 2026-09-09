@@ -185,21 +185,20 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     event => {
       if (event.key === "ArrowUp" || (event.shiftKey && event.key === "Tab")) {
         event.preventDefault();
+        event.stopPropagation();
         selectPrev();
-        return true;
       } else if (event.key === "ArrowDown" || event.key === "Tab") {
         event.preventDefault();
+        event.stopPropagation();
         setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
-        return true;
       } else if (event.key === "Enter") {
         event.preventDefault();
+        event.stopPropagation();
         const selected = results[selectedIndex];
         if (selected) {
           options.onSelect(selected);
         }
-        return true;
       }
-      return false;
     },
     { priority: KEYBOARD_PRIORITY.OVERLAY },
   );
