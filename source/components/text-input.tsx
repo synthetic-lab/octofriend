@@ -5,6 +5,7 @@ import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { useInputFocus } from "../hooks/use-input-focus.tsx";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -40,7 +41,7 @@ export default function TextInput({
   value,
   showLoadingImageBadge = false,
   placeholder = "",
-  focus = true,
+  focus: focusProp = true,
   onChange,
   onImageFilesAttached,
   onRemoveLastImage,
@@ -49,6 +50,7 @@ export default function TextInput({
   setVimMode,
   onKeyDown,
 }: Props) {
+  const focus = useInputFocus(focusProp);
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
   const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));

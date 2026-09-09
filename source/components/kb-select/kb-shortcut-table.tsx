@@ -56,36 +56,37 @@ export function KbShortcutTable<Row>({
     if (action) {
       event.preventDefault();
       action.onSelect();
-      return;
+      return true;
     }
 
     if (event.key === "h" && page > 0) {
       event.preventDefault();
       setPage(current => current - 1);
       setSelectedIndex(0);
-      return;
+      return true;
     }
     if (event.key === "l" && page < pageCount - 1) {
       event.preventDefault();
       setPage(current => current + 1);
       setSelectedIndex(0);
-      return;
+      return true;
     }
     if (event.key === "k" || event.key === "ArrowUp") {
       event.preventDefault();
       setSelectedIndex(current => Math.max(0, current - 1));
-      return;
+      return true;
     }
     if (event.key === "j" || event.key === "ArrowDown") {
       event.preventDefault();
       setSelectedIndex(current => Math.min(visibleRows.length - 1, current + 1));
-      return;
+      return true;
     }
     if (/^[0-9]$/.test(event.key)) {
       const row = visibleRows[Number.parseInt(event.key, 10)];
       if (row !== undefined) {
         event.preventDefault();
         onSelect(row);
+        return true;
       }
       return;
     }
@@ -94,8 +95,10 @@ export function KbShortcutTable<Row>({
       if (row !== undefined) {
         event.preventDefault();
         onSelect(row);
+        return true;
       }
     }
+    return false;
   });
 
   const actionRowStart = visibleRows.length + (rows.length > 0 ? 2 : 1);

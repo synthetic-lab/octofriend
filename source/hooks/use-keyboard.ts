@@ -2,23 +2,43 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef } from "reac
 import type { PaintKeyboardEvent } from "paintcannon";
 import { Div } from "paintcannon-react";
 import { registry } from "antipattern";
+import { useInputFocus } from "./use-input-focus.tsx";
 
-type KeyboardListener = (event: PaintKeyboardEvent) => void;
+export const KEYBOARD_PRIORITY = {
+  OBSERVER: Infinity,
+  OVERLAY: 1,
+  DEFAULT: 0,
+  FALLBACK: -1,
+} as const;
+
+type KeyboardListener = (event: PaintKeyboardEvent) => boolean | void | Promise<void>;
+type KeyboardOptions = {
+  isActive?: boolean;
+  priority?: number;
+};
+type KeyboardRegistration = {
+  listener: KeyboardListener;
+  priority: number;
+};
 type KeyboardContextValue = {
-  register: (listener: KeyboardListener) => () => void;
+  register: (listener: KeyboardListener, priority: number) => () => void;
 };
 
 const KeyboardContext = React.createContext<KeyboardContextValue | null>(null);
 
 export function KeyboardProvider({ children }: { children: React.ReactNode }) {
-  const listenersRef = useRef(new Set<KeyboardListener>());
-  const register = useCallback((listener: KeyboardListener) => {
-    listenersRef.current.add(listener);
-    return () => listenersRef.current.delete(listener);
+  const listenersRef = useRef(new Set<KeyboardRegistration>());
+  const register = useCallback((listener: KeyboardListener, priority: number) => {
+    const registration = { listener, priority };
+    listenersRef.current.add(registration);
+    return () => listenersRef.current.delete(registration);
   }, []);
   const context = useMemo(() => ({ register }), [register]);
   const handleKeyDown = useCallback((event: PaintKeyboardEvent) => {
-    for (const listener of Array.from(listenersRef.current)) listener(event);
+    const listeners = Array.from(listenersRef.current).sort((a, b) => b.priority - a.priority);
+    for (const { listener } of listeners) {
+      if (listener(event) === true) break;
+    }
   }, []);
 
   return React.createElement(
@@ -40,7 +60,11 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function useKeyboardImpl(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
+function useKeyboardImpl(
+  callback: KeyboardListener,
+  isActive = true,
+  priority: number = KEYBOARD_PRIORITY.DEFAULT,
+): void {
   const context = useContext(KeyboardContext);
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
@@ -50,16 +74,19 @@ function useKeyboardImpl(callback: (event: PaintKeyboardEvent) => void, isActive
     if (!context) throw new Error("useKeyboard must be used inside KeyboardProvider");
 
     const handleKeyDown = (event: PaintKeyboardEvent) => {
-      callbackRef.current(event);
+      return callbackRef.current(event);
     };
-    return context.register(handleKeyDown);
-  }, [context, isActive]);
+    return context.register(handleKeyDown, priority);
+  }, [context, isActive, priority]);
 }
 
 export const keyboardDeps = registry({
   useKeyboard: useKeyboardImpl,
 });
 
-export function useKeyboard(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
-  keyboardDeps.useKeyboard(callback, isActive);
+export function useKeyboard(
+  callback: KeyboardListener,
+  { isActive = true, priority = KEYBOARD_PRIORITY.DEFAULT }: KeyboardOptions = {},
+): void {
+  keyboardDeps.useKeyboard(callback, useInputFocus(isActive), priority);
 }

@@ -4,6 +4,7 @@ import { Item, KbShortcutSelect, ShortcutArray } from "./kb-shortcut-select.tsx"
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "../terminal-flex.tsx";
 type KbPanelProps<V> = {
+  focus?: boolean;
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
   title: string;
@@ -37,7 +38,13 @@ export const MenuHeader = ({ title }: { title: string }) => {
     </TerminalFlex>
   );
 };
-export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
+export function KbShortcutPanel<V>({
+  focus = true,
+  shortcutItems,
+  onSelect,
+  title,
+  children,
+}: KbPanelProps<V>) {
   return (
     <TerminalFlex
       style={{
@@ -70,7 +77,7 @@ export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }:
           marginTop: children ? 1 : 0,
         }}
       >
-        <KbShortcutSelect shortcutItems={shortcutItems} onSelect={onSelect} />
+        <KbShortcutSelect focus={focus} shortcutItems={shortcutItems} onSelect={onSelect} />
       </TerminalFlex>
     </TerminalFlex>
   );

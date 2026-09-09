@@ -67,11 +67,12 @@ export type ShortcutArray<V> =
   | [AutolistShortcutType<V>, MapShortcutType<V>]
   | [MapShortcutType<V>, AutolistShortcutType<V>, MapShortcutType<V>];
 type KbSelectProps<V> = {
+  focus?: boolean;
   shortcutItems: ShortcutArray<V>;
   readonly onSelect: (item: Item<V>) => any;
 };
 const PAGE_SIZE = 10;
-export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
+export function KbShortcutSelect<V>({ focus = true, shortcutItems, onSelect }: KbSelectProps<V>) {
   const [page, setPage] = useState(0);
   const items = useMemo(() => {
     const result: Array<{
@@ -154,54 +155,66 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
     },
     [onSelect],
   );
-  useKeyboard(event => {
-    if (event.ctrlKey) return;
-    if (event.key === "l") {
-      const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
-      if (hasNext) {
-        setPage(prev => prev + 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
+  useKeyboard(
+    event => {
+      if (event.ctrlKey) return;
+      if (event.key === "l") {
+        const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
+        if (hasNext) {
+          event.preventDefault();
+          setPage(prev => prev + 1);
+          setSelectedIndex(0);
+          setRotateIndex(0);
+          return true;
+        }
       }
-    }
-    if (event.key === "h") {
-      const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
-      if (hasPrev && page > 0) {
-        setPage(prev => prev - 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
+      if (event.key === "h") {
+        const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
+        if (hasPrev && page > 0) {
+          event.preventDefault();
+          setPage(prev => prev - 1);
+          setSelectedIndex(0);
+          setRotateIndex(0);
+          return true;
+        }
       }
-    }
-    for (const item of items) {
-      if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
-        handleSelect(item.item);
-        return;
+      for (const item of items) {
+        if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
+          event.preventDefault();
+          handleSelect(item.item);
+          return true;
+        }
       }
-    }
-    if (event.key === "k" || event.key === "ArrowUp") {
-      const lastIndex = items.length - 1;
-      const atFirstIndex = selectedIndex === 0;
-      const nextIndex = lastIndex;
-      const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
-      const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
-    }
-    if (event.key === "j" || event.key === "ArrowDown") {
-      const atLastIndex = selectedIndex === items.length - 1;
-      const nextIndex = 0;
-      const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
-      const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleSelect(items[selectedIndex].item);
-    }
-  });
+      if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const lastIndex = items.length - 1;
+        const atFirstIndex = selectedIndex === 0;
+        const nextIndex = lastIndex;
+        const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
+        const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
+        setRotateIndex(nextRotateIndex);
+        setSelectedIndex(nextSelectedIndex);
+        return true;
+      }
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const atLastIndex = selectedIndex === items.length - 1;
+        const nextIndex = 0;
+        const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
+        const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
+        setRotateIndex(nextRotateIndex);
+        setSelectedIndex(nextSelectedIndex);
+        return true;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleSelect(items[selectedIndex].item);
+        return true;
+      }
+      return false;
+    },
+    { isActive: focus },
+  );
   return (
     <TerminalFlex
       style={{

@@ -97,11 +97,6 @@ import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
 import type { OctoIR } from "./ir/octo-ir.ts";
-import {
-  InputPriorityProvider,
-  usePriorityInput,
-  UNCHAINED_PRIORITY,
-} from "./hooks/use-priority-input.tsx";
 import { writeFileSync } from "fs";
 import os from "os";
 import path from "path";
@@ -109,7 +104,8 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
-import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { KEYBOARD_PRIORITY, useKeyboard } from "./hooks/use-keyboard.ts";
+import { InputFocusProvider } from "./hooks/use-input-focus.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
@@ -175,7 +171,7 @@ function UnchainedShiftTabHandler({
   setIsUnchained: (fn: (prev: boolean) => boolean) => void;
   setTempNotification: (notif: string | null) => void;
 }) {
-  usePriorityInput(UNCHAINED_PRIORITY, event => {
+  useKeyboard(event => {
     if (event.shiftKey && event.key === "Tab") {
       event.preventDefault();
       setIsUnchained(prev => {
@@ -187,7 +183,9 @@ function UnchainedShiftTabHandler({
         }
         return unchained;
       });
+      return true;
     }
+    return false;
   });
   return null;
 }
@@ -307,9 +305,12 @@ export default function App({
       query: state.query,
     })),
   );
-  useKeyboard(() => {
-    cancelNotifyReadyForInput();
-  });
+  useKeyboard(
+    () => {
+      cancelNotifyReadyForInput();
+    },
+    { priority: KEYBOARD_PRIORITY.OBSERVER },
+  );
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
   }, []);
@@ -399,19 +400,19 @@ export default function App({
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
       <ReactDevelopmentBuildToast />
-      <InputPriorityProvider>
-        <UnchainedShiftTabHandler
-          setIsUnchained={setIsUnchained}
-          setTempNotification={setTempNotification}
-        />
-        <SetConfigContext.Provider value={setCurrConfig}>
-          <ConfigPathContext.Provider value={configPath}>
-            <ConfigContext.Provider value={currConfig}>
-              <UnchainedContext.Provider value={isUnchained}>
-                <TransportContext.Provider value={transport}>
-                  <SessionContext.Provider value={session}>
-                    <CwdContext.Provider value={cwd}>
-                      <ExitOnDoubleCtrlC>
+      <SetConfigContext.Provider value={setCurrConfig}>
+        <ConfigPathContext.Provider value={configPath}>
+          <ConfigContext.Provider value={currConfig}>
+            <UnchainedContext.Provider value={isUnchained}>
+              <TransportContext.Provider value={transport}>
+                <SessionContext.Provider value={session}>
+                  <CwdContext.Provider value={cwd}>
+                    <ExitOnDoubleCtrlC>
+                      <InputFocusProvider focus={!menuOpen}>
+                        <UnchainedShiftTabHandler
+                          setIsUnchained={setIsUnchained}
+                          setTempNotification={setTempNotification}
+                        />
                         <AppShell>
                           <TerminalFlex
                             ref={transcriptRef}
@@ -493,20 +494,20 @@ export default function App({
                             tempNotification={tempNotification}
                           />
                         </AppShell>
-                      </ExitOnDoubleCtrlC>
-                      {menuOpen && (
-                        <Modal minWidth={50}>
-                          <Menu onSessionChange={handleSessionChange} />
-                        </Modal>
-                      )}
-                    </CwdContext.Provider>
-                  </SessionContext.Provider>
-                </TransportContext.Provider>
-              </UnchainedContext.Provider>
-            </ConfigContext.Provider>
-          </ConfigPathContext.Provider>
-        </SetConfigContext.Provider>
-      </InputPriorityProvider>
+                      </InputFocusProvider>
+                    </ExitOnDoubleCtrlC>
+                    {menuOpen && (
+                      <Modal minWidth={50}>
+                        <Menu onSessionChange={handleSessionChange} />
+                      </Modal>
+                    )}
+                  </CwdContext.Provider>
+                </SessionContext.Provider>
+              </TransportContext.Provider>
+            </UnchainedContext.Provider>
+          </ConfigContext.Provider>
+        </ConfigPathContext.Provider>
+      </SetConfigContext.Provider>
     </ScrollTranscriptToBottomContext.Provider>
   );
 }
@@ -658,7 +659,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const {
     modeData,
     clearNonce,
-    menuOpen,
     input,
     abortResponse,
     openMenu,
@@ -676,7 +676,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     useShallow(state => ({
       modeData: state.modeData,
       clearNonce: state.clearNonce,
-      menuOpen: state.menuOpen,
       input: state.input,
       abortResponse: state.abortResponse,
       closeMenu: state.closeMenu,
@@ -700,11 +699,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
 
   useCtrlC(() => {
-    if (inputMode.kind === "vim" || menuOpen) return;
+    if (inputMode.kind === "vim") return;
     setQuery("");
   });
   useKeyboard(event => {
-    if (menuOpen) return;
     if (event.key === "Escape") {
       if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
@@ -798,7 +796,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         </TerminalFlex>
         <QueuedUserMessages messages={queuedMessages} />
         <MultimediaInput
-          focus={!menuOpen}
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
@@ -884,7 +881,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
       <QueuedUserMessages messages={queuedMessages} />
       <MultimediaInput
-        focus={!menuOpen}
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}

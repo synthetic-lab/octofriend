@@ -113,6 +113,7 @@ function SelectInput<V>({
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
+          return true;
         }
         if (event.key === "j" || event.key === "ArrowDown") {
           event.preventDefault();
@@ -128,6 +129,7 @@ function SelectInput<V>({
           if (typeof onHighlight === "function") {
             onHighlight(slicedItems[nextSelectedIndex]!);
           }
+          return true;
         }
 
         // Enable selection directly from number keys.
@@ -142,6 +144,7 @@ function SelectInput<V>({
             if (selectedItem) {
               onSelect?.(selectedItem);
             }
+            return true;
           }
         }
         if (event.key === "Enter") {
@@ -150,11 +153,13 @@ function SelectInput<V>({
           if (typeof onSelect === "function") {
             onSelect(slicedItems[selectedIndex]!);
           }
+          return true;
         }
+        return false;
       },
       [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight, onKeyDown],
     ),
-    isFocused,
+    { isActive: isFocused },
   );
   const slicedItems: Item<V>[] = hasLimit
     ? arrayToRotated(items, rotateIndex).slice(0, limit)

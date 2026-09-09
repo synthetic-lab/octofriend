@@ -1,7 +1,7 @@
 import React from "react";
 import { useFileSearch } from "./use-file-search.ts";
 import { SuggestionList } from "./suggestion-list.tsx";
-import { useKeyboard } from "../../hooks/use-keyboard.ts";
+import { KEYBOARD_PRIORITY, useKeyboard } from "../../hooks/use-keyboard.ts";
 import { TerminalFlex } from "../terminal-flex.tsx";
 interface FileSuggestionBoxProps {
   query: string;
@@ -19,11 +19,17 @@ export function FileSuggestionBox({
   const { results, selectedIndex } = useFileSearch(query, {
     onSelect,
   });
-  useKeyboard(event => {
-    if (event.key === "Escape" && isVisible) {
-      onDismiss();
-    }
-  }, isVisible);
+  useKeyboard(
+    event => {
+      if (event.key === "Escape" && isVisible) {
+        event.preventDefault();
+        onDismiss();
+        return true;
+      }
+      return false;
+    },
+    { isActive: isVisible, priority: KEYBOARD_PRIORITY.OVERLAY },
+  );
   if (!isVisible || results.length === 0) {
     return null;
   }

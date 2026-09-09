@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import ignore from "ignore";
-import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
+import { KEYBOARD_PRIORITY, useKeyboard } from "../../hooks/use-keyboard.ts";
 import { useTransport } from "../../transport-context.ts";
 import { findFiles } from "../../transports/transport-common.ts";
 
@@ -181,21 +181,28 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
     setSelectedIndex(prev => Math.max(0, prev - 1));
   };
 
-  usePriorityInput(FILE_SUGGESTIONS_PRIORITY, event => {
-    if (event.key === "ArrowUp" || (event.shiftKey && event.key === "Tab")) {
-      event.preventDefault();
-      selectPrev();
-    } else if (event.key === "ArrowDown" || event.key === "Tab") {
-      event.preventDefault();
-      setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const selected = results[selectedIndex];
-      if (selected) {
-        options.onSelect(selected);
+  useKeyboard(
+    event => {
+      if (event.key === "ArrowUp" || (event.shiftKey && event.key === "Tab")) {
+        event.preventDefault();
+        selectPrev();
+        return true;
+      } else if (event.key === "ArrowDown" || event.key === "Tab") {
+        event.preventDefault();
+        setSelectedIndex(prev => Math.min(results.length - 1, prev + 1));
+        return true;
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        const selected = results[selectedIndex];
+        if (selected) {
+          options.onSelect(selected);
+        }
+        return true;
       }
-    }
-  });
+      return false;
+    },
+    { priority: KEYBOARD_PRIORITY.OVERLAY },
+  );
 
   return { results, selectedIndex, isLoading };
 }
