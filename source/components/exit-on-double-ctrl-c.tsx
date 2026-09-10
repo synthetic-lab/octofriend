@@ -21,12 +21,16 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const config = useConfig();
   const session = useSession();
   useCtrlC(() => {
+    const state = useAppStore.getState();
+    if (state.menuOpen) {
+      state.closeMenu();
+      return;
+    }
     if (ctrlCPressed) {
       /*
        * Record skip markers for any un-run tool calls before exiting, so the session history
        * stays well-formed after exit.
        */
-      const state = useAppStore.getState();
       state.closeMenu();
       state.abortResponse(session, config, { exiting: true });
       exit();

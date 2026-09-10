@@ -6,6 +6,7 @@ import { FileSuggestionBox } from "./file-suggestions/index.js";
 import { ImageInfo } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
+import { useAppStore } from "../state.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import type { InputMode, VimMode } from "./input-mode.ts";
 interface Props {
@@ -22,6 +23,7 @@ interface Props {
   setVimMode?: (mode: VimMode) => void;
 }
 export const InputWithHistory = React.memo((props: Props) => {
+  const menuOpen = useAppStore(state => state.menuOpen);
   const themeColor = useColor();
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [originalInput, setOriginalInput] = useState("");
@@ -31,57 +33,55 @@ export const InputWithHistory = React.memo((props: Props) => {
     query: string;
   } | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
-  useKeyboard(
-    event => {
-      if (suggestionState?.isVisible) {
-        return;
+  useKeyboard(event => {
+    if (menuOpen) return;
+    if (suggestionState?.isVisible) {
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      if (currentIndex === -1) {
+        setOriginalInput(props.value);
       }
-      if (event.key === "ArrowUp") {
-        if (currentIndex === -1) {
-          setOriginalInput(props.value);
-        }
-        const history = props.inputHistory.getCurrentHistory();
-        if (history.length === 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
+      const history = props.inputHistory.getCurrentHistory();
+      if (history.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const newIndex = currentIndex === -1 ? history.length - 1 : Math.max(0, currentIndex - 1);
+      setCurrentIndex(newIndex);
+      props.onChange(history[newIndex]);
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      const history = props.inputHistory.getCurrentHistory();
+      if (currentIndex === -1 || history.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (currentIndex < history.length - 1) {
+        const newIndex = currentIndex + 1;
         setCurrentIndex(newIndex);
         props.onChange(history[newIndex]);
-        return;
+      } else {
+        // Reset to original input
+        setCurrentIndex(-1);
+        props.onChange(originalInput);
       }
-      if (event.key === "ArrowDown") {
-        const history = props.inputHistory.getCurrentHistory();
-        if (currentIndex === -1 || history.length === 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (currentIndex < history.length - 1) {
-          const newIndex = currentIndex + 1;
-          setCurrentIndex(newIndex);
-          props.onChange(history[newIndex]);
-        } else {
-          // Reset to original input
-          setCurrentIndex(-1);
-          props.onChange(originalInput);
-        }
-        return;
-      }
+      return;
+    }
 
-      // Reset navigation state when user types anything else
-      if (
-        event.key ||
-        event.key === "Enter" ||
-        event.key === "Escape" ||
-        event.key === "Backspace" ||
-        event.key === "Delete"
-      ) {
-        if (currentIndex !== -1) {
-          setCurrentIndex(-1);
-          setOriginalInput("");
-        }
+    // Reset navigation state when user types anything else
+    if (
+      event.key ||
+      event.key === "Enter" ||
+      event.key === "Escape" ||
+      event.key === "Backspace" ||
+      event.key === "Delete"
+    ) {
+      if (currentIndex !== -1) {
+        setCurrentIndex(-1);
+        setOriginalInput("");
       }
-    },
-    { isActive: props.focus },
-  );
+    }
+  });
   const handleSubmit = () => {
     if (suggestionState?.isVisible) {
       return;

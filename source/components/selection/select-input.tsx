@@ -161,7 +161,7 @@ function SelectInput<V>({
       },
       [hasLimit, limit, rotateIndex, selectedIndex, items, onSelect, onHighlight, onKeyDown],
     ),
-    { isActive: isFocused },
+    isFocused,
   );
   const slicedItems: Item<V>[] = hasLimit
     ? arrayToRotated(items, rotateIndex).slice(0, limit)

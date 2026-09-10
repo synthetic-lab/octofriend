@@ -3,7 +3,7 @@ import type { DivElement } from "paintcannon";
 import { InputElement, TextAreaElement } from "paintcannon";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { KEYBOARD_PRIORITY, useKeyboard } from "../hooks/use-keyboard.ts";
+import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
 
 const BACKDROP_OPACITY = 0.75;
@@ -28,15 +28,11 @@ export function Modal({
   minWidth?: number;
 }) {
   const borderColor = useColor();
-  useKeyboard(
-    event => {
-      if (event.ctrlKey && event.key === "c") return;
-      if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
-      event.preventDefault();
-      event.stopPropagation();
-    },
-    { priority: KEYBOARD_PRIORITY.FALLBACK },
-  );
+  useKeyboard(event => {
+    if (event.ctrlKey && event.key === "c") return;
+    if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
+    event.preventDefault();
+  });
   const { time } = useAnimation({ isActive: true });
   const backdropOpacity = BACKDROP_OPACITY * fadeProgress(time, BACKDROP_FADE_DURATION_MS);
   const showBox = time >= MODAL_SHOW_DELAY_MS;

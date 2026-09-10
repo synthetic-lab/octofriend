@@ -97,6 +97,11 @@ import type { ToolCall } from "./libocto/tool-def.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
 import type { OctoIR } from "./ir/octo-ir.ts";
+import {
+  InputPriorityProvider,
+  usePriorityInput,
+  UNCHAINED_PRIORITY,
+} from "./hooks/use-priority-input.tsx";
 import { writeFileSync } from "fs";
 import os from "os";
 import path from "path";
@@ -104,7 +109,7 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
-import { KEYBOARD_PRIORITY, useKeyboard } from "./hooks/use-keyboard.ts";
+import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { InputFocusProvider } from "./hooks/use-input-focus.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
@@ -164,6 +169,10 @@ type TranscriptItem =
 const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
 const KEYBOARD_SCROLL_DURATION_MS = 80;
+function ReadyForInputNotifier({ onAnyKey }: { onAnyKey: () => void }) {
+  useKeyboard(onAnyKey);
+  return null;
+}
 function UnchainedShiftTabHandler({
   setIsUnchained,
   setTempNotification,
@@ -171,7 +180,7 @@ function UnchainedShiftTabHandler({
   setIsUnchained: (fn: (prev: boolean) => boolean) => void;
   setTempNotification: (notif: string | null) => void;
 }) {
-  useKeyboard(event => {
+  usePriorityInput(UNCHAINED_PRIORITY, event => {
     if (event.shiftKey && event.key === "Tab") {
       event.preventDefault();
       event.stopPropagation();
@@ -304,12 +313,6 @@ export default function App({
       query: state.query,
     })),
   );
-  useKeyboard(
-    () => {
-      cancelNotifyReadyForInput();
-    },
-    { priority: KEYBOARD_PRIORITY.OBSERVER },
-  );
   useEffect(() => {
     if (updates != null) markUpdatesSeen();
   }, []);
@@ -398,6 +401,7 @@ export default function App({
   const appScrollbarColor = hasFocus ? SCROLLBAR_COLOR : DIMMED_SCROLLBAR_COLOR;
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
+      <ReadyForInputNotifier onAnyKey={cancelNotifyReadyForInput} />
       <ReactDevelopmentBuildToast />
       <SetConfigContext.Provider value={setCurrConfig}>
         <ConfigPathContext.Provider value={configPath}>
@@ -407,93 +411,95 @@ export default function App({
                 <SessionContext.Provider value={session}>
                   <CwdContext.Provider value={cwd}>
                     <ExitOnDoubleCtrlC>
-                      <InputFocusProvider focus={!menuOpen}>
-                        <UnchainedShiftTabHandler
-                          setIsUnchained={setIsUnchained}
-                          setTempNotification={setTempNotification}
-                        />
-                        <AppShell>
-                          <TerminalFlex
-                            ref={transcriptRef}
-                            onScroll={event => {
-                              followTranscriptRef.current = isScrolledToBottom(
-                                event.scrollTop,
-                                event.scrollHeight,
-                                transcriptRef.current?.clientHeight ?? 1,
-                              );
-                            }}
-                            style={{
-                              flexDirection: "column",
-                              flexGrow: 1,
-                              flexShrink: 1,
-                              flexBasis: 0,
-                              minWidth: 0,
-                              minHeight: 0,
-                              overflowY: "scroll",
-                              scrollbarGutter: "stable",
-                              scrollbarColor: appScrollbarColor,
-                            }}
-                          >
+                      <InputPriorityProvider>
+                        <InputFocusProvider focus={!menuOpen}>
+                          <UnchainedShiftTabHandler
+                            setIsUnchained={setIsUnchained}
+                            setTempNotification={setTempNotification}
+                          />
+                          <AppShell>
                             <TerminalFlex
+                              ref={transcriptRef}
+                              onScroll={event => {
+                                followTranscriptRef.current = isScrolledToBottom(
+                                  event.scrollTop,
+                                  event.scrollHeight,
+                                  transcriptRef.current?.clientHeight ?? 1,
+                                );
+                              }}
                               style={{
                                 flexDirection: "column",
-                                minHeight: "100%",
-                                flexShrink: 0,
-                                overflowWrap: "anywhere",
+                                flexGrow: 1,
+                                flexShrink: 1,
+                                flexBasis: 0,
+                                minWidth: 0,
+                                minHeight: 0,
+                                overflowY: "scroll",
+                                scrollbarGutter: "stable",
+                                scrollbarColor: appScrollbarColor,
                               }}
                             >
                               <TerminalFlex
                                 style={{
                                   flexDirection: "column",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "100%",
-                                  flexGrow: 1,
-                                  flexShrink: 1,
-                                  marginTop: 1,
-                                  marginBottom: 1,
+                                  minHeight: "100%",
+                                  flexShrink: 0,
+                                  overflowWrap: "anywhere",
                                 }}
                               >
-                                {bootItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`boot-${index}`} />
-                                ))}
-                              </TerminalFlex>
-                              <TranscriptItemRenderer item={{ type: "slogan" }} />
-                              <TerminalFlex
-                                key={clearNonce}
-                                style={{
-                                  flexDirection: "column",
-                                }}
-                              >
-                                {historyItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`history-${index}`} />
-                                ))}
-                                {(modeData.mode === "responding" ||
-                                  modeData.mode === "compacting") &&
-                                  (modeData.inflightResponse.reasoningContent ||
-                                    modeData.inflightResponse.content) && (
-                                    <MessageDisplay item={modeData.inflightResponse} />
+                                <TerminalFlex
+                                  style={{
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: "100%",
+                                    flexGrow: 1,
+                                    flexShrink: 1,
+                                    marginTop: 1,
+                                    marginBottom: 1,
+                                  }}
+                                >
+                                  {bootItems.map((item, index) => (
+                                    <TranscriptItemRenderer item={item} key={`boot-${index}`} />
+                                  ))}
+                                </TerminalFlex>
+                                <TranscriptItemRenderer item={{ type: "slogan" }} />
+                                <TerminalFlex
+                                  key={clearNonce}
+                                  style={{
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  {historyItems.map((item, index) => (
+                                    <TranscriptItemRenderer item={item} key={`history-${index}`} />
+                                  ))}
+                                  {(modeData.mode === "responding" ||
+                                    modeData.mode === "compacting") &&
+                                    (modeData.inflightResponse.reasoningContent ||
+                                      modeData.inflightResponse.content) && (
+                                      <MessageDisplay item={modeData.inflightResponse} />
+                                    )}
+                                  {(modeData.mode === "tool-call" ||
+                                    modeData.mode === "tool-call-permission") && (
+                                    <ToolRequestsRenderer
+                                      toolReqs={modeData.toolReqs}
+                                      config={currConfig}
+                                      transport={transport}
+                                      session={session}
+                                      onContentLayout={scrollTranscriptToBottom}
+                                    />
                                   )}
-                                {(modeData.mode === "tool-call" ||
-                                  modeData.mode === "tool-call-permission") && (
-                                  <ToolRequestsRenderer
-                                    toolReqs={modeData.toolReqs}
-                                    config={currConfig}
-                                    transport={transport}
-                                    session={session}
-                                    onContentLayout={scrollTranscriptToBottom}
-                                  />
-                                )}
+                                </TerminalFlex>
                               </TerminalFlex>
                             </TerminalFlex>
-                          </TerminalFlex>
-                          <BottomBar
-                            inputHistory={inputHistory}
-                            metadata={metadata}
-                            tempNotification={tempNotification}
-                          />
-                        </AppShell>
-                      </InputFocusProvider>
+                            <BottomBar
+                              inputHistory={inputHistory}
+                              metadata={metadata}
+                              tempNotification={tempNotification}
+                            />
+                          </AppShell>
+                        </InputFocusProvider>
+                      </InputPriorityProvider>
                     </ExitOnDoubleCtrlC>
                     {menuOpen && (
                       <Modal minWidth={50}>
@@ -658,6 +664,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   const {
     modeData,
     clearNonce,
+    menuOpen,
     input,
     abortResponse,
     openMenu,
@@ -675,6 +682,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     useShallow(state => ({
       modeData: state.modeData,
       clearNonce: state.clearNonce,
+      menuOpen: state.menuOpen,
       input: state.input,
       abortResponse: state.abortResponse,
       closeMenu: state.closeMenu,
@@ -698,10 +706,11 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
 
   useCtrlC(() => {
-    if (inputMode.kind === "vim") return;
+    if (inputMode.kind === "vim" || menuOpen) return;
     setQuery("");
   });
   useKeyboard(event => {
+    if (menuOpen) return;
     if (event.key === "Escape") {
       if (event.defaultPrevented) return;
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
@@ -795,6 +804,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         </TerminalFlex>
         <QueuedUserMessages messages={queuedMessages} />
         <MultimediaInput
+          focus={!menuOpen}
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
@@ -880,6 +890,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
       <QueuedUserMessages messages={queuedMessages} />
       <MultimediaInput
+        focus={!menuOpen}
         inputHistory={inputHistory}
         value={query}
         onChange={setQuery}
