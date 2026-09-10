@@ -24,8 +24,8 @@
         "json5": "^2.2.3",
         "marked": "^16.2.0",
         "openai": "^5.9.0",
-        "paintcannon": "0.0.37",
-        "paintcannon-react": "0.0.37",
+        "paintcannon": "0.0.40",
+        "paintcannon-react": "0.0.40",
         "react": "^19.2.6",
         "shell-quote": "^1.8.3",
         "string-width": "^7.2.0",
@@ -207,17 +207,17 @@
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 
-    "@syntheticlab/paintcannon-native-darwin-arm64": ["@syntheticlab/paintcannon-native-darwin-arm64@0.0.37", "", { "os": "darwin", "cpu": "arm64" }, "sha512-DpnnuoxMjc8+XyVXIytJs6dnL8YrWzjLroRimt2VyVLJlHtj2T/ib7o2sQXHb+978hd2z09angnSM5U6EfH5kw=="],
+    "@syntheticlab/paintcannon-native-darwin-arm64": ["@syntheticlab/paintcannon-native-darwin-arm64@0.0.40", "", { "os": "darwin", "cpu": "arm64" }, "sha512-JrNIK2ZsCtqhWJi+or8yAjzioFhllPnpAQyyxivbBNOns7ImfkRM278doaqOZs0lT7+sdz1vYOnGYy98e3vTNw=="],
 
-    "@syntheticlab/paintcannon-native-darwin-x64": ["@syntheticlab/paintcannon-native-darwin-x64@0.0.37", "", { "os": "darwin", "cpu": "x64" }, "sha512-JBsgU+IyK0tln0AfKF/RilwJZbS4tVM6VqVkdNqJNakWiGdYzg9YxFlMsmQty7zsPGs1kQFcJGhZpdAS0QhM9Q=="],
+    "@syntheticlab/paintcannon-native-darwin-x64": ["@syntheticlab/paintcannon-native-darwin-x64@0.0.40", "", { "os": "darwin", "cpu": "x64" }, "sha512-Uh/VXl6+PK82Y7GRa6B0Qwzf06+3kEH4x1ZfpROxrj9PIQbTwprwxv/OU9gkdIl2o8+/1GfvJkK1jMJTzW+naw=="],
 
-    "@syntheticlab/paintcannon-native-linux-arm64-gnu": ["@syntheticlab/paintcannon-native-linux-arm64-gnu@0.0.37", "", { "os": "linux", "cpu": "arm64" }, "sha512-IC+bcI+evkXd0V9LeL4gJ1H6XLjWV5fRt7yb3lkuVbCFJ0eVF6NhH+LwS+XlzSgBSxN7z8X1prgWD62Rh7SssA=="],
+    "@syntheticlab/paintcannon-native-linux-arm64-gnu": ["@syntheticlab/paintcannon-native-linux-arm64-gnu@0.0.40", "", { "os": "linux", "cpu": "arm64" }, "sha512-kpKV//R3q+iDG1Jingh2KgcIMQ3xGf6vE7MYxkN64ywe6K8rXGdSzlcXlBxi9m88DVngaIp9biKCplZImrKLcQ=="],
 
-    "@syntheticlab/paintcannon-native-linux-arm64-musl": ["@syntheticlab/paintcannon-native-linux-arm64-musl@0.0.37", "", { "os": "linux", "cpu": "arm64" }, "sha512-HFIxWLQJPg6NnvFS2353nbipwtN+/IdGEgbzsnbgNF8Xhdz/G5X5TxbZ17gjpafqPlCdFzjz9t/Yg0dXML+pIQ=="],
+    "@syntheticlab/paintcannon-native-linux-arm64-musl": ["@syntheticlab/paintcannon-native-linux-arm64-musl@0.0.40", "", { "os": "linux", "cpu": "arm64" }, "sha512-EWf5ZJrhT3QW7lDVtuKEG4uQssZoZIzvG0VXmSOTYxFF9HUqimXXFypQZXse31T+6Hcr/wZU74b5ub8V3lWt/g=="],
 
-    "@syntheticlab/paintcannon-native-linux-x64-gnu": ["@syntheticlab/paintcannon-native-linux-x64-gnu@0.0.37", "", { "os": "linux", "cpu": "x64" }, "sha512-KW8q0UjF7OgDLtKCYhmUa649t66tF/SCA/vRI0s83Ss9VlOTKJY/MIQiEAD+EZ5ZLtuX/y+SW9TGu1eqw4nOLg=="],
+    "@syntheticlab/paintcannon-native-linux-x64-gnu": ["@syntheticlab/paintcannon-native-linux-x64-gnu@0.0.40", "", { "os": "linux", "cpu": "x64" }, "sha512-Woyt3fTEKunvblQtP6jZcz3VvsOuCC3+Uq4j/s3AQRiVYuL9nm+IpscnVJ6xFiD423ZziLOTea+7/eY9huMYAw=="],
 
-    "@syntheticlab/paintcannon-native-linux-x64-musl": ["@syntheticlab/paintcannon-native-linux-x64-musl@0.0.37", "", { "os": "linux", "cpu": "x64" }, "sha512-skrT2jB8vEeFkoS5FFQzOhdPPQPTBGmoW7mXtZYDxErziRQoxSSZaN3l9UNc8EytEhKJq5cmmLX3cTBTCPMHtA=="],
+    "@syntheticlab/paintcannon-native-linux-x64-musl": ["@syntheticlab/paintcannon-native-linux-x64-musl@0.0.40", "", { "os": "linux", "cpu": "x64" }, "sha512-pvqNOjKALFFQ3nnja/219BxELkgdJb2YGHGIyQYMeNNtnpdrktuBYeO94ibLbqt7Bjz+wfBbHBcif0Mf+21YAA=="],
 
     "@types/esrecurse": ["@types/esrecurse@4.3.1", "", {}, "sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw=="],
 
@@ -607,9 +607,9 @@
 
     "p-locate": ["p-locate@5.0.0", "", { "dependencies": { "p-limit": "^3.0.2" } }, "sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw=="],
 
-    "paintcannon": ["paintcannon@0.0.37", "", { "dependencies": { "antipattern": "^0.0.7", "shell-quote": "^1.10.0" }, "optionalDependencies": { "@syntheticlab/paintcannon-native-darwin-arm64": "0.0.37", "@syntheticlab/paintcannon-native-darwin-x64": "0.0.37", "@syntheticlab/paintcannon-native-linux-arm64-gnu": "0.0.37", "@syntheticlab/paintcannon-native-linux-arm64-musl": "0.0.37", "@syntheticlab/paintcannon-native-linux-x64-gnu": "0.0.37", "@syntheticlab/paintcannon-native-linux-x64-musl": "0.0.37" } }, "sha512-1zuuOzadu+YAQDwzkSGO+v170c9x3wHOjmj9Vyo7sXNrEb6128b/Wz5NknlfHj0eO5jzrlzoEx7W64XgH8svHQ=="],
+    "paintcannon": ["paintcannon@0.0.40", "", { "dependencies": { "antipattern": "^0.0.7", "shell-quote": "^1.10.0" }, "optionalDependencies": { "@syntheticlab/paintcannon-native-darwin-arm64": "0.0.40", "@syntheticlab/paintcannon-native-darwin-x64": "0.0.40", "@syntheticlab/paintcannon-native-linux-arm64-gnu": "0.0.40", "@syntheticlab/paintcannon-native-linux-arm64-musl": "0.0.40", "@syntheticlab/paintcannon-native-linux-x64-gnu": "0.0.40", "@syntheticlab/paintcannon-native-linux-x64-musl": "0.0.40" } }, "sha512-EXdAZa/hw4Wv74fYrexM8PIgl8zpIEsSDWvLmLt3gBOJ3pK+L/+nN49mxCynIvLV6nlu7y55h5C9O2SYg6qCLw=="],
 
-    "paintcannon-react": ["paintcannon-react@0.0.37", "", { "dependencies": { "react-reconciler": "^0.31.0", "scheduler": "^0.25.0" }, "peerDependencies": { "paintcannon": "^0.0.37", "react": "^19.0.0" } }, "sha512-3I3Kw6C350BD+3/xNk+3dO2PQtzWfKFdhkf70k2PIC8uCxSnJhfYbBAKdiimj67GUNEyFdtFItLCC3tacMo4DQ=="],
+    "paintcannon-react": ["paintcannon-react@0.0.40", "", { "dependencies": { "react-reconciler": "^0.31.0", "scheduler": "^0.25.0" }, "peerDependencies": { "paintcannon": "^0.0.40", "react": "^19.0.0" } }, "sha512-ENDRpdHGwkIh7M+jJOozk9q11rJxQIm7Yfd9wSkAMjH6dv4eZxmYXHNiatT+Vip/HF1W84vKAavTC7hwYcrj/g=="],
 
     "parse-git-diff": ["parse-git-diff@0.0.19", "", {}, "sha512-oh3giwKzsPlOhekiDDyd/pfFKn04IZoTjEThquhfKigwiUHymiP/Tp6AN5nGIwXQdWuBTQvz9AaRdN5TBsJ8MA=="],
 
