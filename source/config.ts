@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import json5 from "json5";
-import { processes } from "./octo-process.ts";
+import { LocalTransport } from "./transports/local.ts";
 import { fileExists } from "./fs-utils.ts";
 import { providerForBaseUrl, keyFromName, ProviderConfig } from "./providers.ts";
 import { getCodexOAuthTokens } from "./codex-oauth.ts";
@@ -215,13 +215,13 @@ export async function runNotifyCommand(config: Config): Promise<void> {
   const shell = process.env["SHELL"] || "/bin/sh";
 
   await new Promise<void>((resolve, reject) => {
-    const octoProcess = processes.manager().spawn(shell, ["-c", cmd], {
+    const notifyProcess = new LocalTransport().spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
     });
 
-    octoProcess.on("close", (code: number | null) => {
+    notifyProcess.on("close", (code: number | null) => {
       if (code !== 0) {
         reject(new Error(`notifyFinishCommand exited with code ${code}`));
         return;
@@ -229,7 +229,7 @@ export async function runNotifyCommand(config: Config): Promise<void> {
       resolve();
     });
 
-    octoProcess.on("error", reject);
+    notifyProcess.on("error", reject);
   });
 }
 
@@ -302,7 +302,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     let stderr = "";
     let resolved = false;
 
-    const octoProcess = processes.manager().execFile(
+    const authProcess = new LocalTransport().execFile(
       cmd,
       args,
       {
@@ -349,7 +349,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        octoProcess.kill("SIGKILL");
+        authProcess.kill("SIGKILL");
         resolve({
           ok: false,
           error: {

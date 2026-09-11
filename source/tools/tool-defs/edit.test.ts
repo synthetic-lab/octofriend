@@ -3,51 +3,11 @@ import editToolFactory from "./edit.ts";
 import { FILE_OUTDATED_ERROR_MESSAGE } from "../common.ts";
 import { fileTracker } from "../file-tracker.ts";
 import { unwrap } from "../../libocto/result.ts";
+import { MockTransport } from "../../transports/mock.ts";
 import type { Transport } from "../../transports/transport-common.ts";
 
 function createTransport(files: Record<string, string>): Transport {
-  const resolve = (file: string) => (file.startsWith("/") ? file : `/repo/${file}`);
-  const modTimes = new Map(Object.keys(files).map((file, index) => [resolve(file), index + 1]));
-
-  return {
-    cwd: "/repo",
-    async writeFile(_signal, file, contents) {
-      const resolved = resolve(file);
-      files[resolved] = contents;
-      modTimes.set(resolved, (modTimes.get(resolved) ?? 0) + 1);
-    },
-    async readFile(_signal, file) {
-      const content = files[resolve(file)];
-      if (content == null) {
-        throw new Error(`No such file: ${file}`);
-      }
-      return content;
-    },
-    async pathExists(_signal, file) {
-      return files[resolve(file)] != null;
-    },
-    async isDirectory() {
-      return false;
-    },
-    async mkdir() {},
-    async readdir() {
-      return [];
-    },
-    async modTime(_signal, file) {
-      const modTime = modTimes.get(resolve(file));
-      if (modTime == null) {
-        throw new Error(`No such file: ${file}`);
-      }
-      return modTime;
-    },
-    async resolvePath(_signal, file) {
-      return resolve(file);
-    },
-    async shell() {
-      return "";
-    },
-    async close() {},
-  };
+  return new MockTransport({ cwd: "/repo", files });
 }
 
 async function createEditTool(transport: Transport) {

@@ -11,7 +11,8 @@ import type {
   Range,
 } from "vscode-languageserver-types";
 import { DiagnosticSeverity, SymbolKind } from "vscode-languageserver-types";
-import { type OctoProcess, processes } from "../octo-process.ts";
+import { type TransportProcess } from "../transports/transport-process.ts";
+import type { Transport } from "../transports/transport-common.ts";
 
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
 const HEADER_DELIMITER_STRING = "\r\n\r\n";
@@ -118,8 +119,7 @@ const CLIENT_CAPABILITIES = {
 };
 
 export class LspClient {
-  private readonly octoProcessManager = processes.manager();
-  private octoProcess: OctoProcess | null = null;
+  private process: TransportProcess | null = null;
   private requestIdCounter = 1;
   private pendingRequests = new Map<number, PendingRequest>(); // indexed by requestId
   private buffer = Buffer.alloc(0);
@@ -129,25 +129,26 @@ export class LspClient {
   private fileVersions = new Map<string, number>(); // used by all LSP methods to track ordering of changes
 
   constructor(
-    private serverConfig: InstalledLspConfig,
-    private rootPath: string,
+    readonly serverConfig: InstalledLspConfig,
+    readonly rootPath: string,
+    readonly transport: Transport,
   ) {}
 
   async start(): Promise<void> {
     const [cmd, ...args] = this.serverConfig.command;
     if (!cmd) throw new Error(`LSP server "${this.serverConfig.serverName}" has empty command`);
 
-    this.octoProcess = this.octoProcessManager.spawn(cmd, args, {
+    this.process = this.transport.spawn(cmd, args, {
       stdio: ["pipe", "pipe", "ignore"],
       env: process.env,
     });
-    const octoProcess = this.octoProcess;
+    const lspProcess = this.process;
 
-    const stdout = octoProcess.stdout;
+    const stdout = lspProcess.stdout;
     if (!stdout) throw new Error(`LSP server "${this.serverConfig.serverName}" has no stdout`);
     stdout.on("data", (chunk: Buffer) => this.onData(chunk));
 
-    octoProcess.on("error", err => {
+    lspProcess.on("error", err => {
       for (const [, req] of this.pendingRequests) {
         req.reject(
           new Error(`LSP server "${this.serverConfig.serverName}" crashed: ${err.message}`),
@@ -156,7 +157,7 @@ export class LspClient {
       this.pendingRequests.clear();
     });
 
-    octoProcess.on("exit", () => {
+    lspProcess.on("exit", () => {
       for (const [, req] of this.pendingRequests) {
         req.reject(new Error(`LSP server "${this.serverConfig.serverName}" exited unexpectedly`));
       }
@@ -319,7 +320,7 @@ export class LspClient {
   }
 
   async shutdown(): Promise<void> {
-    if (!this.octoProcess) return;
+    if (!this.process) return;
     if (this.initialized) {
       try {
         await this.request("shutdown", null);
@@ -328,8 +329,8 @@ export class LspClient {
         // if it errors, we'll just kill the process anyways
       }
     }
-    this.octoProcess.terminate();
-    this.octoProcess = null;
+    await this.process.terminate();
+    this.process = null;
     this.initialized = false;
   }
 
@@ -339,7 +340,7 @@ export class LspClient {
     timeoutMs: number = REQUEST_TIMEOUT_MS,
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      const stdin = this.octoProcess?.stdin;
+      const stdin = this.process?.stdin;
       if (!stdin?.writable) {
         reject(new Error(`LSP server "${this.serverConfig.serverName}" is not running`));
         return;
@@ -367,7 +368,7 @@ export class LspClient {
 
   // used for LSP methods `initialized`, `exit`, `textDocument/didOpen`, `textDocument/didChange`
   private notify(method: string, params: any): void {
-    const stdin = this.octoProcess?.stdin;
+    const stdin = this.process?.stdin;
     if (!stdin?.writable) return;
     this.send(stdin, { jsonrpc: "2.0", method, params });
   }
@@ -582,19 +583,22 @@ function lspClientClientCacheKey(serverConfig: InstalledLspConfig, rootPath: str
 export function getRunningLspClient(
   serverConfig: InstalledLspConfig,
   rootPath: string,
+  transport: Transport,
 ): LspClient | undefined {
   const cacheKey = lspClientClientCacheKey(serverConfig, rootPath);
-  return cachedLspClients.get(cacheKey);
+  const client = cachedLspClients.get(cacheKey);
+  return client?.transport === transport ? client : undefined;
 }
 
 export async function getOrStartLspClient(
   serverConfig: InstalledLspConfig,
   rootPath: string,
+  transport: Transport,
 ): Promise<LspClient> {
-  let client = getRunningLspClient(serverConfig, rootPath);
+  let client = getRunningLspClient(serverConfig, rootPath, transport);
   if (client) return client;
 
-  client = new LspClient(serverConfig, rootPath);
+  client = new LspClient(serverConfig, rootPath, transport);
   await client.start();
   const cacheKey = lspClientClientCacheKey(serverConfig, rootPath);
   cachedLspClients.set(cacheKey, client);
@@ -602,14 +606,13 @@ export async function getOrStartLspClient(
 }
 
 export async function shutdownLspClients(): Promise<void> {
-  const entries = Array.from(cachedLspClients.entries());
+  const clients = Array.from(cachedLspClients.values());
   cachedLspClients.clear();
-  for (const [, client] of entries) {
+  for (const client of clients) {
     try {
       await client.shutdown();
     } catch {
       // TODO: surface that client shutdown failed
-      // although this probably only happens if the parent process is exiting, so less priority
     }
   }
 }

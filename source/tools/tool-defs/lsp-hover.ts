@@ -10,7 +10,7 @@ import {
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
 export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
-  const extensions = await getUsableLspExtensions(transport.cwd, data);
+  const extensions = await getUsableLspExtensions(transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Get type info and documentation for a symbol at the given position. Use this to see type information, function signatures, or documentation. ${getLspExtensionsComment(extensions)}`;

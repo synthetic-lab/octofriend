@@ -27,10 +27,10 @@ the purpose of the background process, like "dev-server" or "test-watcher"',
 `.trim(),
     ),
   }),
-}).define(async () => ({
+}).define(async ({ transport }) => ({
   async run({ toolCall }) {
     const { cmd, label } = toolCall.parsed.arguments;
-    const backgroundProcess = backgroundProcesses.manager().start(cmd, label);
+    const backgroundProcess = backgroundProcesses.manager(transport).start(cmd, label);
     return ok({
       type: "output",
       content: [
