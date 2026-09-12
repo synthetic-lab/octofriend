@@ -1,4 +1,10 @@
 import { quote } from "shell-quote";
+import type {
+  TransportProcess,
+  TransportSpawnOptions,
+  TransportExecFileOptions,
+  TransportExecFileCallback,
+} from "./transport-process.ts";
 
 export const MAX_SHELL_OUTPUT_LENGTH = 100_000_000;
 
@@ -51,6 +57,29 @@ export class ShellOutput {
 
 export interface Transport {
   readonly cwd: string;
+  spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
+  spawn(
+    command: string,
+    args: readonly string[],
+    options?: TransportSpawnOptions,
+  ): TransportProcess;
+  execFile(file: string, callback?: TransportExecFileCallback): TransportProcess;
+  execFile(
+    file: string,
+    args: readonly string[],
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
+  execFile(
+    file: string,
+    options?: TransportExecFileOptions,
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
+  execFile(
+    file: string,
+    args: readonly string[],
+    options?: TransportExecFileOptions,
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
   readFile: (signal: AbortSignal, file: string) => Promise<string>;
   pathExists: (signal: AbortSignal, file: string) => Promise<boolean>;

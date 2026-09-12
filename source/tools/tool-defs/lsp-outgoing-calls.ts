@@ -11,7 +11,7 @@ import {
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
 export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
-  const extensions = await getUsableLspExtensions(transport.cwd, data);
+  const extensions = await getUsableLspExtensions(transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Find all callees of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;

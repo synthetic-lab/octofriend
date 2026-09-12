@@ -37,10 +37,10 @@ period, waits for the process to die, and returns its final status plus any rema
 "poll" and "kill" require id and should repeat the process label; "list" ignores both.
 `),
   }),
-}).define(async () => ({
+}).define(async ({ transport }) => ({
   async run({ signal, toolCall }) {
     const { id, action, timeout } = toolCall.parsed.arguments;
-    const manager = backgroundProcesses.manager();
+    const manager = backgroundProcesses.manager(transport);
     switch (action) {
       case "list": {
         return ok({

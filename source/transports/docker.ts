@@ -1,35 +1,40 @@
+import { Transport, TransportError } from "./transport-common.ts";
+import { ProcessManager, processes } from "../process-manager.ts";
+import { spawn } from "child_process";
+import { quote } from "shell-quote";
+import { runShell } from "./shell.ts";
 import {
-  Transport,
-  AbortError,
-  CommandFailedError,
-  MAX_SHELL_OUTPUT_LENGTH,
-  ShellOutput,
-  TransportError,
-} from "./transport-common.ts";
-import { processes } from "../octo-process.ts";
+  ChildTransportProcess,
+  type TransportProcess,
+  type TransportSpawnOptions,
+  type TransportExecFileOptions,
+  type TransportExecFileCallback,
+  spawnArguments,
+  execFileArguments,
+  collectExecFileOutput,
+} from "./transport-process.ts";
 
-export async function manageContainer(args: string[]) {
+export async function manageContainer(args: string[], processManager = processes.manager()) {
   console.log("Spawning Docker container...");
 
-  const octoProcessManager = processes.manager();
   const { stdout } = await new Promise<{
     stdout: string;
   }>((resolve, reject) => {
     const stdout: string[] = [];
     let error = false;
-    const octoProcess = octoProcessManager.spawn("docker", ["run", ...args], {
+    const dockerRunProcess = spawnDockerCli(["run", ...args], processManager, {
       stdio: ["ignore", "pipe", "inherit"],
     });
-    if (!octoProcess.stdout) {
+    if (!dockerRunProcess.stdout) {
       reject(new Error("Failed to spawn docker process with piped stdout"));
       return;
     }
-    octoProcess.on("error", e => {
+    dockerRunProcess.on("error", e => {
       error = true;
       reject(e);
     });
-    octoProcess.stdout.on("data", data => stdout.push(data));
-    octoProcess.on("close", code => {
+    dockerRunProcess.stdout.on("data", data => stdout.push(data));
+    dockerRunProcess.on("close", code => {
       if (code != null && code !== 0) {
         if (!error) reject("Command exited with non-zero exit code: " + code);
       } else if (!error) {
@@ -41,123 +46,34 @@ export async function manageContainer(args: string[]) {
   });
 
   const name = stdout.trim();
+  let containerKillPromise: Promise<void> | undefined;
   const killContainer = () => {
-    try {
-      const octoProcess = octoProcessManager.spawn("docker", ["kill", name], { stdio: "ignore" });
-      octoProcess.unref();
-    } catch {}
+    containerKillPromise ??= (async () => {
+      const dockerKillProcess = spawnDockerCli(["kill", name], processManager, {
+        stdio: "ignore",
+        timeout: 5000,
+        killSignal: "SIGKILL",
+        surviveAfterOctoExit: true,
+      });
+      dockerKillProcess.on("error", () => {});
+      await dockerKillProcess.processClosedPromise;
+    })();
+    return containerKillPromise;
   };
-  const unregisterCleanup = octoProcessManager.registerCleanup(killContainer);
-  let closed = false;
+  const unregisterCleanup = processManager.register({
+    cleanup: () => killContainer(),
+  });
   return {
     container: name,
     close: async () => {
-      if (closed) return;
-      closed = true;
+      await killContainer();
       unregisterCleanup();
-      killContainer();
     },
   };
 }
 
 function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
-}
-
-async function runDockerCommand(
-  container: string,
-  command: string[],
-  timeout: number,
-  signal: AbortSignal,
-): Promise<string> {
-  const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
-
-  return new Promise<string>((resolve, reject) => {
-    const octoProcess = processes.manager().spawn(dockerCmd[0], dockerCmd.slice(1), {
-      timeout,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (!octoProcess.stdout || !octoProcess.stderr) {
-      reject(new Error("Failed to spawn docker process with piped stdio"));
-      return;
-    }
-
-    const output = new ShellOutput();
-    let aborted = false;
-    let killed = false;
-
-    const killChild = () => {
-      if (killed) return;
-      killed = true;
-      octoProcess.terminate({ graceMs: 500 });
-    };
-
-    const onAbort = () => {
-      aborted = true;
-      killChild();
-    };
-
-    if (signal.aborted) onAbort();
-    signal.addEventListener("abort", onAbort);
-
-    const cleanup = () => {
-      signal.removeEventListener("abort", onAbort);
-    };
-
-    octoProcess.stdout.on("data", data => {
-      if (!output.append(data)) killChild();
-    });
-
-    octoProcess.stderr.on("data", data => {
-      if (!output.append(data)) killChild();
-    });
-
-    octoProcess.on("close", code => {
-      cleanup();
-      if (aborted) {
-        reject(new AbortError());
-        return;
-      }
-      const commandOutput = output.getOutput();
-      if (commandOutput == null) {
-        reject(
-          new CommandFailedError(
-            `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
-          ),
-        );
-        return;
-      }
-      if (code === 0) {
-        resolve(commandOutput);
-      } else {
-        if (code == null) {
-          reject(
-            new CommandFailedError(
-              `Command timed out.
-output: ${commandOutput}`,
-            ),
-          );
-        } else {
-          reject(
-            new CommandFailedError(
-              `Command exited with code: ${code}
-output: ${commandOutput}`,
-              code,
-            ),
-          );
-        }
-      }
-    });
-
-    octoProcess.on("error", err => {
-      cleanup();
-      if (aborted) {
-        reject(new AbortError());
-        return;
-      }
-      reject(new CommandFailedError(`Command failed: ${err.message}`));
-    });
-  });
 }
 
 type DockerTarget =
@@ -173,24 +89,113 @@ type DockerTarget =
 export class DockerTransport implements Transport {
   private readonly _container: string;
   cwd: string;
+  private readonly runningProcesses = new Set<TransportProcess>();
 
   private constructor(
     private readonly _target: DockerTarget,
     cwd: string,
+    private readonly processManager: ProcessManager,
   ) {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
     this.cwd = cwd;
   }
 
-  static async create(target: DockerTarget): Promise<DockerTransport> {
+  static async create(
+    target: DockerTarget,
+    processManager: ProcessManager = processes.manager(),
+  ): Promise<DockerTransport> {
     const container = target.type === "image" ? target.image.container : target.container;
-    const cwd = await runDockerCommand(container, ["pwd"], 5000, new AbortController().signal);
-    return new DockerTransport(target, cwd.trim());
+    const cwd = await runDockerCli(
+      ["exec", container, "/bin/sh", "-c", "pwd"],
+      processManager,
+      5000,
+    );
+    return new DockerTransport(target, cwd.trim(), processManager);
   }
 
   async close() {
-    if (this._target.type === "image") await this._target.image.close();
+    await Promise.all([
+      this._target.type === "image" ? this._target.image.close() : Promise.resolve(),
+      ...[...this.runningProcesses].map(dockerProcess => dockerProcess.terminate({ graceMs: 500 })),
+    ]);
+  }
+
+  spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
+  spawn(
+    command: string,
+    args: readonly string[],
+    options?: TransportSpawnOptions,
+  ): TransportProcess;
+  spawn(
+    command: string,
+    argsOrOptions?: readonly string[] | TransportSpawnOptions,
+    maybeOptions?: TransportSpawnOptions,
+  ): TransportProcess {
+    const { args, options } = spawnArguments(argsOrOptions, maybeOptions);
+    const cwd = options.cwd ?? this.cwd;
+    const dockerArgs = ["exec", "-i", "--workdir", cwd];
+    for (const [name, value] of Object.entries(options.env ?? {})) {
+      if (value != null) dockerArgs.push("--env", `${name}=${value}`);
+    }
+    const shell = typeof options.shell === "string" ? options.shell : "/bin/sh";
+    const commandArgs = options.shell
+      ? [shell, "-c", [command, ...args].join(" ")]
+      : [command, ...args];
+    dockerArgs.push(this._container, "/bin/sh", "-c", commandArgs.join(" "));
+    const dockerProcess = new ChildTransportProcess(
+      spawn("docker", dockerArgs, {
+        stdio: options.stdio ?? "pipe",
+        timeout: options.timeout,
+        killSignal: options.killSignal,
+      }),
+    );
+    this.runningProcesses.add(dockerProcess);
+    this.processManager.register({
+      cleanup: options => dockerProcess.terminate(options),
+      processClosedPromise: dockerProcess.processClosedPromise,
+      surviveAfterOctoExit: options.surviveAfterOctoExit,
+    });
+    void dockerProcess.processClosedPromise.then(() => {
+      this.runningProcesses.delete(dockerProcess);
+    });
+    return dockerProcess;
+  }
+
+  execFile(file: string, callback?: TransportExecFileCallback): TransportProcess;
+  execFile(
+    file: string,
+    args: readonly string[],
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
+  execFile(
+    file: string,
+    options?: TransportExecFileOptions,
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
+  execFile(
+    file: string,
+    args: readonly string[],
+    options?: TransportExecFileOptions,
+    callback?: TransportExecFileCallback,
+  ): TransportProcess;
+  execFile(
+    file: string,
+    argsOrOptionsOrCallback?:
+      | readonly string[]
+      | TransportExecFileOptions
+      | TransportExecFileCallback,
+    optionsOrCallback?: TransportExecFileOptions | TransportExecFileCallback,
+    maybeCallback?: TransportExecFileCallback,
+  ): TransportProcess {
+    const { args, options, callback } = execFileArguments(
+      argsOrOptionsOrCallback,
+      optionsOrCallback,
+      maybeCallback,
+    );
+    const execFileProcess = this.spawn(file, args, { ...options, stdio: "pipe" });
+    collectExecFileOutput(execFileProcess, file, args, options, callback);
+    return execFileProcess;
   }
 
   private async dockerExec(
@@ -198,7 +203,7 @@ export class DockerTransport implements Transport {
     command: string[],
     timeout: number,
   ): Promise<string> {
-    return runDockerCommand(this._container, command, timeout, signal);
+    return this.shell(signal, command.length === 1 ? command[0] : quote(command), timeout);
   }
 
   async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
@@ -312,6 +317,49 @@ export class DockerTransport implements Transport {
   }
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
-    return await this.dockerExec(signal, [command], timeout);
+    return runShell(this, signal, command, timeout, "/bin/sh");
   }
+}
+
+function spawnDockerCli(
+  args: readonly string[],
+  processManager: ProcessManager,
+  options: TransportSpawnOptions,
+): TransportProcess {
+  const { surviveAfterOctoExit, ...spawnOptions } = options;
+  const dockerCliProcess = new ChildTransportProcess(spawn("docker", args, spawnOptions), {
+    detached: options.detached,
+  });
+  processManager.register({
+    cleanup: cleanupOptions => dockerCliProcess.terminate(cleanupOptions),
+    processClosedPromise: dockerCliProcess.processClosedPromise,
+    surviveAfterOctoExit,
+  });
+  return dockerCliProcess;
+}
+
+function runDockerCli(
+  args: readonly string[],
+  processManager: ProcessManager,
+  timeout: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const dockerCliProcess = spawnDockerCli(args, processManager, {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout,
+      killSignal: "SIGKILL",
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    dockerCliProcess.stdout?.on("data", chunk => stdout.push(Buffer.from(chunk)));
+    dockerCliProcess.stderr?.on("data", chunk => stderr.push(Buffer.from(chunk)));
+    dockerCliProcess.on("error", reject);
+    dockerCliProcess.on("close", code => {
+      if (code === 0) resolve(Buffer.concat(stdout).toString());
+      else
+        reject(
+          new Error(`docker command failed with code ${code}: ${Buffer.concat(stderr).toString()}`),
+        );
+    });
+  });
 }
