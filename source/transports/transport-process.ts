@@ -1,14 +1,27 @@
-import type { ChildProcess, ExecFileException, ExecFileOptions, SpawnOptions } from "child_process";
+import type { ChildProcess, ExecFileException, StdioOptions } from "child_process";
 import { EventEmitter } from "events";
 import type { Readable, Writable } from "stream";
 import type { TerminateOptions } from "../process-manager.ts";
 
-type ProcessOptions = {
+export type TransportSpawnOptions = {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  shell?: string | boolean;
+  stdio?: StdioOptions;
+  detached?: boolean;
+  timeout?: number;
+  killSignal?: NodeJS.Signals | number;
   surviveAfterOctoExit?: boolean;
 };
 
-export type TransportSpawnOptions = SpawnOptions & ProcessOptions;
-export type TransportExecFileOptions = ExecFileOptions & ProcessOptions;
+export type TransportExecFileOptions = {
+  env?: NodeJS.ProcessEnv;
+  shell?: string | boolean;
+  timeout?: number;
+  maxBuffer?: number;
+  encoding?: BufferEncoding | "buffer" | null;
+  surviveAfterOctoExit?: boolean;
+};
 export type TransportExecFileCallback = (
   error: ExecFileException | null,
   stdout: string | Buffer,

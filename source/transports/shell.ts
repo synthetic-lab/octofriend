@@ -13,7 +13,7 @@ export function runShell(
   signal: AbortSignal,
   cmd: string,
   timeout: number,
-  shell = "bash",
+  shell: string,
 ): Promise<string> {
   if (signal.aborted) return Promise.reject(new AbortError());
   return new Promise<string>((resolve, reject) => {

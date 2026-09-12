@@ -1,7 +1,6 @@
 import { Transport, TransportError } from "./transport-common.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { spawn } from "child_process";
-import { fileURLToPath } from "url";
 import { quote } from "shell-quote";
 import { runShell } from "./shell.ts";
 import {
@@ -134,19 +133,10 @@ export class DockerTransport implements Transport {
     maybeOptions?: TransportSpawnOptions,
   ): TransportProcess {
     const { args, options } = spawnArguments(argsOrOptions, maybeOptions);
-    const cwd =
-      typeof options.cwd === "string" || options.cwd == null
-        ? (options.cwd ?? this.cwd)
-        : fileURLToPath(options.cwd);
+    const cwd = options.cwd ?? this.cwd;
     const dockerArgs = ["exec", "-i", "--workdir", cwd];
     for (const [name, value] of Object.entries(options.env ?? {})) {
       if (value != null) dockerArgs.push("--env", `${name}=${value}`);
-    }
-    if (options.uid != null) {
-      dockerArgs.push(
-        "--user",
-        options.gid == null ? `${options.uid}` : `${options.uid}:${options.gid}`,
-      );
     }
     const shell = typeof options.shell === "string" ? options.shell : "/bin/sh";
     const commandArgs = options.shell
@@ -156,10 +146,8 @@ export class DockerTransport implements Transport {
     const dockerProcess = new ChildTransportProcess(
       spawn("docker", dockerArgs, {
         stdio: options.stdio ?? "pipe",
-        windowsHide: options.windowsHide,
         timeout: options.timeout,
         killSignal: options.killSignal,
-        signal: options.signal,
       }),
     );
     this.runningProcesses.add(dockerProcess);

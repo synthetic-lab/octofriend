@@ -187,7 +187,8 @@ export class LocalTransport implements Transport {
   }
 
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
-    return runShell(this, signal, cmd, timeout);
+    // bash over sh: available on most local setups, and tolerant of LLM bash-isms
+    return runShell(this, signal, cmd, timeout, "bash");
   }
 }
 
