@@ -583,11 +583,9 @@ function lspClientClientCacheKey(serverConfig: InstalledLspConfig, rootPath: str
 export function getRunningLspClient(
   serverConfig: InstalledLspConfig,
   rootPath: string,
-  transport: Transport,
 ): LspClient | undefined {
   const cacheKey = lspClientClientCacheKey(serverConfig, rootPath);
-  const client = cachedLspClients.get(cacheKey);
-  return client?.transport === transport ? client : undefined;
+  return cachedLspClients.get(cacheKey);
 }
 
 export async function getOrStartLspClient(
@@ -595,7 +593,7 @@ export async function getOrStartLspClient(
   rootPath: string,
   transport: Transport,
 ): Promise<LspClient> {
-  let client = getRunningLspClient(serverConfig, rootPath, transport);
+  let client = getRunningLspClient(serverConfig, rootPath);
   if (client) return client;
 
   client = new LspClient(serverConfig, rootPath, transport);

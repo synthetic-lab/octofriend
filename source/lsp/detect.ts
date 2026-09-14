@@ -6,6 +6,8 @@ import { Config } from "../config.ts";
 
 let cachedCustomLspConfig: Record<string, InstalledLspConfig> | null = null;
 
+let usableLspsPerExtension: Record<string, InstalledLspConfig> | null = null;
+
 export async function isCommandExecutable(command: string, transport: Transport): Promise<boolean> {
   try {
     await transport.shell(new AbortController().signal, `command -v ${command}`, 5000);
@@ -31,6 +33,8 @@ async function ensureUsableLspsPopulated(
   config: Config,
   transport: Transport,
 ): Promise<Record<string, InstalledLspConfig>> {
+  if (usableLspsPerExtension != null) return usableLspsPerExtension;
+
   const tempUsableLspsPerExtension: Record<string, InstalledLspConfig> = {};
   if (cachedCustomLspConfig == null) {
     cachedCustomLspConfig = await loadCustomLspConfig(config);
@@ -54,7 +58,8 @@ async function ensureUsableLspsPopulated(
       });
     }
   }
-  return tempUsableLspsPerExtension;
+  usableLspsPerExtension = tempUsableLspsPerExtension;
+  return usableLspsPerExtension;
 }
 
 /**
