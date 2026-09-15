@@ -1,12 +1,12 @@
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
-import type { ExecFileException } from "child_process";
+import type { ChildProcess, ExecFileException } from "child_process";
 import type { Transport } from "./transport-common.ts";
 import { BackgroundProcessManager } from "../background-process.ts";
 import {
   type ProcessExecFileCallback,
   type ProcessExecFileOptions,
-  type TransportProcess,
+  TransportProcess,
   type TransportProcessEvents,
   type ProcessSpawnOptions,
 } from "./transport-process.ts";
@@ -18,24 +18,12 @@ export type MockProcessCall = {
   process: MockTransportProcess;
 };
 
-export class MockTransportProcess
-  extends EventEmitter<TransportProcessEvents>
-  implements TransportProcess
-{
+class MockChildProcess extends EventEmitter<TransportProcessEvents> {
   readonly stdin = new PassThrough();
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
-  readonly processClosedPromise: Promise<void>;
   readonly pid = Math.floor(Math.random() * 1_000_000) + 1;
-  private closedResolve!: () => void;
   private isClosed = false;
-
-  constructor() {
-    super();
-    this.processClosedPromise = new Promise(resolve => {
-      this.closedResolve = resolve;
-    });
-  }
 
   kill(signal?: NodeJS.Signals | number): boolean {
     if (this.isClosed) return false;
@@ -45,11 +33,6 @@ export class MockTransportProcess
 
   unref(): void {}
 
-  async terminate(): Promise<void> {
-    this.kill("SIGTERM");
-    await this.processClosedPromise;
-  }
-
   finish(code: number | null, signal: NodeJS.Signals | null): void {
     if (this.isClosed) return;
     this.isClosed = true;
@@ -58,7 +41,24 @@ export class MockTransportProcess
     this.stdout.end();
     this.stderr.end();
     this.emit("close", code, signal);
-    this.closedResolve();
+  }
+}
+
+export class MockTransportProcess extends TransportProcess {
+  declare readonly stdin: PassThrough;
+  declare readonly stdout: PassThrough;
+  declare readonly stderr: PassThrough;
+  private readonly mockChild: MockChildProcess;
+
+  constructor() {
+    const child = new MockChildProcess();
+    // The test double implements only the ChildProcess behavior exercised by TransportProcess.
+    super(child as unknown as ChildProcess, {});
+    this.mockChild = child;
+  }
+
+  finish(code: number | null, signal: NodeJS.Signals | null): void {
+    this.mockChild.finish(code, signal);
   }
 }
 

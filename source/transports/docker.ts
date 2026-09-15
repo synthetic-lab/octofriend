@@ -5,8 +5,7 @@ import { spawn } from "child_process";
 import { quote } from "shell-quote";
 import { runShell } from "./shell.ts";
 import {
-  ChildTransportProcess,
-  type TransportProcess,
+  TransportProcess,
   type ProcessSpawnOptions,
   type ProcessExecFileOptions,
   type ProcessExecFileCallback,
@@ -116,10 +115,11 @@ export class DockerTransport implements Transport {
   }
 
   async close() {
-    await Promise.all([
-      this._target.type === "image" ? this._target.image.close() : Promise.resolve(),
-      ...[...this.runningProcesses].map(dockerProcess => dockerProcess.terminate({ graceMs: 500 })),
-    ]);
+    const closables = [...this.runningProcesses].map(dockerProcess =>
+      dockerProcess.terminate({ graceMs: 500 }),
+    );
+    if (this._target.type === "image") closables.push(this._target.image.close());
+    await Promise.all(closables);
   }
 
   spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess {
@@ -133,7 +133,7 @@ export class DockerTransport implements Transport {
       ? [shell, "-c", [command, ...args].join(" ")]
       : [command, ...args];
     dockerArgs.push(this._container, ...commandArgs);
-    const dockerProcess = new ChildTransportProcess(
+    const dockerProcess = new TransportProcess(
       spawn("docker", dockerArgs, {
         stdio: options.stdio ?? "pipe",
         timeout: options.timeout,
@@ -294,7 +294,7 @@ function spawnDockerCli(
   options: ProcessSpawnOptions,
 ): TransportProcess {
   const { surviveAfterOctoExit, ...spawnOptions } = options;
-  const dockerCliProcess = new ChildTransportProcess(spawn("docker", args, spawnOptions), {
+  const dockerCliProcess = new TransportProcess(spawn("docker", args, spawnOptions), {
     detached: options.detached,
   });
   processManager.register({

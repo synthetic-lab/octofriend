@@ -6,8 +6,7 @@ import { Transport, TransportError } from "./transport-common.ts";
 import { processes } from "../process-manager.ts";
 import { BackgroundProcessManager } from "../background-process.ts";
 import {
-  ChildTransportProcess,
-  type TransportProcess,
+  TransportProcess,
   type ProcessSpawnOptions,
   type ProcessExecFileOptions,
   type ProcessExecFileCallback,
@@ -73,7 +72,7 @@ export class LocalTransport implements Transport {
     childProcess: ChildProcess,
     options: { detached?: boolean; surviveAfterOctoExit?: boolean },
   ): TransportProcess {
-    const localProcess = new ChildTransportProcess(childProcess, options);
+    const localProcess = new TransportProcess(childProcess, options);
     this.runningProcesses.add(localProcess);
     this.processManager.register({
       cleanup: options => localProcess.terminate(options),

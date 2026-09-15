@@ -35,21 +35,7 @@ export type TransportProcessEvents = {
   close: [code: number | null, signal: NodeJS.Signals | null];
 };
 
-export interface TransportProcess extends EventEmitter<TransportProcessEvents> {
-  readonly stdin: Writable | null;
-  readonly stdout: Readable | null;
-  readonly stderr: Readable | null;
-  readonly processClosedPromise: Promise<void>;
-  readonly pid: number | undefined;
-  kill(signal?: NodeJS.Signals | number): boolean;
-  unref(): void;
-  terminate(options?: TerminateOptions): Promise<void>;
-}
-
-export class ChildTransportProcess
-  extends EventEmitter<TransportProcessEvents>
-  implements TransportProcess
-{
+export class TransportProcess extends EventEmitter<TransportProcessEvents> {
   readonly stdin: Writable | null;
   readonly stdout: Readable | null;
   readonly stderr: Readable | null;
