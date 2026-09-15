@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import type { ExecFileException } from "child_process";
 import type { Transport } from "./transport-common.ts";
+import { BackgroundProcessManager } from "../background-process.ts";
 import {
   type TransportExecFileCallback,
   type TransportExecFileOptions,
@@ -63,6 +64,7 @@ export class MockTransportProcess
 
 export class MockTransport implements Transport {
   cwd: string;
+  readonly backgroundProcesses: BackgroundProcessManager;
   readonly spawnCalls: MockProcessCall[] = [];
   readonly execFileCalls: MockProcessCall[] = [];
   private readonly files: Record<string, string>;
@@ -77,6 +79,7 @@ export class MockTransport implements Transport {
     } = {},
   ) {
     this.cwd = options.cwd ?? "/repo";
+    this.backgroundProcesses = new BackgroundProcessManager(this);
     this.files = {};
     for (const [file, contents] of Object.entries(options.files ?? {})) {
       const resolved = this.resolve(file);

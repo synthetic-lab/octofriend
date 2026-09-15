@@ -5,6 +5,7 @@ import type {
   TransportExecFileOptions,
   TransportExecFileCallback,
 } from "./transport-process.ts";
+import type { BackgroundProcessManager } from "../background-process.ts";
 
 export const MAX_SHELL_OUTPUT_LENGTH = 100_000_000;
 
@@ -57,6 +58,7 @@ export class ShellOutput {
 
 export interface Transport {
   readonly cwd: string;
+  readonly backgroundProcesses: BackgroundProcessManager;
   spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
   spawn(
     command: string,

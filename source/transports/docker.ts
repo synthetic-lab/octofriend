@@ -1,5 +1,6 @@
 import { Transport, TransportError } from "./transport-common.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
+import { BackgroundProcessManager } from "../background-process.ts";
 import { spawn } from "child_process";
 import { quote } from "shell-quote";
 import { runShell } from "./shell.ts";
@@ -89,6 +90,7 @@ type DockerTarget =
 export class DockerTransport implements Transport {
   private readonly _container: string;
   cwd: string;
+  readonly backgroundProcesses: BackgroundProcessManager;
   private readonly runningProcesses = new Set<TransportProcess>();
 
   private constructor(
@@ -99,6 +101,7 @@ export class DockerTransport implements Transport {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
     this.cwd = cwd;
+    this.backgroundProcesses = new BackgroundProcessManager(this);
   }
 
   static async create(
@@ -140,15 +143,17 @@ export class DockerTransport implements Transport {
     }
     const shell = typeof options.shell === "string" ? options.shell : "/bin/sh";
     const commandArgs = options.shell
-      ? [shell, "-c", [command, ...args].join(" ")]
+      ? [shell, "-c", quote([command, ...args])]
       : [command, ...args];
-    dockerArgs.push(this._container, "/bin/sh", "-c", commandArgs.join(" "));
+    dockerArgs.push(this._container, ...commandArgs);
     const dockerProcess = new ChildTransportProcess(
       spawn("docker", dockerArgs, {
         stdio: options.stdio ?? "pipe",
         timeout: options.timeout,
         killSignal: options.killSignal,
+        detached: options.detached,
       }),
+      { detached: options.detached },
     );
     this.runningProcesses.add(dockerProcess);
     this.processManager.register({

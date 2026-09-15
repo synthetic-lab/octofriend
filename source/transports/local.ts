@@ -4,6 +4,7 @@ import { runShell } from "./shell.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import { Transport, TransportError } from "./transport-common.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
+import { BackgroundProcessManager } from "../background-process.ts";
 import {
   ChildTransportProcess,
   type TransportProcess,
@@ -20,9 +21,12 @@ const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OC
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
+  readonly backgroundProcesses: BackgroundProcessManager;
   private readonly runningProcesses = new Set<TransportProcess>();
 
-  constructor(private readonly processManager: ProcessManager = processes.manager()) {}
+  constructor(private readonly processManager: ProcessManager = processes.manager()) {
+    this.backgroundProcesses = new BackgroundProcessManager(this);
+  }
 
   async close() {
     await Promise.all(

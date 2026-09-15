@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { ProcessManager } from "./process-manager.ts";
 import { LocalTransport } from "./transports/local.ts";
-import { BackgroundProcessManager, backgroundProcesses } from "./background-process.ts";
+import { BackgroundProcessManager } from "./background-process.ts";
 import { mkdtemp, realpath, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
@@ -21,13 +21,10 @@ describe("BackgroundProcessManager.start", () => {
     }
   });
 
-  it("shares the manager for the single active transport", async () => {
+  it("keeps managers scoped to their transport", async () => {
     const here = new LocalTransport(new ProcessManager());
     const there = new LocalTransport(new ProcessManager());
-    const manager = backgroundProcesses.manager(here);
-
-    expect(backgroundProcesses.manager(here)).toBe(manager);
-    expect(backgroundProcesses.manager(there)).toBe(manager);
+    expect(here.backgroundProcesses).not.toBe(there.backgroundProcesses);
   });
 
   it("runs the command and polls report the exit", async () => {

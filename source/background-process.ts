@@ -1,4 +1,3 @@
-import { registry } from "antipattern";
 import type { TransportProcess } from "./transports/transport-process.ts";
 import { sleep } from "./sleep.ts";
 import { ShellOutput, type Transport } from "./transports/transport-common.ts";
@@ -147,9 +146,3 @@ export class BackgroundProcessManager {
     return [...this.backgroundProcesses.values()];
   }
 }
-
-let manager: BackgroundProcessManager | undefined;
-
-export const backgroundProcesses = registry({
-  manager: (transport: Transport) => (manager ??= new BackgroundProcessManager(transport)),
-});

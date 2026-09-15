@@ -49,16 +49,7 @@ describe("DockerTransport", () => {
     });
     expect(spawn).toHaveBeenCalledWith(
       "docker",
-      [
-        "exec",
-        "-i",
-        "--workdir",
-        "/workspace/with space",
-        "sandbox",
-        "/bin/sh",
-        "-c",
-        "printf hello",
-      ],
+      ["exec", "-i", "--workdir", "/workspace/with space", "sandbox", "printf", "hello"],
       expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
     );
     children[0].stdout.write("hello");
@@ -74,6 +65,17 @@ describe("DockerTransport", () => {
     children[0].finish();
     expect(background.status).toEqual({ state: "exited", code: 0, signal: null });
     expect(background.drainUnreadOutput()).toEqual({ stdout: "hello", stderr: "" });
+  });
+
+  it("passes shell commands as one command argument and creates a process group when detached", () => {
+    const { transport, spawn } = harness();
+    transport.spawn("printf hello", { shell: "bash", detached: true });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "docker",
+      ["exec", "-i", "--workdir", "/workspace", "sandbox", "bash", "-c", "'printf hello'"],
+      expect.objectContaining({ detached: true }),
+    );
   });
 
   it("tracks docker processes for cleanup", async () => {
