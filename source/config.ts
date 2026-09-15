@@ -209,13 +209,15 @@ const AUTH_COMMAND_MAX_OUTPUT_BYTES = 16 * 1024;
 
 const NOTIFY_COMMAND_TIMEOUT_MS = 10_000;
 
+const configTransport = new LocalTransport();
+
 export async function runNotifyCommand(config: Config): Promise<void> {
   const cmd = config.notifications?.notifyCommand;
   if (!cmd || cmd.trim() === "") return;
   const shell = process.env["SHELL"] || "/bin/sh";
 
   await new Promise<void>((resolve, reject) => {
-    const notifyProcess = new LocalTransport().spawn(shell, ["-c", cmd], {
+    const notifyProcess = configTransport.spawn(shell, ["-c", cmd], {
       stdio: ["ignore", "ignore", "ignore"],
       timeout: NOTIFY_COMMAND_TIMEOUT_MS,
       env: process.env,
@@ -302,7 +304,7 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
     let stderr = "";
     let resolved = false;
 
-    const authProcess = new LocalTransport().execFile(
+    const authProcess = configTransport.execFile(
       cmd,
       args,
       {

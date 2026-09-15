@@ -120,9 +120,9 @@ export class BackgroundProcessManager {
 
   start(command: string, label: string): BackgroundProcess {
     const id = `bg-process-${++this.nextId}`;
-    const runningProcess = this.transport.spawn(command, {
+    const runningProcess = this.transport.spawn(command, [], {
       cwd: this.transport.cwd,
-      shell: "bash",
+      shell: this.transport.commandShell,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });

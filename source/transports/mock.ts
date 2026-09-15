@@ -37,7 +37,7 @@ export class MockTransportProcess
     });
   }
 
-  kill(signal: NodeJS.Signals | number = "SIGTERM"): boolean {
+  kill(signal?: NodeJS.Signals | number): boolean {
     if (this.isClosed) return false;
     this.finish(null, typeof signal === "string" ? signal : null);
     return true;
@@ -50,7 +50,7 @@ export class MockTransportProcess
     await this.processClosedPromise;
   }
 
-  finish(code: number | null = 0, signal: NodeJS.Signals | null = null): void {
+  finish(code: number | null, signal: NodeJS.Signals | null): void {
     if (this.isClosed) return;
     this.isClosed = true;
     this.emit("exit", code, signal);
@@ -64,6 +64,7 @@ export class MockTransportProcess
 
 export class MockTransport implements Transport {
   cwd: string;
+  readonly commandShell = "bash";
   readonly backgroundProcesses: BackgroundProcessManager;
   readonly spawnCalls: MockProcessCall[] = [];
   readonly execFileCalls: MockProcessCall[] = [];
@@ -71,13 +72,11 @@ export class MockTransport implements Transport {
   private readonly modTimes = new Map<string, number>();
   private readonly shellResult: string | ((command: string) => string | Promise<string>);
 
-  constructor(
-    options: {
-      cwd?: string;
-      files?: Record<string, string>;
-      shellResult?: string | ((command: string) => string | Promise<string>);
-    } = {},
-  ) {
+  constructor(options: {
+    cwd?: string;
+    files?: Record<string, string>;
+    shellResult?: string | ((command: string) => string | Promise<string>);
+  }) {
     this.cwd = options.cwd ?? "/repo";
     this.backgroundProcesses = new BackgroundProcessManager(this);
     this.files = {};
@@ -89,64 +88,24 @@ export class MockTransport implements Transport {
     this.shellResult = options.shellResult ?? "";
   }
 
-  spawn(command: string, options?: TransportSpawnOptions): MockTransportProcess;
   spawn(
     command: string,
     args: readonly string[],
-    options?: TransportSpawnOptions,
-  ): MockTransportProcess;
-  spawn(
-    command: string,
-    argsOrOptions?: readonly string[] | TransportSpawnOptions,
-    maybeOptions: TransportSpawnOptions = {},
+    options: TransportSpawnOptions,
   ): MockTransportProcess {
-    const args = Array.isArray(argsOrOptions) ? argsOrOptions : [];
-    const options = (
-      Array.isArray(argsOrOptions) ? maybeOptions : (argsOrOptions ?? {})
-    ) as TransportSpawnOptions;
     const process = new MockTransportProcess();
     this.spawnCalls.push({ command, args, options, process });
     return process;
   }
 
-  execFile(file: string, callback?: TransportExecFileCallback): MockTransportProcess;
   execFile(
     file: string,
     args: readonly string[],
-    callback?: TransportExecFileCallback,
-  ): MockTransportProcess;
-  execFile(
-    file: string,
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): MockTransportProcess;
-  execFile(
-    file: string,
-    args: readonly string[],
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): MockTransportProcess;
-  execFile(
-    file: string,
-    argsOrOptionsOrCallback?:
-      | readonly string[]
-      | TransportExecFileOptions
-      | TransportExecFileCallback,
-    optionsOrCallback?: TransportExecFileOptions | TransportExecFileCallback,
-    maybeCallback?: TransportExecFileCallback,
+    options: TransportExecFileOptions,
+    callback: TransportExecFileCallback | undefined,
   ): MockTransportProcess {
-    const hasArgs = Array.isArray(argsOrOptionsOrCallback);
-    const args = (hasArgs ? argsOrOptionsOrCallback : []) as readonly string[];
-    const optionsArg = hasArgs ? optionsOrCallback : argsOrOptionsOrCallback;
-    const callback = (
-      typeof optionsArg === "function" ? optionsArg : hasArgs ? maybeCallback : optionsOrCallback
-    ) as TransportExecFileCallback | undefined;
-    const options = (
-      typeof optionsArg === "function" ? {} : (optionsArg ?? {})
-    ) as TransportExecFileOptions;
-    const process = this.spawn(file, args, options);
-    const call = this.spawnCalls.pop()!;
-    this.execFileCalls.push({ ...call, process });
+    const process = new MockTransportProcess();
+    this.execFileCalls.push({ command: file, args, options, process });
     if (callback) {
       process.once("close", (code, signal) => {
         const error =

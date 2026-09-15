@@ -58,29 +58,14 @@ export class ShellOutput {
 
 export interface Transport {
   readonly cwd: string;
+  readonly commandShell: string;
   readonly backgroundProcesses: BackgroundProcessManager;
-  spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
-  spawn(
-    command: string,
-    args: readonly string[],
-    options?: TransportSpawnOptions,
-  ): TransportProcess;
-  execFile(file: string, callback?: TransportExecFileCallback): TransportProcess;
+  spawn(command: string, args: readonly string[], options: TransportSpawnOptions): TransportProcess;
   execFile(
     file: string,
     args: readonly string[],
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    args: readonly string[],
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
+    options: TransportExecFileOptions,
+    callback: TransportExecFileCallback | undefined,
   ): TransportProcess;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
   readFile: (signal: AbortSignal, file: string) => Promise<string>;

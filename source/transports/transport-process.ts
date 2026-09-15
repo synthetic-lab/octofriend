@@ -41,7 +41,7 @@ export interface TransportProcess extends EventEmitter<TransportProcessEvents> {
   readonly stderr: Readable | null;
   readonly processClosedPromise: Promise<void>;
   readonly pid: number | undefined;
-  kill(signal?: NodeJS.Signals | number): boolean | Promise<boolean>;
+  kill(signal?: NodeJS.Signals | number): boolean;
   unref(): void;
   terminate(options?: TerminateOptions): Promise<void>;
 }
@@ -62,14 +62,12 @@ export class ChildTransportProcess
 
   constructor(
     private readonly childProcess: ChildProcess,
-    private readonly options: { detached?: boolean } = {},
-    private readonly signalProcess?: (signal: NodeJS.Signals | number) => Promise<boolean>,
-    stderr: Readable | null = childProcess.stderr,
+    private readonly options: { detached?: boolean },
   ) {
     super();
     this.stdin = childProcess.stdin;
     this.stdout = childProcess.stdout;
-    this.stderr = stderr;
+    this.stderr = childProcess.stderr;
     this.processClosed = new Promise(resolve => {
       childProcess.once("close", () => {
         this.finished = true;
@@ -93,8 +91,7 @@ export class ChildTransportProcess
     return this.childProcess.pid;
   }
 
-  kill(signal: NodeJS.Signals | number = "SIGTERM"): boolean | Promise<boolean> {
-    if (this.signalProcess) return this.signalProcess(signal);
+  kill(signal?: NodeJS.Signals | number): boolean {
     if (this.options.detached && this.pid != null) {
       try {
         return process.kill(-this.pid, signal);
@@ -117,20 +114,21 @@ export class ChildTransportProcess
     if (options.graceMs === 0) {
       clearTimeout(this.escalationTimer);
       this.finishEscalation?.();
-      this.termination = this.sendSignal("SIGKILL").then(() => this.processClosed);
+      this.kill("SIGKILL");
+      this.termination = this.processClosed;
       return this.termination;
     }
     if (this.termination) return this.termination;
-    const signaled = this.sendSignal("SIGTERM");
+    this.kill("SIGTERM");
     const escalated = new Promise<void>(resolve => {
       this.finishEscalation = resolve;
       this.escalationTimer = setTimeout(() => {
-        void this.sendSignal("SIGKILL").then(resolve);
+        this.kill("SIGKILL");
+        resolve();
       }, options.graceMs ?? 1000);
       if (!this.options.detached) this.escalationTimer.unref();
     });
     this.termination = Promise.all([
-      signaled,
       this.processClosed,
       this.options.detached ? escalated : Promise.resolve(),
     ]).then(() => {
@@ -139,47 +137,6 @@ export class ChildTransportProcess
     });
     return this.termination;
   }
-
-  private async sendSignal(signal: NodeJS.Signals): Promise<void> {
-    try {
-      await this.kill(signal);
-    } catch {}
-  }
-}
-
-export function spawnArguments(
-  argsOrOptions?: readonly string[] | TransportSpawnOptions,
-  maybeOptions: TransportSpawnOptions = {},
-): { args: readonly string[]; options: TransportSpawnOptions } {
-  if (Array.isArray(argsOrOptions)) return { args: argsOrOptions, options: maybeOptions };
-  return { args: [], options: (argsOrOptions as TransportSpawnOptions | undefined) ?? {} };
-}
-
-export function execFileArguments(
-  argsOrOptionsOrCallback?:
-    | readonly string[]
-    | TransportExecFileOptions
-    | TransportExecFileCallback,
-  optionsOrCallback?: TransportExecFileOptions | TransportExecFileCallback,
-  maybeCallback?: TransportExecFileCallback,
-): {
-  args: readonly string[];
-  options: TransportExecFileOptions;
-  callback?: TransportExecFileCallback;
-} {
-  const hasArgs = Array.isArray(argsOrOptionsOrCallback);
-  const args = (hasArgs ? argsOrOptionsOrCallback : []) as readonly string[];
-  const optionsArg = hasArgs ? optionsOrCallback : argsOrOptionsOrCallback;
-  const callbackArg = hasArgs ? maybeCallback : optionsOrCallback;
-  return {
-    args,
-    options: (typeof optionsArg === "function"
-      ? {}
-      : (optionsArg ?? {})) as TransportExecFileOptions,
-    callback: (typeof optionsArg === "function" ? optionsArg : callbackArg) as
-      | TransportExecFileCallback
-      | undefined,
-  };
 }
 
 export function collectExecFileOutput(
@@ -217,13 +174,9 @@ export function collectExecFileOutput(
     const stdoutBuffer = Buffer.concat(stdout);
     const stderrBuffer = Buffer.concat(stderr);
     const out =
-      encoding == null || encoding === "buffer"
-        ? stdoutBuffer
-        : stdoutBuffer.toString(encoding as BufferEncoding);
+      encoding == null || encoding === "buffer" ? stdoutBuffer : stdoutBuffer.toString(encoding);
     const err =
-      encoding == null || encoding === "buffer"
-        ? stderrBuffer
-        : stderrBuffer.toString(encoding as BufferEncoding);
+      encoding == null || encoding === "buffer" ? stderrBuffer : stderrBuffer.toString(encoding);
     if (!error && (code !== 0 || signal !== null)) {
       error = Object.assign(new Error(`Command failed: ${[file, ...args].join(" ")}\n${err}`), {
         code: code ?? undefined,

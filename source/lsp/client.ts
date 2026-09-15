@@ -140,7 +140,6 @@ export class LspClient {
 
     this.process = this.transport.spawn(cmd, args, {
       stdio: ["pipe", "pipe", "ignore"],
-      env: process.env,
     });
     const lspProcess = this.process;
 

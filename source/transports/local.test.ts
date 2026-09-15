@@ -1,20 +1,24 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
-import { ProcessManager } from "../process-manager.ts";
+import { withMock } from "antipattern";
+import { ProcessManager, processes } from "../process-manager.ts";
 import { LocalTransport } from "./local.ts";
 import type { TransportProcess } from "./transport-process.ts";
 
-function spawnSleeper(
-  processManager: ProcessManager,
-  surviveAfterOctoExit = false,
-): TransportProcess {
-  return new LocalTransport(processManager).spawn(
-    process.execPath,
-    ["-e", "setTimeout(() => {}, 30000)"],
-    {
-      stdio: "ignore",
-      surviveAfterOctoExit,
-    },
+async function withTestManager(cb: (manager: ProcessManager) => Promise<void>): Promise<void> {
+  const manager = new ProcessManager();
+  await withMock(
+    processes,
+    "manager",
+    () => manager,
+    () => cb(manager),
   );
+}
+
+function spawnSleeper(surviveAfterOctoExit = false): TransportProcess {
+  return new LocalTransport().spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+    stdio: "ignore",
+    surviveAfterOctoExit,
+  });
 }
 
 afterEach(() => {
@@ -24,9 +28,8 @@ afterEach(() => {
 
 describe("LocalTransport.spawn", () => {
   it("closing a transport terminates only that transport's processes", async () => {
-    const manager = new ProcessManager();
-    const here = new LocalTransport(manager);
-    const there = new LocalTransport(manager);
+    const here = new LocalTransport();
+    const there = new LocalTransport();
     const mine = here.spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
       stdio: "ignore",
     });
@@ -42,8 +45,8 @@ describe("LocalTransport.spawn", () => {
     }
   });
 
-  it("supports omitting the args array, like child_process.spawn", async () => {
-    const child = new LocalTransport(new ProcessManager()).spawn(process.execPath, {
+  it("supports an empty args array", async () => {
+    const child = new LocalTransport().spawn(process.execPath, [], {
       stdio: "ignore",
     });
 
@@ -54,46 +57,46 @@ describe("LocalTransport.spawn", () => {
     expect(code).toBe(0);
   });
 
-  it("exit-tracks spawned processes so runCleanups terminates them", async () => {
-    const manager = new ProcessManager();
-    const child = spawnSleeper(manager);
+  it("exit-tracks spawned processes so runCleanups terminates them", async () =>
+    withTestManager(async manager => {
+      const child = spawnSleeper();
 
-    await manager.runCleanups();
+      await manager.runCleanups();
 
-    await waitFor(() => !isAlive(child.pid!));
-  });
+      await waitFor(() => !isAlive(child.pid!));
+    }));
 
-  it("does not exit-track processes spawned with surviveAfterOctoExit", async () => {
-    const manager = new ProcessManager();
-    const child = spawnSleeper(manager, true);
+  it("does not exit-track processes spawned with surviveAfterOctoExit", async () =>
+    withTestManager(async manager => {
+      const child = spawnSleeper(true);
 
-    await manager.runCleanups();
-    await new Promise(resolve => setTimeout(resolve, 250));
+      await manager.runCleanups();
+      await new Promise(resolve => setTimeout(resolve, 250));
 
-    expect(isAlive(child.pid!)).toBe(true);
+      expect(isAlive(child.pid!)).toBe(true);
 
-    child.kill("SIGKILL");
-    await waitFor(() => !isAlive(child.pid!));
-  });
+      child.kill("SIGKILL");
+      await waitFor(() => !isAlive(child.pid!));
+    }));
 
-  it("stops tracking processes when they close", async () => {
-    const manager = new ProcessManager();
-    const child = new LocalTransport(manager).spawn(process.execPath, ["-e", ""], {
-      stdio: "ignore",
-    });
-    await new Promise(resolve => child.once("close", resolve));
-    const kill = jest.spyOn(child, "kill").mockReturnValue(true);
+  it("stops tracking processes when they close", async () =>
+    withTestManager(async manager => {
+      const child = new LocalTransport().spawn(process.execPath, ["-e", ""], {
+        stdio: "ignore",
+      });
+      await new Promise(resolve => child.once("close", resolve));
+      const kill = jest.spyOn(child, "kill").mockReturnValue(true);
 
-    manager.terminateAll();
-    await manager.runCleanups();
+      manager.terminateAll();
+      await manager.runCleanups();
 
-    expect(kill).not.toHaveBeenCalled();
-  });
+      expect(kill).not.toHaveBeenCalled();
+    }));
 });
 
 describe("TransportProcess.terminate", () => {
   it("sends SIGTERM immediately and escalates to SIGKILL after graceMs", async () => {
-    const child = spawnSleeper(new ProcessManager());
+    const child = spawnSleeper();
     jest.useFakeTimers();
     const kill = jest.spyOn(child, "kill").mockReturnValue(true);
 
@@ -116,7 +119,7 @@ describe("TransportProcess.terminate", () => {
   it.skipIf(process.platform === "win32")(
     "signals the whole process group for detached processes",
     async () => {
-      const child = new LocalTransport(new ProcessManager()).spawn("sleep", ["30"], {
+      const child = new LocalTransport().spawn("sleep", ["30"], {
         detached: true,
         stdio: "ignore",
       });
@@ -135,7 +138,7 @@ describe("TransportProcess.terminate", () => {
   );
 
   it("signals only the process itself when not detached", async () => {
-    const child = spawnSleeper(new ProcessManager());
+    const child = spawnSleeper();
     const processKillSpy = jest.spyOn(process, "kill").mockImplementation(() => true);
     const kill = jest.spyOn(child, "kill").mockReturnValue(true);
 
@@ -152,7 +155,7 @@ describe("TransportProcess.terminate", () => {
   it.skipIf(process.platform === "win32")(
     "falls back to signaling just the process if the group signal fails",
     async () => {
-      const child = new LocalTransport(new ProcessManager()).spawn("sleep", ["30"], {
+      const child = new LocalTransport().spawn("sleep", ["30"], {
         detached: true,
         stdio: "ignore",
       });
@@ -176,7 +179,7 @@ describe("TransportProcess.terminate", () => {
   );
 
   it("escalates to SIGKILL after the default grace period", async () => {
-    const child = spawnSleeper(new ProcessManager());
+    const child = spawnSleeper();
     jest.useFakeTimers();
     const kill = jest.spyOn(child, "kill").mockReturnValue(true);
 
@@ -195,14 +198,13 @@ describe("TransportProcess.terminate", () => {
   });
 
   it("is safe to call on a closed process and to call twice", async () => {
-    const manager = new ProcessManager();
-    const exited = new LocalTransport(manager).spawn(process.execPath, ["-e", ""], {
+    const exited = new LocalTransport().spawn(process.execPath, ["-e", ""], {
       stdio: "ignore",
     });
     await new Promise(resolve => exited.once("close", resolve));
     expect(() => exited.terminate()).not.toThrow();
 
-    const sleeper = spawnSleeper(manager);
+    const sleeper = spawnSleeper();
     expect(() => {
       sleeper.terminate();
       sleeper.terminate();
@@ -212,7 +214,7 @@ describe("TransportProcess.terminate", () => {
   });
 
   it("works on processes spawned with surviveAfterOctoExit", async () => {
-    const child = spawnSleeper(new ProcessManager(), true);
+    const child = spawnSleeper(true);
 
     child.terminate({ graceMs: 100 });
 
@@ -221,25 +223,26 @@ describe("TransportProcess.terminate", () => {
 });
 
 describe("LocalTransport.execFile", () => {
-  it("reports missing executables to the callback and prunes them", async () => {
-    const manager = new ProcessManager();
-    const transport = new LocalTransport(manager);
-    let child: TransportProcess;
-    const error = await new Promise<Error | null>(resolve => {
-      child = transport.execFile("/octo-missing-executable", error => resolve(error));
-    });
-    await child!.processClosedPromise;
-    const kill = jest.spyOn(child!, "kill");
-    await manager.terminateAll();
-    expect(error).toMatchObject({ code: "ENOENT" });
-    expect(kill).not.toHaveBeenCalled();
-  });
+  it("reports missing executables to the callback and prunes them", async () =>
+    withTestManager(async manager => {
+      const transport = new LocalTransport();
+      let child: TransportProcess;
+      const error = await new Promise<Error | null>(resolve => {
+        child = transport.execFile("/octo-missing-executable", [], {}, error => resolve(error));
+      });
+      await child!.processClosedPromise;
+      const kill = jest.spyOn(child!, "kill");
+      await manager.terminateAll();
+      expect(error).toMatchObject({ code: "ENOENT" });
+      expect(kill).not.toHaveBeenCalled();
+    }));
 
   it("buffers output to the callback, like child_process.execFile", async () => {
     const stdout = await new Promise<string | Buffer>((resolve, reject) => {
-      new LocalTransport(new ProcessManager()).execFile(
+      new LocalTransport().execFile(
         process.execPath,
         ["-e", "console.log('hello')"],
+        {},
         (error, stdout) => (error ? reject(error) : resolve(stdout)),
       );
     });
@@ -247,9 +250,9 @@ describe("LocalTransport.execFile", () => {
     expect(stdout.toString()).toBe("hello\n");
   });
 
-  it("supports omitting the args array and options, like child_process.execFile", async () => {
+  it("supports an empty args array and options", async () => {
     const stdoutPromise = new Promise<string | Buffer>((resolve, reject) => {
-      const child = new LocalTransport(new ProcessManager()).execFile("node", (error, stdout) =>
+      const child = new LocalTransport().execFile("node", [], {}, (error, stdout) =>
         error ? reject(error) : resolve(stdout),
       );
       child.stdin!.end();
@@ -260,7 +263,7 @@ describe("LocalTransport.execFile", () => {
 
   it("passes options through to child_process.execFile", async () => {
     const stdout = await new Promise<string | Buffer>((resolve, reject) => {
-      new LocalTransport(new ProcessManager()).execFile(
+      new LocalTransport().execFile(
         process.execPath,
         ["-e", "process.stdout.write('buffered')"],
         { encoding: "buffer" },
@@ -274,10 +277,8 @@ describe("LocalTransport.execFile", () => {
 
   it("reports spawn failures to the callback, like child_process.execFile", async () => {
     const error = await new Promise<Error | null>(resolve => {
-      new LocalTransport(new ProcessManager()).execFile(
-        process.execPath,
-        ["-e", "process.exit(3)"],
-        error => resolve(error),
+      new LocalTransport().execFile(process.execPath, ["-e", "process.exit(3)"], {}, error =>
+        resolve(error),
       );
     });
 
@@ -285,36 +286,39 @@ describe("LocalTransport.execFile", () => {
     expect((error as unknown as { code: number }).code).toBe(3);
   });
 
-  it("does not exit-track processes spawned with surviveAfterOctoExit", async () => {
-    const manager = new ProcessManager();
-    const child = new LocalTransport(manager).execFile(
-      process.execPath,
-      ["-e", "setTimeout(() => {}, 30000)"],
-      {
-        surviveAfterOctoExit: true,
-      },
-    );
+  it("does not exit-track processes spawned with surviveAfterOctoExit", async () =>
+    withTestManager(async manager => {
+      const child = new LocalTransport().execFile(
+        process.execPath,
+        ["-e", "setTimeout(() => {}, 30000)"],
+        {
+          surviveAfterOctoExit: true,
+        },
+        undefined,
+      );
 
-    await manager.runCleanups();
-    await new Promise(resolve => setTimeout(resolve, 250));
+      await manager.runCleanups();
+      await new Promise(resolve => setTimeout(resolve, 250));
 
-    expect(isAlive(child.pid!)).toBe(true);
+      expect(isAlive(child.pid!)).toBe(true);
 
-    child.kill("SIGKILL");
-    await waitFor(() => !isAlive(child.pid!));
-  });
+      child.kill("SIGKILL");
+      await waitFor(() => !isAlive(child.pid!));
+    }));
 
-  it("exit-tracks spawned processes so runCleanups terminates them", async () => {
-    const manager = new ProcessManager();
-    const child = new LocalTransport(manager).execFile(process.execPath, [
-      "-e",
-      "setTimeout(() => {}, 30000)",
-    ]);
+  it("exit-tracks spawned processes so runCleanups terminates them", async () =>
+    withTestManager(async manager => {
+      const child = new LocalTransport().execFile(
+        process.execPath,
+        ["-e", "setTimeout(() => {}, 30000)"],
+        {},
+        undefined,
+      );
 
-    await manager.runCleanups();
+      await manager.runCleanups();
 
-    await waitFor(() => !isAlive(child.pid!));
-  });
+      await waitFor(() => !isAlive(child.pid!));
+    }));
 });
 
 function isAlive(pid: number): boolean {

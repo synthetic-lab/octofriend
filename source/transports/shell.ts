@@ -17,7 +17,7 @@ export function runShell(
 ): Promise<string> {
   if (signal.aborted) return Promise.reject(new AbortError());
   return new Promise<string>((resolve, reject) => {
-    const shellProcess = transport.spawn(cmd, {
+    const shellProcess = transport.spawn(cmd, [], {
       cwd: transport.cwd,
       shell,
       stdio: ["ignore", "pipe", "pipe"],

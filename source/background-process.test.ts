@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import { ProcessManager } from "./process-manager.ts";
 import { LocalTransport } from "./transports/local.ts";
 import { BackgroundProcessManager } from "./background-process.ts";
 import { mkdtemp, realpath, rm } from "fs/promises";
@@ -9,7 +8,7 @@ import path from "path";
 describe("BackgroundProcessManager.start", () => {
   it("uses the transport's working directory", async () => {
     const cwd = await realpath(await mkdtemp(path.join(tmpdir(), "octo-background-")));
-    const transport = new LocalTransport(new ProcessManager());
+    const transport = new LocalTransport();
     transport.cwd = cwd;
     try {
       const background = new BackgroundProcessManager(transport).start("pwd", "cwd");
@@ -22,13 +21,13 @@ describe("BackgroundProcessManager.start", () => {
   });
 
   it("keeps managers scoped to their transport", async () => {
-    const here = new LocalTransport(new ProcessManager());
-    const there = new LocalTransport(new ProcessManager());
+    const here = new LocalTransport();
+    const there = new LocalTransport();
     expect(here.backgroundProcesses).not.toBe(there.backgroundProcesses);
   });
 
   it("runs the command and polls report the exit", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("echo hello", "hello");
 
     await waitFor(() => manager.poll(backgroundProcess.id)?.status.state === "exited");
@@ -41,7 +40,7 @@ describe("BackgroundProcessManager.start", () => {
   });
 
   it("polls drain output incrementally", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("echo hello", "hello");
 
     let drained = "";
@@ -60,7 +59,7 @@ describe("BackgroundProcessManager.start", () => {
   });
 
   it("keeps stdout and stderr separate", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("echo out && echo err >&2", "both-streams");
 
     let stdout = "";
@@ -83,7 +82,7 @@ describe("BackgroundProcessManager.start", () => {
   });
 
   it("reports the command and label the process was started with", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("echo hello", "hello");
 
     expect(manager.poll(backgroundProcess.id)!.command).toBe("echo hello");
@@ -95,7 +94,7 @@ describe("BackgroundProcessManager.start", () => {
 
 describe("BackgroundProcessManager.kill", () => {
   it("terminates a long-running process", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("sleep 30", "sleeper");
     expect(manager.poll(backgroundProcess.id)!.status).toEqual({ state: "running" });
 
@@ -106,7 +105,7 @@ describe("BackgroundProcessManager.kill", () => {
 
 describe("BackgroundProcess.awaitChange", () => {
   it("waits up to the timeout when nothing changes", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("sleep 30", "sleeper");
 
     const start = Date.now();
@@ -120,7 +119,7 @@ describe("BackgroundProcess.awaitChange", () => {
   });
 
   it("unblocks when output arrives", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("sleep 0.3 && echo late", "late-output");
 
     const start = Date.now();
@@ -134,7 +133,7 @@ describe("BackgroundProcess.awaitChange", () => {
   });
 
   it("unblocks when the process exits", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("sleep 0.3", "short-sleep");
 
     const start = Date.now();
@@ -146,7 +145,7 @@ describe("BackgroundProcess.awaitChange", () => {
   });
 
   it("unblocks on abort", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const backgroundProcess = manager.start("sleep 30", "sleeper");
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 50);
@@ -163,7 +162,7 @@ describe("BackgroundProcess.awaitChange", () => {
 
 describe("BackgroundProcessManager.list", () => {
   it("lists started processes with their ids, labels, commands, and statuses", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
     const first = manager.start("echo hello", "hello");
     const second = manager.start("sleep 30", "sleeper");
 
@@ -185,7 +184,7 @@ describe("BackgroundProcessManager.list", () => {
   });
 
   it("is empty before any process is started", () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
 
     expect(manager.list()).toEqual([]);
   });
@@ -193,7 +192,7 @@ describe("BackgroundProcessManager.list", () => {
 
 describe("BackgroundProcessManager unknown ids", () => {
   it("returns null from poll and kill", async () => {
-    const manager = new BackgroundProcessManager(new LocalTransport(new ProcessManager()));
+    const manager = new BackgroundProcessManager(new LocalTransport());
 
     expect(manager.poll("bg-process-1")).toBeNull();
     expect(await manager.kill("bg-process-1")).toBeNull();

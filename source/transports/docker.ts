@@ -10,12 +10,11 @@ import {
   type TransportSpawnOptions,
   type TransportExecFileOptions,
   type TransportExecFileCallback,
-  spawnArguments,
-  execFileArguments,
   collectExecFileOutput,
 } from "./transport-process.ts";
 
-export async function manageContainer(args: string[], processManager = processes.manager()) {
+export async function manageContainer(args: string[]) {
+  const processManager = processes.manager();
   console.log("Spawning Docker container...");
 
   const { stdout } = await new Promise<{
@@ -90,6 +89,7 @@ type DockerTarget =
 export class DockerTransport implements Transport {
   private readonly _container: string;
   cwd: string;
+  readonly commandShell = "/bin/sh";
   readonly backgroundProcesses: BackgroundProcessManager;
   private readonly runningProcesses = new Set<TransportProcess>();
 
@@ -104,10 +104,8 @@ export class DockerTransport implements Transport {
     this.backgroundProcesses = new BackgroundProcessManager(this);
   }
 
-  static async create(
-    target: DockerTarget,
-    processManager: ProcessManager = processes.manager(),
-  ): Promise<DockerTransport> {
+  static async create(target: DockerTarget): Promise<DockerTransport> {
+    const processManager = processes.manager();
     const container = target.type === "image" ? target.image.container : target.container;
     const cwd = await runDockerCli(
       ["exec", container, "/bin/sh", "-c", "pwd"],
@@ -124,26 +122,19 @@ export class DockerTransport implements Transport {
     ]);
   }
 
-  spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
   spawn(
     command: string,
     args: readonly string[],
-    options?: TransportSpawnOptions,
-  ): TransportProcess;
-  spawn(
-    command: string,
-    argsOrOptions?: readonly string[] | TransportSpawnOptions,
-    maybeOptions?: TransportSpawnOptions,
+    options: TransportSpawnOptions,
   ): TransportProcess {
-    const { args, options } = spawnArguments(argsOrOptions, maybeOptions);
     const cwd = options.cwd ?? this.cwd;
     const dockerArgs = ["exec", "-i", "--workdir", cwd];
     for (const [name, value] of Object.entries(options.env ?? {})) {
       if (value != null) dockerArgs.push("--env", `${name}=${value}`);
     }
-    const shell = typeof options.shell === "string" ? options.shell : "/bin/sh";
+    const shell = typeof options.shell === "string" ? options.shell : this.commandShell;
     const commandArgs = options.shell
-      ? [shell, "-c", quote([command, ...args])]
+      ? [shell, "-c", [command, ...args].join(" ")]
       : [command, ...args];
     dockerArgs.push(this._container, ...commandArgs);
     const dockerProcess = new ChildTransportProcess(
@@ -167,37 +158,12 @@ export class DockerTransport implements Transport {
     return dockerProcess;
   }
 
-  execFile(file: string, callback?: TransportExecFileCallback): TransportProcess;
   execFile(
     file: string,
     args: readonly string[],
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    args: readonly string[],
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    argsOrOptionsOrCallback?:
-      | readonly string[]
-      | TransportExecFileOptions
-      | TransportExecFileCallback,
-    optionsOrCallback?: TransportExecFileOptions | TransportExecFileCallback,
-    maybeCallback?: TransportExecFileCallback,
+    options: TransportExecFileOptions,
+    callback: TransportExecFileCallback | undefined,
   ): TransportProcess {
-    const { args, options, callback } = execFileArguments(
-      argsOrOptionsOrCallback,
-      optionsOrCallback,
-      maybeCallback,
-    );
     const execFileProcess = this.spawn(file, args, { ...options, stdio: "pipe" });
     collectExecFileOutput(execFileProcess, file, args, options, callback);
     return execFileProcess;
@@ -322,7 +288,7 @@ export class DockerTransport implements Transport {
   }
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
-    return runShell(this, signal, command, timeout, "/bin/sh");
+    return runShell(this, signal, command, timeout, this.commandShell);
   }
 }
 

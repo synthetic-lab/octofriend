@@ -3,7 +3,7 @@ import path from "path";
 import { runShell } from "./shell.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import { Transport, TransportError } from "./transport-common.ts";
-import { ProcessManager, processes } from "../process-manager.ts";
+import { processes } from "../process-manager.ts";
 import { BackgroundProcessManager } from "../background-process.ts";
 import {
   ChildTransportProcess,
@@ -11,8 +11,6 @@ import {
   type TransportSpawnOptions,
   type TransportExecFileOptions,
   type TransportExecFileCallback,
-  spawnArguments,
-  execFileArguments,
 } from "./transport-process.ts";
 
 const KILL_GRACE_MS = 500;
@@ -21,12 +19,11 @@ const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OC
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
-  readonly backgroundProcesses: BackgroundProcessManager;
+  // bash over sh: available on most local setups, and tolerant of LLM bash-isms
+  readonly commandShell = "bash";
+  readonly backgroundProcesses: BackgroundProcessManager = new BackgroundProcessManager(this);
   private readonly runningProcesses = new Set<TransportProcess>();
-
-  constructor(private readonly processManager: ProcessManager = processes.manager()) {
-    this.backgroundProcesses = new BackgroundProcessManager(this);
-  }
+  private readonly processManager = processes.manager();
 
   async close() {
     await Promise.all(
@@ -36,18 +33,11 @@ export class LocalTransport implements Transport {
     );
   }
 
-  spawn(command: string, options?: TransportSpawnOptions): TransportProcess;
   spawn(
     command: string,
     args: readonly string[],
-    options?: TransportSpawnOptions,
-  ): TransportProcess;
-  spawn(
-    command: string,
-    argsOrOptions?: readonly string[] | TransportSpawnOptions,
-    maybeOptions?: TransportSpawnOptions,
+    options: TransportSpawnOptions,
   ): TransportProcess {
-    const { args, options } = spawnArguments(argsOrOptions, maybeOptions);
     const { surviveAfterOctoExit, ...spawnOptions } = options;
     return this.manage(
       spawn(command, args, {
@@ -59,37 +49,12 @@ export class LocalTransport implements Transport {
     );
   }
 
-  execFile(file: string, callback?: TransportExecFileCallback): TransportProcess;
   execFile(
     file: string,
     args: readonly string[],
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    args: readonly string[],
-    options?: TransportExecFileOptions,
-    callback?: TransportExecFileCallback,
-  ): TransportProcess;
-  execFile(
-    file: string,
-    argsOrOptionsOrCallback?:
-      | readonly string[]
-      | TransportExecFileOptions
-      | TransportExecFileCallback,
-    optionsOrCallback?: TransportExecFileOptions | TransportExecFileCallback,
-    maybeCallback?: TransportExecFileCallback,
+    options: TransportExecFileOptions,
+    callback: TransportExecFileCallback | undefined,
   ): TransportProcess {
-    const { args, options, callback } = execFileArguments(
-      argsOrOptionsOrCallback,
-      optionsOrCallback,
-      maybeCallback,
-    );
     const { surviveAfterOctoExit, ...execOptions } = options;
     const localProcess = this.manage(
       execFile(
@@ -191,8 +156,7 @@ export class LocalTransport implements Transport {
   }
 
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
-    // bash over sh: available on most local setups, and tolerant of LLM bash-isms
-    return runShell(this, signal, cmd, timeout, "bash");
+    return runShell(this, signal, cmd, timeout, this.commandShell);
   }
 }
 
