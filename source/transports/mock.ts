@@ -4,17 +4,17 @@ import type { ExecFileException } from "child_process";
 import type { Transport } from "./transport-common.ts";
 import { BackgroundProcessManager } from "../background-process.ts";
 import {
-  type TransportExecFileCallback,
-  type TransportExecFileOptions,
+  type ProcessExecFileCallback,
+  type ProcessExecFileOptions,
   type TransportProcess,
   type TransportProcessEvents,
-  type TransportSpawnOptions,
+  type ProcessSpawnOptions,
 } from "./transport-process.ts";
 
 export type MockProcessCall = {
   command: string;
   args: readonly string[];
-  options: TransportSpawnOptions | TransportExecFileOptions;
+  options: ProcessSpawnOptions | ProcessExecFileOptions;
   process: MockTransportProcess;
 };
 
@@ -91,7 +91,7 @@ export class MockTransport implements Transport {
   spawn(
     command: string,
     args: readonly string[],
-    options: TransportSpawnOptions,
+    options: ProcessSpawnOptions,
   ): MockTransportProcess {
     const process = new MockTransportProcess();
     this.spawnCalls.push({ command, args, options, process });
@@ -101,8 +101,8 @@ export class MockTransport implements Transport {
   execFile(
     file: string,
     args: readonly string[],
-    options: TransportExecFileOptions,
-    callback: TransportExecFileCallback | undefined,
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
   ): MockTransportProcess {
     const process = new MockTransportProcess();
     this.execFileCalls.push({ command: file, args, options, process });

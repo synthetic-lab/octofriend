@@ -3,7 +3,7 @@ import { EventEmitter } from "events";
 import type { Readable, Writable } from "stream";
 import type { TerminateOptions } from "../process-manager.ts";
 
-export type TransportSpawnOptions = {
+export type ProcessSpawnOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   shell?: string | boolean;
@@ -14,7 +14,7 @@ export type TransportSpawnOptions = {
   surviveAfterOctoExit?: boolean;
 };
 
-export type TransportExecFileOptions = {
+export type ProcessExecFileOptions = {
   env?: NodeJS.ProcessEnv;
   shell?: string | boolean;
   timeout?: number;
@@ -22,7 +22,7 @@ export type TransportExecFileOptions = {
   encoding?: BufferEncoding | "buffer" | null;
   surviveAfterOctoExit?: boolean;
 };
-export type TransportExecFileCallback = (
+export type ProcessExecFileCallback = (
   error: ExecFileException | null,
   stdout: string | Buffer,
   stderr: string | Buffer,
@@ -143,8 +143,8 @@ export function collectExecFileOutput(
   execProcess: TransportProcess,
   file: string,
   args: readonly string[],
-  options: TransportExecFileOptions,
-  callback?: TransportExecFileCallback,
+  options: ProcessExecFileOptions,
+  callback?: ProcessExecFileCallback,
 ): void {
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];

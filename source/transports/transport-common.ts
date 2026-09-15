@@ -1,9 +1,9 @@
 import { quote } from "shell-quote";
 import type {
   TransportProcess,
-  TransportSpawnOptions,
-  TransportExecFileOptions,
-  TransportExecFileCallback,
+  ProcessSpawnOptions,
+  ProcessExecFileOptions,
+  ProcessExecFileCallback,
 } from "./transport-process.ts";
 import type { BackgroundProcessManager } from "../background-process.ts";
 
@@ -60,12 +60,12 @@ export interface Transport {
   readonly cwd: string;
   readonly commandShell: string;
   readonly backgroundProcesses: BackgroundProcessManager;
-  spawn(command: string, args: readonly string[], options: TransportSpawnOptions): TransportProcess;
+  spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess;
   execFile(
     file: string,
     args: readonly string[],
-    options: TransportExecFileOptions,
-    callback: TransportExecFileCallback | undefined,
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
   ): TransportProcess;
   writeFile: (signal: AbortSignal, file: string, contents: string) => Promise<void>;
   readFile: (signal: AbortSignal, file: string) => Promise<string>;

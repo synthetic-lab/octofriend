@@ -8,9 +8,9 @@ import { BackgroundProcessManager } from "../background-process.ts";
 import {
   ChildTransportProcess,
   type TransportProcess,
-  type TransportSpawnOptions,
-  type TransportExecFileOptions,
-  type TransportExecFileCallback,
+  type ProcessSpawnOptions,
+  type ProcessExecFileOptions,
+  type ProcessExecFileCallback,
 } from "./transport-process.ts";
 
 const KILL_GRACE_MS = 500;
@@ -33,11 +33,7 @@ export class LocalTransport implements Transport {
     );
   }
 
-  spawn(
-    command: string,
-    args: readonly string[],
-    options: TransportSpawnOptions,
-  ): TransportProcess {
+  spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess {
     const { surviveAfterOctoExit, ...spawnOptions } = options;
     return this.manage(
       spawn(command, args, {
@@ -52,8 +48,8 @@ export class LocalTransport implements Transport {
   execFile(
     file: string,
     args: readonly string[],
-    options: TransportExecFileOptions,
-    callback: TransportExecFileCallback | undefined,
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
   ): TransportProcess {
     const { surviveAfterOctoExit, ...execOptions } = options;
     const localProcess = this.manage(

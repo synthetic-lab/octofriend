@@ -7,9 +7,9 @@ import { runShell } from "./shell.ts";
 import {
   ChildTransportProcess,
   type TransportProcess,
-  type TransportSpawnOptions,
-  type TransportExecFileOptions,
-  type TransportExecFileCallback,
+  type ProcessSpawnOptions,
+  type ProcessExecFileOptions,
+  type ProcessExecFileCallback,
   collectExecFileOutput,
 } from "./transport-process.ts";
 
@@ -122,11 +122,7 @@ export class DockerTransport implements Transport {
     ]);
   }
 
-  spawn(
-    command: string,
-    args: readonly string[],
-    options: TransportSpawnOptions,
-  ): TransportProcess {
+  spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess {
     const cwd = options.cwd ?? this.cwd;
     const dockerArgs = ["exec", "-i", "--workdir", cwd];
     for (const [name, value] of Object.entries(options.env ?? {})) {
@@ -161,8 +157,8 @@ export class DockerTransport implements Transport {
   execFile(
     file: string,
     args: readonly string[],
-    options: TransportExecFileOptions,
-    callback: TransportExecFileCallback | undefined,
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
   ): TransportProcess {
     const execFileProcess = this.spawn(file, args, { ...options, stdio: "pipe" });
     collectExecFileOutput(execFileProcess, file, args, options, callback);
@@ -295,7 +291,7 @@ export class DockerTransport implements Transport {
 function spawnDockerCli(
   args: readonly string[],
   processManager: ProcessManager,
-  options: TransportSpawnOptions,
+  options: ProcessSpawnOptions,
 ): TransportProcess {
   const { surviveAfterOctoExit, ...spawnOptions } = options;
   const dockerCliProcess = new ChildTransportProcess(spawn("docker", args, spawnOptions), {

@@ -129,9 +129,9 @@ export class LspClient {
   private fileVersions = new Map<string, number>(); // used by all LSP methods to track ordering of changes
 
   constructor(
-    readonly serverConfig: InstalledLspConfig,
-    readonly rootPath: string,
-    readonly transport: Transport,
+    private serverConfig: InstalledLspConfig,
+    private rootPath: string,
+    private readonly transport: Transport,
   ) {}
 
   async start(): Promise<void> {
@@ -603,13 +603,14 @@ export async function getOrStartLspClient(
 }
 
 export async function shutdownLspClients(): Promise<void> {
-  const clients = Array.from(cachedLspClients.values());
+  const entries = Array.from(cachedLspClients.entries());
   cachedLspClients.clear();
-  for (const client of clients) {
+  for (const [, client] of entries) {
     try {
       await client.shutdown();
     } catch {
       // TODO: surface that client shutdown failed
+      // although this probably only happens if the parent process is exiting, so less priority
     }
   }
 }
