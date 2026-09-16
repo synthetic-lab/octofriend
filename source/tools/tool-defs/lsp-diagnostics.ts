@@ -5,8 +5,8 @@ import { formatDiagnostics } from "../../lsp/client.ts";
 import { runLspFileQuery, getLspExtensionsComment } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
-  const extensions = await getUsableLspExtensions(transport.cwd, data, transport);
+export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
+  const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Get errors and warnings for a file from the language server. ${getLspExtensionsComment(extensions)}`;

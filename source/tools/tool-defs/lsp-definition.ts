@@ -10,8 +10,8 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
-  const extensions = await getUsableLspExtensions(transport.cwd, data, transport);
+export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
+  const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Find the definition location of a symbol at the given position. Use this when you need to see where a symbol was originally defined. ${getLspExtensionsComment(extensions)}`;
