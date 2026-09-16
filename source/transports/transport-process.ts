@@ -39,6 +39,7 @@ export class TransportProcess extends EventEmitter<TransportProcessEvents> {
   readonly stdin: Writable | null;
   readonly stdout: Readable | null;
   readonly stderr: Readable | null;
+  // Unlike the close event, this also waits for any pending process-group escalation.
   readonly processClosedPromise: Promise<void>;
   private readonly processClosed: Promise<void>;
   private finished = false;
@@ -112,6 +113,7 @@ export class TransportProcess extends EventEmitter<TransportProcessEvents> {
         this.kill("SIGKILL");
         resolve();
       }, options.graceMs ?? 1000);
+      // A detached group's descendants can outlive its leader and its stdio streams.
       if (!this.options.detached) this.escalationTimer.unref();
     });
     this.termination = Promise.all([
@@ -123,52 +125,4 @@ export class TransportProcess extends EventEmitter<TransportProcessEvents> {
     });
     return this.termination;
   }
-}
-
-export function collectExecFileOutput(
-  execProcess: TransportProcess,
-  file: string,
-  args: readonly string[],
-  options: ProcessExecFileOptions,
-  callback?: ProcessExecFileCallback,
-): void {
-  const stdout: Buffer[] = [];
-  const stderr: Buffer[] = [];
-  const lengths = { stdout: 0, stderr: 0 };
-  const maxBuffer = options.maxBuffer ?? 1024 * 1024;
-  let error: ExecFileException | null = null;
-  const append = (stream: "stdout" | "stderr", chunk: Buffer | string) => {
-    if (error) return;
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    const remaining = Math.max(0, maxBuffer - lengths[stream]);
-    (stream === "stdout" ? stdout : stderr).push(buffer.subarray(0, remaining));
-    lengths[stream] += buffer.length;
-    if (lengths[stream] > maxBuffer) {
-      error = Object.assign(new RangeError(`${stream} maxBuffer length exceeded`), {
-        code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-      }) as ExecFileException;
-      void execProcess.terminate({ graceMs: 0 });
-    }
-  };
-  execProcess.stdout?.on("data", chunk => append("stdout", chunk));
-  execProcess.stderr?.on("data", chunk => append("stderr", chunk));
-  execProcess.on("error", err => {
-    error ??= err;
-  });
-  execProcess.once("close", (code, signal) => {
-    const encoding = options.encoding === undefined ? "utf8" : options.encoding;
-    const stdoutBuffer = Buffer.concat(stdout);
-    const stderrBuffer = Buffer.concat(stderr);
-    const out =
-      encoding == null || encoding === "buffer" ? stdoutBuffer : stdoutBuffer.toString(encoding);
-    const err =
-      encoding == null || encoding === "buffer" ? stderrBuffer : stderrBuffer.toString(encoding);
-    if (!error && (code !== 0 || signal !== null)) {
-      error = Object.assign(new Error(`Command failed: ${[file, ...args].join(" ")}\n${err}`), {
-        code: code ?? undefined,
-        signal: signal ?? undefined,
-      });
-    }
-    callback?.(error, out, err);
-  });
 }

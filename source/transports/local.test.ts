@@ -3,6 +3,7 @@ import { withMock } from "antipattern";
 import { ProcessManager, processes } from "../process-manager.ts";
 import { LocalTransport } from "./local.ts";
 import type { TransportProcess } from "./transport-process.ts";
+import { once } from "events";
 
 async function withTestManager(cb: (manager: ProcessManager) => Promise<void>): Promise<void> {
   const manager = new ProcessManager();
@@ -27,6 +28,28 @@ afterEach(() => {
 });
 
 describe("LocalTransport.spawn", () => {
+  it("global shutdown cleans up resources and ordinary children while preserving survivors", async () =>
+    withTestManager(async manager => {
+      const transport = new LocalTransport();
+      const ordinary = transport.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+        stdio: "ignore",
+      });
+      const survivor = transport.spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+        stdio: "ignore",
+        surviveAfterOctoExit: true,
+      });
+      const cleanup = jest.fn(async () => {});
+      manager.register({ cleanup });
+      try {
+        await manager.runCleanups();
+        expect(cleanup).toHaveBeenCalledTimes(1);
+        expect(isAlive(ordinary.pid!)).toBe(false);
+        expect(isAlive(survivor.pid!)).toBe(true);
+      } finally {
+        await transport.close();
+      }
+    }));
+
   it("closing a transport terminates only that transport's processes", async () => {
     const here = new LocalTransport();
     const there = new LocalTransport();
@@ -95,6 +118,85 @@ describe("LocalTransport.spawn", () => {
 });
 
 describe("TransportProcess.terminate", () => {
+  it.skipIf(process.platform === "win32")(
+    "waits for escalation after the parent closes and kills a descendant that ignores SIGTERM",
+    async () => {
+      const transport = new LocalTransport();
+      const childCode = `process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000);`;
+      const parentCode = `
+        const { spawn } = require("child_process");
+        const child = spawn(process.execPath, ["-e", ${JSON.stringify(childCode)}], { stdio: ["ignore", "pipe", "ignore"] });
+        child.stdout.once("data", () => console.log(child.pid));
+        process.on("SIGTERM", () => process.exit(0));
+        setInterval(() => {}, 1000);
+      `;
+      const parent = transport.spawn(process.execPath, ["-e", parentCode], {
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      let descendantPid: number | undefined;
+      try {
+        const [output] = await once(parent.stdout!, "data");
+        descendantPid = Number(output.toString().trim());
+        expect(Number.isSafeInteger(descendantPid)).toBe(true);
+        let completed = false;
+        const closed = once(parent, "close");
+        const terminating = parent.terminate({ graceMs: 300 }).then(() => {
+          completed = true;
+        });
+        await closed;
+        expect(isAlive(parent.pid!)).toBe(false);
+        expect(isAlive(descendantPid)).toBe(true);
+        expect(completed).toBe(false);
+        await Promise.all([terminating, parent.processClosedPromise]);
+        await waitFor(() => !isAlive(descendantPid!));
+        expect(completed).toBe(true);
+      } finally {
+        await parent.terminate({ graceMs: 0 });
+        if (descendantPid !== undefined && isAlive(descendantPid))
+          process.kill(descendantPid, "SIGKILL");
+      }
+    },
+  );
+
+  it("settles both callers when immediate termination interrupts graceful termination", async () => {
+    const child = new LocalTransport().spawn(
+      process.execPath,
+      ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000);'],
+      {
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    try {
+      await once(child.stdout!, "data");
+      const graceful = child.terminate({ graceMs: 5000 });
+      const immediate = child.terminate({ graceMs: 0 });
+      await Promise.all([graceful, immediate, child.processClosedPromise]);
+      expect(isAlive(child.pid!)).toBe(false);
+    } finally {
+      await child.terminate({ graceMs: 0 });
+    }
+  });
+
+  it("settles overlapping transport closure and global cleanup", async () =>
+    withTestManager(async manager => {
+      const transport = new LocalTransport();
+      const child = transport.spawn(
+        process.execPath,
+        ["-e", 'console.log("ready"); setInterval(() => {}, 1000);'],
+        {
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+      try {
+        await once(child.stdout!, "data");
+        await Promise.all([transport.close(), manager.runCleanups(), child.processClosedPromise]);
+        expect(isAlive(child.pid!)).toBe(false);
+      } finally {
+        await child.terminate({ graceMs: 0 });
+      }
+    }));
+
   it("sends SIGTERM immediately and escalates to SIGKILL after graceMs", async () => {
     const child = spawnSleeper();
     jest.useFakeTimers();

@@ -237,12 +237,7 @@ async function runMain(opts: {
     if (cleanedUp) return;
     cleanedUp = true;
     restoreTitles();
-    await Promise.all([
-      shutdownLspClients(),
-      shutdownMcpClients(),
-      opts.transport.close(),
-      processes.manager().terminateAll(),
-    ]);
+    await Promise.all([shutdownLspClients(), shutdownMcpClients()]);
   };
   const unregisterCleanup = processes.manager().register({
     cleanup,
@@ -314,8 +309,8 @@ async function runMain(opts: {
       }
     }
   } finally {
+    await processes.manager().runCleanups();
     unregisterCleanup();
-    await cleanup();
   }
 }
 
