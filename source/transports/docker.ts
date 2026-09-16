@@ -51,7 +51,7 @@ export async function manageContainer(args: string[]) {
   const killContainer = () => {
     containerKillPromise ??= (async () => {
       try {
-        await runDockerCli(["kill", name], processManager, {
+        await runDockerCommand(["kill", name], processManager, {
           timeout: 5000,
           surviveAfterOctoExit: true,
         });
@@ -77,7 +77,7 @@ function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
 }
 
-function runDockerCli(
+function runDockerCommand(
   args: readonly string[],
   processManager: ProcessManager,
   options: { timeout: number; surviveAfterOctoExit: boolean },
@@ -144,10 +144,14 @@ export class DockerTransport implements Transport {
   static async create(target: DockerTarget): Promise<DockerTransport> {
     const processManager = processes.manager();
     const container = target.type === "image" ? target.image.container : target.container;
-    const cwd = await runDockerCli(["exec", container, "/bin/sh", "-c", "pwd"], processManager, {
-      timeout: 5000,
-      surviveAfterOctoExit: false,
-    });
+    const cwd = await runDockerCommand(
+      ["exec", container, "/bin/sh", "-c", "pwd"],
+      processManager,
+      {
+        timeout: 5000,
+        surviveAfterOctoExit: false,
+      },
+    );
     return new DockerTransport(target, cwd.trim(), processManager);
   }
 
