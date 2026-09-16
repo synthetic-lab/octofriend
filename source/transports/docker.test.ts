@@ -8,7 +8,7 @@ import * as logger from "../logger.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import backgroundProcessTool from "../tools/tool-defs/background-process.ts";
 import manageBackgroundProcessTool from "../tools/tool-defs/manage-background-process.ts";
-import type { ProcessExecFileCallback, ProcessExecFileOptions } from "./transport-process.ts";
+import type { ProcessExecFileCallback } from "./transport-process.ts";
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -37,7 +37,7 @@ async function harness() {
   const execFile = jest.spyOn(childProcess, "execFile").mockImplementation(((
     _file: string,
     _args: string[],
-    _options: ProcessExecFileOptions,
+    _options: childProcess.ExecFileOptions,
     callback: ProcessExecFileCallback,
   ) => {
     const child = new FakeChild();
@@ -73,7 +73,7 @@ describe("DockerTransport", () => {
     execFile.mockImplementationOnce(((
       _file: string,
       _args: string[],
-      _options: ProcessExecFileOptions,
+      _options: childProcess.ExecFileOptions,
       callback: ProcessExecFileCallback,
     ) => {
       const child = new FakeChild();
@@ -108,16 +108,14 @@ describe("DockerTransport", () => {
       },
     );
   });
-  it("uses native execFile and keeps container shell and env out of host options", async () => {
+  it("executes literal arguments with container env and returns UTF-8 text", async () => {
     const { transport, children, execFile } = await harness();
     const callback = jest.fn();
     const child = transport.execFile(
       "printf",
-      ["hello"],
+      ["%s", "$MESSAGE; echo unexpected"],
       {
-        shell: "/bin/sh",
         env: { MESSAGE: "container value" },
-        encoding: "buffer",
         maxBuffer: 128,
         timeout: 200,
       },
@@ -134,11 +132,11 @@ describe("DockerTransport", () => {
         "--env",
         "MESSAGE=container value",
         "sandbox",
-        "/bin/sh",
-        "-c",
-        "printf hello",
+        "printf",
+        "%s",
+        "$MESSAGE; echo unexpected",
       ],
-      { encoding: "buffer", maxBuffer: 128, timeout: 200 },
+      { encoding: "utf8", maxBuffer: 128, timeout: 200 },
       callback,
     );
     children[0].finish(0);

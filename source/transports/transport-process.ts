@@ -6,26 +6,22 @@ import type { TerminateOptions } from "../process-manager.ts";
 export type ProcessSpawnOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  shell?: string | boolean;
+  shell?: string;
   stdio?: StdioOptions;
   detached?: boolean;
   timeout?: number;
-  killSignal?: NodeJS.Signals | number;
   surviveAfterOctoExit?: boolean;
 };
 
 export type ProcessExecFileOptions = {
   env?: NodeJS.ProcessEnv;
-  shell?: string | boolean;
   timeout?: number;
   maxBuffer?: number;
-  encoding?: BufferEncoding | "buffer" | null;
-  surviveAfterOctoExit?: boolean;
 };
 export type ProcessExecFileCallback = (
   error: ExecFileException | null,
-  stdout: string | Buffer,
-  stderr: string | Buffer,
+  stdout: string,
+  stderr: string,
 ) => void;
 
 export type TransportProcessEvents = {

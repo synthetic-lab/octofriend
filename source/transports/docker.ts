@@ -168,7 +168,6 @@ export class DockerTransport implements Transport {
       spawn("docker", this.commandArgs(command, args, options), {
         stdio: options.stdio ?? "pipe",
         timeout: options.timeout,
-        killSignal: options.killSignal,
         detached: options.detached,
       }),
       options,
@@ -185,9 +184,8 @@ export class DockerTransport implements Transport {
     for (const [name, value] of Object.entries(options.env ?? {})) {
       if (value != null) dockerArgs.push("--env", `${name}=${value}`);
     }
-    const shell = typeof options.shell === "string" ? options.shell : this.commandShell;
     const commandArgs = options.shell
-      ? [shell, "-c", [command, ...args].join(" ")]
+      ? [options.shell, "-c", [command, ...args].join(" ")]
       : [command, ...args];
     dockerArgs.push(this._container, ...commandArgs);
     return dockerArgs;
@@ -208,15 +206,15 @@ export class DockerTransport implements Transport {
     options: ProcessExecFileOptions,
     callback: ProcessExecFileCallback | undefined,
   ): TransportProcess {
-    const { env, shell, surviveAfterOctoExit, ...execOptions } = options;
+    const { env, ...execOptions } = options;
     const execFileProcess = this.manage(
       execFile(
         "docker",
-        this.commandArgs(file, args, { env, shell }),
-        execOptions,
-        callback ?? null,
+        this.commandArgs(file, args, { env }),
+        { ...execOptions, encoding: "utf8" },
+        callback,
       ),
-      { surviveAfterOctoExit },
+      {},
     );
     execFileProcess.on("error", () => {});
     return execFileProcess;

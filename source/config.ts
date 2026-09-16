@@ -310,7 +310,6 @@ export async function resolveAuth(auth: Auth): Promise<AuthResult> {
       {
         timeout: AUTH_COMMAND_TIMEOUT_MS,
         maxBuffer: AUTH_COMMAND_MAX_OUTPUT_BYTES,
-        shell: false,
         env: process.env,
       },
       (error, stdoutBuf, stderrBuf) => {

@@ -340,7 +340,7 @@ describe("LocalTransport.execFile", () => {
     }));
 
   it("buffers output to the callback, like child_process.execFile", async () => {
-    const stdout = await new Promise<string | Buffer>((resolve, reject) => {
+    const stdout = await new Promise<string>((resolve, reject) => {
       new LocalTransport().execFile(
         process.execPath,
         ["-e", "console.log('hello')"],
@@ -349,32 +349,35 @@ describe("LocalTransport.execFile", () => {
       );
     });
 
-    expect(stdout.toString()).toBe("hello\n");
+    expect(stdout).toBe("hello\n");
   });
 
   it("supports an empty args array and options", async () => {
-    const stdoutPromise = new Promise<string | Buffer>((resolve, reject) => {
+    const stdoutPromise = new Promise<string>((resolve, reject) => {
       const child = new LocalTransport().execFile("node", [], {}, (error, stdout) =>
         error ? reject(error) : resolve(stdout),
       );
       child.stdin!.end();
     });
 
-    expect((await stdoutPromise).toString()).toBe("");
+    expect(await stdoutPromise).toBe("");
   });
 
-  it("passes options through to child_process.execFile", async () => {
-    const stdout = await new Promise<string | Buffer>((resolve, reject) => {
+  it("passes environment and literal arguments without a shell", async () => {
+    const stdout = await new Promise<string>((resolve, reject) => {
       new LocalTransport().execFile(
         process.execPath,
-        ["-e", "process.stdout.write('buffered')"],
-        { encoding: "buffer" },
+        [
+          "-e",
+          "process.stdout.write(process.env.MESSAGE + process.argv[1])",
+          "$MESSAGE; echo unexpected",
+        ],
+        { env: { MESSAGE: "hello " } },
         (error, stdout) => (error ? reject(error) : resolve(stdout)),
       );
     });
 
-    expect(Buffer.isBuffer(stdout)).toBe(true);
-    expect(stdout.toString()).toBe("buffered");
+    expect(stdout).toBe("hello $MESSAGE; echo unexpected");
   });
 
   it("reports spawn failures to the callback, like child_process.execFile", async () => {
@@ -387,26 +390,6 @@ describe("LocalTransport.execFile", () => {
     expect(error).not.toBeNull();
     expect((error as unknown as { code: number }).code).toBe(3);
   });
-
-  it("does not exit-track processes spawned with surviveAfterOctoExit", async () =>
-    withTestManager(async manager => {
-      const child = new LocalTransport().execFile(
-        process.execPath,
-        ["-e", "setTimeout(() => {}, 30000)"],
-        {
-          surviveAfterOctoExit: true,
-        },
-        undefined,
-      );
-
-      await manager.runCleanups();
-      await new Promise(resolve => setTimeout(resolve, 250));
-
-      expect(isAlive(child.pid!)).toBe(true);
-
-      child.kill("SIGKILL");
-      await waitFor(() => !isAlive(child.pid!));
-    }));
 
   it("exit-tracks spawned processes so runCleanups terminates them", async () =>
     withTestManager(async manager => {

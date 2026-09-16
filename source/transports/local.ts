@@ -50,7 +50,6 @@ export class LocalTransport implements Transport {
     options: ProcessExecFileOptions,
     callback: ProcessExecFileCallback | undefined,
   ): TransportProcess {
-    const { surviveAfterOctoExit, ...execOptions } = options;
     const localProcess = this.manage(
       execFile(
         file,
@@ -58,11 +57,12 @@ export class LocalTransport implements Transport {
         {
           cwd: this.cwd,
           env: commandEnvironment(),
-          ...execOptions,
+          ...options,
+          encoding: "utf8",
         },
-        callback ?? null,
+        callback,
       ),
-      { surviveAfterOctoExit },
+      {},
     );
     localProcess.on("error", () => {});
     return localProcess;
