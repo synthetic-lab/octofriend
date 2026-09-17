@@ -1,6 +1,5 @@
 import path from "path";
-import { existsSync } from "fs";
-import which from "which";
+import { quote } from "shell-quote";
 import type { Transport } from "../transports/transport-common.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
@@ -10,9 +9,17 @@ let cachedCustomLspConfig: Record<string, InstalledLspConfig> | null = null;
 
 let usableLspsPerExtension: Record<string, InstalledLspConfig> | null = null;
 
-export async function isCommandExecutable(command: string): Promise<boolean> {
-  const result = await which(command, { nothrow: true });
-  return result !== null;
+export async function isCommandExecutable(
+  signal: AbortSignal,
+  command: string,
+  transport: Transport,
+): Promise<boolean> {
+  try {
+    await transport.shell(signal, `test -x "$(command -v ${quote([command])})"`, 5000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isLspGloballyDisabled(config: Config): boolean {
@@ -27,8 +34,10 @@ export function isLspDisabledByUser(serverName: string, config: Config): boolean
 }
 
 async function ensureUsableLspsPopulated(
+  signal: AbortSignal,
   cwd: string,
   config: Config,
+  transport: Transport,
 ): Promise<Record<string, InstalledLspConfig>> {
   if (usableLspsPerExtension != null) return usableLspsPerExtension;
 
@@ -49,7 +58,7 @@ async function ensureUsableLspsPopulated(
   // Custom configured servers override Octo's recommended servers
   const lspServers = [...recommendedServers, ...customServers];
   for (const server of lspServers) {
-    if (await isLspUsableInProject(server, config)) {
+    if (await isLspUsableInProject(signal, server, config, transport)) {
       server.extensions.forEach(extension => {
         tempUsableLspsPerExtension[extension] = server;
       });
@@ -65,19 +74,26 @@ async function ensureUsableLspsPopulated(
  * @returns    first installed & non-disabled LSP server
  */
 export async function getUsableLspForExtension(
+  signal: AbortSignal,
   cwd: string,
   config: Config,
   extension: string,
+  transport: Transport,
 ): Promise<InstalledLspConfig | null> {
-  const usableLsps = await ensureUsableLspsPopulated(cwd, config);
+  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, config, transport);
   return usableLsps[extension] ?? null;
 }
 
 /**
  * @returns    set of file extensions that have an installed non-disabled LSP server
  */
-export async function getUsableLspExtensions(cwd: string, config: Config): Promise<Set<string>> {
-  const usableLsps = await ensureUsableLspsPopulated(cwd, config);
+export async function getUsableLspExtensions(
+  signal: AbortSignal,
+  cwd: string,
+  config: Config,
+  transport: Transport,
+): Promise<Set<string>> {
+  const usableLsps = await ensureUsableLspsPopulated(signal, cwd, config, transport);
   return new Set(Object.keys(usableLsps));
 }
 
@@ -103,35 +119,12 @@ export type LspServerResult =
   | { status: "all-disabled" }
   | { status: "no-server" };
 
-export function findNearestRoot(
-  rootCandidates: string[],
-  filePath: string,
-  cwd: string,
-): string | null {
-  // an empty rootCandidates list is okay, some LSPs don't need it
-  if (rootCandidates.length === 0) return cwd;
-
-  let currDirectory = path.dirname(filePath);
-  const boundary = path.resolve(cwd);
-
-  while (currDirectory.startsWith(boundary)) {
-    const matchingCandidate = rootCandidates.find(candidate =>
-      existsSync(path.join(currDirectory, candidate)),
-    );
-    if (matchingCandidate) {
-      return currDirectory;
-    }
-    const parent = path.dirname(currDirectory);
-    if (parent === currDirectory) break;
-    currDirectory = parent;
-  }
-  return null;
-}
-
 export async function detectLspServerForFile(
+  signal: AbortSignal,
   cwd: string,
   filePath: string,
   config: Config,
+  transport: Transport,
 ): Promise<LspServerResult> {
   if (isLspGloballyDisabled(config)) {
     return { status: "all-disabled" };
@@ -141,33 +134,68 @@ export async function detectLspServerForFile(
     return { status: "no-server" };
   }
 
-  const installedLsp = await getUsableLspForExtension(cwd, config, extension);
+  const installedLsp = await getUsableLspForExtension(signal, cwd, config, extension, transport);
 
   if (installedLsp) {
-    const rootPath = findNearestRoot(installedLsp.rootCandidates, filePath, cwd);
+    const rootPath = await findNearestRoot(
+      signal,
+      installedLsp.rootCandidates,
+      filePath,
+      cwd,
+      transport,
+    );
     if (!rootPath) return { status: "no-server" };
     return { status: "found", lspConfig: installedLsp, rootPath };
   }
   return { status: "no-server" };
 }
 
-async function isLspUsableInProject(server: InstalledLspConfig, config: Config): Promise<boolean> {
+async function findNearestRoot(
+  signal: AbortSignal,
+  rootCandidates: string[],
+  filePath: string,
+  cwd: string,
+  transport: Transport,
+): Promise<string | null> {
+  if (rootCandidates.length === 0) return cwd;
+  let currDirectory = path.dirname(filePath);
+  const boundary = path.resolve(cwd);
+  while (currDirectory.startsWith(boundary)) {
+    for (const candidate of rootCandidates) {
+      if (await transport.pathExists(signal, path.join(currDirectory, candidate))) {
+        return currDirectory;
+      }
+    }
+    const parent = path.dirname(currDirectory);
+    if (parent === currDirectory) break;
+    currDirectory = parent;
+  }
+  return null;
+}
+
+async function isLspUsableInProject(
+  signal: AbortSignal,
+  server: InstalledLspConfig,
+  config: Config,
+  transport: Transport,
+): Promise<boolean> {
   if (isLspGloballyDisabled(config)) {
     return false;
   }
 
   const executable = server.command[0];
   const isLspDisabled = isLspDisabledByUser(server.serverName, config);
-  return !isLspDisabled && (await isCommandExecutable(executable));
+  return !isLspDisabled && (await isCommandExecutable(signal, executable, transport));
 }
 
 export async function getLspClientForFile(
+  signal: AbortSignal,
   cwd: string,
   config: Config,
   filePath: string,
   transport: Transport,
 ): Promise<LspClient | null> {
-  const lspServerResult = await detectLspServerForFile(cwd, filePath, config);
+  const lspServerResult = await detectLspServerForFile(signal, cwd, filePath, config, transport);
   if (lspServerResult.status === "found") {
     const { lspConfig, rootPath } = lspServerResult;
     return getOrStartLspClient(lspConfig, rootPath, transport);
