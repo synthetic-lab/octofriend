@@ -1,6 +1,7 @@
 import path from "path";
 import { existsSync } from "fs";
 import which from "which";
+import type { Transport } from "../transports/transport-common.ts";
 import { RecommendedLspServers } from "./lsp-server-registry.ts";
 import { InstalledLspConfig, LspClient, getOrStartLspClient } from "./client.ts";
 import { Config } from "../config.ts";
@@ -164,11 +165,12 @@ export async function getLspClientForFile(
   cwd: string,
   config: Config,
   filePath: string,
+  transport: Transport,
 ): Promise<LspClient | null> {
   const lspServerResult = await detectLspServerForFile(cwd, filePath, config);
   if (lspServerResult.status === "found") {
     const { lspConfig, rootPath } = lspServerResult;
-    return getOrStartLspClient(lspConfig, rootPath);
+    return getOrStartLspClient(lspConfig, rootPath, transport);
   }
   return null;
 }

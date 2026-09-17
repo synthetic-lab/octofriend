@@ -36,7 +36,7 @@ export async function bootstrapLspClient(
   config: Config,
   filePath: string,
 ): Promise<BootstrapResult> {
-  const lspClientResult = await getLspClientForFile(transport.cwd, config, filePath);
+  const lspClientResult = await getLspClientForFile(transport.cwd, config, filePath, transport);
   if (lspClientResult == null) {
     return {
       success: false,

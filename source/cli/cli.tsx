@@ -44,7 +44,7 @@ import { render, type CreateRootOptions } from "paintcannon-react";
 import { ToastProvider } from "../components/toast.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
-import { processes } from "../octo-process.ts";
+import { processes } from "../process-manager.ts";
 
 const INTERACTIVE_RENDER_OPTIONS = {
   alternateScreen: true,
@@ -238,14 +238,9 @@ async function runMain(opts: {
     if (cleanedUp) return;
     cleanedUp = true;
     restoreTitles();
-    await Promise.all([
-      shutdownLspClients(),
-      shutdownMcpClients(),
-      opts.transport.close(),
-      processes.manager().terminateAll(),
-    ]);
+    await Promise.all([shutdownLspClients(), shutdownMcpClients()]);
   };
-  const unregisterCleanup = processes.manager().registerCleanup(cleanup);
+  const unregisterCleanup = processes.manager().registerOctoExitCleanup(cleanup);
 
   try {
     const { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
@@ -313,8 +308,8 @@ async function runMain(opts: {
       }
     }
   } finally {
+    await processes.manager().terminateOnOctoExit();
     unregisterCleanup();
-    await cleanup();
   }
 }
 
