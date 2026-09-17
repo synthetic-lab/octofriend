@@ -1,6 +1,6 @@
 import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import { lower as lowerGeneric } from "../libocto/lower.ts";
-import type { LoweredIR } from "../libocto/llm-ir.ts";
+import type { CheckpointedIRWithTrajectories, LoweredIR } from "../libocto/llm-ir.ts";
 import { optimizeFiles } from "./optimize-files.ts";
 import type { FileOptimizerInputIR } from "./optimize-files.ts";
 import type { MultimodalConfig } from "../providers.ts";
@@ -10,9 +10,15 @@ export function lowerOcto(
   messages: OctoIR[],
   modalities?: MultimodalConfig,
 ): Array<LoweredIR<typeof toolMap>> {
+  return lowerGeneric<typeof octoAgent>(lowerOctoToLlmIR(messages, modalities));
+}
+
+export function lowerOctoToLlmIR(
+  messages: OctoIR[],
+  modalities?: MultimodalConfig,
+): Array<CheckpointedIRWithTrajectories<typeof octoAgent>> {
   const rejectedMessages = lowerToolRejects(messages);
-  const optimizedMessages = optimizeFiles(rejectedMessages, modalities);
-  return lowerGeneric<typeof octoAgent>(optimizedMessages);
+  return optimizeFiles(rejectedMessages, modalities);
 }
 
 function lowerToolRejects(messages: OctoIR[]): FileOptimizerInputIR[] {

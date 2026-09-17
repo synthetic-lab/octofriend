@@ -9,7 +9,7 @@ import {
 import { EventEmitter } from "events";
 import type { Readable, Writable } from "stream";
 import { registry } from "antipattern";
-import { sleep } from "./sleep.ts";
+import { sleep } from "./libocto/sleep.ts";
 
 /**
  * Spawning child processes should go through {@link OctoProcessManager}, so all processes

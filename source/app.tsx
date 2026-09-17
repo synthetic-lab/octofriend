@@ -25,6 +25,7 @@ import {
   useSetConfig,
 } from "./config.ts";
 import Loading from "./components/loading.tsx";
+import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
@@ -754,6 +755,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     modeData.mode === "compacting" ||
     modeData.mode === "diff-apply" ||
     modeData.mode === "fix-json" ||
+    modeData.mode === "request-error-retrying" ||
     modeData.mode === "tool-call"
   ) {
     const overrideStrings = (() => {
@@ -773,7 +775,16 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
             justifyContent: "space-between",
           }}
         >
-          <Loading overrideStrings={overrideStrings} />
+          {modeData.mode === "request-error-retrying" ? (
+            <RetryCountdown
+              key={modeData.attempt}
+              error={modeData.error}
+              attempt={modeData.attempt}
+              delayMs={modeData.delayMs}
+            />
+          ) : (
+            <Loading overrideStrings={overrideStrings} />
+          )}
           <TerminalFlex>
             {byteCount === 0 ? null : (
               <Span

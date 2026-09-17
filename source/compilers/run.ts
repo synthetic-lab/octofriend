@@ -10,100 +10,71 @@ import type {
   CodexModelConfig,
   OAuthLoadedAuth,
 } from "../config.ts";
-import { octoAgent } from "../ir/octo-ir.ts";
-import { JsonFixResponse } from "../prompts/autofix-prompts.ts";
-import { LoadedTools } from "../tools/index.ts";
-import { Transport } from "../transports/transport-common.ts";
+import type { Agent } from "../libocto/llm-ir.ts";
 import type { CompilerModalities } from "../libocto/compilers/compiler-interface.ts";
 import type {
+  Compiler,
   CompilerResult,
-  CompilerTokenType,
   CompilerUsage,
 } from "../libocto/compilers/compiler-interface.ts";
 import { compilerUsageHasTokens } from "../libocto/compilers/compiler-interface.ts";
 import type { OpenAICompilerModel } from "../libocto/compilers/openai-shared.ts";
 import { getCodexOpenaiClient, getDefaultOpenaiClient } from "./openai.ts";
 import { trackTokens } from "../token-tracker.ts";
-import type { LoweredIR } from "../libocto/llm-ir.ts";
-import type toolMap from "../tools/tool-defs/index.ts";
 
 export type ModelData =
   | { type: "api"; auth: ApiKeyAuth; model: ApiKeyModelConfig }
   | { type: "codex"; auth: OAuthLoadedAuth; model: CodexModelConfig };
 
-type RunArgs<Tools extends Partial<LoadedTools> | undefined = undefined> = {
-  modelData: ModelData;
-  messages: Array<LoweredIR<typeof toolMap>>;
-  autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
-  handlers: {
-    onTokens: (t: string, type: CompilerTokenType<Tools>) => any;
-    onAutofixJson: (done: Promise<void>) => any;
-  };
-  abortSignal: AbortSignal;
-  transport: Transport;
-  systemPrompt?: () => Promise<string>;
-  tools?: Tools;
-};
-
-export async function run<Tools extends Partial<LoadedTools> | undefined = undefined>(
-  args: RunArgs<Tools>,
-): Promise<CompilerResult<typeof octoAgent, Tools>> {
+export const run: Compiler<ModelData> = async params => {
   const result = await (async () => {
-    const { modelData } = args;
-    const params = {
-      abortSignal: args.abortSignal,
-      systemPrompt: args.systemPrompt,
-      irs: args.messages,
-      onTokens: args.handlers.onTokens,
-      autofixJson: (badJson: string, signal: AbortSignal) => {
-        const fixPromise = args.autofixJson(badJson, signal);
-        args.handlers.onAutofixJson(fixPromise.then(() => {}));
-        return fixPromise;
-      },
-      tools: args.tools,
-      transport: args.transport,
-    };
+    const modelData = params.model;
 
     if (modelData.type === "codex") {
-      return runResponsesAgent<typeof octoAgent, Tools>({
+      return runResponsesAgent({
         ...params,
         model: codexCompilerModel(modelData.model, modelData.auth),
       });
     }
 
     if (modelData.model.type == null || modelData.model.type === "standard") {
-      return runAgent<typeof octoAgent, Tools>({
+      return runAgent({
         ...params,
         model: standardOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
       });
     }
 
     if (modelData.model.type === "openai-responses") {
-      return runResponsesAgent<typeof octoAgent, Tools>({
+      return runResponsesAgent({
         ...params,
         model: responsesOpenAICompilerModel(modelData.model, modelData.auth.apiKey),
       });
     }
 
     const _: "anthropic" = modelData.model.type;
-    return runAnthropicAgent<typeof octoAgent, Tools>({
+    return runAnthropicAgent({
       ...params,
       model: anthropicCompilerModel(modelData.model, modelData.auth.apiKey),
     });
   })();
 
-  trackCompilerResultUsage(args.modelData.model.model, result);
+  trackCompilerResultUsage(params.model.model.model, result);
   return result;
-}
+};
 
-function trackCompilerResultUsage(model: string, result: CompilerResult<typeof octoAgent>): void {
+function trackCompilerResultUsage<A extends Agent<any, any, any>, Tools>(
+  model: string,
+  result: CompilerResult<A, Tools>,
+): void {
   const usage = compilerResultUsage(result);
   if (!usage || !compilerUsageHasTokens(usage)) return;
   trackTokens(model, "input", usage.input.total);
   trackTokens(model, "output", usage.output);
 }
 
-function compilerResultUsage(result: CompilerResult<typeof octoAgent>): CompilerUsage | undefined {
+function compilerResultUsage<A extends Agent<any, any, any>, Tools>(
+  result: CompilerResult<A, Tools>,
+): CompilerUsage | undefined {
   if (result.success) return result.data.usage;
   if ("usage" in result.error) return result.error.usage;
   return undefined;

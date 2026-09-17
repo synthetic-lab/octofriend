@@ -1,6 +1,6 @@
 import { registry } from "antipattern";
 import { OctoProcess, OctoProcessManager, processes } from "./octo-process.ts";
-import { sleep } from "./sleep.ts";
+import { sleep } from "./libocto/sleep.ts";
 import { ShellOutput } from "./transports/transport-common.ts";
 
 const KILL_GRACE_MS = 1000;

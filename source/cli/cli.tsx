@@ -21,10 +21,11 @@ import { readUpdates, markUpdatesSeen } from "../update-notifs/update-notifs.ts"
 import { migrate } from "../db/migrate.ts";
 import { run } from "../compilers/run.ts";
 import type { ModelData } from "../compilers/run.ts";
+import { octoAgent } from "../ir/octo-ir.ts";
 import { loadInputHistory } from "../input-history/index.ts";
 import { makeAutofixJson } from "../compilers/autofix.ts";
 import { discoverSkills } from "../skills/skills.ts";
-import { timeout } from "../signals.ts";
+import { timeout } from "../libocto/signals.ts";
 import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
@@ -466,10 +467,10 @@ bench
       let firstToken: Date | null = null;
       const tokenTimestamps: Date[] = [];
 
-      const result = await run({
-        modelData,
+      const result = await run<typeof octoAgent>({
+        model: modelData,
         autofixJson,
-        messages: [
+        irs: [
           {
             role: "user",
             content: [
@@ -482,13 +483,10 @@ bench
             ],
           },
         ],
-        handlers: {
-          onTokens: () => {
-            const now = new Date();
-            tokenTimestamps.push(now);
-            if (firstToken == null) firstToken = now;
-          },
-          onAutofixJson: () => {},
+        onTokens: () => {
+          const now = new Date();
+          tokenTimestamps.push(now);
+          if (firstToken == null) firstToken = now;
         },
         abortSignal: abortController.signal,
         transport,
@@ -710,24 +708,21 @@ cli
 
     let seenReasoning = false;
     let seenContent = false;
-    const result = await run({
-      modelData,
+    const result = await run<typeof octoAgent>({
+      model: modelData,
       systemPrompt,
-      messages,
+      irs: messages,
       autofixJson,
-      handlers: {
-        onTokens: (chunk, type) => {
-          if (type === "reasoning") seenReasoning = true;
+      onTokens: (chunk, type) => {
+        if (type === "reasoning") seenReasoning = true;
 
-          if (seenReasoning && type === "content" && !seenContent) {
-            seenContent = true;
-            process.stderr.write("\n\n");
-          }
+        if (seenReasoning && type === "content" && !seenContent) {
+          seenContent = true;
+          process.stderr.write("\n\n");
+        }
 
-          if (type === "reasoning") process.stderr.write(chunk);
-          else process.stdout.write(chunk);
-        },
-        onAutofixJson: () => {},
+        if (type === "reasoning") process.stderr.write(chunk);
+        else process.stdout.write(chunk);
       },
       abortSignal: abortController.signal,
       transport,
