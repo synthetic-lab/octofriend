@@ -53,6 +53,7 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "lsp-implementation",
   "lsp-incoming-calls",
   "lsp-outgoing-calls",
+  "manage-background-process",
 ];
 
 export const ALWAYS_REQUEST_PERMISSION_TOOLS: Array<keyof LoadedTools> = [
