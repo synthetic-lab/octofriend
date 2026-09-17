@@ -28,15 +28,20 @@ import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { trajectoryArc } from "./agent/trajectory-arc.ts";
-import type { ModelData } from "./compilers/run.ts";
+import { trajectoryArc } from "./libocto/trajectory-arc.ts";
+import { run, type ModelData } from "./compilers/run.ts";
+import { lowerOcto, lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
+import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
+import { systemPrompt } from "./prompts/system-prompt.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
-import { QuotaData } from "./utils/quota.ts";
+import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
-import type { OctoIR } from "./ir/octo-ir.ts";
+import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
+
+export const MAX_RETRY_COUNT = 20;
 
 export type RunArgs = {
   config: Config;
@@ -127,6 +132,13 @@ export type UiState = {
         mode: "request-error";
         error: string;
         curlCommand: string | null;
+      }
+    | {
+        mode: "request-error-retrying";
+        error: string;
+        attempt: number;
+        delayMs: number;
+        abortController: AbortController;
       }
     | {
         mode: "compaction-error";
@@ -221,6 +233,7 @@ export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
     case "compacting":
     case "diff-apply":
     case "fix-json":
+    case "request-error-retrying":
     case "tool-call":
       return true;
   }
@@ -813,12 +826,39 @@ export const useAppStore = create<UiState>((set, get) => ({
     const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
 
     try {
-      const finish = await trajectoryArc.run({
-        modelData,
-        messages: toLlmIR(historyCopy),
-        config,
+      const tools = await loadTools(transport, abortController.signal, config);
+      const finish = await trajectoryArc.run<typeof octoAgent, ModelData>({
+        model: modelData,
+        contextWindow: model.context,
+        messages: lowerOctoToLlmIR(toLlmIR(historyCopy), model.modalities),
+        tools,
+        toolData: config,
+        runCompiler: run,
+        lowerMessages: messages => lowerOcto(messages, model.modalities),
+        systemPrompt: () =>
+          systemPrompt({
+            config,
+            transport,
+            signal: abortController.signal,
+          }),
         transport,
         abortSignal: abortController.signal,
+        errorCorrection: {
+          json: makeAutofixJson(config),
+          tools: {
+            edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
+              const file = await fixTransport.readFile(fixSignal, toolCall.parsed.filePath);
+              const fix = await autofixEdit(config, file, toolCall.parsed, fixSignal);
+              if (fix == null) return null;
+              return { ...toolCall.parsed, ...fix };
+            },
+          },
+        },
+        requestErrorRetries: {
+          maxRetryCount: MAX_RETRY_COUNT,
+          backoffMs: 2000,
+          maxBackoffMs: 30_000,
+        },
         handler: {
           startResponse: () => {
             throttle.flush();
@@ -892,7 +932,8 @@ export const useAppStore = create<UiState>((set, get) => ({
             });
           },
 
-          autofixingDiff: () => {
+          autofixingTool: ({ tool }) => {
+            if (tool !== "edit") return;
             throttle.flush();
             set({
               modeData: {
@@ -902,7 +943,25 @@ export const useAppStore = create<UiState>((set, get) => ({
             });
           },
 
-          onQuotaUpdated: quota => set({ quotaData: quota }),
+          requestRetry: event => {
+            throttle.flush();
+            set({
+              modeData: {
+                mode: "request-error-retrying",
+                error: event.error.requestError,
+                attempt: event.attempt,
+                delayMs: event.delayMs,
+                abortController: event.abortController,
+              },
+            });
+          },
+
+          onResponseHeaders: headers => {
+            const raw = headers.get("x-synthetic-quotas");
+            if (raw == null) return;
+            const quota = parseQuotaJson(raw);
+            if (quota != null) set({ quotaData: quota });
+          },
 
           onMessage: ir => {
             throttle.flush();
@@ -955,6 +1014,22 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       if (finishReason.type === "rate-limit-error") {
         set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
+        return;
+      }
+
+      if (finishReason.type === "request-error-retry-budget-exceeded") {
+        const error = finishReason.error;
+        if (error.type === "rate-limit-error") {
+          set({ modeData: { mode: "rate-limit-error", error: error.requestError } });
+          return;
+        }
+        set({
+          modeData: {
+            mode: "request-error",
+            error: error.requestError,
+            curlCommand: error.curl,
+          },
+        });
         return;
       }
 

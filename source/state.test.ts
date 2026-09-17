@@ -20,7 +20,7 @@ import {
 import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
-import { trajectoryArc } from "./agent/trajectory-arc.ts";
+import { trajectoryArc } from "./libocto/trajectory-arc.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";
 

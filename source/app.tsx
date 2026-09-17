@@ -25,6 +25,7 @@ import {
   useSetConfig,
 } from "./config.ts";
 import Loading from "./components/loading.tsx";
+import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
@@ -66,6 +67,7 @@ import {
   QueuedUserMessage,
   UiState,
   inputFieldAvailable,
+  MAX_RETRY_COUNT,
 } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
@@ -754,6 +756,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     modeData.mode === "compacting" ||
     modeData.mode === "diff-apply" ||
     modeData.mode === "fix-json" ||
+    modeData.mode === "request-error-retrying" ||
     modeData.mode === "tool-call"
   ) {
     const overrideStrings = (() => {
@@ -773,7 +776,17 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
             justifyContent: "space-between",
           }}
         >
-          <Loading overrideStrings={overrideStrings} />
+          {modeData.mode === "request-error-retrying" ? (
+            <RetryCountdown
+              key={modeData.attempt}
+              error={modeData.error}
+              attempt={modeData.attempt}
+              max={MAX_RETRY_COUNT}
+              delayMs={modeData.delayMs}
+            />
+          ) : (
+            <Loading overrideStrings={overrideStrings} />
+          )}
           <TerminalFlex>
             {byteCount === 0 ? null : (
               <Span
