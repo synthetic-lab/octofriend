@@ -1,7 +1,6 @@
 import { t } from "structural";
 import { TOOL } from "../common.ts";
 import { ok } from "../../libocto/result.ts";
-import { backgroundProcesses } from "../../background-process.ts";
 
 export default TOOL.declare({
   name: "background-process",
@@ -27,10 +26,10 @@ the purpose of the background process, like "dev-server" or "test-watcher"',
 `.trim(),
     ),
   }),
-}).define(async () => ({
+}).define(async ({ transport }) => ({
   async run({ toolCall }) {
     const { cmd, label } = toolCall.parsed.arguments;
-    const backgroundProcess = backgroundProcesses.manager().start(cmd, label);
+    const backgroundProcess = transport.backgroundProcesses.start(cmd, label);
     return ok({
       type: "output",
       content: [
