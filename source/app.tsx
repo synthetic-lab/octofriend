@@ -28,6 +28,8 @@ import Loading from "./components/loading.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
+  MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
+  MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
   SCROLLBAR_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
   THOUGHTBOX_COLOR,
@@ -2274,7 +2276,48 @@ function BackgroundProcessToolRenderer({
 }: {
   item: ParsedToolSchemaFrom<typeof backgroundProcess>;
 }) {
-  return <ToolCallRow name={item.name}>{item.arguments.label ?? item.arguments.cmd}</ToolCallRow>;
+  return (
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <ToolCallRow name={item.name}>Octo is starting a background process:</ToolCallRow>
+      <Span>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Label:
+        </Span>{" "}
+        <Span
+          style={{
+            fontWeight: "bold",
+          }}
+        >
+          {item.arguments.label}
+        </Span>
+      </Span>
+      <Span>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          Command:
+        </Span>{" "}
+        <Span
+          style={{
+            color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
+            backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
+          }}
+        >
+          {item.arguments.cmd}
+        </Span>
+      </Span>
+    </TerminalFlex>
+  );
 }
 
 function ManageBackgroundProcessToolRenderer({
@@ -2283,11 +2326,41 @@ function ManageBackgroundProcessToolRenderer({
   item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
 }) {
   return (
-    <ToolCallRow name={item.name}>
-      {item.arguments.label == null
-        ? item.arguments.action
-        : `${item.arguments.action} ${item.arguments.label}`}
-    </ToolCallRow>
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <ToolCallRow name={item.name}>Octo is managing a background process:</ToolCallRow>
+      <Span>
+        <Span style={{ color: "gray" }}>Action:</Span>{" "}
+        <Span style={{ fontWeight: "bold" }}>{item.arguments.action}</Span>
+      </Span>
+      {item.arguments.label != null && (
+        <Span>
+          <Span style={{ color: "gray" }}>Label:</Span>{" "}
+          <Span style={{ fontWeight: "bold" }}>{item.arguments.label}</Span>
+        </Span>
+      )}
+      {item.arguments.id != null && (
+        <Span>
+          <Span style={{ color: "gray" }}>ID:</Span>{" "}
+          <Span
+            style={{
+              color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
+              backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
+            }}
+          >
+            {item.arguments.id}
+          </Span>
+        </Span>
+      )}
+      {item.arguments.timeout != null && (
+        <Span>
+          <Span style={{ color: "gray" }}>Timeout:</Span> {item.arguments.timeout}ms
+        </Span>
+      )}
+    </TerminalFlex>
   );
 }
 
