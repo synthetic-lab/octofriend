@@ -67,6 +67,7 @@ import {
   QueuedUserMessage,
   UiState,
   inputFieldAvailable,
+  MAX_RETRY_COUNT,
 } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
 import type { HistoryNode, Session } from "./session-history/index.ts";
@@ -780,6 +781,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
               key={modeData.attempt}
               error={modeData.error}
               attempt={modeData.attempt}
+              max={MAX_RETRY_COUNT}
               delayMs={modeData.delayMs}
             />
           ) : (

@@ -6,10 +6,12 @@ import { TerminalFlex } from "./terminal-flex.tsx";
 export default function RetryCountdown({
   error,
   attempt,
+  max,
   delayMs,
 }: {
   error: string;
   attempt: number;
+  max: number;
   delayMs: number;
 }) {
   const [startedAt] = useState(() => Date.now());
@@ -42,7 +44,7 @@ export default function RetryCountdown({
             color: "red",
           }}
         >
-          Request failed (retry {attempt} in {secondsRemaining}s)
+          Request failed (retry {attempt}/{max} in {secondsRemaining}s)
         </Span>
       </TerminalFlex>
       <Span

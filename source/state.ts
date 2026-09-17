@@ -41,6 +41,8 @@ import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools } from "./tools/index.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 
+export const MAX_RETRY_COUNT = 20;
+
 export type RunArgs = {
   config: Config;
   transport: Transport;
@@ -852,7 +854,11 @@ export const useAppStore = create<UiState>((set, get) => ({
             },
           },
         },
-        requestErrorRetries: { maxRetryCount: 20, backoffMs: 2000, maxBackoffMs: 30_000 },
+        requestErrorRetries: {
+          maxRetryCount: MAX_RETRY_COUNT,
+          backoffMs: 2000,
+          maxBackoffMs: 30_000,
+        },
         handler: {
           startResponse: () => {
             throttle.flush();
