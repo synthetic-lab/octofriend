@@ -1,35 +1,40 @@
+import { Transport, TransportError, runShell } from "./transport-common.ts";
+import { ProcessManager, processes } from "../process-manager.ts";
+import { BackgroundProcessManager } from "../background-process.ts";
+import { spawn, execFile, type ChildProcess } from "child_process";
+import * as logger from "../logger.ts";
+import { quote } from "shell-quote";
 import {
-  Transport,
-  AbortError,
-  CommandFailedError,
-  MAX_SHELL_OUTPUT_LENGTH,
-  ShellOutput,
-  TransportError,
-} from "./transport-common.ts";
-import { processes } from "../octo-process.ts";
+  TransportProcess,
+  type ProcessSpawnOptions,
+  type ProcessExecFileOptions,
+  type ProcessExecFileCallback,
+} from "./transport-process.ts";
 
 export async function manageContainer(args: string[]) {
+  const processManager = processes.manager();
   console.log("Spawning Docker container...");
 
-  const octoProcessManager = processes.manager();
   const { stdout } = await new Promise<{
     stdout: string;
   }>((resolve, reject) => {
     const stdout: string[] = [];
     let error = false;
-    const octoProcess = octoProcessManager.spawn("docker", ["run", ...args], {
-      stdio: ["ignore", "pipe", "inherit"],
-    });
-    if (!octoProcess.stdout) {
+    const dockerRunProcess = manageDockerCli(
+      spawn("docker", ["run", ...args], { stdio: ["ignore", "pipe", "inherit"] }),
+      processManager,
+      {},
+    );
+    if (!dockerRunProcess.stdout) {
       reject(new Error("Failed to spawn docker process with piped stdout"));
       return;
     }
-    octoProcess.on("error", e => {
+    dockerRunProcess.on("error", e => {
       error = true;
       reject(e);
     });
-    octoProcess.stdout.on("data", data => stdout.push(data));
-    octoProcess.on("close", code => {
+    dockerRunProcess.stdout.on("data", data => stdout.push(data));
+    dockerRunProcess.on("close", code => {
       if (code != null && code !== 0) {
         if (!error) reject("Command exited with non-zero exit code: " + code);
       } else if (!error) {
@@ -41,21 +46,26 @@ export async function manageContainer(args: string[]) {
   });
 
   const name = stdout.trim();
+  let containerKillPromise: Promise<void> | undefined;
   const killContainer = () => {
-    try {
-      const octoProcess = octoProcessManager.spawn("docker", ["kill", name], { stdio: "ignore" });
-      octoProcess.unref();
-    } catch {}
+    containerKillPromise ??= (async () => {
+      try {
+        await runDockerCommand(["kill", name], processManager, {
+          timeout: 5000,
+          surviveAfterOctoExit: true,
+        });
+      } catch (error) {
+        logger.error("info", `Failed to stop Docker container ${name}:`, error);
+      }
+    })();
+    return containerKillPromise;
   };
-  const unregisterCleanup = octoProcessManager.registerCleanup(killContainer);
-  let closed = false;
+  const unregisterCleanup = processManager.registerOctoExitCleanup(killContainer);
   return {
     container: name,
     close: async () => {
-      if (closed) return;
-      closed = true;
+      await killContainer();
       unregisterCleanup();
-      killContainer();
     },
   };
 }
@@ -64,100 +74,37 @@ function randomSuffix() {
   return `${Date.now()}_${Math.random().toString(16)}`;
 }
 
-async function runDockerCommand(
-  container: string,
-  command: string[],
-  timeout: number,
-  signal: AbortSignal,
+function runDockerCommand(
+  args: readonly string[],
+  processManager: ProcessManager,
+  options: { timeout: number; surviveAfterOctoExit: boolean },
 ): Promise<string> {
-  const dockerCmd = ["docker", "exec", container, "/bin/sh", "-c", command.join(" ")];
-
-  return new Promise<string>((resolve, reject) => {
-    const octoProcess = processes.manager().spawn(dockerCmd[0], dockerCmd.slice(1), {
-      timeout,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (!octoProcess.stdout || !octoProcess.stderr) {
-      reject(new Error("Failed to spawn docker process with piped stdio"));
-      return;
-    }
-
-    const output = new ShellOutput();
-    let aborted = false;
-    let killed = false;
-
-    const killChild = () => {
-      if (killed) return;
-      killed = true;
-      octoProcess.terminate({ graceMs: 500 });
-    };
-
-    const onAbort = () => {
-      aborted = true;
-      killChild();
-    };
-
-    if (signal.aborted) onAbort();
-    signal.addEventListener("abort", onAbort);
-
-    const cleanup = () => {
-      signal.removeEventListener("abort", onAbort);
-    };
-
-    octoProcess.stdout.on("data", data => {
-      if (!output.append(data)) killChild();
-    });
-
-    octoProcess.stderr.on("data", data => {
-      if (!output.append(data)) killChild();
-    });
-
-    octoProcess.on("close", code => {
-      cleanup();
-      if (aborted) {
-        reject(new AbortError());
-        return;
-      }
-      const commandOutput = output.getOutput();
-      if (commandOutput == null) {
-        reject(
-          new CommandFailedError(
-            `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
-          ),
-        );
-        return;
-      }
-      if (code === 0) {
-        resolve(commandOutput);
-      } else {
-        if (code == null) {
-          reject(
-            new CommandFailedError(
-              `Command timed out.
-output: ${commandOutput}`,
-            ),
-          );
-        } else {
-          reject(
-            new CommandFailedError(
-              `Command exited with code: ${code}
-output: ${commandOutput}`,
-              code,
-            ),
-          );
-        }
-      }
-    });
-
-    octoProcess.on("error", err => {
-      cleanup();
-      if (aborted) {
-        reject(new AbortError());
-        return;
-      }
-      reject(new CommandFailedError(`Command failed: ${err.message}`));
-    });
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      "docker",
+      args,
+      { timeout: options.timeout, killSignal: "SIGKILL", encoding: "utf8" },
+      (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      },
+    );
+    const dockerCliProcess = manageDockerCli(child, processManager, options);
+    dockerCliProcess.on("error", () => {});
   });
+}
+
+function manageDockerCli(
+  child: ChildProcess,
+  processManager: ProcessManager,
+  options: ProcessSpawnOptions,
+): TransportProcess {
+  const dockerCliProcess = new TransportProcess(child, {
+    detached: options.detached,
+    surviveAfterOctoExit: options.surviveAfterOctoExit,
+  });
+  processManager.register(dockerCliProcess);
+  return dockerCliProcess;
 }
 
 type DockerTarget =
@@ -173,24 +120,94 @@ type DockerTarget =
 export class DockerTransport implements Transport {
   private readonly _container: string;
   cwd: string;
+  readonly commandShell = "/bin/sh";
+  readonly backgroundProcesses: BackgroundProcessManager;
+  private readonly runningProcesses = new Set<TransportProcess>();
 
   private constructor(
     private readonly _target: DockerTarget,
     cwd: string,
+    private readonly processManager: ProcessManager,
   ) {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
     this.cwd = cwd;
+    this.backgroundProcesses = new BackgroundProcessManager(this);
   }
 
   static async create(target: DockerTarget): Promise<DockerTransport> {
+    const processManager = processes.manager();
     const container = target.type === "image" ? target.image.container : target.container;
-    const cwd = await runDockerCommand(container, ["pwd"], 5000, new AbortController().signal);
-    return new DockerTransport(target, cwd.trim());
+    const cwd = await runDockerCommand(
+      ["exec", container, "/bin/sh", "-c", "pwd"],
+      processManager,
+      {
+        timeout: 5000,
+        surviveAfterOctoExit: false,
+      },
+    );
+    return new DockerTransport(target, cwd.trim(), processManager);
   }
 
   async close() {
-    if (this._target.type === "image") await this._target.image.close();
+    const closables = [...this.runningProcesses].map(dockerProcess =>
+      dockerProcess.terminate({ graceMs: 500 }),
+    );
+    if (this._target.type === "image") closables.push(this._target.image.close());
+    await Promise.all(closables);
+  }
+
+  spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess {
+    return this.manage(
+      spawn("docker", this.commandArgs(command, args, options), {
+        stdio: options.stdio ?? "pipe",
+        timeout: options.timeout,
+        detached: options.detached,
+      }),
+      options,
+    );
+  }
+
+  private commandArgs(
+    command: string,
+    args: readonly string[],
+    options: ProcessSpawnOptions,
+  ): string[] {
+    const dockerArgs = ["exec", "-i"];
+    for (const [name, value] of Object.entries(options.env ?? {})) {
+      if (value != null) dockerArgs.push("--env", `${name}=${value}`);
+    }
+    dockerArgs.push(this._container, command, ...args);
+    return dockerArgs;
+  }
+
+  private manage(child: ChildProcess, options: ProcessSpawnOptions): TransportProcess {
+    const dockerProcess = manageDockerCli(child, this.processManager, options);
+    this.runningProcesses.add(dockerProcess);
+    void dockerProcess.processClosedPromise.then(() => {
+      this.runningProcesses.delete(dockerProcess);
+    });
+    return dockerProcess;
+  }
+
+  execFile(
+    file: string,
+    args: readonly string[],
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
+  ): TransportProcess {
+    const { env, ...execOptions } = options;
+    const execFileProcess = this.manage(
+      execFile(
+        "docker",
+        this.commandArgs(file, args, { env }),
+        { ...execOptions, encoding: "utf8" },
+        callback,
+      ),
+      {},
+    );
+    execFileProcess.on("error", () => {});
+    return execFileProcess;
   }
 
   private async dockerExec(
@@ -198,7 +215,7 @@ export class DockerTransport implements Transport {
     command: string[],
     timeout: number,
   ): Promise<string> {
-    return runDockerCommand(this._container, command, timeout, signal);
+    return this.shell(signal, command.length === 1 ? command[0] : quote(command), timeout);
   }
 
   async writeFile(signal: AbortSignal, file: string, contents: string): Promise<void> {
@@ -312,6 +329,6 @@ export class DockerTransport implements Transport {
   }
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {
-    return await this.dockerExec(signal, [command], timeout);
+    return runShell(this, signal, command, timeout);
   }
 }

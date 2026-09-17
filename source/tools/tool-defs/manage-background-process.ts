@@ -2,11 +2,7 @@ import { t } from "structural";
 import { TOOL } from "../common.ts";
 import { ok, err } from "../../libocto/result.ts";
 import { MAX_SHELL_OUTPUT_LENGTH } from "../../transports/transport-common.ts";
-import {
-  backgroundProcesses,
-  type BackgroundProcess,
-  type BackgroundProcessStatus,
-} from "../../background-process.ts";
+import { type BackgroundProcess, type BackgroundProcessStatus } from "../../background-process.ts";
 
 export default TOOL.declare({
   name: "manage-background-process",
@@ -37,10 +33,10 @@ period, waits for the process to die, and returns its final status plus any rema
 "poll" and "kill" require id and should repeat the process label; "list" ignores both.
 `),
   }),
-}).define(async () => ({
+}).define(async ({ transport }) => ({
   async run({ signal, toolCall }) {
     const { id, action, timeout } = toolCall.parsed.arguments;
-    const manager = backgroundProcesses.manager();
+    const manager = transport.backgroundProcesses;
     switch (action) {
       case "list": {
         return ok({

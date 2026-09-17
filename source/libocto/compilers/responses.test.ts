@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { MockTransport } from "../../transports/mock.ts";
 import OpenAI from "openai";
 import { octoAgent } from "../../ir/octo-ir.ts";
 import type { Transport } from "../../transports/transport-common.ts";
@@ -306,17 +307,5 @@ describe("toResponseInput tool-call answering", () => {
 });
 
 function fakeTransport(): Transport {
-  return {
-    cwd: ".",
-    writeFile: async () => {},
-    readFile: async () => "",
-    pathExists: async () => false,
-    isDirectory: async () => false,
-    mkdir: async () => {},
-    readdir: async () => [],
-    modTime: async () => 0,
-    resolvePath: async (_signal, path) => path,
-    shell: async () => "",
-    close: async () => {},
-  };
+  return new MockTransport({ cwd: "." });
 }
