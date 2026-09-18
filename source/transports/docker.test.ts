@@ -1,3 +1,4 @@
+import { unwrap } from "../libocto/result.ts";
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { withMock } from "antipattern";
 import * as childProcess from "child_process";
@@ -5,6 +6,7 @@ import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import { DockerTransport, manageContainer } from "./docker.ts";
 import * as logger from "../logger.ts";
+import { BackgroundProcessManager } from "../background-process.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
 import backgroundProcessTool from "../tools/tool-defs/background-process.ts";
 import manageBackgroundProcessTool from "../tools/tool-defs/manage-background-process.ts";
@@ -161,7 +163,14 @@ describe("DockerTransport", () => {
     const context = { signal: controller.signal, transport, data: {} as never };
     expect(await backgroundProcessTool(context)).not.toBeNull();
     expect(await manageBackgroundProcessTool(context)).not.toBeNull();
-    const background = transport.backgroundProcesses.start("printf hello", "hello");
+    const background = unwrap(
+      transport.backgroundShell({
+        command: "printf hello",
+        label: "hello",
+        signal: controller.signal,
+        backgroundProcessManager: new BackgroundProcessManager(),
+      }),
+    );
     expect(spawn).toHaveBeenCalledWith(
       "docker",
       ["exec", "-i", "sandbox", "/bin/sh", "-c", "printf hello"],

@@ -1,6 +1,8 @@
 import { t } from "structural";
-import { TOOL } from "../common.ts";
-import { ok } from "../../libocto/result.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
+import { backgroundProcesses } from "../../background-process.ts";
+import { AbortError } from "../../transports/transport-common.ts";
+import { ok, err } from "../../libocto/result.ts";
 
 export default TOOL.declare({
   name: "background-process",
@@ -15,7 +17,8 @@ Use this for long-running commands you don't want to block on, like dev servers 
 For commands that finish quickly, use the shell tool instead.
 
 stdout and stderr are captured; use the manage-background-process tool with the returned id to
-poll output and status, or to kill the process. Background processes are killed when Octo exits.
+poll output and status, or to kill the process. Once started, processes survive cancellation of the
+current tool batch. Background processes are killed when Octo exits.
 `.trim(),
   ArgumentsSchema: t.subtype({
     cmd: t.str.comment("The command to run in the background"),
@@ -26,10 +29,21 @@ the purpose of the background process, like "dev-server" or "test-watcher"',
 `.trim(),
     ),
   }),
-}).define(async ({ transport }) => ({
-  async run({ toolCall }) {
+}).define(async () => ({
+  async run({ signal, transport, toolCall }) {
     const { cmd, label } = toolCall.parsed.arguments;
-    const backgroundProcess = transport.backgroundProcesses.start(cmd, label);
+    const result = transport.backgroundShell({
+      command: cmd,
+      label,
+      signal,
+      backgroundProcessManager: backgroundProcesses.manager(),
+    });
+    if (!result.success) {
+      return err(
+        result.error instanceof AbortError ? USER_ABORTED_ERROR_MESSAGE : result.error.message,
+      );
+    }
+    const backgroundProcess = result.data;
     return ok({
       type: "output",
       content: [

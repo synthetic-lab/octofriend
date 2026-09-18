@@ -1,6 +1,11 @@
-import { Transport, TransportError, runShell } from "./transport-common.ts";
+import {
+  Transport,
+  TransportError,
+  runShell,
+  runBackgroundShell,
+  type BackgroundShellOptions,
+} from "./transport-common.ts";
 import { ProcessManager, processes } from "../process-manager.ts";
-import { BackgroundProcessManager } from "../background-process.ts";
 import { spawn, execFile, type ChildProcess } from "child_process";
 import * as logger from "../logger.ts";
 import { quote } from "shell-quote";
@@ -121,7 +126,6 @@ export class DockerTransport implements Transport {
   private readonly _container: string;
   cwd: string;
   readonly commandShell = "/bin/sh";
-  readonly backgroundProcesses: BackgroundProcessManager;
   private readonly runningProcesses = new Set<TransportProcess>();
 
   private constructor(
@@ -132,7 +136,6 @@ export class DockerTransport implements Transport {
     if (this._target.type === "image") this._container = this._target.image.container;
     else this._container = this._target.container;
     this.cwd = cwd;
-    this.backgroundProcesses = new BackgroundProcessManager(this);
   }
 
   static async create(target: DockerTarget): Promise<DockerTransport> {
@@ -326,6 +329,10 @@ export class DockerTransport implements Transport {
     } catch {
       return false;
     }
+  }
+
+  backgroundShell(options: BackgroundShellOptions) {
+    return runBackgroundShell(this, options);
   }
 
   async shell(signal: AbortSignal, command: string, timeout: number): Promise<string> {

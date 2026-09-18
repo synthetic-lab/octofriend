@@ -1,11 +1,12 @@
 import { quote } from "shell-quote";
+import { type Result, ok, err, errorToString } from "../libocto/result.ts";
 import type {
   TransportProcess,
   ProcessSpawnOptions,
   ProcessExecFileOptions,
   ProcessExecFileCallback,
 } from "./transport-process.ts";
-import type { BackgroundProcessManager } from "../background-process.ts";
+import type { BackgroundProcess, BackgroundProcessManager } from "../background-process.ts";
 
 export const MAX_SHELL_OUTPUT_LENGTH = 100_000_000;
 
@@ -56,10 +57,17 @@ export class ShellOutput {
   }
 }
 
+export type BackgroundShellOptions = {
+  command: string;
+  label: string;
+  signal: AbortSignal;
+  backgroundProcessManager: BackgroundProcessManager;
+};
+
 export interface Transport {
   readonly cwd: string;
   readonly commandShell: string;
-  readonly backgroundProcesses: BackgroundProcessManager;
+  backgroundShell(options: BackgroundShellOptions): Result<BackgroundProcess, TransportError>;
   spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess;
   execFile(
     file: string,
@@ -338,4 +346,24 @@ output: ${commandOutput}`,
       reject(new CommandFailedError(`Command failed: ${err.message}`));
     });
   });
+}
+
+export function runBackgroundShell(
+  transport: Transport,
+  { command, label, signal, backgroundProcessManager }: BackgroundShellOptions,
+): Result<BackgroundProcess, TransportError> {
+  if (signal.aborted) return err(new AbortError());
+  let process: TransportProcess;
+  try {
+    process = transport.spawn(transport.commandShell, ["-c", command], {
+      cwd: transport.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    });
+  } catch (error) {
+    return err(
+      new CommandFailedError(`Failed to spawn background process: ${errorToString(error)}`),
+    );
+  }
+  return ok(backgroundProcessManager.track(process, label, command));
 }

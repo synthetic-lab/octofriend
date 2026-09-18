@@ -1,8 +1,11 @@
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
 import type { ChildProcess, ExecFileException } from "child_process";
-import type { Transport } from "./transport-common.ts";
-import { BackgroundProcessManager } from "../background-process.ts";
+import {
+  type Transport,
+  runBackgroundShell,
+  type BackgroundShellOptions,
+} from "./transport-common.ts";
 import {
   type ProcessExecFileCallback,
   type ProcessExecFileOptions,
@@ -66,7 +69,6 @@ export class MockTransportProcess extends TransportProcess {
 export class MockTransport implements Transport {
   cwd: string;
   readonly commandShell = "bash";
-  readonly backgroundProcesses: BackgroundProcessManager;
   readonly spawnCalls: MockProcessCall[] = [];
   readonly execFileCalls: MockProcessCall[] = [];
   private readonly files: Record<string, string>;
@@ -79,7 +81,6 @@ export class MockTransport implements Transport {
     shellResult?: string | ((command: string) => string | Promise<string>);
   }) {
     this.cwd = options.cwd ?? "/repo";
-    this.backgroundProcesses = new BackgroundProcessManager(this);
     this.files = {};
     for (const [file, contents] of Object.entries(options.files ?? {})) {
       const resolved = this.resolve(file);
@@ -156,6 +157,10 @@ export class MockTransport implements Transport {
 
   async resolvePath(_: AbortSignal, file: string): Promise<string> {
     return this.resolve(file);
+  }
+
+  backgroundShell(options: BackgroundShellOptions) {
+    return runBackgroundShell(this, options);
   }
 
   async shell(_: AbortSignal, command: string): Promise<string> {

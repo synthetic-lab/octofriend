@@ -1,6 +1,7 @@
 import type { TransportProcess } from "./transports/transport-process.ts";
+import { registry } from "antipattern";
 import { sleep } from "./libocto/sleep.ts";
-import { ShellOutput, type Transport } from "./transports/transport-common.ts";
+import { ShellOutput } from "./transports/transport-common.ts";
 
 const KILL_GRACE_MS = 1000;
 
@@ -83,15 +84,13 @@ export class BackgroundProcess {
       this.hasUndrainedOutput
     )
       return;
-    let onActivity: () => void = () => {};
-    const activityOccurred = new Promise<void>(resolve => {
-      onActivity = resolve;
-    });
-    this.activityListeners.add(onActivity);
-    userAbortSignal.addEventListener("abort", onActivity);
-    await Promise.race([activityOccurred, sleep(timeoutMs)]);
-    userAbortSignal.removeEventListener("abort", onActivity);
-    this.activityListeners.delete(onActivity);
+    const waiting = new AbortController();
+    const finishWaiting = () => waiting.abort();
+    this.activityListeners.add(finishWaiting);
+    userAbortSignal.addEventListener("abort", finishWaiting);
+    await sleep(timeoutMs, waiting.signal);
+    userAbortSignal.removeEventListener("abort", finishWaiting);
+    this.activityListeners.delete(finishWaiting);
   }
 
   private appendOutput(output: ShellOutput, data: string | Buffer): void {
@@ -116,16 +115,9 @@ export class BackgroundProcessManager {
   private readonly backgroundProcesses = new Map<string, BackgroundProcess>();
   private nextId = 0;
 
-  constructor(private readonly transport: Transport) {}
-
-  start(command: string, label: string): BackgroundProcess {
+  track(transportProcess: TransportProcess, label: string, command: string): BackgroundProcess {
     const id = `bg-process-${++this.nextId}`;
-    const runningProcess = this.transport.spawn(this.transport.commandShell, ["-c", command], {
-      cwd: this.transport.cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-    });
-    const backgroundProcess = new BackgroundProcess(id, label, runningProcess, command);
+    const backgroundProcess = new BackgroundProcess(id, label, transportProcess, command);
     this.backgroundProcesses.set(id, backgroundProcess);
     return backgroundProcess;
   }
@@ -145,3 +137,9 @@ export class BackgroundProcessManager {
     return [...this.backgroundProcesses.values()];
   }
 }
+
+const manager = new BackgroundProcessManager();
+
+export const backgroundProcesses = registry({
+  manager: () => manager,
+});

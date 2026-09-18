@@ -1,9 +1,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { spawn, execFile, type ChildProcess } from "child_process";
-import { Transport, TransportError, runShell } from "./transport-common.ts";
+import {
+  Transport,
+  TransportError,
+  runShell,
+  runBackgroundShell,
+  type BackgroundShellOptions,
+} from "./transport-common.ts";
 import { processes } from "../process-manager.ts";
-import { BackgroundProcessManager } from "../background-process.ts";
 import {
   TransportProcess,
   type TransportProcessOptions,
@@ -20,7 +25,6 @@ export class LocalTransport implements Transport {
   cwd = process.cwd();
   // bash over sh: available on most local setups, and tolerant of LLM bash-isms
   readonly commandShell = "bash";
-  readonly backgroundProcesses: BackgroundProcessManager = new BackgroundProcessManager(this);
   private readonly runningProcesses = new Set<TransportProcess>();
   private readonly processManager = processes.manager();
 
@@ -141,6 +145,10 @@ export class LocalTransport implements Transport {
     } catch {
       return false;
     }
+  }
+
+  backgroundShell(options: BackgroundShellOptions) {
+    return runBackgroundShell(this, options);
   }
 
   async shell(signal: AbortSignal, cmd: string, timeout: number) {
