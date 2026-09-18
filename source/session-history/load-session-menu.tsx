@@ -9,7 +9,6 @@ import {
 } from "../components/kb-select/kb-shortcut-table.tsx";
 import { TerminalFlex } from "../components/terminal-flex.tsx";
 import { useCwd } from "../hooks/use-cwd.tsx";
-import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { useSession } from "../session-context.ts";
 import { useAppStore } from "../state.ts";
 import { useColor } from "../theme.ts";
@@ -52,10 +51,6 @@ export function LoadSessionMenu({ onBack, onSessionChange }: Props) {
     () => sessionListTable(listPreviousSessions(cwd, currentSession.metadata.sessionId)).rows,
     [currentSession.metadata.sessionId, cwd],
   );
-
-  useKeyboard(event => {
-    if (event.key === "Escape") onBack();
-  });
 
   const load = useCallback(
     (row: SessionListRow) => {

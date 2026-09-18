@@ -58,7 +58,7 @@ const tempDirs: string[] = [];
 beforeEach(() => {
   useAppStore.setState({
     history: [],
-    preMenuModeData: null,
+    isMenuOpen: false,
     lastUserPromptIndex: null,
     runningToolCallId: null,
     queuedUserMessages: [],
@@ -546,7 +546,7 @@ describe("tool call IDs reused across batches", () => {
 });
 
 describe("menu round-trips during a tool batch", () => {
-  it("resumes at the first unanswered tool when remounting between tools", async () => {
+  it("preserves the first unanswered tool when opening and closing the menu", async () => {
     const transport = new LocalTransport();
     const callA = shellCall("call_a", "echo a");
     const callB = shellCall("call_b", "echo b");
@@ -554,8 +554,6 @@ describe("menu round-trips during a tool batch", () => {
 
     await useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
 
-    // Opening the menu unmounts ToolRequestsRenderer; closing it remounts. The remounted
-    // renderer must resume at call_b, not re-run call_a.
     useAppStore.getState().openMenu();
     useAppStore.getState().closeMenu();
 
@@ -572,7 +570,7 @@ describe("menu round-trips during a tool batch", () => {
     });
   });
 
-  it("waits for the in-flight tool when remounting mid-run", async () => {
+  it("preserves the in-flight tool when opening and closing the menu", async () => {
     const transport = new LocalTransport();
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
     tempDirs.push(dir);
@@ -620,11 +618,11 @@ describe("menu round-trips during a tool batch", () => {
         .runTool({ config, transport, session, toolReq: callA });
       await waitFor(() => existsSync(marker));
       useAppStore.getState().openMenu();
-      await running; // settles while the menu is open
+      await running;
 
-      // The running ID is top-level state, cleared on settle even though the tool-call
-      // modeData is stashed in preMenuModeData.
       expect(useAppStore.getState().runningToolCallId).toBeNull();
+      expect(useAppStore.getState().isMenuOpen).toBe(true);
+      expect(useAppStore.getState().modeData.mode).toBe("tool-call");
 
       useAppStore.getState().closeMenu();
       const state = useAppStore.getState();

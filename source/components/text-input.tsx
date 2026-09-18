@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import type { PaintFile, PaintKeyboardEvent, TextAreaElement } from "paintcannon";
-import { Div, Span, Textarea, useApp } from "paintcannon-react";
+import { Div, Span, useApp } from "paintcannon-react";
+// eslint-disable-next-line no-restricted-imports -- TextInput is the shared wrapper for Textarea.
+import { Textarea } from "paintcannon-react";
 import { useVimKeyHandler } from "./vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";
 import { FOREGROUND_COLOR } from "../theme.ts";
 import { ImageInfo } from "../utils/image-utils.ts";
+import { useInputDisabled } from "../hooks/use-input-disabled.tsx";
 
 function getImageBadgeText(index: number): string {
   return `⟦ 📎 Image Attachment #${index + 1} ⟧`;
@@ -40,7 +43,7 @@ export default function TextInput({
   value,
   showLoadingImageBadge = false,
   placeholder = "",
-  focus = true,
+  focus: focusProp = true,
   onChange,
   onImageFilesAttached,
   onRemoveLastImage,
@@ -49,6 +52,8 @@ export default function TextInput({
   setVimMode,
   onKeyDown,
 }: Props) {
+  const inputDisabled = useInputDisabled();
+  const focus = focusProp && !inputDisabled;
   const { paintCannon } = useApp();
   const textareaRef = useRef<TextAreaElement>(null);
   const vimHandler = useVimKeyHandler(inputMode, setVimMode ?? (() => {}));
