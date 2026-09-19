@@ -46,6 +46,12 @@ export default tseslint.config(
         {
           paths: [
             {
+              // Use source/components/text-input.tsx so input respects disabled scopes.
+              name: "paintcannon-react",
+              importNames: ["Textarea"],
+              message: "Use TextInput from `source/components/text-input.tsx` instead.",
+            },
+            {
               name: "child_process",
               message:
                 "Import from `source/octo-process.ts` instead: OctoProcess manages the process lifecycle for you.",

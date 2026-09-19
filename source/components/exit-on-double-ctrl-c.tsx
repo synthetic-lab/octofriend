@@ -28,7 +28,6 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
        * If the menu is open, close it first: the in-flight state is stashed in preMenuModeData.
        */
       const state = useAppStore.getState();
-      if (state.modeData.mode === "menu") state.closeMenu();
       state.abortResponse(session, config, { exiting: true });
       exit();
     } else {

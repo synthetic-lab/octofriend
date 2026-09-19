@@ -15,7 +15,7 @@ import { Item, ShortcutArray, Keymap } from "./components/kb-select/kb-shortcut-
 import { MenuQuotaIndicator } from "./components/menu-quota-indicator.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useApp } from "paintcannon-react";
-import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { LoadSessionMenu } from "./session-history/load-session-menu.tsx";
 type MenuMode =
   | "main-menu"
@@ -49,6 +49,36 @@ export function Menu({ onSessionChange }: { onSessionChange: (session: Session) 
       setMenuMode: state.setMenuMode,
     })),
   );
+  return (
+    <TerminalFlex
+      autoFocus
+      style={{ flexDirection: "column" }}
+      onKeyDown={event => {
+        if (event.key === "Escape" && menuMode !== "main-menu") {
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuMode("main-menu");
+        }
+      }}
+    >
+      <MenuContent
+        menuMode={menuMode}
+        setMenuMode={setMenuMode}
+        onSessionChange={onSessionChange}
+      />
+    </TerminalFlex>
+  );
+}
+
+function MenuContent({
+  menuMode,
+  setMenuMode,
+  onSessionChange,
+}: {
+  menuMode: MenuMode;
+  setMenuMode: (mode: MenuMode) => void;
+  onSessionChange: (session: Session) => void;
+}) {
   if (menuMode === "main-menu") return <MainMenu />;
   if (menuMode === "load-session") {
     return (
@@ -97,9 +127,6 @@ function AutofixToggle({
     })),
   );
   const session = useSession();
-  useKeyboard(event => {
-    if (event.key === "Escape") setMenuMode("main-menu");
-  });
   if (config[configKey]) {
     return (
       <ConfirmDialog
@@ -208,9 +235,6 @@ function SwitchModelMenu() {
   const config = useConfig();
   const setConfig = useSetConfig();
   const [pendingModel, setPendingModel] = React.useState<null | Config["models"][number]>(null);
-  useKeyboard(event => {
-    if (event.key === "Escape" && pendingModel == null) setMenuMode("main-menu");
-  });
   const onSelect = useCallback(
     async (item: Item<`model-${string}` | "back">) => {
       if (item.value === "back") {
@@ -379,9 +403,6 @@ function MainMenu() {
   const model = useModel();
   const provider = model.type === "codex" ? null : providerForBaseUrl(model.baseUrl);
   const isSynthetic = provider === SYNTHETIC_PROVIDER;
-  useKeyboard(event => {
-    if (event.key === "Escape") toggleMenu();
-  });
   type Value =
     | "model-select"
     | "add-model"
@@ -527,9 +548,6 @@ function SettingsMenu() {
     })),
   );
   const config = useConfig();
-  useKeyboard(event => {
-    if (event.key === "Escape") setMenuMode("main-menu");
-  });
   const settingsItems = filterSettings(config);
   const items: Keymap<SettingsValues | "back"> = {
     ...settingsItems,
@@ -576,9 +594,6 @@ function NotificationsMenu() {
         setNotifySession: state.setNotifySession,
       })),
     );
-  useKeyboard(event => {
-    if (event.key === "Escape") setMenuMode("main-menu");
-  });
   const alwaysNotify = config.notifications?.alwaysNotify;
   const items: Keymap<NotificationValue> = {
     o: {
@@ -651,13 +666,7 @@ function QuitConfirm() {
       confirmLabel="Yes, quit"
       rejectLabel="Never mind, take me back"
       onConfirm={() => {
-        /*
-         * Restore the stashed pre-menu state (which may be an in-flight tool batch), then
-         * record skip markers for any un-run tool calls so the session history stays
-         * well-formed after exit.
-         */
         const state = useAppStore.getState();
-        state.closeMenu();
         state.abortResponse(session, config, { exiting: true });
         app.exit();
       }}
@@ -719,9 +728,6 @@ function SetDefaultModelMenu() {
       setMenuMode: state.setMenuMode,
     })),
   );
-  useKeyboard(event => {
-    if (event.key === "Escape") setMenuMode("main-menu");
-  });
   const numericItems = config.models.map(model => {
     return {
       label: model.nickname,
@@ -785,9 +791,6 @@ function RemoveModelMenu() {
       setMenuMode: state.setMenuMode,
     })),
   );
-  useKeyboard(event => {
-    if (event.key === "Escape") setMenuMode("main-menu");
-  });
   const numericItems = config.models.map(model => {
     return {
       label: model.nickname,

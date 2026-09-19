@@ -72,6 +72,7 @@ import type { HistoryNode, Session } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
+import { Modal } from "./components/modal.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
@@ -109,6 +110,7 @@ import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
@@ -288,19 +290,23 @@ export default function App({
   const {
     history,
     modeData,
+    isMenuOpen,
     clearNonce,
     sessionHydrationNonce,
     modelOverride,
     cancelNotifyReadyForInput,
+    closeMenu,
     query,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
       modeData: state.modeData,
+      isMenuOpen: state.isMenuOpen,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
       modelOverride: state.modelOverride,
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
+      closeMenu: state.closeMenu,
       query: state.query,
     })),
   );
@@ -396,110 +402,116 @@ export default function App({
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
       <ReactDevelopmentBuildToast />
-      <InputPriorityProvider>
-        <UnchainedShiftTabHandler
-          setIsUnchained={setIsUnchained}
-          setTempNotification={setTempNotification}
-        />
-        <SetConfigContext.Provider value={setCurrConfig}>
-          <ConfigPathContext.Provider value={configPath}>
-            <ConfigContext.Provider value={currConfig}>
-              <UnchainedContext.Provider value={isUnchained}>
-                <TransportContext.Provider value={transport}>
-                  <SessionContext.Provider value={session}>
-                    <CwdContext.Provider value={cwd}>
+      <SetConfigContext.Provider value={setCurrConfig}>
+        <ConfigPathContext.Provider value={configPath}>
+          <ConfigContext.Provider value={currConfig}>
+            <UnchainedContext.Provider value={isUnchained}>
+              <TransportContext.Provider value={transport}>
+                <SessionContext.Provider value={session}>
+                  <CwdContext.Provider value={cwd}>
+                    <InputDisabledProvider disabled={isMenuOpen}>
                       <ExitOnDoubleCtrlC>
-                        <AppShell>
-                          <TerminalFlex
-                            ref={transcriptRef}
-                            onScroll={event => {
-                              followTranscriptRef.current = isScrolledToBottom(
-                                event.scrollTop,
-                                event.scrollHeight,
-                                transcriptRef.current?.clientHeight ?? 1,
-                              );
-                            }}
-                            style={{
-                              flexDirection: "column",
-                              flexGrow: 1,
-                              flexShrink: 1,
-                              flexBasis: 0,
-                              minWidth: 0,
-                              minHeight: 0,
-                              overflowY: "scroll",
-                              scrollbarGutter: "stable",
-                              scrollbarColor: appScrollbarColor,
-                            }}
-                          >
+                        <InputPriorityProvider>
+                          <UnchainedShiftTabHandler
+                            setIsUnchained={setIsUnchained}
+                            setTempNotification={setTempNotification}
+                          />
+                          <AppShell>
                             <TerminalFlex
+                              ref={transcriptRef}
+                              onScroll={event => {
+                                followTranscriptRef.current = isScrolledToBottom(
+                                  event.scrollTop,
+                                  event.scrollHeight,
+                                  transcriptRef.current?.clientHeight ?? 1,
+                                );
+                              }}
                               style={{
                                 flexDirection: "column",
-                                minHeight: "100%",
-                                flexShrink: 0,
-                                overflowWrap: "anywhere",
+                                flexGrow: 1,
+                                flexShrink: 1,
+                                flexBasis: 0,
+                                minWidth: 0,
+                                minHeight: 0,
+                                overflowY: "scroll",
+                                scrollbarGutter: "stable",
+                                scrollbarColor: appScrollbarColor,
                               }}
                             >
                               <TerminalFlex
                                 style={{
                                   flexDirection: "column",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "100%",
-                                  flexGrow: 1,
-                                  flexShrink: 1,
-                                  marginTop: 1,
-                                  marginBottom: 1,
+                                  minHeight: "100%",
+                                  flexShrink: 0,
+                                  overflowWrap: "anywhere",
                                 }}
                               >
-                                {bootItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`boot-${index}`} />
-                                ))}
-                              </TerminalFlex>
-                              <TranscriptItemRenderer item={{ type: "slogan" }} />
-                              <TerminalFlex
-                                key={clearNonce}
-                                style={{
-                                  flexDirection: "column",
-                                }}
-                              >
-                                {historyItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`history-${index}`} />
-                                ))}
-                                {(modeData.mode === "responding" ||
-                                  modeData.mode === "compacting") &&
-                                  (modeData.inflightResponse.reasoningContent ||
-                                    modeData.inflightResponse.content) && (
-                                    <MessageDisplay item={modeData.inflightResponse} />
+                                <TerminalFlex
+                                  style={{
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: "100%",
+                                    flexGrow: 1,
+                                    flexShrink: 1,
+                                    marginTop: 1,
+                                    marginBottom: 1,
+                                  }}
+                                >
+                                  {bootItems.map((item, index) => (
+                                    <TranscriptItemRenderer item={item} key={`boot-${index}`} />
+                                  ))}
+                                </TerminalFlex>
+                                <TranscriptItemRenderer item={{ type: "slogan" }} />
+                                <TerminalFlex
+                                  key={clearNonce}
+                                  style={{
+                                    flexDirection: "column",
+                                  }}
+                                >
+                                  {historyItems.map((item, index) => (
+                                    <TranscriptItemRenderer item={item} key={`history-${index}`} />
+                                  ))}
+                                  {(modeData.mode === "responding" ||
+                                    modeData.mode === "compacting") &&
+                                    (modeData.inflightResponse.reasoningContent ||
+                                      modeData.inflightResponse.content) && (
+                                      <MessageDisplay item={modeData.inflightResponse} />
+                                    )}
+                                  {(modeData.mode === "tool-call" ||
+                                    modeData.mode === "tool-call-permission") && (
+                                    <ToolRequestsRenderer
+                                      toolReqs={modeData.toolReqs}
+                                      config={currConfig}
+                                      transport={transport}
+                                      session={session}
+                                      onContentLayout={scrollTranscriptToBottom}
+                                    />
                                   )}
-                                {(modeData.mode === "tool-call" ||
-                                  modeData.mode === "tool-call-permission") && (
-                                  <ToolRequestsRenderer
-                                    toolReqs={modeData.toolReqs}
-                                    config={currConfig}
-                                    transport={transport}
-                                    session={session}
-                                    onContentLayout={scrollTranscriptToBottom}
-                                  />
-                                )}
+                                </TerminalFlex>
                               </TerminalFlex>
                             </TerminalFlex>
-                          </TerminalFlex>
-                          <BottomBar
-                            inputHistory={inputHistory}
-                            metadata={metadata}
-                            tempNotification={tempNotification}
-                            onSessionChange={handleSessionChange}
-                          />
-                        </AppShell>
+                            <BottomBar
+                              inputHistory={inputHistory}
+                              metadata={metadata}
+                              tempNotification={tempNotification}
+                            />
+                          </AppShell>
+                        </InputPriorityProvider>
                       </ExitOnDoubleCtrlC>
-                    </CwdContext.Provider>
-                  </SessionContext.Provider>
-                </TransportContext.Provider>
-              </UnchainedContext.Provider>
-            </ConfigContext.Provider>
-          </ConfigPathContext.Provider>
-        </SetConfigContext.Provider>
-      </InputPriorityProvider>
+                    </InputDisabledProvider>
+                    {isMenuOpen && (
+                      <Modal minWidth={50} onClose={closeMenu}>
+                        <Menu onSessionChange={handleSessionChange} />
+                      </Modal>
+                    )}
+                  </CwdContext.Provider>
+                </SessionContext.Provider>
+              </TransportContext.Provider>
+            </UnchainedContext.Provider>
+          </ConfigContext.Provider>
+        </ConfigPathContext.Provider>
+      </SetConfigContext.Provider>
     </ScrollTranscriptToBottomContext.Provider>
   );
 }
@@ -507,12 +519,10 @@ function BottomBar({
   inputHistory,
   metadata,
   tempNotification,
-  onSessionChange,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
-  onSessionChange: (session: Session) => void;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
   const [versionCheck, setVersionCheck] = useState("Checking for updates...");
@@ -520,11 +530,6 @@ function BottomBar({
     useState<React.ReactNode | null>(null);
   const themeColor = useColor();
   const ctrlCPressed = useCtrlCPressed();
-  const { modeData } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-    })),
-  );
   useEffect(() => {
     getLatestVersion().then(latestVersion => {
       if (latestVersion && metadata.version < latestVersion) {
@@ -549,7 +554,6 @@ function BottomBar({
     }
     return undefined;
   }, [tempNotification]);
-  if (modeData.mode === "menu") return <Menu onSessionChange={onSessionChange} />;
   const unchained = useUnchained();
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
@@ -662,7 +666,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     input,
     abortResponse,
     openMenu,
-    closeMenu,
     byteCount,
     query,
     setQuery,
@@ -678,7 +681,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       clearNonce: state.clearNonce,
       input: state.input,
       abortResponse: state.abortResponse,
-      closeMenu: state.closeMenu,
       openMenu: state.openMenu,
       byteCount: state.byteCount,
       query: state.query,
@@ -711,7 +713,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         return;
       }
       abortResponse(session, config);
-      if (modeData.mode === "menu") closeMenu();
     }
     if (event.ctrlKey && event.key === "p") {
       openMenu();
@@ -723,7 +724,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       const finalQuery = submittedQuery ?? query;
       inputSubmitted();
       setQuery("");
-      if (modeData.mode !== "ready-for-request" && modeData.mode !== "menu") {
+      if (modeData.mode !== "ready-for-request") {
         queueMessage({ content: finalQuery, images });
         return;
       }
@@ -851,7 +852,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "tool-call-permission") return null;
-  const _: "menu" | "ready-for-request" = modeData.mode;
+  const _: "ready-for-request" = modeData.mode;
   return (
     <TerminalFlex
       style={{

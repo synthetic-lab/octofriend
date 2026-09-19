@@ -84,7 +84,7 @@ export type InflightResponseType = {
   reasoningContent?: string | null;
 };
 export type UiState = {
-  preMenuModeData: UiState["modeData"] | null;
+  isMenuOpen: boolean;
   _notifyTimer: NodeJS.Timeout | null;
   sessionAutoNotify: boolean;
   notifyOnce: boolean;
@@ -145,17 +145,8 @@ export type UiState = {
         mode: "compacting";
         inflightResponse: InflightResponseType;
         abortController: AbortController;
-      }
-    | {
-        mode: "menu";
       };
 
-  /*
-   * The currently in-flight tool call, if any. Tracked at the top level rather than inside the
-   * tool-call modeData: modeData gets stashed in preMenuModeData when the menu opens, and
-   * maintainers reasonably treat that stash as UI-only state. The running tool keeps executing
-   * while the menu is open, so its ID must live outside UI mode transitions.
-   */
   runningToolCallId: string | null;
 
   modelOverride: string | null;
@@ -206,7 +197,6 @@ export type UiState = {
 export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
   switch (modeData.mode) {
     case "tool-call-permission":
-    case "menu":
     case "error-recovery":
     case "payment-error":
     case "rate-limit-error":
@@ -304,7 +294,7 @@ export function nextToolAction(
 }
 
 export const useAppStore = create<UiState>((set, get) => ({
-  preMenuModeData: null,
+  isMenuOpen: false,
   _notifyTimer: null,
   sessionAutoNotify: false,
   notifyOnce: false,
@@ -570,33 +560,17 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   toggleMenu: () => {
-    const { modeData } = get();
-    if (modeData.mode === "ready-for-request") {
-      set({
-        modeData: { mode: "menu" },
-        preMenuModeData: modeData,
-      });
-    } else if (modeData.mode === "menu") {
-      const { preMenuModeData } = get();
-      set({
-        modeData: preMenuModeData ?? { mode: "ready-for-request" },
-        preMenuModeData: null,
-      });
+    if (get().isMenuOpen) {
+      set({ isMenuOpen: false });
+    } else if (get().modeData.mode === "ready-for-request") {
+      set({ isMenuOpen: true });
     }
   },
   closeMenu: () => {
-    const { preMenuModeData } = get();
-    set({
-      modeData: preMenuModeData ?? { mode: "ready-for-request" },
-      preMenuModeData: null,
-    });
+    set({ isMenuOpen: false });
   },
   openMenu: () => {
-    const { modeData } = get();
-    set({
-      modeData: { mode: "menu" },
-      preMenuModeData: modeData,
-    });
+    set({ isMenuOpen: true });
   },
 
   setQuery: query => {
@@ -657,6 +631,10 @@ export const useAppStore = create<UiState>((set, get) => ({
   },
 
   hydrateSession: history => {
+    const { modeData } = get();
+    if ("abortController" in modeData) {
+      modeData.abortController.abort();
+    }
     const repairedHistory = repairOrphanedToolOutputs(history);
     // Canary builds fail loudly on any remaining pairing violation: after repair, any dangling
     // tool output is an unknown bug we want to hear about rather than resume around.
@@ -668,6 +646,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       byteCount: 0,
       queuedUserMessages: [],
       clearNonce: state.clearNonce + 1,
+      modeData: { mode: "ready-for-request" },
       sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
       // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
@@ -677,10 +656,9 @@ export const useAppStore = create<UiState>((set, get) => ({
 
   startNewSession: (cwd, cliArgs) => {
     // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { modeData, preMenuModeData } = get();
-    const activeMode = modeData.mode === "menu" ? preMenuModeData : modeData;
-    if (activeMode != null && "abortController" in activeMode) {
-      activeMode.abortController.abort();
+    const { modeData } = get();
+    if ("abortController" in modeData) {
+      modeData.abortController.abort();
     }
 
     set(state => ({
@@ -691,7 +669,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       clearNonce: state.clearNonce + 1,
       sessionAutoNotify: false,
       modeData: { mode: "ready-for-request" },
-      preMenuModeData: null,
+      isMenuOpen: false,
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
       runningToolCallId: null,

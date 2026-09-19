@@ -2,6 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef } from "reac
 import type { PaintKeyboardEvent } from "paintcannon";
 import { Div } from "paintcannon-react";
 import { registry } from "antipattern";
+import { useInputDisabled } from "./use-input-disabled.tsx";
 
 type KeyboardListener = (event: PaintKeyboardEvent) => void;
 type KeyboardContextValue = {
@@ -61,5 +62,6 @@ export const keyboardDeps = registry({
 });
 
 export function useKeyboard(callback: (event: PaintKeyboardEvent) => void, isActive = true): void {
-  keyboardDeps.useKeyboard(callback, isActive);
+  const inputDisabled = useInputDisabled();
+  keyboardDeps.useKeyboard(callback, isActive && !inputDisabled);
 }
