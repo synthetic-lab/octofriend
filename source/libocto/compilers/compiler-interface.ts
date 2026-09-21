@@ -120,6 +120,8 @@ export type CompilerResultWithoutToolCalls<A extends Agent<any, any, any>> = Com
   undefined
 >;
 
+export type AutofixJsonFn = (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+
 export type CompilerSuccessData<A extends Agent<any, any, any>> = {
   output: AssistantMessage<A["tools"]>;
   curl: string;
@@ -133,7 +135,7 @@ type CompilerParamsBase<A extends Agent<any, any, any>, Model> = {
   irs: Array<CompilerIR<A>>;
   abortSignal: AbortSignal;
   transport: Transport;
-  autofixJson?: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
+  autofixJson?: AutofixJsonFn;
 };
 
 export type CompilerParams<

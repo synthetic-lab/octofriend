@@ -21,19 +21,16 @@ declare const transport: Transport;
 declare const autofixJson: (badJson: string, signal: AbortSignal) => Promise<JsonFixResponse>;
 declare const tools: Partial<LoadedTools>;
 
-const noToolsResult = run({
-  modelData,
-  messages,
+const noToolsResult = run<typeof octoAgent>({
+  model: modelData,
+  irs: messages,
   abortSignal: signal,
   transport,
   autofixJson,
-  handlers: {
-    onTokens: (_tokens, type) => {
-      expectType<"reasoning" | "content">(type);
-      // @ts-expect-error no tools were provided, so no tool-token stream is possible.
-      expectType<"tool">(type);
-    },
-    onAutofixJson: () => {},
+  onTokens: (_tokens, type) => {
+    expectType<"reasoning" | "content">(type);
+    // @ts-expect-error no tools were provided, so no tool-token stream is possible.
+    expectType<"tool">(type);
   },
 });
 
@@ -44,32 +41,26 @@ noToolsResult.then(result => {
   expectType<undefined>(result.data.output.toolCalls);
 });
 
-const withToolsResult = run({
-  modelData,
-  messages,
+const withToolsResult = run<typeof octoAgent, Partial<LoadedTools>>({
+  model: modelData,
+  irs: messages,
   abortSignal: signal,
   transport,
   autofixJson,
   tools,
-  handlers: {
-    onTokens: (_tokens, type) => {
-      expectType<CompilerTokenType<LoadedTools>>(type);
-    },
-    onAutofixJson: () => {},
+  onTokens: (_tokens, type) => {
+    expectType<CompilerTokenType<LoadedTools>>(type);
   },
 });
 
 expectType<Promise<CompilerResult<typeof octoAgent, Partial<LoadedTools>>>>(withToolsResult);
 
-run({
-  modelData,
-  messages,
+run<typeof octoAgent>({
+  model: modelData,
+  irs: messages,
   abortSignal: signal,
   transport,
   autofixJson,
-  handlers: {
-    // @ts-expect-error no-tools callbacks cannot require only tool tokens.
-    onTokens: (_tokens, _type: "tool") => {},
-    onAutofixJson: () => {},
-  },
+  // @ts-expect-error no-tools callbacks cannot require only tool tokens.
+  onTokens: (_tokens, _type: "tool") => {},
 });

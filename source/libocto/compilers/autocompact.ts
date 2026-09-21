@@ -15,7 +15,7 @@ export type CompactionError =
       requestError: string;
       curl: string | null;
     }
-  | Extract<CompilerError, { type: "auth-error" | "payment-error" | "rate-limit-error" }>;
+  | Exclude<CompilerError, { type: "unexpected-tool-call" }>;
 
 const COMPACTION_CHECKPOINT_PREFIX = `# Conversation History Summary
 
@@ -66,17 +66,15 @@ export async function generateCompactionCheckpointContent<A extends Agent<any, a
   const compactRunResult = await run(summaryMessages);
 
   if (!compactRunResult.success) {
-    if (
-      isRecoverableRequestError(compactRunResult.error) ||
-      compactRunResult.error.type === "auth-error"
-    )
-      return err(compactRunResult.error);
+    if (compactRunResult.error.type === "unexpected-tool-call") {
+      return err({
+        type: "compaction-error",
+        requestError: compactRunResult.error.requestError,
+        curl: compactRunResult.error.curl,
+      });
+    }
 
-    return err({
-      type: "compaction-error",
-      requestError: compactRunResult.error.requestError,
-      curl: compactRunResult.error.curl,
-    });
+    return err(compactRunResult.error);
   }
 
   const summary = processCompactedHistory(compactRunResult);
@@ -111,12 +109,6 @@ export function processCompactedHistory<A extends Agent<any, any, any>>(
   }
 
   return undefined;
-}
-
-function isRecoverableRequestError(
-  error: CompilerError,
-): error is Extract<CompilerError, { type: "payment-error" | "rate-limit-error" }> {
-  return error.type === "payment-error" || error.type === "rate-limit-error";
 }
 
 function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>>): number {
