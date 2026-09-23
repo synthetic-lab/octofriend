@@ -6,6 +6,7 @@ import { sleep } from "./sleep.ts";
 import { combineSignals } from "./signals.ts";
 import type {
   Agent,
+  AgentIR,
   AssistantMessage,
   Checkpoint,
   LlmIR,
@@ -214,11 +215,11 @@ export type RequestErrorRetriesConfig = {
 export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
   contextWindow: number;
-  messages: Array<LlmIR<A>>;
+  messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
-  lowerMessages: (messages: Array<LlmIR<A>>) => Array<LoweredIR<A["tools"]>>;
+  lowerMessages: (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<LoweredIR<A["tools"]>>;
   systemPrompt?: () => Promise<string>;
   transport: Transport;
   abortSignal: AbortSignal;
@@ -266,7 +267,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   requestErrorRetries,
   handler,
 }: TrajectoryArcParams<A, Model>): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
-  const messagesCopy: Array<LlmIR<A>> = [...messages];
+  const messagesCopy: Array<LlmIR<A> | AgentIR<A>> = [...messages];
   const emitIrs = (delta: Array<TrajectoryArcIR<A>>) => {
     for (const ir of delta) handler.onMessage(ir);
   };
