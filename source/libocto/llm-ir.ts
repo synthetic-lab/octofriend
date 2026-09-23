@@ -40,13 +40,58 @@ export type AgentDirectory = {
   [name: string]: Agent<any, any, any>;
 };
 
-// Helper function to define agents with compile-time safety guarantees. It's an identity function
-// that runs compile-time validation on the passed-in agent and assigns the correct type + branding.
-export function defineAgent<A extends { tools: ToolMap<any, any>; agents: AgentDirectory }>(
-  a: A & ValidateAgentSubagents<A>,
-): A {
+/*
+ * Permissioned vs permissionless agents
+ * -------------------------------------------------------------------------------------------------
+ *
+ * A permissioned agent is driven by a loop that gates tool calls behind permission checks, which
+ * means its history can contain tool-reject IRs (the only IR a permission gate can produce that a
+ * tool cannot). A permissionless agent — e.g. a simple research agent whose tools all always run —
+ * never produces rejects, so its IR universe excludes them and exhaustive switches over IR roles
+ * never need a reject case.
+ *
+ * The capability is tracked via a unique-symbol brand assigned by definePermissionedAgent; AgentIR
+ * widens to include rejects only for branded agents. There is deliberately no boolean field: the
+ * two constructor functions make the choice obvious at the definition site and in review.
+ */
+declare const permissionedAgentBrand: unique symbol;
+
+export type PermissionedBrand = {
+  readonly [permissionedAgentBrand]: true;
+};
+
+export type IsPermissioned<A extends Agent<any, any, any>> = A extends PermissionedBrand
+  ? true
+  : false;
+
+export type PermissionedAgent<
+  Extra extends ToolExtensionIR<any>,
+  SubagentDirectory extends AgentDirectory,
+  Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
+> = Agent<Extra, SubagentDirectory, Tools> & PermissionedBrand;
+
+export type PermissionlessAgent<
+  Extra extends ToolExtensionIR<any>,
+  SubagentDirectory extends AgentDirectory,
+  Tools extends ToolMap<Extract<keyof SubagentDirectory, string>, Extra>,
+> = Agent<Extra, SubagentDirectory, Tools>;
+
+// Helper functions to define agents with compile-time safety guarantees. They're identity functions
+// that run compile-time validation on the passed-in agent and assign the correct type + branding.
+export function definePermissionedAgent<
+  A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
+>(a: A & ValidateAgentSubagents<A>): A & PermissionedBrand {
+  return a as unknown as A & PermissionedBrand;
+}
+
+export function definePermissionlessAgent<
+  A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
+>(a: A & ValidateAgentSubagents<A>): A {
   return a;
 }
+
+// Back-compat alias. Defines a permissionless agent; prefer the explicit name in new code.
+export const defineAgent = definePermissionlessAgent;
 
 // An IR that defines sub-agent trajectories
 export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
@@ -235,6 +280,20 @@ export type ToolSkipOutputMessage<T extends ToolMap<any, any>> = {
   reason: string;
 };
 
+/*
+ * A tool call that was rejected by the harness (e.g. a user denied a permission prompt).
+ *
+ * Rejects only exist for permissioned agents (see definePermissionedAgent): an agent loop that
+ * runs a permission gate is the only thing that can produce one. They are permissioned-only
+ * history IRs — never compiler-facing — because lower(...) converts every tool-reject to a
+ * tool-skip-output before any compiler can see it. This mirrors Checkpoint, which similarly
+ * exists in CheckpointedIR but not LoweredIR.
+ */
+export type ToolRejectMessage<T extends ToolMap<any, any>> = {
+  role: "tool-reject";
+  toolCall: ToolCall<T>;
+};
+
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {
   role: "tool-invoke-subagent";
   toolCall: ToolCall<T>;
@@ -300,6 +359,33 @@ export type LlmIR<A extends Agent<any, any, any>> =
   | AgentExtra<A>;
 
 /*
+ * The two final IR rolesets, per agent permission capability.
+ *
+ * PermissionlessIR is the universe for agents that never gate tool calls: no tool-reject IR can
+ * appear. PermissionedIR adds tool-reject for agents driven by a permission-checking loop.
+ * AgentIR resolves whichever one applies to a given agent type, so arc/loop signatures written in
+ * terms of AgentIR stay exact for both kinds of agent.
+ */
+export type PermissionlessIR<A extends Agent<any, any, any>> = LlmIR<A>;
+
+export type PermissionedIR<A extends Agent<any, any, any>> =
+  | LlmIR<A>
+  | ToolRejectMessage<A["tools"]>;
+
+export type AgentIR<A extends Agent<any, any, any>> = A extends PermissionedBrand
+  ? PermissionedIR<A>
+  : PermissionlessIR<A>;
+
+/*
+ * The widest shape lower(...) accepts: pre-lowering IRs plus permissioned-only rejects, which
+ * lower(...) converts to tool-skip-outputs. Neither raw checkpoints (converted to
+ * LoweredCheckpoint) nor rejects survive lowering, so compilers only ever see LoweredIR.
+ */
+export type PreLoweredIR<A extends Agent<any, any, any>> =
+  | CheckpointedIRWithTrajectories<A>
+  | ToolRejectMessage<A["tools"]>;
+
+/*
  * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
  *
  * The parameter is expressed in terms of the genuinely generic IR types rather than a single
@@ -317,8 +403,13 @@ function isBuiltinRole(role: string): role is BuiltinIRRole {
 }
 
 function isBuiltinIR<Role extends string, T extends AgentDirectory, Name extends keyof T>(
-  ir: LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> | ToolExtensionIR<Role>,
-): ir is LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> {
+  ir:
+    | LoweredIR<any>
+    | Checkpoint
+    | ToolRejectMessage<any>
+    | AgentTrajectory<T, Name>
+    | ToolExtensionIR<Role>,
+): ir is LoweredIR<any> | Checkpoint | ToolRejectMessage<any> | AgentTrajectory<T, Name> {
   return isBuiltinRole(ir.role);
 }
 
@@ -327,7 +418,12 @@ export function answeredToolCallId<
   T extends AgentDirectory,
   Name extends keyof T,
 >(
-  ir: LoweredIR<any> | Checkpoint | AgentTrajectory<T, Name> | ToolExtensionIR<Role>,
+  ir:
+    | LoweredIR<any>
+    | Checkpoint
+    | ToolRejectMessage<any>
+    | AgentTrajectory<T, Name>
+    | ToolExtensionIR<Role>,
 ): string | null {
   if (!isBuiltinIR(ir)) return ir.toolCall.toolCallId;
   switch (ir.role) {
@@ -343,6 +439,7 @@ export function answeredToolCallId<
     case "tool-runtime-error":
     case "tool-validation-error":
     case "tool-skip-output":
+    case "tool-reject":
       return ir.toolCall.toolCallId;
     default: {
       const _exhaustive: never = ir;
@@ -357,12 +454,18 @@ type AssertNever<T extends never> = T;
 // invariance in its agent directory.
 type _BuiltinIRRolesMatch = AssertNever<
   | Exclude<
-      LoweredIR<any>["role"] | Checkpoint["role"] | AgentTrajectory<any, any>["role"],
+      | LoweredIR<any>["role"]
+      | Checkpoint["role"]
+      | ToolRejectMessage<any>["role"]
+      | AgentTrajectory<any, any>["role"],
       BuiltinIRRole
     >
   | Exclude<
       BuiltinIRRole,
-      LoweredIR<any>["role"] | Checkpoint["role"] | AgentTrajectory<any, any>["role"]
+      | LoweredIR<any>["role"]
+      | Checkpoint["role"]
+      | ToolRejectMessage<any>["role"]
+      | AgentTrajectory<any, any>["role"]
     >
 >;
 

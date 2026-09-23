@@ -1,7 +1,7 @@
-import type { Agent, CheckpointedIRWithTrajectories, LoweredIR } from "./llm-ir.ts";
+import type { Agent, LoweredIR, PreLoweredIR } from "./llm-ir.ts";
 
 export function lower<A extends Agent<any, any, any>>(
-  messages: Array<CheckpointedIRWithTrajectories<A>>,
+  messages: Array<PreLoweredIR<A>>,
 ): Array<LoweredIR<A["tools"]>> {
   const output: Array<LoweredIR<A["tools"]>> = [];
 
@@ -10,6 +10,15 @@ export function lower<A extends Agent<any, any, any>>(
       output.push({
         role: "lowered-checkpoint",
         content: ir.content,
+      });
+      continue;
+    }
+
+    if (ir.role === "tool-reject") {
+      output.push({
+        role: "tool-skip-output",
+        toolCall: ir.toolCall,
+        reason: "Tool call rejected by user.",
       });
       continue;
     }
