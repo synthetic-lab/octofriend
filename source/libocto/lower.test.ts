@@ -16,11 +16,11 @@ const searchTool = new ToolBuilder<unknown>()
     run: async () => ok({ type: "output" as const, content: [] }),
   }));
 
-const testAgent = definePermissionedAgent({
+const _testAgent = definePermissionedAgent({
   tools: { search: searchTool },
   agents: {},
 });
-type TestAgent = typeof testAgent;
+type TestAgent = typeof _testAgent;
 
 type TestIR = CheckpointedIRWithTrajectories<TestAgent>;
 type TestLoweredIR = LoweredIR<TestAgent["tools"]>;
