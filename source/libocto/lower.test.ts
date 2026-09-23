@@ -1,10 +1,29 @@
 import { describe, expect, it } from "bun:test";
-import { octoAgent } from "../ir/octo-ir.ts";
-import type { CheckpointedIRWithTrajectories, Content, LoweredIR } from "./llm-ir.ts";
+import { t } from "structural";
+import type { CheckpointedIRWithTrajectories, Content, LoweredIR, PreLoweredIR } from "./llm-ir.ts";
+import { definePermissionedAgent } from "./llm-ir.ts";
 import { lower } from "./lower.ts";
+import { ok } from "./result.ts";
+import { ToolBuilder } from "./tool-def.ts";
 
-type TestIR = CheckpointedIRWithTrajectories<typeof octoAgent>;
-type TestLoweredIR = LoweredIR<typeof octoAgent.tools>;
+const searchTool = new ToolBuilder<unknown>()
+  .declare({
+    name: "search",
+    description: "Searches the web",
+    ArgumentsSchema: t.subtype({ query: t.str }),
+  })
+  .define(async () => ({
+    run: async () => ok({ type: "output" as const, content: [] }),
+  }));
+
+const testAgent = definePermissionedAgent({
+  tools: { search: searchTool },
+  agents: {},
+});
+type TestAgent = typeof testAgent;
+
+type TestIR = CheckpointedIRWithTrajectories<TestAgent>;
+type TestLoweredIR = LoweredIR<TestAgent["tools"]>;
 
 function userMessage(content: string): TestIR {
   return {
@@ -64,13 +83,13 @@ describe("lower", () => {
   it("passes through lowered IR", () => {
     const messages: TestIR[] = [userMessage("hello")];
 
-    expect(lower<typeof octoAgent>(messages)).toEqual<TestIR[]>(messages);
+    expect(lower<TestAgent>(messages)).toEqual<TestIR[]>(messages);
   });
 
   it("throws when a trajectory reaches the default lowering path", () => {
-    const trajectory = { role: "trajectory" } as CheckpointedIRWithTrajectories<typeof octoAgent>;
+    const trajectory = { role: "trajectory" } as CheckpointedIRWithTrajectories<TestAgent>;
 
-    expect(() => lower<typeof octoAgent>([trajectory])).toThrow(
+    expect(() => lower<TestAgent>([trajectory])).toThrow(
       "Subagent trajectory lowering is not implemented yet",
     );
   });
@@ -84,7 +103,7 @@ describe("lower", () => {
         assistantMessage("I'm good"),
       ];
 
-      expect(lower<typeof octoAgent>(messages)).toEqual<TestIR[]>(messages);
+      expect(lower<TestAgent>(messages)).toEqual<TestIR[]>(messages);
     });
 
     it("keeps a single checkpoint and following messages", () => {
@@ -96,7 +115,7 @@ describe("lower", () => {
         assistantMessage("I'm good"),
       ];
 
-      const lowered = lower<typeof octoAgent>(messages);
+      const lowered = lower<TestAgent>(messages);
 
       expect(lowered.length).toBe(3);
       expect(lowered.filter(m => m.role === "lowered-checkpoint").length).toBe(1);
@@ -119,7 +138,7 @@ describe("lower", () => {
         assistantMessage("Response 4", 5),
       ];
 
-      const lowered = lower<typeof octoAgent>(messages);
+      const lowered = lower<TestAgent>(messages);
 
       expect(lowered.length).toBe(3);
       expect(lowered.filter(m => m.role === "lowered-checkpoint").length).toBe(1);
@@ -151,7 +170,7 @@ describe("lower", () => {
         assistantMessage("New response 2", 5),
       ];
 
-      const lowered = lower<typeof octoAgent>(messages);
+      const lowered = lower<TestAgent>(messages);
       const userMessages = lowered.filter(m => m.role === "user");
 
       expect(userMessages.length).toBe(2);
@@ -167,10 +186,35 @@ describe("lower", () => {
         checkpointMessage("Latest checkpoint"),
       ];
 
-      const lowered = lower<typeof octoAgent>(messages);
+      const lowered = lower<TestAgent>(messages);
 
       expect(lowered.length).toBe(1);
       expect(checkpointSummary(lowered[0])).toBe("Latest checkpoint");
     });
+  });
+
+  it("lowers a tool-reject to a skip output", () => {
+    const messages: Array<PreLoweredIR<TestAgent>> = [
+      assistantMessage("Searching for something"),
+      {
+        role: "tool-reject",
+        toolCall: {
+          type: "tool-call",
+          name: "search",
+          toolCallId: "call-1",
+          original: { query: "embarrassing search history" },
+          parsed: { query: "embarrassing search history" },
+        },
+      },
+      userMessage("Please don't search for that"),
+    ];
+
+    const lowered = lower<TestAgent>(messages);
+
+    expect(roles(lowered)).toEqual(["assistant", "tool-skip-output", "user"]);
+    const skip = lowered[1];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.toolCall.toolCallId).toBe("call-1");
+    expect(skip.reason).toBe("Tool call rejected by user.");
   });
 });
