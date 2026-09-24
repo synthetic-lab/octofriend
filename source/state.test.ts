@@ -51,11 +51,25 @@ const config: Config = {
   ],
 };
 
+const agentConfig: Config = {
+  yourName: "Test",
+  models: [
+    {
+      nickname: "test-model",
+      model: "test-model",
+      context: 128_000,
+      baseUrl: "http://localhost",
+      apiEnvVar: "OCTO_STATE_TEST_API_KEY",
+    },
+  ],
+};
+
 const testModelJson = serializeModelJson(config.models[0]);
 
 const tempDirs: string[] = [];
 
 beforeEach(() => {
+  process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
   useAppStore.setState({
     history: [],
     isMenuOpen: false,
@@ -65,6 +79,12 @@ beforeEach(() => {
     query: "",
     attachedImages: [],
     modeData: { mode: "ready-for-request" },
+    permission: {
+      rejectionTx: null,
+      whitelistState: new Set<string>(),
+      unchained: false,
+      pendingControl: null,
+    },
   });
 });
 
@@ -164,32 +184,117 @@ function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
   return { session, abortController };
 }
 
-describe("tool permission mode", () => {
-  it("only hides the input while a permission request is pending", () => {
-    const callA = shellCall("call_a", "echo a");
-    const callB = shellCall("call_b", "echo b");
-    setupToolBatch(callA, callB);
+function setupUserHistory() {
+  const session = createSession(process.cwd(), { kind: "local" });
+  const nodes = insertHistoryItems(
+    session,
+    null,
+    [
+      {
+        type: "llm-ir",
+        ir: {
+          role: "user",
+          content: [{ type: "text", content: "Run these two commands" }],
+        },
+      },
+    ],
+    testModelJson,
+  );
+  useAppStore.getState().hydrateSession(nodes);
+  return session;
+}
 
-    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
+function fakeArcWithBatch(toolCalls: Array<ToolCall<typeof toolMap>>) {
+  let arcCalls = 0;
+  return async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
+    arcCalls++;
+    if (arcCalls > 1) {
+      return { type: "finish", reason: { type: "needs-response" } };
+    }
+    handler.onMessage({
+      role: "assistant" as const,
+      content: "On it.",
+      usage: compilerUsage(0, 0),
+      toolCalls,
+    });
+    return { type: "finish", reason: { type: "request-tool", toolCalls } };
+  };
+}
 
-    useAppStore.getState().requestToolPermission();
-
-    expect(useAppStore.getState().modeData.mode).toBe("tool-call-permission");
-    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
-  });
-
-  it("restores the input before an approved tool starts", async () => {
+describe("permissioned tool batches", () => {
+  it("asks permission for each tool call and hides the input while parked", async () => {
     const transport = new LocalTransport();
     const callA = shellCall("call_a", "echo a");
     const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-    useAppStore.getState().requestToolPermission();
+    const session = setupUserHistory();
 
-    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
+    await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
+      const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
 
-    expect(useAppStore.getState().modeData.mode).toBe("tool-call");
-    expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
-    await running;
+      await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+
+      expect(useAppStore.getState().modeData.mode).toBe("tool-call-permission");
+      expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
+      const firstControl = useAppStore.getState().permission.pendingControl!;
+      expect(firstControl.toolCall.toolCallId).toBe("call_a");
+      firstControl.allow();
+
+      await waitFor(() => {
+        const control = useAppStore.getState().permission.pendingControl;
+        return control != null && control.toolCall.toolCallId === "call_b";
+      });
+      useAppStore.getState().permission.pendingControl!.allow();
+
+      await running;
+
+      expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+        call_a: 1,
+        call_b: 1,
+      });
+      expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
+      expect(useAppStore.getState().permission.pendingControl).toBeNull();
+    });
+  });
+
+  it("applies a rejection immediately and appends the steering on commit", async () => {
+    const transport = new LocalTransport();
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    const session = setupUserHistory();
+
+    await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
+      const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
+
+      await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+
+      useAppStore.getState().permission.pendingControl!.beginReject();
+
+      expect(useAppStore.getState().modeData.mode).toBe("awaiting-steering");
+      expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
+      expect(useAppStore.getState().permission.rejectionTx).not.toBeNull();
+      expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+        call_a: 1,
+        call_b: 1,
+      });
+
+      useAppStore.getState().permission.rejectionTx!.commitRejection("do it differently");
+      await running;
+
+      expect(historyRoles()).toEqual([
+        "user",
+        "assistant",
+        "tool-reject",
+        "tool-skip-output",
+        "user",
+      ]);
+      const last = useAppStore.getState().history.at(-1)!;
+      if (last.type !== "llm-ir" || last.ir.role !== "user") {
+        throw new Error("expected steering user IR");
+      }
+      expect(last.ir.content).toEqual([{ type: "text", content: "do it differently" }]);
+      expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
+      expect(useAppStore.getState().permission.rejectionTx).toBeNull();
+    });
   });
 });
 
@@ -433,7 +538,7 @@ describe("tool call IDs reused across batches", () => {
     });
   });
 
-  it("rejects and skips within the current batch when IDs collide with an earlier batch", () => {
+  it("rejects and skips within the current batch when IDs collide with an earlier batch", async () => {
     const transport = new LocalTransport();
     const session = createSession(process.cwd(), { kind: "local" });
     const secondBatchSecondCall = shellCall("call_1", "echo later");
@@ -461,34 +566,40 @@ describe("tool call IDs reused across batches", () => {
         {
           type: "llm-ir",
           ir: {
-            role: "assistant",
-            content: "Second.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [secondBatchCall, secondBatchSecondCall],
+            role: "user",
+            content: [{ type: "text", content: "Again" }],
           },
         },
       ],
       testModelJson,
     );
     useAppStore.getState().hydrateSession(nodes);
-    useAppStore.setState({
-      modeData: {
-        mode: "tool-call",
-        toolReqs: [secondBatchCall, secondBatchSecondCall],
-        abortController: new AbortController(),
+
+    await withMock(
+      trajectoryArc,
+      "run",
+      fakeArcWithBatch([secondBatchCall, secondBatchSecondCall]),
+      async () => {
+        const running = useAppStore
+          .getState()
+          .runAgent({ config: agentConfig, transport, session });
+
+        await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+
+        // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip
+        // only this batch's remaining call — the earlier answered call_0 must not confuse it.
+        const control = useAppStore.getState().permission.pendingControl!;
+        control.beginReject();
+        useAppStore.getState().permission.rejectionTx!.commitRejection("later");
+        await running;
+
+        expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+          call_0: 2, // earlier output + this batch's reject marker
+          call_1: 1, // this batch's skip marker
+        });
+        expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
       },
-      runningToolCallId: null,
-    });
-
-    // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip only
-    // this batch's remaining call — the earlier batch's answered call_0 must not confuse it.
-    useAppStore.getState().rejectTool(secondBatchCall, { config, transport, session });
-
-    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-      call_0: 2, // earlier output + this batch's reject marker
-      call_1: 1, // this batch's skip marker
-    });
-    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
+    );
   });
 
   it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
@@ -775,19 +886,6 @@ function historyRoles(): string[] {
 }
 
 describe("runAgent history persistence (BUGS.md #8, #12)", () => {
-  const agentConfig: Config = {
-    yourName: "Test",
-    models: [
-      {
-        nickname: "test-model",
-        model: "test-model",
-        context: 128_000,
-        baseUrl: "http://localhost",
-        apiEnvVar: "OCTO_STATE_TEST_API_KEY",
-      },
-    ],
-  };
-
   const checkpointIr = {
     role: "checkpoint" as const,
     content: [{ type: "text" as const, content: "bug8-checkpoint-marker" }],
@@ -797,10 +895,6 @@ describe("runAgent history persistence (BUGS.md #8, #12)", () => {
     content: "bug8-assistant-marker",
     usage: compilerUsage(0, 0),
   };
-
-  beforeEach(() => {
-    process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
-  });
 
   it("persists a compaction checkpoint exactly once", async () => {
     const transport = new LocalTransport();

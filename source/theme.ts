@@ -1,4 +1,4 @@
-import React from "react";
+import { useAppStore } from "./state.ts";
 
 export const THEME_COLOR = "#72946d";
 export const UNCHAINED_COLOR = "#AA0A0A";
@@ -61,10 +61,8 @@ export function color(unchained: boolean) {
   return THEME_COLOR;
 }
 
-export const UnchainedContext = React.createContext<boolean>(false);
-
 export function useUnchained() {
-  return React.useContext(UnchainedContext);
+  return useAppStore(state => state.permission.unchained);
 }
 
 export function useColor() {
