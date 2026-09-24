@@ -1,5 +1,5 @@
 import type { octoAgent } from "../ir/octo-ir.ts";
-import type { CheckpointedIRWithTrajectories } from "../libocto/llm-ir.ts";
+import type { PreLoweredIR } from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
@@ -9,13 +9,13 @@ import type toolMap from "../tools/tool-defs/index.ts";
 
 type FileIR = FileReadIR<ToolCall<typeof toolMap>> | FileMutateIR<ToolCall<typeof toolMap>>;
 
-export type FileOptimizerInputIR = CheckpointedIRWithTrajectories<typeof octoAgent> | FileIR;
+export type FileOptimizerInputIR = PreLoweredIR<typeof octoAgent> | FileIR;
 
 export function optimizeFiles(
   messages: FileOptimizerInputIR[],
   modalities?: MultimodalConfig,
-): Array<CheckpointedIRWithTrajectories<typeof octoAgent>> {
-  const output: Array<CheckpointedIRWithTrajectories<typeof octoAgent>> = [];
+): Array<PreLoweredIR<typeof octoAgent>> {
+  const output: Array<PreLoweredIR<typeof octoAgent>> = [];
   const seenPaths = new Set<string>();
 
   for (const ir of [...messages].reverse()) {
@@ -29,7 +29,7 @@ function optimizeFileIR(
   ir: FileOptimizerInputIR,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): CheckpointedIRWithTrajectories<typeof octoAgent> {
+): PreLoweredIR<typeof octoAgent> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);
