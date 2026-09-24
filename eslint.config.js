@@ -39,8 +39,6 @@ export default tseslint.config(
   {
     // Core ESLint rules, applied to all linted files.
     rules: {
-      // All child processes must go through OctoProcess (source/octo-process.ts)
-      // so they're tracked and killed when Octo exits.
       "no-restricted-imports": [
         "error",
         {
@@ -53,13 +51,11 @@ export default tseslint.config(
             },
             {
               name: "child_process",
-              message:
-                "Import from `source/octo-process.ts` instead: OctoProcess manages the process lifecycle for you.",
+              message: "Spawn processes through a transport so that cleanup is handled for you.",
             },
             {
               name: "node:child_process",
-              message:
-                "Import from `source/octo-process.ts` instead: OctoProcess manages the process lifecycle for you.",
+              message: "Spawn processes through a transport so that cleanup is handled for you.",
             },
           ],
         },
@@ -68,13 +64,11 @@ export default tseslint.config(
         "error",
         {
           selector: "ImportExpression[source.value='child_process']",
-          message:
-            "Import from `source/octo-process.ts` instead: OctoProcess manages the process lifecycle for you.",
+          message: "Spawn processes through a transport so that cleanup is handled for you.",
         },
         {
           selector: "ImportExpression[source.value='node:child_process']",
-          message:
-            "Import from `source/octo-process.ts` instead: OctoProcess manages the process lifecycle for you.",
+          message: "Spawn processes through a transport so that cleanup is handled for you.",
         },
       ],
 
@@ -210,8 +204,7 @@ export default tseslint.config(
     },
   },
   {
-    // The only module allowed to touch `child_process` directly.
-    files: ["source/octo-process.ts"],
+    files: ["source/transports/**"],
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": "off",

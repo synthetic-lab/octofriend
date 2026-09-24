@@ -1,5 +1,5 @@
+import type { TransportProcess } from "./transports/transport-process.ts";
 import { registry } from "antipattern";
-import { OctoProcess, OctoProcessManager, processes } from "./octo-process.ts";
 import { sleep } from "./libocto/sleep.ts";
 import { ShellOutput } from "./transports/transport-common.ts";
 
@@ -19,7 +19,7 @@ export class BackgroundProcess {
   readonly label: string;
   readonly command: string;
 
-  private readonly octoProcess: OctoProcess;
+  private readonly process: TransportProcess;
   private readonly stdout = new ShellOutput();
   private readonly stderr = new ShellOutput();
   private _outputExceeded = false;
@@ -27,27 +27,28 @@ export class BackgroundProcess {
   private readonly activityListeners = new Set<() => void>();
   private readonly processClosedPromise: Promise<void>;
 
-  constructor(id: string, label: string, octoProcess: OctoProcess, command: string) {
-    if (octoProcess.stdout == null || octoProcess.stderr == null) {
+  constructor(id: string, label: string, process: TransportProcess, command: string) {
+    if (process.stdout == null || process.stderr == null) {
       throw new Error("Background processes must be spawned with piped stdio");
     }
     this.id = id;
     this.label = label;
-    this.octoProcess = octoProcess;
+    this.process = process;
     this.command = command;
-    this.processClosedPromise = new Promise(resolve => octoProcess.once("close", () => resolve()));
+    this.processClosedPromise = process.processClosedPromise;
 
-    octoProcess.stdout.on("data", data => this.appendOutput(this.stdout, data));
-    octoProcess.stderr.on("data", data => this.appendOutput(this.stderr, data));
-    octoProcess.on("exit", (code, signal) => {
+    process.stdout.on("data", data => this.appendOutput(this.stdout, data));
+    process.stderr.on("data", data => this.appendOutput(this.stderr, data));
+    process.on("exit", (code, signal) => {
       this._status = { state: "exited", code, signal };
       this.emitActivityNotification();
     });
-    octoProcess.on("error", error => {
+    process.on("error", error => {
       this.appendOutput(this.stderr, `Spawn error: ${error.message}\n`);
       if (this._status.state === "running") {
         this._status = { state: "exited", code: null, signal: null, error: error.message };
       }
+      this.emitActivityNotification();
     });
   }
 
@@ -60,7 +61,7 @@ export class BackgroundProcess {
   }
 
   async kill(): Promise<void> {
-    this.octoProcess.terminate({ graceMs: KILL_GRACE_MS });
+    await this.process.terminate({ graceMs: KILL_GRACE_MS });
     await this.processClosedPromise;
   }
 
@@ -76,16 +77,20 @@ export class BackgroundProcess {
   }
 
   async awaitActivity(timeoutMs: number, userAbortSignal: AbortSignal): Promise<void> {
-    if (this._status.state === "exited" || this._outputExceeded || this.hasUndrainedOutput) return;
-    let onActivity: () => void = () => {};
-    const activityOccurred = new Promise<void>(resolve => {
-      onActivity = resolve;
-    });
-    this.activityListeners.add(onActivity);
-    userAbortSignal.addEventListener("abort", onActivity);
-    await Promise.race([activityOccurred, sleep(timeoutMs)]);
-    userAbortSignal.removeEventListener("abort", onActivity);
-    this.activityListeners.delete(onActivity);
+    if (
+      userAbortSignal.aborted ||
+      this._status.state === "exited" ||
+      this._outputExceeded ||
+      this.hasUndrainedOutput
+    )
+      return;
+    const waiting = new AbortController();
+    const finishWaiting = () => waiting.abort();
+    this.activityListeners.add(finishWaiting);
+    userAbortSignal.addEventListener("abort", finishWaiting);
+    await sleep(timeoutMs, waiting.signal);
+    userAbortSignal.removeEventListener("abort", finishWaiting);
+    this.activityListeners.delete(finishWaiting);
   }
 
   private appendOutput(output: ShellOutput, data: string | Buffer): void {
@@ -110,17 +115,9 @@ export class BackgroundProcessManager {
   private readonly backgroundProcesses = new Map<string, BackgroundProcess>();
   private nextId = 0;
 
-  constructor(private readonly octoProcessManager: OctoProcessManager) {}
-
-  start(command: string, label: string): BackgroundProcess {
+  track(transportProcess: TransportProcess, label: string, command: string): BackgroundProcess {
     const id = `bg-process-${++this.nextId}`;
-    const octoProcess = this.octoProcessManager.spawn(command, {
-      cwd: process.cwd(),
-      shell: "bash",
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-    });
-    const backgroundProcess = new BackgroundProcess(id, label, octoProcess, command);
+    const backgroundProcess = new BackgroundProcess(id, label, transportProcess, command);
     this.backgroundProcesses.set(id, backgroundProcess);
     return backgroundProcess;
   }
@@ -141,10 +138,8 @@ export class BackgroundProcessManager {
   }
 }
 
-const manager = new BackgroundProcessManager(processes.manager());
+const manager = new BackgroundProcessManager();
 
 export const backgroundProcesses = registry({
-  manager: () => {
-    return manager;
-  },
+  manager: () => manager,
 });

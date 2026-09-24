@@ -1,14 +1,21 @@
 import fs from "fs/promises";
 import path from "path";
+import { spawn, execFile, type ChildProcess } from "child_process";
 import {
   Transport,
-  AbortError,
-  CommandFailedError,
-  MAX_SHELL_OUTPUT_LENGTH,
-  ShellOutput,
   TransportError,
+  runShell,
+  runBackgroundShell,
+  type BackgroundShellOptions,
 } from "./transport-common.ts";
-import { OctoProcessManager } from "../octo-process.ts";
+import { processes } from "../process-manager.ts";
+import {
+  TransportProcess,
+  type TransportProcessOptions,
+  type ProcessSpawnOptions,
+  type ProcessExecFileOptions,
+  type ProcessExecFileCallback,
+} from "./transport-process.ts";
 
 const KILL_GRACE_MS = 500;
 
@@ -16,10 +23,61 @@ const STRIPPED_ENV_VARS = ["NODE_ENV", "NAPI_RS_NATIVE_LIBRARY_PATH", "CANARY_OC
 
 export class LocalTransport implements Transport {
   cwd = process.cwd();
-  private readonly octoProcessManager = new OctoProcessManager();
+  // bash over sh: available on most local setups, and tolerant of LLM bash-isms
+  readonly commandShell = "bash";
+  private readonly runningProcesses = new Set<TransportProcess>();
+  private readonly processManager = processes.manager();
 
   async close() {
-    this.octoProcessManager.terminateAll({ graceMs: KILL_GRACE_MS });
+    await Promise.all(
+      [...this.runningProcesses].map(localProcess =>
+        localProcess.terminate({ graceMs: KILL_GRACE_MS }),
+      ),
+    );
+  }
+
+  spawn(command: string, args: readonly string[], options: ProcessSpawnOptions): TransportProcess {
+    const { surviveAfterOctoExit, ...spawnOptions } = options;
+    return this.manage(
+      spawn(command, args, {
+        cwd: this.cwd,
+        env: commandEnvironment(),
+        ...spawnOptions,
+      }),
+      { detached: options.detached, surviveAfterOctoExit },
+    );
+  }
+
+  execFile(
+    file: string,
+    args: readonly string[],
+    options: ProcessExecFileOptions,
+    callback: ProcessExecFileCallback | undefined,
+  ): TransportProcess {
+    const localProcess = this.manage(
+      execFile(
+        file,
+        args,
+        {
+          cwd: this.cwd,
+          env: commandEnvironment(),
+          ...options,
+          encoding: "utf8",
+        },
+        callback,
+      ),
+      {},
+    );
+    localProcess.on("error", () => {});
+    return localProcess;
+  }
+
+  private manage(childProcess: ChildProcess, options: TransportProcessOptions): TransportProcess {
+    const localProcess = new TransportProcess(childProcess, options);
+    this.runningProcesses.add(localProcess);
+    this.processManager.register(localProcess);
+    void localProcess.processClosedPromise.then(() => this.runningProcesses.delete(localProcess));
+    return localProcess;
   }
 
   async writeFile(_: AbortSignal, file: string, contents: string) {
@@ -89,114 +147,17 @@ export class LocalTransport implements Transport {
     }
   }
 
-  async shell(signal: AbortSignal, cmd: string, timeout: number) {
-    return new Promise<string>((resolve, reject) => {
-      const env = { ...process.env };
-      for (const name of STRIPPED_ENV_VARS) delete env[name];
-
-      const octoProcess = this.octoProcessManager.spawn(cmd, {
-        cwd: process.cwd(),
-        shell: "bash",
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: true,
-        env,
-      });
-      if (!octoProcess.stdout || !octoProcess.stderr) {
-        reject(new Error("Failed to spawn shell process with piped stdio"));
-        return;
-      }
-
-      const output = new ShellOutput();
-      let aborted = false;
-      let timedOut = false;
-      let killed = false;
-
-      function killGroup() {
-        if (killed) return;
-        killed = true;
-        octoProcess.terminate({ graceMs: KILL_GRACE_MS });
-      }
-
-      function onAbort() {
-        aborted = true;
-        killGroup();
-      }
-
-      function cleanup() {
-        signal.removeEventListener("abort", onAbort);
-        clearTimeout(timeoutHandler);
-      }
-
-      const timeoutHandler = setTimeout(() => {
-        timedOut = true;
-        killGroup();
-      }, timeout);
-
-      if (signal.aborted) onAbort();
-      signal.addEventListener("abort", onAbort);
-
-      octoProcess.stdout.on("data", data => {
-        if (!output.append(data)) killGroup();
-      });
-
-      octoProcess.stderr.on("data", data => {
-        if (!output.append(data)) killGroup();
-      });
-
-      octoProcess.on("close", code => {
-        cleanup();
-        if (aborted) {
-          reject(new AbortError());
-          return;
-        }
-        const commandOutput = output.getOutput();
-        if (commandOutput == null) {
-          reject(
-            new CommandFailedError(
-              `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
-            ),
-          );
-          return;
-        }
-        if (timedOut) {
-          reject(
-            new CommandFailedError(
-              `Command timed out.
-output: ${commandOutput}`,
-            ),
-          );
-          return;
-        }
-        if (code === 0) {
-          resolve(commandOutput);
-        } else {
-          if (code == null) {
-            reject(
-              new CommandFailedError(
-                `Command killed by signal.
-output: ${commandOutput}`,
-              ),
-            );
-          } else {
-            reject(
-              new CommandFailedError(
-                `Command exited with code: ${code}
-output: ${commandOutput}`,
-                code,
-              ),
-            );
-          }
-        }
-      });
-
-      octoProcess.on("error", err => {
-        cleanup();
-        if (aborted) {
-          reject(new AbortError());
-          return;
-        }
-        reject(new CommandFailedError(`Command failed: ${err.message}`));
-      });
-    });
+  backgroundShell(options: BackgroundShellOptions) {
+    return runBackgroundShell(this, options);
   }
+
+  async shell(signal: AbortSignal, cmd: string, timeout: number) {
+    return runShell(this, signal, cmd, timeout);
+  }
+}
+
+function commandEnvironment(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const name of STRIPPED_ENV_VARS) delete env[name];
+  return env;
 }

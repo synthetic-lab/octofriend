@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { TOOL } from "../common.ts";
+import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { ok, err } from "../../libocto/result.ts";
 import { MAX_SHELL_OUTPUT_LENGTH } from "../../transports/transport-common.ts";
 import {
@@ -39,6 +39,7 @@ period, waits for the process to die, and returns its final status plus any rema
   }),
 }).define(async () => ({
   async run({ signal, toolCall }) {
+    if (signal.aborted) return err(USER_ABORTED_ERROR_MESSAGE);
     const { id, action, timeout } = toolCall.parsed.arguments;
     const manager = backgroundProcesses.manager();
     switch (action) {
