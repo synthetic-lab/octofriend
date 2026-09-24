@@ -32,7 +32,6 @@ import {
   SCROLLBAR_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
   THOUGHTBOX_COLOR,
-  UnchainedContext,
   useColor,
   useUnchained,
 } from "./theme.ts";
@@ -53,14 +52,13 @@ import glob from "./tools/tool-defs/glob.ts";
 import grep from "./tools/tool-defs/grep.ts";
 import backgroundProcess from "./tools/tool-defs/background-process.ts";
 import manageBackgroundProcess from "./tools/tool-defs/manage-background-process.ts";
-import { ALWAYS_REQUEST_PERMISSION_TOOLS, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
+import { ALWAYS_REQUEST_PERMISSION_TOOLS } from "./tools/index.ts";
 import { ParsedSchema as EditParsedSchema } from "./tools/tool-defs/edit.ts";
 import { useShallow } from "zustand/react/shallow";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.tsx";
 import {
   useAppStore,
-  RunArgs,
   useModel,
   InflightResponseType,
   nextToolAction,
@@ -96,6 +94,7 @@ import { LINE_SPLIT_REGEX, excerpt } from "./str.ts";
 import { VimModeIndicator } from "./components/vim-mode.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./components/input-mode.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
+import { type OctoPermissionControl } from "./octo-permissions.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
 import type { OctoIR } from "./ir/octo-ir.ts";
@@ -172,24 +171,17 @@ const UNCHAINED_NOTIF = "Octo runs edits and shell commands automatically";
 const CHAINED_NOTIF = "Octo asks permission before running edits or shell commands";
 const KEYBOARD_SCROLL_DURATION_MS = 80;
 function UnchainedShiftTabHandler({
-  setIsUnchained,
   setTempNotification,
 }: {
-  setIsUnchained: (fn: (prev: boolean) => boolean) => void;
   setTempNotification: (notif: string | null) => void;
 }) {
+  const unchained = useAppStore(state => state.unchained);
+  const setUnchained = useAppStore(state => state.setUnchained);
   usePriorityInput(UNCHAINED_PRIORITY, event => {
     if (event.shiftKey && event.key === "Tab") {
       event.preventDefault();
-      setIsUnchained(prev => {
-        const unchained = !prev;
-        if (unchained) {
-          setTempNotification(UNCHAINED_NOTIF);
-        } else {
-          setTempNotification(CHAINED_NOTIF);
-        }
-        return unchained;
-      });
+      setUnchained(!unchained);
+      setTempNotification(unchained ? CHAINED_NOTIF : UNCHAINED_NOTIF);
     }
   });
   return null;
@@ -285,9 +277,8 @@ export default function App({
     },
     [onSessionChange, session],
   );
-  const [isUnchained, setIsUnchained] = useState(unchained);
   const [tempNotification, setTempNotification] = useState<string | null>(
-    isUnchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
+    unchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
   const {
     history,
@@ -299,6 +290,7 @@ export default function App({
     cancelNotifyReadyForInput,
     closeMenu,
     query,
+    setUnchained,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -310,8 +302,12 @@ export default function App({
       cancelNotifyReadyForInput: state.cancelNotifyReadyForInput,
       closeMenu: state.closeMenu,
       query: state.query,
+      setUnchained: state.setUnchained,
     })),
   );
+  useLayoutEffect(() => {
+    setUnchained(unchained);
+  }, [setUnchained, unchained]);
   useKeyboard(() => {
     cancelNotifyReadyForInput();
   });
@@ -407,110 +403,102 @@ export default function App({
       <SetConfigContext.Provider value={setCurrConfig}>
         <ConfigPathContext.Provider value={configPath}>
           <ConfigContext.Provider value={currConfig}>
-            <UnchainedContext.Provider value={isUnchained}>
-              <TransportContext.Provider value={transport}>
-                <SessionContext.Provider value={session}>
-                  <CwdContext.Provider value={cwd}>
-                    <InputDisabledProvider disabled={isMenuOpen}>
-                      <ExitOnDoubleCtrlC>
-                        <InputPriorityProvider>
-                          <UnchainedShiftTabHandler
-                            setIsUnchained={setIsUnchained}
-                            setTempNotification={setTempNotification}
-                          />
-                          <AppShell>
+            <TransportContext.Provider value={transport}>
+              <SessionContext.Provider value={session}>
+                <CwdContext.Provider value={cwd}>
+                  <InputDisabledProvider disabled={isMenuOpen}>
+                    <ExitOnDoubleCtrlC>
+                      <InputPriorityProvider>
+                        <UnchainedShiftTabHandler setTempNotification={setTempNotification} />
+                        <AppShell>
+                          <TerminalFlex
+                            ref={transcriptRef}
+                            onScroll={event => {
+                              followTranscriptRef.current = isScrolledToBottom(
+                                event.scrollTop,
+                                event.scrollHeight,
+                                transcriptRef.current?.clientHeight ?? 1,
+                              );
+                            }}
+                            style={{
+                              flexDirection: "column",
+                              flexGrow: 1,
+                              flexShrink: 1,
+                              flexBasis: 0,
+                              minWidth: 0,
+                              minHeight: 0,
+                              overflowY: "scroll",
+                              scrollbarGutter: "stable",
+                              scrollbarColor: appScrollbarColor,
+                            }}
+                          >
                             <TerminalFlex
-                              ref={transcriptRef}
-                              onScroll={event => {
-                                followTranscriptRef.current = isScrolledToBottom(
-                                  event.scrollTop,
-                                  event.scrollHeight,
-                                  transcriptRef.current?.clientHeight ?? 1,
-                                );
-                              }}
                               style={{
                                 flexDirection: "column",
-                                flexGrow: 1,
-                                flexShrink: 1,
-                                flexBasis: 0,
-                                minWidth: 0,
-                                minHeight: 0,
-                                overflowY: "scroll",
-                                scrollbarGutter: "stable",
-                                scrollbarColor: appScrollbarColor,
+                                minHeight: "100%",
+                                flexShrink: 0,
+                                overflowWrap: "anywhere",
                               }}
                             >
                               <TerminalFlex
                                 style={{
                                   flexDirection: "column",
-                                  minHeight: "100%",
-                                  flexShrink: 0,
-                                  overflowWrap: "anywhere",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  width: "100%",
+                                  flexGrow: 1,
+                                  flexShrink: 1,
+                                  marginTop: 1,
+                                  marginBottom: 1,
                                 }}
                               >
-                                <TerminalFlex
-                                  style={{
-                                    flexDirection: "column",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    width: "100%",
-                                    flexGrow: 1,
-                                    flexShrink: 1,
-                                    marginTop: 1,
-                                    marginBottom: 1,
-                                  }}
-                                >
-                                  {bootItems.map((item, index) => (
-                                    <TranscriptItemRenderer item={item} key={`boot-${index}`} />
-                                  ))}
-                                </TerminalFlex>
-                                <TranscriptItemRenderer item={{ type: "slogan" }} />
-                                <TerminalFlex
-                                  key={clearNonce}
-                                  style={{
-                                    flexDirection: "column",
-                                  }}
-                                >
-                                  {historyItems.map((item, index) => (
-                                    <TranscriptItemRenderer item={item} key={`history-${index}`} />
-                                  ))}
-                                  {(modeData.mode === "responding" ||
-                                    modeData.mode === "compacting") &&
-                                    (modeData.inflightResponse.reasoningContent ||
-                                      modeData.inflightResponse.content) && (
-                                      <MessageDisplay item={modeData.inflightResponse} />
-                                    )}
-                                  {(modeData.mode === "tool-call" ||
-                                    modeData.mode === "tool-call-permission") && (
-                                    <ToolRequestsRenderer
-                                      toolReqs={modeData.toolReqs}
-                                      config={currConfig}
-                                      transport={transport}
-                                      session={session}
-                                      onContentLayout={scrollTranscriptToBottom}
-                                    />
+                                {bootItems.map((item, index) => (
+                                  <TranscriptItemRenderer item={item} key={`boot-${index}`} />
+                                ))}
+                              </TerminalFlex>
+                              <TranscriptItemRenderer item={{ type: "slogan" }} />
+                              <TerminalFlex
+                                key={clearNonce}
+                                style={{
+                                  flexDirection: "column",
+                                }}
+                              >
+                                {historyItems.map((item, index) => (
+                                  <TranscriptItemRenderer item={item} key={`history-${index}`} />
+                                ))}
+                                {(modeData.mode === "responding" ||
+                                  modeData.mode === "compacting") &&
+                                  (modeData.inflightResponse.reasoningContent ||
+                                    modeData.inflightResponse.content) && (
+                                    <MessageDisplay item={modeData.inflightResponse} />
                                   )}
-                                </TerminalFlex>
+                                {(modeData.mode === "tool-call" ||
+                                  modeData.mode === "tool-call-permission") && (
+                                  <ToolRequestsRenderer
+                                    toolReqs={modeData.toolReqs}
+                                    onContentLayout={scrollTranscriptToBottom}
+                                  />
+                                )}
                               </TerminalFlex>
                             </TerminalFlex>
-                            <BottomBar
-                              inputHistory={inputHistory}
-                              metadata={metadata}
-                              tempNotification={tempNotification}
-                            />
-                          </AppShell>
-                        </InputPriorityProvider>
-                      </ExitOnDoubleCtrlC>
-                    </InputDisabledProvider>
-                    {isMenuOpen && (
-                      <Modal minWidth={50} onClose={closeMenu}>
-                        <Menu onSessionChange={handleSessionChange} />
-                      </Modal>
-                    )}
-                  </CwdContext.Provider>
-                </SessionContext.Provider>
-              </TransportContext.Provider>
-            </UnchainedContext.Provider>
+                          </TerminalFlex>
+                          <BottomBar
+                            inputHistory={inputHistory}
+                            metadata={metadata}
+                            tempNotification={tempNotification}
+                          />
+                        </AppShell>
+                      </InputPriorityProvider>
+                    </ExitOnDoubleCtrlC>
+                  </InputDisabledProvider>
+                  {isMenuOpen && (
+                    <Modal minWidth={50} onClose={closeMenu}>
+                      <Menu onSessionChange={handleSessionChange} />
+                    </Modal>
+                  )}
+                </CwdContext.Provider>
+              </SessionContext.Provider>
+            </TransportContext.Provider>
           </ConfigContext.Provider>
         </ConfigPathContext.Provider>
       </SetConfigContext.Provider>
@@ -726,6 +714,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       const finalQuery = submittedQuery ?? query;
       inputSubmitted();
       setQuery("");
+      if (modeData.mode === "awaiting-steering") {
+        modeData.rejectionTx.commitRejection(finalQuery);
+        return;
+      }
       if (modeData.mode !== "ready-for-request") {
         queueMessage({ content: finalQuery, images });
         return;
@@ -865,7 +857,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     );
   }
   if (modeData.mode === "tool-call-permission") return null;
-  const _: "ready-for-request" = modeData.mode;
+  const _: "ready-for-request" | "awaiting-steering" = modeData.mode;
   return (
     <TerminalFlex
       style={{
@@ -1368,42 +1360,27 @@ const ToolRequestItem = ({
 };
 function ToolRequestsRenderer({
   toolReqs,
-  config,
-  transport,
-  session,
   onContentLayout,
 }: {
   toolReqs: ToolCallRequest[];
   onContentLayout: () => void;
-} & RunArgs) {
-  const runAgent = useAppStore(state => state.runAgent);
-  const { history, runningToolCallId } = useAppStore(
+}) {
+  const { history, runningToolCallId, modeData } = useAppStore(
     useShallow(state => ({
       history: state.history,
       runningToolCallId: state.runningToolCallId,
+      modeData: state.modeData,
     })),
   );
-  /*
-   * Derive the current action from history rather than tracking a cursor in component state:
-   * this component unmounts when the menu opens, and a cursor would reset to 0 on remount,
-   * re-running tools that already executed.
-   */
+  // Display-only: state.ts drives the batch; this just derives which call to show.
   const action = nextToolAction(toolReqs, runningToolCallId, history);
   const actionKey = action.kind === "done" ? "done" : `${action.kind}:${action.req.toolCallId}`;
   useLayoutEffect(() => {
     onContentLayout();
   }, [actionKey, onContentLayout]);
-  if (action.kind === "done") {
-    return (
-      <FinishToolRequests
-        runAgent={runAgent}
-        config={config}
-        transport={transport}
-        session={session}
-      />
-    );
-  }
-  const currentToolReq = action.req;
+  if (action.kind === "done") return <Loading />;
+  const currentToolReq =
+    modeData.mode === "tool-call-permission" ? modeData.control.toolCall : action.req;
   return (
     <TerminalFlex
       style={{
@@ -1411,88 +1388,23 @@ function ToolRequestsRenderer({
       }}
     >
       <ToolMessageRenderer item={currentToolReq} />
-      <ToolRequestRenderer
-        toolReq={currentToolReq}
-        config={config}
-        transport={transport}
-        session={session}
-        onContentLayout={onContentLayout}
-      />
+      {modeData.mode === "tool-call-permission" && (
+        <ToolPermissionSelect control={modeData.control} onContentLayout={onContentLayout} />
+      )}
     </TerminalFlex>
   );
 }
-function FinishToolRequests({
-  runAgent,
-  config,
-  transport,
-  session,
-}: {
-  runAgent: (args: RunArgs) => Promise<void>;
-} & RunArgs) {
-  useEffect(() => {
-    runAgent({
-      config,
-      transport,
-      session,
-    });
-  }, [runAgent, config, transport, session]);
-  return <Loading />;
-}
-function ToolRequestRenderer({
-  toolReq,
-  config,
-  transport,
-  session,
+function ToolPermissionSelect({
+  control,
   onContentLayout,
 }: {
-  toolReq: ToolCallRequest;
+  control: OctoPermissionControl;
   onContentLayout: () => void;
-} & RunArgs) {
+}) {
   const themeColor = useColor();
   const scrollTranscriptToBottomIfNeeded = useScrollTranscriptToBottom();
-  const { runTool, rejectTool, addToWhitelist, notifyReadyForInput, requestToolPermission } =
-    useAppStore(
-      useShallow(state => ({
-        runTool: state.runTool,
-        rejectTool: state.rejectTool,
-        addToWhitelist: state.addToWhitelist,
-        notifyReadyForInput: state.notifyReadyForInput,
-        requestToolPermission: state.requestToolPermission,
-      })),
-    );
-  const unchained = useUnchained();
-  const whitelistKey = (() => {
-    const fn = parsedToolSchema(toolReq);
-    switch (fn.name) {
-      case "read":
-      case "partial-read":
-      case "list":
-        return "read:*";
-      case "create":
-      case "rewrite":
-      case "edit":
-        return "edits:*";
-      case "mcp":
-        return `${fn.name}:${fn.arguments.server}:${fn.arguments.tool}`;
-      case "skill":
-      case "shell":
-      case "fetch":
-      case "glob":
-      case "grep":
-      case "web-search":
-      case "lsp-definition":
-      case "lsp-references":
-      case "lsp-hover":
-      case "lsp-diagnostics":
-      case "lsp-document-symbol":
-      case "lsp-implementation":
-      case "lsp-incoming-calls":
-      case "lsp-outgoing-calls":
-        return `${fn.name}:*`;
-    }
-    return `${fn.name}:*`;
-  })();
-  const isToolWhitelisted = useAppStore(state => state.whitelist.has(whitelistKey));
+  const toolReq = control.toolCall;
+  const toolName = toolReq.name;
   const prompt = (() => {
     const fn = parsedToolSchema(toolReq);
     switch (fn.name) {
@@ -1547,7 +1459,6 @@ function ToolRequestRenderer({
     }
     return null;
   })();
-  const toolName = toolReq.name;
   type SelectItem = {
     label: string;
     value: string;
@@ -1558,9 +1469,7 @@ function ToolRequestRenderer({
       label: "Yes",
       value: "yes",
     },
-    ...(!SKIP_CONFIRMATION_TOOLS.includes(toolName) &&
-    !ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolName) &&
-    !isToolWhitelisted
+    ...(!ALWAYS_REQUEST_PERMISSION_TOOLS.includes(toolName)
       ? [
           {
             label: "Yes, and always allow",
@@ -1575,64 +1484,20 @@ function ToolRequestRenderer({
     },
   ];
   const onSelect = useCallback(
-    async (item: (typeof items)[number]) => {
+    (item: (typeof items)[number]) => {
       if (item.value === "no") {
-        rejectTool(toolReq, { config, transport, session });
+        control.beginReject();
       } else if (item.value === "yes-whitelist") {
-        const pendingToolRun = runTool({
-          toolReq,
-          config,
-          transport,
-          session,
-        });
-        await addToWhitelist(whitelistKey);
-        await pendingToolRun;
+        control.allowAndWhitelist();
       } else {
-        await runTool({
-          toolReq,
-          config,
-          transport,
-          session,
-        });
+        control.allow();
       }
     },
-    [toolReq, config, transport, session, addToWhitelist, runTool, rejectTool, whitelistKey],
+    [control],
   );
-  const runningToolCallId = useAppStore(state => state.runningToolCallId);
-  const isRunning = runningToolCallId === toolReq.toolCallId;
-  const noConfirmationNeeded =
-    unchained || SKIP_CONFIRMATION_TOOLS.includes(toolReq.name) || isToolWhitelisted;
   useLayoutEffect(() => {
-    if (!isRunning && !noConfirmationNeeded) requestToolPermission();
     onContentLayout();
-  }, [isRunning, noConfirmationNeeded, requestToolPermission, onContentLayout]);
-  useEffect(() => {
-    // Already in flight (e.g. remounted mid-run after the menu closed): render progress without
-    // re-invoking the tool.
-    if (isRunning) return;
-    if (noConfirmationNeeded) {
-      runTool({
-        toolReq,
-        config,
-        transport,
-        session,
-      });
-    } else {
-      notifyReadyForInput(config);
-    }
-  }, [
-    toolReq,
-    isRunning,
-    noConfirmationNeeded,
-    config,
-    transport,
-    session,
-    runTool,
-    notifyReadyForInput,
-  ]);
-  if (noConfirmationNeeded || isRunning) {
-    return null;
-  }
+  }, [onContentLayout]);
   return (
     <TerminalFlex
       style={{
