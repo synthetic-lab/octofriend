@@ -1102,30 +1102,31 @@ export const useAppStore = create<UiState>((set, get) => ({
           rejectionTx: null,
           whitelistState: get().whitelistState,
         },
-        setState: update => {
-          set({ whitelistState: update.whitelistState });
+        onWhitelist: whitelistState => {
+          set({ whitelistState });
+        },
+        onBeginRejection: rejectionTx => {
           const currentMode = get().modeData;
-          if (update.rejectionTx != null) {
-            // A rejection opens the steering window: record it in history immediately.
-            if (currentMode.mode === "tool-call-permission") {
-              get()._appendToolRejection(currentMode.control.toolCall, {
-                config,
-                transport,
-                session,
-              });
-              set({
-                modeData: {
-                  mode: "awaiting-steering",
-                  toolReqs: currentMode.toolReqs,
-                  abortController: currentMode.abortController,
-                  rejectionTx: update.rejectionTx,
-                },
-              });
-            }
-          } else if (currentMode.mode === "awaiting-steering") {
+          if (currentMode.mode !== "tool-call-permission") return;
+          get()._appendToolRejection(currentMode.control.toolCall, {
+            config,
+            transport,
+            session,
+          });
+          set({
+            modeData: {
+              mode: "awaiting-steering",
+              toolReqs: currentMode.toolReqs,
+              abortController: currentMode.abortController,
+              rejectionTx,
+            },
+          });
+        },
+        onCommitRejection: () => {
+          const currentMode = get().modeData;
+          if (currentMode.mode === "awaiting-steering") {
             set({ modeData: { mode: "ready-for-request" } });
           }
-          return update;
         },
         controller: control => {
           const { unchained, whitelistState, modeData: currentMode } = get();
