@@ -39,8 +39,8 @@ import { err, ok, type Result } from "./libocto/result.ts";
 import {
   octoPermissionGate,
   whitelistKey,
-  type OctoGateState,
   type OctoPermissionControl,
+  type RejectionTransaction,
   type ToolCallRequest,
 } from "./octo-permissions.ts";
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
@@ -88,11 +88,6 @@ function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
   };
 }
 
-type PermissionSlice = OctoGateState & {
-  unchained: boolean;
-  pendingControl: OctoPermissionControl | null;
-};
-
 export type InflightResponseType = {
   type: "inflight-response";
   content: string;
@@ -121,11 +116,13 @@ export type UiState = {
         mode: "tool-call-permission";
         toolReqs: ToolCallRequest[];
         abortController: AbortController;
+        control: OctoPermissionControl;
       }
     | {
         mode: "awaiting-steering";
         toolReqs: ToolCallRequest[];
         abortController: AbortController;
+        rejectionTx: RejectionTransaction;
       }
     | {
         mode: "error-recovery";
@@ -186,7 +183,8 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
-  permission: PermissionSlice;
+  whitelistState: Set<string>;
+  unchained: boolean;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
   setNotifyOnce: (notifyOnce: boolean) => void;
@@ -357,12 +355,8 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
   sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
-  permission: {
-    rejectionTx: null,
-    whitelistState: new Set<string>(),
-    unchained: false,
-    pendingControl: null,
-  },
+  whitelistState: new Set<string>(),
+  unchained: false,
 
   setNotifyOnce: notifyOnce => {
     set({ notifyOnce });
@@ -471,10 +465,7 @@ export const useAppStore = create<UiState>((set, get) => ({
   abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
-    set(state => ({
-      queuedUserMessages: [],
-      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
-    }));
+    set({ queuedUserMessages: [] });
     if (
       modeData.mode !== "tool-call" &&
       modeData.mode !== "tool-call-permission" &&
@@ -638,7 +629,6 @@ export const useAppStore = create<UiState>((set, get) => ({
       sessionAutoNotify: false,
       // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
       runningToolCallId: null,
-      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
     }));
   },
 
@@ -661,13 +651,12 @@ export const useAppStore = create<UiState>((set, get) => ({
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
       runningToolCallId: null,
-      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
     }));
     return createSession(cwd, cliArgs);
   },
 
   setUnchained: unchained => {
-    set(state => ({ permission: { ...state.permission, unchained } }));
+    set({ unchained });
   },
 
   /*
@@ -756,7 +745,11 @@ export const useAppStore = create<UiState>((set, get) => ({
 
     const abortController = modeData.abortController;
     set({
-      modeData: { ...modeData, mode: "tool-call" },
+      modeData: {
+        mode: "tool-call",
+        toolReqs: modeData.toolReqs,
+        abortController: modeData.abortController,
+      },
       runningToolCallId: toolReq.toolCallId,
     });
 
@@ -1106,46 +1099,56 @@ export const useAppStore = create<UiState>((set, get) => ({
 
       const gate = octoPermissionGate({
         state: {
-          rejectionTx: get().permission.rejectionTx,
-          whitelistState: get().permission.whitelistState,
+          rejectionTx: null,
+          whitelistState: get().whitelistState,
         },
         setState: update => {
-          set(state => ({ permission: { ...state.permission, ...update } }));
+          set({ whitelistState: update.whitelistState });
+          const currentMode = get().modeData;
           if (update.rejectionTx != null) {
             // A rejection opens the steering window: record it in history immediately.
-            const { permission: currentPermission, modeData: currentMode } = get();
-            if (currentPermission.pendingControl != null) {
-              get()._appendToolRejection(currentPermission.pendingControl.toolCall, {
+            if (currentMode.mode === "tool-call-permission") {
+              get()._appendToolRejection(currentMode.control.toolCall, {
                 config,
                 transport,
                 session,
               });
+              set({
+                modeData: {
+                  mode: "awaiting-steering",
+                  toolReqs: currentMode.toolReqs,
+                  abortController: currentMode.abortController,
+                  rejectionTx: update.rejectionTx,
+                },
+              });
             }
-            if (currentMode.mode === "tool-call-permission") {
-              set(state => ({
-                modeData: { ...currentMode, mode: "awaiting-steering" },
-                permission: { ...state.permission, pendingControl: null },
-              }));
-            }
+          } else if (currentMode.mode === "awaiting-steering") {
+            set({ modeData: { mode: "ready-for-request" } });
           }
           return update;
         },
         controller: control => {
-          const { permission, modeData: currentMode } = get();
+          const { unchained, whitelistState, modeData: currentMode } = get();
           const toolCall = control.toolCall;
           if (
-            permission.unchained ||
+            unchained ||
             SKIP_CONFIRMATION_TOOLS.includes(toolCall.name) ||
-            permission.whitelistState.has(whitelistKey(toolCall))
+            whitelistState.has(whitelistKey(toolCall))
           ) {
             control.allow();
             return;
           }
           if (currentMode.mode === "tool-call") {
-            set({ modeData: { ...currentMode, mode: "tool-call-permission" } });
+            set({
+              modeData: {
+                mode: "tool-call-permission",
+                toolReqs: currentMode.toolReqs,
+                abortController: currentMode.abortController,
+                control,
+              },
+            });
+            get().notifyReadyForInput(config);
           }
-          set(state => ({ permission: { ...state.permission, pendingControl: control } }));
-          get().notifyReadyForInput(config);
         },
       });
 
@@ -1158,7 +1161,6 @@ export const useAppStore = create<UiState>((set, get) => ({
           return true;
         }
 
-        set(state => ({ permission: { ...state.permission, pendingControl: null } }));
         await get().runTool({ config, transport, session, toolReq: req });
 
         const current = get().modeData;

@@ -175,7 +175,7 @@ function UnchainedShiftTabHandler({
 }: {
   setTempNotification: (notif: string | null) => void;
 }) {
-  const unchained = useAppStore(state => state.permission.unchained);
+  const unchained = useAppStore(state => state.unchained);
   const setUnchained = useAppStore(state => state.setUnchained);
   usePriorityInput(UNCHAINED_PRIORITY, event => {
     if (event.shiftKey && event.key === "Tab") {
@@ -665,7 +665,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     clearAttachedImages,
     queuedMessages,
     queueMessage,
-    rejectionTx,
   } = useAppStore(
     useShallow(state => ({
       modeData: state.modeData,
@@ -682,7 +681,6 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       clearAttachedImages: state.clearAttachedImages,
       queuedMessages: state.queuedUserMessages,
       queueMessage: state.enqueueUserMessage,
-      rejectionTx: state.permission.rejectionTx,
     })),
   );
 
@@ -716,8 +714,8 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       const finalQuery = submittedQuery ?? query;
       inputSubmitted();
       setQuery("");
-      if (rejectionTx != null) {
-        rejectionTx.commitRejection(finalQuery);
+      if (modeData.mode === "awaiting-steering") {
+        modeData.rejectionTx.commitRejection(finalQuery);
         return;
       }
       if (modeData.mode !== "ready-for-request") {
@@ -744,17 +742,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         throw error;
       }
     },
-    [
-      query,
-      modeData.mode,
-      rejectionTx,
-      config,
-      transport,
-      session,
-      setQuery,
-      showToast,
-      inputSubmitted,
-    ],
+    [query, modeData.mode, config, transport, session, setQuery, showToast, inputSubmitted],
   );
   if (
     modeData.mode === "responding" ||
@@ -1377,11 +1365,11 @@ function ToolRequestsRenderer({
   toolReqs: ToolCallRequest[];
   onContentLayout: () => void;
 }) {
-  const { history, runningToolCallId, pendingControl } = useAppStore(
+  const { history, runningToolCallId, modeData } = useAppStore(
     useShallow(state => ({
       history: state.history,
       runningToolCallId: state.runningToolCallId,
-      pendingControl: state.permission.pendingControl,
+      modeData: state.modeData,
     })),
   );
   // Display-only: state.ts drives the batch; this just derives which call to show.
@@ -1391,7 +1379,8 @@ function ToolRequestsRenderer({
     onContentLayout();
   }, [actionKey, onContentLayout]);
   if (action.kind === "done") return <Loading />;
-  const currentToolReq = pendingControl?.toolCall ?? action.req;
+  const currentToolReq =
+    modeData.mode === "tool-call-permission" ? modeData.control.toolCall : action.req;
   return (
     <TerminalFlex
       style={{
@@ -1399,8 +1388,8 @@ function ToolRequestsRenderer({
       }}
     >
       <ToolMessageRenderer item={currentToolReq} />
-      {pendingControl != null && (
-        <ToolPermissionSelect control={pendingControl} onContentLayout={onContentLayout} />
+      {modeData.mode === "tool-call-permission" && (
+        <ToolPermissionSelect control={modeData.control} onContentLayout={onContentLayout} />
       )}
     </TerminalFlex>
   );

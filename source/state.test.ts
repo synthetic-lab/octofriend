@@ -11,6 +11,7 @@ import { db } from "./db/db.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
+import type { OctoPermissionControl } from "./octo-permissions.ts";
 import {
   historyItems,
   llmIrs,
@@ -79,12 +80,8 @@ beforeEach(() => {
     query: "",
     attachedImages: [],
     modeData: { mode: "ready-for-request" },
-    permission: {
-      rejectionTx: null,
-      whitelistState: new Set<string>(),
-      unchained: false,
-      pendingControl: null,
-    },
+    whitelistState: new Set<string>(),
+    unchained: false,
   });
 });
 
@@ -221,6 +218,20 @@ function fakeArcWithBatch(toolCalls: Array<ToolCall<typeof toolMap>>) {
   };
 }
 
+function pendingPermissionControl(): OctoPermissionControl | null {
+  const { modeData } = useAppStore.getState();
+  if (modeData.mode !== "tool-call-permission") return null;
+  return modeData.control;
+}
+
+function steeringRejectionTx() {
+  const { modeData } = useAppStore.getState();
+  if (modeData.mode !== "awaiting-steering") {
+    throw new Error(`expected awaiting-steering, got ${modeData.mode}`);
+  }
+  return modeData.rejectionTx;
+}
+
 describe("permissioned tool batches", () => {
   it("asks permission for each tool call and hides the input while parked", async () => {
     const transport = new LocalTransport();
@@ -231,19 +242,16 @@ describe("permissioned tool batches", () => {
     await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
       const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
 
-      await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+      await waitFor(() => pendingPermissionControl() != null);
 
       expect(useAppStore.getState().modeData.mode).toBe("tool-call-permission");
       expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
-      const firstControl = useAppStore.getState().permission.pendingControl!;
+      const firstControl = pendingPermissionControl()!;
       expect(firstControl.toolCall.toolCallId).toBe("call_a");
       firstControl.allow();
 
-      await waitFor(() => {
-        const control = useAppStore.getState().permission.pendingControl;
-        return control != null && control.toolCall.toolCallId === "call_b";
-      });
-      useAppStore.getState().permission.pendingControl!.allow();
+      await waitFor(() => pendingPermissionControl()?.toolCall.toolCallId === "call_b");
+      pendingPermissionControl()!.allow();
 
       await running;
 
@@ -252,7 +260,7 @@ describe("permissioned tool batches", () => {
         call_b: 1,
       });
       expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-      expect(useAppStore.getState().permission.pendingControl).toBeNull();
+      expect(pendingPermissionControl()).toBeNull();
     });
   });
 
@@ -265,19 +273,18 @@ describe("permissioned tool batches", () => {
     await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
       const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
 
-      await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+      await waitFor(() => pendingPermissionControl() != null);
 
-      useAppStore.getState().permission.pendingControl!.beginReject();
+      pendingPermissionControl()!.beginReject();
 
       expect(useAppStore.getState().modeData.mode).toBe("awaiting-steering");
       expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
-      expect(useAppStore.getState().permission.rejectionTx).not.toBeNull();
       expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
         call_a: 1,
         call_b: 1,
       });
 
-      useAppStore.getState().permission.rejectionTx!.commitRejection("do it differently");
+      steeringRejectionTx().commitRejection("do it differently");
       await running;
 
       expect(historyRoles()).toEqual([
@@ -293,7 +300,6 @@ describe("permissioned tool batches", () => {
       }
       expect(last.ir.content).toEqual([{ type: "text", content: "do it differently" }]);
       expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-      expect(useAppStore.getState().permission.rejectionTx).toBeNull();
     });
   });
 });
@@ -584,13 +590,12 @@ describe("tool call IDs reused across batches", () => {
           .getState()
           .runAgent({ config: agentConfig, transport, session });
 
-        await waitFor(() => useAppStore.getState().permission.pendingControl != null);
+        await waitFor(() => pendingPermissionControl() != null);
 
         // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip
         // only this batch's remaining call — the earlier answered call_0 must not confuse it.
-        const control = useAppStore.getState().permission.pendingControl!;
-        control.beginReject();
-        useAppStore.getState().permission.rejectionTx!.commitRejection("later");
+        pendingPermissionControl()!.beginReject();
+        steeringRejectionTx().commitRejection("later");
         await running;
 
         expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({

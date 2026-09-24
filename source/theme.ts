@@ -62,7 +62,7 @@ export function color(unchained: boolean) {
 }
 
 export function useUnchained() {
-  return useAppStore(state => state.permission.unchained);
+  return useAppStore(state => state.unchained);
 }
 
 export function useColor() {
