@@ -33,12 +33,19 @@ import { run, type ModelData } from "./compilers/run.ts";
 import { lowerOcto, lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
-import type { ToolCall } from "./libocto/tool-def.ts";
 import { answeredToolCallId } from "./libocto/llm-ir.ts";
-import type toolMap from "./tools/tool-defs/index.ts";
+import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
+import { err, ok, type Result } from "./libocto/result.ts";
+import {
+  octoPermissionGate,
+  whitelistKey,
+  type OctoGateState,
+  type OctoPermissionControl,
+  type ToolCallRequest,
+} from "./octo-permissions.ts";
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
-import { loadTools } from "./tools/index.ts";
+import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 
 export const MAX_RETRY_COUNT = 20;
@@ -81,7 +88,10 @@ function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
   };
 }
 
-type ToolCallRequest = ToolCall<typeof toolMap>;
+type PermissionSlice = OctoGateState & {
+  unchained: boolean;
+  pendingControl: OctoPermissionControl | null;
+};
 
 export type InflightResponseType = {
   type: "inflight-response";
@@ -109,6 +119,11 @@ export type UiState = {
       }
     | {
         mode: "tool-call-permission";
+        toolReqs: ToolCallRequest[];
+        abortController: AbortController;
+      }
+    | {
+        mode: "awaiting-steering";
         toolReqs: ToolCallRequest[];
         abortController: AbortController;
       }
@@ -171,15 +186,15 @@ export type UiState = {
   clearNonce: number;
   sessionHydrationNonce: number;
   lastUserPromptIndex: number | null;
-  whitelist: Set<string>;
+  permission: PermissionSlice;
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
   setNotifyOnce: (notifyOnce: boolean) => void;
   setNotifySession: (notifySession: boolean) => void;
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  rejectTool: (toolCall: ToolCallRequest, args: RunArgs) => void;
-  requestToolPermission: () => void;
+  _appendToolRejection: (toolCall: ToolCallRequest, args: RunArgs) => void;
+  _appendUserSteering: (steering: string, args: RunArgs) => void;
   abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
@@ -198,12 +213,12 @@ export type UiState = {
   clearAuthError: () => void;
   editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
   notify: (notif: string, session: Session, config: Config) => void;
-  addToWhitelist: (whitelistKey: string) => Promise<void>;
-  isWhitelisted: (whitelistKey: string) => Promise<boolean>;
+  setUnchained: (unchained: boolean) => void;
   hydrateSession: (history: readonly HistoryNode[]) => void;
   startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
   _maybeHandleAbort: (signal: AbortSignal) => boolean;
   runAgent: (args: RunArgs) => Promise<void>;
+  _runAgentOnce: (args: RunArgs) => Promise<boolean>;
 };
 
 export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
@@ -224,6 +239,7 @@ export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
     case "diff-apply":
     case "fix-json":
     case "request-error-retrying":
+    case "awaiting-steering":
     case "tool-call":
       return true;
   }
@@ -306,6 +322,22 @@ export function nextToolAction(
   return { kind: "done" };
 }
 
+async function waitForPermissionDecision(
+  gate: PermissionGate<typeof octoAgent>,
+  req: ToolCallRequest,
+  signal: AbortSignal,
+): Promise<Result<PermissionDecision, "aborted">> {
+  if (signal.aborted) return err("aborted");
+  let onAbort!: () => void;
+  const aborted = new Promise<Result<PermissionDecision, "aborted">>(resolve => {
+    onAbort = () => resolve(err("aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const decision = await Promise.race([gate(req).then(ok), aborted]);
+  signal.removeEventListener("abort", onAbort);
+  return decision;
+}
+
 export const useAppStore = create<UiState>((set, get) => ({
   isMenuOpen: false,
   _notifyTimer: null,
@@ -325,7 +357,12 @@ export const useAppStore = create<UiState>((set, get) => ({
   clearNonce: 0,
   sessionHydrationNonce: 0,
   lastUserPromptIndex: null,
-  whitelist: new Set<string>(),
+  permission: {
+    rejectionTx: null,
+    whitelistState: new Set<string>(),
+    unchained: false,
+    pendingControl: null,
+  },
 
   setNotifyOnce: notifyOnce => {
     set({ notifyOnce });
@@ -431,83 +468,20 @@ export const useAppStore = create<UiState>((set, get) => ({
     }));
   },
 
-  rejectTool: (toolCall, args) => {
-    const history = get().history;
-
-    // If we reject a tool call, we need to mark all subsequent tool calls as skipped, so the LLM
-    // knows we rejected partway through and didn't run the rest of the array of tools.
-    //
-    // Find the most recent set of tool calls, and attempt to find any tool calls subsequent to this
-    // one that may be skipped, and mark them all as skipped.
-    let lastToolCallIndex = history.length - 1;
-    for (lastToolCallIndex; lastToolCallIndex >= 0; lastToolCallIndex--) {
-      const item = history[lastToolCallIndex];
-      if (item.type === "llm-ir" && item.ir.role === "assistant" && item.ir.toolCalls) break;
-    }
-    const skippedCalls: HistoryItem[] = [];
-
-    if (lastToolCallIndex >= 0) {
-      const originatingToolCalls = history[lastToolCallIndex];
-      const toolCalls =
-        originatingToolCalls.type === "llm-ir" && originatingToolCalls.ir.role === "assistant"
-          ? (originatingToolCalls.ir.toolCalls ?? [])
-          : [];
-      for (let toolCallIndex = 0; toolCallIndex < toolCalls.length; toolCallIndex++) {
-        const call = toolCalls[toolCallIndex];
-        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-call") {
-          for (const skippedCall of toolCalls.slice(toolCallIndex + 1)) {
-            if (skippedCall.type === "tool-call") {
-              skippedCalls.push({
-                type: "llm-ir",
-                ir: {
-                  role: "tool-skip-output",
-                  toolCall: skippedCall,
-                  reason: "A previous tool call was rejected, so this tool was skipped",
-                },
-              });
-            }
-          }
-          break;
-        }
-      }
-    }
-    const model = getModelFromConfig(args.config, get().modelOverride);
-    set({
-      history: appendAndPersistHistory(
-        args.session,
-        get().history,
-        [
-          {
-            type: "llm-ir",
-            ir: {
-              role: "tool-reject",
-              toolCall,
-            },
-          },
-          ...skippedCalls,
-        ],
-        model,
-      ),
-      modeData: {
-        mode: "ready-for-request",
-      },
-    });
-    if (get().queuedUserMessages.length > 0) {
-      get().runAgent(args);
-    }
-  },
-
-  requestToolPermission: () => {
-    const { modeData } = get();
-    if (modeData.mode !== "tool-call") return;
-    set({ modeData: { ...modeData, mode: "tool-call-permission" } });
-  },
-
   abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
     const { modeData, runningToolCallId } = get();
     if ("abortController" in modeData) modeData.abortController.abort();
-    set({ queuedUserMessages: [] });
-    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-permission") return;
+    set(state => ({
+      queuedUserMessages: [],
+      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
+    }));
+    if (
+      modeData.mode !== "tool-call" &&
+      modeData.mode !== "tool-call-permission" &&
+      modeData.mode !== "awaiting-steering"
+    ) {
+      return;
+    }
 
     /*
      * Aborting a tool batch mid-flight leaves every request that never ran unanswered in
@@ -664,6 +638,7 @@ export const useAppStore = create<UiState>((set, get) => ({
       sessionAutoNotify: false,
       // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
       runningToolCallId: null,
+      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
     }));
   },
 
@@ -686,19 +661,84 @@ export const useAppStore = create<UiState>((set, get) => ({
       // An aborted tool clears this itself when it settles, but until it does the new session
       // must not see the old session's in-flight ID.
       runningToolCallId: null,
+      permission: { ...state.permission, pendingControl: null, rejectionTx: null },
     }));
     return createSession(cwd, cliArgs);
   },
 
-  addToWhitelist: async (whitelistKey: string) => {
-    const currentWhitelist = get().whitelist;
-    const newWhitelist = new Set(currentWhitelist);
-    newWhitelist.add(whitelistKey);
-    set({ whitelist: newWhitelist });
+  setUnchained: unchained => {
+    set(state => ({ permission: { ...state.permission, unchained } }));
   },
 
-  isWhitelisted: async (whitelistKey: string) => {
-    return get().whitelist.has(whitelistKey);
+  /*
+   * Records a rejected tool call: the reject marker for the call itself, plus skip markers for
+   * the rest of its batch, so the LLM knows we rejected partway through. This happens the moment
+   * the user begins a rejection; the steering message lands separately when they commit it.
+   */
+  _appendToolRejection: (toolCall, args) => {
+    const history = get().history;
+
+    let lastToolCallIndex = history.length - 1;
+    for (lastToolCallIndex; lastToolCallIndex >= 0; lastToolCallIndex--) {
+      const item = history[lastToolCallIndex];
+      if (item.type === "llm-ir" && item.ir.role === "assistant" && item.ir.toolCalls) break;
+    }
+    const skippedCalls: HistoryItem[] = [];
+
+    if (lastToolCallIndex >= 0) {
+      const originatingToolCalls = history[lastToolCallIndex];
+      const toolCalls =
+        originatingToolCalls.type === "llm-ir" && originatingToolCalls.ir.role === "assistant"
+          ? (originatingToolCalls.ir.toolCalls ?? [])
+          : [];
+      for (let toolCallIndex = 0; toolCallIndex < toolCalls.length; toolCallIndex++) {
+        const call = toolCalls[toolCallIndex];
+        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-call") {
+          for (const skippedCall of toolCalls.slice(toolCallIndex + 1)) {
+            if (skippedCall.type === "tool-call") {
+              skippedCalls.push({
+                type: "llm-ir",
+                ir: {
+                  role: "tool-skip-output",
+                  toolCall: skippedCall,
+                  reason: "A previous tool call was rejected, so this tool was skipped",
+                },
+              });
+            }
+          }
+          break;
+        }
+      }
+    }
+    const model = getModelFromConfig(args.config, get().modelOverride);
+    set({
+      history: appendAndPersistHistory(
+        args.session,
+        get().history,
+        [
+          {
+            type: "llm-ir",
+            ir: {
+              role: "tool-reject",
+              toolCall,
+            },
+          },
+          ...skippedCalls,
+        ],
+        model,
+      ),
+    });
+  },
+
+  _appendUserSteering: (steering, args) => {
+    const model = getModelFromConfig(args.config, get().modelOverride);
+    const history = appendAndPersistHistory(
+      args.session,
+      get().history,
+      [userMessageItem(steering)],
+      model,
+    );
+    set({ history, lastUserPromptIndex: history.length - 1 });
   },
 
   runTool: async ({ config, toolReq, transport, session }) => {
@@ -765,7 +805,19 @@ export const useAppStore = create<UiState>((set, get) => ({
     }
   },
 
-  runAgent: async ({ config, transport, session }) => {
+  /*
+   * _runAgentOnce runs a single model round-trip (plus any tool batch it requests) and returns
+   * whether the turn should continue: finished tool batches, queued messages, and steering all
+   * fold into the next iteration instead of recursing.
+   */
+  runAgent: async args => {
+    let shouldContinue = true;
+    while (shouldContinue) {
+      shouldContinue = await get()._runAgentOnce(args);
+    }
+  },
+
+  _runAgentOnce: async ({ config, transport, session }) => {
     get()._appendQueuedUserMessages(session, config);
     const historyCopy = [...get().history];
     const abortController = new AbortController();
@@ -783,7 +835,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: authResult.error,
           },
         });
-        return;
+        return false;
       }
       modelData = { type: "codex", auth: authResult.auth, model };
     } else {
@@ -796,7 +848,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: authResult.error,
           },
         });
-        return;
+        return false;
       }
       modelData = { type: "api", auth: authResult.auth, model };
     }
@@ -962,16 +1014,13 @@ export const useAppStore = create<UiState>((set, get) => ({
           queuedUserMessages: [],
           modeData: { mode: "ready-for-request" },
         });
-        return;
+        return false;
       }
       if (finishReason.type === "needs-response") {
-        if (get().queuedUserMessages.length > 0) {
-          await get().runAgent({ config, transport, session });
-          return;
-        }
+        if (get().queuedUserMessages.length > 0) return true;
         get().notifyReadyForInput(config);
         set({ modeData: { mode: "ready-for-request" } });
-        return;
+        return false;
       }
 
       if (finishReason.type === "request-error") {
@@ -982,24 +1031,24 @@ export const useAppStore = create<UiState>((set, get) => ({
             curlCommand: finishReason.curl,
           },
         });
-        return;
+        return false;
       }
 
       if (finishReason.type === "payment-error") {
         set({ modeData: { mode: "payment-error", error: finishReason.requestError } });
-        return;
+        return false;
       }
 
       if (finishReason.type === "rate-limit-error") {
         set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
-        return;
+        return false;
       }
 
       if (finishReason.type === "request-error-retry-budget-exceeded") {
         const error = finishReason.error;
         if (error.type === "rate-limit-error") {
           set({ modeData: { mode: "rate-limit-error", error: error.requestError } });
-          return;
+          return false;
         }
         set({
           modeData: {
@@ -1008,7 +1057,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             curlCommand: error.curl,
           },
         });
-        return;
+        return false;
       }
 
       if (finishReason.type === "auth-error") {
@@ -1019,7 +1068,7 @@ export const useAppStore = create<UiState>((set, get) => ({
             error: { type: "invalid", message: finishReason.authError },
           },
         });
-        return;
+        return false;
       }
 
       if (finishReason.type === "compaction-error") {
@@ -1040,20 +1089,86 @@ export const useAppStore = create<UiState>((set, get) => ({
             model,
           ),
         });
-        return;
+        return false;
       }
 
+      const toolReqs = finishReason.toolCalls;
       set({
         modeData: {
           mode: "tool-call",
-          toolReqs: finishReason.toolCalls,
-          abortController: new AbortController(),
+          toolReqs,
+          abortController,
         },
         runningToolCallId: null,
       });
+
+      if (abortController.signal.aborted) return false;
+
+      const gate = octoPermissionGate({
+        state: {
+          rejectionTx: get().permission.rejectionTx,
+          whitelistState: get().permission.whitelistState,
+        },
+        setState: update => {
+          set(state => ({ permission: { ...state.permission, ...update } }));
+          if (update.rejectionTx != null) {
+            // A rejection opens the steering window: record it in history immediately.
+            const { permission: currentPermission, modeData: currentMode } = get();
+            if (currentPermission.pendingControl != null) {
+              get()._appendToolRejection(currentPermission.pendingControl.toolCall, {
+                config,
+                transport,
+                session,
+              });
+            }
+            if (currentMode.mode === "tool-call-permission") {
+              set(state => ({
+                modeData: { ...currentMode, mode: "awaiting-steering" },
+                permission: { ...state.permission, pendingControl: null },
+              }));
+            }
+          }
+          return update;
+        },
+        controller: control => {
+          const { permission, modeData: currentMode } = get();
+          const toolCall = control.toolCall;
+          if (
+            permission.unchained ||
+            SKIP_CONFIRMATION_TOOLS.includes(toolCall.name) ||
+            permission.whitelistState.has(whitelistKey(toolCall))
+          ) {
+            control.allow();
+            return;
+          }
+          if (currentMode.mode === "tool-call") {
+            set({ modeData: { ...currentMode, mode: "tool-call-permission" } });
+          }
+          set(state => ({ permission: { ...state.permission, pendingControl: control } }));
+          get().notifyReadyForInput(config);
+        },
+      });
+
+      for (const req of toolReqs) {
+        const decision = await waitForPermissionDecision(gate, req, abortController.signal);
+        if (!decision.success) return false;
+
+        if (decision.data.decision === "reject") {
+          get()._appendUserSteering(decision.data.steering, { config, transport, session });
+          return true;
+        }
+
+        set(state => ({ permission: { ...state.permission, pendingControl: null } }));
+        await get().runTool({ config, transport, session, toolReq: req });
+
+        const current = get().modeData;
+        if (current.mode !== "tool-call" && current.mode !== "tool-call-permission") return false;
+      }
+
+      return true;
     } catch (e) {
       if (get()._maybeHandleAbort(abortController.signal)) {
-        return;
+        return false;
       }
 
       throw e;
