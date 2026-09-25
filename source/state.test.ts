@@ -284,7 +284,10 @@ describe("permissioned tool batches", () => {
         call_b: 1,
       });
 
-      steeringRejectionTx().commitRejection("do it differently");
+      steeringRejectionTx().commitRejection({
+        role: "user",
+        content: [{ type: "text", content: "do it differently" }],
+      });
       await running;
 
       expect(historyRoles()).toEqual([
@@ -595,7 +598,10 @@ describe("tool call IDs reused across batches", () => {
         // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip
         // only this batch's remaining call — the earlier answered call_0 must not confuse it.
         pendingPermissionControl()!.beginReject();
-        steeringRejectionTx().commitRejection("later");
+        steeringRejectionTx().commitRejection({
+          role: "user",
+          content: [{ type: "text", content: "later" }],
+        });
         await running;
 
         expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({

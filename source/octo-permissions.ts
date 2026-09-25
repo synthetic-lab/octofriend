@@ -1,12 +1,13 @@
 import { octoAgent } from "./ir/octo-ir.ts";
 import type { ToolCall } from "./libocto/tool-def.ts";
+import type { UserMessage } from "./libocto/llm-ir.ts";
 import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 
 export type ToolCallRequest = ToolCall<typeof toolMap>;
 
 export type RejectionTransaction = {
-  commitRejection: (steering: string) => void;
+  commitRejection: (steering: UserMessage) => void;
 };
 
 export type OctoGateState = {
@@ -75,7 +76,7 @@ export class OctoPermissionControl {
 
   beginReject(): RejectionTransaction {
     const rejectionTx: RejectionTransaction = {
-      commitRejection: (steering: string) => {
+      commitRejection: (steering: UserMessage) => {
         this.rejectionTx = null;
         this.lifecycle.onCommitRejection();
         this.resolveDecision({ decision: "reject", steering });
