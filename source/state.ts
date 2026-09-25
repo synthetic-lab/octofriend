@@ -33,7 +33,7 @@ import { run, type ModelData } from "./compilers/run.ts";
 import { lowerOcto, lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
-import { answeredToolCallId } from "./libocto/llm-ir.ts";
+import { answeredToolCallId, type UserMessage } from "./libocto/llm-ir.ts";
 import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
 import {
@@ -75,16 +75,20 @@ export function coalesceQueuedUserMessages(messages: readonly QueuedUserMessage[
   };
 }
 
+export function userMessageIR(query: string, images?: ImageInfo[]): UserMessage {
+  return {
+    role: "user",
+    content: [
+      { type: "text", content: query },
+      ...(images ?? []).map(image => ({ type: "image" as const, image })),
+    ],
+  };
+}
+
 function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
   return {
     type: "llm-ir",
-    ir: {
-      role: "user",
-      content: [
-        { type: "text", content: query },
-        ...(images ?? []).map(image => ({ type: "image" as const, image })),
-      ],
-    },
+    ir: userMessageIR(query, images),
   };
 }
 
@@ -192,7 +196,7 @@ export type UiState = {
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   _appendToolRejection: (toolCall: ToolCallRequest, args: RunArgs) => void;
-  _appendUserSteering: (steering: string, args: RunArgs) => void;
+  _appendUserSteering: (steering: UserMessage, args: RunArgs) => void;
   abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
@@ -724,7 +728,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const history = appendAndPersistHistory(
       args.session,
       get().history,
-      [userMessageItem(steering)],
+      [{ type: "llm-ir", ir: steering }],
       model,
     );
     set({ history, lastUserPromptIndex: history.length - 1 });
