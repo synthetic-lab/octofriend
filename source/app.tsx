@@ -65,7 +65,7 @@ import {
   QueuedUserMessage,
   UiState,
   inputFieldAvailable,
-  userMessageIR,
+  userMessageContent,
   MAX_RETRY_COUNT,
 } from "./state.ts";
 import { SessionNotFoundError } from "./session-history/index.ts";
@@ -716,7 +716,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       inputSubmitted();
       setQuery("");
       if (modeData.mode === "awaiting-steering") {
-        modeData.rejectionTx.commitRejection(userMessageIR(finalQuery, images));
+        modeData.rejectionTx.commitRejection(userMessageContent(finalQuery, images));
         return;
       }
       if (modeData.mode !== "ready-for-request") {
