@@ -3,7 +3,7 @@ import type { ToolCall } from "./tool-def.ts";
 
 export type PermissionDecision =
   | { decision: "allow" }
-  | { decision: "reject"; steering: UserMessage };
+  | { decision: "reject"; steering: UserMessage["content"] };
 
 export type PermissionGate<A extends Agent<any, any, any>> = (
   toolCall: ToolCall<A["tools"]>,

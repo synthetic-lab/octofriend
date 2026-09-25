@@ -75,13 +75,17 @@ export function coalesceQueuedUserMessages(messages: readonly QueuedUserMessage[
   };
 }
 
+export function userMessageContent(query: string, images?: ImageInfo[]): UserMessage["content"] {
+  return [
+    { type: "text", content: query },
+    ...(images ?? []).map(image => ({ type: "image" as const, image })),
+  ];
+}
+
 export function userMessageIR(query: string, images?: ImageInfo[]): UserMessage {
   return {
     role: "user",
-    content: [
-      { type: "text", content: query },
-      ...(images ?? []).map(image => ({ type: "image" as const, image })),
-    ],
+    content: userMessageContent(query, images),
   };
 }
 
@@ -196,7 +200,7 @@ export type UiState = {
   input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
   runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
   _appendToolRejection: (toolCall: ToolCallRequest, args: RunArgs) => void;
-  _appendUserSteering: (steering: UserMessage, args: RunArgs) => void;
+  _appendUserSteering: (steering: UserMessage["content"], args: RunArgs) => void;
   abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
   toggleMenu: () => void;
   openMenu: () => void;
@@ -728,7 +732,7 @@ export const useAppStore = create<UiState>((set, get) => ({
     const history = appendAndPersistHistory(
       args.session,
       get().history,
-      [{ type: "llm-ir", ir: steering }],
+      [{ type: "llm-ir", ir: { role: "user", content: steering } }],
       model,
     );
     set({ history, lastUserPromptIndex: history.length - 1 });

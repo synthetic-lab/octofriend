@@ -7,7 +7,7 @@ import type toolMap from "./tools/tool-defs/index.ts";
 export type ToolCallRequest = ToolCall<typeof toolMap>;
 
 export type RejectionTransaction = {
-  commitRejection: (steering: UserMessage) => void;
+  commitRejection: (steering: UserMessage["content"]) => void;
 };
 
 export type OctoGateState = {
@@ -76,7 +76,7 @@ export class OctoPermissionControl {
 
   beginReject(): RejectionTransaction {
     const rejectionTx: RejectionTransaction = {
-      commitRejection: (steering: UserMessage) => {
+      commitRejection: (steering: UserMessage["content"]) => {
         this.rejectionTx = null;
         this.lifecycle.onCommitRejection();
         this.resolveDecision({ decision: "reject", steering });
