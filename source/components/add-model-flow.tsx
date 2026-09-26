@@ -12,7 +12,7 @@ import OpenAI from "openai";
 import { trackTokens } from "../token-tracker.ts";
 import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
 import { providerForBaseUrl } from "../providers.ts";
 import * as logger from "../logger.ts";
@@ -181,29 +181,24 @@ function AuthAsk(
     },
 ) {
   const provider = providerForBaseUrl(props.baseUrl);
-  const shortcutItems = [
-    {
-      type: "key" as const,
-      mapping: {
-        a: {
-          label: "Enter an API key",
-          value: "apiKey",
-        },
-        e: {
-          label: "I have an existing environment variable I use...",
-          value: "envVar",
-        },
-        c: {
-          label: "Use a command (e.g. pass, op, gopass)...",
-          value: "command",
-        },
-        b: {
-          label: "Back",
-          value: "back",
-        },
-      },
+  const actions = {
+    a: {
+      label: "Enter an API key",
+      value: "apiKey",
     },
-  ] satisfies ShortcutArray<AuthAskSelection>;
+    e: {
+      label: "I have an existing environment variable I use...",
+      value: "envVar",
+    },
+    c: {
+      label: "Use a command (e.g. pass, op, gopass)...",
+      value: "command",
+    },
+    b: {
+      label: "Back",
+      value: "back",
+    },
+  } satisfies Keymap<AuthAskSelection>;
   const onSelect = useCallback((item: Item<AuthAskSelection>) => {
     if (item.value === "back") props.back();
     else props.onSelect(item.value);
@@ -211,8 +206,8 @@ function AuthAsk(
   return (
     <Back go={props.back}>
       <KbShortcutPanel
-        title="How do you want to authenticate?"
-        shortcutItems={shortcutItems}
+        header="How do you want to authenticate?"
+        actions={actions}
         onSelect={onSelect}
       >
         {provider && (

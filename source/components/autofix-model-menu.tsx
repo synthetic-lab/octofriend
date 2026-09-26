@@ -2,7 +2,7 @@ import React, { useState, useCallback } from "react";
 import { Config, readAuthForModel } from "../config.ts";
 import { CustomAutofixFlow } from "./add-model-flow.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { SYNTHETIC_PROVIDER, keyFromName } from "../providers.ts";
 import { CustomAuthFlow } from "./add-model-flow.tsx";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
@@ -34,25 +34,20 @@ export function AutofixModelMenu({
   useKeyboard(event => {
     if (event.key === "Escape") onCancel();
   });
-  const shortcutItems = [
-    {
-      type: "key" as const,
-      mapping: {
-        e: {
-          label: `Enable ${modelNickname} via Synthetic (recommended)`,
-          value: "synthetic",
-        },
-        c: {
-          label: "Use a custom diff-apply model...",
-          value: "custom",
-        },
-        b: {
-          label: "Back",
-          value: "back",
-        },
-      } as const,
+  const actions = {
+    e: {
+      label: `Enable ${modelNickname} via Synthetic (recommended)`,
+      value: "synthetic",
     },
-  ] satisfies ShortcutArray<"synthetic" | "custom" | "back">;
+    c: {
+      label: "Use a custom diff-apply model...",
+      value: "custom",
+    },
+    b: {
+      label: "Back",
+      value: "back",
+    },
+  } satisfies Keymap<"synthetic" | "custom" | "back">;
   const onSelect = useCallback(
     async (item: Item<"synthetic" | "custom" | "back">) => {
       if (item.value === "synthetic") {
@@ -139,11 +134,7 @@ export function AutofixModelMenu({
     );
   }
   return (
-    <KbShortcutPanel
-      title={`Enable ${modelNickname} model`}
-      shortcutItems={shortcutItems}
-      onSelect={onSelect}
-    >
+    <KbShortcutPanel header={`Enable ${modelNickname} model`} actions={actions} onSelect={onSelect}>
       <TerminalFlex
         style={{
           marginBottom: 1,
