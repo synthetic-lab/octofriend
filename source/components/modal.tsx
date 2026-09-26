@@ -129,6 +129,8 @@ export function Modal({
               position: "relative",
               zIndex: 1,
               flexDirection: "column",
+              minHeight: 0,
+              maxHeight: "100%",
               padding: 1,
               paddingLeft: 2,
               paddingRight: 2,
