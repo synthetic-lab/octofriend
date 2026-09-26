@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { isDeepStrictEqual } from "node:util";
+import React, { useEffect, useRef, useState, type RefObject } from "react";
+import { IntersectionObserver, type DivElement } from "paintcannon";
 import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
@@ -32,7 +32,9 @@ export type Hotkey =
   | "z";
 export type Keymap<V> = Partial<Record<Hotkey, Item<V>>>;
 export type Item<V> = {
-  label: string;
+  spaceBefore?: number;
+  unindented?: boolean;
+  label: React.ReactNode;
   value: V;
 };
 
@@ -46,6 +48,9 @@ export type Item<V> = {
  * don't fully control, which can grow or shrink, we can't pre-assign a-z hotkeys to the list
  * elements since we don't know what they are or how many of them there are. Instead, we paginate
  * them as necessary and assign 0-9 hotkeys per page.
+ * A list can be flat or divided into titled sections that share the same pagination and shortcuts.
+ * Section headings do not consume shortcuts or participate in keyboard navigation. Sections
+ * without items are omitted.
  *
  * Since the paginated lists can potentially consume all hotkeys from 0-9, this means we can only
  * display one paginated list per screen (otherwise, there would be conflicting hotkeys). The tuple
@@ -60,163 +65,247 @@ type AutolistShortcutType<V> = {
   type: "auto-list";
   order: Array<Item<V>>;
 };
+export type ShortcutSection<V> = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  order: Array<Item<V>>;
+};
+type SectionShortcutType<V> = {
+  type: "sections";
+  sections: Array<ShortcutSection<V>>;
+};
+type PaginatedMenuGroup<V> = AutolistShortcutType<V> | SectionShortcutType<V>;
 export type ShortcutArray<V> =
+  | []
   | [MapShortcutType<V>]
-  | [AutolistShortcutType<V>]
-  | [MapShortcutType<V>, AutolistShortcutType<V>]
-  | [AutolistShortcutType<V>, MapShortcutType<V>]
-  | [MapShortcutType<V>, AutolistShortcutType<V>, MapShortcutType<V>];
+  | [PaginatedMenuGroup<V>]
+  | [MapShortcutType<V>, PaginatedMenuGroup<V>]
+  | [PaginatedMenuGroup<V>, MapShortcutType<V>]
+  | [MapShortcutType<V>, PaginatedMenuGroup<V>, MapShortcutType<V>];
 type KbSelectProps<V> = {
   shortcutItems: ShortcutArray<V>;
+  actions?: Keymap<V>;
   readonly onSelect: (item: Item<V>) => any;
 };
+type PageEntry<V> = {
+  item: Item<V>;
+  section: ShortcutSection<V> | null;
+};
+type ActionRow<V> = (
+  | { type: "item"; shortcut: string; item: Item<V> }
+  | { type: "page"; shortcut: string; label: string; page: number }
+) & { spaceBefore: number };
+type MenuRow<V> = ActionRow<V> | { type: "heading"; section: ShortcutSection<V> };
+
 const PAGE_SIZE = 10;
-export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
-  const [page, setPage] = useState(0);
-  const items = useMemo(() => {
-    const result: Array<{
-      item: Item<V | "next-page" | "prev-page">;
-      shortcut: string;
-      isNavItem?: boolean;
-    }> = [];
-    shortcutItems.forEach(shortcutType => {
-      if (shortcutType.type === "key") {
-        Object.entries(shortcutType.mapping).forEach(([k, v]) => {
-          if (k === "j" || k === "k" || k === "h" || k === "l") {
-            throw new Error("Can't use j, k, h, or l as shortcuts: reserved for nav");
-          }
-          result.push({
-            item: v,
-            shortcut: k,
-          });
-        });
-      } else {
-        const totalItems = shortcutType.order.length;
-        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
-        const hasPrev = page > 0;
-        const hasNext = page < totalPages - 1;
-        const start = page * PAGE_SIZE;
-        const end = Math.min(start + PAGE_SIZE, totalItems);
-        const pageItems = shortcutType.order.slice(start, end);
-        pageItems.forEach((item, index) => {
-          result.push({
-            item: item,
-            shortcut: `${index}`,
-          });
-        });
-        if (hasPrev) {
-          result.push({
-            item: {
-              label: "Previous page",
-              value: "prev-page",
-            },
-            shortcut: "h",
-            isNavItem: true,
-          });
+
+function paginate<V>(group: PaginatedMenuGroup<V>): Array<Array<PageEntry<V>>> {
+  const entries: Array<PageEntry<V>> =
+    group.type === "auto-list"
+      ? group.order.map(item => ({ item, section: null }))
+      : group.sections.flatMap(section => section.order.map(item => ({ item, section })));
+  const pages: Array<Array<PageEntry<V>>> = [];
+  for (let start = 0; start < entries.length; start += PAGE_SIZE) {
+    pages.push(entries.slice(start, start + PAGE_SIZE));
+  }
+  return pages;
+}
+
+function buildRows<V>(
+  shortcutItems: ShortcutArray<V>,
+  entries: Array<PageEntry<V>>,
+): Array<MenuRow<V>> {
+  const rows: Array<MenuRow<V>> = [];
+  let nextSpaceBefore = 0;
+  for (const group of shortcutItems) {
+    if (group.type === "key") {
+      for (const [shortcut, item] of Object.entries(group.mapping)) {
+        if (shortcut === "j" || shortcut === "k" || shortcut === "h" || shortcut === "l") {
+          throw new Error("Can't use j, k, h, or l as shortcuts: reserved for nav");
         }
-        if (hasNext) {
-          result.push({
-            item: {
-              label: "Next page",
-              value: "next-page",
-            },
-            shortcut: "l",
-            isNavItem: true,
-          });
-        }
+        rows.push({
+          type: "item",
+          shortcut,
+          item,
+          spaceBefore: item.spaceBefore ?? nextSpaceBefore,
+        });
+        nextSpaceBefore = 0;
       }
-    });
-    return result;
-  }, [shortcutItems, page]);
-  const initialIndex = 0;
-  const lastIndex = items.length - 1;
-  const [rotateIndex, setRotateIndex] = useState(
-    initialIndex > lastIndex ? lastIndex - initialIndex : 0,
-  );
-  const [selectedIndex, setSelectedIndex] = useState(
-    initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
-  );
-  const previousShortcutItems = useRef(shortcutItems);
-  useEffect(() => {
-    if (!isDeepStrictEqual(previousShortcutItems.current, shortcutItems)) {
-      setRotateIndex(0);
-      setSelectedIndex(0);
-      setPage(0);
+      continue;
     }
-    previousShortcutItems.current = shortcutItems;
-  }, [shortcutItems]);
-  const handleSelect = useCallback(
-    (item: Item<V | "next-page" | "prev-page">) => {
-      if (item.value === "next-page" || item.value === "prev-page") {
-        return;
+    let sectionId: string | null = null;
+    entries.forEach(({ item, section }, index) => {
+      if (section && section.id !== sectionId) {
+        rows.push({ type: "heading", section });
+        sectionId = section.id;
       }
-      onSelect(item as Item<V>);
-    },
-    [onSelect],
+      rows.push({
+        type: "item",
+        shortcut: String(index),
+        item,
+        spaceBefore: item.spaceBefore ?? 0,
+      });
+    });
+    nextSpaceBefore = group.type === "sections" && entries.length > 0 ? 1 : 0;
+  }
+  return rows;
+}
+
+export function useShortcutMenu<V>({
+  shortcutItems,
+  actions,
+  onSelect,
+  viewportRef,
+}: KbSelectProps<V> & { viewportRef?: RefObject<DivElement | null> }) {
+  const [navigation, setNavigation] = useState<{ page: number; shortcut: string | null }>({
+    page: 0,
+    shortcut: null,
+  });
+  const group = shortcutItems.find(group => group.type !== "key");
+  const pages = group && group.type !== "key" ? paginate(group) : [];
+  const page = Math.min(navigation.page, Math.max(0, pages.length - 1));
+  if (page !== navigation.page) setNavigation({ page, shortcut: null });
+  const rows = buildRows(shortcutItems, pages[page] ?? []);
+  const footerRows: Array<MenuRow<V>> = [];
+  if (page > 0) {
+    footerRows.push({
+      type: "page",
+      shortcut: "h",
+      label: "Previous page",
+      page: page - 1,
+      spaceBefore: 0,
+    });
+  }
+  if (page < pages.length - 1) {
+    footerRows.push({
+      type: "page",
+      shortcut: "l",
+      label: "Next page",
+      page: page + 1,
+      spaceBefore: 0,
+    });
+  }
+  if (actions) footerRows.push(...buildRows([{ type: "key", mapping: actions }], []));
+  const selectableRows = [...rows, ...footerRows].filter(
+    (row): row is ActionRow<V> => row.type !== "heading",
   );
+  const focused =
+    selectableRows.find(row => row.shortcut === navigation.shortcut) ?? selectableRows[0];
+
+  function activate(row: ActionRow<V>) {
+    if (row.type === "page") {
+      setNavigation({ page: row.page, shortcut: null });
+    } else {
+      onSelect(row.item);
+    }
+  }
+
   useKeyboard(event => {
     if (event.ctrlKey) return;
-    if (event.key === "l") {
-      const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
-      if (hasNext) {
-        setPage(prev => prev + 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
-      }
+    const viewport = viewportRef?.current;
+    if (viewport && (event.key === "PageUp" || event.key === "PageDown")) {
+      event.preventDefault();
+      viewport.scrollTop += (event.key === "PageDown" ? 1 : -1) * viewport.clientHeight;
+      return;
     }
-    if (event.key === "h") {
-      const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
-      if (hasPrev && page > 0) {
-        setPage(prev => prev - 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
-      }
-    }
-    for (const item of items) {
-      if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
-        handleSelect(item.item);
-        return;
-      }
-    }
-    if (event.key === "k" || event.key === "ArrowUp") {
-      const lastIndex = items.length - 1;
-      const atFirstIndex = selectedIndex === 0;
-      const nextIndex = lastIndex;
-      const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
-      const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
-    }
-    if (event.key === "j" || event.key === "ArrowDown") {
-      const atLastIndex = selectedIndex === items.length - 1;
-      const nextIndex = 0;
-      const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
-      const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
+    const shortcut = selectableRows.find(row => row.shortcut === event.key.toLowerCase());
+    if (shortcut) {
+      event.preventDefault();
+      activate(shortcut);
+      return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      handleSelect(items[selectedIndex].item);
+      if (focused) activate(focused);
+      return;
     }
+    const direction =
+      event.key === "j" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "k" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (direction === 0 || !focused) return;
+    event.preventDefault();
+    const index = selectableRows.indexOf(focused);
+    const next =
+      selectableRows[(index + direction + selectableRows.length) % selectableRows.length];
+    setNavigation({ page, shortcut: next.shortcut });
   });
+
+  return { rows, footerRows, focused };
+}
+
+export function KbShortcutSelect<V>(props: KbSelectProps<V>) {
+  const { rows, footerRows, focused } = useShortcutMenu(props);
+  return <KbShortcutRows rows={[...rows, ...footerRows]} focused={focused} />;
+}
+
+export function KbShortcutRows<V>({
+  rows,
+  focused,
+  viewportRef,
+}: {
+  rows: Array<MenuRow<V>>;
+  focused: ActionRow<V> | undefined;
+  viewportRef?: RefObject<DivElement | null>;
+}) {
+  const focusedRef = useRef<DivElement>(null);
+  useEffect(() => {
+    const viewport = viewportRef?.current;
+    const element = focusedRef.current;
+    if (!viewport || !element) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        for (const entry of entries) {
+          const bounds = entry.rootBounds;
+          if (!bounds) continue;
+          const row = entry.boundingClientRect;
+          if (row.top < bounds.top) {
+            viewport.scrollTop += row.top - bounds.top;
+          } else if (row.bottom > bounds.bottom) {
+            viewport.scrollTop += Math.min(row.top - bounds.top, row.bottom - bounds.bottom);
+          }
+        }
+        observer.disconnect();
+      },
+      { root: viewport, threshold: 1 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [focused, viewportRef]);
+
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      {items.map((item, index) => {
-        const isSelected = index === selectedIndex;
+    <TerminalFlex style={{ flexDirection: "column", flexShrink: 0, minWidth: 0 }}>
+      {rows.map(row => {
+        if (row.type === "heading") {
+          return (
+            <TerminalFlex
+              key={`section:${row.section.id}`}
+              style={{ flexDirection: "column", flexShrink: 0, marginTop: 1, marginBottom: 1 }}
+            >
+              <Span style={{ fontWeight: "bold" }}>{row.section.title}</Span>
+              {row.section.subtitle && (
+                <Span style={{ color: "gray" }}>{row.section.subtitle}</Span>
+              )}
+            </TerminalFlex>
+          );
+        }
+        const isSelected = row === focused;
         return (
-          <TerminalFlex key={`kb-select-${index}`}>
-            <IndicatorComponent isSelected={isSelected} />
+          <TerminalFlex
+            key={row.shortcut}
+            ref={isSelected ? focusedRef : undefined}
+            style={{ marginTop: row.spaceBefore, flexShrink: 0 }}
+          >
+            {!(row.type === "item" && row.item.unindented) && (
+              <IndicatorComponent isSelected={isSelected} />
+            )}
             <UnderlineItem
               isSelected={isSelected}
-              label={item.item.label}
-              shortcut={item.shortcut}
+              label={row.type === "item" ? row.item.label : row.label}
+              shortcut={row.shortcut}
             />
           </TerminalFlex>
         );
@@ -225,12 +314,12 @@ export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V
   );
 }
 function UnderlineItem({
-  isSelected = false,
+  isSelected,
   label,
   shortcut,
 }: {
   isSelected: boolean;
-  label: string;
+  label: React.ReactNode;
   shortcut: string;
 }) {
   const themeColor = useColor();

@@ -52,7 +52,7 @@ export function Menu({ onSessionChange }: { onSessionChange: (session: Session) 
   return (
     <TerminalFlex
       autoFocus
-      style={{ flexDirection: "column" }}
+      style={{ flexDirection: "column", minHeight: 0, maxHeight: "100%" }}
       onKeyDown={event => {
         if (event.key === "Escape" && menuMode !== "main-menu") {
           event.preventDefault();
@@ -331,7 +331,7 @@ function SwitchModelMenu() {
   ];
   return (
     <KbShortcutPanel
-      title="Which model should Octo use now?"
+      header="Which model should Octo use now?"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     />
@@ -528,7 +528,7 @@ function MainMenu() {
   );
   return (
     <KbShortcutPanel
-      title="Main Menu"
+      header="Main Menu"
       shortcutItems={[
         {
           type: "key" as const,
@@ -564,7 +564,7 @@ function SettingsMenu() {
   }, []);
   return (
     <KbShortcutPanel
-      title="Settings Menu"
+      header="Settings Menu"
       shortcutItems={[
         {
           type: "key" as const,
@@ -641,7 +641,7 @@ function NotificationsMenu() {
   );
   return (
     <KbShortcutPanel
-      title="Notifications"
+      header="Notifications"
       shortcutItems={[
         {
           type: "key" as const,
@@ -770,7 +770,7 @@ function SetDefaultModelMenu() {
   );
   return (
     <KbShortcutPanel
-      title="Which model should be the default?"
+      header="Which model should be the default?"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     />
@@ -833,7 +833,7 @@ function RemoveModelMenu() {
   );
   return (
     <KbShortcutPanel
-      title="Which model do you want to remove?"
+      header="Which model do you want to remove?"
       shortcutItems={shortcutItems}
       onSelect={onSelect}
     />

@@ -372,8 +372,7 @@ function FastProviderList({
     };
   }
   type ProviderValue = keyof typeof PROVIDERS | "custom" | "back";
-  const items: Keymap<ProviderValue> = {
-    ...providerShortcuts,
+  const actions: Keymap<ProviderValue> = {
     c: {
       label: "Add a custom model...",
       value: "custom" as const,
@@ -390,13 +389,14 @@ function FastProviderList({
   }, []);
   return (
     <KbShortcutPanel
-      title={titleOverride || "Choose a model provider:"}
+      header={titleOverride || "Choose a model provider:"}
       shortcutItems={[
         {
           type: "key" as const,
-          mapping: items,
+          mapping: providerShortcuts,
         },
       ]}
+      actions={actions}
       onSelect={onSelect}
     />
   );
@@ -483,7 +483,7 @@ function ImportModelsFrom({
     return (
       <CenteredBox>
         <KbShortcutPanel
-          title={`You already imported all our recommended models from ${provider.name}!`}
+          header={`You already imported all our recommended models from ${provider.name}!`}
           shortcutItems={[
             {
               type: "key" as const,

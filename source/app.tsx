@@ -1191,7 +1191,7 @@ function RequestErrorScreen({
     [curlCommand, mode, config, transport, session],
   );
   return (
-    <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
+    <KbShortcutPanel header="" shortcutItems={shortcutItems} onSelect={onSelect}>
       <Span
         style={{
           color: "red",
