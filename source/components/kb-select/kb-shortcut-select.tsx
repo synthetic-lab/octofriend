@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { isDeepStrictEqual } from "node:util";
+import React, { Fragment, useMemo, useState } from "react";
 import { IndicatorComponent } from "../select.tsx";
 import { useColor } from "../../theme.ts";
 
@@ -32,7 +31,8 @@ export type Hotkey =
   | "z";
 export type Keymap<V> = Partial<Record<Hotkey, Item<V>>>;
 export type Item<V> = {
-  label: string;
+  spaceAbove?: number;
+  label: React.ReactNode;
   value: V;
 };
 
@@ -46,6 +46,9 @@ export type Item<V> = {
  * don't fully control, which can grow or shrink, we can't pre-assign a-z hotkeys to the list
  * elements since we don't know what they are or how many of them there are. Instead, we paginate
  * them as necessary and assign 0-9 hotkeys per page.
+ * A list can be flat or divided into titled sections that share the same pagination and shortcuts.
+ * Section headings do not consume shortcuts or participate in keyboard navigation. Sections
+ * without items are omitted.
  *
  * Since the paginated lists can potentially consume all hotkeys from 0-9, this means we can only
  * display one paginated list per screen (otherwise, there would be conflicting hotkeys). The tuple
@@ -60,177 +63,215 @@ type AutolistShortcutType<V> = {
   type: "auto-list";
   order: Array<Item<V>>;
 };
+export type ShortcutSection<V> = {
+  id: string;
+  title: string;
+  subtitle?: string;
+  order: Array<Item<V>>;
+};
+type SectionShortcutType<V> = {
+  type: "sections";
+  sections: Array<ShortcutSection<V>>;
+};
+type PaginatedMenuGroup<V> = AutolistShortcutType<V> | SectionShortcutType<V>;
 export type ShortcutArray<V> =
+  | []
   | [MapShortcutType<V>]
-  | [AutolistShortcutType<V>]
-  | [MapShortcutType<V>, AutolistShortcutType<V>]
-  | [AutolistShortcutType<V>, MapShortcutType<V>]
-  | [MapShortcutType<V>, AutolistShortcutType<V>, MapShortcutType<V>];
+  | [PaginatedMenuGroup<V>]
+  | [MapShortcutType<V>, PaginatedMenuGroup<V>]
+  | [PaginatedMenuGroup<V>, MapShortcutType<V>]
+  | [MapShortcutType<V>, PaginatedMenuGroup<V>, MapShortcutType<V>];
 type KbSelectProps<V> = {
   shortcutItems: ShortcutArray<V>;
+  actions?: Keymap<V>;
   readonly onSelect: (item: Item<V>) => any;
 };
+type ShortcutItem<V> = (
+  | { item: Item<V>; isNavItem?: false }
+  | { item: Item<"next-page" | "prev-page">; isNavItem: true }
+) & {
+  shortcut: string;
+  section?: ShortcutSection<V>;
+  spaceAbove: number;
+};
+
 const PAGE_SIZE = 10;
-export function KbShortcutSelect<V>({ shortcutItems, onSelect }: KbSelectProps<V>) {
-  const [page, setPage] = useState(0);
-  const items = useMemo(() => {
-    const result: Array<{
-      item: Item<V | "next-page" | "prev-page">;
-      shortcut: string;
-      isNavItem?: boolean;
-    }> = [];
+
+function keyItems<V>(mapping: Keymap<V>, spaceAbove: number): Array<ShortcutItem<V>> {
+  return Object.entries(mapping).map(([k, v], index) => {
+    if (k === "j" || k === "k" || k === "h" || k === "l") {
+      throw new Error("Can't use j, k, h, or l as shortcuts: reserved for nav");
+    }
+    return { item: v, shortcut: k, spaceAbove: v.spaceAbove ?? (index === 0 ? spaceAbove : 0) };
+  });
+}
+
+export function useShortcutMenu<V>({ shortcutItems, actions, onSelect }: KbSelectProps<V>) {
+  const [navigation, setNavigation] = useState<{ page: number; shortcut: string | null }>({
+    page: 0,
+    shortcut: null,
+  });
+  const { rows, footerRows, page } = useMemo(() => {
+    const result: Array<ShortcutItem<V>> = [];
+    const footerRows: Array<ShortcutItem<V>> = [];
+    let page = 0;
+    let nextSpaceAbove = 0;
     shortcutItems.forEach(shortcutType => {
       if (shortcutType.type === "key") {
-        Object.entries(shortcutType.mapping).forEach(([k, v]) => {
-          if (k === "j" || k === "k" || k === "h" || k === "l") {
-            throw new Error("Can't use j, k, h, or l as shortcuts: reserved for nav");
-          }
-          result.push({
-            item: v,
-            shortcut: k,
-          });
-        });
+        const items = keyItems(shortcutType.mapping, nextSpaceAbove);
+        result.push(...items);
+        if (items.length > 0) nextSpaceAbove = 0;
       } else {
-        const totalItems = shortcutType.order.length;
+        const order: Array<{ item: Item<V>; section?: ShortcutSection<V> }> =
+          shortcutType.type === "auto-list"
+            ? shortcutType.order.map(item => ({ item }))
+            : shortcutType.sections.flatMap(section =>
+                section.order.map(item => ({ item, section })),
+              );
+        const totalItems = order.length;
         const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        page = Math.min(navigation.page, Math.max(0, totalPages - 1));
         const hasPrev = page > 0;
         const hasNext = page < totalPages - 1;
         const start = page * PAGE_SIZE;
         const end = Math.min(start + PAGE_SIZE, totalItems);
-        const pageItems = shortcutType.order.slice(start, end);
-        pageItems.forEach((item, index) => {
+        const pageItems = order.slice(start, end);
+        pageItems.forEach(({ item, section }, index) => {
           result.push({
             item: item,
             shortcut: `${index}`,
+            section: section?.id !== pageItems[index - 1]?.section?.id ? section : undefined,
+            spaceAbove: item.spaceAbove ?? 0,
           });
         });
+        nextSpaceAbove = shortcutType.type === "sections" && pageItems.length > 0 ? 1 : 0;
         if (hasPrev) {
-          result.push({
+          footerRows.push({
             item: {
               label: "Previous page",
               value: "prev-page",
             },
             shortcut: "h",
             isNavItem: true,
+            spaceAbove: 0,
           });
         }
         if (hasNext) {
-          result.push({
+          footerRows.push({
             item: {
               label: "Next page",
               value: "next-page",
             },
             shortcut: "l",
             isNavItem: true,
+            spaceAbove: 0,
           });
         }
       }
     });
-    return result;
-  }, [shortcutItems, page]);
-  const initialIndex = 0;
-  const lastIndex = items.length - 1;
-  const [rotateIndex, setRotateIndex] = useState(
-    initialIndex > lastIndex ? lastIndex - initialIndex : 0,
-  );
-  const [selectedIndex, setSelectedIndex] = useState(
-    initialIndex ? (initialIndex > lastIndex ? lastIndex : initialIndex) : 0,
-  );
-  const previousShortcutItems = useRef(shortcutItems);
-  useEffect(() => {
-    if (!isDeepStrictEqual(previousShortcutItems.current, shortcutItems)) {
-      setRotateIndex(0);
-      setSelectedIndex(0);
-      setPage(0);
+    if (actions) footerRows.push(...keyItems(actions, 0));
+    return { rows: result, footerRows, page };
+  }, [shortcutItems, actions, navigation.page]);
+  if (page !== navigation.page) setNavigation({ page, shortcut: null });
+  const items = [...rows, ...footerRows];
+  const focused = items.find(item => item.shortcut === navigation.shortcut) ?? items[0];
+
+  function handleSelect(item: ShortcutItem<V>) {
+    if (item.isNavItem) {
+      setNavigation({
+        page: page + (item.item.value === "next-page" ? 1 : -1),
+        shortcut: null,
+      });
+    } else {
+      onSelect(item.item);
     }
-    previousShortcutItems.current = shortcutItems;
-  }, [shortcutItems]);
-  const handleSelect = useCallback(
-    (item: Item<V | "next-page" | "prev-page">) => {
-      if (item.value === "next-page" || item.value === "prev-page") {
-        return;
-      }
-      onSelect(item as Item<V>);
-    },
-    [onSelect],
-  );
+  }
+
   useKeyboard(event => {
     if (event.ctrlKey) return;
-    if (event.key === "l") {
-      const hasNext = items.some(item => item.shortcut === "l" && item.isNavItem);
-      if (hasNext) {
-        setPage(prev => prev + 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
-      }
-    }
-    if (event.key === "h") {
-      const hasPrev = items.some(item => item.shortcut === "h" && item.isNavItem);
-      if (hasPrev && page > 0) {
-        setPage(prev => prev - 1);
-        setSelectedIndex(0);
-        setRotateIndex(0);
-        return;
-      }
-    }
     for (const item of items) {
       if (item.shortcut.toLowerCase() === event.key.toLowerCase()) {
-        handleSelect(item.item);
+        event.preventDefault();
+        handleSelect(item);
         return;
       }
-    }
-    if (event.key === "k" || event.key === "ArrowUp") {
-      const lastIndex = items.length - 1;
-      const atFirstIndex = selectedIndex === 0;
-      const nextIndex = lastIndex;
-      const nextRotateIndex = atFirstIndex ? rotateIndex + 1 : rotateIndex;
-      const nextSelectedIndex = atFirstIndex ? nextIndex : selectedIndex - 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
-    }
-    if (event.key === "j" || event.key === "ArrowDown") {
-      const atLastIndex = selectedIndex === items.length - 1;
-      const nextIndex = 0;
-      const nextRotateIndex = atLastIndex ? rotateIndex - 1 : rotateIndex;
-      const nextSelectedIndex = atLastIndex ? nextIndex : selectedIndex + 1;
-      setRotateIndex(nextRotateIndex);
-      setSelectedIndex(nextSelectedIndex);
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      handleSelect(items[selectedIndex].item);
+      if (focused) handleSelect(focused);
+      return;
     }
+    const direction =
+      event.key === "j" || event.key === "ArrowDown"
+        ? 1
+        : event.key === "k" || event.key === "ArrowUp"
+          ? -1
+          : 0;
+    if (direction === 0 || !focused) return;
+    event.preventDefault();
+    const index = items.indexOf(focused);
+    const next = items[(index + direction + items.length) % items.length];
+    setNavigation({ page, shortcut: next.shortcut });
   });
+
+  return { rows, footerRows, focused };
+}
+
+export function KbShortcutSelect<V>(props: KbSelectProps<V>) {
+  const { rows, footerRows, focused } = useShortcutMenu(props);
+  return <KbShortcutRows rows={[...rows, ...footerRows]} focused={focused} />;
+}
+
+export function KbShortcutRows<V>({
+  rows: items,
+  focused,
+}: {
+  rows: Array<ShortcutItem<V>>;
+  focused: ShortcutItem<V> | undefined;
+}) {
   return (
     <TerminalFlex
       style={{
         flexDirection: "column",
+        flexShrink: 0,
+        minWidth: 0,
       }}
     >
-      {items.map((item, index) => {
-        const isSelected = index === selectedIndex;
+      {items.map(item => {
+        const isSelected = item === focused;
         return (
-          <TerminalFlex key={`kb-select-${index}`}>
-            <IndicatorComponent isSelected={isSelected} />
-            <UnderlineItem
-              isSelected={isSelected}
-              label={item.item.label}
-              shortcut={item.shortcut}
-            />
-          </TerminalFlex>
+          <Fragment key={item.shortcut}>
+            {item.section && (
+              <TerminalFlex
+                style={{ flexDirection: "column", flexShrink: 0, marginTop: 1, marginBottom: 1 }}
+              >
+                <Span style={{ fontWeight: "bold" }}>{item.section.title}</Span>
+                {item.section.subtitle && (
+                  <Span style={{ color: "gray" }}>{item.section.subtitle}</Span>
+                )}
+              </TerminalFlex>
+            )}
+            <TerminalFlex style={{ marginTop: item.spaceAbove, flexShrink: 0 }}>
+              <IndicatorComponent isSelected={isSelected} />
+              <UnderlineItem
+                isSelected={isSelected}
+                label={item.item.label}
+                shortcut={item.shortcut}
+              />
+            </TerminalFlex>
+          </Fragment>
         );
       })}
     </TerminalFlex>
   );
 }
 function UnderlineItem({
-  isSelected = false,
+  isSelected,
   label,
   shortcut,
 }: {
   isSelected: boolean;
-  label: string;
+  label: React.ReactNode;
   shortcut: string;
 }) {
   const themeColor = useColor();
