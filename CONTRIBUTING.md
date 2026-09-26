@@ -37,6 +37,18 @@ bun install
 bun run exec
 ```
 
+**Component previews:**
+
+Run a component demo by name:
+
+```bash
+bun run preview first-time-setup
+```
+
+Use `bun run preview --help` to list available components. To add a preview, create
+`demos/<component>.demo.tsx` and call `runDemo` from `demos/run-demo.tsx` with your demo
+component. The preview command discovers these files automatically.
+
 **Canary builds:**
 
 If you ever want to run your local checkout directly instead of a published release, source `canary.sh` in your shell config:

@@ -32,41 +32,17 @@ import type { ParsedCliArgs } from "./cli-args.ts";
 import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
 import type { LoadedSession, Session } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
-import { FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
+import { THEME_COLOR } from "../theme.ts";
 import {
   SESSION_ID_HEADER,
   SESSION_PREVIEW_HEADER,
   SESSION_UPDATED_HEADER,
   sessionListTable,
 } from "../session-history/session-list.ts";
-import { KeyboardProvider } from "../hooks/use-keyboard.ts";
-import { render, type CreateRootOptions } from "paintcannon-react";
-import { ToastProvider } from "../components/toast.tsx";
+import { renderInteractive } from "./render-interactive.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
 import { processes } from "../process-manager.ts";
-
-const INTERACTIVE_RENDER_OPTIONS = {
-  alternateScreen: true,
-  captureMouse: true,
-  captureCtrlC: true,
-} satisfies CreateRootOptions;
-
-function renderInteractive(element: React.ReactNode, options: { captureCtrlC: boolean }) {
-  const root = render(
-    <ToastProvider>
-      <KeyboardProvider>{element}</KeyboardProvider>
-    </ToastProvider>,
-    {
-      ...INTERACTIVE_RENDER_OPTIONS,
-      captureCtrlC: options.captureCtrlC,
-    },
-  );
-  root.container.style.position = "relative";
-  root.container.style.overflowX = "hidden";
-  root.container.style.color = FOREGROUND_COLOR;
-  return root;
-}
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");

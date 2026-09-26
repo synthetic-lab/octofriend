@@ -11,6 +11,7 @@
   "preferGlobal": true,
   "scripts": {
     "dev": "bun --watch source/cli/cli.tsx",
+    "preview": "bun demos/preview.ts",
     "exec": "bun source/cli/cli.tsx",
     "exec:prod": "NODE_ENV=production bun source/cli/bin.ts",
     "test": "bun test source --watch --preload ./source/test/setup.ts --timeout 30000",
