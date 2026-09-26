@@ -14,7 +14,7 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
-import { providerForBaseUrl } from "../providers.ts";
+import { providerForBaseUrl, SYNTHETIC_PROVIDER } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
@@ -41,6 +41,8 @@ type AddModelStep<T> = {
   title: string;
   prompt: string;
   defaultValue?: string;
+  placeholder?: string;
+  emptyValue?: string;
   parse: (val: string) => T;
   validate: (val: string) => ValidationResult;
   onSubmit: (t: T) => any;
@@ -573,11 +575,22 @@ function PostAuth(
   return <></>;
 }
 function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
+  const isSynthetic = props.baseUrl === SYNTHETIC_PROVIDER.baseUrl;
+  const recommended =
+    isSynthetic &&
+    !props.config?.models.some(
+      model =>
+        model.type !== "codex" &&
+        model.baseUrl === props.baseUrl &&
+        model.model === "syn:large:vision",
+    );
   return (
     <Back go={props.back}>
       <Step<string>
         title="What's the model string for the API you're using?"
         prompt="Model string:"
+        placeholder={isSynthetic ? "syn:large:vision" : undefined}
+        emptyValue={recommended ? "syn:large:vision" : undefined}
         parse={val => val}
         validate={val => {
           if (props.baseUrl === "https://synthetic.new") {
@@ -594,6 +607,9 @@ function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
         }}
         onSubmit={props.onSubmit}
       >
+        {recommended && (
+          <Span>Press Enter to use recommended: syn:large:vision, or enter another model ID.</Span>
+        )}
         {props.renderExamples && (
           <TerminalFlex
             style={{
@@ -1153,7 +1169,7 @@ function Step<T>(props: AddModelStep<T>) {
     setVarValue(value);
   }, []);
   const onSubmit = useCallback(() => {
-    const trimmed = varValue.trim();
+    const trimmed = varValue.trim() || props.emptyValue || "";
     if (trimmed === "") {
       setErrorMessage("Entry can't be empty");
       return;
@@ -1224,7 +1240,12 @@ function Step<T>(props: AddModelStep<T>) {
             borderColor: themeColor,
           }}
         >
-          <TextInput value={varValue} onChange={onValueChange} onSubmit={onSubmit} />
+          <TextInput
+            value={varValue}
+            placeholder={props.placeholder}
+            onChange={onValueChange}
+            onSubmit={onSubmit}
+          />
         </TerminalFlex>
       </TerminalFlex>
 
