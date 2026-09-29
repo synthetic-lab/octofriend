@@ -33,6 +33,7 @@ import {
   type InputControl,
   type RectifyControl,
   type RetryControl,
+  type TrajectoryEvents,
   type TrajectoryLoopController,
   type TrajectoryMode,
 } from "./trajectory.ts";
@@ -191,12 +192,14 @@ function makeTrajectory(opts?: {
   errorCorrection?: ErrorCorrection<TestAgent>;
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
+  modelAuthError?: () => string | undefined;
 }) {
   const rec = {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
     modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
     roles: [] as string[],
-    rewinds: [] as Array<UserMessage["content"] | null>,
+    timeline: [] as string[],
+    rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     capCalls: [] as unknown[],
     arc: {
       startResponse: 0,
@@ -222,7 +225,9 @@ function makeTrajectory(opts?: {
     const traj = new Trajectory<TestAgent, null>({
       model: async () => {
         rec.modelCalls++;
-        return { model: null, contextWindow: opts?.contextWindow ?? 10_000 };
+        const authError = opts?.modelAuthError?.();
+        if (authError != null) return err({ type: "auth-error", authError });
+        return ok({ model: null, contextWindow: opts?.contextWindow ?? 10_000 });
       },
       loadTools: async () => {
         rec.loadToolsCalls++;
@@ -270,12 +275,17 @@ function makeTrajectory(opts?: {
         modeChange: mode => {
           rec.modes.push(mode.mode);
           rec.modeObjs.push(mode);
+          rec.timeline.push(`mode:${mode.mode}`);
         },
         onMessage: ir => {
           rec.roles.push(ir.role);
+          rec.timeline.push(`ir:${ir.role}`);
         },
-        rewind: content => {
-          rec.rewinds.push(content);
+        steeringChange: ({ upcoming, queued }) => {
+          rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
+        },
+        rewind: payload => {
+          rec.rewinds.push(payload);
         },
         startResponse: () => {
           rec.arc.startResponse++;
@@ -448,6 +458,33 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
     await expect(traj.step()).rejects.toThrow("Subagent invocation is not supported: research");
+  });
+
+  it("skips unanswered tool calls when a tool throws, then rethrows", async () => {
+    const { build } = makeTrajectory();
+    const { traj } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+    runImpl = async query => {
+      if (query === "a") throw new Error("boom in tool");
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    expect(await traj.step()).toBe(true);
+    await expect(traj.step()).rejects.toThrow("boom in tool");
+
+    expect(traj.messages.map(m => m.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    const skip = traj.messages[2];
+    if (skip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(skip.toolCall.toolCallId).toBe("c1");
+    expect(skip.reason).toBe("The tool batch failed unexpectedly, so this tool was skipped");
   });
 
   it("rejects a call with a marker, skips the remainder, steers, and responds again", async () => {
@@ -752,7 +789,9 @@ describe("trajectory", () => {
     rectifyControl(traj).rewind();
     rectifyControl(traj).rewind();
 
-    expect(rec.rewinds).toEqual([text("please do the thing")]);
+    expect(rec.rewinds.length).toBe(1);
+    expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual(["user", "assistant"]);
     expect(traj.messages.length).toBe(0);
 
     expect(await traj.step()).toBe(true);
@@ -795,6 +834,29 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(1);
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("maps a model-resolution auth failure to the auth-error mode without a compiler call", async () => {
+    let failing = true;
+    const { build, rec } = makeTrajectory({
+      modelAuthError: () => (failing ? "no key" : undefined),
+    });
+    const { traj, compilerCalls } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    expect(compilerCalls.length).toBe(0);
+    expect(rec.modes).toEqual(["auth-error"]);
+    expect(traj.mode).toEqual(expect.objectContaining({ mode: "auth-error", authError: "no key" }));
+
+    failing = false;
+    retryControl(traj).retry();
+    expect(await traj.step()).toBe(true);
+
+    expect(compilerCalls.length).toBe(1);
+    expect(rec.modelCalls).toBe(2);
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -986,6 +1048,57 @@ describe("trajectory", () => {
     ]);
   });
 
+  it("classifies a ready-mode submit as upcoming and drains it before any mode change", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([plainOk]);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.timeline).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:assistant",
+      "mode:ready-for-request",
+    ]);
+  });
+
+  it("classifies steering pushed mid-turn as queued and folds it before the continuation mode", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      inputControl(traj).enqueueSteering(text("while you ran"));
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.timeline).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:assistant",
+      "mode:tool-call",
+      "mode:tool-call-permission",
+      "mode:running-tool",
+      "steering:0u1q",
+      "ir:tool-output",
+      "steering:0u0q",
+      "ir:user",
+      "mode:responding",
+      "ir:assistant",
+      "mode:ready-for-request",
+    ]);
+  });
+
   it("compacts an over-full history, then responds", async () => {
     const { build, rec } = makeTrajectory({
       contextWindow: 300,
@@ -1157,7 +1270,7 @@ describe("trajectory", () => {
       plainOk,
     ]);
     const traj = new Trajectory<PlainAgent, null>({
-      model: async () => ({ model: null, contextWindow: 10_000 }),
+      model: async () => ok({ model: null, contextWindow: 10_000 }),
       loadTools: async () => ({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],

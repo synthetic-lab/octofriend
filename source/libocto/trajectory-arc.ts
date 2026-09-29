@@ -220,7 +220,9 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
   lowerMessages: (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<LoweredIR<A["tools"]>>;
-  systemPrompt?: () => Promise<string>;
+  // Called with the arc's abort signal, so prompt construction (often filesystem reads) dies
+  // with the turn that requested it.
+  systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
   abortSignal: AbortSignal;
   errorCorrection?: ErrorCorrection<A>;
@@ -494,7 +496,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       abortSignal,
       transport,
       tools,
-      systemPrompt,
+      systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
       autofixJson: jsonCorrectorWithEvent,
       onTokens: (tokens, type) => {
         if (!buffer[type]) buffer[type] = "";
