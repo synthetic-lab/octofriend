@@ -253,7 +253,10 @@ function makeTrajectory(opts?: {
               content: text(ir.transcript),
             });
           } else {
-            preLowered.push(ir);
+            // This binding is the exhaustiveness check: if the agent gains another extension
+            // IR, it no longer fits PreLoweredIR and this fails to compile until converted.
+            const builtin: PreLoweredIR<TestAgent> = ir;
+            preLowered.push(builtin);
           }
         }
         return lower<TestAgent>(preLowered);
