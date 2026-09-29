@@ -782,16 +782,24 @@ describe("trajectory", () => {
       plainOk,
     ]);
 
-    inputControl(traj).enqueueSteering(text("please do the thing"));
+    const readyControl = inputControl(traj);
+    readyControl.enqueueSteering(text("please do the thing"));
     expect(await traj.step()).toBe(true);
     expect(rec.roles).toEqual(["user", "assistant"]);
 
+    readyControl.enqueueSteering(text("staged while parked"));
     rectifyControl(traj).rewind();
     rectifyControl(traj).rewind();
 
     expect(rec.rewinds.length).toBe(1);
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
     expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual(["user", "assistant"]);
+    expect(rec.timeline.filter(e => e.startsWith("steering"))).toEqual([
+      "steering:1u0q",
+      "steering:0u0q",
+      "steering:0u1q",
+      "steering:0u0q",
+    ]);
     expect(traj.messages.length).toBe(0);
 
     expect(await traj.step()).toBe(true);
