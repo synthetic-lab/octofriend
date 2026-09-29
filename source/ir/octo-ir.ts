@@ -1,16 +1,10 @@
 import toolMap from "../tools/tool-defs/index.ts";
-import { defineAgent } from "../libocto/llm-ir.ts";
-import type { LlmIR } from "../libocto/llm-ir.ts";
-import type { ToolCall } from "../libocto/tool-def.ts";
+import { definePermissionedAgent } from "../libocto/llm-ir.ts";
+import type { AgentIR } from "../libocto/llm-ir.ts";
 
-export const octoAgent = defineAgent({
+export const octoAgent = definePermissionedAgent({
   tools: toolMap,
   agents: {},
 });
 
-export type OctoToolRejectIR = {
-  role: "tool-reject";
-  toolCall: ToolCall<typeof toolMap>;
-};
-
-export type OctoIR = LlmIR<typeof octoAgent> | OctoToolRejectIR;
+export type OctoIR = AgentIR<typeof octoAgent>;
