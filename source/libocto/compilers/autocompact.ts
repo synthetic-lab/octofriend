@@ -1,4 +1,4 @@
-import type { Agent, Content, LoweredIR } from "../llm-ir.ts";
+import { messageText, type Agent, type Content, type LoweredIR } from "../llm-ir.ts";
 import type { ToolMap } from "../tool-def.ts";
 import type {
   CompilerError,
@@ -139,33 +139,6 @@ function approximateIRTokens<T extends ToolMap<any, any>>(ir: Array<LoweredIR<T>
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
-}
-
-function messageText<T extends ToolMap<any, any>>(msg: LoweredIR<T>): string {
-  switch (msg.role) {
-    case "assistant":
-      return (msg.content ?? "") + (msg.reasoningContent ?? "");
-    case "user":
-    case "tool-output":
-    case "lowered-checkpoint":
-      return contentText(msg.content);
-    case "tool-runtime-error":
-    case "tool-validation-error":
-      return msg.error;
-    case "tool-parse-error":
-      return (msg.malformedRequest.call.original.arguments ?? "") + msg.malformedRequest.error;
-    case "tool-skip-output":
-      return msg.reason;
-  }
-}
-
-function contentText(content: Content["content"]): string {
-  return content
-    .map(part => {
-      if (part.type === "text") return part.content;
-      return `Image file: ${part.image.filePath}`;
-    })
-    .join("\n");
 }
 
 function compactPrompt() {
