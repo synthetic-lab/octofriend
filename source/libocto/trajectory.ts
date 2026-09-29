@@ -21,11 +21,11 @@ import {
   type TrajectoryArcParams,
 } from "./trajectory-arc.ts";
 
-export type InputControl<A extends Agent<any, any, any>> = {
+export type InputControl = {
   enqueueSteering(content: UserMessage["content"]): void;
 };
 
-export type RunningControl<A extends Agent<any, any, any>> = InputControl<A> & {
+export type RunningControl = InputControl & {
   interrupt(): void;
 };
 
@@ -53,28 +53,28 @@ export type ClearControl = {
  * otherwise; everything else parks waiting on a control.
  */
 export type TrajectoryMode<A extends Agent<any, any, any>> =
-  | { mode: "ready-for-request"; control: InputControl<A> }
-  | { mode: "responding"; control: RunningControl<A> }
-  | { mode: "compacting"; control: RunningControl<A> }
-  | { mode: "autofix-json"; control: RunningControl<A> }
-  | { mode: "autofix-tool"; tool: string; control: RunningControl<A> }
+  | { mode: "ready-for-request"; control: InputControl }
+  | { mode: "responding"; control: RunningControl }
+  | { mode: "compacting"; control: RunningControl }
+  | { mode: "autofix-json"; control: RunningControl }
+  | { mode: "autofix-tool"; tool: string; control: RunningControl }
   | {
       mode: "request-error-retrying";
       error: string;
       attempt: number;
       delayMs: number;
-      control: RunningControl<A>;
+      control: RunningControl;
     }
   | {
       mode: "tool-call";
       toolCalls: Array<ToolCall<A["tools"]>>;
-      control: RunningControl<A>;
+      control: RunningControl;
     }
   | {
       mode: "running-tool";
       toolCalls: Array<ToolCall<A["tools"]>>;
       toolCall: ToolCall<A["tools"]>;
-      control: RunningControl<A>;
+      control: RunningControl;
     }
   | {
       mode: "request-error";
@@ -186,7 +186,7 @@ type RunArgsFor<Def> = Def extends { run: (args: infer Args) => unknown } ? Args
 export type TrajectoryLoopController = (step: () => Promise<boolean>) => Promise<void>;
 
 export async function defaultLoopController(step: () => Promise<boolean>): Promise<void> {
-  while (await step()) {}
+  while (await step()) continue;
 }
 
 const DEFAULT_MAX_TOOL_OUTPUT_FRACTION = 0.2;
@@ -279,7 +279,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return [...this.history];
   }
 
-  private inputControl(): InputControl<A> {
+  private inputControl(): InputControl {
     return {
       enqueueSteering: content => {
         this.steering.push(content);
@@ -296,7 +296,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     };
   }
 
-  private runningControl(): RunningControl<A> {
+  private runningControl(): RunningControl {
     return { ...this.inputControl(), ...this.interruptControl() };
   }
 

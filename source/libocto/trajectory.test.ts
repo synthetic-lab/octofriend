@@ -308,7 +308,7 @@ function makeTrajectory(opts?: {
 function inputControl<A extends Agent<any, any, any>>(traj: Trajectory<A, null>) {
   const mode = traj.mode;
   if ("control" in mode && "enqueueSteering" in mode.control) {
-    return mode.control as InputControl<A>;
+    return mode.control as InputControl;
   }
   throw new Error(`mode ${mode.mode} has no input control`);
 }
