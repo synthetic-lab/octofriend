@@ -74,7 +74,7 @@ export async function loadImageFromPath(filePath: string): Promise<ImageInfo> {
     mimeType,
     base64Data,
     dataUrl,
-    filePath: path.resolve(filePath),
+    filePath,
     sizeBytes: buffer.length,
   };
 }

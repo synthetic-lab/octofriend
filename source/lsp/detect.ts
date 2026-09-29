@@ -159,7 +159,7 @@ async function findNearestRoot(
 ): Promise<string | null> {
   if (rootCandidates.length === 0) return cwd;
   let currDirectory = path.dirname(filePath);
-  const boundary = path.resolve(cwd);
+  const boundary = await transport.resolvePath(signal, cwd);
   while (currDirectory.startsWith(boundary)) {
     for (const candidate of rootCandidates) {
       if (await transport.pathExists(signal, path.join(currDirectory, candidate))) {
