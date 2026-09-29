@@ -556,6 +556,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             this.history.length = index;
             break;
           }
+          this.steering.clear();
+          this.emitSteeringChange();
           rectification.resolve({ type: "rewind", target: "last-user-message" });
           void this.params.handler?.rewind?.({ removed, content });
         },
