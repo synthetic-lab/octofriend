@@ -499,11 +499,11 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
         }}
       >
         <Span>
-          Octo lets you choose the LLM that powers it. Currently our recommended day-to-day coding
-          model to use with Octo is {recommendedModel("synthetic").nickname}, an open-source coding
-          model you can use via Synthetic, a privacy-focused inference company (that we run!). You
-          can also add closed-source models from OpenAI and Anthropic, like{" "}
-          {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
+          Octo lets you choose the LLM that powers it. We recommend using `syn:large:vision` via
+          Synthetic, our privacy-focused inference service. This alias always tracks our latest
+          vision-enabled coding model, so you don't have to worry about specific model versions
+          getting deprecated later. You can also add closed-source models from OpenAI and Anthropic,
+          like {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
         </Span>
       </TerminalFlex>
 
