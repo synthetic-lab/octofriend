@@ -14,6 +14,7 @@
     "exec": "bun source/cli/cli.tsx",
     "exec:prod": "NODE_ENV=production bun source/cli/bin.ts",
     "test": "bun test source --watch --preload ./source/test/setup.ts --timeout 30000",
+    "preview": "bun demos/preview.ts",
     "test:run": "bun test source --preload ./source/test/setup.ts --timeout 30000",
     "compile": "bun build.ts",
     "compile:production": "NODE_ENV=production bun run compile",
