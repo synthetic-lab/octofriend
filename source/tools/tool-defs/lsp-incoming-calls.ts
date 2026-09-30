@@ -10,8 +10,8 @@ import {
 } from "../lsp-common.ts";
 import { getUsableLspExtensions } from "../../lsp/detect.ts";
 
-export default TOOL.dynamicDefineTool(async function ({ transport, data }) {
-  const extensions = await getUsableLspExtensions(transport.cwd, data);
+export default TOOL.dynamicDefineTool(async function ({ signal, transport, data }) {
+  const extensions = await getUsableLspExtensions(signal, transport.cwd, data, transport);
   if (extensions.size === 0) return null;
 
   const description = `Find all callers of a symbol at the given position. ${getLspExtensionsComment(extensions)}`;

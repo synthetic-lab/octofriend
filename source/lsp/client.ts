@@ -421,7 +421,7 @@ export class LspClient {
 }
 
 function fileUri(filePath: string): string {
-  return `file://${path.resolve(filePath)}`;
+  return `file://${filePath}`;
 }
 export const EXTENSION_TO_LANGUAGE: Record<string, string | undefined> = {
   ".py": "python",

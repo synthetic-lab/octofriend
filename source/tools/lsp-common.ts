@@ -32,11 +32,18 @@ type BootstrapResult =
   | { success: false; message: { content: string } };
 
 export async function bootstrapLspClient(
+  abortSignal: AbortSignal,
   transport: Transport,
   config: Config,
   filePath: string,
 ): Promise<BootstrapResult> {
-  const lspClientResult = await getLspClientForFile(transport.cwd, config, filePath, transport);
+  const lspClientResult = await getLspClientForFile(
+    abortSignal,
+    transport.cwd,
+    config,
+    filePath,
+    transport,
+  );
   if (lspClientResult == null) {
     return {
       success: false,
@@ -78,7 +85,7 @@ export async function runLspPositionQuery<R>(
   const resolvedPath = await transport.resolvePath(abortSignal, filePath);
 
   return attempt(`LSP ${toolName} failed for ${resolvedPath}`, async () => {
-    const boot = await bootstrapLspClient(transport, config, resolvedPath);
+    const boot = await bootstrapLspClient(abortSignal, transport, config, resolvedPath);
     if (!boot.success) return ok(boot.message);
     const { client } = boot;
     return withLspFile(abortSignal, transport, client, resolvedPath, async client => {
@@ -103,7 +110,7 @@ export async function runLspFileQuery<R>(
   const resolvedPath = await transport.resolvePath(abortSignal, filePath);
 
   return attempt(`LSP ${toolName} failed for ${resolvedPath}`, async () => {
-    const boot = await bootstrapLspClient(transport, config, resolvedPath);
+    const boot = await bootstrapLspClient(abortSignal, transport, config, resolvedPath);
     if (!boot.success) return ok(boot.message);
     const { client } = boot;
     return withLspFile(abortSignal, transport, client, resolvedPath, async client => {

@@ -204,6 +204,25 @@ export default tseslint.config(
     },
   },
   {
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "path",
+          property: "resolve",
+          message:
+            "Use transport.resolvePath(signal, filePath) so paths resolve in the transport's filesystem.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["source/transports/local.ts"],
+    rules: {
+      "no-restricted-properties": "off",
+    },
+  },
+  {
     files: ["source/transports/**"],
     rules: {
       "no-restricted-imports": "off",
