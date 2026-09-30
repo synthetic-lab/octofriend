@@ -692,24 +692,105 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("aborted");
   });
 
-  it("exit mid-batch keeps settled output and ends the trajectory", async () => {
+  it("exit mid-batch keeps settled output, skips the running and pending calls, and ends", async () => {
     const { build, rec, exit } = makeTrajectory();
     const { traj, compilerCalls } = await build([
       () =>
-        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2"), searchCall("c", "c3")],
+          }),
+        ),
     ]);
     runImpl = async query => {
-      if (query === "a") exit.abort();
+      if (query === "b") {
+        exit.abort();
+        // The tool is still in flight past the exit; its eventual output must be dropped.
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
       return ok({ type: "output", content: text(query) });
     };
 
     inputControl(traj).enqueueSteering(text("run em"));
     await traj.run();
 
+    expect(rec.roles).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    const runningSkip = traj.messages[3];
+    if (runningSkip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(runningSkip.toolCall.toolCallId).toBe("c2");
+    expect(runningSkip.reason).toBe(
+      "The user exited while this tool was running, so its output was not recorded",
+    );
+    const pendingSkip = traj.messages[4];
+    if (pendingSkip.role !== "tool-skip-output") throw new Error("impossible");
+    expect(pendingSkip.toolCall.toolCallId).toBe("c3");
+    expect(pendingSkip.reason).toBe("The user aborted the response, so this tool was skipped");
+    expect(traj.mode.mode).toBe("aborted");
+    expect(compilerCalls.length).toBe(1);
+  });
+
+  it("exit parked at the permission gate skip-marks the whole batch", async () => {
+    const { build, rec, exit } = makeTrajectory({
+      permission: () => new Promise(() => {}),
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    const running = traj.run();
+    while (!rec.modes.includes("tool-call-permission")) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    exit.abort();
+    await running;
+
+    expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    const [first, second] = [traj.messages[2], traj.messages[3]];
+    if (first.role !== "tool-skip-output" || second.role !== "tool-skip-output") {
+      throw new Error("impossible");
+    }
+    expect(first.toolCall.toolCallId).toBe("c1");
+    expect(first.reason).toBe("The user aborted the response, so this tool was skipped");
+    expect(second.toolCall.toolCallId).toBe("c2");
+    expect(traj.mode.mode).toBe("aborted");
+    expect(compilerCalls.length).toBe(1);
+  });
+
+  it("exit mid-batch keeps earlier answers and skips only the unanswered", async () => {
+    let parked = false;
+    const { build, rec, exit } = makeTrajectory({
+      permission: async toolCall => {
+        if (toolCall.toolCallId === "c2") {
+          parked = true;
+          await new Promise(() => {});
+        }
+        return { decision: "allow" };
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run em"));
+    const running = traj.run();
+    while (!parked) await new Promise(resolve => setTimeout(resolve, 0));
+    exit.abort();
+    await running;
+
     expect(rec.roles).toEqual(["user", "assistant", "tool-output", "tool-skip-output"]);
     const skip = traj.messages[3];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.toolCall.toolCallId).toBe("c2");
+    expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
     expect(traj.mode.mode).toBe("aborted");
     expect(compilerCalls.length).toBe(1);
   });
@@ -724,7 +805,7 @@ describe("trajectory", () => {
 
     exit.abort();
     expect(await traj.step()).toBe(false);
-    expect(traj.mode.mode).toBe("request-error");
+    expect(traj.mode.mode).toBe("aborted");
   });
 
   it("interrupt mid-response keeps the partial assistant message and waits for input", async () => {
@@ -788,8 +869,8 @@ describe("trajectory", () => {
     expect(rec.roles).toEqual(["user", "assistant"]);
 
     readyControl.enqueueSteering(text("staged while parked"));
-    rectifyControl(traj).rewind();
-    rectifyControl(traj).rewind();
+    await rectifyControl(traj).rewind();
+    await rectifyControl(traj).rewind();
 
     expect(rec.rewinds.length).toBe(1);
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));

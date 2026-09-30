@@ -12,6 +12,7 @@ import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
+import { OwnershipLock } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
 import {
   trajectoryArc,
@@ -22,11 +23,11 @@ import {
 } from "./trajectory-arc.ts";
 
 export type InputControl = {
-  enqueueSteering(content: UserMessage["content"]): void;
+  enqueueSteering(content: UserMessage["content"]): Promise<void>;
 };
 
 export type RunningControl = InputControl & {
-  interrupt(): void;
+  interrupt(): Promise<void>;
 };
 
 export type RetryControl = {
@@ -37,7 +38,7 @@ export type RectifyControl = RetryControl & {
   // Trims history back past the most recent user message and fires the rewind event with its
   // content (or null when there is no user message), so the client can offer it for editing;
   // the loop resumes waiting for input.
-  rewind(): void;
+  rewind(): Promise<void>;
 };
 
 export type ClearControl = {
@@ -97,7 +98,7 @@ export type TrajectoryMode<A extends Agent<any, any, any>> =
           mode: "tool-call-permission";
           toolCalls: Array<ToolCall<A["tools"]>>;
           toolCall: ToolCall<A["tools"]>;
-          control: { interrupt(): void };
+          control: { interrupt(): Promise<void> };
         }
       : never);
 
@@ -194,6 +195,8 @@ async function waitSteeringOrExit(
 const ABORTED_TOOL_SKIP_REASON = "The user aborted the response, so this tool was skipped";
 const REJECTED_TOOL_SKIP_REASON = "A previous tool call was rejected, so this tool was skipped";
 const FAILED_TOOL_SKIP_REASON = "The tool batch failed unexpectedly, so this tool was skipped";
+const EXIT_RUNNING_TOOL_SKIP_REASON =
+  "The user exited while this tool was running, so its output was not recorded";
 
 type RunArgsFor<Def> = Def extends { run: (args: infer Args) => unknown } ? Args : never;
 
@@ -271,11 +274,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         toolCalls: Array<ToolCall<A["tools"]>>;
         tools: Partial<LoadedTools<A["tools"]>>;
         contextWindow: number;
+        answered: Set<string>;
       }
     | { type: "needs-rectification"; resolved: Promise<Result<Rectification, "aborted">> } = {
     type: "wait-for-input",
   };
   private awaitingSteering = true;
+  private _finish: Promise<void> = Promise.resolve();
+  private readonly ownership = new OwnershipLock();
 
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
@@ -284,6 +290,16 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     // for a generic A; check for its presence at runtime instead.
     this.permissionGate =
       "permission" in params ? (params.permission as PermissionGate<A>) : undefined;
+    params.abortSignal.addEventListener(
+      "abort",
+      () => {
+        this._finish = this._finish.then(async () => {
+          await this.markExitSkips();
+          await this.setMode({ mode: "aborted" });
+        });
+      },
+      { once: true },
+    );
   }
 
   get mode(): TrajectoryMode<A> {
@@ -296,19 +312,19 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   private inputControl(): InputControl {
     return {
-      enqueueSteering: content => {
+      enqueueSteering: async content => {
         this.steering.push(content);
-        this.emitSteeringChange();
+        await this.emitSteeringChange();
       },
     };
   }
 
-  private interruptControl(): { interrupt(): void } {
+  private interruptControl(): { interrupt(): Promise<void> } {
     return {
-      interrupt: () => {
+      interrupt: async () => {
         this.steering.clear();
-        this.emitSteeringChange();
         this.turnController.abort();
+        await this.emitSteeringChange();
       },
     };
   }
@@ -318,6 +334,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   private async setMode(mode: TrajectoryMode<A>): Promise<void> {
+    // Exit is terminal: in-flight awaits can still resolve afterwards and try to set a mode,
+    // but only "aborted" may land once the exit signal has fired.
+    if (this.params.abortSignal.aborted && mode.mode !== "aborted") return;
     this._mode = mode;
     await this.params.handler?.modeChange?.(mode);
   }
@@ -332,15 +351,40 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   // Everything the loop appends lives in the permissioned universe; AgentIR narrows that by the
   // agent's permission capability, which TS can't reduce for a generic A.
-  private appendIr(ir: LlmIR<A> | ToolRejectMessage<A["tools"]>): void {
+  private async appendIr(ir: LlmIR<A> | ToolRejectMessage<A["tools"]>): Promise<void> {
     const agentIr = ir as AgentIR<A>;
     this.history.push(agentIr);
-    this.params.handler?.onMessage?.(agentIr);
+    await this.params.handler?.onMessage?.(agentIr);
   }
 
-  private emitSteeringChange(): void {
-    const pending = this.steering.peek();
-    void this.params.handler?.steeringChange?.(
+  // Fires on the exit signal: when the process dies mid-batch, every call without a recorded
+  // answer gets a skip marker, since nothing may run after this. Markers append one at a time,
+  // awaiting onMessage each time: the client owns serialization and must have finished
+  // persisting before run() resolves.
+  private async markExitSkips(): Promise<void> {
+    if (this.stepState.type !== "wait-for-tool") return;
+    const batch = this.stepState;
+    const owner = this.ownership.consume();
+    const running = this._mode.mode === "running-tool" ? this._mode.toolCall.toolCallId : null;
+    for (const toolCall of batch.toolCalls) {
+      if (batch.answered.has(toolCall.toolCallId)) continue;
+      await owner.ifOwner(async () => {
+        batch.answered.add(toolCall.toolCallId);
+        await this.appendIr({
+          role: "tool-skip-output",
+          toolCall,
+          reason:
+            toolCall.toolCallId === running
+              ? EXIT_RUNNING_TOOL_SKIP_REASON
+              : ABORTED_TOOL_SKIP_REASON,
+        });
+      });
+    }
+  }
+
+  private async emitSteeringChange(): Promise<void> {
+    const pending = [...this.steering.peek()];
+    await this.params.handler?.steeringChange?.(
       this.awaitingSteering ? { upcoming: pending, queued: [] } : { upcoming: [], queued: pending },
     );
   }
@@ -370,37 +414,37 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       requestErrorRetries: params.requestErrorRetries,
       abortSignal: combineSignals([params.abortSignal, this.turnController.signal]),
       handler: {
-        startResponse: event => {
-          void this.setMode({ mode: "responding", control: this.runningControl() });
-          params.handler?.startResponse?.(event);
+        startResponse: async event => {
+          await this.setMode({ mode: "responding", control: this.runningControl() });
+          await params.handler?.startResponse?.(event);
         },
         responseProgress: event => params.handler?.responseProgress?.(event),
-        startCompaction: event => {
-          void this.setMode({ mode: "compacting", control: this.runningControl() });
-          params.handler?.startCompaction?.(event);
+        startCompaction: async event => {
+          await this.setMode({ mode: "compacting", control: this.runningControl() });
+          await params.handler?.startCompaction?.(event);
         },
         compactionProgress: event => params.handler?.compactionProgress?.(event),
-        autofixingJson: event => {
-          void this.setMode({ mode: "autofix-json", control: this.runningControl() });
-          params.handler?.autofixingJson?.(event);
+        autofixingJson: async event => {
+          await this.setMode({ mode: "autofix-json", control: this.runningControl() });
+          await params.handler?.autofixingJson?.(event);
         },
-        autofixingTool: event => {
-          void this.setMode({
+        autofixingTool: async event => {
+          await this.setMode({
             mode: "autofix-tool",
             tool: event.tool,
             control: this.runningControl(),
           });
-          params.handler?.autofixingTool?.(event);
+          await params.handler?.autofixingTool?.(event);
         },
-        requestRetry: event => {
-          void this.setMode({
+        requestRetry: async event => {
+          await this.setMode({
             mode: "request-error-retrying",
             error: event.error.requestError,
             attempt: event.attempt,
             delayMs: event.delayMs,
             control: this.runningControl(),
           });
-          params.handler?.requestRetry?.(event);
+          await params.handler?.requestRetry?.(event);
         },
         onResponseHeaders: event => params.handler?.onResponseHeaders?.(event),
         onMessage: ir => this.appendIr(ir),
@@ -416,8 +460,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         const waited = await waitSteeringOrExit(this.steering, this.params.abortSignal);
         this.awaitingSteering = false;
         if (!waited.success) return false;
-        this.emitSteeringChange();
-        this.appendIr({ role: "user", content: coalesceUserMessageContent(waited.data) });
+        await this.emitSteeringChange();
+        await this.appendIr({ role: "user", content: coalesceUserMessageContent(waited.data) });
         break;
       }
       case "wait-for-tool": {
@@ -448,14 +492,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   async run(): Promise<void> {
     const loopController = this.params.loopController ?? defaultLoopController;
     await loopController(() => this.step());
-    await this.setMode({ mode: "aborted" });
+    await this._finish;
   }
 
   private async respond(): Promise<void> {
     const queued = this.steering.take();
     if (queued.length > 0) {
-      this.emitSteeringChange();
-      this.appendIr({ role: "user", content: coalesceUserMessageContent(queued) });
+      await this.emitSteeringChange();
+      await this.appendIr({ role: "user", content: coalesceUserMessageContent(queued) });
     }
     const [modelResult, tools] = await Promise.all([
       this.params.model(),
@@ -481,6 +525,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           toolCalls: reason.toolCalls,
           tools,
           contextWindow: modelResult.data.contextWindow,
+          answered: new Set(),
         };
         return;
       }
@@ -544,7 +589,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       curl,
       control: {
         retry: () => rectification.resolve({ type: "retry" }),
-        rewind: () => {
+        rewind: async () => {
           if (!rectification.live) return;
           let removed: readonly AgentIR<A>[] = [];
           let content: UserMessage["content"] | null = null;
@@ -557,9 +602,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             break;
           }
           this.steering.clear();
-          this.emitSteeringChange();
           rectification.resolve({ type: "rewind", target: "last-user-message" });
-          void this.params.handler?.rewind?.({ removed, content });
+          await this.emitSteeringChange();
+          await this.params.handler?.rewind?.({ removed, content });
         },
       },
     });
@@ -640,8 +685,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     toolCalls: Array<ToolCall<A["tools"]>>;
     tools: Partial<LoadedTools<A["tools"]>>;
     contextWindow: number;
+    answered: Set<string>;
   }): Promise<Result<null, "aborted">> {
     const { toolCalls } = batch;
+    const owner = this.ownership.lease();
     const signal = combineSignals([this.params.abortSignal, this.turnController.signal]);
     await this.setMode({ mode: "tool-call", toolCalls, control: this.runningControl() });
 
@@ -670,7 +717,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             break;
           }
           if (decision.data.decision === "reject") {
-            this.appendIr({ role: "tool-reject", toolCall });
+            await owner.ifOwner(async () => {
+              batch.answered.add(toolCall.toolCallId);
+              await this.appendIr({ role: "tool-reject", toolCall });
+            });
             stoppedAt = { from: index + 1, reason: REJECTED_TOOL_SKIP_REASON };
             steering = decision.data.steering;
             break;
@@ -690,9 +740,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           control: this.runningControl(),
         });
         const result = await this.runTool(toolCall, signal, batch.tools, batch.contextWindow);
-        this.appendIr(result);
+        await owner.ifOwner(async () => {
+          batch.answered.add(toolCall.toolCallId);
+          await this.appendIr(result);
+        });
 
-        // A settled tool always keeps its recorded output; an abort only skips what never ran.
         if (signal.aborted) {
           stoppedAt = { from: index + 1, reason: ABORTED_TOOL_SKIP_REASON };
           aborted = true;
@@ -703,17 +755,37 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       // The throw strands every call from this one on with no answer, breaking tool pairing;
       // mark them skipped so a crashed trajectory still leaves a hydratable history.
       for (const toolCall of toolCalls.slice(index)) {
-        this.appendIr({ role: "tool-skip-output", toolCall, reason: FAILED_TOOL_SKIP_REASON });
+        if (batch.answered.has(toolCall.toolCallId)) continue;
+        await owner.ifOwner(async () => {
+          batch.answered.add(toolCall.toolCallId);
+          await this.appendIr({
+            role: "tool-skip-output",
+            toolCall,
+            reason: FAILED_TOOL_SKIP_REASON,
+          });
+        });
       }
       throw e;
     }
 
     if (stoppedAt != null) {
       for (const toolCall of toolCalls.slice(stoppedAt.from)) {
-        this.appendIr({ role: "tool-skip-output", toolCall, reason: stoppedAt.reason });
+        if (batch.answered.has(toolCall.toolCallId)) continue;
+        await owner.ifOwner(async () => {
+          batch.answered.add(toolCall.toolCallId);
+          await this.appendIr({
+            role: "tool-skip-output",
+            toolCall,
+            reason: stoppedAt.reason,
+          });
+        });
       }
     }
-    if (steering != null) this.appendIr({ role: "user", content: steering });
+    if (steering != null) {
+      await owner.ifOwner(async () => {
+        await this.appendIr({ role: "user", content: steering });
+      });
+    }
     if (aborted) return err("aborted");
     return ok(null);
   }
