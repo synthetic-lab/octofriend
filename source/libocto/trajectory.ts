@@ -206,7 +206,7 @@ export async function defaultLoopController(step: () => Promise<boolean>): Promi
   while (await step()) continue;
 }
 
-const DEFAULT_MAX_TOOL_OUTPUT_FRACTION = 0.2;
+export const DEFAULT_MAX_TOOL_OUTPUT_FRACTION = 0.2;
 
 // ~4 characters per token for English text:
 // https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them

@@ -4,11 +4,15 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { eq } from "drizzle-orm";
-import { withMock } from "antipattern";
-import { inputFieldAvailable, nextToolAction, useAppStore } from "./state.ts";
+import {
+  inputFieldAvailable,
+  useAppStore,
+  type PermissionUiState,
+  type SessionMode,
+} from "./state.ts";
 import type { Config } from "./config.ts";
 import { db } from "./db/db.ts";
-import type { HistoryNode } from "./session-history/index.ts";
+import type { HistoryItem, HistoryNode } from "./session-history/index.ts";
 import { createSession, insertHistoryItems } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
 import type { OctoPermissionControl } from "./octo-permissions.ts";
@@ -18,26 +22,38 @@ import {
   treeNodes,
   trees,
 } from "./session-history/schema/session-history-schema.ts";
-import { compilerUsage } from "./libocto/compilers/compiler-interface.ts";
-import { answeredToolCallId } from "./libocto/llm-ir.ts";
-import type { ToolCall } from "./libocto/tool-def.ts";
-import { trajectoryArc } from "./libocto/trajectory-arc.ts";
+import { err, ok, type Result } from "./libocto/result.ts";
+import type { ModelData } from "./compilers/run.ts";
+import {
+  compilerUsage,
+  type Compiler,
+  type CompilerError,
+  type CompilerParams,
+  type CompilerResult,
+  type CompilerSuccessData,
+  type CompilerUsage,
+} from "./libocto/compilers/compiler-interface.ts";
+import {
+  answeredToolCallId,
+  type Agent,
+  type AssistantMessage,
+  type LoweredIR,
+} from "./libocto/llm-ir.ts";
+import type { TrajectoryMode } from "./libocto/trajectory.ts";
+import type { LoadedTools, ToolCall } from "./libocto/tool-def.ts";
+import type { octoAgent } from "./ir/octo-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";
 
-type TrajectoryArcArgs = Parameters<typeof trajectoryArc.run>[0];
-type TrajectoryArcFinish = Awaited<ReturnType<typeof trajectoryArc.run>>;
-
 /*
- * Regression tests for BUGS.md #2: aborting a multi-tool batch must not leave dangling tool
- * calls in history.
- *
- * Every tool call in an assistant message must be answered by a tool-output-shaped IR. Anthropic
- * hard-400s on unanswered `tool_use` blocks, and while the chat-completions spec tolerates
- * missing outputs, a call with no result is confusing and out-of-distribution for models.
- * Today, ESC during a tool batch silently drops every request after the currently-running one.
+ * Integration tests for the octo store wiring around libocto's Trajectory: history persistence
+ * (exactly-once, on the same branch), the permission-gate store mirror, error-mode rectification
+ * mirrors, and session lifecycle (boot/hydrate/swap/lost). Trajectory semantics themselves are
+ * covered by source/libocto/trajectory.test.ts and are not re-tested here.
  */
 
+type OctoAgent = typeof octoAgent;
+type OctoAssistant = AssistantMessage<OctoAgent["tools"]>;
 type ShellToolCall = Extract<ToolCall<typeof toolMap>, { name: "shell" }>;
 
 const config: Config = {
@@ -66,26 +82,36 @@ const agentConfig: Config = {
 };
 
 const testModelJson = serializeModelJson(config.models[0]);
+const agentModelJson = serializeModelJson(agentConfig.models[0]);
+
+// Captured while the store is still in its initial "booting" mode: booting's controls are the
+// only boot path reachable from every later store state (the "lost" mode has no controls).
+const bootControls = (
+  useAppStore.getState().sessionMode as Extract<SessionMode, { mode: "booting" }>
+).control;
 
 const tempDirs: string[] = [];
+const envBefore = process.env["OCTO_STATE_TEST_API_KEY"];
 
 beforeEach(() => {
   process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
-  useAppStore.setState({
-    history: [],
-    isMenuOpen: false,
-    lastUserPromptIndex: null,
-    runningToolCallId: null,
-    queuedUserMessages: [],
-    query: "",
-    attachedImages: [],
-    modeData: { mode: "ready-for-request" },
-    whitelistState: new Set<string>(),
-    unchained: false,
-  });
 });
 
 afterEach(async () => {
+  const mode = useAppStore.getState().sessionMode;
+  if (mode.mode === "live") {
+    mode.trajectory.exitController.abort();
+    await mode.trajectory.runPromise;
+  }
+  useAppStore.setState({
+    isMenuOpen: false,
+    query: "",
+    attachedImages: [],
+    whitelistState: new Set<string>(),
+    unchained: false,
+  });
+  if (envBefore == null) delete process.env["OCTO_STATE_TEST_API_KEY"];
+  else process.env["OCTO_STATE_TEST_API_KEY"] = envBefore;
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop()!;
     await fs.rm(dir, { recursive: true, force: true });
@@ -114,265 +140,10 @@ function unansweredToolCallIds(history: readonly HistoryNode[]): string[] {
       }
       continue;
     }
-    if (
-      ir.role === "tool-output" ||
-      ir.role === "tool-skip-output" ||
-      ir.role === "tool-runtime-error" ||
-      ir.role === "tool-validation-error" ||
-      ir.role === "tool-reject"
-    ) {
-      answered.add(ir.toolCall.toolCallId);
-      continue;
-    }
-    if (ir.role === "tool-parse-error") {
-      answered.add(ir.malformedRequest.toolCallId);
-      continue;
-    }
-    if (ir.role === "file-read" || ir.role === "file-mutate") {
-      answered.add(ir.toolCall.toolCallId);
-    }
+    if (answeredToolCallId(ir) != null) answered.add(answeredToolCallId(ir)!);
   }
   return requested.filter(id => !answered.has(id));
 }
-
-async function waitFor(cond: () => boolean, timeoutMs = 10_000): Promise<void> {
-  const start = Date.now();
-  while (!cond()) {
-    if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for condition");
-    await new Promise(resolve => setTimeout(resolve, 25));
-  }
-}
-
-function setupToolBatch(callA: ShellToolCall, callB: ShellToolCall) {
-  const session = createSession(process.cwd(), { kind: "local" });
-  const nodes = insertHistoryItems(
-    session,
-    null,
-    [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "user",
-          content: [{ type: "text", content: "Run these two commands" }],
-        },
-      },
-      {
-        type: "llm-ir",
-        ir: {
-          role: "assistant",
-          content: "On it.",
-          usage: compilerUsage(0, 0),
-          toolCalls: [callA, callB],
-        },
-      },
-    ],
-    testModelJson,
-  );
-  useAppStore.getState().hydrateSession(nodes);
-  const abortController = new AbortController();
-  useAppStore.setState({
-    modeData: {
-      mode: "tool-call",
-      toolReqs: [callA, callB],
-      abortController,
-    },
-    runningToolCallId: null,
-  });
-  return { session, abortController };
-}
-
-function setupUserHistory() {
-  const session = createSession(process.cwd(), { kind: "local" });
-  const nodes = insertHistoryItems(
-    session,
-    null,
-    [
-      {
-        type: "llm-ir",
-        ir: {
-          role: "user",
-          content: [{ type: "text", content: "Run these two commands" }],
-        },
-      },
-    ],
-    testModelJson,
-  );
-  useAppStore.getState().hydrateSession(nodes);
-  return session;
-}
-
-function fakeArcWithBatch(toolCalls: Array<ToolCall<typeof toolMap>>) {
-  let arcCalls = 0;
-  return async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-    arcCalls++;
-    if (arcCalls > 1) {
-      return { type: "finish", reason: { type: "needs-response" } };
-    }
-    handler.onMessage({
-      role: "assistant" as const,
-      content: "On it.",
-      usage: compilerUsage(0, 0),
-      toolCalls,
-    });
-    return { type: "finish", reason: { type: "request-tool", toolCalls } };
-  };
-}
-
-function pendingPermissionControl(): OctoPermissionControl | null {
-  const { modeData } = useAppStore.getState();
-  if (modeData.mode !== "tool-call-permission") return null;
-  return modeData.control;
-}
-
-function steeringRejectionTx() {
-  const { modeData } = useAppStore.getState();
-  if (modeData.mode !== "awaiting-steering") {
-    throw new Error(`expected awaiting-steering, got ${modeData.mode}`);
-  }
-  return modeData.rejectionTx;
-}
-
-describe("permissioned tool batches", () => {
-  it("asks permission for each tool call and hides the input while parked", async () => {
-    const transport = new LocalTransport();
-    const callA = shellCall("call_a", "echo a");
-    const callB = shellCall("call_b", "echo b");
-    const session = setupUserHistory();
-
-    await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
-      const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
-
-      await waitFor(() => pendingPermissionControl() != null);
-
-      expect(useAppStore.getState().modeData.mode).toBe("tool-call-permission");
-      expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(false);
-      const firstControl = pendingPermissionControl()!;
-      expect(firstControl.toolCall.toolCallId).toBe("call_a");
-      firstControl.allow();
-
-      await waitFor(() => pendingPermissionControl()?.toolCall.toolCallId === "call_b");
-      pendingPermissionControl()!.allow();
-
-      await running;
-
-      expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-        call_a: 1,
-        call_b: 1,
-      });
-      expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-      expect(pendingPermissionControl()).toBeNull();
-    });
-  });
-
-  it("applies a rejection immediately and appends the steering on commit", async () => {
-    const transport = new LocalTransport();
-    const callA = shellCall("call_a", "echo a");
-    const callB = shellCall("call_b", "echo b");
-    const session = setupUserHistory();
-
-    await withMock(trajectoryArc, "run", fakeArcWithBatch([callA, callB]), async () => {
-      const running = useAppStore.getState().runAgent({ config: agentConfig, transport, session });
-
-      await waitFor(() => pendingPermissionControl() != null);
-
-      pendingPermissionControl()!.beginReject();
-
-      expect(useAppStore.getState().modeData.mode).toBe("awaiting-steering");
-      expect(inputFieldAvailable(useAppStore.getState().modeData)).toBe(true);
-      expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-        call_a: 1,
-        call_b: 1,
-      });
-
-      steeringRejectionTx().commitRejection([{ type: "text", content: "do it differently" }]);
-      await running;
-
-      expect(historyRoles()).toEqual([
-        "user",
-        "assistant",
-        "tool-reject",
-        "tool-skip-output",
-        "user",
-      ]);
-      const last = useAppStore.getState().history.at(-1)!;
-      if (last.type !== "llm-ir" || last.ir.role !== "user") {
-        throw new Error("expected steering user IR");
-      }
-      expect(last.ir.content).toEqual([{ type: "text", content: "do it differently" }]);
-      expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-    });
-  });
-});
-
-describe("aborting a tool batch", () => {
-  it("marks pending tool calls as answered when aborting between tool calls", async () => {
-    const transport = new LocalTransport();
-    const callA = shellCall("call_a", "echo a");
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    await useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
-
-    // The user presses ESC while call_b is still pending. The UI drops the remaining requests
-    // (ToolRequestsRenderer unmounts), so the store must record that call_b never ran —
-    // otherwise the next request sends an assistant message with an unanswered tool call.
-    useAppStore.getState().abortResponse(session, config);
-
-    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-  });
-
-  it("marks pending tool calls as answered when aborting a running tool", async () => {
-    const transport = new LocalTransport();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
-    tempDirs.push(dir);
-    const marker = path.join(dir, "started");
-
-    const callA = shellCall("call_a", `touch ${marker} && sleep 30`);
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
-
-    // Wait for the shell command to actually start, then ESC mid-run.
-    await waitFor(() => existsSync(marker));
-    useAppStore.getState().abortResponse(session, config);
-    await running;
-
-    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-  }, 30_000);
-
-  it("marks even the running tool call as answered when exiting", async () => {
-    const transport = new LocalTransport();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
-    tempDirs.push(dir);
-    const marker = path.join(dir, "started");
-
-    const callA = shellCall("call_a", `touch ${marker} && sleep 30`);
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
-    await waitFor(() => existsSync(marker));
-
-    /*
-     * On exit (double Ctrl+C, menu quit) the process can't wait for the running tool to
-     * settle, so the store must synchronously mark every unanswered call as skipped —
-     * including the running one. Assert before `running` resolves.
-     */
-    useAppStore.getState().abortResponse(session, config, { exiting: true });
-    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-
-    await running;
-  }, 30_000);
-});
-
-/*
- * Regression tests for BUGS.md #1: opening and closing the menu mid-tool-batch unmounts and
- * remounts ToolRequestsRenderer, which must not re-run already-executed (or in-flight) tools.
- * The renderer derives its behavior from nextToolAction; these tests pin that derivation.
- */
 
 function answerCountsByToolCallId(history: readonly HistoryNode[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -385,483 +156,11 @@ function answerCountsByToolCallId(history: readonly HistoryNode[]): Record<strin
   return counts;
 }
 
-function assistantNode(calls: ShellToolCall[], nodeId: number): HistoryNode {
-  return {
-    type: "llm-ir",
-    nodeId,
-    modelJson: testModelJson,
-    ir: {
-      role: "assistant",
-      content: "On it.",
-      usage: compilerUsage(0, 0),
-      toolCalls: calls,
-    },
-  };
+function historyRoles(): string[] {
+  return useAppStore
+    .getState()
+    .history.map(node => (node.type === "llm-ir" ? node.ir.role : node.type));
 }
-
-function toolOutputNode(call: ShellToolCall, nodeId: number): HistoryNode {
-  return {
-    type: "llm-ir",
-    nodeId,
-    modelJson: testModelJson,
-    ir: {
-      role: "tool-output",
-      toolCall: call,
-      content: [{ type: "text", content: "done" }],
-    },
-  };
-}
-
-describe("nextToolAction", () => {
-  const callA = shellCall("call_a", "echo a");
-  const callB = shellCall("call_b", "echo b");
-  const batch = [callA, callB];
-  const base = [assistantNode(batch, 1)];
-
-  it("runs the first tool when nothing is answered", () => {
-    expect(nextToolAction(batch, null, base)).toEqual({ kind: "ready", req: callA });
-  });
-
-  it("runs the first unanswered tool", () => {
-    expect(nextToolAction(batch, null, [...base, toolOutputNode(callA, 2)])).toEqual({
-      kind: "ready",
-      req: callB,
-    });
-  });
-
-  it("is done when every tool is answered", () => {
-    const history = [...base, toolOutputNode(callA, 2), toolOutputNode(callB, 3)];
-    expect(nextToolAction(batch, null, history)).toEqual({ kind: "done" });
-  });
-
-  it("waits for the in-flight tool rather than re-running it", () => {
-    expect(nextToolAction(batch, "call_a", base)).toEqual({ kind: "in-flight", req: callA });
-  });
-
-  it("ignores a stale running ID for an already-answered tool", () => {
-    expect(nextToolAction(batch, "call_a", [...base, toolOutputNode(callA, 2)])).toEqual({
-      kind: "ready",
-      req: callB,
-    });
-  });
-
-  it("treats tool-skip-output as answered", () => {
-    const history: HistoryNode[] = [
-      ...base,
-      {
-        type: "llm-ir",
-        nodeId: 2,
-        modelJson: testModelJson,
-        ir: { role: "tool-skip-output", toolCall: callA, reason: "skipped" },
-      },
-    ];
-    expect(nextToolAction(batch, null, history)).toEqual({ kind: "ready", req: callB });
-  });
-});
-
-/*
- * Regression tests: tool call IDs are only unique within a single response. Some providers
- * recycle IDs across turns (e.g. per-response counters like call_0), and provider-generated IDs
- * must never be rewritten — LLMs misbehave when handed IDs they didn't generate. Answered-ness
- * must therefore be derived relative to the current batch's request message, not the whole
- * session history, or a new batch whose IDs collide with an earlier batch is instantly treated
- * as done: tools never run, never render, and the model is handed the stale output.
- */
-describe("tool call IDs reused across batches", () => {
-  const firstBatchCall = shellCall("call_0", "echo first");
-  const secondBatchCall = shellCall("call_0", "echo second");
-
-  const historyWithAnsweredFirstBatch: HistoryNode[] = [
-    assistantNode([firstBatchCall], 1),
-    toolOutputNode(firstBatchCall, 2),
-    assistantNode([secondBatchCall], 3),
-  ];
-
-  it("runs a new batch whose IDs collide with an earlier answered batch", () => {
-    expect(nextToolAction([secondBatchCall], null, historyWithAnsweredFirstBatch)).toEqual({
-      kind: "ready",
-      req: secondBatchCall,
-    });
-  });
-
-  it("is done only once the new batch is itself answered", () => {
-    const history = [...historyWithAnsweredFirstBatch, toolOutputNode(secondBatchCall, 4)];
-    expect(nextToolAction([secondBatchCall], null, history)).toEqual({ kind: "done" });
-  });
-
-  it("runs a colliding tool call to completion", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(
-      session,
-      null,
-      [
-        {
-          type: "llm-ir",
-          ir: {
-            role: "assistant",
-            content: "First.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [firstBatchCall],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "tool-output",
-            toolCall: firstBatchCall,
-            content: [{ type: "text", content: "first" }],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "assistant",
-            content: "Second.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [secondBatchCall],
-          },
-        },
-      ],
-      testModelJson,
-    );
-    useAppStore.getState().hydrateSession(nodes);
-    useAppStore.setState({
-      modeData: {
-        mode: "tool-call",
-        toolReqs: [secondBatchCall],
-        abortController: new AbortController(),
-      },
-      runningToolCallId: null,
-    });
-
-    await useAppStore.getState().runTool({ config, transport, session, toolReq: secondBatchCall });
-
-    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_0: 2 });
-    const state = useAppStore.getState();
-    expect(nextToolAction([secondBatchCall], state.runningToolCallId, state.history)).toEqual({
-      kind: "done",
-    });
-  });
-
-  it("rejects and skips within the current batch when IDs collide with an earlier batch", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
-    const secondBatchSecondCall = shellCall("call_1", "echo later");
-    const nodes = insertHistoryItems(
-      session,
-      null,
-      [
-        {
-          type: "llm-ir",
-          ir: {
-            role: "assistant",
-            content: "First.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [firstBatchCall],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "tool-output",
-            toolCall: firstBatchCall,
-            content: [{ type: "text", content: "first" }],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "user",
-            content: [{ type: "text", content: "Again" }],
-          },
-        },
-      ],
-      testModelJson,
-    );
-    useAppStore.getState().hydrateSession(nodes);
-
-    await withMock(
-      trajectoryArc,
-      "run",
-      fakeArcWithBatch([secondBatchCall, secondBatchSecondCall]),
-      async () => {
-        const running = useAppStore
-          .getState()
-          .runAgent({ config: agentConfig, transport, session });
-
-        await waitFor(() => pendingPermissionControl() != null);
-
-        // Rejecting the first call of the new batch must reject *this* batch's call_0 and skip
-        // only this batch's remaining call — the earlier answered call_0 must not confuse it.
-        pendingPermissionControl()!.beginReject();
-        steeringRejectionTx().commitRejection([{ type: "text", content: "later" }]);
-        await running;
-
-        expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-          call_0: 2, // earlier output + this batch's reject marker
-          call_1: 1, // this batch's skip marker
-        });
-        expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-      },
-    );
-  });
-
-  it("marks colliding calls as skipped on abort rather than treating them as answered", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    const nodes = insertHistoryItems(
-      session,
-      null,
-      [
-        {
-          type: "llm-ir",
-          ir: {
-            role: "assistant",
-            content: "First.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [firstBatchCall],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "tool-output",
-            toolCall: firstBatchCall,
-            content: [{ type: "text", content: "first" }],
-          },
-        },
-        {
-          type: "llm-ir",
-          ir: {
-            role: "assistant",
-            content: "Second.",
-            usage: compilerUsage(0, 0),
-            toolCalls: [secondBatchCall],
-          },
-        },
-      ],
-      testModelJson,
-    );
-    useAppStore.getState().hydrateSession(nodes);
-    useAppStore.setState({
-      modeData: {
-        mode: "tool-call",
-        toolReqs: [secondBatchCall],
-        abortController: new AbortController(),
-      },
-      runningToolCallId: null,
-    });
-
-    useAppStore.getState().abortResponse(session, config);
-
-    // The new call_0 gets its own skip marker, not silently treated as answered by the old one:
-    // otherwise the aborted batch leaves a dangling tool call that Anthropic hard-400s on.
-    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_0: 2 });
-    expect(useAppStore.getState().modeData.mode).toBe("ready-for-request");
-  });
-});
-
-describe("menu round-trips during a tool batch", () => {
-  it("preserves the first unanswered tool when opening and closing the menu", async () => {
-    const transport = new LocalTransport();
-    const callA = shellCall("call_a", "echo a");
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    await useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
-
-    useAppStore.getState().openMenu();
-    useAppStore.getState().closeMenu();
-
-    const state = useAppStore.getState();
-    if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
-    expect(nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history)).toEqual(
-      { kind: "ready", req: callB },
-    );
-
-    await useAppStore.getState().runTool({ config, transport, session, toolReq: callB });
-    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-      call_a: 1,
-      call_b: 1,
-    });
-  });
-
-  it("preserves the in-flight tool when opening and closing the menu", async () => {
-    const transport = new LocalTransport();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
-    tempDirs.push(dir);
-    const marker = path.join(dir, "started");
-
-    const callA = shellCall("call_a", `touch ${marker} && sleep 30`);
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    const running = useAppStore.getState().runTool({ config, transport, session, toolReq: callA });
-    await waitFor(() => existsSync(marker));
-
-    useAppStore.getState().openMenu();
-    useAppStore.getState().closeMenu();
-
-    const state = useAppStore.getState();
-    if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
-    expect(nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history)).toEqual(
-      { kind: "in-flight", req: callA },
-    );
-
-    // Clean up: abort the batch so the test doesn't wait on the sleeping tool.
-    useAppStore.getState().abortResponse(session, config);
-    await running;
-
-    // Exactly one answer for the in-flight tool: it was never re-run.
-    expect(answerCountsByToolCallId(useAppStore.getState().history)["call_a"]).toBe(1);
-  }, 30_000);
-
-  it("clears the running tool ID when a tool settles while the menu is open", async () => {
-    const transport = new LocalTransport();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
-    tempDirs.push(dir);
-    const marker = path.join(dir, "started");
-
-    const callA = shellCall("call_a", `touch ${marker} && sleep 0.5`);
-    const callB = shellCall("call_b", "echo b");
-    const { session } = setupToolBatch(callA, callB);
-
-    const prevCanary = process.env["CANARY_OCTO"];
-    process.env["CANARY_OCTO"] = "1";
-    try {
-      const running = useAppStore
-        .getState()
-        .runTool({ config, transport, session, toolReq: callA });
-      await waitFor(() => existsSync(marker));
-      useAppStore.getState().openMenu();
-      await running;
-
-      expect(useAppStore.getState().runningToolCallId).toBeNull();
-      expect(useAppStore.getState().isMenuOpen).toBe(true);
-      expect(useAppStore.getState().modeData.mode).toBe("tool-call");
-
-      useAppStore.getState().closeMenu();
-      const state = useAppStore.getState();
-      if (state.modeData.mode !== "tool-call") throw new Error("expected tool-call mode");
-      expect(
-        nextToolAction(state.modeData.toolReqs, state.runningToolCallId, state.history),
-      ).toEqual({ kind: "ready", req: callB });
-
-      // The canary double-run guard must not fire when running the next tool.
-      await useAppStore.getState().runTool({ config, transport, session, toolReq: callB });
-      expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
-        call_a: 1,
-        call_b: 1,
-      });
-    } finally {
-      if (prevCanary == null) delete process.env["CANARY_OCTO"];
-      else process.env["CANARY_OCTO"] = prevCanary;
-    }
-  }, 30_000);
-});
-
-describe("message queue", () => {
-  it("coalesces queued messages into a single user message on flush", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    useAppStore.getState().enqueueUserMessage({ content: "one" });
-    useAppStore.getState().enqueueUserMessage({ content: "two" });
-    expect(useAppStore.getState().history).toHaveLength(0);
-
-    useAppStore.getState()._appendQueuedUserMessages(session, config);
-
-    const { history, queuedUserMessages: queuedMessages } = useAppStore.getState();
-    expect(queuedMessages).toHaveLength(0);
-    expect(history).toHaveLength(1);
-    const item = history[0];
-    if (item.type !== "llm-ir" || item.ir.role !== "user") throw new Error("expected user IR");
-    expect(item.ir.content).toEqual([{ type: "text", content: "one\ntwo" }]);
-  });
-
-  it("clears the queue on abort without persisting", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    useAppStore.getState().enqueueUserMessage({ content: "one" });
-    useAppStore.getState().abortResponse(session, config);
-    expect(useAppStore.getState().queuedUserMessages).toHaveLength(0);
-    expect(useAppStore.getState().history).toHaveLength(0);
-  });
-});
-
-describe("edit and retry", () => {
-  const transport = new LocalTransport();
-
-  function userNode(content: string, nodeId: number): HistoryNode {
-    return {
-      type: "llm-ir",
-      nodeId,
-      modelJson: testModelJson,
-      ir: {
-        role: "user",
-        content: [{ type: "text", content }],
-      },
-    };
-  }
-
-  it("discards queued messages when rewinding to edit the last prompt", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    useAppStore.setState({
-      history: [userNode("original prompt", 1), assistantNode([], 2)],
-      lastUserPromptIndex: 0,
-      queuedUserMessages: [
-        { id: 1, content: "queued one" },
-        { id: 2, content: "queued two" },
-      ],
-      modeData: { mode: "request-error", error: "boom", curlCommand: null },
-    });
-
-    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
-
-    const state = useAppStore.getState();
-    expect(state.queuedUserMessages).toHaveLength(0);
-    expect(state.modeData.mode).toBe("ready-for-request");
-    expect(state.query).toBe("original prompt");
-    // The last user prompt and the failed response after it are both rewound past.
-    expect(state.history).toHaveLength(0);
-  });
-
-  it("discards queued messages even when there is no last prompt to rewind to", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    useAppStore.setState({
-      history: [],
-      lastUserPromptIndex: null,
-      queuedUserMessages: [{ id: 1, content: "queued one" }],
-      modeData: { mode: "request-error", error: "boom", curlCommand: null },
-    });
-
-    useAppStore.getState().editAndRetryFrom("request-error", { config, transport, session });
-
-    const state = useAppStore.getState();
-    expect(state.queuedUserMessages).toHaveLength(0);
-    expect(state.modeData.mode).toBe("ready-for-request");
-    expect(state.query).toBe("");
-  });
-
-  it("discards queued messages when rewinding from a compaction error", () => {
-    const session = createSession(process.cwd(), { kind: "local" });
-    useAppStore.setState({
-      history: [
-        userNode("original prompt", 1),
-        { type: "compaction-failed", nodeId: 2, modelJson: testModelJson },
-      ],
-      lastUserPromptIndex: 0,
-      queuedUserMessages: [{ id: 1, content: "queued one" }],
-      modeData: { mode: "compaction-error", error: "boom", curlCommand: null },
-    });
-
-    useAppStore.getState().editAndRetryFrom("compaction-error", { config, transport, session });
-
-    const state = useAppStore.getState();
-    expect(state.queuedUserMessages).toHaveLength(0);
-    expect(state.modeData.mode).toBe("ready-for-request");
-    expect(state.query).toBe("original prompt");
-    // The compaction-failed marker and the last user prompt are both rewound past.
-    expect(state.history).toHaveLength(0);
-  });
-});
 
 function dbNodeCount(sessionId: string): number {
   return db()
@@ -884,160 +183,648 @@ function dbLlmIrCount(sessionId: string, marker: string): number {
     .filter(row => row.json.includes(marker)).length;
 }
 
-function historyRoles(): string[] {
-  return useAppStore
-    .getState()
-    .history.map(node => (node.type === "llm-ir" ? node.ir.role : node.type));
+async function waitFor<T>(
+  cond: () => T | null | false | undefined,
+  timeoutMs = 10_000,
+): Promise<T> {
+  const start = Date.now();
+  while (true) {
+    const value = cond();
+    if (value != null && value !== false) return value;
+    if (Date.now() - start > timeoutMs) throw new Error("Timed out waiting for condition");
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
 }
 
-describe("runAgent history persistence (BUGS.md #8, #12)", () => {
-  const checkpointIr = {
-    role: "checkpoint" as const,
-    content: [{ type: "text" as const, content: "bug8-checkpoint-marker" }],
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (error?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (error?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/* Mock compiler seam: state.ts lets tests inject a Compiler via BootEnv. */
+
+type Emit = (tokens: string, type: "reasoning" | "content") => void;
+type CompilerQueueItem = (
+  onTokens: Emit,
+  params: { abortSignal: AbortSignal },
+) =>
+  | Result<CompilerSuccessData<OctoAgent>, CompilerError>
+  | Promise<Result<CompilerSuccessData<OctoAgent>, CompilerError>>;
+
+function assistantMessage(opts: {
+  content?: string;
+  usage?: CompilerUsage;
+  toolCalls?: OctoAssistant["toolCalls"];
+}): OctoAssistant {
+  return {
+    role: "assistant",
+    content: opts.content ?? "",
+    usage: opts.usage ?? compilerUsage(1, 1),
+    toolCalls: opts.toolCalls,
   };
-  const assistantIr = {
-    role: "assistant" as const,
-    content: "bug8-assistant-marker",
-    usage: compilerUsage(0, 0),
-  };
+}
 
-  it("persists a compaction checkpoint exactly once", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
-    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-      handler.onMessage(checkpointIr);
-      handler.onMessage(assistantIr);
-      return { type: "finish", reason: { type: "needs-response" } };
-    };
+function okResult(output: OctoAssistant): Result<CompilerSuccessData<OctoAgent>, CompilerError> {
+  return ok({ output, curl: "curl", headers: new Headers(), usage: output.usage });
+}
 
-    await withMock(trajectoryArc, "run", fakeArc, async () => {
-      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
-    });
+function plain(content: string): CompilerQueueItem {
+  return () => okResult(assistantMessage({ content }));
+}
 
-    expect(historyRoles()).toEqual(["user", "checkpoint", "assistant"]);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-assistant-marker")).toBe(1);
-    expect(dbNodeCount(session.metadata.sessionId!)).toBe(3);
+// Parked error mode if a test under-queues: a never-rejected run promise would hit state.ts's
+// process.exit crash path and kill the whole test file, so the queue never throws.
+const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
+  err({
+    type: "payment-error",
+    requestError: "mock compiler queue exhausted",
+    curl: "curl",
+    headers: new Headers(),
   });
 
-  it("persists retried-arc IRs exactly once", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
+function makeRunCompiler(queue: CompilerQueueItem[]) {
+  const calls: Array<{ irs: Array<LoweredIR<any>> }> = [];
+  const runCompiler: Compiler<ModelData> = async <
+    A extends Agent<any, any, any>,
+    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+  >(
+    params: CompilerParams<A, ModelData, Tools>,
+  ): Promise<CompilerResult<A, Tools>> => {
+    calls.push({ irs: [...params.irs] as Array<LoweredIR<any>> });
+    const next = queue.shift() ?? QUEUE_EXHAUSTED;
+    const result = await next(params.onTokens, params);
+    return result as typeof result & CompilerResult<A, Tools>;
+  };
+  return { runCompiler, calls };
+}
 
-    const retriedAssistant = {
-      role: "assistant" as const,
-      content: "bug8-retry-assistant-marker",
-      usage: compilerUsage(0, 0),
-    };
-    const parseError = {
-      role: "tool-parse-error" as const,
-      malformedRequest: {
-        type: "malformed-tool-request" as const,
-        error: "bad json",
-        call: { original: { name: "shell", arguments: "{oops" } },
-        toolCallId: "call_bad",
-      },
-    };
-    const finalAssistant = {
-      role: "assistant" as const,
-      content: "bug8-retry-final-marker",
-      usage: compilerUsage(0, 0),
-    };
-    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-      handler.onMessage(retriedAssistant);
-      handler.onMessage(parseError);
-      handler.onMessage(finalAssistant);
-      return { type: "finish", reason: { type: "needs-response" } };
-    };
+/* Store-driving helpers. */
 
-    await withMock(trajectoryArc, "run", fakeArc, async () => {
-      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
-    });
+function currentLive(): Extract<SessionMode, { mode: "live" }> | null {
+  const mode = useAppStore.getState().sessionMode;
+  return mode.mode === "live" ? mode : null;
+}
 
-    expect(historyRoles()).toEqual(["user", "assistant", "tool-parse-error", "assistant"]);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-retry-assistant-marker")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "call_bad")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-retry-final-marker")).toBe(1);
-    expect(dbNodeCount(session.metadata.sessionId!)).toBe(4);
+async function waitTrajectoryMode<M extends TrajectoryMode<OctoAgent>["mode"]>(
+  name: M,
+  timeoutMs?: number,
+): Promise<Extract<TrajectoryMode<OctoAgent>, { mode: M }>> {
+  return waitFor(() => {
+    const live = currentLive();
+    if (live == null) return null;
+    const mode = live.liveMode.trajectoryMode;
+    if (mode.mode !== name) return null;
+    return mode as Extract<TrajectoryMode<OctoAgent>, { mode: M }>;
+  }, timeoutMs);
+}
+
+async function waitPermissionUi<T extends PermissionUiState["type"]>(
+  type: T,
+): Promise<Extract<PermissionUiState, { type: T }>> {
+  return waitFor(() => {
+    const live = currentLive();
+    if (live == null) return null;
+    const ui = live.liveMode.permissionUi;
+    if (ui.type !== type) return null;
+    return ui as Extract<PermissionUiState, { type: T }>;
+  });
+}
+
+async function respond(text: string) {
+  const mode = await waitTrajectoryMode("ready-for-request");
+  await mode.control.enqueueSteering([{ type: "text", content: text }]);
+}
+
+const PARKED_MODES: ReadonlySet<TrajectoryMode<OctoAgent>["mode"]> = new Set([
+  "ready-for-request",
+  "tool-call-permission",
+  "request-error",
+  "compaction-error",
+  "payment-error",
+  "rate-limit-error",
+  "auth-error",
+]);
+
+// Runs one turn: asserts the trajectory is parked, fires the trigger, and waits for the
+// trajectory to unpark and park again. Waiting on the mode alone resolves immediately — the
+// trajectory is already parked in ready-for-request after boot — and polling can miss a fast
+// turn entirely, so follow mode changes through a store subscription instead.
+async function waitForNextTurn(trigger: () => void | Promise<unknown>): Promise<void> {
+  const before = currentLive();
+  if (before == null) throw new Error("no live session");
+  const parkedMode = before.liveMode.trajectoryMode.mode;
+  if (!PARKED_MODES.has(parkedMode)) {
+    throw new Error(`expected a parked mode before the turn, got ${parkedMode}`);
+  }
+
+  let sawUnpark = false;
+  const finished = deferred();
+  const unsubscribe = useAppStore.subscribe(state => {
+    const sessionMode = state.sessionMode;
+    if (sessionMode.mode !== "live") return;
+    onMode(sessionMode.liveMode.trajectoryMode.mode);
+  });
+  const finish = () => {
+    unsubscribe();
+    finished.resolve();
+  };
+  const onMode = (mode: TrajectoryMode<OctoAgent>["mode"]) => {
+    if (mode !== parkedMode) sawUnpark = true;
+    if (sawUnpark && mode === "ready-for-request") finish();
+  };
+  const afterSubscribe = currentLive();
+  if (afterSubscribe == null) {
+    unsubscribe();
+    throw new Error("session left the live mode mid-turn");
+  }
+  onMode(afterSubscribe.liveMode.trajectoryMode.mode);
+
+  try {
+    await trigger();
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      finished.reject(new Error("Timed out waiting for the turn to park again"));
+    }, 10_000);
+    try {
+      await finished.promise;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (e) {
+    unsubscribe();
+    throw e;
+  }
+}
+
+async function bootSession(queue: CompilerQueueItem[]) {
+  const transport = new LocalTransport();
+  const { runCompiler, calls } = makeRunCompiler(queue);
+  const session = await bootControls.newSession(
+    process.cwd(),
+    { kind: "local" },
+    {
+      config: agentConfig,
+      transport,
+      runCompiler,
+    },
+  );
+  await waitFor(currentLive);
+  return { session, compilerCalls: calls };
+}
+
+async function hydrateSession(items: HistoryItem[], queue: CompilerQueueItem[]) {
+  const transport = new LocalTransport();
+  const { runCompiler, calls } = makeRunCompiler(queue);
+  const session = createSession(process.cwd(), { kind: "local" });
+  const nodes = insertHistoryItems(session, null, items, testModelJson);
+  await bootControls.hydrate({
+    session,
+    history: nodes,
+    config: agentConfig,
+    transport,
+    runCompiler,
+  });
+  await waitFor(currentLive);
+  return { session, nodes, compilerCalls: calls };
+}
+
+function permissionControl(): OctoPermissionControl {
+  const ui = useAppStore.getState().sessionMode;
+  if (ui.mode !== "live" || ui.liveMode.permissionUi.type !== "prompt") {
+    throw new Error("expected a permission prompt");
+  }
+  return ui.liveMode.permissionUi.control;
+}
+
+function sessionError(error: unknown): never {
+  throw error instanceof Error ? error : new Error(String(error));
+}
+
+/* Tests */
+
+describe("boot and response mirror", () => {
+  it("boots a session, runs a response, and persists history exactly once", async () => {
+    const { session, compilerCalls } = await bootSession([plain("boot-assistant-marker")]);
+
+    await waitForNextTurn(() => respond("hello"));
+
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(compilerCalls.length).toBe(1);
+    expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
+
+    const sessionId = session.metadata.sessionId ?? sessionError(new Error("no session id"));
+    expect(dbNodeCount(sessionId)).toBe(2);
+    expect(dbLlmIrCount(sessionId, "boot-assistant-marker")).toBe(1);
   });
 
-  it("persists each IR exactly once when compaction and retry happen in the same run", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
+  it("swapping sessions aborts the old trajectory, resets buffers, and keeps the model override", async () => {
+    const first = await bootSession([plain("first-assistant-marker")]);
+    await waitForNextTurn(() => respond("hi"));
 
-    const retriedAssistant = {
-      role: "assistant" as const,
-      content: "bug8-mixed-retry-marker",
-      usage: compilerUsage(0, 0),
+    const firstLive = currentLive();
+    if (firstLive == null) throw new Error("expected live session");
+    const firstTrajectory = firstLive.trajectory.instance;
+    const noncesBefore = {
+      clear: useAppStore.getState().clearNonce,
+      hydration: useAppStore.getState().sessionHydrationNonce,
     };
-    const parseError = {
-      role: "tool-parse-error" as const,
-      malformedRequest: {
-        type: "malformed-tool-request" as const,
-        error: "bad json",
-        call: { original: { name: "shell", arguments: "{oops" } },
-        toolCallId: "call_mixed",
-      },
-    };
-    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-      handler.onMessage(checkpointIr);
-      handler.onMessage(retriedAssistant);
-      handler.onMessage(parseError);
-      handler.onMessage(assistantIr);
-      return { type: "finish", reason: { type: "needs-response" } };
-    };
+    useAppStore.getState().setModelOverride(agentConfig.models[0]);
+    useAppStore.getState().openMenu();
 
-    await withMock(trajectoryArc, "run", fakeArc, async () => {
-      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
-    });
+    const second = await bootSession([plain("second")]);
+
+    expect(firstTrajectory.mode.mode).toBe("aborted");
+    expect(useAppStore.getState().isMenuOpen).toBe(false);
+    expect(useAppStore.getState().history).toHaveLength(0);
+    expect(useAppStore.getState().query).toBe("");
+    expect(useAppStore.getState().modelOverride).toBe(agentModelJson);
+    expect(useAppStore.getState().clearNonce).toBeGreaterThan(noncesBefore.clear);
+    expect(useAppStore.getState().sessionHydrationNonce).toBeGreaterThan(noncesBefore.hydration);
+
+    await waitForNextTurn(() => respond("again"));
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+    const secondId = second.session.metadata.sessionId!;
+    const firstId = first.session.metadata.sessionId!;
+    expect(secondId).not.toBe(firstId);
+    expect(dbLlmIrCount(firstId, "first-assistant-marker")).toBe(1);
+  });
+});
+
+describe("permission gate mirror", () => {
+  it("parks on the gate with the input hidden, allows, and persists the run exactly once", async () => {
+    const callA = shellCall("call_a", "echo echo-permission-marker");
+    const { session } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [callA] })),
+      plain("permission-final-marker"),
+    ]);
+
+    await respond("run it");
+    const prompt = await waitPermissionUi("prompt");
+
+    const live = currentLive()!;
+    expect(live.liveMode.trajectoryMode.mode).toBe("tool-call-permission");
+    expect(inputFieldAvailable(live.liveMode.trajectoryMode, live.liveMode.permissionUi)).toBe(
+      false,
+    );
+    expect(permissionControl().toolCall.toolCallId).toBe("call_a");
+    await waitForNextTurn(() => prompt.control.allow());
+
+    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_a: 1 });
+    expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
+    const parked = currentLive()!;
+    expect(inputFieldAvailable(parked.liveMode.trajectoryMode, parked.liveMode.permissionUi)).toBe(
+      true,
+    );
+
+    const sessionId = session.metadata.sessionId!;
+    expect(dbNodeCount(sessionId)).toBe(4);
+    expect(dbLlmIrCount(sessionId, "echo-permission-marker")).toBe(2); // request + output, once each
+    expect(dbLlmIrCount(sessionId, "permission-final-marker")).toBe(1);
+  });
+
+  it("mirrors rejection: input returns while steering, and the steering is persisted exactly once", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    const { session } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [callA, callB] })),
+      plain("reject-final-marker"),
+    ]);
+
+    await respond("run both");
+    const prompt = await waitPermissionUi("prompt");
+    prompt.control.beginReject();
+
+    const awaiting = await waitPermissionUi("awaiting-steering");
+    const live = currentLive()!;
+    expect(inputFieldAvailable(live.liveMode.trajectoryMode, live.liveMode.permissionUi)).toBe(
+      true,
+    );
+
+    await waitForNextTurn(() =>
+      awaiting.rejectionTx.commitRejection([{ type: "text", content: "steering-reject-marker" }]),
+    );
 
     expect(historyRoles()).toEqual([
       "user",
-      "checkpoint",
       "assistant",
-      "tool-parse-error",
+      "tool-reject",
+      "tool-skip-output",
+      "user",
       "assistant",
     ]);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-mixed-retry-marker")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "call_mixed")).toBe(1);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-assistant-marker")).toBe(1);
-    expect(dbNodeCount(session.metadata.sessionId!)).toBe(5);
+    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+      call_a: 1,
+      call_b: 1,
+    });
+    expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
+
+    const sessionId = session.metadata.sessionId!;
+    expect(dbLlmIrCount(sessionId, "steering-reject-marker")).toBe(1);
+    expect(dbLlmIrCount(sessionId, "reject-final-marker")).toBe(1);
   });
 
-  it("keeps notifications appended mid-run on the same branch", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
-    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-      handler.onMessage(checkpointIr);
-      useAppStore.getState().notify("bug8-notify-marker", session, agentConfig);
-      handler.onMessage(assistantIr);
-      return { type: "finish", reason: { type: "needs-response" } };
-    };
+  it("whitelisting auto-allows later batches of the same tool without prompting", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    const { session } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [callA] })),
+      plain("first done"),
+      () => okResult(assistantMessage({ toolCalls: [callB] })),
+      plain("second done"),
+    ]);
 
-    await withMock(trajectoryArc, "run", fakeArc, async () => {
-      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    await respond("run one");
+    const prompt = await waitPermissionUi("prompt");
+    await waitForNextTurn(() => prompt.control.allowAndWhitelist());
+
+    expect(useAppStore.getState().whitelistState.has("shell:*")).toBe(true);
+
+    // If the whitelist didn't apply, the gate parks forever and this times out.
+    await waitForNextTurn(() => respond("run another"));
+
+    expect(historyRoles()).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "assistant",
+      "user",
+      "assistant",
+      "tool-output",
+      "assistant",
+    ]);
+    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+      call_a: 1,
+      call_b: 1,
     });
-
-    expect(historyRoles()).toEqual(["user", "checkpoint", "notification", "assistant"]);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
-    expect(dbNodeCount(session.metadata.sessionId!)).toBe(4);
+    const sessionId = session.metadata.sessionId!;
+    expect(dbNodeCount(sessionId)).toBe(8);
   });
 
-  it("keeps the compaction checkpoint when the run aborts before any tokens stream", async () => {
-    const transport = new LocalTransport();
-    const session = createSession(process.cwd(), { kind: "local" });
-    const fakeArc = async ({ handler }: TrajectoryArcArgs): Promise<TrajectoryArcFinish> => {
-      handler.onMessage(checkpointIr);
-      return { type: "finish", reason: { type: "abort" } };
-    };
+  it("interrupting at the gate persists skip markers so no tool call dangles", async () => {
+    const callA = shellCall("call_a", "echo a");
+    const callB = shellCall("call_b", "echo b");
+    await bootSession([() => okResult(assistantMessage({ toolCalls: [callA, callB] }))]);
 
-    await withMock(trajectoryArc, "run", fakeArc, async () => {
-      await useAppStore.getState().input({ config: agentConfig, transport, session, query: "hi" });
+    await respond("run both");
+    (await waitPermissionUi("prompt")).control.allow();
+
+    // Wait specifically for call_b's prompt: the mirror may still show call_a's park.
+    await waitFor(() => {
+      const live = currentLive();
+      if (live == null) return null;
+      const ui = live.liveMode.permissionUi;
+      return ui.type === "prompt" && ui.control.toolCall.toolCallId === "call_b" ? ui : null;
+    });
+    const parked = await waitTrajectoryMode("tool-call-permission");
+    await waitForNextTurn(() => parked.control.interrupt());
+
+    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "tool-skip-output"]);
+    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+  });
+
+  it("exiting mid-run skip-marks and persists every unanswered call", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
+    tempDirs.push(dir);
+    const marker = path.join(dir, "started");
+
+    const callA = shellCall("call_a", `touch ${marker} && sleep 30`);
+    const callB = shellCall("call_b", "echo b");
+    const { session } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [callA, callB] })),
+    ]);
+
+    await respond("run both");
+    (await waitPermissionUi("prompt")).control.allow();
+    await waitFor(() => existsSync(marker));
+
+    // The menu-quit / double-Ctrl-C path: the process can't wait for the running tool to
+    // settle, so exit skip-marks every unanswered call before run() resolves.
+    const live = currentLive()!;
+    live.trajectory.exitController.abort();
+    await live.trajectory.runPromise;
+
+    expect(currentLive()!.liveMode.trajectoryMode.mode).toBe("aborted");
+    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+    expect(historyRoles()).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+
+    const sessionId = session.metadata.sessionId!;
+    expect(dbLlmIrCount(sessionId, "exited while this tool was running")).toBe(1);
+    expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
+      call_a: 1,
+      call_b: 1,
+    });
+  }, 30_000);
+});
+
+describe("error-mode mirrors", () => {
+  it("maps a missing API key to the auth-error mode without a compiler call", async () => {
+    delete process.env["OCTO_STATE_TEST_API_KEY"];
+    const { compilerCalls } = await bootSession([plain("auth-after-marker")]);
+
+    await respond("hi");
+    const authError = await waitTrajectoryMode("auth-error");
+
+    expect(compilerCalls.length).toBe(0);
+    expect(authError.authError.length).toBeGreaterThan(0);
+
+    process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
+    await waitForNextTurn(() => authError.control.retry());
+    expect(compilerCalls.length).toBe(1);
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+  });
+
+  it("mirrors a rewind: restores the prompt as the draft query and slices history", async () => {
+    const seededUsage = compilerUsage(200_000, 10);
+    const { compilerCalls } = await hydrateSession(
+      [
+        {
+          type: "llm-ir",
+          ir: { role: "user", content: [{ type: "text", content: "original prompt" }] },
+        },
+        { type: "llm-ir", ir: assistantMessage({ content: "seeded answer", usage: seededUsage }) },
+      ],
+      [
+        // The seeded assistant's usage trips autocompaction; an empty summary fails it.
+        () => okResult(assistantMessage({ content: "" })),
+        // After the rewind, the seeded usage trips autocompaction again on the edited request.
+        plain("rewind-summary-marker"),
+        plain("edited-response-marker"),
+      ],
+    );
+
+    const nonceAfterHydrate = useAppStore.getState().clearNonce;
+    await respond("new question");
+    const compactionError = await waitTrajectoryMode("compaction-error");
+
+    await waitForNextTurn(() => compactionError.control.rewind());
+
+    // The rewind trims back past the failed prompt, restores it as the draft query, and leaves
+    // the hydrated prefix intact.
+    expect(useAppStore.getState().query).toBe("new question");
+    expect(useAppStore.getState().clearNonce).toBeGreaterThan(nonceAfterHydrate);
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+
+    await waitForNextTurn(() => respond("edited prompt text"));
+
+    expect(compilerCalls.length).toBe(3);
+    expect(historyRoles()).toEqual(["user", "assistant", "user", "checkpoint", "assistant"]);
+    // The edited request reaches the model in the re-compaction; after it, requests lower to
+    // just the checkpoint.
+    const compactionRequest = compilerCalls[1].irs;
+    expect(compactionRequest.map(m => m.role)).toEqual(["user", "assistant", "user", "user"]);
+    const editedUser = compactionRequest[2];
+    if (editedUser.role !== "user") throw new Error("impossible");
+    expect(editedUser.content).toEqual([{ type: "text", content: "edited prompt text" }]);
+    expect(compilerCalls[2].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it("degrades to the lost mode when the session's tree disappears", async () => {
+    const { session } = await bootSession([plain("first")]);
+    await waitForNextTurn(() => respond("hi"));
+    const sessionId = session.metadata.sessionId!;
+
+    const treeId = db().select({ id: trees.id }).from(trees).where(eq(trees.name, sessionId)).get()!
+      .id;
+    db().delete(treeNodes).where(eq(treeNodes.treeId, treeId)).run();
+    db().delete(trees).where(eq(trees.id, treeId)).run();
+
+    await respond("again");
+    const lost = await waitFor(() => {
+      const mode = useAppStore.getState().sessionMode;
+      return mode.mode === "lost" ? mode : null;
     });
 
-    expect(historyRoles()).toEqual(["user", "checkpoint"]);
-    expect(dbLlmIrCount(session.metadata.sessionId!, "bug8-checkpoint-marker")).toBe(1);
-    expect(dbNodeCount(session.metadata.sessionId!)).toBe(2);
+    expect(lost.sessionId).toBe(sessionId);
+    expect(lost.sessionLostError).toContain("does not exist");
+    expect(useAppStore.getState().history).toHaveLength(2);
+  });
+});
+
+describe("history persistence (BUGS.md #8, #12)", () => {
+  it("persists compaction and retry IRs exactly once in the same run", async () => {
+    const malformed = {
+      type: "malformed-tool-request" as const,
+      error: "bad json",
+      call: { original: { name: "shell", arguments: "{oops" } },
+      toolCallId: "call_mixed",
+    };
+    const { session, compilerCalls } = await bootSession([
+      () =>
+        okResult(
+          assistantMessage({
+            content: "mixed-attempt-marker",
+            usage: compilerUsage(200_000, 10),
+            toolCalls: [malformed],
+          }),
+        ),
+      plain("mixed-summary-marker"), // compaction summary
+      plain("mixed-final-marker"),
+    ]);
+
+    await waitForNextTurn(() => respond("hi"));
+
+    expect(compilerCalls.length).toBe(3);
+    expect(historyRoles()).toEqual([
+      "user",
+      "assistant",
+      "tool-parse-error",
+      "checkpoint",
+      "assistant",
+    ]);
+    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+
+    const sessionId = session.metadata.sessionId!;
+    expect(dbNodeCount(sessionId)).toBe(5);
+    expect(dbLlmIrCount(sessionId, "mixed-attempt-marker")).toBe(1);
+    expect(dbLlmIrCount(sessionId, "call_mixed")).toBe(2); // request + parse error, once each
+    expect(dbLlmIrCount(sessionId, "mixed-summary-marker")).toBe(1);
+    expect(dbLlmIrCount(sessionId, "mixed-final-marker")).toBe(1);
+  });
+
+  it("keeps a notification appended mid-run on the same branch", async () => {
+    const gate = deferred();
+    const { session } = await bootSession([
+      async () => {
+        await gate.promise;
+        return okResult(assistantMessage({ content: "notify-after-marker" }));
+      },
+    ]);
+
+    await respond("hi");
+    await waitFor(() => useAppStore.getState().history.length === 1);
+    useAppStore.getState().notify("mid-run-notify-marker");
+    gate.resolve();
+    await waitTrajectoryMode("ready-for-request");
+
+    expect(historyRoles()).toEqual(["user", "notification", "assistant"]);
+    const sessionId = session.metadata.sessionId!;
+    expect(dbNodeCount(sessionId)).toBe(3);
+    expect(dbLlmIrCount(sessionId, "notify-after-marker")).toBe(1);
+  });
+
+  it("persists the partial response exactly once when interrupted mid-stream", async () => {
+    const { session } = await bootSession([
+      async (onTokens, params) => {
+        onTokens("partial-stream-marker", "content");
+        // Abort-aware park: the arc must see the abort after tokens were emitted.
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+    ]);
+
+    await respond("hi");
+    const responding = await waitTrajectoryMode("responding");
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+    const sessionId = session.metadata.sessionId!;
+    expect(dbNodeCount(sessionId)).toBe(2);
+    expect(dbLlmIrCount(sessionId, "partial-stream-marker")).toBe(1);
+    expect(dbLlmIrCount(sessionId, "unreached-full-answer")).toBe(0);
+  });
+});
+
+describe("inputFieldAvailable", () => {
+  const idle: PermissionUiState = { type: "idle" };
+  const steering: PermissionUiState = {
+    type: "awaiting-steering",
+    rejectionTx: { commitRejection: () => {} },
+  };
+  const ready: TrajectoryMode<OctoAgent> = {
+    mode: "ready-for-request",
+    control: { enqueueSteering: async () => {} },
+  };
+  const error: TrajectoryMode<OctoAgent> = {
+    mode: "request-error",
+    requestError: "boom",
+    curl: null,
+    control: { retry: () => {}, rewind: async () => {} },
+  };
+
+  it("is available when ready for a request", () => {
+    expect(inputFieldAvailable(ready, idle)).toBe(true);
+  });
+
+  it("is hidden while an error mode is parked, and shown again when steering a rejection", () => {
+    expect(inputFieldAvailable(error, idle)).toBe(false);
+    expect(inputFieldAvailable(error, steering)).toBe(true);
+  });
+
+  it("is hidden when aborted", () => {
+    expect(inputFieldAvailable({ mode: "aborted" }, idle)).toBe(false);
   });
 });
