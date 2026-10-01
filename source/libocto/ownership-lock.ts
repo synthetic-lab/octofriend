@@ -1,9 +1,22 @@
 /*
- * Guards state shared between an in-flight loop and an out-of-band claimant (e.g. an exit
- * handler) from interleaved mutation. A new lease() invalidates every previously-issued ref;
- * consume() claims ownership permanently — no further lease() or consume() is honored — so
- * the consumer can never be overridden. A stale ref's pending ifOwner callbacks silently stop
- * running, moving mutation exclusively to the current owner.
+ * A lock to synchronize mutating shared state between different async functions that may get called
+ * at different times.
+ *
+ * Wrap all mutations to the shared state in ifOwner(async () => { ... }) checks. Assuming you do
+ * that, the lock will prevent certain types of race conditions. The way it works is:
+ *
+ * 1. If you want to be allowed to mutate state, call .lease(), which gives you a lock reference
+ * with an ifOwner method.
+ * 2. If someone later calls .lease() after you on the same lock, they'll acquire it, and your
+ * attempts to mutate will no-op.
+ * 3. If you want to permanently gain ownership of the lock and prevent anyone from taking it from
+ * you in the future, call .consume(). Future calls to .lease() will always return lock references
+ * that no-op their ifOwner checks.
+ *
+ * This allows you to build relatively flexible heirarchies around controlling state mutation. If
+ * you only want to mutate state if someone else hasn't touched it in the meantime, use .lease(). If
+ * you want to gain permanent ownership and prevent others from mutating the shared state, call
+ * .consume().
  */
 export type OwnershipLockRef = {
   ifOwner(callback: () => Promise<void>): Promise<void>;
