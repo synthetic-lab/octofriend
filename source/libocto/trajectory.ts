@@ -135,6 +135,7 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   TrajectoryArcParams<A, Model>,
   "handler" | "abortSignal" | "model" | "contextWindow" | "tools"
 > & {
+  agent: A;
   // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;

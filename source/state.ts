@@ -248,7 +248,8 @@ export const useAppStore = create<UiState>((set, get) => {
       whitelistState: get().whitelistState,
     };
 
-    const instance = new Trajectory<typeof octoAgent, ModelData>({
+    const instance = new Trajectory({
+      agent: octoAgent,
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
       systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
