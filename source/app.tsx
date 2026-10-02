@@ -1894,7 +1894,9 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
       </TerminalFlex>
     );
   }
-  if (item.role === "trajectory") {
+  if (item.role === "tool-invoke-subagent") {
+    // Subagent invocation annotations are bookkeeping: the trajectory everything pairs with
+    // carries the rendered information instead. Drop it before the exhaustive user check.
     return null;
   }
   const _: "user" = item.role;

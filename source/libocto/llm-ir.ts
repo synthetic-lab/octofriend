@@ -94,74 +94,92 @@ export function definePermissionlessAgent<
 export const defineAgent = definePermissionlessAgent;
 
 // An IR that defines sub-agent trajectories
-export class AgentTrajectory<T extends AgentDirectory, Name extends keyof T> {
-  readonly role = "trajectory";
-  readonly ir: LlmIR<{ agents: T[Name]["agents"]; tools: T[Name]["tools"] }>[];
-  private readonly name: Name;
+export type AgentTrajectory<
+  Agents extends AgentDirectory,
+  Name extends keyof Agents,
+  Tools extends ToolMap<any, any>,
+> = {
+  role: "subagent-trajectory";
+  subagent: Name;
+  ir: Array<LlmIR<{ agents: Agents[Name]["agents"]; tools: Agents[Name]["tools"] }>>;
+  // The parent tool call that delegated to the subagent.
+  toolCall: ToolCall<Tools>;
+};
 
-  constructor(name: Name, ir: LlmIR<{ agents: T[Name]["agents"]; tools: T[Name]["tools"] }>[]) {
-    this.name = name;
-    this.ir = ir;
-  }
+// The trajectory leg of a full IR universe: one member per subagent, so subagent can be used as a
+// discriminant to narrow the child IR universe and the parent tool call like any other IR role.
+export type AllTrajectories<Agents extends AgentDirectory, Tools extends ToolMap<any, any>> = {
+  [K in keyof Agents]: AgentTrajectory<Agents, K, Tools>;
+}[keyof Agents];
 
-  // A type guard to check whether an AgentTrajectory belongs to a specific named subagent. This is
-  // useful since different subagents may have different tools, so you can narrow which tools an
-  // if-statement needs to check for by first checking which subagent you're dealing with.
-  // For example:
-  //
-  // if(agentIr.isNamed("research")) {
-  //   // Only tools and subagents that the research subagent has access to are accessible here
-  // }
-  isNamed<N extends Name>(name: N): this is AgentTrajectory<T, N> {
-    if (this.name === name) return true;
-    return false;
-  }
+// A type guard to check whether an AgentTrajectory belongs to a specific named subagent. This is
+// useful since different subagents may have different tools, so you can narrow which tools an
+// if-statement needs to check for by first checking which subagent you're dealing with.
+// For example:
+//
+// if(trajectoryIsNamed(ir, "research")) {
+//   // Only tools and subagents that the research subagent has access to are accessible here
+// }
+export function trajectoryIsNamed<
+  T extends AgentDirectory,
+  K extends keyof T,
+  Tools extends ToolMap<any, any>,
+>(
+  trajectory: AllTrajectories<T, Tools>,
+  subagent: K,
+): trajectory is Extract<AllTrajectories<T, Tools>, { subagent: K }> {
+  return trajectory.subagent === subagent;
+}
 
-  // A helpful function for checking *all* possible subagent names, and narrowing each one down in a
-  // callback. For example, if you had "explore" and "research" subagents, you might call:
-  //
-  // ir.cond({
-  //   explore: exploreIr => {
-  //     // exploreIr is guaranteed to be an explore subagent trajectory
-  //     // any tools and subagents are narrowed to only what's accessible to the explore subagent
-  //   },
-  //   research: researchIr => {
-  //     // researchIr is guaranteed to be a research subagent trajectory
-  //     // any tools and subagents are narrowed to only what's accessible to the research subagent
-  //   },
-  // });
-  //
-  // Like Lisp-like `cond` expressions, `cond` returns whatever the cond arms return. It can take
-  // either synchronous handlers, or async handlers. If it takes sync handlers, it returns a
-  // non-promise; if it takes async handlers, it returns a promise that you can await.
-  //
-  // For example:
-  //
-  // const output = await ir.cond({
-  //   explore: async (exploreIr) => {
-  //     return someOutput;
-  //   },
-  //   research: async (researchIr) => {
-  //     return someOtherOutput;
-  //   },
-  // });
-  //
-  // Note that the handlers must be all-async, or all-sync; you can't mix sync and async.
-  cond<C extends CondHandlerMap<T, Name>>(
-    conditions: C & CondHandlerAsyncValidation<C>,
-  ): CondReturn<C> {
-    for (const [k, v] of Object.entries(conditions) as Array<
-      [keyof C, (self: AgentTrajectory<T, Name>) => unknown]
-    >) {
-      if (k === this.name) {
-        return v(this) as CondReturn<C>;
-      }
+// A helpful function for checking *all* possible subagent names, and narrowing each one down in a
+// callback. For example, if you had "explore" and "research" subagents, you might call:
+//
+// trajectoryCond(ir, {
+//   explore: exploreIr => {
+//     // exploreIr is guaranteed to be an explore subagent trajectory
+//     // any tools and subagents are narrowed to only what's accessible to the explore subagent
+//   },
+//   research: researchIr => {
+//     // researchIr is guaranteed to be a research subagent trajectory
+//     // any tools and subagents are narrowed to only what's accessible to the research subagent
+//   },
+// });
+//
+// Like Lisp-like `cond` expressions, `trajectoryCond` returns whatever the cond arms return. It
+// can take either synchronous handlers, or async handlers. If it takes sync handlers, it returns
+// a non-promise; if it takes async handlers, it returns a promise that you can await.
+//
+// For example:
+//
+// const output = await trajectoryCond(ir, {
+//   explore: async (exploreIr) => {
+//     return someOutput;
+//   },
+//   research: async (researchIr) => {
+//     return someOtherOutput;
+//   },
+// });
+//
+// Note that the handlers must be all-async, or all-sync; you can't mix sync and async.
+export function trajectoryCond<
+  T extends AgentDirectory,
+  Name extends keyof T,
+  C extends CondHandlerMap<T, Name>,
+>(
+  trajectory: AllTrajectories<T, any> & { subagent: Name },
+  conditions: C & CondHandlerAsyncValidation<C>,
+): CondReturn<C> {
+  for (const [k, v] of Object.entries(conditions) as Array<
+    [keyof C, (self: AgentTrajectory<T, Name, any>) => unknown]
+  >) {
+    if (k === trajectory.subagent) {
+      return v(trajectory as AgentTrajectory<T, Name, any>) as CondReturn<C>;
     }
-    throw new Error("Impossible");
   }
+  throw new Error("Impossible");
 }
 type CondHandlerMap<T extends AgentDirectory, Name extends keyof T> = {
-  [K in Name]: (self: AgentTrajectory<T, K>) => unknown;
+  [K in Name]: (self: AgentTrajectory<T, K, any>) => unknown;
 };
 type CondHandlerReturn<C> = C[keyof C] extends (...args: any) => infer Ret ? Ret : never;
 declare const mixedCondHandlerReturns: unique symbol;
@@ -298,6 +316,7 @@ export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends
   role: "tool-invoke-subagent";
   toolCall: ToolCall<T>;
   subagent: SubagentName;
+  message: UserMessage["content"];
 };
 
 /*
@@ -339,11 +358,12 @@ export type CheckpointedIR<T extends ToolMap<any, any>> =
  */
 export type LoweredIRWithTrajectories<A extends Agent<any, any, any>> =
   | LoweredIR<A["tools"]>
-  | AgentTrajectory<A["agents"], keyof A["agents"]>;
+  | AllTrajectories<A["agents"], A["tools"]>;
 
 export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any>> =
   | CheckpointedIR<A["tools"]>
-  | AgentTrajectory<A["agents"], keyof A["agents"]>;
+  | AllTrajectories<A["agents"], A["tools"]>
+  | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>;
 
 /*
  * All IR types including extensions.
@@ -382,15 +402,39 @@ export type AgentIR<A extends Agent<any, any, any>> = A extends PermissionedBran
  * LoweredCheckpoint) nor rejects survive lowering, so compilers only ever see LoweredIR.
  */
 export type PreLoweredIR<A extends Agent<any, any, any>> =
-  | CheckpointedIRWithTrajectories<A>
+  | CheckpointedIR<A["tools"]>
+  | PreLoweredTrajectories<A["agents"], A["tools"]>
+  | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
   | ToolRejectMessage<A["tools"]>;
+
+// AgentTrajectory may carry arbitrary IR, since trajectories are living transcripts, not compiler
+// inputs. By contrast, lower(...) accepts only this recursively-constrained variant: every nested
+// trajectory's ir field may only contain IRs that lower(...) and the arc already know how to
+// transform, never extension IRs that only the defining client knows how to lower.
+export type PreLoweredTrajectories<
+  Agents extends AgentDirectory,
+  Tools extends ToolMap<any, any>,
+> = {
+  [K in keyof Agents]: PreLoweredTrajectory<Agents[K], Extract<K, string>, Tools>;
+}[keyof Agents];
+
+type PreLoweredTrajectory<
+  Child extends Agent<any, any, any>,
+  Name extends string,
+  Tools extends ToolMap<any, any>,
+> = {
+  role: "subagent-trajectory";
+  subagent: Name;
+  ir: Array<PreLoweredIR<Child>>;
+  toolCall: ToolCall<Tools>;
+};
 
 /*
  * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
  *
  * The parameter is expressed in terms of the genuinely generic IR types rather than a single
  * "all built-in IRs" union type: AgentTrajectory is invariant in its agent directory, so no
- * monomorphic AgentTrajectory instantiation (even AgentTrajectory<any, any>) accepts every
+ * monomorphic AgentTrajectory instantiation (even AgentTrajectory<any, any, any>) accepts every
  * trajectory — the type parameters must be quantified at the function level.
  *
  * Every tool extension IR (see ToolExtensionIR) carries the tool call it answers by definition,
@@ -402,27 +446,38 @@ function isBuiltinRole(role: string): role is BuiltinIRRole {
   return role in BUILTIN_IR_ROLES;
 }
 
-function isBuiltinIR<Role extends string, T extends AgentDirectory, Name extends keyof T>(
+function isBuiltinIR<
+  Role extends string,
+  T extends AgentDirectory,
+  Tools extends ToolMap<any, any>,
+>(
   ir:
     | LoweredIR<any>
     | Checkpoint
     | ToolRejectMessage<any>
-    | AgentTrajectory<T, Name>
+    | AllTrajectories<T, Tools>
+    | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
-): ir is LoweredIR<any> | Checkpoint | ToolRejectMessage<any> | AgentTrajectory<T, Name> {
+): ir is
+  | LoweredIR<any>
+  | Checkpoint
+  | ToolRejectMessage<any>
+  | AllTrajectories<T, Tools>
+  | ToolSubagentInvoke<any, string> {
   return isBuiltinRole(ir.role);
 }
 
 export function answeredToolCallId<
   Role extends string,
   T extends AgentDirectory,
-  Name extends keyof T,
+  Tools extends ToolMap<any, any>,
 >(
   ir:
     | LoweredIR<any>
     | Checkpoint
     | ToolRejectMessage<any>
-    | AgentTrajectory<T, Name>
+    | AllTrajectories<T, Tools>
+    | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
 ): string | null {
   if (!isBuiltinIR(ir)) return ir.toolCall.toolCallId;
@@ -433,8 +488,9 @@ export function answeredToolCallId<
     case "user":
     case "checkpoint":
     case "lowered-checkpoint":
-    case "trajectory":
+    case "tool-invoke-subagent":
       return null;
+    case "subagent-trajectory":
     case "tool-output":
     case "tool-runtime-error":
     case "tool-validation-error":
@@ -484,7 +540,8 @@ type _BuiltinIRRolesMatch = AssertNever<
       | LoweredIR<any>["role"]
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
-      | AgentTrajectory<any, any>["role"],
+      | AgentTrajectory<any, any, any>["role"]
+      | ToolSubagentInvoke<any, string>["role"],
       BuiltinIRRole
     >
   | Exclude<
@@ -492,7 +549,8 @@ type _BuiltinIRRolesMatch = AssertNever<
       | LoweredIR<any>["role"]
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
-      | AgentTrajectory<any, any>["role"]
+      | AgentTrajectory<any, any, any>["role"]
+      | ToolSubagentInvoke<any, string>["role"]
     >
 >;
 
