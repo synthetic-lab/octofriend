@@ -2,15 +2,11 @@ import { fetchDeps } from "./fetch.ts";
 import { t } from "structural";
 import { SYNTHETIC_PROVIDER, type ProviderConfig } from "./providers.ts";
 
-export function syntheticAliasName(modelId: string): string {
-  return modelId
-    .slice(4)
-    .split(":")
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
-export type SyntheticModel = ProviderConfig["models"][number] & { huggingFaceId: string };
+export type SyntheticModel = ProviderConfig["models"][number] & {
+  huggingFaceId: string;
+  aliasOf?: string;
+  categories: string[];
+};
 
 const CatalogSchema = t.subtype({
   data: t.array(
@@ -18,6 +14,8 @@ const CatalogSchema = t.subtype({
       id: t.str,
       hugging_face_id: t.str,
       display_name: t.str,
+      alias_of: t.optional(t.str),
+      categories: t.optional(t.array(t.str)),
       context_length: t.num,
       input_modalities: t.array(t.str),
     }),
@@ -43,7 +41,9 @@ export async function loadSyntheticModels(signal: AbortSignal): Promise<Syntheti
     models.set(model.id, {
       model: model.id,
       huggingFaceId: model.hugging_face_id,
-      nickname: model.display_name,
+      nickname: model.alias_of ? model.id : model.display_name,
+      aliasOf: model.alias_of,
+      categories: model.categories ?? [],
       context: model.context_length,
       ...(model.input_modalities.includes("image")
         ? {
@@ -59,7 +59,9 @@ export async function loadSyntheticModels(signal: AbortSignal): Promise<Syntheti
     });
   }
   return [...models.values()].sort((a, b) => {
-    const rank = (id: string) => (id === "syn:large:vision" ? 0 : id.startsWith("syn:") ? 1 : 2);
-    return rank(a.model) - rank(b.model);
+    return (
+      Number(b.categories.includes("recommended")) - Number(a.categories.includes("recommended")) ||
+      Number(Boolean(b.aliasOf)) - Number(Boolean(a.aliasOf))
+    );
   });
 }

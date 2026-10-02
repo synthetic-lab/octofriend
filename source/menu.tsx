@@ -7,6 +7,7 @@ import { TransportContext } from "./transport-context.ts";
 import { listPreviousSessions } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
+import type { SyntheticModel } from "./synthetic-models.ts";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { readAuthForModel } from "./config.ts";
@@ -44,7 +45,7 @@ const useMenuState = create<MenuState>((set, _) => ({
     });
   },
 }));
-export function Menu() {
+export function Menu({ syntheticModels }: { syntheticModels: SyntheticModel[] }) {
   const { menuMode, setMenuMode } = useMenuState(
     useShallow(state => ({
       menuMode: state.menuMode,
@@ -63,15 +64,21 @@ export function Menu() {
         }
       }}
     >
-      <MenuContent menuMode={menuMode} setMenuMode={setMenuMode} />
+      <MenuContent
+        syntheticModels={syntheticModels}
+        menuMode={menuMode}
+        setMenuMode={setMenuMode}
+      />
     </TerminalFlex>
   );
 }
 
 function MenuContent({
+  syntheticModels,
   menuMode,
   setMenuMode,
 }: {
+  syntheticModels: SyntheticModel[];
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
 }) {
@@ -90,7 +97,7 @@ function MenuContent({
   if (menuMode === "notifications-menu") return <NotificationsMenu />;
   if (menuMode === "usage-menu") return <UsageMenu />;
   const _: "add-model" = menuMode;
-  return <AddModelMenuFlow />;
+  return <AddModelMenuFlow syntheticModels={syntheticModels} />;
 }
 function AutofixToggle({
   configKey,
@@ -869,7 +876,7 @@ function RemoveModelMenu() {
     />
   );
 }
-function AddModelMenuFlow() {
+function AddModelMenuFlow({ syntheticModels }: { syntheticModels: SyntheticModel[] }) {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
@@ -904,6 +911,7 @@ function AddModelMenuFlow() {
   );
   return (
     <ModelSetup
+      syntheticModels={syntheticModels}
       config={config}
       onComplete={onComplete}
       onCancel={onCancel}

@@ -8,6 +8,7 @@ import { useColor } from "./theme.ts";
 import { KbShortcutPanel } from "./components/kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
+import type { SyntheticModel } from "./synthetic-models.ts";
 import { MenuHeader } from "./components/menu-panel.tsx";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { THEME_COLOR } from "./theme.ts";
@@ -51,7 +52,11 @@ type SetupStep =
   | {
       step: "done";
     };
-export function FirstTimeSetup({ configPath }: { configPath: string }) {
+type FirstTimeSetupProps = {
+  configPath: string;
+  syntheticModels: SyntheticModel[];
+};
+export function FirstTimeSetup({ configPath, syntheticModels }: FirstTimeSetupProps) {
   return (
     <AppShell>
       <TerminalFlex
@@ -66,13 +71,13 @@ export function FirstTimeSetup({ configPath }: { configPath: string }) {
           justifyContent: "center",
         }}
       >
-        <FirstTimeSetupContent configPath={configPath} />
+        <FirstTimeSetupContent configPath={configPath} syntheticModels={syntheticModels} />
       </TerminalFlex>
     </AppShell>
   );
 }
 
-function FirstTimeSetupContent({ configPath }: { configPath: string }) {
+function FirstTimeSetupContent({ configPath, syntheticModels }: FirstTimeSetupProps) {
   const [step, setStep] = useState<SetupStep>({
     step: "welcome",
   });
@@ -149,7 +154,8 @@ function FirstTimeSetupContent({ configPath }: { configPath: string }) {
       });
     }
   }, [step]);
-  if (step.step === "welcome") return <WelcomeScreen onContinue={handleWelcomeContinue} />;
+  if (step.step === "welcome")
+    return <WelcomeScreen syntheticModels={syntheticModels} onContinue={handleWelcomeContinue} />;
   if (step.step === "autofix-setup") {
     return (
       <AutofixSetup
@@ -169,6 +175,7 @@ function FirstTimeSetupContent({ configPath }: { configPath: string }) {
   if (step.step === "add-model") {
     return (
       <ModelSetup
+        syntheticModels={syntheticModels}
         config={null}
         onComplete={addModelComplete}
         onCancel={addModelCancel}
@@ -483,7 +490,14 @@ function AutofixCompleteScreen({ onContinue }: { onContinue: () => void }) {
     </CenteredBox>
   );
 }
-function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
+function WelcomeScreen({
+  onContinue,
+  syntheticModels,
+}: {
+  onContinue: () => void;
+  syntheticModels: SyntheticModel[];
+}) {
+  const recommended = syntheticModels.find(model => model.categories.includes("recommended"));
   useKeyboard(event => {
     if (event.key === "Enter") onContinue();
   });
@@ -499,11 +513,13 @@ function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
         }}
       >
         <Span>
-          Octo lets you choose the LLM that powers it. We recommend using `syn:large:vision` via
-          Synthetic, our privacy-focused inference service. This alias always tracks our latest
-          vision-enabled coding model, so you don't have to worry about specific model versions
-          getting deprecated later. You can also add closed-source models from OpenAI and Anthropic,
-          like {recommendedModel("openai").nickname} and {recommendedModel("anthropic").nickname}.
+          Octo lets you choose the LLM that powers it. We recommend using{" "}
+          {recommended
+            ? `${recommended.aliasOf ?? recommended.nickname} via Synthetic`
+            : "a model from Synthetic"}
+          , our privacy-focused inference service. You can also add closed-source models from OpenAI
+          and Anthropic, like {recommendedModel("openai").nickname} and{" "}
+          {recommendedModel("anthropic").nickname}.
         </Span>
       </TerminalFlex>
 

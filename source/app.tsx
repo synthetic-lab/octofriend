@@ -75,6 +75,7 @@ import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
+import type { SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
@@ -143,6 +144,7 @@ type Props = {
   transport: Transport;
   inputHistory: InputHistory;
   bootSkills: string[];
+  syntheticModels: SyntheticModel[];
 };
 type TranscriptItem =
   | {
@@ -192,6 +194,7 @@ export default function App({
   updates,
   inputHistory,
   bootSkills,
+  syntheticModels,
 }: Props) {
   const { paintCannon } = useApp();
   const showToast = useToast();
@@ -497,7 +500,7 @@ export default function App({
                 {sessionMode.mode === "live" && isMenuOpen && (
                   <Modal minWidth={50} onClose={closeMenu}>
                     <SessionContext.Provider value={sessionMode.session}>
-                      <Menu />
+                      <Menu syntheticModels={syntheticModels} />
                     </SessionContext.Provider>
                   </Modal>
                 )}
