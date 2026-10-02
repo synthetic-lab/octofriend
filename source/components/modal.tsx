@@ -6,7 +6,6 @@ import { TerminalFlex } from "./terminal-flex.tsx";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
 
 const BACKDROP_FADE_DURATION_MS = 300;
-const MODAL_SHOW_DELAY_MS = 150;
 const MODAL_RESIZE_DURATION_MS = 200;
 
 type Size = {
@@ -98,46 +97,44 @@ export function Modal({
           opacity: 0.75 * Math.min(1, time / BACKDROP_FADE_DURATION_MS),
         }}
       />
-      {time >= MODAL_SHOW_DELAY_MS && (
+      <TerminalFlex
+        style={{
+          position: "relative",
+          zIndex: 1,
+          flexDirection: "column",
+          minWidth,
+          maxWidth: "100%",
+          maxHeight: "100%",
+        }}
+      >
+        {displayedSize != null && (
+          <TerminalFlex
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: displayedSize.width,
+              height: displayedSize.height,
+              border: "rounded",
+              borderColor,
+              backgroundColor: BACKGROUND_COLOR,
+            }}
+          />
+        )}
         <TerminalFlex
+          ref={contentRef}
           style={{
             position: "relative",
             zIndex: 1,
             flexDirection: "column",
-            minWidth,
-            maxWidth: "100%",
-            maxHeight: "100%",
+            padding: 1,
+            paddingLeft: 2,
+            paddingRight: 2,
           }}
         >
-          {displayedSize != null && (
-            <TerminalFlex
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: displayedSize.width,
-                height: displayedSize.height,
-                border: "rounded",
-                borderColor,
-                backgroundColor: BACKGROUND_COLOR,
-              }}
-            />
-          )}
-          <TerminalFlex
-            ref={contentRef}
-            style={{
-              position: "relative",
-              zIndex: 1,
-              flexDirection: "column",
-              padding: 1,
-              paddingLeft: 2,
-              paddingRight: 2,
-            }}
-          >
-            {children}
-          </TerminalFlex>
+          {children}
         </TerminalFlex>
-      )}
+      </TerminalFlex>
     </TerminalFlex>
   );
 }
