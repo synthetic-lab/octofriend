@@ -6,6 +6,7 @@ import TestRenderer, { act } from "react-test-renderer";
 import { expect, it, mock } from "bun:test";
 import { withMock } from "antipattern";
 import { fetchDeps } from "../fetch.ts";
+import { loadSyntheticModels } from "../synthetic-models.ts";
 import { keyboardDeps } from "../hooks/use-keyboard.ts";
 import { CustomModelFlow } from "./add-model-flow.tsx";
 import { ModelSetup } from "./auto-detect-models.tsx";
@@ -47,13 +48,17 @@ it("hides alias backing models while keeping distinct models with the same displ
                 },
                 {
                   id: "syn:small:vision",
+                  alias_of: "Backing model",
+                  categories: [],
                   hugging_face_id: "org/alias-target",
                   display_name: "Shared label",
                   context_length: 123456,
                   input_modalities: ["text", "image"],
                 },
                 {
-                  id: "syn:large:vision",
+                  id: "future:best-model",
+                  alias_of: "Backing model",
+                  categories: ["recommended", "vision"],
                   hugging_face_id: "org/alias-target",
                   display_name: "Shared label",
                   context_length: 123456,
@@ -61,8 +66,17 @@ it("hides alias backing models while keeping distinct models with the same displ
                 },
                 {
                   id: "hf:pinned",
+                  categories: ["recommended"],
                   hugging_face_id: "org/pinned",
                   display_name: "Shared label",
+                  context_length: 123456,
+                  input_modalities: ["text"],
+                },
+                {
+                  id: "syn:unrecommended",
+                  hugging_face_id: "org/unrecommended",
+                  display_name: "Server display name",
+                  categories: ["future-category"],
                   context_length: 123456,
                   input_modalities: ["text"],
                 },
@@ -70,9 +84,11 @@ it("hides alias backing models while keeping distinct models with the same displ
             });
           },
           async () => {
+            const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
             await act(async () => {
               renderer = TestRenderer.create(
                 <ModelSetup
+                  syntheticModels={syntheticModels}
                   config={{
                     yourName: "test",
                     models: [
@@ -90,40 +106,41 @@ it("hides alias backing models while keeping distinct models with the same displ
                 />,
               );
             });
-            expect(catalogRequests).toBe(0);
+            expect(catalogRequests).toBe(1);
             await act(async () => {
               await renderer!.root
                 .findByType(KbShortcutPanel)
                 .props["onSelect"]({ value: "synthetic" });
             });
             expect(catalogRequests).toBe(1);
-            expect(JSON.stringify(renderer!.toJSON())).toContain(" (Shared label)");
+            expect(JSON.stringify(renderer!.toJSON())).toContain(" (Backing model)");
+            expect(JSON.stringify(renderer!.toJSON())).toContain("Server display name");
             const panel = renderer!.root.findByType(KbShortcutPanel);
             expect(panel.props["actions"].i).toBeUndefined();
             act(() =>
-              panel.props["onSelect"]({ value: { type: "model", id: "syn:large:vision" } }),
+              panel.props["onSelect"]({ value: { type: "model", id: "future:best-model" } }),
             );
             expect(panel.props["actions"].i.label.props.children).toBe("Import selected model");
             const sections: ShortcutSection<{ type: "model"; id: string }>[] =
               panel.props["shortcutItems"][0].sections;
             expect(sections.map(section => section.order.map(item => item.value.id))).toEqual([
-              ["syn:large:vision"],
-              ["hf:pinned"],
+              ["future:best-model", "hf:pinned"],
+              ["syn:unrecommended"],
             ]);
             act(() => panel.props["onSelect"]({ value: { type: "model", id: "hf:pinned" } }));
             expect(panel.props["actions"].i.label.props.children).toBe("Import 2 selected models");
             act(() =>
-              panel.props["onSelect"]({ value: { type: "model", id: "syn:large:vision" } }),
+              panel.props["onSelect"]({ value: { type: "model", id: "future:best-model" } }),
             );
             expect(panel.props["actions"].i.label.props.children).toBe("Import selected model");
             act(() =>
-              panel.props["onSelect"]({ value: { type: "model", id: "syn:large:vision" } }),
+              panel.props["onSelect"]({ value: { type: "model", id: "future:best-model" } }),
             );
             act(() => panel.props["onSelect"]({ value: { type: "import" } }));
             expect(onComplete).toHaveBeenCalledWith([
               expect.objectContaining({
-                model: "syn:large:vision",
-                nickname: "Large Vision",
+                model: "future:best-model",
+                nickname: "future:best-model (Synthetic)",
                 baseUrl: "https://api.synthetic.new/openai/v1",
                 apiEnvVar: "SYNTHETIC_API_KEY",
               }),
@@ -136,6 +153,8 @@ it("hides alias backing models while keeping distinct models with the same displ
               },
             ]);
             expect(onComplete.mock.calls[0][0][0]).not.toHaveProperty("huggingFaceId");
+            expect(onComplete.mock.calls[0][0][0]).not.toHaveProperty("aliasOf");
+            expect(onComplete.mock.calls[0][0][0]).not.toHaveProperty("categories");
             act(() => panel.props["onSelect"]({ value: { type: "back" } }));
             expect(catalogRequests).toBe(1);
             await act(async () => {
@@ -143,7 +162,7 @@ it("hides alias backing models while keeping distinct models with the same displ
                 .findByType(KbShortcutPanel)
                 .props["onSelect"]({ value: "synthetic" });
             });
-            expect(catalogRequests).toBe(2);
+            expect(catalogRequests).toBe(1);
           },
         );
       },
@@ -181,6 +200,7 @@ for (const alreadyAdded of [false, true]) {
                     }}
                   >
                     <ModelSetup
+                      syntheticModels={[]}
                       config={
                         alreadyAdded
                           ? {

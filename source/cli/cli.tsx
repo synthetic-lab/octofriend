@@ -13,6 +13,7 @@ import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../con
 import { tokenCounts } from "../token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../tools/tool-defs/mcp.ts";
 import { FirstTimeSetup } from "../first-time-setup.tsx";
+import { loadSyntheticModels, type SyntheticModel } from "../synthetic-models.ts";
 import { PreflightModelAuth, PreflightAutofixAuth } from "../preflight-auth.tsx";
 import { Transport } from "../transports/transport-common.ts";
 import { LocalTransport } from "../transports/local.ts";
@@ -205,7 +206,8 @@ async function runMain(opts: {
   const unregisterCleanup = processes.manager().registerOctoExitCleanup(cleanup);
 
   try {
-    const { config, configPath } = await loadConfig(opts.parsedCliArgs.config);
+    const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
+    const { config, configPath } = await loadConfig(opts.parsedCliArgs.config, syntheticModels);
 
     // Connect to all MCP servers on boot
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
@@ -259,6 +261,7 @@ async function runMain(opts: {
 
     const { waitUntilExit } = renderInteractive(
       <App
+        syntheticModels={syntheticModels}
         bootSkills={skills.map(s => s.name)}
         config={config}
         configPath={configPath}
@@ -307,10 +310,14 @@ cli
 cli
   .command("init")
   .description("Create a fresh config file for Octo")
-  .action(() => {
-    renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />, {
-      captureCtrlC: false,
-    });
+  .action(async () => {
+    const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
+    renderInteractive(
+      <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={syntheticModels} />,
+      {
+        captureCtrlC: false,
+      },
+    );
   });
 
 cli
@@ -324,7 +331,7 @@ cli
   .command("list")
   .description("List all models you've configured with Octo")
   .action(async () => {
-    const { config } = await loadConfigWithoutReauth();
+    const { config } = await loadConfigWithoutReauth(undefined, null);
     console.log(config.models.map(m => m.nickname).join("\n"));
   });
 
@@ -378,7 +385,7 @@ bench
   )
   .option("--concurrency <n>", "Concurrent requests to make. If omitted, defaults to 1")
   .action(async opts => {
-    const { config } = await loadConfigWithoutReauth();
+    const { config } = await loadConfigWithoutReauth(undefined, null);
     const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
@@ -592,7 +599,7 @@ cli
   )
   .argument("<prompt>", "The prompt you want to send to this model")
   .action(async (prompt, opts) => {
-    const { config } = await loadConfig();
+    const { config } = await loadConfig(undefined, null);
     const transport = new LocalTransport();
     const model = opts.model
       ? config.models.find(m => m.nickname === opts.model)
@@ -719,8 +726,8 @@ cli
     process.stdout.write("\n");
   });
 
-async function loadConfig(path?: string) {
-  let { config, configPath } = await loadConfigWithoutReauth(path);
+async function loadConfig(path: string | undefined, syntheticModels: SyntheticModel[] | null) {
+  let { config, configPath } = await loadConfigWithoutReauth(path, syntheticModels);
   let defaultModel = config.models[0];
   if (!(await readAuthForModel(defaultModel, config)).ok) {
     const { waitUntilExit } = renderInteractive(
@@ -733,7 +740,7 @@ async function loadConfig(path?: string) {
       { captureCtrlC: false },
     );
     await waitUntilExit();
-    const reloaded = await loadConfigWithoutReauth(path);
+    const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
     config = reloaded.config;
     configPath = reloaded.configPath;
     defaultModel = config.models[0];
@@ -754,7 +761,7 @@ async function loadConfig(path?: string) {
           { captureCtrlC: false },
         );
         await waitUntilExit();
-        const reloaded = await loadConfigWithoutReauth(path);
+        const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
         config = reloaded.config;
         configPath = reloaded.configPath;
         autofixModel = config[key];
@@ -769,7 +776,10 @@ async function loadConfig(path?: string) {
   };
 }
 
-async function loadConfigWithoutReauth(configPath?: string) {
+async function loadConfigWithoutReauth(
+  configPath: string | undefined,
+  syntheticModels: SyntheticModel[] | null,
+) {
   if (configPath)
     return {
       configPath,
@@ -785,9 +795,13 @@ async function loadConfigWithoutReauth(configPath?: string) {
 
   // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
   await markUpdatesSeen();
-  const { waitUntilExit } = renderInteractive(<FirstTimeSetup configPath={CONFIG_JSON5_FILE} />, {
-    captureCtrlC: false,
-  });
+  const catalog = syntheticModels ?? (await loadSyntheticModels(AbortSignal.timeout(5000)));
+  const { waitUntilExit } = renderInteractive(
+    <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={catalog} />,
+    {
+      captureCtrlC: false,
+    },
+  );
   await waitUntilExit();
 
   if (await fileExists(CONFIG_JSON5_FILE)) {
