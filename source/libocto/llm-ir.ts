@@ -448,6 +448,33 @@ export function answeredToolCallId<
   }
 }
 
+export function messageText<T extends ToolMap<any, any>>(msg: LoweredIR<T>): string {
+  switch (msg.role) {
+    case "assistant":
+      return (msg.content ?? "") + (msg.reasoningContent ?? "");
+    case "user":
+    case "tool-output":
+    case "lowered-checkpoint":
+      return contentText(msg.content);
+    case "tool-runtime-error":
+    case "tool-validation-error":
+      return msg.error;
+    case "tool-parse-error":
+      return (msg.malformedRequest.call.original.arguments ?? "") + msg.malformedRequest.error;
+    case "tool-skip-output":
+      return msg.reason;
+  }
+}
+
+export function contentText(content: Content["content"]): string {
+  return content
+    .map(part => {
+      if (part.type === "text") return part.content;
+      return `Image file: ${part.image.filePath}`;
+    })
+    .join("\n");
+}
+
 type AssertNever<T extends never> = T;
 // Keeps BUILTIN_IR_ROLES in sync with the roles of the built-in IR shapes handled above.
 // Indexed access (rather than assignability) keeps this insensitive to AgentTrajectory's
