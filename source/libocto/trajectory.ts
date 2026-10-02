@@ -554,11 +554,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         return;
       }
       case "validation-retry-budget-exceeded": {
-        await this.rectify(
-          "request-error",
-          "The model repeatedly produced invalid tool calls",
-          null,
-        );
+        await this.rectify("request-error", reason.error, null);
         return;
       }
     }

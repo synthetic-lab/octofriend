@@ -262,9 +262,16 @@ describe("trajectoryArc", () => {
       validationRetries: 2,
     });
 
-    expect(finish.reason).toEqual({ type: "validation-retry-budget-exceeded" });
+    expect(finish.reason).toEqual({
+      type: "validation-retry-budget-exceeded",
+      error: "The model repeatedly produced invalid tool calls",
+    });
     expect(calls.length).toBe(3);
     expect(messages.filter(m => m.role === "tool-parse-error").length).toBe(3);
+    expect(messages[messages.length - 1]).toEqual({
+      role: "validation-retry-budget-exceeded",
+      error: "The model repeatedly produced invalid tool calls",
+    });
   });
 
   it("retries invalid tool calls with tool-validation-error IRs", async () => {
@@ -326,7 +333,7 @@ describe("trajectoryArc", () => {
   });
 
   it("does not retry request errors when no retries config is passed", async () => {
-    const { finish, calls } = await runArc({
+    const { finish, calls, messages } = await runArc({
       queue: [() => err(requestError("boom"))],
     });
 
@@ -336,10 +343,11 @@ describe("trajectoryArc", () => {
       curl: "curl",
     });
     expect(calls.length).toBe(1);
+    expect(messages).toEqual([{ role: "request-error", requestError: "boom", curl: "curl" }]);
   });
 
   it("passes through rate limit errors without retrying when no retries config is passed", async () => {
-    const { finish, calls } = await runArc({
+    const { finish, calls, messages } = await runArc({
       queue: [
         () =>
           err({
@@ -353,6 +361,7 @@ describe("trajectoryArc", () => {
 
     expect(finish.reason.type).toBe("rate-limit-error");
     expect(calls.length).toBe(1);
+    expect(messages).toEqual([]);
   });
 
   it("retries request errors with the configured backoff", async () => {
@@ -387,7 +396,7 @@ describe("trajectoryArc", () => {
   });
 
   it("gives up retrying request errors after maxRetryCount attempts", async () => {
-    const { finish, calls, retries } = await runArc({
+    const { finish, calls, retries, messages } = await runArc({
       queue: [() => err(requestError("boom")), () => err(requestError("boom"))],
       requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
     });
@@ -398,6 +407,7 @@ describe("trajectoryArc", () => {
     });
     expect(calls.length).toBe(2);
     expect(retries.length).toBe(1);
+    expect(messages).toEqual([{ role: "request-error", requestError: "boom", curl: "curl" }]);
   });
 
   it("finishes with the request error when the retry wait is aborted", async () => {
@@ -490,6 +500,26 @@ describe("trajectoryArc", () => {
     expect(retries.length).toBe(1);
   });
 
+  it("emits a compaction-error record when the compaction run fails", async () => {
+    const { finish, messages } = await runArc({
+      contextWindow: 4,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", content: "hello world hello" }],
+        },
+      ],
+      queue: [() => err(requestError("boom"))],
+    });
+
+    expect(finish.reason).toEqual({
+      type: "compaction-error",
+      requestError: "boom",
+      curl: "curl",
+    });
+    expect(messages).toEqual([{ role: "compaction-error", requestError: "boom", curl: "curl" }]);
+  });
+
   it("finishes with abort when the signal is already aborted", async () => {
     const abortController = new AbortController();
     abortController.abort();
@@ -520,6 +550,7 @@ describe("trajectoryArc", () => {
         reasoningContent: undefined,
         usage: compilerUsage(0, 0),
       },
+      { role: "request-error", requestError: "boom", curl: "curl" },
     ]);
   });
 });

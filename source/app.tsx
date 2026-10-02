@@ -1899,6 +1899,16 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
     // carries the rendered information instead. Drop it before the exhaustive user check.
     return null;
   }
+  if (
+    item.role === "request-error" ||
+    item.role === "compaction-error" ||
+    item.role === "validation-retry-budget-exceeded" ||
+    item.role === "interrupted-by-user"
+  ) {
+    // Arc-level error records are bookkeeping for the parked error modes; drop them before
+    // the exhaustive user check.
+    return null;
+  }
   const _: "user" = item.role;
   const textParts = item.content.filter((part: Content["content"][number]) => part.type === "text");
   const imageParts = item.content.filter(
