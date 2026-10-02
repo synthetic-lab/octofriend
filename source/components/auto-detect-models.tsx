@@ -1,18 +1,17 @@
 import React, { useState, useCallback, useReducer } from "react";
-import SelectInput from "./selection/select-input.tsx";
-import { IndicatorComponent, ItemComponent } from "./select.tsx";
-import { MenuHeader } from "./menu-panel.tsx";
 import { Config, Auth } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
-import { ProviderConfig, PROVIDERS, keyFromName } from "../providers.ts";
-import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
+import { ProviderConfig, PROVIDERS, keyFromName, SYNTHETIC_PROVIDER } from "../providers.ts";
+import { KbShortcutPanel, MenuHeader } from "./kb-select/kb-shortcut-panel.tsx";
+import { Item, Keymap, ShortcutSection } from "./kb-select/kb-shortcut-select.tsx";
 import { hasCodexOAuthTokens } from "../codex-oauth.ts";
 import { Span } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
+import type { SyntheticModel } from "../synthetic-models.ts";
 export type AutoDetectModelsProps = {
+  syntheticModels: SyntheticModel[];
   onComplete: (models: Config["models"]) => void;
   onCancel: () => void;
   onOverrideDefaultApiKey: (o: Record<string, string>) => Promise<any>;
@@ -51,6 +50,7 @@ function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvV
   return provider.envVar;
 }
 export function ModelSetup({
+  syntheticModels,
   config,
   onComplete,
   onCancel,
@@ -104,7 +104,10 @@ export function ModelSetup({
         return dispatch({
           from: "initial",
           to: {
-            step: "found",
+            step:
+              provider === SYNTHETIC_PROVIDER && syntheticModels.length === 0
+                ? "override-model-string"
+                : "found",
             provider,
             overrideAuth: null,
             useEnvVar: true,
@@ -119,7 +122,7 @@ export function ModelSetup({
         },
       });
     },
-    [config],
+    [config, syntheticModels],
   );
   const onChooseCustom = useCallback(() => {
     dispatch({
@@ -157,6 +160,7 @@ export function ModelSetup({
     case "found":
       return (
         <ImportModelsFrom
+          syntheticModels={syntheticModels}
           config={config}
           provider={stepData.provider}
           onImport={models => {
@@ -245,7 +249,10 @@ export function ModelSetup({
             dispatch({
               from: "missing",
               to: {
-                step: "found",
+                step:
+                  stepData.provider === SYNTHETIC_PROVIDER && syntheticModels.length === 0
+                    ? "override-model-string"
+                    : "found",
                 provider: stepData.provider,
                 overrideAuth,
                 useEnvVar: false,
@@ -401,144 +408,147 @@ function FastProviderList({
     />
   );
 }
+type ImportModelsProps = {
+  config: Config | null;
+  provider: ProviderConfig;
+  onImport: (models: ProviderConfig["models"]) => any;
+  onCustomModel: () => any;
+  onCancel: () => any;
+};
+
 function ImportModelsFrom({
+  syntheticModels,
+  ...props
+}: ImportModelsProps & { syntheticModels: SyntheticModel[] }) {
+  if (props.provider !== SYNTHETIC_PROVIDER)
+    return <ModelChecklist {...props} models={props.provider.models} />;
+  const seenModels = new Set<string>();
+  const models = syntheticModels.flatMap(({ huggingFaceId, ...model }) => {
+    if (seenModels.has(huggingFaceId)) return [];
+    seenModels.add(huggingFaceId);
+    return [model];
+  });
+  return <ModelChecklist {...props} models={models} />;
+}
+
+function ModelChecklist({
   config,
   provider,
+  models,
   onImport,
   onCancel,
   onCustomModel,
-}: {
-  config: Config | null;
-  provider: ProviderConfig;
-  onImport: (m: ProviderConfig["models"]) => any;
-  onCustomModel: () => any;
-  onCancel: () => any;
+}: ImportModelsProps & {
+  models: (ProviderConfig["models"][number] & {
+    aliasOf?: string;
+    categories?: string[];
+  })[];
 }) {
-  const [selectedModels, setSelectedModels] = useState<string[]>([]);
-  let remainingModels: ProviderConfig["models"] = [];
-  const importedModels: ProviderConfig["models"] = [];
-  if (config == null) {
-    remainingModels = provider.models;
-  } else {
-    for (const model of provider.models) {
-      let found = false;
-      for (const storedModel of config.models) {
-        if (
+  const remainingModels = models.filter(
+    model =>
+      !config?.models.some(
+        storedModel =>
           storedModel.model === model.model &&
           (storedModel.type === "codex"
             ? provider.type === "codex"
-            : storedModel.baseUrl === provider.baseUrl)
-        ) {
-          importedModels.push(model);
-          found = true;
-          break;
-        }
-      }
-      if (!found) remainingModels.push(model);
-    }
-  }
-  const items = remainingModels.map(model => {
-    const isSelected = selectedModels.includes(model.nickname);
-    const label = isSelected ? `⦿ ${model.nickname}` : `○ ${model.nickname}`;
+            : storedModel.baseUrl === provider.baseUrl),
+      ),
+  );
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(() => new Set());
+  type Selection = { type: "model"; id: string } | { type: "import" | "custom" | "back" };
+  const isSynthetic = provider === SYNTHETIC_PROVIDER;
+  const items: Item<{ type: "model"; id: string }>[] = remainingModels.map(model => {
+    const selected = selectedModels.has(model.model) ? "⦿" : "○";
+    const detail = model.aliasOf ? ` (${model.aliasOf})` : "";
     return {
-      label,
-      value: model.nickname,
+      label: (
+        <>
+          {selected} {model.nickname}
+          {detail && <Span style={{ color: "gray" }}>{detail}</Span>}
+        </>
+      ),
+      value: { type: "model", id: model.model },
     };
   });
-  if (selectedModels.length > 0) {
-    items.push({
-      label: "Import selected models",
-      value: "import" as const,
-    });
-  }
-  items.push({
-    label: "Import a custom model string...",
-    value: "custom" as const,
-  });
-  items.push({
-    label: "Back",
-    value: "back" as const,
-  });
-  const onSelect = useCallback(
-    (item: (typeof items)[number]) => {
-      if (item.value === "custom") return onCustomModel();
-      if (item.value === "back") return onCancel();
-      if (item.value === "import") {
-        const models = provider.models.filter(m => {
-          return selectedModels.includes(m.nickname);
-        });
-        onImport(models);
-        return;
-      }
-      const nickname = item.value;
-      if (!selectedModels.includes(nickname)) {
-        setSelectedModels([...selectedModels, nickname]);
-      } else {
-        setSelectedModels(selectedModels.filter(m => m !== nickname));
-      }
-    },
-    [selectedModels],
+  const recommendedSlugs = new Set(
+    remainingModels
+      .filter(model => model.categories?.includes("recommended"))
+      .map(model => model.model),
   );
-  if (remainingModels.length === 0) {
-    return (
-      <CenteredBox>
-        <KbShortcutPanel
-          header={`You already imported all our recommended models from ${provider.name}!`}
-          shortcutItems={[
-            {
-              type: "key" as const,
-              mapping: {
-                c: {
-                  label: `Add a custom model string from ${provider.name}`,
-                  value: "custom" as const,
-                },
-                b: {
-                  label: "Back",
-                  value: "back" as const,
-                },
-              },
-            },
-          ]}
-          onSelect={item => {
-            if (item.value === "custom") return onCustomModel();
-            return onCancel();
-          }}
-        />
-      </CenteredBox>
-    );
-  }
+  const recommendedItems = items.filter(item => recommendedSlugs.has(item.value.id));
+  const sections: ShortcutSection<Selection>[] = isSynthetic
+    ? [
+        {
+          id: "recommended",
+          title: "Recommended",
+          order: recommendedItems,
+        },
+        {
+          id: "other-models",
+          title: "Other models",
+          order: items.filter(item => !recommendedSlugs.has(item.value.id)),
+        },
+      ]
+    : [{ id: "other-models", title: "Other models", order: items }];
+  const actions: Keymap<Selection> = {
+    ...(isSynthetic
+      ? {}
+      : { c: { label: "Import a custom model string…", value: { type: "custom" } } }),
+    b: { label: "Back", value: { type: "back" } },
+    ...(selectedModels.size > 0
+      ? {
+          i: {
+            label: (
+              <Span style={{ fontWeight: "bold" }}>
+                {selectedModels.size === 1
+                  ? "Import selected model"
+                  : `Import ${selectedModels.size} selected models`}
+              </Span>
+            ),
+            spaceAbove: 1,
+            value: { type: "import" as const },
+          },
+        }
+      : {}),
+  };
   return (
     <CenteredBox>
-      <MenuHeader title={`${provider.name} models can be imported!`} />
-
-      <TerminalFlex
-        style={{
-          marginBottom: 1,
+      <KbShortcutPanel<Selection>
+        header={
+          <>
+            <MenuHeader title={`${provider.name}: choose models`} />
+            <TerminalFlex style={{ flexDirection: "column", flexShrink: 0, marginBottom: 1 }}>
+              <Span>
+                {remainingModels.length === 0
+                  ? "All models in this catalog have already been imported."
+                  : "Toggle models with their number, then press i to import your selection."}
+              </Span>
+            </TerminalFlex>
+          </>
+        }
+        shortcutItems={[{ type: "sections", sections }]}
+        actions={actions}
+        onSelect={({ value }) => {
+          switch (value.type) {
+            case "custom":
+              return onCustomModel();
+            case "back":
+              return onCancel();
+            case "import":
+              return onImport(
+                remainingModels
+                  .filter(model => selectedModels.has(model.model))
+                  .map(({ aliasOf, categories, ...model }) => model),
+              );
+            case "model":
+              setSelectedModels(previous => {
+                const selected = new Set(previous);
+                if (selected.has(value.id)) selected.delete(value.id);
+                else selected.add(value.id);
+                return selected;
+              });
+          }
         }}
-      >
-        <Span>Which of the following models would you like to import?</Span>
-      </TerminalFlex>
-      {provider.description ? (
-        <TerminalFlex
-          style={{
-            marginBottom: 1,
-          }}
-        >
-          <Span
-            style={{
-              color: "gray",
-            }}
-          >
-            {provider.description}
-          </Span>
-        </TerminalFlex>
-      ) : null}
-
-      <SelectInput
-        items={items}
-        onSelect={onSelect}
-        indicatorComponent={IndicatorComponent}
-        itemComponent={ItemComponent}
       />
     </CenteredBox>
   );
