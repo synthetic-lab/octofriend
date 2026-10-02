@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useContext, useMemo, useState } from "react";
 import { Span } from "paintcannon-react";
 import { useShallow } from "zustand/react/shallow";
 import { MenuHeader } from "../components/kb-select/kb-shortcut-panel.tsx";
@@ -10,6 +10,8 @@ import {
 import { TerminalFlex } from "../components/terminal-flex.tsx";
 import { useCwd } from "../hooks/use-cwd.tsx";
 import { useSession } from "../session-context.ts";
+import { TransportContext } from "../transport-context.ts";
+import { useConfig } from "../config.ts";
 import { useAppStore } from "../state.ts";
 import { useColor } from "../theme.ts";
 import { listPreviousSessions, loadSession, type Session } from "./index.ts";
@@ -22,7 +24,6 @@ import {
 
 type Props = {
   onBack: () => void;
-  onSessionChange: (session: Session) => void;
 };
 
 const SESSION_COLUMNS: Array<KbShortcutTableColumn<SessionListRow>> = [
@@ -36,24 +37,27 @@ const SESSION_COLUMNS: Array<KbShortcutTableColumn<SessionListRow>> = [
   },
 ];
 
-export function LoadSessionMenu({ onBack, onSessionChange }: Props) {
+export function LoadSessionMenu({ onBack }: Props) {
   const cwd = useCwd();
   const currentSession = useSession();
   const [error, setError] = useState<string | null>(null);
-  const { closeMenu, hydrateSession, setQuery } = useAppStore(
+  const { closeMenu, setQuery, hydrate } = useAppStore(
     useShallow(state => ({
       closeMenu: state.closeMenu,
-      hydrateSession: state.hydrateSession,
       setQuery: state.setQuery,
+      hydrate: state.sessionMode.mode === "live" ? state.sessionMode.control.hydrate : null,
     })),
   );
+  const config = useConfig();
+  const transport = useContext(TransportContext);
   const rows = useMemo(
     () => sessionListTable(listPreviousSessions(cwd, currentSession.metadata.sessionId)).rows,
     [currentSession.metadata.sessionId, cwd],
   );
 
   const load = useCallback(
-    (row: SessionListRow) => {
+    async (row: SessionListRow) => {
+      if (hydrate == null) return;
       const loaded = loadSession(row.sessionId);
       if (loaded == null) {
         setError(`Session ${row.sessionId} no longer exists.`);
@@ -68,12 +72,16 @@ export function LoadSessionMenu({ onBack, onSessionChange }: Props) {
         },
       };
       setQuery("");
-      hydrateSession(loaded.history);
-      onSessionChange(nextSession);
+      await hydrate({
+        session: nextSession,
+        history: loaded.history,
+        config,
+        transport,
+      });
       onBack();
       closeMenu();
     },
-    [closeMenu, currentSession.metadata.cliArgs, hydrateSession, onBack, onSessionChange, setQuery],
+    [closeMenu, currentSession.metadata.cliArgs, hydrate, onBack, setQuery, config, transport],
   );
 
   return (

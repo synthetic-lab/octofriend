@@ -1,12 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useContext,
-} from "react";
+import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import type { DivElement } from "paintcannon";
 import clipboardy from "clipboardy";
 import { t } from "structural";
@@ -63,15 +55,21 @@ import {
   useAppStore,
   useModel,
   InflightResponseType,
-  nextToolAction,
-  QueuedUserMessage,
-  UiState,
+  LiveMirror,
+  PermissionUiState,
   inputFieldAvailable,
   userMessageContent,
   MAX_RETRY_COUNT,
 } from "./state.ts";
-import { SessionNotFoundError } from "./session-history/index.ts";
-import type { HistoryNode, Session } from "./session-history/index.ts";
+import type {
+  TrajectoryMode,
+  RetryControl,
+  RectifyControl,
+  ClearControl,
+} from "./libocto/trajectory.ts";
+import type { octoAgent } from "./ir/octo-ir.ts";
+import type { UserMessage } from "./libocto/llm-ir.ts";
+import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
@@ -82,7 +80,7 @@ import { displayLog } from "./logger.ts";
 import { CenteredBox } from "./components/centered-box.tsx";
 import { Transport } from "./transports/transport-common.ts";
 import { TransportContext } from "./transport-context.ts";
-import { SessionContext, useSession } from "./session-context.ts";
+import { SessionContext } from "./session-context.ts";
 import { markUpdatesSeen } from "./update-notifs/update-notifs.ts";
 import {
   useCtrlC,
@@ -142,8 +140,6 @@ type Props = {
   updates: string | null;
   unchained: boolean;
   transport: Transport;
-  session: Session;
-  onSessionChange: (session: Session) => void;
   inputHistory: InputHistory;
   bootSkills: string[];
 };
@@ -196,8 +192,6 @@ export default function App({
   metadata,
   unchained,
   transport,
-  session: initialSession,
-  onSessionChange,
   updates,
   inputHistory,
   bootSkills,
@@ -271,21 +265,13 @@ export default function App({
     }
   }, [isKeyboardScrollActive, keyboardScrollTime]);
   const [currConfig, setCurrConfig] = useState(config);
-  const [session, setSession] = useState(initialSession);
-  const handleSessionChange = useCallback(
-    (nextSession: Session) => {
-      if (nextSession === session) return;
-      setSession(nextSession);
-      onSessionChange(nextSession);
-    },
-    [onSessionChange, session],
-  );
   const [tempNotification, setTempNotification] = useState<string | null>(
     unchained ? UNCHAINED_NOTIF : CHAINED_NOTIF,
   );
   const {
     history,
-    modeData,
+    sessionMode,
+    inflightResponse,
     isMenuOpen,
     clearNonce,
     sessionHydrationNonce,
@@ -297,7 +283,8 @@ export default function App({
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
-      modeData: state.modeData,
+      sessionMode: state.sessionMode,
+      inflightResponse: state.inflightResponse,
       isMenuOpen: state.isMenuOpen,
       clearNonce: state.clearNonce,
       sessionHydrationNonce: state.sessionHydrationNonce,
@@ -308,6 +295,10 @@ export default function App({
       setUnchained: state.setUnchained,
     })),
   );
+  const updateConfig = sessionMode.mode === "live" ? sessionMode.control.updateConfig : null;
+  useEffect(() => {
+    updateConfig?.(currConfig);
+  }, [updateConfig, currConfig]);
   useLayoutEffect(() => {
     setUnchained(unchained);
   }, [setUnchained, unchained]);
@@ -366,10 +357,8 @@ export default function App({
     () => history.map(item => ({ type: "history-item", item })),
     [history],
   );
-  const inflightResponse =
-    modeData.mode === "responding" || modeData.mode === "compacting"
-      ? modeData.inflightResponse
-      : null;
+  const liveMirror = sessionMode.mode === "live" ? sessionMode.liveMode : null;
+  const trajectoryMode = liveMirror?.trajectoryMode ?? null;
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
@@ -377,7 +366,7 @@ export default function App({
     history.length,
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
-    modeData.mode,
+    trajectoryMode?.mode,
     bootItems.length,
     query,
     scrollTranscriptToBottom,
@@ -400,6 +389,7 @@ export default function App({
     };
   }, [paintCannon, scrollTranscriptToBottom]);
   const appScrollbarColor = hasFocus ? SCROLLBAR_COLOR : DIMMED_SCROLLBAR_COLOR;
+  if (sessionMode.mode === "booting") return null;
   return (
     <ScrollTranscriptToBottomContext.Provider value={scrollTranscriptToBottomIfNeeded}>
       <ReactDevelopmentBuildToast />
@@ -407,100 +397,110 @@ export default function App({
         <ConfigPathContext.Provider value={configPath}>
           <ConfigContext.Provider value={currConfig}>
             <TransportContext.Provider value={transport}>
-              <SessionContext.Provider value={session}>
-                <CwdContext.Provider value={cwd}>
-                  <InputDisabledProvider disabled={isMenuOpen}>
-                    <ExitOnDoubleCtrlC>
-                      <InputPriorityProvider>
-                        <UnchainedShiftTabHandler setTempNotification={setTempNotification} />
-                        <AppShell>
+              <CwdContext.Provider value={cwd}>
+                <InputDisabledProvider disabled={isMenuOpen}>
+                  <ExitOnDoubleCtrlC>
+                    <InputPriorityProvider>
+                      <UnchainedShiftTabHandler setTempNotification={setTempNotification} />
+                      <AppShell>
+                        <TerminalFlex
+                          ref={transcriptRef}
+                          onScroll={event => {
+                            followTranscriptRef.current = isScrolledToBottom(
+                              event.scrollTop,
+                              event.scrollHeight,
+                              transcriptRef.current?.clientHeight ?? 1,
+                            );
+                          }}
+                          style={{
+                            flexDirection: "column",
+                            flexGrow: 1,
+                            flexShrink: 1,
+                            flexBasis: 0,
+                            minWidth: 0,
+                            minHeight: 0,
+                            overflowY: "scroll",
+                            scrollbarGutter: "stable",
+                            scrollbarColor: appScrollbarColor,
+                          }}
+                        >
                           <TerminalFlex
-                            ref={transcriptRef}
-                            onScroll={event => {
-                              followTranscriptRef.current = isScrolledToBottom(
-                                event.scrollTop,
-                                event.scrollHeight,
-                                transcriptRef.current?.clientHeight ?? 1,
-                              );
-                            }}
                             style={{
                               flexDirection: "column",
-                              flexGrow: 1,
-                              flexShrink: 1,
-                              flexBasis: 0,
-                              minWidth: 0,
-                              minHeight: 0,
-                              overflowY: "scroll",
-                              scrollbarGutter: "stable",
-                              scrollbarColor: appScrollbarColor,
+                              minHeight: "100%",
+                              flexShrink: 0,
+                              overflowWrap: "anywhere",
                             }}
                           >
                             <TerminalFlex
                               style={{
                                 flexDirection: "column",
-                                minHeight: "100%",
-                                flexShrink: 0,
-                                overflowWrap: "anywhere",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "100%",
+                                flexGrow: 1,
+                                flexShrink: 1,
+                                marginTop: 1,
+                                marginBottom: 1,
                               }}
                             >
-                              <TerminalFlex
-                                style={{
-                                  flexDirection: "column",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  width: "100%",
-                                  flexGrow: 1,
-                                  flexShrink: 1,
-                                  marginTop: 1,
-                                  marginBottom: 1,
-                                }}
-                              >
-                                {bootItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`boot-${index}`} />
-                                ))}
-                              </TerminalFlex>
-                              <TranscriptItemRenderer item={{ type: "slogan" }} />
-                              <TerminalFlex
-                                key={clearNonce}
-                                style={{
-                                  flexDirection: "column",
-                                }}
-                              >
-                                {historyItems.map((item, index) => (
-                                  <TranscriptItemRenderer item={item} key={`history-${index}`} />
-                                ))}
-                                {(modeData.mode === "responding" ||
-                                  modeData.mode === "compacting") &&
-                                  (modeData.inflightResponse.reasoningContent ||
-                                    modeData.inflightResponse.content) && (
-                                    <MessageDisplay item={modeData.inflightResponse} />
-                                  )}
-                                {(modeData.mode === "tool-call" ||
-                                  modeData.mode === "tool-call-permission") && (
+                              {bootItems.map((item, index) => (
+                                <TranscriptItemRenderer item={item} key={`boot-${index}`} />
+                              ))}
+                            </TerminalFlex>
+                            <TranscriptItemRenderer item={{ type: "slogan" }} />
+                            <TerminalFlex
+                              key={clearNonce}
+                              style={{
+                                flexDirection: "column",
+                              }}
+                            >
+                              {historyItems.map((item, index) => (
+                                <TranscriptItemRenderer item={item} key={`history-${index}`} />
+                              ))}
+                              {(trajectoryMode?.mode === "responding" ||
+                                trajectoryMode?.mode === "compacting") &&
+                                inflightResponse != null &&
+                                (inflightResponse.reasoningContent || inflightResponse.content) && (
+                                  <MessageDisplay item={inflightResponse} />
+                                )}
+                              {liveMirror != null &&
+                                isToolTrajectoryMode(liveMirror.trajectoryMode) && (
                                   <ToolRequestsRenderer
-                                    toolReqs={modeData.toolReqs}
+                                    trajectoryMode={liveMirror.trajectoryMode}
+                                    permissionUi={liveMirror.permissionUi}
                                     onContentLayout={scrollTranscriptToBottom}
                                   />
                                 )}
-                              </TerminalFlex>
                             </TerminalFlex>
                           </TerminalFlex>
+                        </TerminalFlex>
+                        {sessionMode.mode === "lost" ? (
+                          <SessionLostScreen
+                            sessionId={sessionMode.sessionId}
+                            error={sessionMode.sessionLostError}
+                          />
+                        ) : (
                           <BottomBar
                             inputHistory={inputHistory}
                             metadata={metadata}
                             tempNotification={tempNotification}
+                            liveMode={sessionMode.liveMode}
+                            updateConfig={sessionMode.control.updateConfig}
                           />
-                        </AppShell>
-                      </InputPriorityProvider>
-                    </ExitOnDoubleCtrlC>
-                  </InputDisabledProvider>
-                  {isMenuOpen && (
-                    <Modal minWidth={50} onClose={closeMenu}>
-                      <Menu onSessionChange={handleSessionChange} />
-                    </Modal>
-                  )}
-                </CwdContext.Provider>
-              </SessionContext.Provider>
+                        )}
+                      </AppShell>
+                    </InputPriorityProvider>
+                  </ExitOnDoubleCtrlC>
+                </InputDisabledProvider>
+                {sessionMode.mode === "live" && isMenuOpen && (
+                  <Modal minWidth={50} onClose={closeMenu}>
+                    <SessionContext.Provider value={sessionMode.session}>
+                      <Menu />
+                    </SessionContext.Provider>
+                  </Modal>
+                )}
+              </CwdContext.Provider>
             </TransportContext.Provider>
           </ConfigContext.Provider>
         </ConfigPathContext.Provider>
@@ -508,14 +508,34 @@ export default function App({
     </ScrollTranscriptToBottomContext.Provider>
   );
 }
+
+function SessionLostScreen({ sessionId, error }: { sessionId: string | null; error: string }) {
+  const { exit } = useApp();
+  useKeyboard(() => {
+    exit();
+  });
+  return (
+    <CenteredBox>
+      <Span style={{ color: "red" }}>
+        Session{sessionId ? ` ${sessionId} ` : " "}lost — was it deleted?
+      </Span>
+      <Span>{error}</Span>
+      <Span style={{ color: "gray" }}>Press any key to quit Octo.</Span>
+    </CenteredBox>
+  );
+}
 function BottomBar({
   inputHistory,
   metadata,
   tempNotification,
+  liveMode,
+  updateConfig,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
+  liveMode: LiveMirror;
+  updateConfig: (config: Config) => void;
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
   const [versionCheck, setVersionCheck] = useState("Checking for updates...");
@@ -550,7 +570,11 @@ function BottomBar({
   const unchained = useUnchained();
   return (
     <TerminalFlex style={{ flexDirection: "column", width: "100%" }}>
-      <BottomBarContent inputHistory={inputHistory} />
+      <BottomBarContent
+        inputHistory={inputHistory}
+        liveMode={liveMode}
+        updateConfig={updateConfig}
+      />
       <TerminalFlex
         style={{
           width: "100%",
@@ -606,30 +630,39 @@ async function getLatestVersion() {
     return null;
   }
 }
-function QueuedUserMessages({ messages }: { messages: readonly QueuedUserMessage[] }) {
-  if (messages.length === 0) return null;
-  const preview = excerpt(messages.map(m => m.content.split("\n")[0]).join(" · "));
+function QueuedSteeringPreview({ queued }: { queued: readonly UserMessage["content"][] }) {
+  if (queued.length === 0) return null;
+  const preview = excerpt(
+    queued
+      .map(content => {
+        const textPart = content.find(part => part.type === "text");
+        return textPart?.type === "text" ? textPart.content.split("\n")[0] : "";
+      })
+      .join(" · "),
+  );
   return (
     <Span
       style={{
         color: "gray",
       }}
     >
-      Queued ({messages.length}): {preview}
+      Queued ({queued.length}): {preview}
     </Span>
   );
 }
 
 function useInputMode({
   vimEnabled,
-  modeData,
+  trajectoryMode,
+  permissionUi,
   clearNonce,
 }: {
   vimEnabled: boolean;
-  modeData: UiState["modeData"];
+  trajectoryMode: TrajectoryMode<typeof octoAgent>;
+  permissionUi: PermissionUiState;
   clearNonce: number;
 }) {
-  const inputAvailable = inputFieldAvailable(modeData);
+  const inputAvailable = inputFieldAvailable(trajectoryMode, permissionUi);
   const [vimMode, setVimMode] = useState<VimMode>("INSERT");
 
   useEffect(() => {
@@ -647,17 +680,20 @@ function useInputMode({
   return { inputMode, setVimMode, inputSubmitted };
 }
 
-function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
+function BottomBarContent({
+  inputHistory,
+  liveMode,
+  updateConfig,
+}: {
+  inputHistory: InputHistory;
+  liveMode: LiveMirror;
+  updateConfig: (config: Config) => void;
+}) {
   const config = useConfig();
   const model = useModel();
-  const transport = useContext(TransportContext);
-  const session = useSession();
-  const showToast = useToast();
+  const { trajectoryMode, permissionUi } = liveMode;
   const {
-    modeData,
     clearNonce,
-    input,
-    abortResponse,
     openMenu,
     byteCount,
     query,
@@ -666,14 +702,10 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
     addAttachedImage,
     removeLastAttachedImage,
     clearAttachedImages,
-    queuedMessages,
-    queueMessage,
+    queuedSteering,
   } = useAppStore(
     useShallow(state => ({
-      modeData: state.modeData,
       clearNonce: state.clearNonce,
-      input: state.input,
-      abortResponse: state.abortResponse,
       openMenu: state.openMenu,
       byteCount: state.byteCount,
       query: state.query,
@@ -682,14 +714,14 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       addAttachedImage: state.addAttachedImage,
       removeLastAttachedImage: state.removeLastAttachedImage,
       clearAttachedImages: state.clearAttachedImages,
-      queuedMessages: state.queuedUserMessages,
-      queueMessage: state.enqueueUserMessage,
+      queuedSteering: state.queuedSteering,
     })),
   );
 
   const { inputMode, setVimMode, inputSubmitted } = useInputMode({
     vimEnabled: !!config.vimEmulation?.enabled,
-    modeData,
+    trajectoryMode,
+    permissionUi,
     clearNonce,
   });
 
@@ -705,7 +737,29 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
         setVimMode("NORMAL");
         return;
       }
-      abortResponse(session, config);
+      // Never interrupt at a permission prompt: ESC only navigates the prompt itself;
+      // abandoning the turn out from under an awaiting decision would strand the batch.
+      if (
+        trajectoryMode.mode === "responding" ||
+        trajectoryMode.mode === "compacting" ||
+        trajectoryMode.mode === "autofix-json" ||
+        trajectoryMode.mode === "autofix-tool" ||
+        trajectoryMode.mode === "request-error-retrying" ||
+        trajectoryMode.mode === "tool-call" ||
+        trajectoryMode.mode === "running-tool"
+      ) {
+        void trajectoryMode.control.interrupt();
+      } else {
+        const _:
+          | "ready-for-request"
+          | "tool-call-permission"
+          | "request-error"
+          | "compaction-error"
+          | "payment-error"
+          | "rate-limit-error"
+          | "auth-error"
+          | "aborted" = trajectoryMode.mode;
+      }
     }
     if (event.ctrlKey && event.key === "p") {
       openMenu();
@@ -713,52 +767,53 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
   });
   const color = useColor();
   const onSubmit = useCallback(
-    async (submittedQuery?: string, images?: ImageInfo[]) => {
+    (submittedQuery?: string, images?: ImageInfo[]) => {
       const finalQuery = submittedQuery ?? query;
       inputSubmitted();
       setQuery("");
-      if (modeData.mode === "awaiting-steering") {
-        modeData.rejectionTx.commitRejection(userMessageContent(finalQuery, images));
+      if (permissionUi.type === "awaiting-steering") {
+        permissionUi.rejectionTx.commitRejection(userMessageContent(finalQuery, images));
         return;
       }
-      if (modeData.mode !== "ready-for-request") {
-        queueMessage({ content: finalQuery, images });
-        return;
-      }
-      try {
-        await input({
-          query: finalQuery,
-          config,
-          transport,
-          session,
-          images,
-        });
-      } catch (error) {
-        if (error instanceof SessionNotFoundError) {
-          showToast(
-            <Span style={{ color: "red" }}>
-              Could not send message. Session {error.sessionId} does not exist.
-            </Span>,
-          );
-          return;
-        }
-        throw error;
+      if (
+        trajectoryMode.mode === "ready-for-request" ||
+        trajectoryMode.mode === "responding" ||
+        trajectoryMode.mode === "compacting" ||
+        trajectoryMode.mode === "autofix-json" ||
+        trajectoryMode.mode === "autofix-tool" ||
+        trajectoryMode.mode === "request-error-retrying" ||
+        trajectoryMode.mode === "tool-call" ||
+        trajectoryMode.mode === "running-tool"
+      ) {
+        void trajectoryMode.control.enqueueSteering(userMessageContent(finalQuery, images));
+      } else {
+        const _:
+          | "tool-call-permission"
+          | "request-error"
+          | "compaction-error"
+          | "payment-error"
+          | "rate-limit-error"
+          | "auth-error"
+          | "aborted" = trajectoryMode.mode;
       }
     },
-    [query, modeData.mode, config, transport, session, setQuery, showToast, inputSubmitted],
+    [query, permissionUi, trajectoryMode, setQuery, inputSubmitted],
   );
   if (
-    modeData.mode === "responding" ||
-    modeData.mode === "compacting" ||
-    modeData.mode === "diff-apply" ||
-    modeData.mode === "fix-json" ||
-    modeData.mode === "request-error-retrying" ||
-    modeData.mode === "tool-call"
+    trajectoryMode.mode === "responding" ||
+    trajectoryMode.mode === "compacting" ||
+    trajectoryMode.mode === "autofix-json" ||
+    trajectoryMode.mode === "autofix-tool" ||
+    trajectoryMode.mode === "request-error-retrying" ||
+    trajectoryMode.mode === "tool-call" ||
+    trajectoryMode.mode === "running-tool"
   ) {
     const overrideStrings = (() => {
-      if (modeData.mode === "compacting") return ["Compacting history to save context tokens"];
-      if (modeData.mode === "diff-apply") return ["Auto-fixing diff"];
-      if (modeData.mode === "fix-json") return ["Auto-fixing JSON"];
+      if (trajectoryMode.mode === "compacting") {
+        return ["Compacting history to save context tokens"];
+      }
+      if (trajectoryMode.mode === "autofix-tool") return ["Auto-fixing diff"];
+      if (trajectoryMode.mode === "autofix-json") return ["Auto-fixing JSON"];
       return undefined;
     })();
     return (
@@ -772,13 +827,13 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
             justifyContent: "space-between",
           }}
         >
-          {modeData.mode === "request-error-retrying" ? (
+          {trajectoryMode.mode === "request-error-retrying" ? (
             <RetryCountdown
-              key={modeData.attempt}
-              error={modeData.error}
-              attempt={modeData.attempt}
+              key={trajectoryMode.attempt}
+              error={trajectoryMode.error}
+              attempt={trajectoryMode.attempt}
               max={MAX_RETRY_COUNT}
-              delayMs={modeData.delayMs}
+              delayMs={trajectoryMode.delayMs}
             />
           ) : (
             <Loading overrideStrings={overrideStrings} />
@@ -803,7 +858,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
             </Span>
           </TerminalFlex>
         </TerminalFlex>
-        <QueuedUserMessages messages={queuedMessages} />
+        <QueuedSteeringPreview queued={queuedSteering} />
         <MultimediaInput
           inputHistory={inputHistory}
           value={query}
@@ -821,46 +876,45 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
       </TerminalFlex>
     );
   }
-  if (modeData.mode === "error-recovery") return <Loading />;
-  if (modeData.mode === "payment-error") {
-    return <PaymentErrorScreen error={modeData.error} />;
+  if (trajectoryMode.mode === "payment-error") {
+    return (
+      <PaymentErrorScreen error={trajectoryMode.requestError} control={trajectoryMode.control} />
+    );
   }
-  if (modeData.mode === "rate-limit-error") {
-    return <RateLimitErrorScreen error={modeData.error} />;
+  if (trajectoryMode.mode === "rate-limit-error") {
+    return (
+      <RateLimitErrorScreen error={trajectoryMode.requestError} control={trajectoryMode.control} />
+    );
   }
-  if (modeData.mode === "auth-error") {
+  if (trajectoryMode.mode === "auth-error") {
     return (
       <AuthErrorScreen
-        model={modeData.model}
-        error={modeData.error}
+        model={model}
+        error={{ type: "invalid", message: trajectoryMode.authError }}
         config={config}
-        transport={transport}
-        session={session}
+        control={trajectoryMode.control}
+        updateConfig={updateConfig}
       />
     );
   }
-  if (modeData.mode === "request-error") {
+  if (trajectoryMode.mode === "request-error" || trajectoryMode.mode === "compaction-error") {
     return (
       <RequestErrorScreen
-        mode="request-error"
-        contextualMessage="It looks like you've hit a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
+        contextualMessage={
+          trajectoryMode.mode === "request-error"
+            ? "It looks like you've hit a request error!"
+            : "History compaction failed due to a request error!"
+        }
+        error={trajectoryMode.requestError}
+        curlCommand={trajectoryMode.curl}
+        control={trajectoryMode.control}
       />
     );
   }
-  if (modeData.mode === "compaction-error") {
-    return (
-      <RequestErrorScreen
-        mode="compaction-error"
-        contextualMessage="History compaction failed due to a request error!"
-        error={modeData.error}
-        curlCommand={modeData.curlCommand}
-      />
-    );
+  if (trajectoryMode.mode === "tool-call-permission" && permissionUi.type !== "awaiting-steering") {
+    return null;
   }
-  if (modeData.mode === "tool-call-permission") return null;
-  const _: "ready-for-request" | "awaiting-steering" = modeData.mode;
+  const _: "ready-for-request" | "tool-call-permission" | "aborted" = trajectoryMode.mode;
   return (
     <TerminalFlex
       style={{
@@ -888,7 +942,7 @@ function BottomBarContent({ inputHistory }: { inputHistory: InputHistory }) {
           (Ctrl+p to enter the menu)
         </Span>
       </TerminalFlex>
-      <QueuedUserMessages messages={queuedMessages} />
+      <QueuedSteeringPreview queued={queuedSteering} />
       <MultimediaInput
         inputHistory={inputHistory}
         value={query}
@@ -910,22 +964,16 @@ function AuthErrorScreen({
   model,
   error,
   config,
-  transport,
-  session,
+  control,
+  updateConfig,
 }: {
   model: Config["models"][number];
   error: AuthError;
   config: Config;
-  transport: Transport;
-  session: Session;
+  control: RetryControl & ClearControl;
+  updateConfig: (config: Config) => void;
 }) {
   const setConfig = useSetConfig();
-  const { runAgent, clearAuthError } = useAppStore(
-    useShallow(state => ({
-      runAgent: state.runAgent,
-      clearAuthError: state.clearAuthError,
-    })),
-  );
   const [authError, setAuthError] = useState<AuthError | null>(error);
   const resolveModelIndex = useCallback(
     (models: Config["models"]) => {
@@ -1008,13 +1056,10 @@ function AuthErrorScreen({
         setAuthError(result.error);
         return;
       }
-      await runAgent({
-        config: updatedConfig,
-        transport,
-        session,
-      });
+      updateConfig(updatedConfig);
+      control.retry();
     },
-    [config, model, resolveModelIndex, runAgent, setConfig, transport, session],
+    [config, model, resolveModelIndex, setConfig, updateConfig, control],
   );
   return (
     <TerminalFlex
@@ -1073,32 +1118,23 @@ function AuthErrorScreen({
               }
         }
         onComplete={onComplete}
-        onCancel={clearAuthError}
+        onCancel={() => control.clear()}
       />
     </TerminalFlex>
   );
 }
 function RequestErrorScreen({
-  mode,
   contextualMessage,
   error,
   curlCommand,
+  control,
 }: {
-  mode: "request-error" | "compaction-error";
   contextualMessage: string;
   error: string;
   curlCommand: string | null;
+  control: RectifyControl;
 }) {
-  const config = useConfig();
-  const transport = useContext(TransportContext);
   const themeColor = useColor();
-  const session = useSession();
-  const { retryFrom, editAndRetryFrom } = useAppStore(
-    useShallow(state => ({
-      retryFrom: state.retryFrom,
-      editAndRetryFrom: state.editAndRetryFrom,
-    })),
-  );
   const { exit } = useApp();
   const [viewError, setViewError] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
@@ -1167,23 +1203,15 @@ function RequestErrorScreen({
           setWriteError(error instanceof Error ? error.message : "Failed to write cURL to file");
         }
       } else if (item.value === "retry") {
-        retryFrom(mode, {
-          config,
-          transport,
-          session,
-        });
+        control.retry();
       } else if (item.value === "edit-retry") {
-        editAndRetryFrom(mode, {
-          config,
-          transport,
-          session,
-        });
+        void control.rewind();
       } else {
         const _: "quit" = item.value;
         exit();
       }
     },
-    [curlCommand, mode, config, transport, session],
+    [curlCommand, control, exit],
   );
   return (
     <KbShortcutPanel title="" shortcutItems={shortcutItems} onSelect={onSelect}>
@@ -1268,21 +1296,9 @@ function RequestErrorScreen({
     </KbShortcutPanel>
   );
 }
-function RateLimitErrorScreen({ error }: { error: string }) {
-  const config = useConfig();
-  const transport = useContext(TransportContext);
-  const session = useSession();
-  const { retryFrom } = useAppStore(
-    useShallow(state => ({
-      retryFrom: state.retryFrom,
-    })),
-  );
+function RateLimitErrorScreen({ error, control }: { error: string; control: RetryControl }) {
   useKeyboard(() => {
-    retryFrom("rate-limit-error", {
-      config,
-      transport,
-      session,
-    });
+    control.retry();
   });
   return (
     <CenteredBox>
@@ -1304,21 +1320,9 @@ function RateLimitErrorScreen({ error }: { error: string }) {
     </CenteredBox>
   );
 }
-function PaymentErrorScreen({ error }: { error: string }) {
-  const config = useConfig();
-  const transport = useContext(TransportContext);
-  const session = useSession();
-  const { retryFrom } = useAppStore(
-    useShallow(state => ({
-      retryFrom: state.retryFrom,
-    })),
-  );
+function PaymentErrorScreen({ error, control }: { error: string; control: RetryControl }) {
   useKeyboard(() => {
-    retryFrom("payment-error", {
-      config,
-      transport,
-      session,
-    });
+    control.retry();
   });
   return (
     <CenteredBox>
@@ -1361,29 +1365,36 @@ const ToolRequestItem = ({
     </Span>
   );
 };
+type ToolTrajectoryMode = Extract<
+  TrajectoryMode<typeof octoAgent>,
+  { mode: "tool-call" | "running-tool" | "tool-call-permission" }
+>;
+
+function isToolTrajectoryMode(mode: TrajectoryMode<typeof octoAgent>): mode is ToolTrajectoryMode {
+  return (
+    mode.mode === "tool-call" ||
+    mode.mode === "running-tool" ||
+    mode.mode === "tool-call-permission"
+  );
+}
+
 function ToolRequestsRenderer({
-  toolReqs,
+  trajectoryMode,
+  permissionUi,
   onContentLayout,
 }: {
-  toolReqs: ToolCallRequest[];
+  trajectoryMode: ToolTrajectoryMode;
+  permissionUi: PermissionUiState;
   onContentLayout: () => void;
 }) {
-  const { history, runningToolCallId, modeData } = useAppStore(
-    useShallow(state => ({
-      history: state.history,
-      runningToolCallId: state.runningToolCallId,
-      modeData: state.modeData,
-    })),
-  );
-  // Display-only: state.ts drives the batch; this just derives which call to show.
-  const action = nextToolAction(toolReqs, runningToolCallId, history);
-  const actionKey = action.kind === "done" ? "done" : `${action.kind}:${action.req.toolCallId}`;
+  // Display-only: the trajectory drives the batch and knows exactly what's current. The
+  // transient "tool-call" mode precedes the first gated/running call.
+  const currentToolReq =
+    trajectoryMode.mode === "tool-call" ? trajectoryMode.toolCalls[0] : trajectoryMode.toolCall;
+  const actionKey = `${trajectoryMode.mode}:${currentToolReq.toolCallId}`;
   useLayoutEffect(() => {
     onContentLayout();
   }, [actionKey, onContentLayout]);
-  if (action.kind === "done") return <Loading />;
-  const currentToolReq =
-    modeData.mode === "tool-call-permission" ? modeData.control.toolCall : action.req;
   return (
     <TerminalFlex
       style={{
@@ -1391,8 +1402,8 @@ function ToolRequestsRenderer({
       }}
     >
       <ToolMessageRenderer item={currentToolReq} />
-      {modeData.mode === "tool-call-permission" && (
-        <ToolPermissionSelect control={modeData.control} onContentLayout={onContentLayout} />
+      {permissionUi.type === "prompt" && (
+        <ToolPermissionSelect control={permissionUi.control} onContentLayout={onContentLayout} />
       )}
     </TerminalFlex>
   );
@@ -1640,13 +1651,13 @@ const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) 
   );
 };
 const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
-  const { modeData } = useAppStore(
-    useShallow(state => ({
-      modeData: state.modeData,
-    })),
+  const isCompacting = useAppStore(
+    state =>
+      state.sessionMode.mode === "live" &&
+      state.sessionMode.liveMode.trajectoryMode.mode === "compacting",
   );
   if (item.type === "inflight-response") {
-    return renderInflightResponse(item, modeData.mode === "compacting");
+    return renderInflightResponse(item, isCompacting);
   }
   if (item.type === "notification") {
     return (
@@ -1666,7 +1677,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item.ir, modeData.mode === "compacting");
+    return renderLlmIR(item.ir, isCompacting);
   }
   if (item.type === "request-failed") {
     return (

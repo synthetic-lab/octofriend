@@ -1,5 +1,4 @@
 import {
-  AuthError,
   Config,
   ModelConfig,
   useConfig,
@@ -15,6 +14,7 @@ import {
   latestModelJson,
   HistoryItem,
   Session,
+  SessionNotFoundError,
 } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
 import {
@@ -22,58 +22,89 @@ import {
   repairOrphanedToolOutputs,
 } from "./session-history/tool-pairing.ts";
 import type { ParsedCliArgs } from "./cli/cli-args.ts";
-import { runTool } from "./tools/index.ts";
-import type { ToolRunResult } from "./tools/index.ts";
 import { create } from "zustand";
 import { useShallow } from "zustand/shallow";
 import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
-import { trajectoryArc } from "./libocto/trajectory-arc.ts";
 import { run, type ModelData } from "./compilers/run.ts";
-import { lowerOcto, lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
+import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
+import { lowerOcto } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
-import { answeredToolCallId, type UserMessage } from "./libocto/llm-ir.ts";
-import type { PermissionDecision, PermissionGate } from "./libocto/permissions.ts";
+import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
+import {
+  Trajectory,
+  DEFAULT_MAX_TOOL_OUTPUT_FRACTION,
+  type TrajectoryMode,
+  type TrajectoryModelError,
+} from "./libocto/trajectory.ts";
 import {
   octoPermissionGate,
   whitelistKey,
+  type OctoGateState,
   type OctoPermissionControl,
   type RejectionTransaction,
-  type ToolCallRequest,
 } from "./octo-permissions.ts";
 import { parseQuotaJson, QuotaData } from "./utils/quota.ts";
 import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
+import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
 
 export const MAX_RETRY_COUNT = 20;
 
-export type RunArgs = {
+export type InflightResponseType = {
+  type: "inflight-response";
+  content: string;
+  reasoningContent?: string | null;
+};
+
+export type PermissionUiState =
+  | { type: "idle" }
+  | { type: "prompt"; control: OctoPermissionControl }
+  | { type: "awaiting-steering"; rejectionTx: RejectionTransaction };
+
+export type LiveMirror = {
+  trajectoryMode: TrajectoryMode<typeof octoAgent>;
+  permissionUi: PermissionUiState;
+};
+
+export type LiveTrajectory = {
+  instance: Trajectory<typeof octoAgent, ModelData>;
+  exitController: AbortController;
+  runPromise: Promise<void>;
+};
+
+export type BootEnv = {
   config: Config;
   transport: Transport;
-  session: Session;
+  runCompiler?: Compiler<ModelData>;
 };
 
-export type QueuedUserMessage = {
-  id: number;
-  content: string;
-  images?: ImageInfo[];
+type SessionControls = {
+  hydrate: (args: BootEnv & { session: Session; history: readonly HistoryNode[] }) => Promise<void>;
+  newSession: (cwd: string, cliArgs: ParsedCliArgs, env: BootEnv) => Promise<Session>;
 };
 
-let nextQueuedMessageId = 1;
-
-export function coalesceQueuedUserMessages(messages: readonly QueuedUserMessage[]): {
-  query: string;
-  images?: ImageInfo[];
-} {
-  const images = messages.flatMap(m => m.images ?? []);
-  return {
-    query: messages.map(m => m.content).join("\n"),
-    ...(images.length > 0 ? { images } : {}),
-  };
-}
+export type SessionMode =
+  | { mode: "booting"; control: SessionControls }
+  | {
+      mode: "live";
+      config: Config;
+      transport: Transport;
+      session: Session;
+      trajectory: LiveTrajectory;
+      liveMode: LiveMirror;
+      control: SessionControls & { updateConfig: (config: Config) => void };
+    }
+  | {
+      mode: "lost";
+      config: Config;
+      transport: Transport;
+      sessionId: string | null;
+      sessionLostError: string;
+    };
 
 export function userMessageContent(query: string, images?: ImageInfo[]): UserMessage["content"] {
   return [
@@ -82,171 +113,75 @@ export function userMessageContent(query: string, images?: ImageInfo[]): UserMes
   ];
 }
 
-export function userMessageIR(query: string, images?: ImageInfo[]): UserMessage {
-  return {
-    role: "user",
-    content: userMessageContent(query, images),
-  };
-}
+// Maps each trajectory IR to its persisted history node, so a rewind can find the history
+// prefix to keep. IRs are seeded and appended by unique object identity, never reconstructed.
+const irNodeMap = new WeakMap<OctoIR, HistoryNode>();
 
-function userMessageItem(query: string, images?: ImageInfo[]): HistoryItem {
-  return {
-    type: "llm-ir",
-    ir: userMessageIR(query, images),
-  };
-}
+const PREVIEW_CHARS = 200;
 
-export type InflightResponseType = {
-  type: "inflight-response";
-  content: string;
-  reasoningContent?: string | null;
-};
 export type UiState = {
   isMenuOpen: boolean;
   _notifyTimer: NodeJS.Timeout | null;
   sessionAutoNotify: boolean;
   notifyOnce: boolean;
-  modeData:
-    | {
-        mode: "ready-for-request";
-      }
-    | {
-        mode: "responding";
-        inflightResponse: InflightResponseType;
-        abortController: AbortController;
-      }
-    | {
-        mode: "tool-call";
-        toolReqs: ToolCallRequest[];
-        abortController: AbortController;
-      }
-    | {
-        mode: "tool-call-permission";
-        toolReqs: ToolCallRequest[];
-        abortController: AbortController;
-        control: OctoPermissionControl;
-      }
-    | {
-        mode: "awaiting-steering";
-        toolReqs: ToolCallRequest[];
-        abortController: AbortController;
-        rejectionTx: RejectionTransaction;
-      }
-    | {
-        mode: "error-recovery";
-      }
-    | {
-        mode: "payment-error";
-        error: string;
-      }
-    | {
-        mode: "rate-limit-error";
-        error: string;
-      }
-    | {
-        mode: "auth-error";
-        model: Config["models"][number];
-        error: AuthError;
-      }
-    | {
-        mode: "request-error";
-        error: string;
-        curlCommand: string | null;
-      }
-    | {
-        mode: "request-error-retrying";
-        error: string;
-        attempt: number;
-        delayMs: number;
-        abortController: AbortController;
-      }
-    | {
-        mode: "compaction-error";
-        error: string;
-        curlCommand: string | null;
-      }
-    | {
-        mode: "diff-apply";
-        abortController: AbortController;
-      }
-    | {
-        mode: "fix-json";
-        abortController: AbortController;
-      }
-    | {
-        mode: "compacting";
-        inflightResponse: InflightResponseType;
-        abortController: AbortController;
-      };
 
-  runningToolCallId: string | null;
+  sessionMode: SessionMode;
+
+  inflightResponse: InflightResponseType | null;
+  queuedSteering: readonly UserMessage["content"][];
 
   modelOverride: string | null;
   quotaData: QuotaData | null;
   byteCount: number;
   query: string;
   attachedImages: ImageInfo[];
-  queuedUserMessages: readonly QueuedUserMessage[];
-  readonly history: readonly HistoryNode[];
   clearNonce: number;
   sessionHydrationNonce: number;
-  lastUserPromptIndex: number | null;
   whitelistState: Set<string>;
   unchained: boolean;
+  readonly history: readonly HistoryNode[];
+
   notifyReadyForInput: (config: Config) => void;
   cancelNotifyReadyForInput: () => void;
   setNotifyOnce: (notifyOnce: boolean) => void;
   setNotifySession: (notifySession: boolean) => void;
-  input: (args: RunArgs & { query: string; images?: ImageInfo[] }) => Promise<void>;
-  runTool: (args: RunArgs & { toolReq: ToolCallRequest }) => Promise<void>;
-  _appendToolRejection: (toolCall: ToolCallRequest, args: RunArgs) => void;
-  _appendUserSteering: (steering: UserMessage["content"], args: RunArgs) => void;
-  abortResponse: (session: Session, config: Config, opts?: { exiting?: boolean }) => void;
+  notify: (notif: string) => void;
   toggleMenu: () => void;
   openMenu: () => void;
   closeMenu: () => void;
-  setModelOverride: (m: ModelConfig, session: Session) => void;
+  setModelOverride: (m: ModelConfig) => void;
   setQuery: (query: string) => void;
   addAttachedImage: (image: ImageInfo) => void;
   removeLastAttachedImage: () => void;
   clearAttachedImages: () => void;
-  enqueueUserMessage: (msg: Omit<QueuedUserMessage, "id">) => void;
-  _appendQueuedUserMessages: (session: Session, config: Config) => void;
-  retryFrom: (
-    mode: "payment-error" | "rate-limit-error" | "request-error" | "compaction-error",
-    args: RunArgs,
-  ) => Promise<void>;
-  clearAuthError: () => void;
-  editAndRetryFrom: (mode: "request-error" | "compaction-error", args: RunArgs) => void;
-  notify: (notif: string, session: Session, config: Config) => void;
   setUnchained: (unchained: boolean) => void;
-  hydrateSession: (history: readonly HistoryNode[]) => void;
-  startNewSession: (cwd: string, cliArgs: ParsedCliArgs) => Session;
-  _maybeHandleAbort: (signal: AbortSignal) => boolean;
-  runAgent: (args: RunArgs) => Promise<void>;
-  _runAgentOnce: (args: RunArgs) => Promise<boolean>;
 };
 
-export function inputFieldAvailable(modeData: UiState["modeData"]): boolean {
-  switch (modeData.mode) {
+export function inputFieldAvailable(
+  trajectoryMode: TrajectoryMode<typeof octoAgent>,
+  permissionUi: PermissionUiState,
+): boolean {
+  if (permissionUi.type === "awaiting-steering") return true;
+  if (permissionUi.type === "prompt") return false;
+  switch (trajectoryMode.mode) {
     case "tool-call-permission":
-    case "error-recovery":
+    case "request-error":
+    case "compaction-error":
     case "payment-error":
     case "rate-limit-error":
     case "auth-error":
-    case "request-error":
-    case "compaction-error":
+    case "aborted":
       return false;
     // DO NOT turn these cases into "default".
     // each new mode should consider whether the input field should be available
     case "ready-for-request":
     case "responding":
     case "compacting":
-    case "diff-apply":
-    case "fix-json":
+    case "autofix-json":
+    case "autofix-tool":
     case "request-error-retrying":
-    case "awaiting-steering":
     case "tool-call":
+    case "running-tool":
       return true;
   }
 }
@@ -264,880 +199,148 @@ function appendAndPersistHistory(
   ];
 }
 
-/*
- * Finds the index of the current batch's request message: the most recent assistant IR that
- * requested any of the batch's tool calls.
- *
- * Tool call IDs are only guaranteed unique within a single response — some providers recycle
- * IDs across turns (e.g. per-response counters like call_0), and provider-generated IDs must
- * never be rewritten. So "has this request been answered?" can only be asked relative to the
- * current batch: answers appended before this index belong to earlier batches that happen to
- * share IDs, and must not count.
- */
-function batchRequestIndex(history: readonly HistoryNode[], toolReqs: ToolCallRequest[]): number {
-  const ids = new Set(toolReqs.map(req => req.toolCallId));
-  for (let i = history.length - 1; i >= 0; i--) {
-    const item = history[i];
-    if (item.type !== "llm-ir") continue;
-    const ir = item.ir;
-    if (ir.role !== "assistant") continue;
-    if ((ir.toolCalls ?? []).some(call => ids.has(call.toolCallId))) return i;
-  }
-  return -1;
-}
-
-export function answeredToolCallIds(history: readonly HistoryNode[], afterIndex = -1): Set<string> {
-  const answered = new Set<string>();
-  for (let i = afterIndex + 1; i < history.length; i++) {
-    const item = history[i];
-    if (item.type !== "llm-ir") continue;
-    const id = answeredToolCallId(item.ir);
-    if (id != null) answered.add(id);
-  }
-  return answered;
-}
-
-export type ToolAction =
-  | { kind: "in-flight"; req: ToolCallRequest }
-  | { kind: "ready"; req: ToolCallRequest }
-  | { kind: "done" };
-
-/*
- * Derives what the tool renderer should do for a batch from the history, rather than tracking a
- * cursor in component state. ToolRequestsRenderer unmounts when the menu opens, and a
- * component-local cursor would reset to 0 on remount, re-running tools that already executed.
- * Deriving from history makes unmount/remount cycles safe: a remounted renderer re-derives the
- * same action. An unanswered in-flight tool yields "in-flight" so the renderer shows progress
- * without re-invoking the tool.
- */
-export function nextToolAction(
-  toolReqs: ToolCallRequest[],
-  runningToolCallId: string | null,
-  history: readonly HistoryNode[],
-): ToolAction {
-  const answered = answeredToolCallIds(history, batchRequestIndex(history, toolReqs));
-  const unanswered = toolReqs.filter(
-    req => req.type === "tool-call" && !answered.has(req.toolCallId),
-  );
-  if (runningToolCallId != null) {
-    const running = unanswered.find(req => req.toolCallId === runningToolCallId);
-    if (running) return { kind: "in-flight", req: running };
-  }
-  const [first] = unanswered;
-  if (first) return { kind: "ready", req: first };
-  return { kind: "done" };
-}
-
-async function waitForPermissionDecision(
-  gate: PermissionGate<typeof octoAgent>,
-  req: ToolCallRequest,
-  signal: AbortSignal,
-): Promise<Result<PermissionDecision, "aborted">> {
-  if (signal.aborted) return err("aborted");
-  let onAbort!: () => void;
-  const aborted = new Promise<Result<PermissionDecision, "aborted">>(resolve => {
-    onAbort = () => resolve(err("aborted"));
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-  const decision = await Promise.race([gate(req).then(ok), aborted]);
-  signal.removeEventListener("abort", onAbort);
-  return decision;
-}
-
-export const useAppStore = create<UiState>((set, get) => ({
-  isMenuOpen: false,
-  _notifyTimer: null,
-  sessionAutoNotify: false,
-  notifyOnce: false,
-  modeData: {
-    mode: "ready-for-request" as const,
-  },
-  runningToolCallId: null,
-  history: [],
-  modelOverride: null,
-  quotaData: null,
-  byteCount: 0,
-  query: "",
-  attachedImages: [],
-  queuedUserMessages: [],
-  clearNonce: 0,
-  sessionHydrationNonce: 0,
-  lastUserPromptIndex: null,
-  whitelistState: new Set<string>(),
-  unchained: false,
-
-  setNotifyOnce: notifyOnce => {
-    set({ notifyOnce });
-  },
-
-  setNotifySession: sessionAutoNotify => {
-    set({ sessionAutoNotify });
-  },
-
-  notifyReadyForInput: config => {
-    const { sessionAutoNotify, notifyOnce } = get();
-
-    if (notifyOnce) {
-      set({ notifyOnce: false });
-      // fall through to schedule notification
-    } else if (config.notifications?.alwaysNotify || sessionAutoNotify) {
-      // fall through to schedule notification
-    } else {
-      return;
+export const useAppStore = create<UiState>((set, get) => {
+  const currentConfig = (): Config => {
+    const mode = get().sessionMode;
+    if (mode.mode === "booting") {
+      throw new Error("trajectory callbacks require a booted session");
     }
+    return mode.config;
+  };
 
-    const notifyTimeout = (() => {
-      if (notifyOnce) return 0;
-      return config.notifications?.notifyTimeoutMs ?? 10_000;
-    })();
+  const currentModel = (): ModelConfig => {
+    return getModelFromConfig(currentConfig(), get().modelOverride);
+  };
 
-    const timer = setTimeout(async () => {
-      await runNotifyCommand(config);
-    }, notifyTimeout);
-
-    set({ _notifyTimer: timer });
-  },
-
-  cancelNotifyReadyForInput: () => {
-    const { _notifyTimer } = get();
-    if (_notifyTimer) {
-      clearTimeout(_notifyTimer);
-      set({ _notifyTimer: null });
-    }
-  },
-
-  input: async ({ config, query, transport, session, images }) => {
-    const model = getModelFromConfig(config, get().modelOverride);
-
-    const history = appendAndPersistHistory(
-      session,
-      get().history,
-      [userMessageItem(query, images)],
-      model,
-    );
-    set({ history, lastUserPromptIndex: history.length - 1 });
-    await get().runAgent({ config, transport, session });
-  },
-
-  retryFrom: async (mode, args) => {
-    if (get().modeData.mode === mode) {
-      await get().runAgent(args);
-    }
-  },
-
-  clearAuthError: () => {
-    if (get().modeData.mode !== "auth-error") return;
-    set({ modeData: { mode: "ready-for-request" } });
-  },
-
-  editAndRetryFrom: (mode, _args) => {
-    if (get().modeData.mode !== mode) {
-      return;
-    }
-
-    const { history, lastUserPromptIndex } = get();
-
-    if (lastUserPromptIndex === null) {
-      set({
-        query: "",
-        byteCount: 0,
-        queuedUserMessages: [],
-        modeData: { mode: "ready-for-request" },
-      });
-      return;
-    }
-
-    const lastUserItem = history[lastUserPromptIndex];
-    if (!lastUserItem || lastUserItem.type !== "llm-ir" || lastUserItem.ir.role !== "user") {
-      set({
-        query: "",
-        byteCount: 0,
-        queuedUserMessages: [],
-        modeData: { mode: "ready-for-request" },
-      });
-      return;
-    }
-
-    const filteredHistory = history.slice(0, lastUserPromptIndex);
-    const textPart = lastUserItem.ir.content.find(part => part.type === "text");
-    set(state => ({
-      history: filteredHistory,
-      query: textPart?.content ?? "",
-      byteCount: 0,
-      queuedUserMessages: [],
-      clearNonce: state.clearNonce + 1,
-      modeData: { mode: "ready-for-request" },
-    }));
-  },
-
-  abortResponse: (session: Session, config, opts?: { exiting?: boolean }) => {
-    const { modeData, runningToolCallId } = get();
-    if ("abortController" in modeData) modeData.abortController.abort();
-    set({ queuedUserMessages: [] });
-    if (
-      modeData.mode !== "tool-call" &&
-      modeData.mode !== "tool-call-permission" &&
-      modeData.mode !== "awaiting-steering"
-    ) {
-      return;
-    }
-
-    /*
-     * Aborting a tool batch mid-flight leaves every request that never ran unanswered in
-     * history; Anthropic hard-400s on unanswered tool calls, and chat-completions models find
-     * them out-of-distribution. Mark any unanswered requests as skipped so the next request is
-     * well-formed. Normally the currently-running tool is excluded, since it appends its own
-     * output when it settles — but when the process is exiting it will never settle, so mark
-     * it as skipped too.
-     */
-    const answered = answeredToolCallIds(
-      get().history,
-      batchRequestIndex(get().history, modeData.toolReqs),
-    );
-
-    const skipped: HistoryItem[] = [];
-    for (const req of modeData.toolReqs) {
-      if (req.type !== "tool-call") continue;
-      if (answered.has(req.toolCallId)) continue;
-      const isRunning = req.toolCallId === runningToolCallId;
-      if (isRunning && !opts?.exiting) continue;
-      skipped.push({
-        type: "llm-ir",
-        ir: {
-          role: "tool-skip-output",
-          toolCall: req,
-          reason: isRunning
-            ? "The user exited while this tool was running, so its output was not recorded"
-            : "The user aborted the response, so this tool was skipped",
-        },
-      });
-    }
-
-    if (skipped.length > 0) {
-      const model = getModelFromConfig(config, get().modelOverride);
-      set({ history: appendAndPersistHistory(session, get().history, skipped, model) });
-    }
-
-    /*
-     * If no tool is currently running, nothing else will flip the mode back to ready-for-request,
-     * so do it here. If a tool is running, runTool's _maybeHandleAbort flips it once the tool
-     * settles.
-     */
-    if (runningToolCallId == null) {
-      set({
-        modeData: {
-          mode: "ready-for-request",
-        },
-      });
-    }
-  },
-
-  _maybeHandleAbort: (signal: AbortSignal): boolean => {
-    if (signal.aborted) {
-      set({
-        queuedUserMessages: [],
-        modeData: {
-          mode: "ready-for-request",
-        },
-      });
-      return true;
-    }
-    return false;
-  },
-
-  toggleMenu: () => {
-    if (get().isMenuOpen) {
-      set({ isMenuOpen: false });
-    } else if (get().modeData.mode === "ready-for-request") {
-      set({ isMenuOpen: true });
-    }
-  },
-  closeMenu: () => {
-    set({ isMenuOpen: false });
-  },
-  openMenu: () => {
-    set({ isMenuOpen: true });
-  },
-
-  setQuery: query => {
-    set({ query });
-  },
-
-  addAttachedImage: image => {
-    set(state => ({ attachedImages: [...state.attachedImages, image] }));
-  },
-
-  removeLastAttachedImage: () => {
-    set(state => ({ attachedImages: state.attachedImages.slice(0, -1) }));
-  },
-
-  clearAttachedImages: () => {
-    set({ attachedImages: [] });
-  },
-
-  enqueueUserMessage: msg => {
-    set(state => ({
-      queuedUserMessages: [...state.queuedUserMessages, { ...msg, id: nextQueuedMessageId++ }],
-    }));
-  },
-
-  _appendQueuedUserMessages: (session, config) => {
-    const { queuedUserMessages: queuedMessages } = get();
-    const model = getModelFromConfig(config, get().modelOverride);
-    if (queuedMessages.length === 0) return;
-    const { query, images } = coalesceQueuedUserMessages(queuedMessages);
-    const history = appendAndPersistHistory(
-      session,
-      get().history,
-      [userMessageItem(query, images)],
-      model,
-    );
-    set({ history, lastUserPromptIndex: history.length - 1, queuedUserMessages: [] });
-  },
-
-  setModelOverride: (model, _session) => {
-    set({ modelOverride: serializeModelJson(model) });
-  },
-
-  notify: (notif, session, config) => {
-    const model = getModelFromConfig(config, get().modelOverride);
-    set({
-      history: appendAndPersistHistory(
-        session,
-        get().history,
-        [
-          {
-            type: "notification",
-            content: notif,
-          },
-        ],
-        model,
-      ),
-    });
-  },
-
-  hydrateSession: history => {
-    const { modeData } = get();
-    if ("abortController" in modeData) {
-      modeData.abortController.abort();
-    }
-    const repairedHistory = repairOrphanedToolOutputs(history);
-    // Canary builds fail loudly on any remaining pairing violation: after repair, any dangling
-    // tool output is an unknown bug we want to hear about rather than resume around.
-    if (process.env["CANARY_OCTO"] === "1") assertToolCallPairing(repairedHistory);
-    set(state => ({
-      history: repairedHistory,
-      modelOverride: latestModelJson(history),
-      lastUserPromptIndex: null,
-      byteCount: 0,
-      queuedUserMessages: [],
-      clearNonce: state.clearNonce + 1,
-      modeData: { mode: "ready-for-request" },
-      sessionHydrationNonce: state.sessionHydrationNonce + 1,
-      sessionAutoNotify: false,
-      // A hydrated session has no in-flight tool; don't leak a stale ID from the previous one.
-      runningToolCallId: null,
-    }));
-  },
-
-  startNewSession: (cwd, cliArgs) => {
-    // Abort any ongoing responses to avoid polluting the new cleared state.
-    const { modeData } = get();
-    if ("abortController" in modeData) {
-      modeData.abortController.abort();
-    }
-
-    set(state => ({
-      history: [],
-      lastUserPromptIndex: null,
-      byteCount: 0,
-      queuedUserMessages: [],
-      clearNonce: state.clearNonce + 1,
-      sessionAutoNotify: false,
-      modeData: { mode: "ready-for-request" },
-      isMenuOpen: false,
-      // An aborted tool clears this itself when it settles, but until it does the new session
-      // must not see the old session's in-flight ID.
-      runningToolCallId: null,
-    }));
-    return createSession(cwd, cliArgs);
-  },
-
-  setUnchained: unchained => {
-    set({ unchained });
-  },
-
-  /*
-   * Records a rejected tool call: the reject marker for the call itself, plus skip markers for
-   * the rest of its batch, so the LLM knows we rejected partway through. This happens the moment
-   * the user begins a rejection; the steering message lands separately when they commit it.
-   */
-  _appendToolRejection: (toolCall, args) => {
-    const history = get().history;
-
-    let lastToolCallIndex = history.length - 1;
-    for (lastToolCallIndex; lastToolCallIndex >= 0; lastToolCallIndex--) {
-      const item = history[lastToolCallIndex];
-      if (item.type === "llm-ir" && item.ir.role === "assistant" && item.ir.toolCalls) break;
-    }
-    const skippedCalls: HistoryItem[] = [];
-
-    if (lastToolCallIndex >= 0) {
-      const originatingToolCalls = history[lastToolCallIndex];
-      const toolCalls =
-        originatingToolCalls.type === "llm-ir" && originatingToolCalls.ir.role === "assistant"
-          ? (originatingToolCalls.ir.toolCalls ?? [])
-          : [];
-      for (let toolCallIndex = 0; toolCallIndex < toolCalls.length; toolCallIndex++) {
-        const call = toolCalls[toolCallIndex];
-        if (call.toolCallId === toolCall.toolCallId && call.type === "tool-call") {
-          for (const skippedCall of toolCalls.slice(toolCallIndex + 1)) {
-            if (skippedCall.type === "tool-call") {
-              skippedCalls.push({
-                type: "llm-ir",
-                ir: {
-                  role: "tool-skip-output",
-                  toolCall: skippedCall,
-                  reason: "A previous tool call was rejected, so this tool was skipped",
-                },
-              });
-            }
-          }
-          break;
-        }
-      }
-    }
-    const model = getModelFromConfig(args.config, get().modelOverride);
-    set({
-      history: appendAndPersistHistory(
-        args.session,
-        get().history,
-        [
-          {
-            type: "llm-ir",
-            ir: {
-              role: "tool-reject",
-              toolCall,
+  const setPermissionUi = (permissionUi: PermissionUiState) => {
+    set(state =>
+      state.sessionMode.mode !== "live"
+        ? {}
+        : {
+            sessionMode: {
+              ...state.sessionMode,
+              liveMode: { ...state.sessionMode.liveMode, permissionUi },
             },
           },
-          ...skippedCalls,
-        ],
-        model,
-      ),
-    });
-  },
-
-  _appendUserSteering: (steering, args) => {
-    const model = getModelFromConfig(args.config, get().modelOverride);
-    const history = appendAndPersistHistory(
-      args.session,
-      get().history,
-      [{ type: "llm-ir", ir: { role: "user", content: steering } }],
-      model,
     );
-    set({ history, lastUserPromptIndex: history.length - 1 });
-  },
+  };
 
-  runTool: async ({ config, toolReq, transport, session }) => {
-    const { modeData } = get();
-    if (modeData.mode !== "tool-call" && modeData.mode !== "tool-call-permission") {
-      throw new Error(`Impossible tool mode: ${modeData.mode}`);
-    }
-    if (get().runningToolCallId != null) {
-      if (process.env["CANARY_OCTO"] === "1") {
-        throw new Error(
-          "Canary build error: attempted to run a tool when a tool was already running",
-        );
-      }
-    }
-
-    const abortController = modeData.abortController;
-    set({
-      modeData: {
-        mode: "tool-call",
-        toolReqs: modeData.toolReqs,
-        abortController: modeData.abortController,
-      },
-      runningToolCallId: toolReq.toolCallId,
-    });
-
-    const tools = await loadTools(transport, abortController.signal, config);
-
-    const model = getModelFromConfig(config, get().modelOverride);
-    const result = await runTool(abortController.signal, transport, tools, toolReq, config, model);
-    if (!result.success) {
-      set({
-        history: appendAndPersistHistory(
-          session,
-          get().history,
-          [
-            {
-              type: "llm-ir",
-              ir: {
-                role: "tool-runtime-error",
-                error: result.error,
-                toolCall: toolReq,
-              },
-            },
-          ],
-          model,
-        ),
-      });
-    } else {
-      set({
-        history: appendAndPersistHistory(
-          session,
-          get().history,
-          [
-            {
-              type: "llm-ir",
-              ir: toolRunResultToIR(result.data, toolReq),
-            },
-          ],
-          model,
-        ),
-      });
-    }
-
-    set({ runningToolCallId: null });
-
-    if (get()._maybeHandleAbort(abortController.signal)) {
-      return;
-    }
-  },
-
-  /*
-   * _runAgentOnce runs a single model round-trip (plus any tool batch it requests) and returns
-   * whether the turn should continue: finished tool batches, queued messages, and steering all
-   * fold into the next iteration instead of recursing.
-   */
-  runAgent: async args => {
-    let shouldContinue = true;
-    while (shouldContinue) {
-      shouldContinue = await get()._runAgentOnce(args);
-    }
-  },
-
-  _runAgentOnce: async ({ config, transport, session }) => {
-    get()._appendQueuedUserMessages(session, config);
-    const historyCopy = [...get().history];
-    const abortController = new AbortController();
-    let compactionByteCount = 0;
+  const createTrajectory = (args: {
+    session: Session;
+    history: readonly HistoryNode[];
+    config: Config;
+    transport: Transport;
+    runCompiler: Compiler<ModelData>;
+  }): LiveTrajectory => {
+    const { session, history, config, transport, runCompiler } = args;
+    const exitController = new AbortController();
+    const throttle = throttledBuffer<Partial<UiState>>(300, set);
     let responseByteCount = 0;
-    const model = getModelFromConfig(config, get().modelOverride);
-    let modelData: ModelData;
-    if (model.type === "codex") {
-      const authResult = await readAuthForModel(model, config);
-      if (!authResult.ok) {
-        set({
-          modeData: {
-            mode: "auth-error",
-            model,
-            error: authResult.error,
-          },
-        });
-        return false;
-      }
-      modelData = { type: "codex", auth: authResult.auth, model };
-    } else {
-      const authResult = await readAuthForModel(model, config);
-      if (!authResult.ok) {
-        set({
-          modeData: {
-            mode: "auth-error",
-            model,
-            error: authResult.error,
-          },
-        });
-        return false;
-      }
-      modelData = { type: "api", auth: authResult.auth, model };
-    }
+    let compactionByteCount = 0;
 
-    const throttle = throttledBuffer<Partial<Parameters<typeof set>[0]>>(300, set);
+    const isCurrent = () => {
+      const mode = get().sessionMode;
+      return mode.mode === "live" && mode.trajectory.instance === instance;
+    };
 
-    try {
-      const tools = await loadTools(transport, abortController.signal, config);
-      const finish = await trajectoryArc.run<typeof octoAgent, ModelData>({
-        model: modelData,
-        contextWindow: model.context,
-        messages: lowerOctoToLlmIR(toLlmIR(historyCopy), model.modalities),
-        tools,
-        toolData: config,
-        runCompiler: run,
-        lowerMessages: messages => lowerOcto(messages, model.modalities),
-        systemPrompt: () =>
-          systemPrompt({
-            config,
-            transport,
-            signal: abortController.signal,
-          }),
-        transport,
-        abortSignal: abortController.signal,
-        errorCorrection: {
-          json: makeAutofixJson(config),
-          tools: {
-            edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
-              const file = await fixTransport.readFile(fixSignal, toolCall.parsed.filePath);
-              const fix = await autofixEdit(config, file, toolCall.parsed, fixSignal);
-              if (fix == null) return null;
-              return { ...toolCall.parsed, ...fix };
-            },
-          },
-        },
-        requestErrorRetries: {
-          maxRetryCount: MAX_RETRY_COUNT,
-          backoffMs: 2000,
-          maxBackoffMs: 30_000,
-        },
-        handler: {
-          startResponse: () => {
-            throttle.flush();
-            set({
-              modeData: {
-                mode: "responding",
-                inflightResponse: {
-                  type: "inflight-response",
-                  content: "",
-                },
-                abortController,
-              },
-              byteCount: responseByteCount,
-            });
-          },
+    const gateState: OctoGateState = {
+      rejectionTx: null,
+      whitelistState: get().whitelistState,
+    };
 
-          responseProgress: event => {
-            responseByteCount += event.delta.value.length;
-            throttle.emit({
-              modeData: {
-                mode: "responding",
-                inflightResponse: {
-                  type: "inflight-response",
-                  reasoningContent: event.buffer.reasoning,
-                  content: event.buffer.content || "",
-                },
-                abortController,
-              },
-              byteCount: responseByteCount,
-            });
-          },
-
-          startCompaction: () => {
-            throttle.flush();
-            set({
-              modeData: {
-                mode: "compacting",
-                inflightResponse: {
-                  type: "inflight-response",
-                  content: "",
-                },
-                abortController,
-              },
-              byteCount: compactionByteCount,
-            });
-          },
-
-          compactionProgress: event => {
-            compactionByteCount += event.delta.value.length;
-            throttle.emit({
-              modeData: {
-                mode: "compacting",
-                inflightResponse: {
-                  type: "inflight-response",
-                  reasoningContent: event.buffer.reasoning,
-                  content: event.buffer.content || "",
-                },
-                abortController,
-              },
-              byteCount: compactionByteCount,
-            });
-          },
-
-          autofixingJson: () => {
-            throttle.flush();
-            set({
-              modeData: {
-                mode: "fix-json",
-                abortController,
-              },
-            });
-          },
-
-          autofixingTool: ({ tool }) => {
-            if (tool !== "edit") return;
-            throttle.flush();
-            set({
-              modeData: {
-                mode: "diff-apply",
-                abortController,
-              },
-            });
-          },
-
-          requestRetry: event => {
-            throttle.flush();
-            set({
-              modeData: {
-                mode: "request-error-retrying",
-                error: event.error.requestError,
-                attempt: event.attempt,
-                delayMs: event.delayMs,
-                abortController: event.abortController,
-              },
-            });
-          },
-
-          onResponseHeaders: headers => {
-            const raw = headers.get("x-synthetic-quotas");
-            if (raw == null) return;
-            const quota = parseQuotaJson(raw);
-            if (quota != null) set({ quotaData: quota });
-          },
-
-          onMessage: ir => {
-            throttle.flush();
-            set({
-              history: appendAndPersistHistory(
-                session,
-                get().history,
-                [{ type: "llm-ir", ir }],
-                model,
-              ),
-            });
-          },
-        },
-      });
-      throttle.flush();
-      const finishReason = finish.reason;
-      if (finishReason.type === "abort") {
-        get().notifyReadyForInput(config);
-        set({
-          queuedUserMessages: [],
-          modeData: { mode: "ready-for-request" },
-        });
-        return false;
-      }
-      if (finishReason.type === "needs-response") {
-        if (get().queuedUserMessages.length > 0) return true;
-        get().notifyReadyForInput(config);
-        set({ modeData: { mode: "ready-for-request" } });
-        return false;
-      }
-
-      if (finishReason.type === "request-error") {
-        set({
-          modeData: {
-            mode: "request-error",
-            error: finishReason.requestError,
-            curlCommand: finishReason.curl,
-          },
-        });
-        return false;
-      }
-
-      if (finishReason.type === "payment-error") {
-        set({ modeData: { mode: "payment-error", error: finishReason.requestError } });
-        return false;
-      }
-
-      if (finishReason.type === "rate-limit-error") {
-        set({ modeData: { mode: "rate-limit-error", error: finishReason.requestError } });
-        return false;
-      }
-
-      if (finishReason.type === "request-error-retry-budget-exceeded") {
-        const error = finishReason.error;
-        if (error.type === "rate-limit-error") {
-          set({ modeData: { mode: "rate-limit-error", error: error.requestError } });
-          return false;
+    const instance = new Trajectory({
+      agent: octoAgent,
+      messages: toLlmIR([...history]),
+      abortSignal: exitController.signal,
+      systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
+      model: async (): Promise<
+        Result<{ model: ModelData; contextWindow: number }, TrajectoryModelError>
+      > => {
+        const model = currentModel();
+        if (model.type === "codex") {
+          const authResult = await readAuthForModel(model, currentConfig());
+          if (!authResult.ok) {
+            return err({ type: "auth-error", authError: authResult.error.message });
+          }
+          return ok({
+            model: { type: "codex", auth: authResult.auth, model },
+            contextWindow: model.context,
+          });
         }
-        set({
-          modeData: {
-            mode: "request-error",
-            error: error.requestError,
-            curlCommand: error.curl,
-          },
+        const authResult = await readAuthForModel(model, currentConfig());
+        if (!authResult.ok) {
+          return err({ type: "auth-error", authError: authResult.error.message });
+        }
+        return ok({
+          model: { type: "api", auth: authResult.auth, model },
+          contextWindow: model.context,
         });
-        return false;
-      }
-
-      if (finishReason.type === "auth-error") {
-        set({
-          modeData: {
-            mode: "auth-error",
-            model,
-            error: { type: "invalid", message: finishReason.authError },
+      },
+      loadTools: signal => loadTools(transport, signal, currentConfig()),
+      countTokens: irs => irs.reduce((tokens, ir) => tokens + estimateTokens(messageText(ir)), 0),
+      toolContentTooLargeError: async ir => {
+        let text = "";
+        if (ir.role === "tool-output") {
+          for (const part of ir.content) {
+            if (part.type === "text") text += part.content;
+          }
+        } else if (ir.role === "file-read" || ir.role === "file-mutate") {
+          text = ir.content;
+        }
+        const model = currentModel();
+        const tokens = estimateTokens(text);
+        const preview = text.slice(0, PREVIEW_CHARS);
+        return (
+          `Tool output was too large: approximately ${tokens} tokens, which is ` +
+          `${DEFAULT_MAX_TOOL_OUTPUT_FRACTION * 100}% or more of the model's ` +
+          `${model.context}-token context window. The output was discarded to protect the ` +
+          `context window. Retry with a more targeted approach: page through the file with ` +
+          `partial-read using offset/limit, narrow searches with tighter patterns or ` +
+          `maxResults, or limit shell output (e.g. pipe through head/tail/grep). Before it ` +
+          `was discarded, the first ${PREVIEW_CHARS} characters were preserved so you can ` +
+          `inspect them; here they are:\n${preview}`
+        );
+      },
+      toolData: config,
+      runCompiler,
+      lowerMessages: messages => lowerOcto(messages, currentModel().modalities),
+      transport,
+      errorCorrection: {
+        json: makeAutofixJson(config),
+        tools: {
+          edit: async ({ toolCall, abortSignal: fixSignal, transport: fixTransport }) => {
+            const file = await fixTransport.readFile(fixSignal, toolCall.parsed.filePath);
+            const fix = await autofixEdit(config, file, toolCall.parsed, fixSignal);
+            if (fix == null) return null;
+            return { ...toolCall.parsed, ...fix };
           },
-        });
-        return false;
-      }
-
-      if (finishReason.type === "compaction-error") {
-        set({
-          modeData: {
-            mode: "compaction-error",
-            error: finishReason.requestError,
-            curlCommand: finishReason.curl,
-          },
-          history: appendAndPersistHistory(
-            session,
-            get().history,
-            [
-              {
-                type: "compaction-failed",
-              },
-            ],
-            model,
-          ),
-        });
-        return false;
-      }
-
-      const toolReqs = finishReason.toolCalls;
-      set({
-        modeData: {
-          mode: "tool-call",
-          toolReqs,
-          abortController,
         },
-        runningToolCallId: null,
-      });
-
-      if (abortController.signal.aborted) return false;
-
-      const gate = octoPermissionGate({
-        state: {
-          rejectionTx: null,
-          whitelistState: get().whitelistState,
-        },
+      },
+      requestErrorRetries: {
+        maxRetryCount: MAX_RETRY_COUNT,
+        backoffMs: 2000,
+        maxBackoffMs: 30_000,
+      },
+      permission: octoPermissionGate({
+        state: gateState,
         onWhitelist: whitelistState => {
+          gateState.whitelistState = whitelistState;
           set({ whitelistState });
         },
         onBeginRejection: rejectionTx => {
-          const currentMode = get().modeData;
-          if (currentMode.mode !== "tool-call-permission") return;
-          get()._appendToolRejection(currentMode.control.toolCall, {
-            config,
-            transport,
-            session,
-          });
-          set({
-            modeData: {
-              mode: "awaiting-steering",
-              toolReqs: currentMode.toolReqs,
-              abortController: currentMode.abortController,
-              rejectionTx,
-            },
-          });
+          if (!isCurrent()) return;
+          setPermissionUi({ type: "awaiting-steering", rejectionTx });
         },
         onCommitRejection: () => {
-          const currentMode = get().modeData;
-          if (currentMode.mode === "awaiting-steering") {
-            set({ modeData: { mode: "ready-for-request" } });
-          }
+          if (!isCurrent()) return;
+          setPermissionUi({ type: "idle" });
         },
         controller: control => {
-          const { unchained, whitelistState, modeData: currentMode } = get();
+          if (!isCurrent()) {
+            control.allow();
+            return;
+          }
+          const { unchained, whitelistState } = get();
           const toolCall = control.toolCall;
           if (
             unchained ||
@@ -1147,63 +350,338 @@ export const useAppStore = create<UiState>((set, get) => ({
             control.allow();
             return;
           }
-          if (currentMode.mode === "tool-call") {
-            set({
-              modeData: {
-                mode: "tool-call-permission",
-                toolReqs: currentMode.toolReqs,
-                abortController: currentMode.abortController,
-                control,
-              },
-            });
-            get().notifyReadyForInput(config);
-          }
+          setPermissionUi({ type: "prompt", control });
+          get().notifyReadyForInput(config);
         },
-      });
+      }),
+      handler: {
+        modeChange: mode => {
+          if (!isCurrent()) return;
+          throttle.flush();
+          set(state => {
+            if (state.sessionMode.mode !== "live") return {};
+            const streaming = mode.mode === "responding" || mode.mode === "compacting";
+            return {
+              sessionMode: {
+                ...state.sessionMode,
+                liveMode: { trajectoryMode: mode, permissionUi: { type: "idle" } },
+              },
+              inflightResponse: streaming ? state.inflightResponse : null,
+              byteCount: streaming ? state.byteCount : 0,
+            };
+          });
+          if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
+        },
+        onMessage: ir => {
+          if (!isCurrent()) return;
+          throttle.flush();
+          try {
+            set(state => ({
+              history: appendAndPersistHistory(
+                session,
+                state.history,
+                [{ type: "llm-ir", ir }],
+                currentModel(),
+              ),
+            }));
+          } catch (e) {
+            if (e instanceof SessionNotFoundError) {
+              set(state =>
+                state.sessionMode.mode !== "live"
+                  ? {}
+                  : {
+                      sessionMode: {
+                        mode: "lost",
+                        config: state.sessionMode.config,
+                        transport: state.sessionMode.transport,
+                        sessionId: session.metadata.sessionId,
+                        sessionLostError: e.message,
+                      },
+                    },
+              );
+              exitController.abort();
+              return;
+            }
+            throw e;
+          }
+          const node = get().history.at(-1);
+          if (node != null) irNodeMap.set(ir, node);
+        },
+        rewind: ({ removed, content }) => {
+          if (!isCurrent()) return;
+          set(state => {
+            let history = state.history;
+            if (removed.length > 0) {
+              const first = irNodeMap.get(removed[0]);
+              if (first == null) throw new Error("rewind target is missing from history");
+              history = history.slice(
+                0,
+                history.findIndex(node => node.nodeId === first.nodeId),
+              );
+            }
+            const textPart = content?.find(part => part.type === "text");
+            return {
+              history,
+              query: textPart?.content ?? "",
+              clearNonce: state.clearNonce + 1,
+            };
+          });
+        },
+        steeringChange: ({ queued }) => {
+          if (!isCurrent()) return;
+          set({ queuedSteering: queued });
+        },
+        startResponse: () => {
+          if (!isCurrent()) return;
+          throttle.flush();
+          responseByteCount = 0;
+          set({ inflightResponse: { type: "inflight-response", content: "" }, byteCount: 0 });
+        },
+        responseProgress: event => {
+          if (!isCurrent()) return;
+          responseByteCount += event.delta.value.length;
+          throttle.emit({
+            inflightResponse: {
+              type: "inflight-response",
+              reasoningContent: event.buffer.reasoning,
+              content: event.buffer.content || "",
+            },
+            byteCount: responseByteCount,
+          });
+        },
+        startCompaction: () => {
+          if (!isCurrent()) return;
+          throttle.flush();
+          compactionByteCount = 0;
+          set({ inflightResponse: { type: "inflight-response", content: "" }, byteCount: 0 });
+        },
+        compactionProgress: event => {
+          if (!isCurrent()) return;
+          compactionByteCount += event.delta.value.length;
+          throttle.emit({
+            inflightResponse: {
+              type: "inflight-response",
+              reasoningContent: event.buffer.reasoning,
+              content: event.buffer.content || "",
+            },
+            byteCount: compactionByteCount,
+          });
+        },
+        onResponseHeaders: headers => {
+          if (!isCurrent()) return;
+          const raw = headers.get("x-synthetic-quotas");
+          if (raw == null) return;
+          const quota = parseQuotaJson(raw);
+          if (quota != null) set({ quotaData: quota });
+        },
+      },
+    });
 
-      for (const req of toolReqs) {
-        const decision = await waitForPermissionDecision(gate, req, abortController.signal);
-        if (!decision.success) return false;
+    return {
+      instance,
+      exitController,
+      runPromise: instance.run().catch(e => {
+        console.error(e);
+        process.exit(1);
+      }),
+    };
+  };
 
-        if (decision.data.decision === "reject") {
-          get()._appendUserSteering(decision.data.steering, { config, transport, session });
-          return true;
-        }
-
-        await get().runTool({ config, transport, session, toolReq: req });
-
-        const current = get().modeData;
-        if (current.mode !== "tool-call" && current.mode !== "tool-call-permission") return false;
-      }
-
-      return true;
-    } catch (e) {
-      if (get()._maybeHandleAbort(abortController.signal)) {
-        return false;
-      }
-
-      throw e;
-    } finally {
-      set({ byteCount: 0 });
+  const swapInto = async (
+    args: BootEnv & { session: Session; history: readonly HistoryNode[] },
+  ): Promise<void> => {
+    const current = get().sessionMode;
+    if (current.mode === "live") {
+      current.trajectory.exitController.abort();
+      await current.trajectory.runPromise;
     }
-  },
-}));
+    const repairedHistory = repairOrphanedToolOutputs(args.history);
+    // Canary builds fail loudly on any remaining pairing violation: after repair, any dangling
+    // tool output is an unknown bug we want to hear about rather than resume around.
+    if (process.env["CANARY_OCTO"] === "1") assertToolCallPairing(repairedHistory);
+    for (const node of repairedHistory) {
+      if (node.type === "llm-ir") irNodeMap.set(node.ir, node);
+    }
+    const trajectory = createTrajectory({
+      session: args.session,
+      history: repairedHistory,
+      config: args.config,
+      transport: args.transport,
+      runCompiler: args.runCompiler ?? (run as Compiler<ModelData>),
+    });
+    set(state => ({
+      sessionMode: makeLive({
+        session: args.session,
+        config: args.config,
+        transport: args.transport,
+        trajectory,
+        liveMode: { trajectoryMode: trajectory.instance.mode, permissionUi: { type: "idle" } },
+      }),
+      history: repairedHistory,
+      modelOverride: latestModelJson(repairedHistory),
+      inflightResponse: null,
+      queuedSteering: [],
+      byteCount: 0,
+      clearNonce: state.clearNonce + 1,
+      sessionHydrationNonce: state.sessionHydrationNonce + 1,
+      sessionAutoNotify: false,
+    }));
+  };
 
-function toolRunResultToIR(result: ToolRunResult, toolCall: ToolCallRequest): OctoIR {
-  if (result.type === "custom-ir") {
-    return result.data;
-  }
+  const newSession = async (
+    cwd: string,
+    cliArgs: ParsedCliArgs,
+    env: BootEnv,
+  ): Promise<Session> => {
+    const session = createSession(cwd, cliArgs);
+    const modelOverride = get().modelOverride;
+    await swapInto({ session, history: [], ...env });
+    set({ isMenuOpen: false, modelOverride });
+    return session;
+  };
 
-  if (result.type === "invoke-subagent") {
-    throw new Error(`Subagent invocation is not supported in Octo tools: ${result.name}`);
-  }
+  const makeLive = (args: {
+    session: Session;
+    config: Config;
+    transport: Transport;
+    trajectory: LiveTrajectory;
+    liveMode: LiveMirror;
+  }): Extract<SessionMode, { mode: "live" }> => ({
+    mode: "live",
+    ...args,
+    control: {
+      hydrate: swapInto,
+      newSession,
+      updateConfig: config => {
+        set(state =>
+          state.sessionMode.mode !== "live"
+            ? {}
+            : { sessionMode: { ...state.sessionMode, config } },
+        );
+      },
+    },
+  });
 
   return {
-    role: "tool-output",
-    toolCall,
-    content: result.content,
+    isMenuOpen: false,
+    _notifyTimer: null,
+    sessionAutoNotify: false,
+    notifyOnce: false,
+    sessionMode: {
+      mode: "booting",
+      control: { hydrate: swapInto, newSession },
+    },
+    inflightResponse: null,
+    queuedSteering: [],
+    history: [],
+    modelOverride: null,
+    quotaData: null,
+    byteCount: 0,
+    query: "",
+    attachedImages: [],
+    clearNonce: 0,
+    sessionHydrationNonce: 0,
+    whitelistState: new Set<string>(),
+    unchained: false,
+
+    setNotifyOnce: notifyOnce => {
+      set({ notifyOnce });
+    },
+
+    setNotifySession: sessionAutoNotify => {
+      set({ sessionAutoNotify });
+    },
+
+    notifyReadyForInput: config => {
+      const { sessionAutoNotify, notifyOnce } = get();
+
+      if (notifyOnce) {
+        set({ notifyOnce: false });
+        // fall through to schedule notification
+      } else if (config.notifications?.alwaysNotify || sessionAutoNotify) {
+        // fall through to schedule notification
+      } else {
+        return;
+      }
+
+      const notifyTimeout = (() => {
+        if (notifyOnce) return 0;
+        return config.notifications?.notifyTimeoutMs ?? 10_000;
+      })();
+
+      const timer = setTimeout(async () => {
+        await runNotifyCommand(config);
+      }, notifyTimeout);
+
+      set({ _notifyTimer: timer });
+    },
+
+    cancelNotifyReadyForInput: () => {
+      const { _notifyTimer } = get();
+      if (_notifyTimer) {
+        clearTimeout(_notifyTimer);
+        set({ _notifyTimer: null });
+      }
+    },
+
+    toggleMenu: () => {
+      if (get().isMenuOpen) {
+        set({ isMenuOpen: false });
+        return;
+      }
+      const { sessionMode } = get();
+      if (
+        sessionMode.mode === "live" &&
+        sessionMode.liveMode.trajectoryMode.mode === "ready-for-request"
+      ) {
+        set({ isMenuOpen: true });
+      }
+    },
+    closeMenu: () => {
+      set({ isMenuOpen: false });
+    },
+    openMenu: () => {
+      set({ isMenuOpen: true });
+    },
+
+    setQuery: query => {
+      set({ query });
+    },
+
+    addAttachedImage: image => {
+      set(state => ({ attachedImages: [...state.attachedImages, image] }));
+    },
+
+    removeLastAttachedImage: () => {
+      set(state => ({ attachedImages: state.attachedImages.slice(0, -1) }));
+    },
+
+    clearAttachedImages: () => {
+      set({ attachedImages: [] });
+    },
+
+    setModelOverride: model => {
+      set({ modelOverride: serializeModelJson(model) });
+    },
+
+    notify: notif => {
+      const { sessionMode } = get();
+      if (sessionMode.mode !== "live") return;
+      set({
+        history: appendAndPersistHistory(
+          sessionMode.session,
+          get().history,
+          [{ type: "notification", content: notif }],
+          currentModel(),
+        ),
+      });
+    },
+
+    setUnchained: unchained => {
+      set({ unchained });
+    },
   };
-}
+});
 
 export function useModel() {
   const { modelOverride } = useAppStore(

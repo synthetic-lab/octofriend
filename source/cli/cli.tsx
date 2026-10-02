@@ -30,7 +30,7 @@ import { shutdownLspClients } from "../lsp/client.ts";
 import { replaceDockerRunArgs, replaceOctoFlags, withOctoFlags } from "./cli-args.ts";
 import type { ParsedCliArgs } from "./cli-args.ts";
 import { deleteSession, listSessions, loadSession } from "../session-history/index.ts";
-import type { LoadedSession, Session } from "../session-history/index.ts";
+import type { LoadedSession } from "../session-history/index.ts";
 import { useAppStore } from "../state.ts";
 import { FOREGROUND_COLOR, THEME_COLOR } from "../theme.ts";
 import {
@@ -219,20 +219,6 @@ async function runMain(opts: {
   loadedSession?: LoadedSession | null;
 }) {
   const restoreTitles = setOctoTitles();
-  let session: Session;
-  if (opts.loadedSession != null) {
-    session = {
-      ...opts.loadedSession.session,
-      metadata: {
-        ...opts.loadedSession.session.metadata,
-        cliArgs: opts.parsedCliArgs,
-      },
-    };
-    useAppStore.getState().hydrateSession(opts.loadedSession.history);
-  } else {
-    session = useAppStore.getState().startNewSession(opts.transport.cwd, opts.parsedCliArgs);
-  }
-
   let cleanedUp = false;
   const cleanup = async () => {
     if (cleanedUp) return;
@@ -271,6 +257,30 @@ async function runMain(opts: {
     const skills = await discoverSkills(opts.transport, timeout(5000), config);
     const cwd = opts.transport.cwd;
 
+    const store = useAppStore.getState();
+    if (store.sessionMode.mode !== "booting") {
+      throw new Error("impossible: cli booted with a session already in flight");
+    }
+    if (opts.loadedSession != null) {
+      await store.sessionMode.control.hydrate({
+        session: {
+          ...opts.loadedSession.session,
+          metadata: {
+            ...opts.loadedSession.session.metadata,
+            cliArgs: opts.parsedCliArgs,
+          },
+        },
+        history: opts.loadedSession.history,
+        config,
+        transport: opts.transport,
+      });
+    } else {
+      await store.sessionMode.control.newSession(opts.transport.cwd, opts.parsedCliArgs, {
+        config,
+        transport: opts.transport,
+      });
+    }
+
     const { waitUntilExit } = renderInteractive(
       <App
         bootSkills={skills.map(s => s.name)}
@@ -280,10 +290,6 @@ async function runMain(opts: {
         metadata={APP_METADATA}
         unchained={!!opts.parsedCliArgs.unchained}
         transport={opts.transport}
-        session={session}
-        onSessionChange={nextSession => {
-          session = nextSession;
-        }}
         updates={await readUpdates()}
         inputHistory={await loadInputHistory()}
       />,
@@ -291,9 +297,11 @@ async function runMain(opts: {
     );
 
     await waitUntilExit();
-    const { history } = useAppStore.getState();
-    if (history.some(item => item.type === "llm-ir")) {
-      const resumeCommand = chalk.hex(THEME_COLOR)(`octo --resume ${session.metadata.sessionId}`);
+    const { history, sessionMode } = useAppStore.getState();
+    if (sessionMode.mode === "live" && history.some(item => item.type === "llm-ir")) {
+      const resumeCommand = chalk.hex(THEME_COLOR)(
+        `octo --resume ${sessionMode.session.metadata.sessionId}`,
+      );
       console.log(`\nResume this session with ${resumeCommand}`);
     }
 

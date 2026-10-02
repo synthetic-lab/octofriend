@@ -1,9 +1,10 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useContext } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore, useModel } from "./state.ts";
 import { useSession } from "./session-context.ts";
-import { listPreviousSessions, type Session } from "./session-history/index.ts";
+import { TransportContext } from "./transport-context.ts";
+import { listPreviousSessions } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
@@ -42,7 +43,7 @@ const useMenuState = create<MenuState>((set, _) => ({
     });
   },
 }));
-export function Menu({ onSessionChange }: { onSessionChange: (session: Session) => void }) {
+export function Menu() {
   const { menuMode, setMenuMode } = useMenuState(
     useShallow(state => ({
       menuMode: state.menuMode,
@@ -61,11 +62,7 @@ export function Menu({ onSessionChange }: { onSessionChange: (session: Session) 
         }
       }}
     >
-      <MenuContent
-        menuMode={menuMode}
-        setMenuMode={setMenuMode}
-        onSessionChange={onSessionChange}
-      />
+      <MenuContent menuMode={menuMode} setMenuMode={setMenuMode} />
     </TerminalFlex>
   );
 }
@@ -73,24 +70,19 @@ export function Menu({ onSessionChange }: { onSessionChange: (session: Session) 
 function MenuContent({
   menuMode,
   setMenuMode,
-  onSessionChange,
 }: {
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
-  onSessionChange: (session: Session) => void;
 }) {
   if (menuMode === "main-menu") return <MainMenu />;
   if (menuMode === "load-session") {
-    return (
-      <LoadSessionMenu onBack={() => setMenuMode("main-menu")} onSessionChange={onSessionChange} />
-    );
+    return <LoadSessionMenu onBack={() => setMenuMode("main-menu")} />;
   }
   if (menuMode === "settings-menu") return <SettingsMenu />;
   if (menuMode === "model-select") return <SwitchModelMenu />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
-  if (menuMode === "clear-confirm")
-    return <ClearConversationConfirm onSessionChange={onSessionChange} />;
+  if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
   if (menuMode === "remove-model") return <RemoveModelMenu />;
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
@@ -126,7 +118,6 @@ function AutofixToggle({
       notify: state.notify,
     })),
   );
-  const session = useSession();
   if (config[configKey]) {
     return (
       <ConfirmDialog
@@ -140,7 +131,7 @@ function AutofixToggle({
           await setConfig(newconf);
           setMenuMode("main-menu");
           toggleMenu();
-          notify(disableNotification, session, config);
+          notify(disableNotification);
         }}
         onConfirm={() => {
           setMenuMode("main-menu");
@@ -169,7 +160,7 @@ function AutofixToggle({
         });
         setMenuMode("main-menu");
         toggleMenu();
-        notify(enableNotification, session, config);
+        notify(enableNotification);
       }}
       onCancel={() => {
         setMenuMode("main-menu");
@@ -226,7 +217,6 @@ function SwitchModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
-  const session = useSession();
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
@@ -248,11 +238,11 @@ function SwitchModelMenu() {
         setPendingModel(model);
         return;
       }
-      setModelOverride(model, session);
+      setModelOverride(model);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config, setMenuMode, setModelOverride, toggleMenu, session],
+    [config, setMenuMode, setModelOverride, toggleMenu],
   );
   if (pendingModel) {
     return (
@@ -297,7 +287,7 @@ function SwitchModelMenu() {
               });
             }
           }
-          setModelOverride(pendingModel, session);
+          setModelOverride(pendingModel);
           setPendingModel(null);
           setMenuMode("main-menu");
           toggleMenu();
@@ -519,7 +509,7 @@ function MainMenu() {
         });
 
         // Notify user
-        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`, session, config);
+        notify(`Switched to ${wasEnabled ? "Emacs" : "Vim"} mode`);
         return;
       } else if (item.value === "clear-confirm") setMenuMode("clear-confirm");
       else setMenuMode(item.value);
@@ -659,15 +649,18 @@ function QuitConfirm() {
     })),
   );
   const app = useApp();
-  const session = useSession();
-  const config = useConfig();
+  const trajectory = useAppStore(state =>
+    state.sessionMode.mode === "live" ? state.sessionMode.trajectory : null,
+  );
   return (
     <ConfirmDialog
       confirmLabel="Yes, quit"
       rejectLabel="Never mind, take me back"
-      onConfirm={() => {
-        const state = useAppStore.getState();
-        state.abortResponse(session, config, { exiting: true });
+      onConfirm={async () => {
+        if (trajectory != null) {
+          trajectory.exitController.abort();
+          await trajectory.runPromise;
+        }
         app.exit();
       }}
       onReject={() => setMenuMode("main-menu")}
@@ -675,39 +668,36 @@ function QuitConfirm() {
     />
   );
 }
-function ClearConversationConfirm({
-  onSessionChange,
-}: {
-  onSessionChange: (session: Session) => void;
-}) {
+function ClearConversationConfirm() {
   const { setMenuMode } = useMenuState(
     useShallow(state => ({
       setMenuMode: state.setMenuMode,
     })),
   );
-  const { startNewSession, notify } = useAppStore(
+  const { notify, newSession } = useAppStore(
     useShallow(state => ({
-      startNewSession: state.startNewSession,
       notify: state.notify,
+      newSession: state.sessionMode.mode === "live" ? state.sessionMode.control.newSession : null,
     })),
   );
   const session = useSession();
   const config = useConfig();
+  const transport = useContext(TransportContext);
   return (
     <ConfirmDialog
       confirmLabel="Yes, start new conversation"
       rejectLabel="Never mind, take me back"
       onConfirm={async () => {
+        if (newSession == null) return;
         const { cwd, cliArgs } = session.metadata;
         const oldSessionId = session.metadata.sessionId;
-        const newSession = startNewSession(cwd, cliArgs);
-        onSessionChange(newSession);
+        await newSession(cwd, cliArgs, { config, transport });
         setMenuMode("main-menu");
         const resumeHint =
           oldSessionId != null
             ? ` To resume the previous session, run \`octo --resume ${oldSessionId}\``
             : "";
-        notify(`New conversation started.${resumeHint}`, newSession, config);
+        notify(`New conversation started.${resumeHint}`);
       }}
       onReject={() => setMenuMode("main-menu")}
     />
@@ -720,7 +710,6 @@ function SetDefaultModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
-  const session = useSession();
   const config = useConfig();
   const setConfig = useSetConfig();
   const { setMenuMode } = useMenuState(
@@ -762,11 +751,11 @@ function SetDefaultModelMenu() {
         ...config,
         models: [model, ...rest],
       });
-      setModelOverride(model, session);
+      setModelOverride(model);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config, setModelOverride, toggleMenu, session],
+    [config, setModelOverride, toggleMenu],
   );
   return (
     <KbShortcutPanel
@@ -783,7 +772,6 @@ function RemoveModelMenu() {
       toggleMenu: state.toggleMenu,
     })),
   );
-  const session = useSession();
   const config = useConfig();
   const setConfig = useSetConfig();
   const { setMenuMode } = useMenuState(
@@ -825,11 +813,11 @@ function RemoveModelMenu() {
         models: [...rest],
       });
       const current = rest[0];
-      setModelOverride(current, session);
+      setModelOverride(current);
       setMenuMode("main-menu");
       toggleMenu();
     },
-    [config, setModelOverride, toggleMenu, session],
+    [config, setModelOverride, toggleMenu],
   );
   return (
     <KbShortcutPanel

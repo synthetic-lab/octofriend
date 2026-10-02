@@ -222,7 +222,8 @@ function makeTrajectory(opts?: {
     ]);
     if (searchDef == null || shellDef == null) throw new Error("tools failed to load");
     const { runCompiler, calls } = makeRunCompiler(queue);
-    const traj = new Trajectory<TestAgent, null>({
+    const traj = new Trajectory({
+      agent: _testAgent,
       model: async () => {
         rec.modelCalls++;
         const authError = opts?.modelAuthError?.();
@@ -1358,7 +1359,8 @@ describe("trajectory", () => {
       () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
       plainOk,
     ]);
-    const traj = new Trajectory<PlainAgent, null>({
+    const traj = new Trajectory({
+      agent: _plainAgent,
       model: async () => ok({ model: null, contextWindow: 10_000 }),
       loadTools: async () => ({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
