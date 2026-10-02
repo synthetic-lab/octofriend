@@ -312,6 +312,28 @@ export type ToolRejectMessage<T extends ToolMap<any, any>> = {
   toolCall: ToolCall<T>;
 };
 
+export type RequestErrorIR = {
+  role: "request-error";
+  requestError: string;
+  curl: string;
+};
+
+export type CompactionErrorIR = {
+  role: "compaction-error";
+  requestError: string;
+  curl: string | null;
+};
+
+export type ValidationRetryBudgetExceededIR = {
+  role: "validation-retry-budget-exceeded";
+  error: string;
+};
+
+export type InterruptedByUserIR = {
+  role: "interrupted-by-user";
+  reason: string;
+};
+
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {
   role: "tool-invoke-subagent";
   toolCall: ToolCall<T>;
@@ -348,7 +370,11 @@ export type LoweredIR<T extends ToolMap<any, any>> =
  */
 export type CheckpointedIR<T extends ToolMap<any, any>> =
   | Exclude<LoweredIR<T>, LoweredCheckpoint>
-  | Checkpoint;
+  | Checkpoint
+  | RequestErrorIR
+  | CompactionErrorIR
+  | ValidationRetryBudgetExceededIR
+  | InterruptedByUserIR;
 
 /*
  * Compiler-ready IR plus subagent trajectories.
@@ -455,6 +481,10 @@ function isBuiltinIR<
     | LoweredIR<any>
     | Checkpoint
     | ToolRejectMessage<any>
+    | RequestErrorIR
+    | CompactionErrorIR
+    | ValidationRetryBudgetExceededIR
+    | InterruptedByUserIR
     | AllTrajectories<T, Tools>
     | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
@@ -462,6 +492,10 @@ function isBuiltinIR<
   | LoweredIR<any>
   | Checkpoint
   | ToolRejectMessage<any>
+  | RequestErrorIR
+  | CompactionErrorIR
+  | ValidationRetryBudgetExceededIR
+  | InterruptedByUserIR
   | AllTrajectories<T, Tools>
   | ToolSubagentInvoke<any, string> {
   return isBuiltinRole(ir.role);
@@ -476,6 +510,10 @@ export function answeredToolCallId<
     | LoweredIR<any>
     | Checkpoint
     | ToolRejectMessage<any>
+    | RequestErrorIR
+    | CompactionErrorIR
+    | ValidationRetryBudgetExceededIR
+    | InterruptedByUserIR
     | AllTrajectories<T, Tools>
     | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
@@ -489,6 +527,10 @@ export function answeredToolCallId<
     case "checkpoint":
     case "lowered-checkpoint":
     case "tool-invoke-subagent":
+    case "request-error":
+    case "compaction-error":
+    case "validation-retry-budget-exceeded":
+    case "interrupted-by-user":
       return null;
     case "subagent-trajectory":
     case "tool-output":
@@ -540,6 +582,10 @@ type _BuiltinIRRolesMatch = AssertNever<
       | LoweredIR<any>["role"]
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
+      | RequestErrorIR["role"]
+      | CompactionErrorIR["role"]
+      | ValidationRetryBudgetExceededIR["role"]
+      | InterruptedByUserIR["role"]
       | AgentTrajectory<any, any, any>["role"]
       | ToolSubagentInvoke<any, string>["role"],
       BuiltinIRRole
@@ -549,6 +595,10 @@ type _BuiltinIRRolesMatch = AssertNever<
       | LoweredIR<any>["role"]
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
+      | RequestErrorIR["role"]
+      | CompactionErrorIR["role"]
+      | ValidationRetryBudgetExceededIR["role"]
+      | InterruptedByUserIR["role"]
       | AgentTrajectory<any, any, any>["role"]
       | ToolSubagentInvoke<any, string>["role"]
     >

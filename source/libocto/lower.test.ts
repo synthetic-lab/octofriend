@@ -185,6 +185,24 @@ function subagentTrajectory(ir: ResearchIR[], toolCall: ToolCall<TestAgent["tool
   };
 }
 
+function unfinishedHistory(): TestIR[] {
+  const call = searchCall("call-1");
+  const innerCall = searchCall("call-cc-1");
+  return [
+    userMessage("this conversation continued after a stalled flight"),
+    assistantMessage("Researching", [call]),
+    subagentInvocation(call),
+    subagentTrajectory(
+      [
+        researchUserMessage("Research how to lower IRs."),
+        researchAssistantMessage("Starting the search", innerCall),
+      ],
+      call,
+    ),
+    userMessage("and this arrived after the stall"),
+  ];
+}
+
 function checkpointSummary(message: TestIR | TestLoweredIR): string {
   if (message.role !== "checkpoint" && message.role !== "lowered-checkpoint") {
     throw new Error("Expected checkpoint");
@@ -233,6 +251,19 @@ describe("lower", () => {
     expect(roles(lower<TestAgent>(messages))).toEqual(["assistant", "user"]);
   });
 
+  it("drops top-level error records", () => {
+    const messages: TestIR[] = [
+      userMessage("go"),
+      assistantMessage("partial"),
+      { role: "request-error", requestError: "boom", curl: "curl" },
+      { role: "compaction-error", requestError: "thud", curl: null },
+      { role: "validation-retry-budget-exceeded", error: "budget" },
+      { role: "interrupted-by-user", reason: "the user quit" },
+    ];
+
+    expect(roles(lower<TestAgent>(messages))).toEqual(["user", "assistant"]);
+  });
+
   it("answers a finished subagent trajectory with its final response", () => {
     const call = searchCall("call-1");
     const messages: TestIR[] = [
@@ -278,6 +309,43 @@ describe("lower", () => {
     if (error.role !== "tool-runtime-error") throw new Error("impossible");
     expect(error.toolCall).toEqual(call);
     expect(error.error).toBe("The subagent was interrupted");
+  });
+
+  it("answers a subagent that died of an error record with its message", () => {
+    const tails: Array<[ResearchIR, string]> = [
+      [
+        { role: "request-error", requestError: "the model request failed", curl: "curl" },
+        "the model request failed",
+      ],
+      [
+        { role: "compaction-error", requestError: "the compaction failed", curl: null },
+        "the compaction failed",
+      ],
+      [
+        { role: "validation-retry-budget-exceeded", error: "too many invalid tool calls" },
+        "too many invalid tool calls",
+      ],
+      [
+        { role: "interrupted-by-user", reason: "The user interrupted the flight" },
+        "The user interrupted the flight",
+      ],
+    ];
+
+    for (const [tail, message] of tails) {
+      const call = searchCall("call-1");
+      const lowered = lower<TestAgent>([
+        userMessage("research IRs"),
+        assistantMessage("Researching", [call]),
+        subagentInvocation(call),
+        subagentTrajectory([researchUserMessage("Research how to lower IRs."), tail], call),
+      ]);
+
+      expect(roles(lowered)).toEqual(["user", "assistant", "tool-runtime-error"]);
+      const error = lowered[2];
+      if (error.role !== "tool-runtime-error") throw new Error("impossible");
+      expect(error.toolCall).toEqual(call);
+      expect(error.error).toBe(message);
+    }
   });
 
   it("re-lowers a running subagent trajectory in place of everything before it", () => {
@@ -332,6 +400,28 @@ describe("lower", () => {
     expect(roles(lowered)).toEqual(["user", "assistant"]);
     expect(userText(lowered[0])).toBe("Research nested lowering");
     expect(assistantText(lowered[1])).toBe("Starting the nested search");
+  });
+
+  it("answers a historical running trajectory with a never-completed error", () => {
+    const lowered = lower<TestAgent>(unfinishedHistory());
+
+    expect(roles(lowered)).toEqual(["user", "assistant", "tool-runtime-error", "user"]);
+    const error = lowered[2];
+    if (error.role !== "tool-runtime-error") throw new Error("impossible");
+    expect(error.error).toBe("The subagent never completed.");
+  });
+
+  it("throws on a historical running trajectory in canary builds", () => {
+    const prevCanary = process.env["CANARY_OCTO"];
+    process.env["CANARY_OCTO"] = "1";
+    try {
+      expect(() => lower<TestAgent>(unfinishedHistory())).toThrow(
+        "has IRs after it but no terminal state",
+      );
+    } finally {
+      if (prevCanary == null) delete process.env["CANARY_OCTO"];
+      else process.env["CANARY_OCTO"] = prevCanary;
+    }
   });
 
   describe("checkpoint slicing", () => {

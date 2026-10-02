@@ -27,7 +27,7 @@ export function lower<A extends Agent<any, any, any>>(
 function lowered<A extends Agent<any, any, any>>(
   messages: Array<PreLoweredIR<A>>,
 ): Array<LoweredIR<A["tools"]>> {
-  return messages.flatMap(ir => {
+  return messages.flatMap((ir, index) => {
     if (ir.role === "checkpoint") {
       return [
         {
@@ -51,8 +51,17 @@ function lowered<A extends Agent<any, any, any>>(
       return [];
     }
 
+    if (
+      ir.role === "request-error" ||
+      ir.role === "compaction-error" ||
+      ir.role === "validation-retry-budget-exceeded" ||
+      ir.role === "interrupted-by-user"
+    ) {
+      return [];
+    }
+
     if (ir.role === "subagent-trajectory") {
-      return loweredTrajectory(ir);
+      return loweredTrajectory(ir, index === messages.length - 1);
     }
     return [ir];
   });
@@ -60,6 +69,7 @@ function lowered<A extends Agent<any, any, any>>(
 
 function loweredTrajectory<A extends Agent<any, any, any>>(
   trajectory: PreLoweredTrajectories<A["agents"], A["tools"]>,
+  isLast: boolean,
 ): Array<LoweredIR<A["tools"]>> {
   const last = trajectory.ir[trajectory.ir.length - 1];
   if (last != null && isAssistantMessage(last) && !last.toolCalls) {
@@ -80,7 +90,19 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
       },
     ];
   }
-  return lower(trajectory.ir as Array<PreLoweredIR<A>>);
+  if (isLast) {
+    return lower(trajectory.ir as Array<PreLoweredIR<A>>);
+  }
+  if (process.env["CANARY_OCTO"] === "1") {
+    throw new Error(`Subagent ${trajectory.subagent} has IRs after it but no terminal state`);
+  }
+  return [
+    {
+      role: "tool-runtime-error",
+      toolCall: trajectory.toolCall,
+      error: "The subagent never completed.",
+    },
+  ];
 }
 
 // A trajectory finishes either with a plain response (an assistant message carrying no tool
@@ -88,19 +110,20 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
 // appends its retry work after them, so they never stay at the end of a finished trajectory.
 // Auth errors don't finish a subagent either: the supervisor surfaces them to the client, which
 // can control the stalled subagent directly.
-type TerminalError = Extract<
-  PreLoweredIR<any>,
-  {
-    role: "tool-validation-error" | "tool-parse-error" | "tool-skip-output";
-  }
->;
+const TERMINAL_ERROR_ROLES = [
+  "tool-validation-error",
+  "tool-parse-error",
+  "tool-skip-output",
+  "request-error",
+  "compaction-error",
+  "validation-retry-budget-exceeded",
+  "interrupted-by-user",
+] as const;
+
+type TerminalError = Extract<PreLoweredIR<any>, { role: (typeof TERMINAL_ERROR_ROLES)[number] }>;
 
 function isTerminalError(ir: PreLoweredIR<any>): ir is TerminalError {
-  return (
-    ir.role === "tool-validation-error" ||
-    ir.role === "tool-parse-error" ||
-    ir.role === "tool-skip-output"
-  );
+  return (TERMINAL_ERROR_ROLES as readonly string[]).includes(ir.role);
 }
 
 function errorMessage(ir: TerminalError): string {
@@ -110,6 +133,13 @@ function errorMessage(ir: TerminalError): string {
     case "tool-parse-error":
       return ir.malformedRequest.error;
     case "tool-skip-output":
+      return ir.reason;
+    case "request-error":
+    case "compaction-error":
+      return ir.requestError;
+    case "validation-retry-budget-exceeded":
+      return ir.error;
+    case "interrupted-by-user":
       return ir.reason;
   }
 }
