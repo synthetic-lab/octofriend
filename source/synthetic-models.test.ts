@@ -21,7 +21,9 @@ describe("Synthetic catalog", () => {
               input_modalities: ["text", "image"],
             },
             {
-              id: "syn:large:vision",
+              id: "future:best-model",
+              alias_of: "Same name",
+              categories: ["recommended", "vision"],
               hugging_face_id: "new/model",
               display_name: "Same name",
               context_length: 654321,
@@ -40,20 +42,24 @@ describe("Synthetic catalog", () => {
       async () => {
         const catalog = await loadSyntheticModels(new AbortController().signal);
         expect(catalog.map(model => model.model)).toEqual([
-          "syn:large:vision",
+          "future:best-model",
           "hf:new/model",
           "hf:new/text",
         ]);
         expect(catalog[0]).toMatchObject({
-          model: "syn:large:vision",
+          model: "future:best-model",
           huggingFaceId: "new/model",
-          nickname: "Same name",
+          nickname: "future:best-model",
+          aliasOf: "Same name",
+          categories: ["recommended", "vision"],
           context: 654321,
         });
         expect(catalog.find(model => model.model === "hf:new/model")).toEqual({
           model: "hf:new/model",
           huggingFaceId: "new/model",
           nickname: "Same name",
+          aliasOf: undefined,
+          categories: [],
           context: 123456,
           modalities: {
             image: {

@@ -1,20 +1,17 @@
-import React, { useState, useCallback, useReducer, useEffect } from "react";
+import React, { useState, useCallback, useReducer } from "react";
 import { Config, Auth } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
 import { ProviderConfig, PROVIDERS, keyFromName, SYNTHETIC_PROVIDER } from "../providers.ts";
 import { KbShortcutPanel, MenuHeader } from "./kb-select/kb-shortcut-panel.tsx";
-import { Item, Keymap, ShortcutSection } from "./kb-select/kb-shortcut-select.tsx";
+import { Item, Keymap, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { hasCodexOAuthTokens } from "../codex-oauth.ts";
 import { Span } from "paintcannon-react";
 import { useKeyboard } from "../hooks/use-keyboard.ts";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import {
-  loadSyntheticModels,
-  syntheticAliasName,
-  type SyntheticModel,
-} from "../synthetic-models.ts";
+import type { SyntheticModel } from "../synthetic-models.ts";
 export type AutoDetectModelsProps = {
+  syntheticModels: SyntheticModel[];
   onComplete: (models: Config["models"]) => void;
   onCancel: () => void;
   onOverrideDefaultApiKey: (o: Record<string, string>) => Promise<any>;
@@ -53,6 +50,7 @@ function getEnvVar(provider: ProviderConfig, config: Config | null, overrideEnvV
   return provider.envVar;
 }
 export function ModelSetup({
+  syntheticModels,
   config,
   onComplete,
   onCancel,
@@ -106,7 +104,10 @@ export function ModelSetup({
         return dispatch({
           from: "initial",
           to: {
-            step: "found",
+            step:
+              provider === SYNTHETIC_PROVIDER && syntheticModels.length === 0
+                ? "override-model-string"
+                : "found",
             provider,
             overrideAuth: null,
             useEnvVar: true,
@@ -121,7 +122,7 @@ export function ModelSetup({
         },
       });
     },
-    [config],
+    [config, syntheticModels],
   );
   const onChooseCustom = useCallback(() => {
     dispatch({
@@ -159,6 +160,7 @@ export function ModelSetup({
     case "found":
       return (
         <ImportModelsFrom
+          syntheticModels={syntheticModels}
           config={config}
           provider={stepData.provider}
           onImport={models => {
@@ -181,10 +183,7 @@ export function ModelSetup({
                         type: stepData.provider.type,
                       }
                     : {}),
-                  nickname:
-                    stepData.provider === SYNTHETIC_PROVIDER && model.model.startsWith("syn:")
-                      ? syntheticAliasName(model.model)
-                      : `${model.nickname} (${stepData.provider.name})`,
+                  nickname: `${model.nickname} (${stepData.provider.name})`,
                   baseUrl: stepData.provider.baseUrl,
                 };
                 if (
@@ -250,7 +249,10 @@ export function ModelSetup({
             dispatch({
               from: "missing",
               to: {
-                step: "found",
+                step:
+                  stepData.provider === SYNTHETIC_PROVIDER && syntheticModels.length === 0
+                    ? "override-model-string"
+                    : "found",
                 provider: stepData.provider,
                 overrideAuth,
                 useEnvVar: false,
@@ -414,36 +416,14 @@ type ImportModelsProps = {
   onCancel: () => any;
 };
 
-function ImportModelsFrom(props: ImportModelsProps) {
-  if (props.provider === SYNTHETIC_PROVIDER) return <SyntheticModelImport {...props} />;
-  return <ModelChecklist {...props} models={props.provider.models} />;
-}
-
-function SyntheticModelImport(props: ImportModelsProps) {
-  const [catalog, setCatalog] = useState<SyntheticModel[] | null>(null);
-  const { onCustomModel } = props;
-  useEffect(() => {
-    const controller = new AbortController();
-    loadSyntheticModels(controller.signal).then(result => {
-      if (!controller.signal.aborted) setCatalog(result);
-    });
-    return () => controller.abort();
-  }, []);
-  useEffect(() => {
-    if (catalog?.length === 0) onCustomModel();
-  }, [catalog, onCustomModel]);
-  if (catalog?.length === 0) return null;
-  if (catalog === null) {
-    return (
-      <CenteredBox>
-        <TerminalFlex style={{ justifyContent: "center", width: "100%" }}>
-          <Span>Loading Synthetic's latest models...</Span>
-        </TerminalFlex>
-      </CenteredBox>
-    );
-  }
+function ImportModelsFrom({
+  syntheticModels,
+  ...props
+}: ImportModelsProps & { syntheticModels: SyntheticModel[] }) {
+  if (props.provider !== SYNTHETIC_PROVIDER)
+    return <ModelChecklist {...props} models={props.provider.models} />;
   const seenModels = new Set<string>();
-  const models = catalog.flatMap(({ huggingFaceId, ...model }) => {
+  const models = syntheticModels.flatMap(({ huggingFaceId, ...model }) => {
     if (seenModels.has(huggingFaceId)) return [];
     seenModels.add(huggingFaceId);
     return [model];
@@ -459,7 +439,10 @@ function ModelChecklist({
   onCancel,
   onCustomModel,
 }: ImportModelsProps & {
-  models: ProviderConfig["models"];
+  models: (ProviderConfig["models"][number] & {
+    aliasOf?: string;
+    categories?: string[];
+  })[];
 }) {
   const remainingModels = models.filter(
     model =>
@@ -476,40 +459,36 @@ function ModelChecklist({
   const isSynthetic = provider === SYNTHETIC_PROVIDER;
   const items: Item<{ type: "model"; id: string }>[] = remainingModels.map(model => {
     const selected = selectedModels.has(model.model) ? "⦿" : "○";
-    const isAlias = isSynthetic && model.model.startsWith("syn:");
-    const name = isAlias ? syntheticAliasName(model.model) : model.nickname;
-    const detail = isAlias ? ` (${model.nickname})` : "";
-    const recommended = isSynthetic && model.model === "syn:large:vision" ? " — recommended" : "";
+    const detail = model.aliasOf ? ` (${model.aliasOf})` : "";
     return {
       label: (
         <>
-          {selected} {name}
+          {selected} {model.nickname}
           {detail && <Span style={{ color: "gray" }}>{detail}</Span>}
-          {recommended}
         </>
       ),
       value: { type: "model", id: model.model },
     };
   });
-  const recommendedItems = isSynthetic
-    ? items.filter(item => item.value.id.startsWith("syn:"))
-    : [];
-  const recommendedSlugs = new Set(recommendedItems.map(item => item.value.id));
-  const sections: ShortcutSection<Selection>[] = isSynthetic
-    ? [
-        {
-          id: "recommended",
-          title: "Recommended",
-          subtitle: "Pinned to the latest models",
-          order: recommendedItems,
-        },
-        {
-          id: "other-models",
-          title: "Other models",
-          order: items.filter(item => !recommendedSlugs.has(item.value.id)),
-        },
-      ]
-    : [{ id: "other-models", title: "Other models", order: items }];
+  const recommendedSlugs = new Set(
+    remainingModels
+      .filter(model => model.categories?.includes("recommended"))
+      .map(model => model.model),
+  );
+  const recommendedItems = items.filter(item => recommendedSlugs.has(item.value.id));
+  const otherItems = items.filter(item => !recommendedSlugs.has(item.value.id));
+  const shortcutItems: ShortcutArray<Selection> =
+    isSynthetic && recommendedItems.length > 0 && otherItems.length > 0
+      ? [
+          {
+            type: "sections",
+            sections: [
+              { id: "recommended", title: "Recommended", order: recommendedItems },
+              { id: "other-models", title: "Other models", order: otherItems },
+            ],
+          },
+        ]
+      : [{ type: "auto-list", order: items }];
   const actions: Keymap<Selection> = {
     ...(isSynthetic
       ? {}
@@ -546,7 +525,7 @@ function ModelChecklist({
             </TerminalFlex>
           </>
         }
-        shortcutItems={[{ type: "sections", sections }]}
+        shortcutItems={shortcutItems}
         actions={actions}
         onSelect={({ value }) => {
           switch (value.type) {
@@ -555,7 +534,11 @@ function ModelChecklist({
             case "back":
               return onCancel();
             case "import":
-              return onImport(remainingModels.filter(model => selectedModels.has(model.model)));
+              return onImport(
+                remainingModels
+                  .filter(model => selectedModels.has(model.model))
+                  .map(({ aliasOf, categories, ...model }) => model),
+              );
             case "model":
               setSelectedModels(previous => {
                 const selected = new Set(previous);
