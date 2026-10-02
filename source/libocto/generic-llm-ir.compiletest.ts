@@ -1,5 +1,5 @@
 import { t } from "structural";
-import { AgentTrajectory, defineAgent, LlmIR } from "./llm-ir.ts";
+import { defineAgent, LlmIR, trajectoryCond } from "./llm-ir.ts";
 import { TOOL_BUILDER, ToolBuilder, ToolCall } from "./tool-def.ts";
 import { ok, err } from "./result.ts";
 
@@ -204,7 +204,18 @@ const successAgent = defineAgent({
 type TestAgentIR = LlmIR<typeof successAgent>;
 type DynamicTestAgentIR = LlmIR<typeof dynamicSuccessAgent>;
 
-const a: TestAgentIR = new AgentTrajectory("explore", []) as TestAgentIR;
+const a = {
+  role: "subagent-trajectory",
+  subagent: "explore",
+  ir: [],
+  toolCall: {
+    type: "tool-call",
+    name: "read",
+    toolCallId: "call-1",
+    original: { path: "/tmp/x" },
+    parsed: { path: "/tmp/x", originalFileContents: "hello" },
+  },
+} as TestAgentIR;
 const dynamicA: DynamicTestAgentIR = {} as DynamicTestAgentIR;
 
 if (dynamicA.role === "tool-output") {
@@ -223,8 +234,8 @@ if (a.role === "file-read") {
   console.log(a.contents);
 }
 
-if (a.role === "trajectory") {
-  const syncCondResult = a.cond({
+if (a.role === "subagent-trajectory") {
+  const syncCondResult = trajectoryCond(a, {
     explore: () => "explore",
     review: () => "review",
     view: () => "view",
@@ -234,7 +245,7 @@ if (a.role === "trajectory") {
   // @ts-expect-error
   const _syncCondPromise: Promise<string> = syncCondResult;
 
-  const asyncCondResult = a.cond({
+  const asyncCondResult = trajectoryCond(a, {
     explore: async () => "explore",
     review: async () => "review",
     view: async () => "view",
@@ -246,13 +257,13 @@ if (a.role === "trajectory") {
 
   // We expect an error here because cond handlers cannot mix sync and async returns
   // @ts-expect-error
-  a.cond({
+  trajectoryCond(a, {
     explore: async () => "explore",
     review: () => "review",
     view: () => "view",
   });
 
-  await a.cond({
+  await trajectoryCond(a, {
     explore: async trajectory => {
       const first = trajectory.ir[0];
       if (first.role === "tool-output") {
@@ -267,10 +278,10 @@ if (a.role === "trajectory") {
           console.log(first.toolCall.parsed.path);
         }
       }
-      if (first.role === "trajectory") {
-        await first.cond({
-          nested: _ => {},
-          view: _ => {},
+      if (first.role === "subagent-trajectory") {
+        await trajectoryCond(first, {
+          nested: () => {},
+          view: () => {},
         });
       }
     },
