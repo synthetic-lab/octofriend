@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { Command } from "@commander-js/extra-typings";
 import { reactCompiler } from "bun-plugin-react-compiler";
+import packageJson from "./package.json" with { type: "json" };
+import { t } from "structural";
 
 // Cross-compile standalone binaries with `bun build --compile`.
 //
@@ -24,15 +26,21 @@ import { reactCompiler } from "bun-plugin-react-compiler";
 
 const root = import.meta.dir;
 
-const enginesBun: unknown = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
-  .engines?.bun;
-if (typeof enginesBun !== "string") {
+const PackageBun = t.subtype({
+  engines: t.subtype({
+    bun: t.str,
+  }),
+});
+const targetBunVersion = PackageBun.slice(packageJson).engines.bun;
+
+if (typeof targetBunVersion !== "string") {
   console.error("package.json is missing engines.bun");
   process.exit(1);
 }
-if (!Bun.semver.satisfies(Bun.version, enginesBun)) {
+if (Bun.version !== targetBunVersion) {
   console.error(
-    `octofriend requires Bun ${enginesBun} (found ${Bun.version}); run \`bun upgrade\``,
+    `octofriend requires Bun ${targetBunVersion} (found ${Bun.version}). Run \`bun upgrade\` or ` +
+      "update the pinned version in package.json.",
   );
   process.exit(1);
 }
