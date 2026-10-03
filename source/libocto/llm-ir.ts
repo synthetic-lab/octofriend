@@ -5,6 +5,7 @@ import type { CompilerUsage } from "./compilers/compiler-interface.ts";
 import type {
   ToolCall,
   ToolExtensionIR,
+  ToolFactory,
   ToolFactoryRequirements,
   ToolMap,
   ToolSubagentNames,
@@ -80,13 +81,13 @@ export type PermissionlessAgent<
 // that run compile-time validation on the passed-in agent and assign the correct type + branding.
 export function definePermissionedAgent<
   A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
->(a: A & ValidateAgentSubagents<A>): A & PermissionedBrand {
+>(a: A & ValidateAgentSubagents<A, true>): A & PermissionedBrand {
   return a as unknown as A & PermissionedBrand;
 }
 
 export function definePermissionlessAgent<
   A extends { tools: ToolMap<any, any>; agents: AgentDirectory },
->(a: A & ValidateAgentSubagents<A>): A {
+>(a: A & ValidateAgentSubagents<A, false>): A {
   return a;
 }
 
@@ -111,6 +112,44 @@ export type AgentTrajectory<
 export type AllTrajectories<Agents extends AgentDirectory, Tools extends ToolMap<any, any>> = {
   [K in keyof Agents]: AgentTrajectory<Agents, K, Tools>;
 }[keyof Agents];
+
+// Every subagent name anywhere in the agent tree, as one flat union: tree-wide params
+// (e.g. the system prompt catalogue) key off this rather than a single level's directory.
+export type AllSubagentNames<A extends Agent<any, any, any>> =
+  | Extract<keyof A["agents"], string>
+  | {
+      [K in keyof A["agents"]]: AllSubagentNames<A["agents"][K]>;
+    }[keyof A["agents"]];
+
+// The tool maps of every level in the tree, intersected into one. A key used at more than one
+// level must be the same factory, so one loaded entry serves every level declaring it.
+type TreeToolMap<A extends Agent<any, any, any>> = UnionToIntersection<
+  | A["tools"]
+  | {
+      [K in keyof A["agents"]]: TreeToolMap<A["agents"][K]>;
+    }[keyof A["agents"]]
+>;
+
+type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
+  ? I
+  : never;
+
+// What the one tree-wide loader produces: every level's tools, merged by key, each entry the
+// loaded definition of exactly the tool declared under that key. The value conditionals stay
+// deferred so no ToolMap constraint has to be proven through the opaque intersection above —
+// LoadedTools needs the same per-key formula, but can rely on its ToolMap constraint instead.
+// The runner filters each arc's subset out of this merged map.
+export type AllToolsAcrossTree<A extends Agent<any, any, any>> = {
+  [K in keyof TreeToolMap<A>]: TreeToolMap<A>[K] extends ToolFactory<
+    infer D,
+    infer S,
+    infer P,
+    infer Subs,
+    infer E
+  >
+    ? Exclude<Awaited<ReturnType<ToolFactory<D, S, P, Subs, E>>>, null>
+    : never;
+};
 
 // A type guard to check whether an AgentTrajectory belongs to a specific named subagent. This is
 // useful since different subagents may have different tools, so you can narrow which tools an
@@ -398,7 +437,9 @@ export type CheckpointedIRWithTrajectories<A extends Agent<any, any, any>> =
  * that not all clients might use, e.g. file IO types which may have prompt optimizations.
  */
 type ToolExtra<T> = T extends ToolFactoryRequirements<any, infer Extra> ? Extra : never;
-type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["tools"]]>;
+// The extension IRs an agent's tools can produce: the extra-IR leg of LlmIR, which client
+// lowering passes convert and libocto never interprets.
+export type AgentExtra<A extends Agent<any, any, any>> = ToolExtra<A["tools"][keyof A["tools"]]>;
 
 export type LlmIR<A extends Agent<any, any, any>> =
   | CheckpointedIRWithTrajectories<A>
@@ -431,7 +472,7 @@ export type PreLoweredIR<A extends Agent<any, any, any>> =
   | CheckpointedIR<A["tools"]>
   | PreLoweredTrajectories<A["agents"], A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
-  | ToolRejectMessage<A["tools"]>;
+  | ([IsPermissioned<A>] extends [true] ? ToolRejectMessage<A["tools"]> : never);
 
 // AgentTrajectory may carry arbitrary IR, since trajectories are living transcripts, not compiler
 // inputs. By contrast, lower(...) accepts only this recursively-constrained variant: every nested
@@ -454,6 +495,29 @@ type PreLoweredTrajectory<
   ir: Array<PreLoweredIR<Child>>;
   toolCall: ToolCall<Tools>;
 };
+
+/*
+ * Every IR except the agent's extension IRs — the target of client conversion passes. The
+ * trajectory legs stay raw: their insides are typed by each child's full IR universe, so
+ * extension IRs may still live inside a subagent trajectory, because libocto's down-converting
+ * recursion hasn't walked it yet.
+ */
+export type ExtraFreeIR<A extends Agent<any, any, any>> =
+  | CheckpointedIR<A["tools"]>
+  | RawTrajectories<A["agents"], A["tools"]>
+  | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
+  | ([IsPermissioned<A>] extends [true] ? ToolRejectMessage<A["tools"]> : never);
+
+// The trajectory leg of the extra-free stage: one member per subagent, insides still the
+// child's own full IR universe, extensions and level-branded rejects included.
+export type RawTrajectories<Agents extends AgentDirectory, Tools extends ToolMap<any, any>> = {
+  [K in keyof Agents]: {
+    role: "subagent-trajectory";
+    subagent: Extract<K, string>;
+    ir: Array<AgentIR<Agents[K]>>;
+    toolCall: ToolCall<Tools>;
+  };
+}[keyof Agents];
 
 /*
  * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
@@ -614,20 +678,36 @@ type _BuiltinIRRolesMatch = AssertNever<
  * get a compile error.
  */
 declare const missingToolSubagents: unique symbol;
+declare const permissionedChildOfPermissionless: unique symbol;
 
 type RequiredToolSubagentNames<Tools> = ToolSubagentNames<Tools[keyof Tools]>;
 
 // Type used to validate that the given agent's tools have all of their subagent dependencies
-// fulfilled. Recursively narrows the given type until it's either {} (all dependencies are
-// satisfied), or an impossible-to-construct type via the non-existent missingToolSubagents unique
-// symbol, which will cause a useful compile error.
-type ValidateAgentSubagents<A> = A extends { tools: infer Tools; agents: infer SubagentDirectory }
+// fulfilled, and that permission-capability brands propagate down the tree: only permissioned
+// agents may declare permissioned children, since subagent histories of permissionless agents
+// would let gate-produced tool-rejects into a universe that promises never to contain them.
+// Recursively narrows the given type until it's either {} (all dependencies are satisfied), or
+// an impossible-to-construct type via a non-existent unique symbol, which will cause a useful
+// compile error.
+//
+// The current node's own capability arrives as an argument — the constructor function's choice,
+// since a payload under construction never carries its own brand — while every deeper node's
+// capability derives from its (already constructed, possibly branded) value.
+type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
+  tools: infer Tools;
+  agents: infer SubagentDirectory extends AgentDirectory;
+}
   ? Exclude<
       RequiredToolSubagentNames<Tools>,
       Extract<keyof SubagentDirectory, string>
     > extends never
     ? {
-        agents: { [K in keyof SubagentDirectory]: ValidateAgentSubagents<SubagentDirectory[K]> };
+        agents: {
+          [K in keyof SubagentDirectory]: ValidateAgentSubagents<
+            SubagentDirectory[K],
+            [SubagentDirectory[K]] extends [PermissionedBrand] ? true : false
+          >;
+        } & ValidateChildPermissions<Permissioned, SubagentDirectory>;
       }
     : {
         readonly [missingToolSubagents]: Exclude<
@@ -636,3 +716,14 @@ type ValidateAgentSubagents<A> = A extends { tools: infer Tools; agents: infer S
         >;
       }
   : never;
+
+type ValidateChildPermissions<
+  Permissioned extends boolean,
+  SubagentDirectory extends AgentDirectory,
+> = Permissioned extends true
+  ? unknown
+  : Extract<SubagentDirectory[keyof SubagentDirectory], PermissionedBrand> extends never
+    ? unknown
+    : {
+        readonly [permissionedChildOfPermissionless]: "only permissioned agents may declare permissioned children";
+      };

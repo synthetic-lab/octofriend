@@ -1,13 +1,18 @@
 import { messageText } from "./llm-ir.ts";
 import type {
   Agent,
+  AgentDirectory,
   AgentIR,
+  AllToolsAcrossTree,
+  ExtraFreeIR,
   IsPermissioned,
   LlmIR,
   LoweredIR,
+  PreLoweredIR,
   ToolRejectMessage,
   UserMessage,
 } from "./llm-ir.ts";
+import { lower } from "./lower.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
@@ -131,9 +136,28 @@ export type TrajectoryHandler<A extends Agent<any, any, any>> = Partial<{
 // as an auth error without burning a doomed provider request.
 export type TrajectoryModelError = { type: "auth-error"; authError: string };
 
+// One system prompt per subagent anywhere in the tree, keyed by subagent name; the root's is
+// systemPrompt, as today. Declaration stays cheap: each level's own child names are a direct
+// keyof, while descendant levels fold in through the intersection of their subtrees'
+// catalogues — the same shape the tree's merged tool map uses.
+export type SubagentPromptCatalogue<A extends Agent<any, any, any>> = {
+  [K in Extract<keyof A["agents"], string>]: (signal: AbortSignal) => Promise<string>;
+} & DescendantCatalogues<A["agents"]>;
+
+type DescendantCatalogues<Agents extends AgentDirectory> = UnionToIntersection<
+  | {}
+  | {
+      [K in keyof Agents]: SubagentPromptCatalogue<Agents[K]>;
+    }[keyof Agents]
+>;
+
+type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x: infer I) => void
+  ? I
+  : never;
+
 export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   TrajectoryArcParams<A, Model>,
-  "handler" | "abortSignal" | "model" | "contextWindow" | "tools"
+  "handler" | "abortSignal" | "model" | "contextWindow" | "tools" | "lowerMessages"
 > & {
   agent: A;
   // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
@@ -142,7 +166,17 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   // Re-resolved before every arc, so a retry always sees fresh credentials and config; a
   // resolution error lands in the same mode as the equivalent compiler finish.
   model: () => Promise<Result<{ model: Model; contextWindow: number }, TrajectoryModelError>>;
-  loadTools: (signal: AbortSignal) => Promise<Partial<LoadedTools<A["tools"]>>>;
+  // One loader for every tool in the tree (root + descendants), passed once: the runner
+  // filters each arc's subset from the merged map as it drives that arc's agent.
+  loadTools: (signal: AbortSignal) => Promise<Partial<AllToolsAcrossTree<A>>>;
+  // The client's extension pass: it converts its extra IRs to builtin IRs and returns
+  // everything else untouched, trajectory legs included with their insides still raw — extras
+  // may live inside a subagent trajectory, and libocto down-converts those by calling this
+  // pass recursively over the tree. lower() itself is libocto's to apply, once, over the
+  // extension-free result; the arc only ever sees the composed, fully lowered form.
+  lowerMessages: (messages: Array<AgentIR<A>>) => Array<ExtraFreeIR<A>>;
+  // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
+  subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
   // so one huge result can't push history past autocompaction's reach.
   maxToolOutput?: number;
@@ -198,6 +232,8 @@ const REJECTED_TOOL_SKIP_REASON = "A previous tool call was rejected, so this to
 const FAILED_TOOL_SKIP_REASON = "The tool batch failed unexpectedly, so this tool was skipped";
 const EXIT_RUNNING_TOOL_SKIP_REASON =
   "The user exited while this tool was running, so its output was not recorded";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed by the arc kill synthesis
+const INTERRUPTED_BY_USER_REASON = "The user interrupted this subagent.";
 
 type RunArgsFor<Def> = Def extends { run: (args: infer Args) => unknown } ? Args : never;
 
@@ -262,6 +298,44 @@ function rectifiable(exit: AbortSignal): {
   return channel;
 }
 
+/*
+ * The recursive half of libocto's composed lowering. The client's extension pass converts the
+ * extras at one level and passes trajectory legs through untouched; walking those legs and
+ * applying the same pass to each level's raw insides leaves every trajectory carrying only
+ * what lower() accepts, so lower() can run once, afterwards, over the extension-free result.
+ *
+ * Each level's IRs are typed by that level's own agent — the client's single pass handles
+ * every level's extras, and the universe hops stay inside libocto. Rebuilt legs are copies:
+ * the live trajectory IRs are never mutated.
+ */
+function downconvert<A extends Agent<any, any, any>>(
+  lowerExtras: (messages: Array<AgentIR<A>>) => Array<ExtraFreeIR<A>>,
+): (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<PreLoweredIR<A>> {
+  const convert = (messages: Array<LlmIR<A> | AgentIR<A>>): Array<PreLoweredIR<A>> =>
+    (lowerExtras(messages as Array<AgentIR<A>>) as unknown as Array<PreLoweredIR<A>>).map(ir => {
+      if (ir.role !== "subagent-trajectory") return ir;
+      const { ir: raw } = ir;
+      return { ...ir, ir: convert(raw as Array<AgentIR<A>>) } as PreLoweredIR<A>;
+    });
+  return convert;
+}
+
+// Each arc runs only the tools its agent declares, picked out of the one tree-wide map
+// by that agent's tool-map keys. The retype below is a narrowing, not a conversion: the merged
+// map's entry under any key is the loaded definition of exactly the tool declared there.
+function arcTools<A extends Agent<any, any, any>>(
+  agent: A,
+  all: Partial<AllToolsAcrossTree<A>>,
+): Partial<LoadedTools<A["tools"]>> {
+  const tools = {} as Partial<LoadedTools<A["tools"]>>;
+  for (const key of Object.keys(agent.tools) as Array<keyof A["tools"]>) {
+    const def = all[key as keyof AllToolsAcrossTree<A>];
+    type DeclaredDef = LoadedTools<A["tools"]>[keyof A["tools"]];
+    tools[key] = def as DeclaredDef;
+  }
+  return tools;
+}
+
 export class Trajectory<A extends Agent<any, any, any>, Model> {
   private readonly history: Array<AgentIR<A>>;
   private _mode: TrajectoryMode<A>;
@@ -283,9 +357,13 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private awaitingSteering = true;
   private _finish: Promise<void> = Promise.resolve();
   private readonly ownership = new OwnershipLock();
+  // The arc-facing lowering the runner builds once from the client's extension pass: every
+  // level down-converted, then lower() applied over the result.
+  private readonly lower: (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<LoweredIR<A["tools"]>>;
 
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
+    this.lower = messages => lower<A>(downconvert<A>(params.lowerMessages)(messages));
     this._mode = { mode: "ready-for-request", control: this.inputControl() };
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
@@ -407,7 +485,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       messages: history,
       toolData: params.toolData,
       runCompiler: params.runCompiler,
-      lowerMessages: params.lowerMessages,
+      lowerMessages: this.lower,
       systemPrompt: params.systemPrompt,
       transport: params.transport,
       errorCorrection: params.errorCorrection,
@@ -502,7 +580,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       await this.emitSteeringChange();
       await this.appendIr({ role: "user", content: coalesceUserMessageContent(queued) });
     }
-    const [modelResult, tools] = await Promise.all([
+    const [modelResult, allTools] = await Promise.all([
       this.params.model(),
       this.params.loadTools(combineSignals([this.params.abortSignal, this.turnController.signal])),
     ]);
@@ -510,6 +588,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       await this.authError(modelResult.error.authError);
       return;
     }
+    const tools = arcTools(this.params.agent, allTools);
     const reason = (
       await this.runArc(modelResult.data.model, modelResult.data.contextWindow, tools)
     ).reason;
@@ -666,8 +745,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const maxToolOutput =
       this.params.maxToolOutput ?? Math.floor(contextWindow * DEFAULT_MAX_TOOL_OUTPUT_FRACTION);
     const tokens =
-      countTokens(this.params.lowerMessages([...this.history, ir])) -
-      countTokens(this.params.lowerMessages(this.history));
+      countTokens(this.lower([...this.history, ir])) - countTokens(this.lower(this.history));
     if (tokens >= maxToolOutput) {
       return {
         role: "tool-runtime-error",

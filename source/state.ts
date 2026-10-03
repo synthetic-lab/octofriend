@@ -28,7 +28,7 @@ import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { run, type ModelData } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
-import { lowerOcto } from "./compilers/lower-octo.ts";
+import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
@@ -253,6 +253,8 @@ export const useAppStore = create<UiState>((set, get) => {
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
       systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
+      // octo declares no subagents yet: an agentless tree takes an empty catalogue.
+      subagentPrompts: {},
       model: async (): Promise<
         Result<{ model: ModelData; contextWindow: number }, TrajectoryModelError>
       > => {
@@ -303,7 +305,7 @@ export const useAppStore = create<UiState>((set, get) => {
       },
       toolData: config,
       runCompiler,
-      lowerMessages: messages => lowerOcto(messages, currentModel().modalities),
+      lowerMessages: messages => lowerOctoToLlmIR(messages, currentModel().modalities),
       transport,
       errorCorrection: {
         json: makeAutofixJson(config),

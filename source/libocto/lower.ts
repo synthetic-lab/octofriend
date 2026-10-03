@@ -71,7 +71,7 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
   trajectory: PreLoweredTrajectories<A["agents"], A["tools"]>,
   isLast: boolean,
 ): Array<LoweredIR<A["tools"]>> {
-  const last = trajectory.ir[trajectory.ir.length - 1];
+  const last = trajectory.ir[trajectory.ir.length - 1] as PreLoweredIR<any>;
   if (last != null && isAssistantMessage(last) && !last.toolCalls) {
     return [
       {

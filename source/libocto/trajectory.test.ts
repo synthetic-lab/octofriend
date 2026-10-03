@@ -25,7 +25,6 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import type { ErrorCorrection } from "./trajectory-arc.ts";
-import { lower } from "./lower.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
   Trajectory,
@@ -89,7 +88,6 @@ const _plainAgent = definePermissionlessAgent({
   tools: { search: searchTool },
   agents: { research: researchAgent },
 });
-type PlainAgent = typeof _plainAgent;
 
 const transport: Transport = new LocalTransport();
 
@@ -249,6 +247,7 @@ function makeTrajectory(opts?: {
       messages: opts?.messages ?? [],
       toolData: { marker: "fresh" },
       runCompiler,
+      subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: messages => {
         const preLowered: Array<PreLoweredIR<TestAgent>> = [];
         for (const ir of messages) {
@@ -265,7 +264,7 @@ function makeTrajectory(opts?: {
             preLowered.push(builtin);
           }
         }
-        return lower<TestAgent>(preLowered);
+        return preLowered;
       },
       transport,
       abortSignal: exit.signal,
@@ -1376,7 +1375,8 @@ describe("trajectory", () => {
       messages: [],
       toolData: { marker: "fresh" },
       runCompiler,
-      lowerMessages: messages => lower<PlainAgent>(messages),
+      subagentPrompts: { research: async () => "You are the research subagent." },
+      lowerMessages: messages => messages,
       transport,
       abortSignal: new AbortController().signal,
       handler: {
