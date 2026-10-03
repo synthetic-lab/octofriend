@@ -1,6 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
 import type { DivElement } from "paintcannon";
-import { InputElement, TextAreaElement } from "paintcannon";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
@@ -70,10 +69,7 @@ export function Modal({
           event.preventDefault();
           event.stopPropagation();
           onClose();
-          return;
         }
-        if (event.target instanceof InputElement || event.target instanceof TextAreaElement) return;
-        event.preventDefault();
       }}
       style={{
         position: "absolute",
