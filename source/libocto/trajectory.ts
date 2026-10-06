@@ -331,7 +331,9 @@ function arcTools<A extends Agent<any, any, any>>(
   for (const key of Object.keys(agent.tools) as Array<keyof A["tools"]>) {
     const def = all[key as keyof AllToolsAcrossTree<A>];
     type DeclaredDef = LoadedTools<A["tools"]>[keyof A["tools"]];
-    tools[key] = def as DeclaredDef;
+    if (def) {
+      tools[key] = def as DeclaredDef;
+    }
   }
   return tools;
 }
