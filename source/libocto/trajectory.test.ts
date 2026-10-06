@@ -2140,6 +2140,205 @@ describe("trajectory", () => {
     expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
   });
 
+  it("wakes an idle trajectory to compact and preserves steering queued during compaction", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [
+        { role: "user", content: text("original request") },
+        assistantMessage({ content: "original answer" }),
+      ],
+    });
+    const queue: CompilerQueueItem[] = [];
+    const { traj, compilerCalls } = await build(queue);
+    queue.push(
+      async () => {
+        inputControl(traj).requestCompaction();
+        await inputControl(traj).enqueueSteering(text("follow up"));
+        return okResult(assistantMessage({ content: "manual summary" }));
+      },
+      plainOk,
+      plainOk,
+    );
+
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    inputControl(traj).requestCompaction();
+    await waiting.finished;
+    expect(rec.roles).toEqual(["checkpoint", "assistant"]);
+    expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+
+    await traj.step();
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["checkpoint", "assistant", "user", "assistant"]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(compilerCalls).toHaveLength(3);
+    expect(compilerCalls[2].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
+  });
+
+  it("keeps messages and compaction queued through response retries until the next arc", async () => {
+    const { build, rec } = makeTrajectory({
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
+    });
+    const queue: CompilerQueueItem[] = [];
+    const { traj, compilerCalls } = await build(queue);
+    queue.push(
+      async () => {
+        inputControl(traj).requestCompaction();
+        await inputControl(traj).enqueueSteering(text("follow up"));
+        return err(requestError("response failed"));
+      },
+      plainOk,
+      plainOk,
+      plainOk,
+    );
+
+    await inputControl(traj).enqueueSteering(text("original request"));
+    await traj.step();
+    expect(rec.arc.compaction).toBe(0);
+    expect(compilerCalls[1].irs).toEqual(compilerCalls[0].irs);
+
+    await traj.step();
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", "assistant", "user", "checkpoint", "assistant"]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(compilerCalls).toHaveLength(4);
+    expect(compilerCalls[2].irs.at(-2)).toEqual({ role: "user", content: text("follow up") });
+  });
+
+  it("keeps session compaction queued through child compaction and the rest of the tool batch", async () => {
+    const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+    const queue: CompilerQueueItem[] = [];
+    const { traj, compilerCalls } = await build(queue);
+    queue.push(
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
+      async () => {
+        inputControl(traj).requestCompaction();
+        inputControl(traj).requestCompaction();
+        await inputControl(traj).enqueueSteering(text("follow up at the root"));
+        return okResult(assistantMessage({ content: "child summary" }));
+      },
+      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "child-call")] })),
+      () => okResult(assistantMessage({ content: "child findings" })),
+      () => okResult(assistantMessage({ content: "session summary" })),
+      plainOk,
+    );
+    const ran: string[] = [];
+    runImpl = async query => {
+      ran.push(query);
+      return query === "delegate"
+        ? ok({ type: "invoke-subagent", name: "research", message: text("x".repeat(8000)) })
+        : ok({ type: "output", content: text("remaining tool result") });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    await traj.step();
+    await traj.step();
+    await traj.step();
+
+    expect(ran).toEqual(["delegate"]);
+    expect(rec.arc.compaction).toBe(1);
+    expect(compilerCalls).toHaveLength(4);
+
+    await traj.step();
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(ran).toEqual(["delegate", "after"]);
+    expect(rec.arc.compaction).toBe(2);
+    expect(compilerCalls).toHaveLength(6);
+    expect(
+      compilerCalls[4].irs.filter(ir => ir.role === "tool-output").map(ir => ir.content),
+    ).toEqual([text("child findings"), text("remaining tool result")]);
+    expect(compilerCalls[4].irs.at(-2)).toEqual({
+      role: "user",
+      content: text("follow up at the root"),
+    });
+    expect(compilerCalls[5].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    expect(rec.modeObjs.filter(mode => mode.mode === "compacting").map(mode => mode.root)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it("discards an interrupted idle compaction and does not retry it on the next message", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [
+        { role: "user", content: text("existing history") },
+        assistantMessage({ content: "finished response" }),
+      ],
+    });
+    const queue: CompilerQueueItem[] = [];
+    const { traj } = await build(queue);
+    queue.push(async () => {
+      await interruptNow(traj);
+      return okResult(assistantMessage({ content: "incomplete summary" }));
+    }, plainOk);
+
+    inputControl(traj).requestCompaction();
+    await traj.step();
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([]);
+
+    await inputControl(traj).enqueueSteering(text("continue"));
+    expect(await waiting.finished).toBe(true);
+    expect(rec.roles).toEqual(["user", "assistant"]);
+    expect(rec.arc.compaction).toBe(1);
+  });
+
+  it("uses existing retries for manual compaction without repeating a completed summary", async () => {
+    const { build, rec } = makeTrajectory({
+      messages: [{ role: "user", content: text("existing history") }],
+      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
+    });
+    const { traj, compilerCalls } = await build([
+      () => err(requestError("summary failed")),
+      () => err({ type: "auth-error", authError: "expired credentials" }),
+      plainOk,
+      () => err(requestError("response failed")),
+      plainOk,
+    ]);
+
+    inputControl(traj).requestCompaction();
+    await traj.step();
+    const waiting = await startWaitingStep(traj, "auth-error");
+    retryControl(traj).retry();
+    await waiting.finished;
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(rec.roles).toEqual(["auth-error", "error-retry", "checkpoint", "assistant"]);
+    expect(rec.arc.compaction).toBe(3);
+    expect(compilerCalls).toHaveLength(5);
+    expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    expect(compilerCalls[4].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it("cancels a queued compaction when the user interrupts the tool", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async () => {
+      inputControl(traj).requestCompaction();
+      await inputControl(traj).enqueueSteering(text("queued before interrupt"));
+      await interruptNow(traj);
+      return ok({ type: "output", content: text("stopped") });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    await traj.step();
+    await traj.step();
+    await inputControl(traj).enqueueSteering(text("continue"));
+    await traj.step();
+
+    expect(rec.arc.compaction).toBe(0);
+    expect(compilerCalls).toHaveLength(2);
+    expect(rec.interruptions).toEqual([{ droppedSteering: [text("queued before interrupt")] }]);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
   it("compacts an over-full history, then responds", async () => {
     const { build, rec } = makeTrajectory({
       contextWindow: 300,

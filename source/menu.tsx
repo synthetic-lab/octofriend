@@ -22,6 +22,7 @@ import { LoadSessionMenu } from "./session-history/load-session-menu.tsx";
 type MenuMode =
   | "main-menu"
   | "load-session"
+  | "context-menu"
   | "settings-menu"
   | "model-select"
   | "add-model"
@@ -86,6 +87,7 @@ function MenuContent({
   if (menuMode === "load-session") {
     return <LoadSessionMenu onBack={() => setMenuMode("main-menu")} />;
   }
+  if (menuMode === "context-menu") return <ContextMenu />;
   if (menuMode === "settings-menu") return <SettingsMenu />;
   if (menuMode === "model-select") return <SwitchModelMenu syntheticModels={syntheticModels} />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
@@ -390,6 +392,11 @@ function MainMenu() {
     })),
   );
   const session = useSession();
+  const hasCompactableMessages = useAppStore(
+    state =>
+      state.sessionMode.mode === "live" &&
+      state.sessionMode.trajectory.instance.hasCompactableHistory,
+  );
   const hasPreviousSessions =
     listPreviousSessions(session.metadata.cwd, session.metadata.sessionId).length > 0;
   const { setMenuMode } = useMenuState(
@@ -411,6 +418,7 @@ function MainMenu() {
     | "quit"
     | "fix-json-toggle"
     | "diff-apply-toggle"
+    | "context-menu"
     | "settings-menu"
     | "clear-confirm"
     | "notifications-menu"
@@ -429,6 +437,15 @@ function MainMenu() {
       value: "clear-confirm" as const,
     },
   };
+  if (hasCompactableMessages) {
+    items = {
+      ...items,
+      x: {
+        label: "⧉ Context",
+        value: "context-menu",
+      },
+    };
+  }
   if (hasPreviousSessions) {
     items = {
       ...items,
@@ -545,6 +562,55 @@ function MainMenu() {
         },
       ]}
       onSelect={onSelect}
+    />
+  );
+}
+function ContextMenu() {
+  const setMenuMode = useMenuState(state => state.setMenuMode);
+  const { closeMenu, notify, trajectoryMode } = useAppStore(
+    useShallow(state => ({
+      closeMenu: state.closeMenu,
+      notify: state.notify,
+      trajectoryMode:
+        state.sessionMode.mode === "live" ? state.sessionMode.liveMode.trajectoryMode : null,
+    })),
+  );
+  return (
+    <KbShortcutPanel
+      header="Context"
+      shortcutItems={[
+        {
+          type: "key",
+          mapping: {
+            c: { label: "Compact session", value: "compact" },
+            b: { label: "Back", value: "back" },
+          },
+        },
+      ]}
+      onSelect={item => {
+        if (item.value === "back") {
+          setMenuMode("main-menu");
+          return;
+        }
+        if (
+          trajectoryMode == null ||
+          !("control" in trajectoryMode) ||
+          !("requestCompaction" in trajectoryMode.control)
+        ) {
+          notify("Resolve the current prompt before compacting the session.");
+          return;
+        }
+        const accepted = trajectoryMode.control.requestCompaction();
+        setMenuMode("main-menu");
+        closeMenu();
+        if (accepted) {
+          notify(
+            trajectoryMode.mode === "ready-for-request"
+              ? "Session compaction requested."
+              : "Session compaction queued.",
+          );
+        }
+      }}
     />
   );
 }
