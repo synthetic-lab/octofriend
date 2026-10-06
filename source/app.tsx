@@ -1952,7 +1952,7 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
           }}
         >
           {contentLines.map((line, i) => (
-            <TerminalFlex key={i}>
+            <TerminalFlex key={i} style={{ minHeight: 1 }}>
               <Span>{line}</Span>
             </TerminalFlex>
           ))}
