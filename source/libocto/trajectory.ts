@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentDirectory,
   AgentIR,
+  TreeIR,
   AllToolsAcrossTree,
   Lower,
   CompilerReadyIR,
@@ -280,12 +281,10 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   // One loader for every tool in the tree (root + descendants), passed once: the runner
   // filters each arc's subset from the merged map as it drives that arc's agent.
   loadTools: (signal: AbortSignal) => Promise<Partial<AllToolsAcrossTree<A>>>;
-  // The client's extension pass: it converts its extra IRs to builtin IRs and returns
-  // everything else untouched, trajectory legs included with their insides still raw — extras
-  // may live inside a subagent trajectory, and libocto down-converts those by calling this
-  // pass recursively over the tree. lower() itself is libocto's to apply, once, over the
-  // extension-free result; the arc only ever sees the composed, fully lowered form.
-  lowerMessages: (messages: Array<AgentIR<A>>) => Array<Lower<A>>;
+  // The client's extension pass handles every agent's IR in the tree, including descendant
+  // extras. Trajectory legs retain their raw insides; libocto calls this same pass recursively
+  // on each child history, then applies lower() over the extension-free result.
+  lowerMessages: (messages: Array<TreeIR<A>>) => Array<Lower<A>>;
   // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
   subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
@@ -443,7 +442,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private readonly ownership = new OwnershipLock();
   // The arc-facing lowering the runner builds once from the client's extension pass: every
   // level down-converted, then lower() applied over the result.
-  private readonly lower: (messages: Array<AgentIR<A>>) => Array<CompilerReadyIR<A>>;
+  private readonly lower: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
 
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];

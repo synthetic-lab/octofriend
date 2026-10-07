@@ -514,23 +514,74 @@ export type IRConversion<Original, Converted> = {
   converted: Converted;
 };
 
-export type Lower<A extends Agent<any, any, any>> = IRConversion<AgentIR<A>, ShallowLoweredIR<A>>;
+type DescendantShallowIR<Agents extends AgentDirectory> = string extends keyof Agents
+  ? ShallowLoweredIR<Agents[string]>
+  : {
+      [K in keyof Agents]: ShallowLoweredIR<Agents[K]> | DescendantShallowIR<Agents[K]["agents"]>;
+    }[keyof Agents];
+
+type DescendantPreLoweredIR<Agents extends AgentDirectory> = string extends keyof Agents
+  ? PreLoweredIR<Agents[string]>
+  : {
+      [K in keyof Agents]: PreLoweredIR<Agents[K]> | DescendantPreLoweredIR<Agents[K]["agents"]>;
+    }[keyof Agents];
+
+// A structural inspection bound, not a tool catalogue. Unknown argument payloads preserve
+// the exact descendant schemas when intersected; any would erase their literal types.
+type InspectionTools = Record<
+  string,
+  ToolFactory<unknown, { name: string; arguments: unknown }, unknown, string, never>
+>;
+
+// Expanding the fields prevents TypeScript from comparing agents/tool factories instead of
+// the IR values they describe. It distributes over unions without changing their members.
+type IRShape<IR> = { [K in keyof IR]: IR[K] };
+
+// Non-trajectory descendants are identical before and after recursive conversion.
+type DescendantMessages<Agents extends AgentDirectory> = DescendantShallowIR<Agents> &
+  IRShape<
+    | CheckpointedIR<InspectionTools>
+    | ToolRejectMessage<InspectionTools>
+    | ToolSubagentInvoke<InspectionTools, string>
+  >;
+
+export type Lower<A extends Agent<any, any, any>> = IRConversion<
+  TreeIR<A>,
+  | ShallowLoweredIR<A>
+  | DescendantMessages<A["agents"]>
+  | (DescendantShallowIR<A["agents"]> & {
+      role: "subagent-trajectory";
+      subagent: string;
+      toolCall: ToolCall<InspectionTools>;
+      ir: Array<TreeIR<A>>;
+    })
+>;
 
 export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
-  AgentIR<A>,
-  PreLoweredIR<A>
+  TreeIR<A>,
+  | PreLoweredIR<A>
+  | DescendantMessages<A["agents"]>
+  | (DescendantPreLoweredIR<A["agents"]> & {
+      role: "subagent-trajectory";
+      subagent: string;
+      toolCall: ToolCall<InspectionTools>;
+      ir: Array<{ [K in keyof RecursiveLowered<A>]: RecursiveLowered<A>[K] }>;
+    })
 >;
 
-export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
-  AgentIR<A> | DescendantOriginals<A["agents"]>,
-  LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
->;
-
+// A tree-wide consumer can see any agent's IR without widening that agent's own history.
 type DescendantOriginals<Agents extends AgentDirectory> = string extends keyof Agents
   ? AgentIR<Agents[string]>
   : {
       [K in keyof Agents]: AgentIR<Agents[K]> | DescendantOriginals<Agents[K]["agents"]>;
     }[keyof Agents];
+
+export type TreeIR<A extends Agent<any, any, any>> = AgentIR<A> | DescendantOriginals<A["agents"]>;
+
+export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
+  TreeIR<A>,
+  LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
+>;
 
 type DescendantOutputs<Agents extends AgentDirectory> = string extends keyof Agents
   ? LoweredIR<Agents[string]["tools"]>

@@ -393,14 +393,14 @@ describe("downconvert", () => {
       }));
     const leaf = definePermissionlessAgent({ tools: { report: reportTool }, agents: {} });
     const child = definePermissionlessAgent({
-      tools: { report: reportTool },
+      tools: { search: searchTool },
       agents: { grandchild: leaf },
     });
     const root = definePermissionlessAgent({
-      tools: { report: reportTool },
+      tools: { search: searchTool },
       agents: { research: child },
     });
-    const call: ToolCall<(typeof root)["tools"]> = {
+    const call: ToolCall<(typeof leaf)["tools"]> = {
       type: "tool-call",
       name: "report",
       toolCallId: "c1",
@@ -416,13 +416,13 @@ describe("downconvert", () => {
     const nested = {
       role: "subagent-trajectory" as const,
       subagent: "grandchild" as const,
-      toolCall: call,
+      toolCall: searchCall("child-call"),
       ir: [result],
     };
     const outer = {
       role: "subagent-trajectory" as const,
       subagent: "research" as const,
-      toolCall: call,
+      toolCall: searchCall("root-call"),
       ir: [nested],
     };
     const raw: Array<AgentIR<typeof root>> = [outer];

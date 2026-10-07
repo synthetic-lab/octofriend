@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentExtra,
   AgentIR,
+  TreeIR,
   CompilerReadyIR,
   RecursiveLowered,
   ShallowLoweredIR,
@@ -14,7 +15,7 @@ import type {
   PreLoweredIR,
 } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
-import { lower } from "./ir-operations.ts";
+import { downconvert, lower } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { ok } from "./result.ts";
@@ -120,10 +121,9 @@ const none: TrajectoryParams<Single, null>["subagentPrompts"] = {};
 type _extraHasNote = Expect<Equal<AgentExtra<Root>["role"], "note">>;
 type _noExtra = Expect<Equal<AgentExtra<Single>, never>>;
 
-// The client's extension pass: it converts its own extra IRs to builtin IRs and returns
-// everything else untouched. Trajectory legs pass through with their insides still raw —
-// down-converting those deeper levels is libocto's recursion, not the client's — and
-// anything the client didn't define (a child's own extras) is never named here.
+// The client's extension pass handles every agent's extras, not just the root's. Trajectory
+// legs pass through with their insides still raw; libocto calls the same pass on each nested
+// history, so the input and both sides of the output pairs cover the whole tree.
 const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   const out: Array<Lower<Root>> = [];
   for (const original of irs) {
@@ -139,10 +139,28 @@ const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   return out;
 };
 
-type _lowerPair = Expect<Equal<Lower<Root>, IRConversion<AgentIR<Root>, ShallowLoweredIR<Root>>>>;
-type _recursivePair = Expect<
-  Equal<RecursiveLowered<Root>, IRConversion<AgentIR<Root>, PreLoweredIR<Root>>>
->;
+type _lowerOriginal = Expect<Equal<Lower<Root>["original"], TreeIR<Root>>>;
+type _recursiveOriginal = Expect<Equal<RecursiveLowered<Root>["original"], TreeIR<Root>>>;
+
+// The inspection bounds are intersections, so check the converted unions by assignability
+// in both directions rather than requiring TypeScript to normalize their representation.
+function inspectTreeConversions(
+  shallow: Lower<Root>["converted"],
+  recursive: RecursiveLowered<Root>["converted"],
+  ownShallow:
+    | ShallowLoweredIR<Root>
+    | ShallowLoweredIR<typeof _research>
+    | ShallowLoweredIR<typeof _grandchild>,
+  ownRecursive:
+    | PreLoweredIR<Root>
+    | PreLoweredIR<typeof _research>
+    | PreLoweredIR<typeof _grandchild>,
+) {
+  expectType<typeof ownShallow>(shallow);
+  expectType<typeof shallow>(ownShallow);
+  expectType<typeof ownRecursive>(recursive);
+  expectType<typeof recursive>(ownRecursive);
+}
 type _leafCompilerPair = Expect<
   Equal<CompilerReadyIR<Single>, IRConversion<AgentIR<Single>, LoweredIR<Single["tools"]>>>
 >;
@@ -166,7 +184,80 @@ function inspectGenericChildLowering<A extends Agent<any, any, any>>(
 }
 
 const _conversionRoot = definePermissionedAgent({ tools: {}, agents: { child: _root } });
-type ConvertedRoot = CompilerReadyIR<typeof _conversionRoot>;
+type ConversionRoot = typeof _conversionRoot;
+type ConvertedRoot = CompilerReadyIR<ConversionRoot>;
+
+// Tree-wide conversion sees descendant-only tools and extensions without granting them to
+// either the root's own history or a child that did not declare them.
+const treePass: TrajectoryParams<ConversionRoot, null>["lowerMessages"] = messages =>
+  messages.map(original => ({
+    original,
+    converted:
+      original.role === "note"
+        ? { role: "tool-output", toolCall: original.toolCall, content: [] }
+        : original,
+  }));
+
+function inspectTreeInput(
+  childIR: AgentIR<Root>,
+  childOutput: Extract<AgentIR<Root>, { role: "tool-output" }>,
+  parentExtra: AgentExtra<Root>,
+) {
+  expectType<TreeIR<ConversionRoot>>(childIR);
+  expectType<Array<Lower<ConversionRoot>>>(treePass([childIR]));
+  expectType<Array<RecursiveLowered<ConversionRoot>>>(
+    downconvert<ConversionRoot>(treePass)([childIR]),
+  );
+  expectType<Lower<ConversionRoot>>({ original: childOutput, converted: childOutput });
+  expectType<RecursiveLowered<ConversionRoot>>({ original: childOutput, converted: childOutput });
+  // @ts-expect-error A root's own history does not include descendant-only tool outputs.
+  expectType<AgentIR<ConversionRoot>>(childOutput);
+  // @ts-expect-error A child's history does not gain parent-only extensions.
+  expectType<AgentIR<typeof _research>>(parentExtra);
+  // @ts-expect-error Neither does a tree-wide view of that child's subtree.
+  expectType<TreeIR<typeof _research>>(parentExtra);
+}
+
+type _treeInput = Expect<
+  Equal<
+    Parameters<TrajectoryParams<ConversionRoot, null>["lowerMessages"]>[0],
+    Array<TreeIR<ConversionRoot>>
+  >
+>;
+type _childTools = Expect<
+  Equal<
+    Extract<Lower<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"]["name"],
+    "search" | "note" | "delegate"
+  >
+>;
+type _recursiveChildTools = Expect<
+  Equal<
+    Extract<
+      RecursiveLowered<ConversionRoot>["converted"],
+      { role: "tool-output" }
+    >["toolCall"]["name"],
+    "search" | "note" | "delegate"
+  >
+>;
+type _childArguments = Expect<
+  Equal<
+    Extract<
+      Extract<Lower<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"],
+      { name: "search" }
+    >["parsed"],
+    Extract<ToolCall<Root["tools"]>, { name: "search" }>["parsed"]
+  >
+>;
+type _leafTreeIR = Expect<Equal<TreeIR<Single>, AgentIR<Single>>>;
+type _leafLower = Expect<
+  Equal<Lower<Single>, IRConversion<AgentIR<Single>, ShallowLoweredIR<Single>>>
+>;
+type _leafRecursive = Expect<
+  Equal<RecursiveLowered<Single>, IRConversion<AgentIR<Single>, PreLoweredIR<Single>>>
+>;
+
+void inspectTreeConversions;
+void inspectTreeInput;
 type _descendantExtension = Expect<
   Equal<Extract<ConvertedRoot["original"], { role: "note" }>, AgentExtra<Root>>
 >;

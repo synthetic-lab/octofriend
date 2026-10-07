@@ -1,27 +1,26 @@
 import { answeredToolCallId } from "./llm-ir.ts";
 import type {
   Agent,
-  AgentIR,
+  TreeIR,
   Lower,
   CompilerReadyIR,
   RecursiveLowered,
   PreLoweredIR,
-  PreLoweredTrajectories,
 } from "./llm-ir.ts";
 import type { ToolCall } from "./tool-def.ts";
 
 // Every converted item retains its original, including recursively converted child histories.
 export function downconvert<A extends Agent<any, any, any>>(
-  lowerExtras: (messages: Array<AgentIR<A>>) => Array<Lower<A>>,
-): (messages: Array<AgentIR<A>>) => Array<RecursiveLowered<A>> {
-  const convert = (messages: Array<AgentIR<A>>): Array<RecursiveLowered<A>> =>
+  lowerExtras: (messages: Array<TreeIR<A>>) => Array<Lower<A>>,
+): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
+  const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> =>
     lowerExtras(messages).map(({ original, converted }) => {
       if (converted.role !== "subagent-trajectory") return { original, converted };
       return {
         original,
         converted: {
           ...converted,
-          ir: convert(converted.ir as Array<AgentIR<A>>),
+          ir: convert(converted.ir),
         } as PreLoweredIR<A>,
       };
     });
@@ -118,8 +117,8 @@ function lowered<A extends Agent<any, any, any>>(
 }
 
 function loweredTrajectory<A extends Agent<any, any, any>>(
-  original: AgentIR<A>,
-  trajectory: PreLoweredTrajectories<A["agents"], A["tools"]>,
+  original: TreeIR<A>,
+  trajectory: RecursiveLowered<A>["converted"] & { role: "subagent-trajectory" },
   isLast: boolean,
 ): Array<CompilerReadyIR<A>> {
   const last = trajectory.ir[trajectory.ir.length - 1]?.converted;
@@ -205,7 +204,9 @@ function errorMessage(ir: TerminalError): string {
 }
 
 // Callers must recursively convert extension IRs before testing the tail.
-export function isTrajectoryRunning(trajectory: PreLoweredTrajectories<any, any>): boolean {
+export function isTrajectoryRunning(trajectory: {
+  ir: readonly { converted: { role: string; toolCalls?: readonly unknown[] } }[];
+}): boolean {
   const last = trajectory.ir[trajectory.ir.length - 1]?.converted;
   if (last == null) return true;
   if (last.role === "assistant" && !last.toolCalls?.length) return false;

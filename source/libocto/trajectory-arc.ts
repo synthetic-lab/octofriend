@@ -7,6 +7,7 @@ import { combineSignals } from "./signals.ts";
 import type {
   Agent,
   AgentIR,
+  TreeIR,
   AssistantMessage,
   Checkpoint,
   CompactionErrorIR,
@@ -226,7 +227,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
-  lowerMessages: (messages: Array<AgentIR<A>>) => Array<CompilerReadyIR<A>>;
+  lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   // Called with the arc's abort signal, so prompt construction (often filesystem reads) dies
   // with the turn that requested it.
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
