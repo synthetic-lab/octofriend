@@ -2,7 +2,7 @@ export function timeout(ms: number): AbortSignal {
   const controller = new AbortController();
   setTimeout(() => {
     controller.abort();
-  }, ms);
+  }, ms).unref();
   return controller.signal;
 }
 

@@ -554,7 +554,7 @@ function BottomBar({
       setVersionCheck("Octo is up-to-date.");
       setTimeout(() => {
         setVersionCheck("");
-      }, 5000);
+      }, 5000).unref();
     });
   }, [metadata]);
   useEffect(() => {
