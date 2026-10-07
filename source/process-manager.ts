@@ -1,5 +1,4 @@
 import { registry } from "antipattern";
-import { sleep } from "./libocto/sleep.ts";
 import type { TransportProcess } from "./transports/transport-process.ts";
 
 const CLEANUP_TIMEOUT_MS = 5000;
@@ -50,7 +49,7 @@ export class ProcessManager {
   }
 
   terminateOnOctoExit(): Promise<void> {
-    this.cleanupInProgress ??= withTimeout(
+    this.cleanupInProgress ??= waitForCleanupWithTimeout(
       this.terminate(this.exitTrackedProcesses(), [...this.octoExitCleanups]),
     );
     return this.cleanupInProgress;
@@ -100,8 +99,14 @@ export class ProcessManager {
   }
 }
 
-async function withTimeout(promise: Promise<void>): Promise<void> {
-  await Promise.race([promise, sleep(CLEANUP_TIMEOUT_MS)]);
+async function waitForCleanupWithTimeout(cleanup: Promise<void>): Promise<void> {
+  const deadline = Promise.withResolvers<void>();
+  const timer = setTimeout(deadline.resolve, CLEANUP_TIMEOUT_MS);
+  try {
+    await Promise.race([cleanup, deadline.promise]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const manager = new ProcessManager();

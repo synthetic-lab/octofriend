@@ -31,7 +31,7 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
       }
     } else {
       setCtrlCPressed(true);
-      setTimeout(() => setCtrlCPressed(false), 2000);
+      setTimeout(() => setCtrlCPressed(false), 2000).unref();
     }
   });
   return (
