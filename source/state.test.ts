@@ -212,7 +212,7 @@ function deferred<T = void>(): {
 
 /* Mock compiler seam: state.ts lets tests inject a Compiler via BootEnv. */
 
-type Emit = (tokens: string, type: "reasoning" | "content") => void;
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type CompilerQueueItem = (
   onTokens: Emit,
   params: { abortSignal: AbortSignal },
@@ -775,7 +775,7 @@ describe("history persistence (BUGS.md #8, #12)", () => {
   it("persists the partial response exactly once when interrupted mid-stream", async () => {
     const { session } = await bootSession([
       async (onTokens, params) => {
-        onTokens("partial-stream-marker", "content");
+        await onTokens("partial-stream-marker", "content");
         // Abort-aware park: the arc must see the abort after tokens were emitted.
         await new Promise<void>(resolve => {
           if (params.abortSignal.aborted) return resolve();

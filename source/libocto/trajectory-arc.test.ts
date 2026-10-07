@@ -60,8 +60,12 @@ type TestAgent = typeof _testAgent;
 
 const transport: Transport = new LocalTransport();
 
-type Emit = (tokens: string, type: "reasoning" | "content") => void;
-type QueueItem = (onTokens: Emit) => Result<CompilerSuccessData<TestAgent>, CompilerError>;
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
+type QueueItem = (
+  onTokens: Emit,
+) =>
+  | Result<CompilerSuccessData<TestAgent>, CompilerError>
+  | Promise<Result<CompilerSuccessData<TestAgent>, CompilerError>>;
 
 function makeRunCompiler(queue: QueueItem[]) {
   const calls: Array<{ irCount: number; hasTools: boolean }> = [];
@@ -74,7 +78,7 @@ function makeRunCompiler(queue: QueueItem[]) {
     calls.push({ irCount: params.irs.length, hasTools: params.tools != null });
     const next = queue.shift();
     if (next == null) throw new Error("Unexpected compiler call");
-    const result = next(params.onTokens);
+    const result = await next(params.onTokens);
     return result as typeof result & CompilerResult<A, Tools>;
   };
   return { runCompiler, calls };
@@ -87,24 +91,26 @@ function makeHandler(opts?: {
   const retries: Array<TrajectoryArcEvents<TestAgent>["requestRetry"]> = [];
   const correctedTools: string[] = [];
   const handler: {
-    [K in keyof TrajectoryArcEvents<TestAgent>]: (event: TrajectoryArcEvents<TestAgent>[K]) => void;
+    [K in keyof TrajectoryArcEvents<TestAgent>]: (
+      event: TrajectoryArcEvents<TestAgent>[K],
+    ) => Promise<void>;
   } = {
-    startResponse: () => {},
-    responseProgress: () => {},
-    startCompaction: () => {},
-    compactionProgress: () => {},
-    autofixingJson: () => {},
-    autofixingTool: event => {
+    startResponse: async () => {},
+    responseProgress: async () => {},
+    startCompaction: async () => {},
+    compactionProgress: async () => {},
+    autofixingJson: async () => {},
+    autofixingTool: async event => {
       correctedTools.push(event.tool);
     },
-    requestRetry: event => {
+    requestRetry: async event => {
       retries.push(event);
       opts?.onRequestRetry?.(event);
     },
-    onMessage: ir => {
+    onMessage: async ir => {
       messages.push(ir);
     },
-    onResponseHeaders: () => {},
+    onResponseHeaders: async () => {},
   };
   return { handler, messages, retries, correctedTools };
 }
@@ -536,8 +542,8 @@ describe("trajectoryArc", () => {
   it("emits buffered assistant content when the request fails", async () => {
     const { finish, messages } = await runArc({
       queue: [
-        onTokens => {
-          onTokens("partial response", "content");
+        async onTokens => {
+          await onTokens("partial response", "content");
           return err(requestError("boom"));
         },
       ],

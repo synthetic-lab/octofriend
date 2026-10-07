@@ -236,7 +236,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   validationRetries?: number;
   requestErrorRetries?: RequestErrorRetriesConfig;
   handler: {
-    [K in keyof TrajectoryArcEvents<A>]: (event: TrajectoryArcEvents<A>[K]) => void;
+    [K in keyof TrajectoryArcEvents<A>]: (event: TrajectoryArcEvents<A>[K]) => Promise<void>;
   };
 };
 
@@ -277,22 +277,22 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   handler,
 }: TrajectoryArcParams<A, Model>): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
   const messagesCopy: Array<LlmIR<A> | AgentIR<A>> = [...messages];
-  const emitIrs = (delta: Array<TrajectoryArcIR<A>>) => {
-    for (const ir of delta) handler.onMessage(ir);
+  const emitIrs = async (delta: Array<TrajectoryArcIR<A>>): Promise<void> => {
+    for (const ir of delta) await handler.onMessage(ir);
   };
-  const finishWith = (
+  const finishWith = async (
     reason: AllFinishReasons<A>,
     remaining: Array<TrajectoryArcIR<A>> = [],
-  ): TrajectoryArcFinish<AllFinishReasons<A>> => {
+  ): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> => {
     const record = arcErrorRecord(reason);
-    emitIrs(record == null ? remaining : [...remaining, record]);
+    await emitIrs(record == null ? remaining : [...remaining, record]);
     return { type: "finish", reason };
   };
 
   const jsonCorrector = errorCorrection?.json;
   const jsonCorrectorWithEvent: AutofixJsonFn | undefined = jsonCorrector
-    ? (badJson, signal) => {
-        handler.autofixingJson(null);
+    ? async (badJson, signal) => {
+        await handler.autofixingJson(null);
         return jsonCorrector(badJson, signal);
       }
     : undefined;
@@ -324,7 +324,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
 
     const retryAbort = new AbortController();
-    handler.requestRetry({
+    await handler.requestRetry({
       error,
       attempt: requestAttempts,
       delayMs,
@@ -364,7 +364,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     const corrector = errorCorrection?.tools?.[toolCall.name];
     if (corrector != null) {
-      handler.autofixingTool({ tool: toolCall.name });
+      await handler.autofixingTool({ tool: toolCall.name });
       const fixed = await corrector({
         toolCall,
         validationError: validation.error,
@@ -427,7 +427,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     const convertedMessages = loweredMessages.map(({ converted }) => converted);
     if (!shouldAutoCompactHistory(contextWindow, convertedMessages)) return ok(null);
 
-    handler.startCompaction(null);
+    await handler.startCompaction(null);
 
     const buffer: AssistantBuffer<CompactionTokenTypes> = {};
     const checkpointContent = await generateCompactionCheckpointContent<A>({
@@ -439,10 +439,10 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
           abortSignal,
           transport,
           autofixJson: jsonCorrector,
-          onTokens: (tokens, type) => {
+          onTokens: async (tokens, type) => {
             if (!buffer[type]) buffer[type] = "";
             buffer[type] += tokens;
-            handler.compactionProgress({
+            await handler.compactionProgress({
               type: "autocompaction-stream",
               buffer,
               delta: { value: tokens, type },
@@ -489,12 +489,12 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
 
     if (compaction.data) {
-      emitIrs([compaction.data.checkpoint]);
+      await emitIrs([compaction.data.checkpoint]);
       messagesCopy.push(compaction.data.checkpoint);
     }
     if (abortSignal.aborted) return finishWith({ type: "abort" });
 
-    handler.startResponse(null);
+    await handler.startResponse(null);
 
     let irs: Array<TrajectoryArcIR<A>> = [];
     const buffer: AssistantBuffer<TrajectoryArcTokenTypes> = {};
@@ -507,10 +507,10 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       tools,
       systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
       autofixJson: jsonCorrectorWithEvent,
-      onTokens: (tokens, type) => {
+      onTokens: async (tokens, type) => {
         if (!buffer[type]) buffer[type] = "";
         buffer[type] += tokens;
-        handler.responseProgress({
+        await handler.responseProgress({
           buffer,
           delta: { type, value: tokens },
         });
@@ -537,7 +537,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       : "headers" in result.error
         ? result.error.headers
         : undefined;
-    if (headers) handler.onResponseHeaders(headers);
+    if (headers) await handler.onResponseHeaders(headers);
 
     if (abortSignal.aborted) return finishWith({ type: "abort" }, maybeBufferedMessage());
 
@@ -591,7 +591,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         }
       }
 
-      emitIrs(irs);
+      await emitIrs(irs);
       if (!consumeValidationRetry()) {
         return finishWith({
           type: "validation-retry-budget-exceeded",
@@ -604,7 +604,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     const { toolCalls } = assistantMessage;
 
-    if (toolCalls == null) {
+    if (!toolCalls?.length) {
       return finishWith({ type: "needs-response" }, irs);
     }
 
@@ -644,7 +644,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
     if (needsRetry) {
       const fullRetryTrajectory = [...irs, ...retryIrs];
-      emitIrs(fullRetryTrajectory);
+      await emitIrs(fullRetryTrajectory);
       if (!consumeValidationRetry()) {
         return finishWith({
           type: "validation-retry-budget-exceeded",

@@ -488,7 +488,7 @@ bench
             ],
           },
         ],
-        onTokens: () => {
+        onTokens: async () => {
           const now = new Date();
           tokenTimestamps.push(now);
           if (firstToken == null) firstToken = now;
@@ -718,7 +718,7 @@ cli
       systemPrompt,
       irs: messages,
       autofixJson,
-      onTokens: (chunk, type) => {
+      onTokens: async (chunk, type) => {
         if (type === "reasoning") seenReasoning = true;
 
         if (seenReasoning && type === "content" && !seenContent) {

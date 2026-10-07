@@ -585,14 +585,16 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           await this.setMode({ root: true, mode: "responding", control: this.runningControl() });
           await params.handler?.startResponse?.({ root: true, payload: event });
         },
-        responseProgress: event =>
-          params.handler?.responseProgress?.({ root: true, payload: event }),
+        responseProgress: async event => {
+          await params.handler?.responseProgress?.({ root: true, payload: event });
+        },
         startCompaction: async event => {
           await this.setMode({ root: true, mode: "compacting", control: this.runningControl() });
           await params.handler?.startCompaction?.({ root: true, payload: event });
         },
-        compactionProgress: event =>
-          params.handler?.compactionProgress?.({ root: true, payload: event }),
+        compactionProgress: async event => {
+          await params.handler?.compactionProgress?.({ root: true, payload: event });
+        },
         autofixingJson: async event => {
           await this.setMode({ root: true, mode: "autofix-json", control: this.runningControl() });
           await params.handler?.autofixingJson?.({ root: true, payload: event });
@@ -617,8 +619,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           });
           await params.handler?.requestRetry?.({ root: true, payload: event });
         },
-        onResponseHeaders: event =>
-          params.handler?.onResponseHeaders?.({ root: true, payload: event }),
+        onResponseHeaders: async event => {
+          await params.handler?.onResponseHeaders?.({ root: true, payload: event });
+        },
         onMessage: ir => this.appendIr(ir),
       },
     });

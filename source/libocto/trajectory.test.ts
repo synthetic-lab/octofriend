@@ -135,7 +135,7 @@ function assistantMessage(opts: {
   };
 }
 
-type Emit = (tokens: string, type: "reasoning" | "content") => void;
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type CompilerQueueItemParams = { autofixJson?: AutofixJsonFn; abortSignal: AbortSignal };
 type CompilerQueueItem = (
   onTokens: Emit,
@@ -947,8 +947,8 @@ describe("trajectory", () => {
     const { traj, compilerCalls } = await build(queue);
 
     inputControl(traj).enqueueSteering(text("hi"));
-    queue.push(onTokens => {
-      onTokens("partial answer", "content");
+    queue.push(async onTokens => {
+      await onTokens("partial answer", "content");
       interruptNow(traj);
       return okResult(assistantMessage({ content: "full answer" }));
     }, plainOk);
@@ -989,8 +989,8 @@ describe("trajectory", () => {
   it("rewinds past the last user message, fires the rewind event once, and ignores stale rewinds", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([
-      onTokens => {
-        onTokens("partial response", "content");
+      async onTokens => {
+        await onTokens("partial response", "content");
         return err(requestError("boom"));
       },
       plainOk,

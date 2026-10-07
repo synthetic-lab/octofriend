@@ -406,9 +406,9 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
       };
       const responseToolCalls = new Map<string, ResponseFunctionToolCall>();
 
-      function captureOutputItem(item: ResponseOutputItem): void {
+      async function captureOutputItem(item: ResponseOutputItem): Promise<void> {
         if (item.type === "function_call") {
-          params.onTokens("", "tool");
+          await params.onTokens("", "tool");
           responseToolCalls.set(item.call_id, item);
           return;
         }
@@ -430,26 +430,26 @@ export const runResponsesAgent: Compiler<OpenAICompilerModel> = defineCompiler(
           switch (event.type) {
             case "response.output_text.delta":
               content += event.delta;
-              params.onTokens(event.delta, "content");
+              await params.onTokens(event.delta, "content");
               break;
 
             case "response.reasoning_text.delta":
             case "response.reasoning_summary_text.delta":
               if (reasoningContent == null) reasoningContent = "";
               reasoningContent += event.delta;
-              params.onTokens(event.delta, "reasoning");
+              await params.onTokens(event.delta, "reasoning");
               break;
 
             case "response.function_call_arguments.delta":
-              params.onTokens(event.delta, "tool");
+              await params.onTokens(event.delta, "tool");
               break;
 
             case "response.output_item.done":
-              captureOutputItem(event.item);
+              await captureOutputItem(event.item);
               break;
 
             case "response.completed":
-              for (const item of event.response.output) captureOutputItem(item);
+              for (const item of event.response.output) await captureOutputItem(item);
               if (event.response.usage) {
                 usage.input = event.response.usage.input_tokens;
                 usage.cachedInput = event.response.usage.input_tokens_details.cached_tokens;
