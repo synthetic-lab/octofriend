@@ -19,7 +19,7 @@ import {
   type CompilerResult,
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
-import { lower } from "./lower.ts";
+import { lower } from "./ir-operations.ts";
 import {
   trajectoryArc,
   type AllFinishReasons,
@@ -209,7 +209,8 @@ async function runArc({
     tools,
     toolData,
     runCompiler,
-    lowerMessages: msgs => lower<TestAgent>(msgs),
+    lowerMessages: msgs =>
+      lower<TestAgent>(msgs.map(original => ({ original, converted: original }))),
     transport,
     abortSignal: abortController.signal,
     errorCorrection,
@@ -583,7 +584,8 @@ function assertFinishReasonNarrowing() {
       ...makeBase(),
       tools: { search: searchDef },
       runCompiler: makeRunCompiler([plainResult]).runCompiler,
-      lowerMessages: (msgs: Array<LlmIR<TestAgent>>) => lower<TestAgent>(msgs),
+      lowerMessages: (msgs: Array<LlmIR<TestAgent>>) =>
+        lower<TestAgent>(msgs.map(original => ({ original, converted: original }))),
       handler: makeHandler({}).handler,
     };
 

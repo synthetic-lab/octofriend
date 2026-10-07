@@ -51,9 +51,11 @@ export type AgentDirectory = {
  * never produces rejects, so its IR universe excludes them and exhaustive switches over IR roles
  * never need a reject case.
  *
- * The capability is tracked via a unique-symbol brand assigned by definePermissionedAgent; AgentIR
- * widens to include rejects only for branded agents. There is deliberately no boolean field: the
- * two constructor functions make the choice obvious at the definition site and in review.
+ * The capability is tracked via a unique-symbol brand assigned by definePermissionedAgent, and is
+ * uniform across a tree (see ValidateAgentSubagents): every subagent of a permissioned agent is
+ * permissioned, and no subagent of a permissionless agent is. The two constructor functions make
+ * the choice obvious at the definition site and in review, and the tree holds no mixes, so the
+ * runner never needs a runtime probe to know which way it goes.
  */
 declare const permissionedAgentBrand: unique symbol;
 
@@ -102,7 +104,7 @@ export type AgentTrajectory<
 > = {
   role: "subagent-trajectory";
   subagent: Name;
-  ir: Array<LlmIR<{ agents: Agents[Name]["agents"]; tools: Agents[Name]["tools"] }>>;
+  ir: Array<AgentIR<Agents[Name]>>;
   // The parent tool call that delegated to the subagent.
   toolCall: ToolCall<Tools>;
 };
@@ -459,9 +461,9 @@ export type PermissionedIR<A extends Agent<any, any, any>> =
   | LlmIR<A>
   | ToolRejectMessage<A["tools"]>;
 
-export type AgentIR<A extends Agent<any, any, any>> = A extends PermissionedBrand
-  ? PermissionedIR<A>
-  : PermissionlessIR<A>;
+export type AgentIR<A extends Agent<any, any, any>> =
+  | LlmIR<A>
+  | (A extends PermissionedBrand ? ToolRejectMessage<A["tools"]> : never);
 
 /*
  * The widest shape lower(...) accepts: pre-lowering IRs plus permissioned-only rejects, which
@@ -492,23 +494,51 @@ type PreLoweredTrajectory<
 > = {
   role: "subagent-trajectory";
   subagent: Name;
-  ir: Array<PreLoweredIR<Child>>;
+  ir: Array<RecursiveLowered<Child>>;
   toolCall: ToolCall<Tools>;
 };
 
 /*
- * Every IR except the agent's extension IRs — the target of client conversion passes. The
- * trajectory legs stay raw: their insides are typed by each child's full IR universe, so
- * extension IRs may still live inside a subagent trajectory, because libocto's down-converting
- * recursion hasn't walked it yet.
+ * One level lowered to built-in roles by the client's conversion pass. Nested trajectories
+ * still carry their children's raw IR, including extensions. Recursive downconversion turns
+ * this into PreLoweredIR, which contains no extensions at any depth.
  */
-export type ExtraFreeIR<A extends Agent<any, any, any>> =
+export type ShallowLoweredIR<A extends Agent<any, any, any>> =
   | CheckpointedIR<A["tools"]>
   | RawTrajectories<A["agents"], A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
   | ([IsPermissioned<A>] extends [true] ? ToolRejectMessage<A["tools"]> : never);
 
-// The trajectory leg of the extra-free stage: one member per subagent, insides still the
+export type IRConversion<Original, Converted> = {
+  original: Original;
+  converted: Converted;
+};
+
+export type Lower<A extends Agent<any, any, any>> = IRConversion<AgentIR<A>, ShallowLoweredIR<A>>;
+
+export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
+  AgentIR<A>,
+  PreLoweredIR<A>
+>;
+
+export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
+  AgentIR<A> | DescendantOriginals<A["agents"]>,
+  LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
+>;
+
+type DescendantOriginals<Agents extends AgentDirectory> = string extends keyof Agents
+  ? AgentIR<Agents[string]>
+  : {
+      [K in keyof Agents]: AgentIR<Agents[K]> | DescendantOriginals<Agents[K]["agents"]>;
+    }[keyof Agents];
+
+type DescendantOutputs<Agents extends AgentDirectory> = string extends keyof Agents
+  ? LoweredIR<Agents[string]["tools"]>
+  : {
+      [K in keyof Agents]: LoweredIR<Agents[K]["tools"]> | DescendantOutputs<Agents[K]["agents"]>;
+    }[keyof Agents];
+
+// The trajectory leg of the shallow-lowered stage: one member per subagent, insides still the
 // child's own full IR universe, extensions and level-branded rejects included.
 export type RawTrajectories<Agents extends AgentDirectory, Tools extends ToolMap<any, any>> = {
   [K in keyof Agents]: {
@@ -678,21 +708,23 @@ type _BuiltinIRRolesMatch = AssertNever<
  * get a compile error.
  */
 declare const missingToolSubagents: unique symbol;
-declare const permissionedChildOfPermissionless: unique symbol;
+declare const mixedPermissionTree: unique symbol;
 
 type RequiredToolSubagentNames<Tools> = ToolSubagentNames<Tools[keyof Tools]>;
 
 // Type used to validate that the given agent's tools have all of their subagent dependencies
-// fulfilled, and that permission-capability brands propagate down the tree: only permissioned
-// agents may declare permissioned children, since subagent histories of permissionless agents
-// would let gate-produced tool-rejects into a universe that promises never to contain them.
+// fulfilled, and that the permission capability is uniform down the tree: every subagent of a
+// permissioned agent is permissioned, and no subagent of a permissionless agent is. Mixed trees
+// would need a runtime capability probe per arc to know which ones may gate; uniformity keeps
+// the "permission" param's presence the single source of truth for the whole tree, and keeps
+// histories honest — a permissionless arc's universe promises never to contain tool-rejects.
 // Recursively narrows the given type until it's either {} (all dependencies are satisfied), or
 // an impossible-to-construct type via a non-existent unique symbol, which will cause a useful
 // compile error.
 //
 // The current node's own capability arrives as an argument — the constructor function's choice,
-// since a payload under construction never carries its own brand — while every deeper node's
-// capability derives from its (already constructed, possibly branded) value.
+// since a payload under construction never carries its own brand — and threads to every deeper
+// node unchanged, with each level's own directory checked against it.
 type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
   tools: infer Tools;
   agents: infer SubagentDirectory extends AgentDirectory;
@@ -705,9 +737,9 @@ type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
         agents: {
           [K in keyof SubagentDirectory]: ValidateAgentSubagents<
             SubagentDirectory[K],
-            [SubagentDirectory[K]] extends [PermissionedBrand] ? true : false
+            Permissioned
           >;
-        } & ValidateChildPermissions<Permissioned, SubagentDirectory>;
+        } & ValidateChildCapabilities<Permissioned, SubagentDirectory>;
       }
     : {
         readonly [missingToolSubagents]: Exclude<
@@ -717,13 +749,17 @@ type ValidateAgentSubagents<A, Permissioned extends boolean> = A extends {
       }
   : never;
 
-type ValidateChildPermissions<
+type ValidateChildCapabilities<
   Permissioned extends boolean,
   SubagentDirectory extends AgentDirectory,
-> = Permissioned extends true
-  ? unknown
+> = [Permissioned] extends [true]
+  ? Exclude<SubagentDirectory[keyof SubagentDirectory], PermissionedBrand> extends never
+    ? unknown
+    : {
+        readonly [mixedPermissionTree]: "a permissioned tree must be permissioned down to its leaves";
+      }
   : Extract<SubagentDirectory[keyof SubagentDirectory], PermissionedBrand> extends never
     ? unknown
     : {
-        readonly [permissionedChildOfPermissionless]: "only permissioned agents may declare permissioned children";
+        readonly [mixedPermissionTree]: "a permissionless tree must be permissionless down to its leaves";
       };

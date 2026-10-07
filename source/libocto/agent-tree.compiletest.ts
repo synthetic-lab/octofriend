@@ -1,16 +1,30 @@
 import { t } from "structural";
-import type { AgentExtra, AllSubagentNames, AllToolsAcrossTree, ExtraFreeIR } from "./llm-ir.ts";
+import type {
+  Agent,
+  AgentExtra,
+  AgentIR,
+  CompilerReadyIR,
+  RecursiveLowered,
+  ShallowLoweredIR,
+  LoweredIR,
+  AllSubagentNames,
+  AllToolsAcrossTree,
+  Lower,
+  IRConversion,
+  PreLoweredIR,
+} from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
+import { lower } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { ok } from "./result.ts";
-import type { TrajectoryParams } from "./trajectory.ts";
+import type { TrajectoryEvents, TrajectoryMode, TrajectoryParams } from "./trajectory.ts";
 
 /*
  * Compile-only test: the agent-tree surface — tree-wide subagent names, the merged tool map,
  * the subagent prompt catalogue, and the definition-time rules (subagent dependencies must
- * be declared, only permissioned agents may declare permissioned children). Each block moves
- * a type fact the runner relies on into the typechecker.
+ * be declared; the permission capability is uniform down the tree). Each block moves a
+ * type fact the runner relies on into the typechecker.
  */
 
 function expectType<T>(_: T) {}
@@ -51,8 +65,11 @@ const delegateTool = builder
     run: async () => ok({ type: "invoke-subagent" as const, name: "research", message: [] }),
   }));
 
-const _grandchild = definePermissionlessAgent({ tools: { search: searchTool }, agents: {} });
-const _research = definePermissionlessAgent({
+// The capability is uniform down the tree: a permissioned tree's every subagent is
+// permissioned, and no permissionless agent's subagent is. Research and grandchild are both
+// permissioned because Root is.
+const _grandchild = definePermissionedAgent({ tools: { search: searchTool }, agents: {} });
+const _research = definePermissionedAgent({
   tools: { search: searchTool },
   agents: { grandchild: _grandchild },
 });
@@ -108,40 +125,131 @@ type _noExtra = Expect<Equal<AgentExtra<Single>, never>>;
 // down-converting those deeper levels is libocto's recursion, not the client's — and
 // anything the client didn't define (a child's own extras) is never named here.
 const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
-  const out: Array<ExtraFreeIR<Root>> = [];
-  for (const ir of irs) {
-    if (ir.role === "note") {
-      out.push({ role: "tool-output", toolCall: ir.toolCall, content: [] });
+  const out: Array<Lower<Root>> = [];
+  for (const original of irs) {
+    if (original.role === "note") {
+      out.push({
+        original,
+        converted: { role: "tool-output", toolCall: original.toolCall, content: [] },
+      });
       continue;
     }
-    out.push(ir);
+    out.push({ original, converted: original });
   }
   return out;
 };
 
-// Only permissioned agents may declare permissioned children.
-const _okBrandedChild = definePermissionedAgent({
+type _lowerPair = Expect<Equal<Lower<Root>, IRConversion<AgentIR<Root>, ShallowLoweredIR<Root>>>>;
+type _recursivePair = Expect<
+  Equal<RecursiveLowered<Root>, IRConversion<AgentIR<Root>, PreLoweredIR<Root>>>
+>;
+type _leafCompilerPair = Expect<
+  Equal<CompilerReadyIR<Single>, IRConversion<AgentIR<Single>, LoweredIR<Single["tools"]>>>
+>;
+
+function inspectConversionTypes(
+  raw: Array<AgentIR<Root>>,
+  shallow: Array<Lower<Root>>,
+  recursive: Array<RecursiveLowered<Root>>,
+) {
+  // @ts-expect-error Final lowering requires paired IR, not bare history.
+  lower<Root>(raw);
+  // @ts-expect-error A shallow trajectory may still contain raw child IR.
+  lower<Root>(shallow);
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive));
+}
+
+function inspectGenericChildLowering<A extends Agent<any, any, any>>(
+  history: Array<RecursiveLowered<A["agents"][keyof A["agents"]]>>,
+): Array<CompilerReadyIR<A>> {
+  return lower(history);
+}
+
+const _conversionRoot = definePermissionedAgent({ tools: {}, agents: { child: _root } });
+type ConvertedRoot = CompilerReadyIR<typeof _conversionRoot>;
+type _descendantExtension = Expect<
+  Equal<Extract<ConvertedRoot["original"], { role: "note" }>, AgentExtra<Root>>
+>;
+type _descendantTools = Expect<
+  Equal<
+    Extract<ConvertedRoot["converted"], { role: "tool-output" }>["toolCall"]["name"],
+    "search" | "note" | "delegate"
+  >
+>;
+
+void inspectConversionTypes;
+void inspectGenericChildLowering;
+
+// Message events preserve each active arc's IR universe. Every non-root event points at
+// both the immediate parent trajectory and the root-history trajectory that contains it.
+function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessage"]) {
+  if (event.root) {
+    expectType<AgentIR<Root>>(event.ir);
+    // We expect an error here because root appends need no subagent metadata
+    // @ts-expect-error
+    event.scope;
+    return;
+  }
+
+  expectType<Extract<AgentIR<Root>, { role: "subagent-trajectory" }>>(
+    event.scope.toplevelSubagentIR,
+  );
+  if (event.subagent === "research") {
+    expectType<AgentIR<typeof _research>>(event.ir);
+    expectType<Extract<AgentIR<Root>, { subagent: "research" }>>(event.scope.parentSubagentIR);
+    return;
+  }
+  expectType<AgentIR<typeof _grandchild>>(event.ir);
+  expectType<Extract<AgentIR<typeof _research>, { subagent: "grandchild" }>>(
+    event.scope.parentSubagentIR,
+  );
+}
+
+// Modes use the same top-level discriminants: the agent name narrows running tool calls to
+// that arc's own tool map, while only non-root modes carry path metadata.
+function inspectMode(mode: TrajectoryMode<Root>) {
+  if (mode.root) {
+    if (mode.mode === "running-tool") expectType<ToolCall<Root["tools"]>>(mode.toolCall);
+    // We expect an error here because the root needs no subagent routing metadata
+    // @ts-expect-error
+    mode.scope;
+    return;
+  }
+
+  expectType<readonly { subagent: string; toolCallId: string }[]>(mode.scope.path);
+  if (mode.subagent === "research" && mode.mode === "running-tool") {
+    expectType<ToolCall<(typeof _research)["tools"]>>(mode.toolCall);
+  }
+}
+
+// The permission capability is uniform down the tree — keeping the "permission" param's
+// presence the single source of truth — and both directions of a mix are rejected. Each
+// violation surfaces on the parent's agents line.
+definePermissionlessAgent({
   tools: { search: searchTool },
-  agents: { research: definePermissionedAgent({ tools: { search: searchTool }, agents: {} }) },
-});
-const _badBrandedChild = definePermissionlessAgent({
-  tools: { search: searchTool },
-  // We expect an error here because only permissioned agents may declare permissioned children
+  // We expect an error here because a permissionless tree may not carry permissioned subagents
   // @ts-expect-error
   agents: { research: definePermissionedAgent({ tools: { search: searchTool }, agents: {} }) },
 });
 
-// The permission rule applies at every depth. The violation surfaces twice — on the parent
-// of the offender (mid's agents map) and on the offender itself — so both spans carry a
-// directive.
+definePermissionedAgent({
+  tools: { search: searchTool },
+  // We expect an error here because a permissioned tree may not carry permissionless subagents
+  // @ts-expect-error
+  agents: { research: definePermissionlessAgent({ tools: { search: searchTool }, agents: {} }) },
+});
+
+// The uniformity rule applies at every depth. The violation surfaces twice — on the parent
+// of the offender (mid's agents map carries the mixed-tree flag) and on the offender itself
+// — so both spans carry a directive.
 definePermissionlessAgent({
   tools: { search: searchTool },
   agents: {
-    // We expect an error here because only permissioned agents may declare permissioned children
+    // We expect an error here because a permissionless tree may not carry permissioned subagents
     // @ts-expect-error
     mid: definePermissionlessAgent({
       tools: { search: searchTool },
-      // We expect an error here because only permissioned agents may declare permissioned children
+      // We expect an error here because a permissionless tree may not carry permissioned subagents
       // @ts-expect-error
       agents: {
         bad: definePermissionedAgent({ tools: { search: searchTool }, agents: {} }),

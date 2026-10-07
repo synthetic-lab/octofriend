@@ -11,7 +11,7 @@ import type {
   Checkpoint,
   CompactionErrorIR,
   LlmIR,
-  LoweredIR,
+  CompilerReadyIR,
   RequestErrorIR,
   ToolParseErrorMessage,
   ToolSkipOutputMessage,
@@ -226,7 +226,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
-  lowerMessages: (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<LoweredIR<A["tools"]>>;
+  lowerMessages: (messages: Array<AgentIR<A>>) => Array<CompilerReadyIR<A>>;
   // Called with the arc's abort signal, so prompt construction (often filesystem reads) dies
   // with the turn that requested it.
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
@@ -424,13 +424,14 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     Result<{ checkpoint: Checkpoint } | null, CompactionError>
   > => {
     const loweredMessages = lowerMessages(messagesCopy);
-    if (!shouldAutoCompactHistory(contextWindow, loweredMessages)) return ok(null);
+    const convertedMessages = loweredMessages.map(({ converted }) => converted);
+    if (!shouldAutoCompactHistory(contextWindow, convertedMessages)) return ok(null);
 
     handler.startCompaction(null);
 
     const buffer: AssistantBuffer<CompactionTokenTypes> = {};
     const checkpointContent = await generateCompactionCheckpointContent<A>({
-      messages: loweredMessages,
+      messages: convertedMessages,
       run: compactionMessages =>
         runCompiler<A, undefined>({
           model,
@@ -500,7 +501,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     const loweredMessages = lowerMessages(messagesCopy);
     const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
       model,
-      irs: loweredMessages,
+      irs: loweredMessages.map(({ converted }) => converted),
       abortSignal,
       transport,
       tools,

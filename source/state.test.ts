@@ -805,10 +805,12 @@ describe("inputFieldAvailable", () => {
     rejectionTx: { commitRejection: () => {} },
   };
   const ready: TrajectoryMode<OctoAgent> = {
+    root: true,
     mode: "ready-for-request",
     control: { enqueueSteering: async () => {} },
   };
   const error: TrajectoryMode<OctoAgent> = {
+    root: true,
     mode: "request-error",
     requestError: "boom",
     curl: null,
@@ -825,6 +827,6 @@ describe("inputFieldAvailable", () => {
   });
 
   it("is hidden when aborted", () => {
-    expect(inputFieldAvailable({ mode: "aborted" }, idle)).toBe(false);
+    expect(inputFieldAvailable({ root: true, mode: "aborted" }, idle)).toBe(false);
   });
 });

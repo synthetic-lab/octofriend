@@ -12,7 +12,7 @@ import {
   type AgentIR,
   type AssistantMessage,
   type LoweredIR,
-  type PreLoweredIR,
+  type Lower,
   type UserMessage,
 } from "./llm-ir.ts";
 import {
@@ -76,7 +76,10 @@ const shellTool = new ToolBuilder<TestData>()
     run: async ({ customIR }: any) => customIR.result({ transcript: "ran ok" }),
   }));
 
-const researchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
+// The capability is uniform down the tree, so each fixture's tree stays uniform: the
+// permissioned test agent and the plain agent each own their own research subagent.
+const researchAgent = definePermissionedAgent({ tools: {}, agents: {} });
+const plainResearchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
 
 const _testAgent = definePermissionedAgent({
   tools: { search: searchTool, shell: shellTool },
@@ -86,7 +89,7 @@ type TestAgent = typeof _testAgent;
 
 const _plainAgent = definePermissionlessAgent({
   tools: { search: searchTool },
-  agents: { research: researchAgent },
+  agents: { research: plainResearchAgent },
 });
 
 const transport: Transport = new LocalTransport();
@@ -191,6 +194,7 @@ function makeTrajectory(opts?: {
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
   modelAuthError?: () => string | undefined;
+  loadTools?: (signal: AbortSignal) => Promise<Partial<LoadedTools<TestAgent["tools"]>>>;
 }) {
   const rec = {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
@@ -228,8 +232,9 @@ function makeTrajectory(opts?: {
         if (authError != null) return err({ type: "auth-error", authError });
         return ok({ model: null, contextWindow: opts?.contextWindow ?? 10_000 });
       },
-      loadTools: async () => {
+      loadTools: async signal => {
         rec.loadToolsCalls++;
+        if (opts?.loadTools != null) return opts.loadTools(signal);
         return { search: searchDef, shell: shellDef };
       },
       maxToolOutput: opts?.maxToolOutput,
@@ -249,22 +254,22 @@ function makeTrajectory(opts?: {
       runCompiler,
       subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: messages => {
-        const preLowered: Array<PreLoweredIR<TestAgent>> = [];
-        for (const ir of messages) {
-          if (ir.role === "shell-result") {
-            preLowered.push({
-              role: "tool-output",
-              toolCall: ir.toolCall,
-              content: text(ir.transcript),
+        const pairs: Array<Lower<TestAgent>> = [];
+        for (const original of messages) {
+          if (original.role === "shell-result") {
+            pairs.push({
+              original,
+              converted: {
+                role: "tool-output",
+                toolCall: original.toolCall,
+                content: text(original.transcript),
+              },
             });
           } else {
-            // This binding is the exhaustiveness check: if the agent gains another extension
-            // IR, it no longer fits PreLoweredIR and this fails to compile until converted.
-            const builtin: PreLoweredIR<TestAgent> = ir;
-            preLowered.push(builtin);
+            pairs.push({ original, converted: original });
           }
         }
-        return preLowered;
+        return pairs;
       },
       transport,
       abortSignal: exit.signal,
@@ -272,12 +277,12 @@ function makeTrajectory(opts?: {
         return opts?.permission ? opts.permission(toolCall) : { decision: "allow" };
       },
       handler: {
-        modeChange: mode => {
+        modeChange: ({ mode }) => {
           rec.modes.push(mode.mode);
           rec.modeObjs.push(mode);
           rec.timeline.push(`mode:${mode.mode}`);
         },
-        onMessage: ir => {
+        onMessage: ({ ir }) => {
           rec.roles.push(ir.role);
           rec.timeline.push(`ir:${ir.role}`);
         },
@@ -401,6 +406,90 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
+  it("reloads tools for a batch and reuses that runtime data for its response", async () => {
+    let generation = 0;
+    const { build, rec } = makeTrajectory({
+      loadTools: async signal => {
+        const loadedGeneration = ++generation;
+        const search = await searchTool({ signal, transport, data: { marker: "fresh" } });
+        if (search == null) throw new Error("search tool failed to load");
+        return {
+          search: {
+            ...search,
+            run: async () =>
+              ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
+          },
+        };
+      },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.modelCalls).toBe(1);
+    expect(rec.loadToolsCalls).toBe(1);
+    expect(await traj.step()).toBe(true);
+
+    const result = traj.messages[2];
+    if (result.role !== "tool-output") throw new Error("impossible");
+    expect(result.content).toEqual(text("generation 2"));
+    expect(rec.modelCalls).toBe(2);
+    expect(rec.loadToolsCalls).toBe(2);
+  });
+
+  it("uses the freshly resolved context window to cap a batch's output", async () => {
+    const opts = { contextWindow: 10_000 };
+    const { build, rec } = makeTrajectory(opts);
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async () => ok({ type: "output", content: text("x".repeat(1000)) });
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    opts.contextWindow = 1000;
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.capCalls.length).toBe(1);
+    expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
+    expect(rec.modelCalls).toBe(2);
+    expect(rec.loadToolsCalls).toBe(2);
+  });
+
+  it("only runs current calls when validation retries and later batches reuse IDs", async () => {
+    const queries: string[] = [];
+    const { build } = makeTrajectory();
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("invalid", "c1"), searchCall("skipped", "c2")],
+          }),
+        ),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("b", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(compilerCalls.length).toBe(2);
+    expect(queries).toEqual([]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a"]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a", "b"]);
+    expect(traj.messages.filter(ir => ir.role === "tool-output").length).toBe(2);
+  });
+
   it("records a tool's error as tool-runtime-error and continues", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([
@@ -447,6 +536,50 @@ describe("trajectory", () => {
     expect(lowered[2].content).toEqual(text("ran ok"));
     expect(traj.mode.mode).toBe("ready-for-request");
   });
+
+  it.each(["reject", "throw", "exit"] as const)(
+    "keeps custom IR answers when a later call triggers %s cleanup",
+    async stop => {
+      const { build, exit } = makeTrajectory({
+        permission: async toolCall => {
+          if (toolCall.toolCallId !== "c2") return { decision: "allow" };
+          if (stop === "reject") return { decision: "reject", steering: text("stop") };
+          if (stop === "exit") exit.abort();
+          return { decision: "allow" };
+        },
+      });
+      const { traj } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [shellCall("ls", "c1"), searchCall("a", "c2"), searchCall("b", "c3")],
+            }),
+          ),
+        plainOk,
+      ]);
+      runImpl = async () => {
+        throw new Error("boom in tool");
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      if (stop === "throw") {
+        await expect(traj.step()).rejects.toThrow("boom in tool");
+      } else if (stop === "exit") {
+        await traj.run();
+      } else {
+        expect(await traj.step()).toBe(true);
+      }
+
+      const answers = traj.messages.filter(ir => "toolCall" in ir);
+      expect(answers.map(ir => ir.role)).toEqual([
+        "shell-result",
+        stop === "reject" ? "tool-reject" : "tool-skip-output",
+        "tool-skip-output",
+      ]);
+      expect(answers.map(ir => ir.toolCall.toolCallId)).toEqual(["c1", "c2", "c3"]);
+    },
+  );
 
   it("throws when a tool tries to invoke a subagent", async () => {
     const { build } = makeTrajectory();
@@ -953,6 +1086,87 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
+  it.each(["retry", "clear"] as const)(
+    "%s resumes runtime loading before running pending tools or folding queued steering",
+    async resolution => {
+      let failing = false;
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory({
+        modelAuthError: () => (failing ? "credentials changed" : undefined),
+      });
+      const { traj, compilerCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("after the batch"));
+      failing = true;
+      expect(await traj.step()).toBe(true);
+      expect(traj.mode).toEqual(
+        expect.objectContaining({
+          mode: "auth-error",
+          authError: "credentials changed",
+        }),
+      );
+      expect(queries).toEqual([]);
+      expect(compilerCalls.length).toBe(1);
+      expect(rec.roles).toEqual(["user", "assistant"]);
+
+      failing = false;
+      const control = retryControl(traj);
+      if (resolution === "retry") control.retry();
+      else control.clear?.();
+      // Rectification schedules the pending batch; the next step loads its runtime data.
+      expect(await traj.step()).toBe(true);
+      expect(rec.modelCalls).toBe(2);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["cats"]);
+      expect(rec.roles).toEqual(["user", "assistant", "tool-output", "user", "assistant"]);
+      expect(compilerCalls.length).toBe(2);
+      expect(rec.modelCalls).toBe(3);
+      expect(rec.loadToolsCalls).toBe(3);
+    },
+  );
+
+  it("exit after a batch runtime-loading error skips pending calls without running them", async () => {
+    let failing = false;
+    const { build, rec, exit } = makeTrajectory({
+      modelAuthError: () => (failing ? "no key" : undefined),
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")],
+          }),
+        ),
+    ]);
+    runImpl = async () => {
+      throw new Error("must not run");
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    failing = true;
+    expect(await traj.step()).toBe(true);
+    expect(traj.mode.mode).toBe("auth-error");
+
+    exit.abort();
+    await traj.run();
+    expect(traj.mode.mode).toBe("aborted");
+    expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c1", "c2"]);
+    expect(compilerCalls.length).toBe(1);
+  });
+
   it("maps retryable error finishes to retry modes and drives retries", async () => {
     const { build, rec } = makeTrajectory();
     const { traj } = await build([() => err(rateLimitError()), plainOk]);
@@ -1091,6 +1305,14 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
+    const assistant = traj.messages[1];
+    if (assistant.role !== "assistant") throw new Error("impossible");
+    expect(assistant.toolCalls?.[0]).toEqual(
+      expect.objectContaining({
+        original: { query: "invalid" },
+        parsed: { query: "fixed" },
+      }),
+    );
     expect(await traj.step()).toBe(true);
 
     expect(rec.modes).toContain("autofix-tool");
@@ -1376,14 +1598,14 @@ describe("trajectory", () => {
       toolData: { marker: "fresh" },
       runCompiler,
       subagentPrompts: { research: async () => "You are the research subagent." },
-      lowerMessages: messages => messages,
+      lowerMessages: messages => messages.map(original => ({ original, converted: original })),
       transport,
       abortSignal: new AbortController().signal,
       handler: {
-        modeChange: mode => {
+        modeChange: ({ mode }) => {
           modes.push(mode.mode);
         },
-        onMessage: ir => {
+        onMessage: ({ ir }) => {
           roles.push(ir.role);
         },
       },

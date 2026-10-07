@@ -315,6 +315,8 @@ async function runMain(opts: {
         console.log(`${model}: ${input} input, ${output} output`);
       }
     }
+  } catch (e) {
+    console.error(e);
   } finally {
     await processes.manager().terminateOnOctoExit();
     unregisterCleanup();

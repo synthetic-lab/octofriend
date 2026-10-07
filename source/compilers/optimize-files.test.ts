@@ -46,7 +46,10 @@ describe("optimizeFiles", () => {
       },
     ];
 
-    expect(optimizeFiles(messages)).toEqual([
+    const pairs = optimizeFiles(messages);
+    expect(pairs[0].original).toBe(messages[0]);
+    expect(pairs[1].original).toBe(messages[1]);
+    expect(pairs.map(({ converted }) => converted)).toEqual([
       {
         role: "tool-output",
         toolCall: toolCall("old"),
@@ -87,7 +90,7 @@ describe("optimizeFiles", () => {
             maxSizeMB: 1,
           },
         },
-      ),
+      ).map(({ converted }) => converted),
     ).toEqual([
       {
         role: "tool-output",
@@ -109,7 +112,7 @@ describe("optimizeFiles", () => {
           content: "raw mutate output",
           toolCall: mutateToolCall("mutate"),
         },
-      ]),
+      ]).map(({ converted }) => converted),
     ).toEqual([
       {
         role: "tool-output",

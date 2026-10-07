@@ -1,35 +1,37 @@
-import type { octoAgent } from "../ir/octo-ir.ts";
-import type { PreLoweredIR } from "../libocto/llm-ir.ts";
+import type { Agent, IRConversion, ShallowLoweredIR } from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import type { FileMutateIR, FileReadIR } from "../tools/common.ts";
-import type toolMap from "../tools/tool-defs/index.ts";
 
-type FileIR = FileReadIR<ToolCall<typeof toolMap>> | FileMutateIR<ToolCall<typeof toolMap>>;
+export type FileOptimizerInputIR<A extends Agent<any, any, any>> =
+  | ShallowLoweredIR<A>
+  | FileReadIR<ToolCall<A["tools"]>>
+  | FileMutateIR<ToolCall<A["tools"]>>;
 
-export type FileOptimizerInputIR = PreLoweredIR<typeof octoAgent> | FileIR;
-
-export function optimizeFiles(
-  messages: FileOptimizerInputIR[],
+export function optimizeFiles<
+  A extends Agent<any, any, any>,
+  OriginalIR extends FileOptimizerInputIR<A>,
+>(
+  messages: OriginalIR[],
   modalities?: MultimodalConfig,
-): Array<PreLoweredIR<typeof octoAgent>> {
-  const output: Array<PreLoweredIR<typeof octoAgent>> = [];
+): Array<IRConversion<OriginalIR, ShallowLoweredIR<A>>> {
+  const output: Array<IRConversion<OriginalIR, ShallowLoweredIR<A>>> = [];
   const seenPaths = new Set<string>();
 
-  for (const ir of [...messages].reverse()) {
-    output.push(optimizeFileIR(ir, seenPaths, modalities));
+  for (const original of [...messages].reverse()) {
+    output.push({ original, converted: optimizeFileIR<A>(original, seenPaths, modalities) });
   }
 
   return output.reverse();
 }
 
-function optimizeFileIR(
-  ir: FileOptimizerInputIR,
+function optimizeFileIR<A extends Agent<any, any, any>>(
+  ir: FileOptimizerInputIR<A>,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): PreLoweredIR<typeof octoAgent> {
+): ShallowLoweredIR<A> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);
