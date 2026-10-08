@@ -1,6 +1,8 @@
 import toolMap from "./tool-defs/index.ts";
 import { Config } from "../config.ts";
-import { Transport } from "../transports/transport-common.ts";
+import { AbortError, Transport } from "../transports/transport-common.ts";
+import { err, ok, errorToString, type Result } from "../libocto/result.ts";
+import type { TrajectoryToolLoadError } from "../libocto/trajectory.ts";
 import {
   LoadedTools as GenericLoadedTools,
   ToolCall as GenericToolCall,
@@ -13,21 +15,34 @@ export async function loadTools(
   transport: Transport,
   signal: AbortSignal,
   config: Config,
-): Promise<Partial<LoadedTools>> {
-  const loaded: Partial<LoadedTools> = {};
-
-  await Promise.all(
-    (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => {
-      const toolDef = await toolMap[key]({ signal, transport, data: config });
-      if (toolDef) {
-        toolDef.name = key;
-        // @ts-ignore
-        loaded[key] = toolDef;
-      }
-    }),
+): Promise<Result<Partial<LoadedTools>, TrajectoryToolLoadError>> {
+  if (signal.aborted) return err({ type: "quit" });
+  // TODO: Make tool factories return Results so loading can propagate failures without allSettled.
+  const results = await Promise.allSettled(
+    (Object.keys(toolMap) as Array<keyof typeof toolMap>).map(async key => ({
+      key,
+      toolDef: await toolMap[key]({ signal, transport, data: config }),
+    })),
   );
+  for (const result of results) {
+    if (result.status === "rejected") {
+      if (signal.aborted && result.reason instanceof AbortError) continue;
+      return err({ type: "fatal", error: errorToString(result.reason) });
+    }
+  }
+  if (signal.aborted) return err({ type: "quit" });
 
-  return loaded as LoadedTools;
+  const loaded: Partial<LoadedTools> = {};
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    const { key, toolDef } = result.value;
+    if (toolDef) {
+      toolDef.name = key;
+      // @ts-ignore
+      loaded[key] = toolDef;
+    }
+  }
+  return ok(loaded);
 }
 
 export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [

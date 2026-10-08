@@ -12,6 +12,7 @@ import type {
   Checkpoint,
   CompactionErrorIR,
   LlmIR,
+  ModelErrorIR,
   CompilerReadyIR,
   RequestErrorIR,
   ToolParseErrorMessage,
@@ -93,7 +94,8 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | Checkpoint
   | RequestErrorIR
   | CompactionErrorIR
-  | ValidationRetryBudgetExceededIR;
+  | ValidationRetryBudgetExceededIR
+  | ModelErrorIR;
 
 export type RecoverableRequestError = Extract<
   CompilerError,
@@ -671,8 +673,13 @@ const VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR = "The model repeatedly produced in
 
 function arcErrorRecord(
   reason: AllFinishReasons<any>,
-): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | null {
+): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | ModelErrorIR | null {
   switch (reason.type) {
+    case "auth-error":
+      return { role: "auth-error", authError: reason.authError };
+    case "payment-error":
+    case "rate-limit-error":
+      return { role: reason.type, requestError: reason.requestError };
     case "request-error":
       return {
         role: "request-error",
@@ -691,20 +698,16 @@ function arcErrorRecord(
         error: reason.error,
       };
     case "request-error-retry-budget-exceeded":
-      if (reason.error.type === "rate-limit-error") return null;
+      if (reason.error.type === "rate-limit-error") {
+        return { role: "rate-limit-error", requestError: reason.error.requestError };
+      }
       return {
         role: "request-error",
         requestError: reason.error.requestError,
         curl: reason.error.curl,
       };
     default: {
-      const _:
-        | "abort"
-        | "needs-response"
-        | "request-tool"
-        | "auth-error"
-        | "payment-error"
-        | "rate-limit-error" = reason.type;
+      const _: "abort" | "needs-response" | "request-tool" = reason.type;
       return null;
     }
   }

@@ -6,14 +6,19 @@ import type {
   AgentTrajectory,
   AllTrajectories,
   TreeIR,
+  TreeToolCall,
   LowerInputIR,
   LowerOutputIR,
   CompilerReadyIR,
   RecursiveLowered,
   PreLoweredIR,
+  ModelErrorIR,
+  RequestErrorIR,
+  CompactionErrorIR,
+  ValidationRetryBudgetExceededIR,
 } from "./llm-ir.ts";
-import type { ToolCall } from "./tool-def.ts";
 import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
+import { err, ok, type Result } from "./result.ts";
 
 // Temporary references derived from the IR, never a saved execution frame. Each named child
 // retains its own agent/history types and the raw objects needed by scoped append events.
@@ -34,13 +39,21 @@ type ChildHistory<
 type DescendantHistories<
   Root extends Agent<any, any, any>,
   Parent extends Agent<any, any, any>,
-> = string extends keyof Parent["agents"]
+> = (string extends keyof Parent["agents"]
   ? ChildHistory<Root, Parent, keyof Parent["agents"] & string>
   : {
       [K in keyof Parent["agents"] & string]:
         | ChildHistory<Root, Parent, K>
         | DescendantHistories<Root, Parent["agents"][K]>;
-    }[keyof Parent["agents"] & string];
+    }[keyof Parent["agents"] & string]) &
+  ScopeSubagent<string> & {
+    agent: { tools: object; agents: AgentDirectory };
+    history: Array<TreeIR<Root>>;
+    scope: {
+      parentSubagentIR: TreeIR<Root>;
+      toplevelSubagentIR: AllTrajectories<Root["agents"], Root["tools"]>;
+    };
+  };
 
 export type ActiveHistory<A extends Agent<any, any, any>> =
   | (ScopeRoot & { agent: A; history: Array<AgentIR<A>> })
@@ -53,6 +66,14 @@ export function activeHistory<A extends Agent<any, any, any>>(
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
 ): ActiveHistory<A> {
+  return walkHistory(agent, history, converted).location;
+}
+
+function walkHistory<A extends Agent<any, any, any>>(
+  agent: A,
+  history: Array<AgentIR<A>>,
+  converted: readonly RecursiveLowered<A>[],
+): { location: ActiveHistory<A>; converted: readonly RecursiveLowered<A>[] } {
   let currentAgent: { agents: AgentDirectory } = agent;
   let currentHistory: Array<TreeIR<A>> = history;
   let inspected = converted;
@@ -89,17 +110,18 @@ export function activeHistory<A extends Agent<any, any, any>>(
     inspected = tail.converted.ir;
   }
 
-  if (scope == null) return { root: true, agent, history };
+  if (scope == null) return { location: { root: true, agent, history }, converted: inspected };
 
   // Each descent selects the agent and raw history from the same named trajectory. TS cannot
   // retain that correlation through a dynamic directory lookup, but no child is retyped as root.
-  return {
+  const location = {
     root: false,
     subagent: scope.path[scope.path.length - 1].subagent,
     scope,
     agent: currentAgent,
     history: currentHistory,
   } as ActiveHistory<A>;
+  return { location, converted: inspected };
 }
 
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
@@ -147,19 +169,32 @@ function isRawTrajectory<IR>(ir: IR): ir is IR & {
   return typeof ir === "object" && ir !== null && "role" in ir && ir.role === "subagent-trajectory";
 }
 
-// Inspect one history, not its descendants. Only answers after the latest assistant batch
-// count, since providers may reuse call IDs in later turns.
+// Select the active branch from the whole converted tree before scanning its latest batch.
+// Answers stay local to that history; descendants' IDs never answer their parent's calls.
 export function pendingToolCalls<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-): Array<ToolCall<A["tools"]>> {
+): Array<TreeToolCall<A>> {
+  while (true) {
+    const tail = history.at(-1)?.converted;
+    if (tail?.role !== "subagent-trajectory" || !isTrajectoryRunning(tail)) break;
+    history = tail.ir;
+  }
+  return scanPendingCalls(history);
+}
+
+function scanPendingCalls<A extends Agent<any, any, any>>(
+  history: readonly RecursiveLowered<A>[],
+): Array<TreeToolCall<A>> {
   const answered = new Set<string>();
   for (let index = history.length - 1; index >= 0; index--) {
     const ir = history[index].converted;
     if (ir.role === "assistant") {
-      return (ir.toolCalls ?? []).filter(
-        (call): call is ToolCall<A["tools"]> =>
-          call.type === "tool-call" && !answered.has(call.toolCallId),
+      // The recursive inspection view bounds descendant schemas structurally; these are
+      // still the concrete calls from an agent in A's tree, filtered without copying them.
+      const calls = (ir.toolCalls ?? []).filter(
+        call => call.type === "tool-call" && !answered.has(call.toolCallId),
       );
+      return calls as Array<TreeToolCall<A>>;
     }
     if (ir.role === "user" || ir.role === "checkpoint") return [];
     if (ir.role === "subagent-trajectory") {
@@ -224,7 +259,12 @@ function lowered<A extends Agent<any, any, any>>(
       converted.role === "request-error" ||
       converted.role === "compaction-error" ||
       converted.role === "validation-retry-budget-exceeded" ||
-      converted.role === "interrupted-by-user"
+      converted.role === "interrupted-by-user" ||
+      converted.role === "auth-error" ||
+      converted.role === "payment-error" ||
+      converted.role === "rate-limit-error" ||
+      converted.role === "error-dismissed" ||
+      converted.role === "error-retry"
     ) {
       return [];
     }
@@ -321,6 +361,80 @@ function errorMessage(ir: TerminalError): string {
     case "interrupted-by-user":
       return ir.reason;
   }
+}
+
+export type HistoryInspection<A extends Agent<any, any, any>> = {
+  pendingCalls: Array<TreeToolCall<A>>;
+} & (
+  | {
+      action: "rectify";
+      location: ActiveHistory<A>;
+      tail: ModelErrorIR;
+    }
+  | {
+      action: "rectify";
+      location: ScopeRoot & { agent: A; history: Array<AgentIR<A>> };
+      tail: RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR;
+    }
+  | {
+      action: "wait-for-input";
+      location: ScopeRoot & { agent: A; history: Array<AgentIR<A>> };
+      tail: RecursiveLowered<A>["converted"] | undefined;
+    }
+  | {
+      action: "respond";
+      location: ActiveHistory<A>;
+      tail: RecursiveLowered<A>["converted"];
+    }
+  | {
+      action: "run-tools";
+      location: ActiveHistory<A>;
+      tail: RecursiveLowered<A>["converted"];
+      pendingCalls: [TreeToolCall<A>, ...Array<TreeToolCall<A>>];
+    }
+);
+
+export function inspectHistory<A extends Agent<any, any, any>>(
+  agent: A,
+  history: Array<AgentIR<A>>,
+  converted: readonly RecursiveLowered<A>[],
+): Result<HistoryInspection<A>, string> {
+  const { location, converted: selected } = walkHistory(agent, history, converted);
+  const tail = selected.at(-1)?.converted;
+  const pendingCalls = scanPendingCalls<A>(selected);
+  if (tail == null) {
+    if (!location.root) return err("Cannot execute a subagent with an empty history");
+    return ok({ location, pendingCalls, action: "wait-for-input", tail });
+  }
+  const common = { location, pendingCalls };
+
+  if (
+    tail.role === "auth-error" ||
+    tail.role === "payment-error" ||
+    tail.role === "rate-limit-error"
+  ) {
+    return ok({ ...common, action: "rectify", tail });
+  }
+  if (location.root) {
+    if (
+      tail.role === "request-error" ||
+      tail.role === "compaction-error" ||
+      tail.role === "validation-retry-budget-exceeded"
+    ) {
+      return ok({ location, pendingCalls, action: "rectify", tail });
+    }
+    if (
+      tail.role === "error-dismissed" ||
+      (pendingCalls.length === 0 && !isTrajectoryRunning({ ir: selected }))
+    ) {
+      return ok({ location, pendingCalls, action: "wait-for-input", tail });
+    }
+  }
+  const [first, ...remaining] = pendingCalls;
+  if (first != null) {
+    return ok({ ...common, tail, action: "run-tools", pendingCalls: [first, ...remaining] });
+  }
+  return ok({ ...common, tail, action: "respond" });
 }
 
 // Callers must recursively convert extension IRs before testing the tail.

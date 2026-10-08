@@ -90,7 +90,7 @@ function assistantMessage(
   content: string,
   toolCalls: Array<ToolCall<TestAgent["tools"]>> = [],
   tokenUsage: number = 10,
-): TestIR {
+): Extract<TestIR, { role: "assistant" }> {
   return {
     role: "assistant",
     content,
@@ -401,15 +401,45 @@ describe("pendingToolCalls", () => {
     }
   });
 
-  it("leaves a delegation pending until its trajectory becomes terminal", () => {
+  it("does not rerun a delegation while its child is waiting for a response", () => {
     const call = searchCall("c1");
-    const child = subagentTrajectory([researchUserMessage("go")], call);
+    const child = subagentTrajectory([], call);
     const history: TestIR[] = [assistantMessage("delegate", [call]), subagentInvocation(call)];
     expect(pendingCalls(history)).toEqual([call]);
     history.push(child);
-    expect(pendingCalls(history)).toEqual([call]);
+    expect(pendingCalls(history)).toEqual([]);
+    child.ir.push(researchUserMessage("go"));
+    expect(pendingCalls(history)).toEqual([]);
     child.ir.push(researchAssistantResponse("done"));
     expect(pendingCalls(history)).toEqual([]);
+  });
+
+  it("finds nested pending calls and returns to each parent as children finish", () => {
+    const rootDelegate = searchCall("delegate", "root delegation");
+    const rootPending = searchCall("pending", "root remaining");
+    const childDelegate = searchCall("delegate", "child delegation");
+    const childPending = searchCall("pending", "child remaining");
+    const grandchildPending = searchCall("pending", "grandchild work");
+    const nested: Extract<ResearchIR, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "grandchild",
+      toolCall: childDelegate,
+      ir: [assistantMessage("work", [grandchildPending])],
+    };
+    const child = subagentTrajectory(
+      [assistantMessage("delegate", [childDelegate, childPending]), nested],
+      rootDelegate,
+    );
+    const history: TestIR[] = [assistantMessage("delegate", [rootDelegate, rootPending]), child];
+
+    expect(pendingCalls(history)).toEqual([grandchildPending]);
+    expect(pendingCalls(history)[0]).toBe(grandchildPending);
+    nested.ir.push({ role: "tool-output", toolCall: grandchildPending, content: [] });
+    expect(pendingCalls(history)).toEqual([]);
+    nested.ir.push(assistantMessage("done"));
+    expect(pendingCalls(history)).toEqual([childPending]);
+    child.ir.push(researchAssistantResponse("done"));
+    expect(pendingCalls(history)).toEqual([rootPending]);
   });
 
   it("does not confuse descendant answers with parent answers", () => {

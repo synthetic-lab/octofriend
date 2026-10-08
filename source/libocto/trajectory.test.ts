@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import type { Transport } from "../transports/transport-common.ts";
@@ -36,6 +36,7 @@ import {
   type TrajectoryEvents,
   type TrajectoryLoopController,
   type TrajectoryMode,
+  type TrajectoryToolLoadError,
 } from "./trajectory.ts";
 
 type TestData = { marker: string };
@@ -94,6 +95,28 @@ const _plainAgent = definePermissionlessAgent({
 });
 
 const transport: Transport = new LocalTransport();
+const exitControllers: AbortController[] = [];
+const waitingSteps: Promise<boolean>[] = [];
+
+afterEach(async () => {
+  for (const exit of exitControllers.splice(0)) exit.abort();
+  await Promise.all(waitingSteps.splice(0));
+});
+
+async function startWaitingStep<A extends Agent<any, any, any>>(
+  traj: Trajectory<A, null>,
+  mode: TrajectoryMode<TestAgent>["mode"],
+): Promise<{ finished: Promise<boolean> }> {
+  const before = traj.mode;
+  const finished = traj.step();
+  waitingSteps.push(finished);
+  const deadline = Date.now() + 1000;
+  while (traj.mode === before || traj.mode.mode !== mode) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${mode}`);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return { finished };
+}
 
 function text(content: string): UserMessage["content"] {
   return [{ type: "text", content }];
@@ -196,7 +219,9 @@ function makeTrajectory(opts?: {
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
   modelAuthError?: () => string | undefined;
-  loadTools?: (signal: AbortSignal) => Promise<Partial<LoadedTools<TestAgent["tools"]>>>;
+  loadTools?: (
+    signal: AbortSignal,
+  ) => Promise<Result<Partial<LoadedTools<TestAgent["tools"]>>, TrajectoryToolLoadError>>;
 }) {
   const rec = {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
@@ -219,6 +244,7 @@ function makeTrajectory(opts?: {
     loadToolsCalls: 0,
   };
   const exit = new AbortController();
+  exitControllers.push(exit);
 
   const build = async (queue: CompilerQueueItem[]) => {
     const [searchDef, shellDef] = await Promise.all([
@@ -242,7 +268,7 @@ function makeTrajectory(opts?: {
       loadTools: async signal => {
         rec.loadToolsCalls++;
         if (opts?.loadTools != null) return opts.loadTools(signal);
-        return { search: searchDef, shell: shellDef };
+        return ok({ search: searchDef, shell: shellDef });
       },
       maxToolOutput: opts?.maxToolOutput,
       countTokens: opts?.countTokens,
@@ -367,7 +393,7 @@ beforeEach(() => {
 });
 
 describe("trajectory", () => {
-  it("appends input, runs one arc, and lands ready-for-request", async () => {
+  it("announces ready only when the next step is waiting for input", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([plainOk]);
 
@@ -377,6 +403,9 @@ describe("trajectory", () => {
     expect(rec.roles).toEqual(["user", "assistant"]);
     expect(compilerCalls.length).toBe(1);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
+    expect(rec.modes).toEqual(["responding"]);
+
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "ready-for-request"]);
     expect(traj.mode.mode).toBe("ready-for-request");
   });
@@ -411,6 +440,7 @@ describe("trajectory", () => {
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
     expect(rec.modes).toContain("tool-call-permission");
     expect(rec.modes).toContain("running-tool");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -421,13 +451,13 @@ describe("trajectory", () => {
         const loadedGeneration = ++generation;
         const search = await searchTool({ signal, transport, data: { marker: "fresh" } });
         if (search == null) throw new Error("search tool failed to load");
-        return {
+        return ok({
           search: {
             ...search,
             run: async () =>
               ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
           },
-        };
+        });
       },
     });
     const { traj } = await build([
@@ -534,6 +564,7 @@ describe("trajectory", () => {
       "assistant",
       "tool-runtime-error",
     ]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -557,6 +588,7 @@ describe("trajectory", () => {
     expect(lowered.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
     if (lowered[2].role !== "tool-output") throw new Error("impossible");
     expect(lowered[2].content).toEqual(text("ran ok"));
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -679,6 +711,7 @@ describe("trajectory", () => {
     const steering = continuation[4];
     if (steering.role !== "user") throw new Error("impossible");
     expect(steering.content).toEqual(text("do it differently"));
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -704,6 +737,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(queries).toEqual(["a", "b", "c"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual([
       "responding",
       "tool-call",
@@ -772,6 +806,7 @@ describe("trajectory", () => {
     const skip = continuation[4];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.reason).toBe("A previous tool call was rejected, so this tool was skipped");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -805,6 +840,7 @@ describe("trajectory", () => {
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
     expect(skip.toolCall.toolCallId).toBe("c3");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
   });
@@ -826,6 +862,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
   });
@@ -957,10 +994,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("go"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
     expect(traj.mode.mode).toBe("request-error");
 
     exit.abort();
-    expect(await traj.step()).toBe(false);
+    expect(await waiting.finished).toBe(false);
+    await traj.run();
     expect(traj.mode.mode).toBe("aborted");
   });
 
@@ -977,6 +1016,7 @@ describe("trajectory", () => {
     }, plainOk);
 
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual(["user", "assistant"]);
     const partial = traj.messages[1];
     if (partial.role !== "assistant") throw new Error("impossible");
@@ -987,8 +1027,9 @@ describe("trajectory", () => {
     expect(compilerCalls.length).toBe(1);
 
     inputControl(traj).enqueueSteering(text("again"));
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
     expect(compilerCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -998,10 +1039,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("go"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
     expect(rec.modes).toEqual(["responding", "request-error"]);
 
     rectifyControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modelCalls).toBe(2);
@@ -1023,10 +1066,15 @@ describe("trajectory", () => {
     readyControl.enqueueSteering(text("please do the thing"));
     expect(await traj.step()).toBe(true);
     expect(rec.roles).toEqual(["user", "assistant", "request-error"]);
+    const waiting = await startWaitingStep(traj, "request-error");
 
     readyControl.enqueueSteering(text("staged while parked"));
-    await rectifyControl(traj).rewind();
-    await rectifyControl(traj).rewind();
+    const control = rectifyControl(traj);
+    await control.rewind();
+    await control.rewind();
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
 
     expect(rec.rewinds.length).toBe(1);
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
@@ -1042,13 +1090,11 @@ describe("trajectory", () => {
       "steering:0u0q",
     ]);
     expect(traj.messages.length).toBe(0);
-
-    expect(await traj.step()).toBe(true);
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
 
     inputControl(traj).enqueueSteering(text("edited request"));
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user"]);
   });
 
@@ -1061,9 +1107,11 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("auth please"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "auth-error");
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modelCalls).toBe(2);
@@ -1078,9 +1126,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("auth please"));
     expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
 
     retryControl(traj).clear?.();
-    expect(await traj.step()).toBe(true);
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
 
     expect(compilerCalls.length).toBe(1);
     expect(traj.mode.mode).toBe("ready-for-request");
@@ -1097,12 +1148,14 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(0);
+    const waiting = await startWaitingStep(traj, "auth-error");
     expect(rec.modes).toEqual(["auth-error"]);
     expect(traj.mode).toEqual(expect.objectContaining({ mode: "auth-error", authError: "no key" }));
 
     failing = false;
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(1);
     expect(rec.modelCalls).toBe(2);
@@ -1131,6 +1184,7 @@ describe("trajectory", () => {
       inputControl(traj).enqueueSteering(text("after the batch"));
       failing = true;
       expect(await traj.step()).toBe(true);
+      const waiting = await startWaitingStep(traj, "auth-error");
       expect(traj.mode).toEqual(
         expect.objectContaining({
           mode: "auth-error",
@@ -1139,18 +1193,24 @@ describe("trajectory", () => {
       );
       expect(queries).toEqual([]);
       expect(compilerCalls.length).toBe(1);
-      expect(rec.roles).toEqual(["user", "assistant"]);
+      expect(rec.roles).toEqual(["user", "assistant", "auth-error"]);
+      expect(rec.modelCalls).toBe(2);
 
       failing = false;
       const control = retryControl(traj);
       if (resolution === "retry") control.retry();
       else control.clear?.();
-      // Rectification schedules the pending batch; the next step loads its runtime data.
-      expect(await traj.step()).toBe(true);
-      expect(rec.modelCalls).toBe(2);
-      expect(await traj.step()).toBe(true);
+      expect(await waiting.finished).toBe(true);
       expect(queries).toEqual(["cats"]);
-      expect(rec.roles).toEqual(["user", "assistant", "tool-output", "user", "assistant"]);
+      expect(rec.roles).toEqual([
+        "user",
+        "assistant",
+        "auth-error",
+        "error-retry",
+        "tool-output",
+        "user",
+        "assistant",
+      ]);
       expect(compilerCalls.length).toBe(2);
       expect(rec.modelCalls).toBe(3);
       expect(rec.loadToolsCalls).toBe(3);
@@ -1178,12 +1238,19 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     failing = true;
     expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
     expect(traj.mode.mode).toBe("auth-error");
 
     exit.abort();
     await traj.run();
     expect(traj.mode.mode).toBe("aborted");
-    expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "assistant",
+      "auth-error",
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
     expect(
       traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
     ).toEqual(["c1", "c2"]);
@@ -1196,10 +1263,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "rate-limit-error");
     expect(rec.modes).toEqual(["responding", "rate-limit-error"]);
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(rec.modes).toEqual([
       "responding",
@@ -1218,6 +1287,7 @@ describe("trajectory", () => {
 
     inputControl(firstBuild.traj).enqueueSteering(text("hi"));
     expect(await firstBuild.traj.step()).toBe(true);
+    await startWaitingStep(firstBuild.traj, "rate-limit-error");
     expect(firstBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "rate-limit-error", requestError: "slow down" }),
     );
@@ -1230,6 +1300,7 @@ describe("trajectory", () => {
 
     inputControl(secondBuild.traj).enqueueSteering(text("hi"));
     expect(await secondBuild.traj.step()).toBe(true);
+    await startWaitingStep(secondBuild.traj, "request-error");
     expect(secondBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "request-error", requestError: "boom", curl: "curl" }),
     );
@@ -1250,10 +1321,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "payment-error");
     expect(rec.modes).toEqual(["responding", "payment-error"]);
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modes).toEqual(["responding", "payment-error", "responding", "ready-for-request"]);
@@ -1269,6 +1342,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual([
       "responding",
       "request-error-retrying",
@@ -1298,6 +1372,7 @@ describe("trajectory", () => {
       "tool-validation-error",
       "validation-retry-budget-exceeded",
     ]);
+    await startWaitingStep(traj, "request-error");
     expect(traj.mode).toEqual(
       expect.objectContaining({
         mode: "request-error",
@@ -1342,6 +1417,7 @@ describe("trajectory", () => {
     expect(rec.arc.autofixTool).toBe(1);
     expect(queries).toEqual(["fixed"]);
     expect(rec.roles).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -1362,6 +1438,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "autofix-json", "ready-for-request"]);
     expect(rec.arc.autofixJson).toBe(1);
     expect(traj.mode.mode).toBe("ready-for-request");
@@ -1398,6 +1475,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.timeline).toEqual([
       "steering:1u0q",
       "steering:0u0q",
@@ -1423,6 +1501,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.timeline).toEqual([
       "steering:1u0q",
       "steering:0u0q",
@@ -1455,6 +1534,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["compacting", "responding", "ready-for-request"]);
     expect(rec.arc.compaction).toBe(1);
     expect(rec.roles).toEqual(["user", "checkpoint", "assistant"]);
@@ -1478,6 +1558,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    const waiting = await startWaitingStep(traj, "compaction-error");
     expect(rec.modes).toEqual(["compacting", "compaction-error"]);
     expect(rec.roles).toEqual(["user", "compaction-error"]);
     expect(traj.mode).toEqual(
@@ -1485,7 +1566,8 @@ describe("trajectory", () => {
     );
 
     rectifyControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(3);
     expect(rec.modes).toEqual([
@@ -1495,7 +1577,13 @@ describe("trajectory", () => {
       "responding",
       "ready-for-request",
     ]);
-    expect(rec.roles).toEqual(["user", "compaction-error", "checkpoint", "assistant"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "compaction-error",
+      "error-retry",
+      "checkpoint",
+      "assistant",
+    ]);
   });
 
   it("suppresses the ready announce when steering arrives mid-response", async () => {
@@ -1513,6 +1601,7 @@ describe("trajectory", () => {
     expect(rec.modes).toEqual(["responding"]);
 
     expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "user"]);
   });
@@ -1612,10 +1701,12 @@ describe("trajectory", () => {
       () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
       plainOk,
     ]);
+    const exit = new AbortController();
+    exitControllers.push(exit);
     const traj = new Trajectory({
       agent: _plainAgent,
       model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
-      loadTools: async () => ({ search: searchDef }),
+      loadTools: async () => ok({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],
       toolData: { marker: "fresh" },
@@ -1623,7 +1714,7 @@ describe("trajectory", () => {
       subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: messages => messages.map(original => ({ original, converted: original })),
       transport,
-      abortSignal: new AbortController().signal,
+      abortSignal: exit.signal,
       handler: {
         modeChange: ({ mode }) => {
           modes.push(mode.mode);
@@ -1638,6 +1729,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(modes).toEqual([
       "responding",
       "tool-call",

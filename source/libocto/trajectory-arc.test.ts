@@ -368,7 +368,7 @@ describe("trajectoryArc", () => {
 
     expect(finish.reason.type).toBe("rate-limit-error");
     expect(calls.length).toBe(1);
-    expect(messages).toEqual([]);
+    expect(messages).toEqual([{ role: "rate-limit-error", requestError: "slow down" }]);
   });
 
   it("retries request errors with the configured backoff", async () => {

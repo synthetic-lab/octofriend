@@ -375,6 +375,14 @@ export type InterruptedByUserIR = {
   reason: string;
 };
 
+export type ModelErrorIR =
+  | { role: "auth-error"; authError: string }
+  | { role: "payment-error"; requestError: string }
+  | { role: "rate-limit-error"; requestError: string };
+
+export type ErrorDismissedIR = { role: "error-dismissed" };
+export type ErrorRetryIR = { role: "error-retry" };
+
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {
   role: "tool-invoke-subagent";
   toolCall: ToolCall<T>;
@@ -415,7 +423,10 @@ export type CheckpointedIR<T extends ToolMap<any, any>> =
   | RequestErrorIR
   | CompactionErrorIR
   | ValidationRetryBudgetExceededIR
-  | InterruptedByUserIR;
+  | InterruptedByUserIR
+  | ModelErrorIR
+  | ErrorDismissedIR
+  | ErrorRetryIR;
 
 /*
  * Compiler-ready IR plus subagent trajectories.
@@ -576,6 +587,14 @@ type DescendantOriginals<Agents extends AgentDirectory> = string extends keyof A
 
 export type TreeIR<A extends Agent<any, any, any>> = AgentIR<A> | DescendantOriginals<A["agents"]>;
 
+// Runnable calls from any level, without widening an individual agent's tool map.
+export type TreeToolCall<A extends Agent<any, any, any>> =
+  | ToolCall<A["tools"]>
+  | ((string extends keyof A["agents"]
+      ? ToolCall<A["agents"][string]["tools"]>
+      : { [K in keyof A["agents"]]: TreeToolCall<A["agents"][K]> }[keyof A["agents"]]) &
+      ToolCall<InspectionTools>);
+
 export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
   TreeIR<A>,
   LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
@@ -617,6 +636,9 @@ function isBuiltinIR<
     | CompactionErrorIR
     | ValidationRetryBudgetExceededIR
     | InterruptedByUserIR
+    | ModelErrorIR
+    | ErrorDismissedIR
+    | ErrorRetryIR
     | AllTrajectories<T, Tools>
     | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
@@ -628,6 +650,9 @@ function isBuiltinIR<
   | CompactionErrorIR
   | ValidationRetryBudgetExceededIR
   | InterruptedByUserIR
+  | ModelErrorIR
+  | ErrorDismissedIR
+  | ErrorRetryIR
   | AllTrajectories<T, Tools>
   | ToolSubagentInvoke<any, string> {
   return isBuiltinRole(ir.role);
@@ -646,6 +671,9 @@ export function answeredToolCallId<
     | CompactionErrorIR
     | ValidationRetryBudgetExceededIR
     | InterruptedByUserIR
+    | ModelErrorIR
+    | ErrorDismissedIR
+    | ErrorRetryIR
     | AllTrajectories<T, Tools>
     | ToolSubagentInvoke<any, string>
     | ToolExtensionIR<Role>,
@@ -663,6 +691,11 @@ export function answeredToolCallId<
     case "compaction-error":
     case "validation-retry-budget-exceeded":
     case "interrupted-by-user":
+    case "auth-error":
+    case "payment-error":
+    case "rate-limit-error":
+    case "error-dismissed":
+    case "error-retry":
       return null;
     case "subagent-trajectory":
     case "tool-output":
@@ -718,6 +751,9 @@ type _BuiltinIRRolesMatch = AssertNever<
       | CompactionErrorIR["role"]
       | ValidationRetryBudgetExceededIR["role"]
       | InterruptedByUserIR["role"]
+      | ModelErrorIR["role"]
+      | ErrorDismissedIR["role"]
+      | ErrorRetryIR["role"]
       | AgentTrajectory<any, any, any>["role"]
       | ToolSubagentInvoke<any, string>["role"],
       BuiltinIRRole
@@ -731,6 +767,9 @@ type _BuiltinIRRolesMatch = AssertNever<
       | CompactionErrorIR["role"]
       | ValidationRetryBudgetExceededIR["role"]
       | InterruptedByUserIR["role"]
+      | ModelErrorIR["role"]
+      | ErrorDismissedIR["role"]
+      | ErrorRetryIR["role"]
       | AgentTrajectory<any, any, any>["role"]
       | ToolSubagentInvoke<any, string>["role"]
     >

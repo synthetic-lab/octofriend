@@ -640,7 +640,7 @@ describe("error-mode mirrors", () => {
     process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
     await waitForNextTurn(() => authError.control.retry());
     expect(compilerCalls.length).toBe(1);
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual(["user", "auth-error", "error-retry", "assistant"]);
   });
 
   it("mirrors a rewind: restores the prompt as the draft query and slices history", async () => {

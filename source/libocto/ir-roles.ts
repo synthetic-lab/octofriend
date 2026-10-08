@@ -25,6 +25,11 @@ export const BUILTIN_IR_ROLES = {
   "compaction-error": true,
   "validation-retry-budget-exceeded": true,
   "interrupted-by-user": true,
+  "auth-error": true,
+  "payment-error": true,
+  "rate-limit-error": true,
+  "error-dismissed": true,
+  "error-retry": true,
 } as const;
 
 export type BuiltinIRRole = keyof typeof BUILTIN_IR_ROLES;
