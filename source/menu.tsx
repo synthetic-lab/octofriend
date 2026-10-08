@@ -7,7 +7,7 @@ import { TransportContext } from "./transport-context.ts";
 import { listPreviousSessions } from "./session-history/index.ts";
 import { Auth, mergeEnvVar, useConfig, useSetConfig, Config } from "./config.ts";
 import { ModelSetup } from "./components/auto-detect-models.tsx";
-import type { SyntheticModel } from "./synthetic-models.ts";
+import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
 import { AutofixModelMenu } from "./components/autofix-model-menu.tsx";
 import { ConfirmDialog } from "./components/confirm-dialog.tsx";
 import { readAuthForModel } from "./config.ts";
@@ -87,7 +87,7 @@ function MenuContent({
     return <LoadSessionMenu onBack={() => setMenuMode("main-menu")} />;
   }
   if (menuMode === "settings-menu") return <SettingsMenu />;
-  if (menuMode === "model-select") return <SwitchModelMenu />;
+  if (menuMode === "model-select") return <SwitchModelMenu syntheticModels={syntheticModels} />;
   if (menuMode === "set-default-model") return <SetDefaultModelMenu />;
   if (menuMode === "quit-confirm") return <QuitConfirm />;
   if (menuMode === "clear-confirm") return <ClearConversationConfirm />;
@@ -219,7 +219,7 @@ function FixJsonToggle() {
     </AutofixToggle>
   );
 }
-function SwitchModelMenu() {
+function SwitchModelMenu({ syntheticModels }: { syntheticModels: SyntheticModel[] }) {
   const { setModelOverride, toggleMenu } = useAppStore(
     useShallow(state => ({
       setModelOverride: state.setModelOverride,
@@ -309,7 +309,7 @@ function SwitchModelMenu() {
   }
   const numericItems = config.models.map(model => {
     return {
-      label: model.nickname,
+      label: modelDisplayName(model, syntheticModels),
       value: `model-${model.nickname}` as const,
     };
   });

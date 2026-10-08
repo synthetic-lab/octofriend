@@ -75,7 +75,7 @@ import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import { Menu } from "./menu.tsx";
-import type { SyntheticModel } from "./synthetic-models.ts";
+import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
@@ -491,6 +491,7 @@ export default function App({
                             tempNotification={tempNotification}
                             liveMode={sessionMode.liveMode}
                             updateConfig={sessionMode.control.updateConfig}
+                            syntheticModels={syntheticModels}
                           />
                         )}
                       </AppShell>
@@ -534,12 +535,14 @@ function BottomBar({
   tempNotification,
   liveMode,
   updateConfig,
+  syntheticModels,
 }: {
   inputHistory: InputHistory;
   metadata: Metadata;
   tempNotification: string | null;
   liveMode: LiveMirror;
   updateConfig: (config: Config) => void;
+  syntheticModels: SyntheticModel[];
 }) {
   const TEMP_NOTIFICATION_DURATION = 5000;
   const [versionCheck, setVersionCheck] = useState("Checking for updates...");
@@ -578,6 +581,7 @@ function BottomBar({
         inputHistory={inputHistory}
         liveMode={liveMode}
         updateConfig={updateConfig}
+        syntheticModels={syntheticModels}
       />
       <TerminalFlex
         style={{
@@ -688,10 +692,12 @@ function BottomBarContent({
   inputHistory,
   liveMode,
   updateConfig,
+  syntheticModels,
 }: {
   inputHistory: InputHistory;
   liveMode: LiveMirror;
   updateConfig: (config: Config) => void;
+  syntheticModels: SyntheticModel[];
 }) {
   const config = useConfig();
   const model = useModel();
@@ -937,7 +943,7 @@ function BottomBarContent({
             color: "gray",
           }}
         >
-          Model: {model.nickname}
+          Model: {modelDisplayName(model, syntheticModels)}
         </Span>
         <Span
           style={{

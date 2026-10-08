@@ -1,12 +1,17 @@
 import { fetchDeps } from "./fetch.ts";
 import { t } from "structural";
-import { SYNTHETIC_PROVIDER, type ProviderConfig } from "./providers.ts";
+import { SYNTHETIC_PROVIDER, type ProviderModelConfig } from "./providers.ts";
 
-export type SyntheticModel = ProviderConfig["models"][number] & {
+export type SyntheticModel = ProviderModelConfig & {
   huggingFaceId: string;
   aliasOf?: string;
   categories: string[];
 };
+
+export function modelDisplayName(model: ProviderModelConfig, syntheticModels: SyntheticModel[]) {
+  const catalogModel = syntheticModels.find(candidate => candidate.model === model.model);
+  return catalogModel?.aliasOf ? `${model.model} (${catalogModel.aliasOf})` : model.nickname;
+}
 
 const CatalogSchema = t.subtype({
   data: t.array(

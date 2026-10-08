@@ -14,7 +14,7 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
-import { providerForBaseUrl, SYNTHETIC_PROVIDER } from "../providers.ts";
+import { providerForBaseUrl, SYNTHETIC_PROVIDER, CODEX_PROVIDER } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
@@ -665,19 +665,8 @@ function ModelInput(props: ModelStepProps) {
           title="What's the model string for the API you're using?"
           prompt="Model string:"
           parse={val => val}
-          validate={val => {
-            if (props.baseUrl === "https://synthetic.new") {
-              if (!val.startsWith("hf:")) {
-                return {
-                  valid: false,
-                  error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
-                };
-              }
-            }
-            return {
-              valid: true,
-            };
-          }}
+          // The connection test validates the model ID.
+          validate={() => ({ valid: true })}
           onSubmit={submit}
         >
           {props.renderExamples && (
@@ -1275,7 +1264,7 @@ async function testConnection(
   try {
     const provider = providerForBaseUrl(baseUrl);
     if (provider?.type === "codex") {
-      const configuredModel = provider.models.find(candidate => candidate.model === model);
+      const configuredModel = CODEX_PROVIDER.models.find(candidate => candidate.model === model);
       return {
         valid: true,
         metadata: {

@@ -497,7 +497,9 @@ function WelcomeScreen({
   onContinue: () => void;
   syntheticModels: SyntheticModel[];
 }) {
-  const recommended = syntheticModels.find(model => model.categories.includes("recommended"));
+  const recommended =
+    syntheticModels.find(model => model.model === "syn:large:vision") ??
+    syntheticModels.find(model => model.categories.includes("recommended"));
   useKeyboard(event => {
     if (event.key === "Enter") onContinue();
   });
