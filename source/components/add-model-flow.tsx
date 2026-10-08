@@ -14,7 +14,7 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
-import { providerForBaseUrl } from "../providers.ts";
+import { providerForBaseUrl, SYNTHETIC_PROVIDER, CODEX_PROVIDER } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
@@ -28,6 +28,7 @@ import {
 } from "../codex-oauth.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
+import { InputDisabledProvider } from "../hooks/use-input-disabled.tsx";
 type Model = Config["models"][number];
 type ValidationResult =
   | {
@@ -45,6 +46,7 @@ type AddModelStep<T> = {
   validate: (val: string) => ValidationResult;
   onSubmit: (t: T) => any;
   children: React.ReactNode;
+  footer?: React.ReactNode;
 };
 type ModelStepRoute<T> = T & {
   renderExamples: boolean;
@@ -76,11 +78,6 @@ type FullFlowRouteData = {
   model: ModelStepRoute<{
     baseUrl: string;
     auth?: Auth;
-  }>;
-  testConnection: ModelStepRoute<{
-    baseUrl: string;
-    auth?: Auth;
-    model: string;
   }>;
   nickname: ModelStepRoute<{
     baseUrl: string;
@@ -572,97 +569,135 @@ function PostAuth(
   }, []);
   return <></>;
 }
-function Model(props: FullFlowRouteData["model"] & Transitions<string>) {
+type ModelStepProps = FullFlowRouteData["model"] &
+  Transitions<{ model: string; metadata: ModelMetadata }>;
+function useModelConnection(props: ModelStepProps) {
+  const { setErrorMessage } = useContext(errorContext);
+  const [request, setRequest] = useState<
+    (MinConnectArgs & { onSubmit: ModelStepProps["onSubmit"] }) | null
+  >(null);
+  useEffect(() => {
+    if (!request) return;
+    const abortController = new AbortController();
+    testConnection(request, abortController.signal).then(result => {
+      if (abortController.signal.aborted) return;
+      setRequest(null);
+      if (result.valid) request.onSubmit({ model: request.model, metadata: result.metadata });
+      else setErrorMessage("Connection failed.");
+    });
+    return () => abortController.abort();
+  }, [request, setErrorMessage]);
+
+  function submit(model: string) {
+    setErrorMessage("");
+    setRequest(
+      current =>
+        current ?? {
+          model,
+          auth: props.auth,
+          baseUrl: props.baseUrl,
+          config: props.config,
+          onSubmit: props.onSubmit,
+        },
+    );
+  }
+
+  const isTestingConnection = request !== null;
+  return { isTesting: isTestingConnection, submit };
+}
+function Model(props: ModelStepProps) {
+  if (props.baseUrl === SYNTHETIC_PROVIDER.baseUrl) return <SyntheticModel {...props} />;
+  return <ModelInput {...props} />;
+}
+function SyntheticModel(props: ModelStepProps) {
+  const [enteringCustomModel, setEnteringCustomModel] = useState(false);
+  const { isTesting, submit } = useModelConnection(props);
+  const { errorMessage } = useContext(errorContext);
+  const alreadyHasRecommendedModel = props.config?.models.some(
+    model =>
+      model.type !== "codex" &&
+      model.baseUrl === props.baseUrl &&
+      model.model === "syn:large:vision",
+  );
+  if (alreadyHasRecommendedModel) return <ModelInput {...props} />;
+  if (enteringCustomModel) {
+    return <ModelInput {...props} back={() => setEnteringCustomModel(false)} />;
+  }
   return (
     <Back go={props.back}>
-      <Step<string>
-        title="What's the model string for the API you're using?"
-        prompt="Model string:"
-        parse={val => val}
-        validate={val => {
-          if (props.baseUrl === "https://synthetic.new") {
-            if (!val.startsWith("hf:")) {
-              return {
-                valid: false,
-                error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
-              };
-            }
-          }
-          return {
-            valid: true,
-          };
+      <KbShortcutPanel
+        header="Choose a Synthetic model"
+        shortcutItems={[
+          {
+            type: "key",
+            mapping: {
+              u: { label: "Use recommended syn:large:vision", value: "recommended" },
+              e: { label: "Enter a different model ID", value: "custom" },
+              b: { label: "Back", value: "back", spaceAbove: 1 },
+            },
+          },
+        ]}
+        onSelect={({ value }) => {
+          if (value === "back") return props.back();
+          if (isTesting) return;
+          if (value === "recommended") submit("syn:large:vision");
+          else if (value === "custom") setEnteringCustomModel(true);
         }}
-        onSubmit={props.onSubmit}
       >
-        {props.renderExamples && (
-          <TerminalFlex
-            style={{
-              marginBottom: 1,
-            }}
-          >
-            <Span>
-              (For example, to use Kimi K2 with the Moonshot API, you would use
-              kimi-k2-0711-preview)
-            </Span>
-          </TerminalFlex>
-        )}
-        <Span>
-          This varies by inference provider: you can typically find this information in your
-          inference provider's documentation.
-        </Span>
-      </Step>
+        {isTesting && <Span>Testing connection...</Span>}
+        {errorMessage && <Span style={{ color: "red" }}>{errorMessage}</Span>}
+      </KbShortcutPanel>
     </Back>
   );
 }
-function TestConnection(
-  props: FullFlowRouteData["testConnection"] & {
-    errorNav: () => any;
-  } & Transitions<ModelMetadata>,
-) {
-  const { setErrorMessage } = useContext(errorContext);
-  useEffect(() => {
-    testConnection({
-      model: props.model,
-      auth: props.auth,
-      baseUrl: props.baseUrl,
-      config: props.config,
-    }).then(result => {
-      if (result.valid) {
-        props.onSubmit(result.metadata);
-        return;
-      }
-      setErrorMessage("Connection failed.");
-      props.errorNav();
-    });
-  }, [props]);
+function ModelInput(props: ModelStepProps) {
+  const { isTesting, submit } = useModelConnection(props);
   return (
     <Back go={props.back}>
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-          justifyContent: "center",
-          alignItems: "center",
-          marginTop: 1,
-        }}
-      >
-        <TerminalFlex
-          style={{
-            flexDirection: "column",
-            width: "100%",
-            minWidth: 0,
-            maxWidth: 80,
+      <InputDisabledProvider disabled={isTesting}>
+        <Step<string>
+          footer={
+            <>
+              {isTesting && <Span>Testing connection...</Span>}
+              <Span style={{ color: "gray" }}>Press ESC to go back</Span>
+            </>
+          }
+          title="What's the model string for the API you're using?"
+          prompt="Model string:"
+          parse={val => val}
+          validate={val => {
+            if (props.baseUrl === "https://synthetic.new") {
+              if (!val.startsWith("hf:")) {
+                return {
+                  valid: false,
+                  error: `Synthetic model names need to be prefixed with "hf:" (without the quotes)`,
+                };
+              }
+            }
+            return {
+              valid: true,
+            };
           }}
+          onSubmit={submit}
         >
-          <Span
-            style={{
-              color: "yellow",
-              fontWeight: "bold",
-            }}
-          >
-            Testing connection...
+          {props.renderExamples && (
+            <TerminalFlex
+              style={{
+                marginBottom: 1,
+              }}
+            >
+              <Span>
+                (For example, to use Kimi K2 with the Moonshot API, you would use
+                kimi-k2-0711-preview)
+              </Span>
+            </TerminalFlex>
+          )}
+          <Span>
+            This varies by inference provider: you can typically find this information in your
+            inference provider's documentation.
           </Span>
-        </TerminalFlex>
-      </TerminalFlex>
+        </Step>
+      </InputDisabledProvider>
     </Back>
   );
 }
@@ -798,24 +833,10 @@ const fullFlowRoutes = fullFlow.route({
       <Model
         {...props}
         back={() => to.authAsk(props)}
-        onSubmit={model =>
-          to.testConnection({
-            ...props,
-            model,
-          })
-        }
-      />
-    );
-  },
-  testConnection: to => props => {
-    return (
-      <TestConnection
-        {...props}
-        back={() => to.model(props)}
-        errorNav={() => to.baseUrl(props)}
-        onSubmit={metadata =>
+        onSubmit={({ model, metadata }) =>
           to.nickname({
             ...props,
+            model,
             metadata,
           })
         }
@@ -855,10 +876,7 @@ export function FullAddModelFlow({
     </errorContext.Provider>
   );
 }
-type CustomModelFlowRouteData = Pick<
-  FullFlowRouteData,
-  "model" | "testConnection" | "nickname" | "context"
->;
+type CustomModelFlowRouteData = Pick<FullFlowRouteData, "model" | "nickname" | "context">;
 const customModelFlow = router<CustomModelFlowRouteData>();
 const customModelFlowRoutes = customModelFlow.route({
   model: to => props => {
@@ -866,24 +884,10 @@ const customModelFlowRoutes = customModelFlow.route({
       <Model
         {...props}
         back={() => props.cancel()}
-        onSubmit={model =>
-          to.testConnection({
-            ...props,
-            model,
-          })
-        }
-      />
-    );
-  },
-  testConnection: to => props => {
-    return (
-      <TestConnection
-        {...props}
-        back={() => to.model(props)}
-        errorNav={() => to.model(props)}
-        onSubmit={metadata =>
+        onSubmit={({ model, metadata }) =>
           to.nickname({
             ...props,
+            model,
             metadata,
           })
         }
@@ -1063,7 +1067,6 @@ type CustomAutofixFlowRouteData = Pick<
   | "codexOAuth"
   | "postAuth"
   | "model"
-  | "testConnection"
   | "context"
 >;
 const customAutofixFlow = router<CustomAutofixFlowRouteData>();
@@ -1086,24 +1089,10 @@ const customAutofixRoutes = customAutofixFlow.route({
       <Model
         {...props}
         back={() => props.cancel()}
-        onSubmit={model =>
-          to.testConnection({
-            ...props,
-            model,
-          })
-        }
-      />
-    );
-  },
-  testConnection: to => props => {
-    return (
-      <TestConnection
-        {...props}
-        back={() => to.model(props)}
-        errorNav={() => to.model(props)}
-        onSubmit={metadata =>
+        onSubmit={({ model, metadata }) =>
           to.context({
             ...props,
+            model,
             nickname: "custom-autofix",
             metadata,
           })
@@ -1246,6 +1235,18 @@ function Step<T>(props: AddModelStep<T>) {
           </Span>
         </TerminalFlex>
       )}
+      {props.footer && (
+        <TerminalFlex
+          style={{
+            flexDirection: "column",
+            width: "100%",
+            minWidth: 0,
+            maxWidth: 80,
+          }}
+        >
+          {props.footer}
+        </TerminalFlex>
+      )}
     </TerminalFlex>
   );
 }
@@ -1267,16 +1268,14 @@ type MinConnectArgs = {
   baseUrl: string;
   config: Config | null;
 };
-async function testConnection({
-  model,
-  auth,
-  baseUrl,
-  config,
-}: MinConnectArgs): Promise<TestConnectionResult> {
+async function testConnection(
+  { model, auth, baseUrl, config }: MinConnectArgs,
+  signal: AbortSignal,
+): Promise<TestConnectionResult> {
   try {
     const provider = providerForBaseUrl(baseUrl);
     if (provider?.type === "codex") {
-      const configuredModel = provider.models.find(candidate => candidate.model === model);
+      const configuredModel = CODEX_PROVIDER.models.find(candidate => candidate.model === model);
       return {
         valid: true,
         metadata: {
@@ -1301,16 +1300,19 @@ async function testConnection({
       baseUrl,
       apiKey,
     });
-    const testPromise = client.chat.completions.create({
-      model,
-      messages: [
-        {
-          role: "user",
-          content: "Respond with the word 'hi' and only the word 'hi'",
-        },
-      ],
-    });
-    const metadataPromise = fetchModelMetadata(client, model);
+    const testPromise = client.chat.completions.create(
+      {
+        model,
+        messages: [
+          {
+            role: "user",
+            content: "Respond with the word 'hi' and only the word 'hi'",
+          },
+        ],
+      },
+      { signal },
+    );
+    const metadataPromise = fetchModelMetadata(client, model, signal);
     const [response, metadata] = await Promise.all([testPromise, metadataPromise]);
     if (response.usage) {
       trackTokens(model, "input", response.usage.prompt_tokens);
@@ -1321,16 +1323,21 @@ async function testConnection({
       metadata,
     };
   } catch (e) {
-    logger.error("verbose", e);
+    if (!signal.aborted) logger.error("verbose", e);
     return {
       valid: false,
     };
   }
 }
-async function fetchModelMetadata(client: OpenAI, model: string): Promise<ModelMetadata> {
+async function fetchModelMetadata(
+  client: OpenAI,
+  model: string,
+  signal: AbortSignal,
+): Promise<ModelMetadata> {
   try {
     const models = await client.models.list({
       timeout: 3000,
+      signal,
     });
     const modelInfo = models.data.find(m => m.id === model) as
       | (OpenAI.Models.Model & {
