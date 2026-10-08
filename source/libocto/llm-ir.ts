@@ -499,13 +499,11 @@ type PreLoweredTrajectory<
 };
 
 /*
- * One level lowered to built-in roles by the client's conversion pass. Nested trajectories
- * still carry their children's raw IR, including extensions. Recursive downconversion turns
- * this into PreLoweredIR, which contains no extensions at any depth.
+ * Built-in output of the client's extension pass. Trajectories never enter this pass:
+ * libocto preserves them and recursively converts their child histories itself.
  */
 export type ShallowLoweredIR<A extends Agent<any, any, any>> =
   | CheckpointedIR<A["tools"]>
-  | RawTrajectories<A["agents"], A["tools"]>
   | ToolSubagentInvoke<A["tools"], Extract<keyof A["agents"], string>>
   | ([IsPermissioned<A>] extends [true] ? ToolRejectMessage<A["tools"]> : never);
 
@@ -545,16 +543,16 @@ type DescendantMessages<Agents extends AgentDirectory> = DescendantShallowIR<Age
     | ToolSubagentInvoke<InspectionTools, string>
   >;
 
-export type Lower<A extends Agent<any, any, any>> = IRConversion<
+// Client conversion excludes trajectories on both sides. No factory, brand, or
+// trajectory-specific pairing logic is needed in extension-lowering functions.
+export type NonTrajectoryIR<A extends Agent<any, any, any>> = Exclude<
   TreeIR<A>,
-  | ShallowLoweredIR<A>
-  | DescendantMessages<A["agents"]>
-  | (DescendantShallowIR<A["agents"]> & {
-      role: "subagent-trajectory";
-      subagent: string;
-      toolCall: ToolCall<InspectionTools>;
-      ir: Array<TreeIR<A>>;
-    })
+  { role: "subagent-trajectory" }
+>;
+
+export type Lower<A extends Agent<any, any, any>> = IRConversion<
+  NonTrajectoryIR<A>,
+  ShallowLoweredIR<A> | DescendantMessages<A["agents"]>
 >;
 
 export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
@@ -565,7 +563,7 @@ export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
       role: "subagent-trajectory";
       subagent: string;
       toolCall: ToolCall<InspectionTools>;
-      ir: Array<{ [K in keyof RecursiveLowered<A>]: RecursiveLowered<A>[K] }>;
+      ir: Array<IRShape<RecursiveLowered<A>>>;
     })
 >;
 

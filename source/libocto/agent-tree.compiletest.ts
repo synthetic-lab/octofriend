@@ -4,6 +4,7 @@ import type {
   AgentExtra,
   AgentIR,
   TreeIR,
+  NonTrajectoryIR,
   CompilerReadyIR,
   RecursiveLowered,
   ShallowLoweredIR,
@@ -16,6 +17,7 @@ import type {
 } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
 import { downconvert, lower } from "./ir-operations.ts";
+import type { ActiveHistory } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { ok } from "./result.ts";
@@ -121,9 +123,9 @@ const none: TrajectoryParams<Single, null>["subagentPrompts"] = {};
 type _extraHasNote = Expect<Equal<AgentExtra<Root>["role"], "note">>;
 type _noExtra = Expect<Equal<AgentExtra<Single>, never>>;
 
-// The client's extension pass handles every agent's extras, not just the root's. Trajectory
-// legs pass through with their insides still raw; libocto calls the same pass on each nested
-// history, so the input and both sides of the output pairs cover the whole tree.
+// The client's extension pass handles every agent's extras, not just the root's. Libocto
+// handles trajectory wrappers itself and sends their contents to the same callback, so the
+// callback covers the whole tree but never receives or returns a trajectory.
 const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   const out: Array<Lower<Root>> = [];
   for (const original of irs) {
@@ -139,7 +141,7 @@ const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   return out;
 };
 
-type _lowerOriginal = Expect<Equal<Lower<Root>["original"], TreeIR<Root>>>;
+type _lowerOriginal = Expect<Equal<Lower<Root>["original"], NonTrajectoryIR<Root>>>;
 type _recursiveOriginal = Expect<Equal<RecursiveLowered<Root>["original"], TreeIR<Root>>>;
 
 // The inspection bounds are intersections, so check the converted unions by assignability
@@ -169,12 +171,22 @@ function inspectConversionTypes(
   raw: Array<AgentIR<Root>>,
   shallow: Array<Lower<Root>>,
   recursive: Array<RecursiveLowered<Root>>,
+  trajectory: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
+  extra: AgentExtra<Root>,
 ) {
   // @ts-expect-error Final lowering requires paired IR, not bare history.
   lower<Root>(raw);
-  // @ts-expect-error A shallow trajectory may still contain raw child IR.
-  lower<Root>(shallow);
+  // Client output contains no trajectories, so it already fits recursive lowering.
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(shallow));
   expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive));
+  // @ts-expect-error Raw child histories still need recursive conversion.
+  lower<Root>([{ original: trajectory, converted: trajectory }]);
+  // @ts-expect-error The client callback cannot receive trajectories.
+  pass([trajectory]);
+  // @ts-expect-error Nor can it manufacture trajectories from custom IR.
+  expectType<Lower<Root>>({ original: extra, converted: trajectory });
+  // @ts-expect-error Even trajectory-to-trajectory pairs are owned by libocto, not clients.
+  expectType<Lower<Root>>({ original: trajectory, converted: trajectory });
 }
 
 function inspectGenericChildLowering<A extends Agent<any, any, any>>(
@@ -204,7 +216,7 @@ function inspectTreeInput(
   parentExtra: AgentExtra<Root>,
 ) {
   expectType<TreeIR<ConversionRoot>>(childIR);
-  expectType<Array<Lower<ConversionRoot>>>(treePass([childIR]));
+  expectType<Array<Lower<ConversionRoot>>>(treePass([childOutput]));
   expectType<Array<RecursiveLowered<ConversionRoot>>>(
     downconvert<ConversionRoot>(treePass)([childIR]),
   );
@@ -221,7 +233,7 @@ function inspectTreeInput(
 type _treeInput = Expect<
   Equal<
     Parameters<TrajectoryParams<ConversionRoot, null>["lowerMessages"]>[0],
-    Array<TreeIR<ConversionRoot>>
+    Array<NonTrajectoryIR<ConversionRoot>>
   >
 >;
 type _childTools = Expect<
@@ -270,6 +282,36 @@ type _descendantTools = Expect<
 
 void inspectConversionTypes;
 void inspectGenericChildLowering;
+
+// The active location preserves the same agent/IR/scope correlation as message events.
+function inspectActiveHistory(location: ActiveHistory<Root>) {
+  if (location.root) {
+    expectType<Root>(location.agent);
+    expectType<Array<AgentIR<Root>>>(location.history);
+    // @ts-expect-error The root has no containing trajectory.
+    location.scope;
+    return;
+  }
+  expectType<readonly { subagent: string; toolCallId: string }[]>(location.scope.path);
+  expectType<Extract<AgentIR<Root>, { subagent: "research" }>>(location.scope.toplevelSubagentIR);
+  if (location.subagent === "research") {
+    expectType<typeof _research>(location.agent);
+    expectType<Array<AgentIR<typeof _research>>>(location.history);
+    expectType<Extract<AgentIR<Root>, { subagent: "research" }>>(location.scope.parentSubagentIR);
+    return;
+  }
+  expectType<typeof _grandchild>(location.agent);
+  expectType<Array<AgentIR<typeof _grandchild>>>(location.history);
+  expectType<Extract<AgentIR<typeof _research>, { subagent: "grandchild" }>>(
+    location.scope.parentSubagentIR,
+  );
+}
+
+type _leafActiveHistory = Expect<
+  Equal<ActiveHistory<Single>, { root: true } & { agent: Single; history: Array<AgentIR<Single>> }>
+>;
+
+void inspectActiveHistory;
 
 // Message events preserve each active arc's IR universe. Every non-root event points at
 // both the immediate parent trajectory and the root-history trajectory that contains it.

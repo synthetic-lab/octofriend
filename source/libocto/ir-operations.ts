@@ -1,30 +1,88 @@
 import { answeredToolCallId } from "./llm-ir.ts";
 import type {
   Agent,
+  AgentIR,
+  AgentTrajectory,
+  AllTrajectories,
   TreeIR,
+  NonTrajectoryIR,
   Lower,
   CompilerReadyIR,
   RecursiveLowered,
   PreLoweredIR,
 } from "./llm-ir.ts";
 import type { ToolCall } from "./tool-def.ts";
+import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
 
-// Every converted item retains its original, including recursively converted child histories.
+// Temporary references derived from the IR, never a saved execution frame. Each named child
+// retains its own agent/history types and the raw objects needed by scoped append events.
+type ChildHistory<
+  Root extends Agent<any, any, any>,
+  Parent extends Agent<any, any, any>,
+  Name extends keyof Parent["agents"] & string,
+> = ScopeSubagent<Name> & {
+  agent: Parent["agents"][Name];
+  history: Array<AgentIR<Parent["agents"][Name]>>;
+  scope: {
+    path: readonly ScopeHop[];
+    parentSubagentIR: AgentTrajectory<Parent["agents"], Name, Parent["tools"]>;
+    toplevelSubagentIR: AllTrajectories<Root["agents"], Root["tools"]>;
+  };
+};
+
+type DescendantHistories<
+  Root extends Agent<any, any, any>,
+  Parent extends Agent<any, any, any>,
+> = string extends keyof Parent["agents"]
+  ? ChildHistory<Root, Parent, keyof Parent["agents"] & string>
+  : {
+      [K in keyof Parent["agents"] & string]:
+        | ChildHistory<Root, Parent, K>
+        | DescendantHistories<Root, Parent["agents"][K]>;
+    }[keyof Parent["agents"] & string];
+
+export type ActiveHistory<A extends Agent<any, any, any>> =
+  | (ScopeRoot & { agent: A; history: Array<AgentIR<A>> })
+  | DescendantHistories<A, A>;
+
+// Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
+// pairs, retaining the live original while recursively converting a separate inspection view.
 export function downconvert<A extends Agent<any, any, any>>(
-  lowerExtras: (messages: Array<TreeIR<A>>) => Array<Lower<A>>,
+  lowerExtras: (messages: Array<NonTrajectoryIR<A>>) => Array<Lower<A>>,
 ): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
-  const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> =>
-    lowerExtras(messages).map(({ original, converted }) => {
-      if (converted.role !== "subagent-trajectory") return { original, converted };
-      return {
-        original,
-        converted: {
-          ...converted,
-          ir: convert(converted.ir),
-        } as PreLoweredIR<A>,
-      };
-    });
+  const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> => {
+    const output: Array<RecursiveLowered<A>> = [];
+    let pending: Array<NonTrajectoryIR<A>> = [];
+    const flush = () => {
+      if (pending.length === 0) return;
+      output.push(...lowerExtras(pending));
+      pending = [];
+    };
+
+    for (const original of messages) {
+      if (isRawTrajectory(original)) {
+        flush();
+        output.push({
+          original,
+          converted: {
+            ...original,
+            ir: convert(original.ir),
+          } as PreLoweredIR<A>,
+        });
+      } else {
+        // The role check excludes trajectories; TS cannot reduce Exclude over a generic tree.
+        pending.push(original as NonTrajectoryIR<A>);
+      }
+    }
+    flush();
+    return output;
+  };
   return convert;
+}
+
+// Only used on a raw TreeIR union, whose trajectory children belong to that same tree.
+function isRawTrajectory<IR>(ir: IR): ir is IR & { role: "subagent-trajectory"; ir: IR[] } {
+  return typeof ir === "object" && ir !== null && "role" in ir && ir.role === "subagent-trajectory";
 }
 
 // Inspect one history, not its descendants. Only answers after the latest assistant batch

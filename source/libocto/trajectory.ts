@@ -4,6 +4,7 @@ import type {
   AgentDirectory,
   AgentIR,
   TreeIR,
+  NonTrajectoryIR,
   AllToolsAcrossTree,
   Lower,
   CompilerReadyIR,
@@ -281,10 +282,10 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   // One loader for every tool in the tree (root + descendants), passed once: the runner
   // filters each arc's subset from the merged map as it drives that arc's agent.
   loadTools: (signal: AbortSignal) => Promise<Partial<AllToolsAcrossTree<A>>>;
-  // The client's extension pass handles every agent's IR in the tree, including descendant
-  // extras. Trajectory legs retain their raw insides; libocto calls this same pass recursively
-  // on each child history, then applies lower() over the extension-free result.
-  lowerMessages: (messages: Array<TreeIR<A>>) => Array<Lower<A>>;
+  // The client's extension pass handles non-trajectory IR from every agent in the tree.
+  // Libocto sends contiguous runs to this callback and handles trajectories and recursion
+  // itself. Neither callback inputs nor outputs can contain subagent trajectories.
+  lowerMessages: (messages: Array<NonTrajectoryIR<A>>) => Array<Lower<A>>;
   // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
   subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window

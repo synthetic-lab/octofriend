@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import type { AgentIR, Content, CompilerReadyIR, Lower } from "./llm-ir.ts";
+import type { AgentIR, Content, CompilerReadyIR, Lower, NonTrajectoryIR } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
 import { downconvert, isTrajectoryRunning, lower, pendingToolCalls } from "./ir-operations.ts";
 import { ok } from "./result.ts";
