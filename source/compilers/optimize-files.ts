@@ -1,9 +1,9 @@
+import { defineLower } from "../libocto/define-lower.ts";
 import type {
-  Agent,
-  Content,
+  CheckpointedIR,
   IRConversion,
-  PermissionedBrand,
-  ShallowLoweredIR,
+  ToolRejectMessage,
+  ToolSubagentInvoke,
 } from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
@@ -11,41 +11,37 @@ import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import type { FileMutateIR, FileReadIR } from "../tools/common.ts";
 
-export type FileOptimizerInputIR =
-  | ShallowLoweredIR<Agent<any, any, any> & PermissionedBrand>
+type Output<Subagent extends string> =
+  | CheckpointedIR<any>
+  | ToolRejectMessage<any>
+  | ToolSubagentInvoke<any, Subagent>;
+
+type Input<Subagent extends string> =
+  | Output<Subagent>
   | FileReadIR<ToolCall<any>>
   | FileMutateIR<ToolCall<any>>;
 
-// Only file IRs are rewritten; every other input keeps its exact type. In particular, this
-// does not widen child tool names or invocation names to those of an abstract agent.
-type OptimizedFileIR<IR> = IR extends FileReadIR<infer Call> | FileMutateIR<infer Call>
-  ? Content & { role: "tool-output"; toolCall: Call }
-  : IR;
+export const optimizeFiles = defineLower(
+  <Subagent extends string>(
+    messages: Array<Input<Subagent>>,
+    modalities?: MultimodalConfig,
+  ): Array<IRConversion<Input<Subagent>, Output<Subagent>>> => {
+    const output: Array<IRConversion<Input<Subagent>, Output<Subagent>>> = [];
+    const seenPaths = new Set<string>();
 
-export function optimizeFiles<IR extends FileOptimizerInputIR>(
-  messages: IR[],
-  modalities?: MultimodalConfig,
-): Array<IRConversion<IR, OptimizedFileIR<IR>>> {
-  const output: Array<IRConversion<IR, OptimizedFileIR<IR>>> = [];
-  const seenPaths = new Set<string>();
+    for (const original of [...messages].reverse()) {
+      output.push({ original, converted: optimizeFileIR(original, seenPaths, modalities) });
+    }
 
-  for (const original of [...messages].reverse()) {
-    output.push({ original, converted: optimizeFileIR(original, seenPaths, modalities) });
-  }
+    return output.reverse();
+  },
+);
 
-  return output.reverse();
-}
-
-function optimizeFileIR<IR extends FileOptimizerInputIR>(
-  ir: IR,
+function optimizeFileIR<Subagent extends string>(
+  ir: Input<Subagent>,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): OptimizedFileIR<IR>;
-function optimizeFileIR(
-  ir: FileOptimizerInputIR,
-  seenPaths: Set<string>,
-  modalities?: MultimodalConfig,
-): ShallowLoweredIR<Agent<any, any, any> & PermissionedBrand> {
+): Output<Subagent> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);

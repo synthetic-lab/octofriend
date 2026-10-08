@@ -6,7 +6,7 @@ import type {
   AgentExtra,
   AgentIR,
   TreeIR,
-  NonTrajectoryIR,
+  LowerInputIR,
   CompilerReadyIR,
   RecursiveLowered,
   ShallowLoweredIR,
@@ -96,12 +96,13 @@ const fileRoot = definePermissionedAgent({
   agents: { child: fileChild },
 });
 
-// The production-style call stays an ordinary function, with no brands, helpers, casts,
-// explicit generic arguments, or assumptions that the root is a leaf.
-const filePass: TrajectoryParams<typeof fileRoot, null>["lowerMessages"] = messages =>
+// Accept disjoint parent/child inputs without requiring the optimizer's declared output
+// universe to narrow to this particular tree (which declares reads but not mutations).
+function optimizeTreeFiles(messages: Array<LowerInputIR<typeof fileRoot>>) {
   optimizeFiles(messages);
+}
 
-void filePass;
+void optimizeTreeFiles;
 
 // Subagent names span the whole tree, not one level's directory.
 type _names = Expect<Equal<AllSubagentNames<Root>, "research" | "grandchild">>;
@@ -160,7 +161,7 @@ const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   return out;
 };
 
-type _lowerOriginal = Expect<Equal<Lower<Root>["original"], NonTrajectoryIR<Root>>>;
+type _lowerOriginal = Expect<Equal<Lower<Root>["original"], LowerInputIR<Root>>>;
 type _recursiveOriginal = Expect<Equal<RecursiveLowered<Root>["original"], TreeIR<Root>>>;
 
 // The inspection bounds are intersections, so check the converted unions by assignability
@@ -252,7 +253,7 @@ function inspectTreeInput(
 type _treeInput = Expect<
   Equal<
     Parameters<TrajectoryParams<ConversionRoot, null>["lowerMessages"]>[0],
-    Array<NonTrajectoryIR<ConversionRoot>>
+    Array<LowerInputIR<ConversionRoot>>
   >
 >;
 type _childTools = Expect<

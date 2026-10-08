@@ -545,13 +545,13 @@ type DescendantMessages<Agents extends AgentDirectory> = DescendantShallowIR<Age
 
 // Client conversion excludes trajectories on both sides. No factory, brand, or
 // trajectory-specific pairing logic is needed in extension-lowering functions.
-export type NonTrajectoryIR<A extends Agent<any, any, any>> = Exclude<
+export type LowerInputIR<A extends Agent<any, any, any>> = Exclude<
   TreeIR<A>,
   { role: "subagent-trajectory" }
 >;
 
 export type Lower<A extends Agent<any, any, any>> = IRConversion<
-  NonTrajectoryIR<A>,
+  LowerInputIR<A>,
   ShallowLoweredIR<A> | DescendantMessages<A["agents"]>
 >;
 

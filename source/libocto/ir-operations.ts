@@ -5,7 +5,7 @@ import type {
   AgentTrajectory,
   AllTrajectories,
   TreeIR,
-  NonTrajectoryIR,
+  LowerInputIR,
   Lower,
   CompilerReadyIR,
   RecursiveLowered,
@@ -48,11 +48,11 @@ export type ActiveHistory<A extends Agent<any, any, any>> =
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
 // pairs, retaining the live original while recursively converting a separate inspection view.
 export function downconvert<A extends Agent<any, any, any>>(
-  lowerExtras: (messages: Array<NonTrajectoryIR<A>>) => Array<Lower<A>>,
+  lowerExtras: (messages: Array<LowerInputIR<A>>) => Array<Lower<A>>,
 ): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
   const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> => {
     const output: Array<RecursiveLowered<A>> = [];
-    let pending: Array<NonTrajectoryIR<A>> = [];
+    let pending: Array<LowerInputIR<A>> = [];
     const flush = () => {
       if (pending.length === 0) return;
       output.push(...lowerExtras(pending));
@@ -71,7 +71,7 @@ export function downconvert<A extends Agent<any, any, any>>(
         });
       } else {
         // The role check excludes trajectories; TS cannot reduce Exclude over a generic tree.
-        pending.push(original as NonTrajectoryIR<A>);
+        pending.push(original as LowerInputIR<A>);
       }
     }
     flush();
