@@ -11,6 +11,7 @@ import { getCodexOAuthTokens } from "./codex-oauth.ts";
 import { serializeModelJson, tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { isDeepStrictEqual } from "node:util";
 import { registry } from "antipattern";
+import { errorToString } from "./libocto/result.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 const CONFIG_DIR = path.join(os.homedir(), ".config/octofriend");
@@ -775,11 +776,24 @@ export async function writeKeyForModel(model: { baseUrl: string }, apiKey: strin
   });
 }
 
+function parseJson5(content: string, description: string): any {
+  try {
+    return json5.parse(content);
+  } catch (error) {
+    throw new Error(`Invalid JSON5 in ${description}: ${errorToString(error)}`);
+  }
+}
+
 async function readKeysFromDisk() {
   const exists = await fileExists(KEY_FILE);
   if (!exists) return {};
   const keyFile = await fs.readFile(KEY_FILE, "utf8");
-  return KeyConfigSchema.slice(json5.parse(keyFile));
+  const parsed = parseJson5(keyFile, `Octo keys file ${KEY_FILE}`);
+  try {
+    return KeyConfigSchema.slice(parsed);
+  } catch (error) {
+    throw new Error(`Invalid Octo keys file ${KEY_FILE}: ${errorToString(error)}`);
+  }
 }
 
 export const configDeps = registry({
@@ -831,10 +845,14 @@ function modelBaseUrl(model: ModelConfig): string | null {
 
 export async function readConfig(filePath: string): Promise<Config> {
   const file = await fs.readFile(filePath, "utf8");
-  const parsed = json5.parse(file.trim());
+  const parsed = parseJson5(file.trim(), `Octo config file ${filePath}`);
   const fileVersion: number = parsed["configVersion"] ?? 0;
-  const raw = migrateConfig(parsed);
-  const config = ConfigSchema.slice(raw);
+  let config: Config;
+  try {
+    config = ConfigSchema.slice(migrateConfig(parsed));
+  } catch (error) {
+    throw new Error(`Invalid Octo config file ${filePath}: ${errorToString(error)}`);
+  }
   if (fileVersion < CURRENT_CONFIG_VERSION) {
     await writeConfig(config, filePath);
   }
