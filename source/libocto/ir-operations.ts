@@ -1,6 +1,7 @@
 import { answeredToolCallId } from "./llm-ir.ts";
 import type {
   Agent,
+  AgentDirectory,
   AgentIR,
   AgentTrajectory,
   AllTrajectories,
@@ -45,6 +46,62 @@ export type ActiveHistory<A extends Agent<any, any, any>> =
   | (ScopeRoot & { agent: A; history: Array<AgentIR<A>> })
   | DescendantHistories<A, A>;
 
+// Inspect a recursively downconverted view, but return only references into the live raw tree.
+// The result is temporary: call again after appending rather than saving execution frames.
+export function activeHistory<A extends Agent<any, any, any>>(
+  agent: A,
+  history: Array<AgentIR<A>>,
+  converted: readonly RecursiveLowered<A>[],
+): ActiveHistory<A> {
+  let currentAgent: { agents: AgentDirectory } = agent;
+  let currentHistory: Array<TreeIR<A>> = history;
+  let inspected = converted;
+  let scope:
+    | {
+        path: ScopeHop[];
+        parentSubagentIR: TreeIR<A>;
+        toplevelSubagentIR: TreeIR<A>;
+      }
+    | undefined;
+
+  while (true) {
+    const tail = inspected.at(-1);
+    if (tail?.converted.role !== "subagent-trajectory" || !isTrajectoryRunning(tail.converted)) {
+      break;
+    }
+
+    const original = tail.original;
+    // downconvert alone creates trajectory pairs, so this is a raw trajectory by construction.
+    if (!isRawTrajectory(original))
+      throw new Error("A converted trajectory must retain its raw original");
+    const child = currentAgent.agents[original.subagent];
+    if (child == null) throw new Error(`Unknown subagent: ${original.subagent}`);
+    scope = {
+      path: [
+        ...(scope?.path ?? []),
+        { subagent: original.subagent, toolCallId: original.toolCall.toolCallId },
+      ],
+      parentSubagentIR: original,
+      toplevelSubagentIR: scope?.toplevelSubagentIR ?? original,
+    };
+    currentAgent = child;
+    currentHistory = original.ir;
+    inspected = tail.converted.ir;
+  }
+
+  if (scope == null) return { root: true, agent, history };
+
+  // Each descent selects the agent and raw history from the same named trajectory. TS cannot
+  // retain that correlation through a dynamic directory lookup, but no child is retyped as root.
+  return {
+    root: false,
+    subagent: scope.path[scope.path.length - 1].subagent,
+    scope,
+    agent: currentAgent,
+    history: currentHistory,
+  } as ActiveHistory<A>;
+}
+
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
 // pairs, retaining the live original while recursively converting a separate inspection view.
 export function downconvert<A extends Agent<any, any, any>>(
@@ -81,7 +138,12 @@ export function downconvert<A extends Agent<any, any, any>>(
 }
 
 // Only used on a raw TreeIR union, whose trajectory children belong to that same tree.
-function isRawTrajectory<IR>(ir: IR): ir is IR & { role: "subagent-trajectory"; ir: IR[] } {
+function isRawTrajectory<IR>(ir: IR): ir is IR & {
+  role: "subagent-trajectory";
+  subagent: string;
+  toolCall: { toolCallId: string };
+  ir: IR[];
+} {
   return typeof ir === "object" && ir !== null && "role" in ir && ir.role === "subagent-trajectory";
 }
 

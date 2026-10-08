@@ -2,7 +2,13 @@ import { describe, expect, it } from "bun:test";
 import { t } from "structural";
 import type { AgentIR, Content, CompilerReadyIR, LowerOutputIR, TreeIR } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
-import { downconvert, isTrajectoryRunning, lower, pendingToolCalls } from "./ir-operations.ts";
+import {
+  activeHistory,
+  downconvert,
+  isTrajectoryRunning,
+  lower,
+  pendingToolCalls,
+} from "./ir-operations.ts";
 import { ok } from "./result.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import type { ToolCall } from "./tool-def.ts";
@@ -252,6 +258,98 @@ function contentToText(content: Content["content"]): string {
 function roles(messages: TestLoweredIR[]): string[] {
   return messages.map(({ converted }) => converted.role);
 }
+
+describe("activeHistory", () => {
+  it("selects the root for empty history or an ordinary tail", () => {
+    const empty: TestIR[] = [];
+    expect(activeHistory(_testAgent, empty, convert(empty))).toEqual({
+      root: true,
+      agent: _testAgent,
+      history: empty,
+    });
+
+    const child = subagentTrajectory([], searchCall("child"));
+    const history: TestIR[] = [child, userMessage("a later turn")];
+    const location = activeHistory(_testAgent, history, convert(history));
+    expect(location.root).toBe(true);
+    expect(location.history === history).toBe(true);
+    expect(history[0]).toBe(child);
+  });
+
+  it("selects an empty child and returns its live history and trajectory", () => {
+    const child = subagentTrajectory([], searchCall("child"));
+    const history: TestIR[] = [child];
+    const location = activeHistory(_testAgent, history, convert(history));
+    if (location.root || location.subagent !== "research") throw new Error("Expected research");
+    expect(location.agent).toBe(_researchAgent);
+    expect(location.history).toBe(child.ir);
+    expect(location.scope.parentSubagentIR).toBe(child);
+    expect(location.scope.toplevelSubagentIR).toBe(child);
+    expect(location.scope.path).toEqual([{ subagent: "research", toolCallId: "child" }]);
+    expect(child.ir).toEqual([]);
+    location.history.push(researchUserMessage("go"));
+    expect(child.ir).toEqual([researchUserMessage("go")]);
+    expect(history).toEqual([child]);
+  });
+
+  it("walks to the deepest running child, then returns to each parent as children finish", () => {
+    const nested: Extract<ResearchIR, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "grandchild",
+      toolCall: searchCall("nested"),
+      ir: [grandchildUserMessage("go")],
+    };
+    const child = subagentTrajectory([nested], searchCall("outer"));
+    const history: TestIR[] = [child];
+    const deepest = activeHistory(_testAgent, history, convert(history));
+    if (deepest.root || deepest.subagent !== "grandchild") throw new Error("Expected grandchild");
+    expect(deepest.agent).toBe(_grandchildAgent);
+    expect(deepest.history).toBe(nested.ir);
+    expect(deepest.scope.parentSubagentIR).toBe(nested);
+    expect(deepest.scope.toplevelSubagentIR).toBe(child);
+    expect(deepest.scope.path).toEqual([
+      { subagent: "research", toolCallId: "outer" },
+      { subagent: "grandchild", toolCallId: "nested" },
+    ]);
+    deepest.history.push({
+      role: "assistant",
+      content: "finished nested work",
+      toolCalls: [],
+      usage: { input: { cached: 0, uncached: 0, total: 0 }, output: 0 },
+    });
+
+    const parent = activeHistory(_testAgent, history, convert(history));
+    if (parent.root || parent.subagent !== "research") throw new Error("Expected research");
+    expect(parent.history).toBe(child.ir);
+    expect(parent.scope.parentSubagentIR).toBe(child);
+    expect(parent.scope.path).toEqual([{ subagent: "research", toolCallId: "outer" }]);
+    parent.history.push(researchAssistantResponse("finished outer work"));
+
+    const root = activeHistory(_testAgent, history, convert(history));
+    expect(root.root).toBe(true);
+    expect(root.history === history).toBe(true);
+    expect(child.ir[0]).toBe(nested);
+    expect(history).toHaveLength(1);
+  });
+
+  it("uses paired originals rather than matching converted and raw array positions", () => {
+    const before = userMessage("expand");
+    const child = subagentTrajectory([researchUserMessage("go")], searchCall("child"));
+    const history: TestIR[] = [before, child];
+    const expanded = downconvert<TestAgent>(messages =>
+      messages.flatMap(original => {
+        const pair = { original, converted: original };
+        return original === before ? [pair, pair] : [pair];
+      }),
+    )(history);
+    expect(expanded).toHaveLength(3);
+    const location = activeHistory(_testAgent, history, expanded);
+    if (location.root) throw new Error("Expected child");
+    expect(location.history === child.ir).toBe(true);
+    expect(location.scope.parentSubagentIR === child).toBe(true);
+    expect(history).toEqual([before, child]);
+  });
+});
 
 describe("pendingToolCalls", () => {
   it("preserves call order and returns the original unanswered calls", () => {
@@ -525,6 +623,14 @@ describe("downconvert", () => {
     expect(outer.ir[0]).toBe(nested);
     expect(nested.ir[0]).toBe(result);
     expect(result.role).toBe("report-result");
+
+    // The raw extension looks unchanged, but its converted terminal error closes the grandchild.
+    const location = activeHistory(_root, raw, [pair]);
+    if (location.root || location.subagent !== "research") throw new Error("Expected research");
+    expect(location.agent).toBe(child);
+    expect(location.history).toBe(outer.ir);
+    expect(location.scope.parentSubagentIR).toBe(outer);
+    expect(location.scope.toplevelSubagentIR).toBe(outer);
   });
 });
 
