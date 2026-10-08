@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { lowerOctoToLlmIR } from "./lower-octo.ts";
-import type { Lower } from "../libocto/llm-ir.ts";
+import type { LowerOutputIR } from "../libocto/llm-ir.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
@@ -48,7 +48,7 @@ const VISION: MultimodalConfig = {
   },
 };
 
-function unansweredToolCallIds(messages: Array<Lower<typeof octoAgent>>): string[] {
+function unansweredToolCallIds(messages: Array<LowerOutputIR<typeof octoAgent>>): string[] {
   const requested: string[] = [];
   const answered = new Set<string>();
   for (const { converted } of messages) {

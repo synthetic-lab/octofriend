@@ -6,7 +6,7 @@ import type {
   AllTrajectories,
   TreeIR,
   LowerInputIR,
-  Lower,
+  LowerOutputIR,
   CompilerReadyIR,
   RecursiveLowered,
   PreLoweredIR,
@@ -48,7 +48,7 @@ export type ActiveHistory<A extends Agent<any, any, any>> =
 // Clients receive only contiguous non-trajectory runs. Libocto alone constructs trajectory
 // pairs, retaining the live original while recursively converting a separate inspection view.
 export function downconvert<A extends Agent<any, any, any>>(
-  lowerExtras: (messages: Array<LowerInputIR<A>>) => Array<Lower<A>>,
+  lowerExtras: (messages: Array<LowerInputIR<A>>) => Array<LowerOutputIR<A>>,
 ): (messages: Array<TreeIR<A>>) => Array<RecursiveLowered<A>> {
   const convert = (messages: Array<TreeIR<A>>): Array<RecursiveLowered<A>> => {
     const output: Array<RecursiveLowered<A>> = [];

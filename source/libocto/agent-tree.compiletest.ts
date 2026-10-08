@@ -13,7 +13,7 @@ import type {
   LoweredIR,
   AllSubagentNames,
   AllToolsAcrossTree,
-  Lower,
+  LowerOutputIR,
   IRConversion,
   PreLoweredIR,
 } from "./llm-ir.ts";
@@ -147,7 +147,7 @@ type _noExtra = Expect<Equal<AgentExtra<Single>, never>>;
 // handles trajectory wrappers itself and sends their contents to the same callback, so the
 // callback covers the whole tree but never receives or returns a trajectory.
 const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
-  const out: Array<Lower<Root>> = [];
+  const out: Array<LowerOutputIR<Root>> = [];
   for (const original of irs) {
     if (original.role === "note") {
       out.push({
@@ -161,13 +161,13 @@ const pass: TrajectoryParams<Root, null>["lowerMessages"] = irs => {
   return out;
 };
 
-type _lowerOriginal = Expect<Equal<Lower<Root>["original"], LowerInputIR<Root>>>;
+type _lowerOriginal = Expect<Equal<LowerOutputIR<Root>["original"], LowerInputIR<Root>>>;
 type _recursiveOriginal = Expect<Equal<RecursiveLowered<Root>["original"], TreeIR<Root>>>;
 
 // The inspection bounds are intersections, so check the converted unions by assignability
 // in both directions rather than requiring TypeScript to normalize their representation.
 function inspectTreeConversions(
-  shallow: Lower<Root>["converted"],
+  shallow: LowerOutputIR<Root>["converted"],
   recursive: RecursiveLowered<Root>["converted"],
   ownShallow:
     | ShallowLoweredIR<Root>
@@ -189,7 +189,7 @@ type _leafCompilerPair = Expect<
 
 function inspectConversionTypes(
   raw: Array<AgentIR<Root>>,
-  shallow: Array<Lower<Root>>,
+  shallow: Array<LowerOutputIR<Root>>,
   recursive: Array<RecursiveLowered<Root>>,
   trajectory: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
   extra: AgentExtra<Root>,
@@ -204,9 +204,9 @@ function inspectConversionTypes(
   // @ts-expect-error The client callback cannot receive trajectories.
   pass([trajectory]);
   // @ts-expect-error Nor can it manufacture trajectories from custom IR.
-  expectType<Lower<Root>>({ original: extra, converted: trajectory });
+  expectType<LowerOutputIR<Root>>({ original: extra, converted: trajectory });
   // @ts-expect-error Even trajectory-to-trajectory pairs are owned by libocto, not clients.
-  expectType<Lower<Root>>({ original: trajectory, converted: trajectory });
+  expectType<LowerOutputIR<Root>>({ original: trajectory, converted: trajectory });
 }
 
 function inspectGenericChildLowering<A extends Agent<any, any, any>>(
@@ -236,11 +236,11 @@ function inspectTreeInput(
   parentExtra: AgentExtra<Root>,
 ) {
   expectType<TreeIR<ConversionRoot>>(childIR);
-  expectType<Array<Lower<ConversionRoot>>>(treePass([childOutput]));
+  expectType<Array<LowerOutputIR<ConversionRoot>>>(treePass([childOutput]));
   expectType<Array<RecursiveLowered<ConversionRoot>>>(
     downconvert<ConversionRoot>(treePass)([childIR]),
   );
-  expectType<Lower<ConversionRoot>>({ original: childOutput, converted: childOutput });
+  expectType<LowerOutputIR<ConversionRoot>>({ original: childOutput, converted: childOutput });
   expectType<RecursiveLowered<ConversionRoot>>({ original: childOutput, converted: childOutput });
   // @ts-expect-error A root's own history does not include descendant-only tool outputs.
   expectType<AgentIR<ConversionRoot>>(childOutput);
@@ -258,7 +258,10 @@ type _treeInput = Expect<
 >;
 type _childTools = Expect<
   Equal<
-    Extract<Lower<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"]["name"],
+    Extract<
+      LowerOutputIR<ConversionRoot>["converted"],
+      { role: "tool-output" }
+    >["toolCall"]["name"],
     "search" | "note" | "delegate"
   >
 >;
@@ -274,7 +277,7 @@ type _recursiveChildTools = Expect<
 type _childArguments = Expect<
   Equal<
     Extract<
-      Extract<Lower<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"],
+      Extract<LowerOutputIR<ConversionRoot>["converted"], { role: "tool-output" }>["toolCall"],
       { name: "search" }
     >["parsed"],
     Extract<ToolCall<Root["tools"]>, { name: "search" }>["parsed"]
@@ -282,7 +285,7 @@ type _childArguments = Expect<
 >;
 type _leafTreeIR = Expect<Equal<TreeIR<Single>, AgentIR<Single>>>;
 type _leafLower = Expect<
-  Equal<Lower<Single>, IRConversion<AgentIR<Single>, ShallowLoweredIR<Single>>>
+  Equal<LowerOutputIR<Single>, IRConversion<AgentIR<Single>, ShallowLoweredIR<Single>>>
 >;
 type _leafRecursive = Expect<
   Equal<RecursiveLowered<Single>, IRConversion<AgentIR<Single>, PreLoweredIR<Single>>>

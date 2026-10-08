@@ -550,7 +550,7 @@ export type LowerInputIR<A extends Agent<any, any, any>> = Exclude<
   { role: "subagent-trajectory" }
 >;
 
-export type Lower<A extends Agent<any, any, any>> = IRConversion<
+export type LowerOutputIR<A extends Agent<any, any, any>> = IRConversion<
   LowerInputIR<A>,
   ShallowLoweredIR<A> | DescendantMessages<A["agents"]>
 >;

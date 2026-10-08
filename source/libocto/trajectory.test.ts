@@ -12,7 +12,7 @@ import {
   type AgentIR,
   type AssistantMessage,
   type LoweredIR,
-  type Lower,
+  type LowerOutputIR,
   type UserMessage,
 } from "./llm-ir.ts";
 import {
@@ -254,7 +254,7 @@ function makeTrajectory(opts?: {
       runCompiler,
       subagentPrompts: { research: async () => "You are the research subagent." },
       lowerMessages: messages => {
-        const pairs: Array<Lower<TestAgent>> = [];
+        const pairs: Array<LowerOutputIR<TestAgent>> = [];
         for (const original of messages) {
           if (original.role === "shell-result") {
             pairs.push({

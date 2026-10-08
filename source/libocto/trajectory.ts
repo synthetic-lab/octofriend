@@ -6,7 +6,7 @@ import type {
   TreeIR,
   LowerInputIR,
   AllToolsAcrossTree,
-  Lower,
+  LowerOutputIR,
   CompilerReadyIR,
   IsPermissioned,
   LlmIR,
@@ -285,7 +285,7 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
   // itself. Neither callback inputs nor outputs can contain subagent trajectories.
-  lowerMessages: (messages: Array<LowerInputIR<A>>) => Array<Lower<A>>;
+  lowerMessages: (messages: Array<LowerInputIR<A>>) => Array<LowerOutputIR<A>>;
   // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
   subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window

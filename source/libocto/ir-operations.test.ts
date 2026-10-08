@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import type { AgentIR, Content, CompilerReadyIR, Lower, TreeIR } from "./llm-ir.ts";
+import type { AgentIR, Content, CompilerReadyIR, LowerOutputIR, TreeIR } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
 import { downconvert, isTrajectoryRunning, lower, pendingToolCalls } from "./ir-operations.ts";
 import { ok } from "./result.ts";
@@ -365,7 +365,7 @@ describe("downconvert", () => {
     const runs: Array<Array<TreeIR<TestAgent>>> = [];
     const convert = downconvert<TestAgent>(messages => {
       runs.push(messages);
-      const output: Array<Lower<TestAgent>> = [];
+      const output: Array<LowerOutputIR<TestAgent>> = [];
       for (const original of messages) {
         if (original === dropped) continue;
         output.push({ original, converted: original });
@@ -406,7 +406,7 @@ describe("downconvert", () => {
     const dropped = userMessage("drop");
     const expanded = userMessage("expand");
     const convert = downconvert<TestAgent>(messages => {
-      const pairs: Array<Lower<TestAgent>> = [];
+      const pairs: Array<LowerOutputIR<TestAgent>> = [];
       for (const original of messages) {
         if (original === dropped) continue;
         pairs.push(
@@ -477,7 +477,7 @@ describe("downconvert", () => {
     };
     const raw: Array<AgentIR<typeof root>> = [outer];
     const convert = downconvert<typeof root>(messages => {
-      const pairs: Array<Lower<typeof root>> = [];
+      const pairs: Array<LowerOutputIR<typeof root>> = [];
       for (const original of messages) {
         if (original.role !== "report-result") {
           pairs.push({ original, converted: original });
