@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { t } from "structural";
-import type { AgentIR, Content, CompilerReadyIR, Lower, NonTrajectoryIR } from "./llm-ir.ts";
+import type { AgentIR, Content, CompilerReadyIR, Lower, TreeIR } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
 import { downconvert, isTrajectoryRunning, lower, pendingToolCalls } from "./ir-operations.ts";
 import { ok } from "./result.ts";
@@ -352,6 +352,56 @@ describe("pendingToolCalls", () => {
 });
 
 describe("downconvert", () => {
+  it("keeps trajectories out of the callback and preserves run boundaries", () => {
+    const before = userMessage("expand");
+    const dropped = userMessage("drop");
+    const after = userMessage("after");
+    const childBefore = researchUserMessage("child before");
+    const childAfter = researchUserMessage("child after");
+    const deepest = grandchildUserMessage("deepest");
+    const nested = researchTrajectory([deepest], searchCall("nested"));
+    const child = subagentTrajectory([childBefore, nested, childAfter], searchCall("child"));
+    const empty = subagentTrajectory([], searchCall("empty"));
+    const runs: Array<Array<TreeIR<TestAgent>>> = [];
+    const convert = downconvert<TestAgent>(messages => {
+      runs.push(messages);
+      const output: Array<Lower<TestAgent>> = [];
+      for (const original of messages) {
+        if (original === dropped) continue;
+        output.push({ original, converted: original });
+        if (original === before) output.push({ original, converted: original });
+      }
+      return output;
+    });
+
+    const result = convert([before, dropped, child, empty, after]);
+    expect(runs.map(run => run.map(ir => ir.role))).toEqual([
+      ["user", "user"],
+      ["user"],
+      ["user"],
+      ["user"],
+      ["user"],
+    ]);
+    expect(runs[0][0]).toBe(before);
+    expect(runs[0][1]).toBe(dropped);
+    expect(runs[1][0]).toBe(childBefore);
+    expect(runs[2][0]).toBe(deepest);
+    expect(runs[3][0]).toBe(childAfter);
+    expect(runs[4][0]).toBe(after);
+    expect(runs.flat().map(ir => ir.role)).not.toContain("subagent-trajectory");
+    expect(result.map(pair => pair.original)).toEqual([before, before, child, empty, after]);
+    expect(result[2].original).toBe(child);
+    expect(result[3].original).toBe(empty);
+    const convertedChild = result[2].converted;
+    if (convertedChild.role !== "subagent-trajectory") throw new Error("Expected trajectory");
+    expect(convertedChild.ir.map(pair => pair.original)).toEqual([childBefore, nested, childAfter]);
+    expect(convertedChild.ir[1].original).toBe(nested);
+    expect(child.ir).toEqual([childBefore, nested, childAfter]);
+    expect(empty.ir).toEqual([]);
+    expect(convert([])).toEqual([]);
+    expect(runs).toHaveLength(5);
+  });
+
   it("preserves provenance when a client drops and expands messages", () => {
     const dropped = userMessage("drop");
     const expanded = userMessage("expand");

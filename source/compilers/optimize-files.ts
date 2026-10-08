@@ -1,37 +1,51 @@
-import type { Agent, IRConversion, ShallowLoweredIR } from "../libocto/llm-ir.ts";
+import type {
+  Agent,
+  Content,
+  IRConversion,
+  PermissionedBrand,
+  ShallowLoweredIR,
+} from "../libocto/llm-ir.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
 import type { MultimodalConfig } from "../providers.ts";
 import type { FileMutateIR, FileReadIR } from "../tools/common.ts";
 
-export type FileOptimizerInputIR<A extends Agent<any, any, any>> =
-  | ShallowLoweredIR<A>
-  | FileReadIR<ToolCall<A["tools"]>>
-  | FileMutateIR<ToolCall<A["tools"]>>;
+export type FileOptimizerInputIR =
+  | ShallowLoweredIR<Agent<any, any, any> & PermissionedBrand>
+  | FileReadIR<ToolCall<any>>
+  | FileMutateIR<ToolCall<any>>;
 
-export function optimizeFiles<
-  A extends Agent<any, any, any>,
-  OriginalIR extends FileOptimizerInputIR<A>,
->(
-  messages: OriginalIR[],
+// Only file IRs are rewritten; every other input keeps its exact type. In particular, this
+// does not widen child tool names or invocation names to those of an abstract agent.
+type OptimizedFileIR<IR> = IR extends FileReadIR<infer Call> | FileMutateIR<infer Call>
+  ? Content & { role: "tool-output"; toolCall: Call }
+  : IR;
+
+export function optimizeFiles<IR extends FileOptimizerInputIR>(
+  messages: IR[],
   modalities?: MultimodalConfig,
-): Array<IRConversion<OriginalIR, ShallowLoweredIR<A>>> {
-  const output: Array<IRConversion<OriginalIR, ShallowLoweredIR<A>>> = [];
+): Array<IRConversion<IR, OptimizedFileIR<IR>>> {
+  const output: Array<IRConversion<IR, OptimizedFileIR<IR>>> = [];
   const seenPaths = new Set<string>();
 
   for (const original of [...messages].reverse()) {
-    output.push({ original, converted: optimizeFileIR<A>(original, seenPaths, modalities) });
+    output.push({ original, converted: optimizeFileIR(original, seenPaths, modalities) });
   }
 
   return output.reverse();
 }
 
-function optimizeFileIR<A extends Agent<any, any, any>>(
-  ir: FileOptimizerInputIR<A>,
+function optimizeFileIR<IR extends FileOptimizerInputIR>(
+  ir: IR,
   seenPaths: Set<string>,
   modalities?: MultimodalConfig,
-): ShallowLoweredIR<A> {
+): OptimizedFileIR<IR>;
+function optimizeFileIR(
+  ir: FileOptimizerInputIR,
+  seenPaths: Set<string>,
+  modalities?: MultimodalConfig,
+): ShallowLoweredIR<Agent<any, any, any> & PermissionedBrand> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);
     seenPaths.add(ir.path);

@@ -587,17 +587,6 @@ type DescendantOutputs<Agents extends AgentDirectory> = string extends keyof Age
       [K in keyof Agents]: LoweredIR<Agents[K]["tools"]> | DescendantOutputs<Agents[K]["agents"]>;
     }[keyof Agents];
 
-// The trajectory leg of the shallow-lowered stage: one member per subagent, insides still the
-// child's own full IR universe, extensions and level-branded rejects included.
-export type RawTrajectories<Agents extends AgentDirectory, Tools extends ToolMap<any, any>> = {
-  [K in keyof Agents]: {
-    role: "subagent-trajectory";
-    subagent: Extract<K, string>;
-    ir: Array<AgentIR<Agents[K]>>;
-    toolCall: ToolCall<Tools>;
-  };
-}[keyof Agents];
-
 /*
  * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
  *

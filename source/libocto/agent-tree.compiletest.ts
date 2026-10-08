@@ -1,4 +1,6 @@
 import { t } from "structural";
+import { optimizeFiles } from "../compilers/optimize-files.ts";
+import { fileReadIR } from "../tools/common.ts";
 import type {
   Agent,
   AgentExtra,
@@ -83,6 +85,23 @@ const _root = definePermissionedAgent({
 type Root = typeof _root;
 const _single = definePermissionedAgent({ tools: { search: searchTool }, agents: {} });
 type Single = typeof _single;
+
+const readTool = builder
+  .declare({ name: "read", description: "Reads", ArgumentsSchema: t.subtype({ filePath: t.str }) })
+  .withCustomIR({ fileReadIR })
+  .define(async () => ({ run: async () => ok({ type: "output" as const, content: [] }) }));
+const fileChild = definePermissionedAgent({ tools: { read: readTool }, agents: {} });
+const fileRoot = definePermissionedAgent({
+  tools: { search: searchTool },
+  agents: { child: fileChild },
+});
+
+// The production-style call stays an ordinary function, with no brands, helpers, casts,
+// explicit generic arguments, or assumptions that the root is a leaf.
+const filePass: TrajectoryParams<typeof fileRoot, null>["lowerMessages"] = messages =>
+  optimizeFiles(messages);
+
+void filePass;
 
 // Subagent names span the whole tree, not one level's directory.
 type _names = Expect<Equal<AllSubagentNames<Root>, "research" | "grandchild">>;
