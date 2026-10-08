@@ -2,7 +2,13 @@ import React, { useState, useCallback, useReducer } from "react";
 import { Config, Auth } from "../config.ts";
 import { FullAddModelFlow, CustomModelFlow, CustomAuthFlow } from "./add-model-flow.tsx";
 import { CenteredBox } from "./centered-box.tsx";
-import { ProviderConfig, PROVIDERS, keyFromName, SYNTHETIC_PROVIDER } from "../providers.ts";
+import {
+  ProviderConfig,
+  ProviderModelConfig,
+  PROVIDERS,
+  keyFromName,
+  SYNTHETIC_PROVIDER,
+} from "../providers.ts";
 import { KbShortcutPanel, MenuHeader } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap, ShortcutArray } from "./kb-select/kb-shortcut-select.tsx";
 import { hasCodexOAuthTokens } from "../codex-oauth.ts";
@@ -411,7 +417,7 @@ function FastProviderList({
 type ImportModelsProps = {
   config: Config | null;
   provider: ProviderConfig;
-  onImport: (models: ProviderConfig["models"]) => any;
+  onImport: (models: ProviderModelConfig[]) => any;
   onCustomModel: () => any;
   onCancel: () => any;
 };
@@ -420,15 +426,16 @@ function ImportModelsFrom({
   syntheticModels,
   ...props
 }: ImportModelsProps & { syntheticModels: SyntheticModel[] }) {
-  if (props.provider !== SYNTHETIC_PROVIDER)
-    return <ModelChecklist {...props} models={props.provider.models} />;
-  const seenModels = new Set<string>();
-  const models = syntheticModels.flatMap(({ huggingFaceId, ...model }) => {
-    if (seenModels.has(huggingFaceId)) return [];
-    seenModels.add(huggingFaceId);
-    return [model];
-  });
-  return <ModelChecklist {...props} models={models} />;
+  if (props.provider.models === "load-from-synthetic") {
+    const seenModels = new Set<string>();
+    const models = syntheticModels.flatMap(({ huggingFaceId, ...model }) => {
+      if (seenModels.has(huggingFaceId)) return [];
+      seenModels.add(huggingFaceId);
+      return [model];
+    });
+    return <ModelChecklist {...props} models={models} />;
+  }
+  return <ModelChecklist {...props} models={props.provider.models} />;
 }
 
 function ModelChecklist({
@@ -439,7 +446,7 @@ function ModelChecklist({
   onCancel,
   onCustomModel,
 }: ImportModelsProps & {
-  models: (ProviderConfig["models"][number] & {
+  models: (ProviderModelConfig & {
     aliasOf?: string;
     categories?: string[];
   })[];
@@ -483,7 +490,12 @@ function ModelChecklist({
           {
             type: "sections",
             sections: [
-              { id: "recommended", title: "Recommended", order: recommendedItems },
+              {
+                id: "recommended",
+                title: "Recommended",
+                subtitle: "Pinned to the latest models",
+                order: recommendedItems,
+              },
               { id: "other-models", title: "Other models", order: otherItems },
             ],
           },

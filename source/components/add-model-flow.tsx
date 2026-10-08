@@ -14,7 +14,7 @@ import { SetApiKey } from "./set-api-key.tsx";
 import { KbShortcutPanel } from "./kb-select/kb-shortcut-panel.tsx";
 import { Item, Keymap } from "./kb-select/kb-shortcut-select.tsx";
 import { router, Back } from "../router.tsx";
-import { providerForBaseUrl, SYNTHETIC_PROVIDER } from "../providers.ts";
+import { providerForBaseUrl, SYNTHETIC_PROVIDER, CODEX_PROVIDER } from "../providers.ts";
 import * as logger from "../logger.ts";
 import { parse } from "shell-quote";
 import { getDefaultOpenaiClient } from "../compilers/openai.ts";
@@ -1275,7 +1275,7 @@ async function testConnection(
   try {
     const provider = providerForBaseUrl(baseUrl);
     if (provider?.type === "codex") {
-      const configuredModel = provider.models.find(candidate => candidate.model === model);
+      const configuredModel = CODEX_PROVIDER.models.find(candidate => candidate.model === model);
       return {
         valid: true,
         metadata: {

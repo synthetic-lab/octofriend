@@ -27,8 +27,9 @@ const MIGRATIONS: Record<number, Migration> = {
   1: raw => ({
     ...raw,
     models: (Array.isArray(raw["models"]) ? raw["models"] : []).map((model: any) => {
-      const provider = providerForBaseUrl(model.baseUrl) as ProviderConfig | null;
-      const canonical = provider?.models.find((m: any) => m.model === model.model);
+      const provider = providerForBaseUrl(model.baseUrl);
+      if (provider == null || provider.models === "load-from-synthetic") return model;
+      const canonical = provider.models.find(candidate => candidate.model === model.model);
       if (canonical?.modalities !== undefined)
         return { ...model, modalities: canonical.modalities };
       return model;

@@ -11,19 +11,21 @@ export type MultimodalConfig = {
   image?: ImageModalityConfig;
 };
 
+export type ProviderModelConfig = {
+  model: string;
+  nickname: string;
+  context: number;
+  reasoning?: "low" | "medium" | "high" | "xhigh";
+  modalities?: MultimodalConfig;
+};
+
 export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic" | "codex";
   name: string;
   envVar: string;
   baseUrl: string;
-  models: Array<{
-    model: string;
-    nickname: string;
-    context: number;
-    reasoning?: "low" | "medium" | "high" | "xhigh";
-    modalities?: MultimodalConfig;
-  }>;
+  models: ProviderModelConfig[] | "load-from-synthetic";
   testModel: string;
 };
 
@@ -33,7 +35,7 @@ export const PROVIDERS = {
     name: "Synthetic",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/openai/v1",
-    models: [],
+    models: "load-from-synthetic",
     testModel: "syn:small:text",
   } satisfies ProviderConfig,
 
@@ -200,9 +202,7 @@ export function canDisplayImage(
 
 export type ProviderKey = keyof typeof PROVIDERS;
 
-export function recommendedModel(
-  provider: Exclude<ProviderKey, "synthetic">,
-): ProviderConfig["models"][number] {
+export function recommendedModel(provider: Exclude<ProviderKey, "synthetic">): ProviderModelConfig {
   return PROVIDERS[provider].models[0];
 }
 
