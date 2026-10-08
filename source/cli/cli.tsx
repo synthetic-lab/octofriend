@@ -3,13 +3,18 @@ import { setupDb } from "../db/setup.ts";
 setupDb();
 
 import React from "react";
-import path from "path";
-import os from "os";
 import chalk from "chalk";
 import { Command } from "@commander-js/extra-typings";
 import { fileExists } from "../fs-utils.ts";
 import App from "../app.tsx";
-import { readConfig, readAuthForModel, AUTOFIX_KEYS, APP_METADATA } from "../config.ts";
+import {
+  readConfig,
+  readAuthForModel,
+  AUTOFIX_KEYS,
+  APP_METADATA,
+  DEFAULT_CONFIG_PATH,
+} from "../config.ts";
+import { headlessRun } from "./headless-run.ts";
 import { tokenCounts } from "../token-tracker.ts";
 import { getMcpClient, connectMcpServer, shutdownMcpClients } from "../tools/tool-defs/mcp.ts";
 import { FirstTimeSetup } from "../first-time-setup.tsx";
@@ -68,8 +73,7 @@ function renderInteractive(element: React.ReactNode, options: { captureCtrlC: bo
   return root;
 }
 
-const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
-const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
+const CONFIG_JSON5_FILE = DEFAULT_CONFIG_PATH;
 
 processes.manager().installGlobalProcessSignalHandlers();
 
@@ -741,6 +745,106 @@ cli
     }
 
     process.stdout.write("\n");
+  });
+
+withOctoFlags(
+  cli
+    .command("run")
+    .description("Run one agent turn non-interactively, then exit. Designed for scripting"),
+)
+  .argument("[prompt]", "The task to work on. If omitted, reads the prompt from stdin")
+  .option(
+    "--prompt <prompt>",
+    "The task to work on. Takes precedence over the positional argument and stdin",
+  )
+  .option("--resume <session-id>", "Continue an existing session")
+  .option(
+    "--output-format <format>",
+    "text, json, or jsonl. Defaults to text on a TTY, json when piped",
+  )
+  .option(
+    "--model <model-nickname>",
+    "The nickname of the model to use. Defaults to the session's model, then your default model",
+  )
+  .option(
+    "--allow-tool <tool>",
+    "Auto-approve a tool for this run (e.g. --allow-tool edit). Repeatable",
+    (value: string, previous: string[]) => [...previous, value],
+    [] as string[],
+  )
+  .option("--max-turns <n>", "Stop after this many model responses")
+  .option("--timeout <seconds>", "Stop after this many seconds")
+  .action(async (promptArg, opts) => {
+    const usageError = (message: string) => {
+      console.error(message);
+      process.exitCode = 2;
+    };
+
+    // Commander binds globally-known flags (--config, --unchained, --resume) to the root
+    // command even when they appear after the subcommand, so merge root opts with the
+    // subcommand's.
+    const rootOpts = cli.opts();
+    const configFlag = opts.config ?? rootOpts.config;
+    const resume = opts.resume ?? rootOpts.resume;
+    const unchained = !!(opts.unchained || rootOpts.unchained);
+
+    const outputFormat = opts.outputFormat ?? (process.stdout.isTTY ? "text" : "json");
+    if (outputFormat !== "text" && outputFormat !== "json" && outputFormat !== "jsonl") {
+      usageError(`Invalid --output-format: ${outputFormat} (expected text, json, or jsonl)`);
+      return;
+    }
+
+    let prompt = opts.prompt ?? promptArg;
+    if (prompt == null) {
+      if (process.stdin.isTTY) {
+        usageError("No prompt given: pass a prompt argument, --prompt, or pipe one in via stdin.");
+        return;
+      }
+      prompt = await Bun.stdin.text();
+    }
+    if (prompt.trim() === "") {
+      usageError("The prompt is empty.");
+      return;
+    }
+
+    const maxTurns = opts.maxTurns != null ? parseInt(opts.maxTurns, 10) : undefined;
+    if (maxTurns != null && (!Number.isFinite(maxTurns) || maxTurns < 1)) {
+      usageError(`Invalid --max-turns: ${opts.maxTurns} (expected a positive integer)`);
+      return;
+    }
+    const timeoutSeconds = opts.timeout != null ? parseInt(opts.timeout, 10) : undefined;
+    if (timeoutSeconds != null && (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 1)) {
+      usageError(`Invalid --timeout: ${opts.timeout} (expected a positive integer)`);
+      return;
+    }
+
+    const configPath = configFlag ?? DEFAULT_CONFIG_PATH;
+    if (!(await fileExists(configPath))) {
+      usageError(`No Octo config found at ${configPath}. Run \`octo init\` first.`);
+      return;
+    }
+    const config = await readConfig(configPath);
+
+    const { exitCode } = await headlessRun(
+      {
+        config,
+        configPath,
+        transport: new LocalTransport(),
+        stdout: chunk => process.stdout.write(chunk),
+        stderr: chunk => process.stderr.write(chunk),
+      },
+      {
+        prompt,
+        resume,
+        modelNickname: opts.model,
+        outputFormat,
+        unchained,
+        allowTools: opts.allowTool,
+        maxTurns,
+        timeoutMs: timeoutSeconds != null ? timeoutSeconds * 1000 : undefined,
+      },
+    );
+    process.exitCode = exitCode;
   });
 
 async function loadConfig(path?: string) {
