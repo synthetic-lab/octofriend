@@ -446,7 +446,7 @@ describe("downconvert", () => {
       tools: { search: searchTool },
       agents: { grandchild: leaf },
     });
-    const root = definePermissionlessAgent({
+    const _root = definePermissionlessAgent({
       tools: { search: searchTool },
       agents: { research: child },
     });
@@ -475,9 +475,9 @@ describe("downconvert", () => {
       toolCall: searchCall("root-call"),
       ir: [nested],
     };
-    const raw: Array<AgentIR<typeof root>> = [outer];
-    const convert = downconvert<typeof root>(messages => {
-      const pairs: Array<LowerOutputIR<typeof root>> = [];
+    const raw: Array<AgentIR<typeof _root>> = [outer];
+    const convert = downconvert<typeof _root>(messages => {
+      const pairs: Array<LowerOutputIR<typeof _root>> = [];
       for (const original of messages) {
         if (original.role !== "report-result") {
           pairs.push({ original, converted: original });
@@ -516,7 +516,7 @@ describe("downconvert", () => {
     expect(pair.original).toBe(outer);
     expect(nestedPair.original).toBe(nested);
     expect(convertedNested.ir[0].original).toBe(result);
-    const ready = lower<typeof root>([pair]);
+    const ready = lower<typeof _root>([pair]);
     expect(ready[0].original).toBe(nested);
     expect(ready[0].converted.role).toBe("tool-runtime-error");
     expect(converted).not.toBe(outer);
