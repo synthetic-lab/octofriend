@@ -99,7 +99,7 @@ const fileRoot = definePermissionedAgent({
 // Accept disjoint parent/child inputs without requiring the optimizer's declared output
 // universe to narrow to this particular tree (which declares reads but not mutations).
 function optimizeTreeFiles(messages: Array<LowerInputIR<typeof fileRoot>>) {
-  optimizeFiles(messages);
+  optimizeFiles(messages, null);
 }
 
 void optimizeTreeFiles;
@@ -202,7 +202,7 @@ function inspectConversionTypes(
   // @ts-expect-error Raw child histories still need recursive conversion.
   lower<Root>([{ original: trajectory, converted: trajectory }]);
   // @ts-expect-error The client callback cannot receive trajectories.
-  pass([trajectory]);
+  pass([trajectory], null);
   // @ts-expect-error Nor can it manufacture trajectories from custom IR.
   expectType<LowerOutputIR<Root>>({ original: extra, converted: trajectory });
   // @ts-expect-error Even trajectory-to-trajectory pairs are owned by libocto, not clients.
@@ -236,9 +236,9 @@ function inspectTreeInput(
   parentExtra: AgentExtra<Root>,
 ) {
   expectType<TreeIR<ConversionRoot>>(childIR);
-  expectType<Array<LowerOutputIR<ConversionRoot>>>(treePass([childOutput]));
+  expectType<Array<LowerOutputIR<ConversionRoot>>>(treePass([childOutput], null));
   expectType<Array<RecursiveLowered<ConversionRoot>>>(
-    downconvert<ConversionRoot>(treePass)([childIR]),
+    downconvert<ConversionRoot>(irs => treePass(irs, null))([childIR]),
   );
   expectType<LowerOutputIR<ConversionRoot>>({ original: childOutput, converted: childOutput });
   expectType<RecursiveLowered<ConversionRoot>>({ original: childOutput, converted: childOutput });

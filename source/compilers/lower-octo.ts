@@ -2,9 +2,9 @@ import type { octoAgent } from "../ir/octo-ir.ts";
 import { defineLower } from "../libocto/define-lower.ts";
 import type { LowerInputIR } from "../libocto/llm-ir.ts";
 import { optimizeFiles } from "./optimize-files.ts";
-import type { MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../libocto/modalities.ts";
 
 export const lowerOctoToLlmIR = defineLower(
-  (messages: Array<LowerInputIR<typeof octoAgent>>, modalities?: MultimodalConfig) =>
+  (messages: Array<LowerInputIR<typeof octoAgent>>, modalities: MultimodalConfig | null) =>
     optimizeFiles(messages, modalities),
 );

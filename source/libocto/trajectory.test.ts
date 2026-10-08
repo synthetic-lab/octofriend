@@ -3,6 +3,7 @@ import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import type { Transport } from "../transports/transport-common.ts";
 import type { ImageInfo } from "../utils/image-utils.ts";
+import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tool-def.ts";
 import {
@@ -185,6 +186,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 function makeTrajectory(opts?: {
   permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
   contextWindow?: number;
+  modalities?: MultimodalConfig | null;
   maxToolOutput?: number;
   countTokens?: (irs: Array<LoweredIR<TestAgent["tools"]>>) => number;
   toolContentTooLargeError?: (ir: unknown) => Promise<string>;
@@ -203,6 +205,7 @@ function makeTrajectory(opts?: {
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     capCalls: [] as unknown[],
+    loweringModalities: [] as Array<MultimodalConfig | null>,
     arc: {
       startResponse: 0,
       responseProgress: 0,
@@ -230,7 +233,11 @@ function makeTrajectory(opts?: {
         rec.modelCalls++;
         const authError = opts?.modelAuthError?.();
         if (authError != null) return err({ type: "auth-error", authError });
-        return ok({ model: null, contextWindow: opts?.contextWindow ?? 10_000 });
+        return ok({
+          model: null,
+          contextWindow: opts?.contextWindow ?? 10_000,
+          modalities: opts?.modalities ?? null,
+        });
       },
       loadTools: async signal => {
         rec.loadToolsCalls++;
@@ -253,7 +260,8 @@ function makeTrajectory(opts?: {
       toolData: { marker: "fresh" },
       runCompiler,
       subagentPrompts: { research: async () => "You are the research subagent." },
-      lowerMessages: messages => {
+      lowerMessages: (messages, modalities) => {
+        rec.loweringModalities.push(modalities);
         const pairs: Array<LowerOutputIR<TestAgent>> = [];
         for (const original of messages) {
           if (original.role === "shell-result") {
@@ -440,24 +448,39 @@ describe("trajectory", () => {
     expect(rec.loadToolsCalls).toBe(2);
   });
 
-  it("uses the freshly resolved context window to cap a batch's output", async () => {
-    const opts = { contextWindow: 10_000 };
+  it("uses freshly resolved context and modalities for the whole batch and response", async () => {
+    const vision: MultimodalConfig = {
+      image: { enabled: true, maxSizeMB: 1, acceptedMimeTypes: ["image/png"] },
+    };
+    const opts = { contextWindow: 10_000, modalities: null as MultimodalConfig | null };
     const { build, rec } = makeTrajectory(opts);
     const { traj } = await build([
       () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
       plainOk,
     ]);
-    runImpl = async () => ok({ type: "output", content: text("x".repeat(1000)) });
+    runImpl = async () => {
+      // Config changes during execution must not change this step's resolved model context.
+      opts.modalities = null;
+      return ok({ type: "output", content: text("x".repeat(1000)) });
+    };
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
+    expect(rec.loweringModalities.length).toBeGreaterThan(0);
+    expect(rec.loweringModalities.every(modalities => modalities === null)).toBe(true);
+    rec.loweringModalities.length = 0;
     opts.contextWindow = 1000;
+    opts.modalities = vision;
     expect(await traj.step()).toBe(true);
 
     expect(rec.capCalls.length).toBe(1);
     expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
     expect(rec.modelCalls).toBe(2);
     expect(rec.loadToolsCalls).toBe(2);
+    // Pending-call scans use null; two size-check lowerings and both arc lowerings use vision.
+    expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
+    expect(rec.loweringModalities).toContain(null);
+    expect(rec.loweringModalities.at(-1)).toBe(vision);
   });
 
   it("only runs current calls when validation retries and later batches reuse IDs", async () => {
@@ -1591,7 +1614,7 @@ describe("trajectory", () => {
     ]);
     const traj = new Trajectory({
       agent: _plainAgent,
-      model: async () => ok({ model: null, contextWindow: 10_000 }),
+      model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
       loadTools: async () => ({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],

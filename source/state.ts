@@ -28,6 +28,7 @@ import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { run, type ModelData } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
+import type { MultimodalConfig } from "./libocto/modalities.ts";
 import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
@@ -279,7 +280,10 @@ export const useAppStore = create<UiState>((set, get) => {
       // octo declares no subagents yet: an agentless tree takes an empty catalogue.
       subagentPrompts: {},
       model: async (): Promise<
-        Result<{ model: ModelData; contextWindow: number }, TrajectoryModelError>
+        Result<
+          { model: ModelData; contextWindow: number; modalities: MultimodalConfig | null },
+          TrajectoryModelError
+        >
       > => {
         const model = currentModel();
         if (model.type === "codex") {
@@ -290,6 +294,7 @@ export const useAppStore = create<UiState>((set, get) => {
           return ok({
             model: { type: "codex", auth: authResult.auth, model },
             contextWindow: model.context,
+            modalities: model.modalities ?? null,
           });
         }
         const authResult = await readAuthForModel(model, currentConfig());
@@ -299,6 +304,7 @@ export const useAppStore = create<UiState>((set, get) => {
         return ok({
           model: { type: "api", auth: authResult.auth, model },
           contextWindow: model.context,
+          modalities: model.modalities ?? null,
         });
       },
       loadTools: signal => loadTools(transport, signal, currentConfig()),
@@ -328,7 +334,7 @@ export const useAppStore = create<UiState>((set, get) => {
       },
       toolData: config,
       runCompiler,
-      lowerMessages: messages => lowerOctoToLlmIR(messages, currentModel().modalities),
+      lowerMessages: lowerOctoToLlmIR,
       transport,
       errorCorrection: {
         json: makeAutofixJson(config),

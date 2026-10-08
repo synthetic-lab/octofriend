@@ -15,6 +15,7 @@ import type {
   UserMessage,
 } from "./llm-ir.ts";
 import { downconvert, lower, pendingToolCalls } from "./ir-operations.ts";
+import type { MultimodalConfig } from "./modalities.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
@@ -246,6 +247,7 @@ export type TrajectoryModelError = { type: "auth-error"; authError: string };
 type RuntimeData<A extends Agent<any, any, any>, Model> = {
   model: Model;
   contextWindow: number;
+  modalities: MultimodalConfig | null;
   tools: Partial<LoadedTools<A["tools"]>>;
 };
 
@@ -278,14 +280,24 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   handler?: TrajectoryHandler<A>;
   // Re-resolved each active step, so a retry always sees fresh credentials and config; a
   // resolution error lands in the same mode as the equivalent compiler finish.
-  model: () => Promise<Result<{ model: Model; contextWindow: number }, TrajectoryModelError>>;
+  model: () => Promise<
+    Result<
+      { model: Model; contextWindow: number; modalities: MultimodalConfig | null },
+      TrajectoryModelError
+    >
+  >;
   // One loader for every tool in the tree (root + descendants), passed once: the runner
   // filters each arc's subset from the merged map as it drives that arc's agent.
   loadTools: (signal: AbortSignal) => Promise<Partial<AllToolsAcrossTree<A>>>;
   // The client's extension pass handles non-trajectory IR from every agent in the tree.
   // Libocto sends contiguous runs to this callback and handles trajectories and recursion
   // itself. Neither callback inputs nor outputs can contain subagent trajectories.
-  lowerMessages: (messages: Array<LowerInputIR<A>>) => Array<LowerOutputIR<A>>;
+  // Model-independent execution-state inspections pass null; modalities control rendering,
+  // not which calls an IR answers or whether a trajectory is terminal.
+  lowerMessages: (
+    messages: Array<LowerInputIR<A>>,
+    modalities: MultimodalConfig | null,
+  ) => Array<LowerOutputIR<A>>;
   // A system prompt for every other agent in the tree; the root's is systemPrompt, as today.
   subagentPrompts: SubagentPromptCatalogue<A>;
   // Caps any single tool output, counted after lowering; defaults to 20% of the context window
@@ -441,13 +453,16 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private awaitingSteering = true;
   private _finish: Promise<void> = Promise.resolve();
   private readonly ownership = new OwnershipLock();
-  // The arc-facing lowering the runner builds once from the client's extension pass: every
-  // level down-converted, then lower() applied over the result.
-  private readonly lower: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
+  // Every level is downconverted, then lower() is applied using the resolved model's modalities.
+  private readonly lower: (
+    messages: Array<TreeIR<A>>,
+    modalities: MultimodalConfig | null,
+  ) => Array<CompilerReadyIR<A>>;
 
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
-    this.lower = messages => lower<A>(downconvert<A>(params.lowerMessages)(messages));
+    this.lower = (messages, modalities) =>
+      lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
     this._mode = { root: true, mode: "ready-for-request", control: this.inputControl() };
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
@@ -525,7 +540,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   private pendingToolCalls(): Array<ToolCall<A["tools"]>> {
-    return pendingToolCalls<A>(downconvert<A>(this.params.lowerMessages)(this.history));
+    // Execution-state inspection is independent of model-specific image rendering.
+    return pendingToolCalls<A>(
+      downconvert<A>(irs => this.params.lowerMessages(irs, null))(this.history),
+    );
   }
 
   // Fires on the exit signal: when the process dies mid-batch, every call without a recorded
@@ -560,6 +578,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     model: Model,
     contextWindow: number,
     tools: Partial<LoadedTools<A["tools"]>>,
+    modalities: MultimodalConfig | null,
   ): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
     const history = this.history;
     const params = this.params;
@@ -573,7 +592,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       messages: history,
       toolData: params.toolData,
       runCompiler: params.runCompiler,
-      lowerMessages: this.lower,
+      lowerMessages: irs => this.lower(irs, modalities),
       systemPrompt: params.systemPrompt,
       transport: params.transport,
       errorCorrection: params.errorCorrection,
@@ -697,13 +716,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return ok({ ...modelResult.data, tools: arcTools(this.params.agent, allTools) });
   }
 
-  private async respond({ model, contextWindow, tools }: RuntimeData<A, Model>): Promise<void> {
+  private async respond({
+    model,
+    contextWindow,
+    tools,
+    modalities,
+  }: RuntimeData<A, Model>): Promise<void> {
     const queued = this.steering.take();
     if (queued.length > 0) {
       await this.emitSteeringChange();
       await this.appendIr({ role: "user", content: coalesceUserMessageContent(queued) });
     }
-    const reason = (await this.runArc(model, contextWindow, tools)).reason;
+    const reason = (await this.runArc(model, contextWindow, tools, modalities)).reason;
 
     switch (reason.type) {
       case "abort":
@@ -815,6 +839,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     signal: AbortSignal,
     tools: Partial<LoadedTools<A["tools"]>>,
     contextWindow: number,
+    modalities: MultimodalConfig | null,
   ): Promise<LlmIR<A>> {
     const def = Object.values(tools).find(loaded => loaded?.name === toolCall.name);
     if (def == null) {
@@ -854,8 +879,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const maxToolOutput =
       this.params.maxToolOutput ?? Math.floor(contextWindow * DEFAULT_MAX_TOOL_OUTPUT_FRACTION);
     const tokens =
-      countTokens(this.lower([...this.history, ir]).map(({ converted }) => converted)) -
-      countTokens(this.lower(this.history).map(({ converted }) => converted));
+      countTokens(this.lower([...this.history, ir], modalities).map(({ converted }) => converted)) -
+      countTokens(this.lower(this.history, modalities).map(({ converted }) => converted));
     if (tokens >= maxToolOutput) {
       return {
         role: "tool-runtime-error",
@@ -869,6 +894,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async runToolBatch({
     tools,
     contextWindow,
+    modalities,
   }: RuntimeData<A, Model>): Promise<Result<null, "aborted">> {
     // Keep the batch snapshot for mode payloads only; execution progress comes from the IR.
     const toolCalls = this.pendingToolCalls();
@@ -929,7 +955,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           toolCall,
           control: this.runningControl(),
         });
-        const result = await this.runTool(toolCall, signal, tools, contextWindow);
+        const result = await this.runTool(toolCall, signal, tools, contextWindow, modalities);
         await owner.ifOwner(async () => {
           await this.appendIr(result);
         });

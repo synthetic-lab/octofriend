@@ -8,7 +8,7 @@ import type {
 import type { ToolCall } from "../libocto/tool-def.ts";
 import * as irPrompts from "../prompts/octo-ir-prompts.ts";
 import { canDisplayImage } from "../providers.ts";
-import type { MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../libocto/modalities.ts";
 import type { FileMutateIR, FileReadIR } from "../tools/common.ts";
 
 type Output<Subagent extends string> =
@@ -24,7 +24,7 @@ type Input<Subagent extends string> =
 export const optimizeFiles = defineLower(
   <Subagent extends string>(
     messages: Array<Input<Subagent>>,
-    modalities?: MultimodalConfig,
+    modalities: MultimodalConfig | null,
   ): Array<IRConversion<Input<Subagent>, Output<Subagent>>> => {
     const output: Array<IRConversion<Input<Subagent>, Output<Subagent>>> = [];
     const seenPaths = new Set<string>();
@@ -40,7 +40,7 @@ export const optimizeFiles = defineLower(
 function optimizeFileIR<Subagent extends string>(
   ir: Input<Subagent>,
   seenPaths: Set<string>,
-  modalities?: MultimodalConfig,
+  modalities: MultimodalConfig | null,
 ): Output<Subagent> {
   if (ir.role === "file-read") {
     const seenPath = seenPaths.has(ir.path);

@@ -6,7 +6,7 @@ import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
 import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import type { ImageInfo } from "../utils/image-utils.ts";
-import type { MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../libocto/modalities.ts";
 
 /*
  * Regression tests for BUGS.md #3: reading an image with a vision model must not leave a
@@ -104,7 +104,7 @@ describe("lowerOctoToLlmIR tool-call answering", () => {
   });
 
   it("answers the tool call for an image read when the model lacks vision", () => {
-    const lowered = lowerOctoToLlmIR(imageReadHistory(), undefined);
+    const lowered = lowerOctoToLlmIR(imageReadHistory(), null);
     expect(unansweredToolCallIds(lowered)).toEqual([]);
   });
 
