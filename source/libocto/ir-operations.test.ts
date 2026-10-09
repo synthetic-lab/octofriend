@@ -159,6 +159,7 @@ function researchTrajectory(
   return {
     role: "subagent-trajectory",
     subagent: "grandchild",
+    task: [{ type: "text", content: "Research nested lowering" }],
     ir,
     toolCall,
   };
@@ -208,6 +209,7 @@ function subagentTrajectory(
   return {
     role: "subagent-trajectory",
     subagent: "research",
+    task: [{ type: "text", content: "Research how to lower IRs." }],
     ir,
     toolCall,
   };
@@ -296,6 +298,7 @@ describe("activeHistory", () => {
     const nested: Extract<ResearchIR, { role: "subagent-trajectory" }> = {
       role: "subagent-trajectory",
       subagent: "grandchild",
+      task: [{ type: "text", content: "go" }],
       toolCall: searchCall("nested"),
       ir: [grandchildUserMessage("go")],
     };
@@ -423,6 +426,7 @@ describe("pendingToolCalls", () => {
     const nested: Extract<ResearchIR, { role: "subagent-trajectory" }> = {
       role: "subagent-trajectory",
       subagent: "grandchild",
+      task: [{ type: "text", content: "grandchild work" }],
       toolCall: childDelegate,
       ir: [assistantMessage("work", [grandchildPending])],
     };
@@ -594,12 +598,14 @@ describe("downconvert", () => {
     const nested = {
       role: "subagent-trajectory" as const,
       subagent: "grandchild" as const,
+      task: [{ type: "text" as const, content: "Report the result" }],
       toolCall: searchCall("child-call"),
       ir: [result],
     };
     const outer = {
       role: "subagent-trajectory" as const,
       subagent: "research" as const,
+      task: [{ type: "text" as const, content: "Research the result" }],
       toolCall: searchCall("root-call"),
       ir: [nested],
     };

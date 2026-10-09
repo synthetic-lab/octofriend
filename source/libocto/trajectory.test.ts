@@ -12,6 +12,7 @@ import {
   type Agent,
   type AgentIR,
   type AssistantMessage,
+  type Checkpoint,
   type LoweredIR,
   type LowerOutputIR,
   type UserMessage,
@@ -26,6 +27,7 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import type { ErrorCorrection } from "./trajectory-arc.ts";
+import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
   Trajectory,
@@ -80,7 +82,7 @@ const shellTool = new ToolBuilder<TestData>()
 
 // The capability is uniform down the tree, so each fixture's tree stays uniform: the
 // permissioned test agent and the plain agent each own their own research subagent.
-const researchAgent = definePermissionedAgent({ tools: {}, agents: {} });
+const researchAgent = definePermissionedAgent({ tools: { shell: shellTool }, agents: {} });
 const plainResearchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
 
 const _testAgent = definePermissionedAgent({
@@ -1542,6 +1544,102 @@ describe("trajectory", () => {
     expect(compilerCalls.length).toBe(2);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user", "user", "user"]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it.each([true, false])(
+    "renders checkpoints for root=%s without changing stored IR",
+    async root => {
+      const task = [
+        ...text("Investigate the attached diagram"),
+        img("diagram.png"),
+        ...text("Report only when the investigation is complete"),
+      ];
+      const checkpoint: Checkpoint = { role: "checkpoint", content: text("Existing summary") };
+      const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+        role: "subagent-trajectory",
+        subagent: "research",
+        toolCall: searchCall("delegate", "delegation"),
+        task,
+        ir: [{ role: "user", content: subagentPrompt(task) }, checkpoint],
+      };
+      const { build } = makeTrajectory({ messages: root ? [checkpoint] : [child] });
+      const { traj, compilerCalls } = await build([plainOk]);
+
+      expect(await traj.step()).toBe(true);
+      const rendered = compilerCalls[0].irs[0];
+      if (rendered.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(rendered.content).toEqual(
+        root
+          ? checkpoint.content
+          : [...checkpoint.content, ...text("\n\n"), ...subagentPrompt(task)],
+      );
+      expect(checkpoint.content).toEqual(text("Existing summary"));
+      expect(child.task).toBe(task);
+      if (!root) expect(child.ir[1]).toBe(checkpoint);
+    },
+  );
+
+  it("keeps child directives in repeated compactions and tool-output token counts", async () => {
+    const task = text("Inspect the workspace and report the result");
+    const originalCheckpoint: Checkpoint = { role: "checkpoint", content: text("x".repeat(12000)) };
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [{ role: "user", content: subagentPrompt(task) }, originalCheckpoint],
+    };
+    const counted: Array<Array<LoweredIR<TestAgent["tools"]>>> = [];
+    const { build } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [assistantMessage({ toolCalls: [child.toolCall] }), child],
+      countTokens: irs => {
+        counted.push(irs);
+        return irs.length;
+      },
+    });
+    const firstRequest = assistantMessage({ toolCalls: [shellCall("pwd", "first")] });
+    const secondRequest = assistantMessage({ toolCalls: [shellCall("ls", "second")] });
+    firstRequest.usage = compilerUsage(4000, 1);
+    secondRequest.usage = compilerUsage(4000, 1);
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "First summary" })),
+      () => okResult(firstRequest),
+      () => okResult(assistantMessage({ content: "Second summary" })),
+      () => okResult(secondRequest),
+      () => okResult(assistantMessage({ content: "Third summary" })),
+      plainOk,
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(compilerCalls).toHaveLength(6);
+    expect(counted).toHaveLength(4);
+    const checkpoints = child.ir.filter(ir => ir.role === "checkpoint");
+    expect(checkpoints).toHaveLength(4);
+    expect(checkpoints[0]).toBe(originalCheckpoint);
+
+    const renderedContent = (checkpoint: Checkpoint) => [
+      ...checkpoint.content,
+      ...text("\n\n"),
+      ...subagentPrompt(task),
+    ];
+    for (let index = 0; index < checkpoints.length; index++) {
+      expect(JSON.stringify(checkpoints[index].content)).not.toContain("You are a subagent");
+      if (index === 0) continue;
+      const request = compilerCalls[index * 2 - 1].irs[0];
+      if (request.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(request.content).toEqual(renderedContent(checkpoints[index]));
+    }
+    for (let index = 0; index < counted.length; index++) {
+      const checkpoint = counted[index][0];
+      if (checkpoint.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(checkpoint.content).toEqual(renderedContent(checkpoints[Math.floor(index / 2) + 1]));
+    }
+    // Each subsequent compaction sees the same rendering as the preceding normal request.
+    expect(compilerCalls[2].irs[0]).toEqual(compilerCalls[1].irs[0]);
+    expect(compilerCalls[4].irs[0]).toEqual(compilerCalls[3].irs[0]);
   });
 
   it("rectifies a compaction error and recovers on retry", async () => {

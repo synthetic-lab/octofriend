@@ -16,6 +16,7 @@ import type {
   RequestErrorIR,
   CompactionErrorIR,
   ValidationRetryBudgetExceededIR,
+  UserMessage,
 } from "./llm-ir.ts";
 import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
 import { err, ok, type Result } from "./result.ts";
@@ -50,7 +51,10 @@ type DescendantHistories<
     agent: { tools: object; agents: AgentDirectory };
     history: Array<TreeIR<Root>>;
     scope: {
-      parentSubagentIR: TreeIR<Root>;
+      parentSubagentIR: TreeIR<Root> & {
+        role: "subagent-trajectory";
+        task: UserMessage["content"];
+      };
       toplevelSubagentIR: AllTrajectories<Root["agents"], Root["tools"]>;
     };
   };

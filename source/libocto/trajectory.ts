@@ -18,6 +18,7 @@ import type {
 import { downconvert, inspectHistory, lower } from "./ir-operations.ts";
 import type { ActiveHistory, HistoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
+import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
@@ -568,6 +569,26 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return inspected.data;
   }
 
+  private lowerForLocation(
+    location: ActiveHistory<A>,
+    modalities: MultimodalConfig | null,
+  ): (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>> {
+    const lowerMessages = (messages: Array<TreeIR<A>>) => this.lower(messages, modalities);
+    if (location.root) return lowerMessages;
+    const directive = subagentPrompt(location.scope.parentSubagentIR.task);
+    return messages =>
+      lowerMessages(messages).map(pair => {
+        if (pair.converted.role !== "lowered-checkpoint") return pair;
+        return {
+          original: pair.original,
+          converted: {
+            ...pair.converted,
+            content: [...pair.converted.content, { type: "text", content: "\n\n" }, ...directive],
+          },
+        };
+      });
+  }
+
   private scope(location: ActiveHistory<A>): ArcScope<A> {
     return (
       location.root
@@ -658,6 +679,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const params = this.params;
     const owner = this.ownership.lease();
     const scope = this.scope(location);
+    const lowerMessages = this.lowerForLocation(location, modalities);
     const systemPrompt = location.root
       ? params.systemPrompt
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
@@ -673,9 +695,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         toolData: params.toolData as AgentToolData<B>,
         runCompiler: params.runCompiler,
         lowerMessages: irs =>
-          this.lower(irs as Array<TreeIR<A>>, modalities) as Array<
-            CompilerReadyIR<A> & CompilerReadyIR<B>
-          >,
+          lowerMessages(irs as Array<TreeIR<A>>) as Array<CompilerReadyIR<A> & CompilerReadyIR<B>>,
         systemPrompt,
         transport: params.transport,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
@@ -977,9 +997,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const maxToolOutput =
       this.params.maxToolOutput ?? Math.floor(contextWindow * DEFAULT_MAX_TOOL_OUTPUT_FRACTION);
     const history = inspection.location.history;
+    const lowerMessages = this.lowerForLocation(inspection.location, modalities);
     const tokens =
-      countTokens(this.lower([...history, ir], modalities).map(({ converted }) => converted)) -
-      countTokens(this.lower(history, modalities).map(({ converted }) => converted));
+      countTokens(lowerMessages([...history, ir]).map(({ converted }) => converted)) -
+      countTokens(lowerMessages(history).map(({ converted }) => converted));
     if (tokens >= maxToolOutput) {
       return {
         role: "tool-runtime-error",

@@ -104,6 +104,7 @@ export type AgentTrajectory<
 > = {
   role: "subagent-trajectory";
   subagent: Name;
+  task: UserMessage["content"];
   ir: Array<AgentIR<Agents[Name]>>;
   // The parent tool call that delegated to the subagent.
   toolCall: ToolCall<Tools>;
@@ -505,6 +506,7 @@ type PreLoweredTrajectory<
 > = {
   role: "subagent-trajectory";
   subagent: Name;
+  task: UserMessage["content"];
   ir: Array<RecursiveLowered<Child>>;
   toolCall: ToolCall<Tools>;
 };
@@ -573,6 +575,7 @@ export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
   | (DescendantPreLoweredIR<A["agents"]> & {
       role: "subagent-trajectory";
       subagent: string;
+      task: UserMessage["content"];
       toolCall: ToolCall<InspectionTools>;
       ir: Array<IRShape<RecursiveLowered<A>>>;
     })
@@ -600,11 +603,12 @@ export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
   LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
 >;
 
-type DescendantOutputs<Agents extends AgentDirectory> = string extends keyof Agents
+type DescendantOutputs<Agents extends AgentDirectory> = (string extends keyof Agents
   ? LoweredIR<Agents[string]["tools"]>
   : {
       [K in keyof Agents]: LoweredIR<Agents[K]["tools"]> | DescendantOutputs<Agents[K]["agents"]>;
-    }[keyof Agents];
+    }[keyof Agents]) &
+  IRShape<LoweredIR<InspectionTools>>;
 
 /*
  * Returns the tool call ID that an IR answers, or null if the IR is not tool-output-shaped.
