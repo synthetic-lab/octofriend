@@ -139,6 +139,29 @@ const _missingPrompt: TrajectoryParams<Root, null>["subagentPrompts"] = {
 // An agentless tree takes an empty catalogue.
 const none: TrajectoryParams<Single, null>["subagentPrompts"] = {};
 
+// Model resolution requires an explicit invocation or null, retaining each parent's tool types.
+const resolveModel: TrajectoryParams<Root, null>["model"] = async invocation => {
+  if (invocation !== null) {
+    expectType<string | undefined>(invocation.model);
+    if (invocation.subagent === "grandchild") {
+      expectType<"search">(invocation.toolCall.name);
+      expectType<string>(invocation.toolCall.parsed.q);
+      // @ts-expect-error Grandchild invocations cannot carry the root-only delegate arguments.
+      invocation.toolCall.parsed.what;
+    } else if (invocation.toolCall.name === "delegate") {
+      expectType<string>(invocation.toolCall.parsed.what);
+      // @ts-expect-error Parsed arguments retain their schema rather than becoming any.
+      invocation.toolCall.parsed.q;
+    }
+  }
+  return ok({ model: null, contextWindow: 1000, modalities: null });
+};
+void resolveModel(null);
+// @ts-expect-error The argument is required, even for root model resolution.
+void resolveModel();
+// @ts-expect-error Root resolution must explicitly pass null, not undefined.
+void resolveModel(undefined);
+
 // Extras resolve per agent, from its own tools.
 type _extraHasNote = Expect<Equal<AgentExtra<Root>["role"], "note">>;
 type _noExtra = Expect<Equal<AgentExtra<Single>, never>>;

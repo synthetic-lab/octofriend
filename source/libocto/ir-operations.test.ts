@@ -144,7 +144,9 @@ function researchAssistantResponse(content: string): ResearchIR {
     },
   };
 }
-function researchInvocation(toolCall: ToolCall<TestAgent["tools"]>): ResearchIR {
+function researchInvocation(
+  toolCall: ToolCall<TestAgent["tools"]>,
+): Extract<ResearchIR, { role: "tool-invoke-subagent" }> {
   return {
     role: "tool-invoke-subagent",
     toolCall,
@@ -193,7 +195,9 @@ function checkpointMessage(summary: string): TestIR {
   };
 }
 
-function subagentInvocation(toolCall: ToolCall<TestAgent["tools"]>): TestIR {
+function subagentInvocation(
+  toolCall: ToolCall<TestAgent["tools"]>,
+): Extract<TestIR, { role: "tool-invoke-subagent" }> {
   return {
     role: "tool-invoke-subagent",
     toolCall,
@@ -280,7 +284,8 @@ describe("activeHistory", () => {
 
   it("selects an empty child and returns its live history and trajectory", () => {
     const child = subagentTrajectory([], searchCall("child"));
-    const history: TestIR[] = [child];
+    const invocation = subagentInvocation(child.toolCall);
+    const history: TestIR[] = [invocation, child];
     const location = activeHistory(_testAgent, history, convert(history));
     if (location.root || location.subagent !== "research") throw new Error("Expected research");
     expect(location.agent).toBe(_researchAgent);
@@ -291,7 +296,8 @@ describe("activeHistory", () => {
     expect(child.ir).toEqual([]);
     location.history.push(researchUserMessage("go"));
     expect(child.ir).toEqual([researchUserMessage("go")]);
-    expect(history).toEqual([child]);
+    expect(location.invocation).toBe(invocation);
+    expect(history).toEqual([invocation, child]);
   });
 
   it("walks to the deepest running child, then returns to each parent as children finish", () => {
@@ -302,12 +308,15 @@ describe("activeHistory", () => {
       toolCall: searchCall("nested"),
       ir: [grandchildUserMessage("go")],
     };
-    const child = subagentTrajectory([nested], searchCall("outer"));
-    const history: TestIR[] = [child];
+    const nestedInvocation = researchInvocation(nested.toolCall);
+    const child = subagentTrajectory([nestedInvocation, nested], searchCall("outer"));
+    const invocation = subagentInvocation(child.toolCall);
+    const history: TestIR[] = [invocation, child];
     const deepest = activeHistory(_testAgent, history, convert(history));
     if (deepest.root || deepest.subagent !== "grandchild") throw new Error("Expected grandchild");
     expect(deepest.agent).toBe(_grandchildAgent);
     expect(deepest.history).toBe(nested.ir);
+    expect(deepest.invocation).toBe(nestedInvocation);
     expect(deepest.scope.parentSubagentIR).toBe(nested);
     expect(deepest.scope.toplevelSubagentIR).toBe(child);
     expect(deepest.scope.path).toEqual([
@@ -324,6 +333,7 @@ describe("activeHistory", () => {
     const parent = activeHistory(_testAgent, history, convert(history));
     if (parent.root || parent.subagent !== "research") throw new Error("Expected research");
     expect(parent.history).toBe(child.ir);
+    expect(parent.invocation).toBe(invocation);
     expect(parent.scope.parentSubagentIR).toBe(child);
     expect(parent.scope.path).toEqual([{ subagent: "research", toolCallId: "outer" }]);
     parent.history.push(researchAssistantResponse("finished outer work"));
@@ -331,26 +341,28 @@ describe("activeHistory", () => {
     const root = activeHistory(_testAgent, history, convert(history));
     expect(root.root).toBe(true);
     expect(root.history === history).toBe(true);
-    expect(child.ir[0]).toBe(nested);
-    expect(history).toHaveLength(1);
+    expect(child.ir[1]).toBe(nested);
+    expect(history).toHaveLength(2);
   });
 
   it("uses paired originals rather than matching converted and raw array positions", () => {
     const before = userMessage("expand");
     const child = subagentTrajectory([researchUserMessage("go")], searchCall("child"));
-    const history: TestIR[] = [before, child];
+    const invocation = subagentInvocation(child.toolCall);
+    const history: TestIR[] = [before, invocation, child];
     const expanded = downconvert<TestAgent>(messages =>
       messages.flatMap(original => {
         const pair = { original, converted: original };
         return original === before ? [pair, pair] : [pair];
       }),
     )(history);
-    expect(expanded).toHaveLength(3);
+    expect(expanded).toHaveLength(4);
     const location = activeHistory(_testAgent, history, expanded);
     if (location.root) throw new Error("Expected child");
     expect(location.history === child.ir).toBe(true);
+    expect(location.invocation).toBe(invocation);
     expect(location.scope.parentSubagentIR === child).toBe(true);
-    expect(history).toEqual([before, child]);
+    expect(history).toEqual([before, invocation, child]);
   });
 });
 
@@ -609,7 +621,15 @@ describe("downconvert", () => {
       toolCall: searchCall("root-call"),
       ir: [nested],
     };
-    const raw: Array<AgentIR<typeof _root>> = [outer];
+    const raw: Array<AgentIR<typeof _root>> = [
+      {
+        role: "tool-invoke-subagent",
+        subagent: "research",
+        toolCall: outer.toolCall,
+        message: outer.task,
+      },
+      outer,
+    ];
     const convert = downconvert<typeof _root>(messages => {
       const pairs: Array<LowerOutputIR<typeof _root>> = [];
       for (const original of messages) {
@@ -636,7 +656,7 @@ describe("downconvert", () => {
       return pairs;
     });
 
-    const pair = convert(raw)[0];
+    const pair = convert(raw)[1];
     const { converted } = pair;
     if (converted.role !== "subagent-trajectory") throw new Error("Expected trajectory");
     const nestedPair = converted.ir[0];
@@ -655,7 +675,7 @@ describe("downconvert", () => {
     expect(ready[0].converted.role).toBe("tool-runtime-error");
     expect(converted).not.toBe(outer);
     expect(convertedNested).not.toBe(nested);
-    expect(raw[0]).toBe(outer);
+    expect(raw[1]).toBe(outer);
     expect(outer.ir[0]).toBe(nested);
     expect(nested.ir[0]).toBe(result);
     expect(result.role).toBe("report-result");

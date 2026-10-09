@@ -309,7 +309,9 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   handler?: TrajectoryHandler<A>;
   // Re-resolved each active step, so a retry always sees fresh credentials and config; a
   // resolution error lands in the same mode as the equivalent compiler finish.
-  model: () => Promise<
+  model: (
+    invocation: Extract<TreeIR<A>, { role: "tool-invoke-subagent" }> | null,
+  ) => Promise<
     Result<
       { model: Model; contextWindow: number; modalities: MultimodalConfig | null },
       TrajectoryModelError
@@ -808,7 +810,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     })();
 
     if (work.action === "quit" || this.params.abortSignal.aborted) return false;
-    const runtimeData = await this.loadRuntimeData(this.params.abortSignal);
+    const runtimeData = await this.loadRuntimeData(location, this.params.abortSignal);
     if (!runtimeData.success) {
       switch (runtimeData.error.type) {
         case "quit":
@@ -847,8 +849,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       }
     }
     if (this.params.abortSignal.aborted) return false;
+    let runtime = runtimeData.data;
     if (work.action === "run-tools") {
-      const batch = await this.runToolBatch(work, runtimeData.data);
+      const batch = await this.runToolBatch(work, runtime);
       if (!batch.success) {
         if (this.params.abortSignal.aborted) return false;
         await this.closeInterruptedWork(location, this.ownership.lease(), null);
@@ -866,8 +869,22 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         }
       }
       if (inspection.action !== "respond") return true;
+      if (inspection.location.history !== location.history) {
+        const model = await this.params.model(
+          inspection.location.root ? null : inspection.location.invocation,
+        );
+        if (this.params.abortSignal.aborted) return false;
+        if (!model.success) {
+          await this.appendIr(inspection.location, {
+            role: "auth-error",
+            authError: model.error.authError,
+          });
+          return true;
+        }
+        runtime = { ...runtime, ...model.data };
+      }
     }
-    await this.respond(inspection.location, runtimeData.data);
+    await this.respond(inspection.location, runtime);
     return !this.params.abortSignal.aborted;
   }
 
@@ -878,10 +895,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   private async loadRuntimeData(
+    location: ActiveHistory<A>,
     signal: AbortSignal,
   ): Promise<Result<RuntimeData<A, Model>, TrajectoryModelError | TrajectoryToolLoadError>> {
     const [modelResult, toolsResult] = await Promise.all([
-      this.params.model(),
+      this.params.model(location.root ? null : location.invocation),
       this.params.loadTools(signal),
     ]);
     if (!modelResult.success) return modelResult;
@@ -1016,6 +1034,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         toolCall,
         subagent: output.data.name,
         message: output.data.message,
+        model: output.data.model,
       } as TreeIR<A>;
     }
 

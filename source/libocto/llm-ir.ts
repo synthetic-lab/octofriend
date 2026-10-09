@@ -389,6 +389,7 @@ export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends
   toolCall: ToolCall<T>;
   subagent: SubagentName;
   message: UserMessage["content"];
+  model?: string;
 };
 
 /*

@@ -16,6 +16,7 @@ import type {
   RequestErrorIR,
   CompactionErrorIR,
   ValidationRetryBudgetExceededIR,
+  ToolSubagentInvoke,
   UserMessage,
 } from "./llm-ir.ts";
 import type { ScopeHop, ScopeRoot, ScopeSubagent } from "./trajectory.ts";
@@ -30,6 +31,7 @@ type ChildHistory<
 > = ScopeSubagent<Name> & {
   agent: Parent["agents"][Name];
   history: Array<AgentIR<Parent["agents"][Name]>>;
+  invocation: ToolSubagentInvoke<Parent["tools"], Name>;
   scope: {
     path: readonly ScopeHop[];
     parentSubagentIR: AgentTrajectory<Parent["agents"], Name, Parent["tools"]>;
@@ -50,6 +52,7 @@ type DescendantHistories<
   ScopeSubagent<string> & {
     agent: { tools: object; agents: AgentDirectory };
     history: Array<TreeIR<Root>>;
+    invocation: Extract<TreeIR<Root>, { role: "tool-invoke-subagent" }>;
     scope: {
       parentSubagentIR: TreeIR<Root> & {
         role: "subagent-trajectory";
@@ -81,6 +84,7 @@ function walkHistory<A extends Agent<any, any, any>>(
   let currentAgent: { agents: AgentDirectory } = agent;
   let currentHistory: Array<TreeIR<A>> = history;
   let inspected = converted;
+  let invocation: TreeIR<A> | undefined;
   let scope:
     | {
         path: ScopeHop[];
@@ -101,6 +105,11 @@ function walkHistory<A extends Agent<any, any, any>>(
       throw new Error("A converted trajectory must retain its raw original");
     const child = currentAgent.agents[original.subagent];
     if (child == null) throw new Error(`Unknown subagent: ${original.subagent}`);
+    // Locate the invocation beside the live raw trajectory, not by converted-array position.
+    invocation = currentHistory[currentHistory.indexOf(original) - 1];
+    if ((invocation as { role: string } | undefined)?.role !== "tool-invoke-subagent") {
+      throw new Error("A subagent trajectory must follow its invocation");
+    }
     scope = {
       path: [
         ...(scope?.path ?? []),
@@ -124,6 +133,7 @@ function walkHistory<A extends Agent<any, any, any>>(
     scope,
     agent: currentAgent,
     history: currentHistory,
+    invocation,
   } as ActiveHistory<A>;
   return { location, converted: inspected };
 }
