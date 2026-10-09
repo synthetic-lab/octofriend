@@ -1727,7 +1727,7 @@ function renderLlmIR(node: Extract<HistoryNode, { type: "llm-ir" }>, isCompactin
     const calls = item.ir.flatMap(ir =>
       ir.role === "assistant" ? (ir.toolCalls ?? []).filter(call => call.type === "tool-call") : [],
     );
-    return <SubagentTrajectoryRenderer subagent={item.subagent} calls={calls} />;
+    return <SubagentTrajectoryRenderer trajectory={item} calls={calls} />;
   }
   if (item.role === "assistant") {
     if (isCompacting) {
@@ -1981,39 +1981,60 @@ function renderLlmIR(node: Extract<HistoryNode, { type: "llm-ir" }>, isCompactin
   );
 }
 function SubagentTrajectoryRenderer({
-  subagent,
+  trajectory,
   calls,
 }: {
-  subagent: Extract<OctoIR, { role: "subagent-trajectory" }>["subagent"];
+  trajectory: Extract<OctoIR, { role: "subagent-trajectory" }>;
   calls: Array<ToolCall<typeof octoAgent.agents.explore.tools>>;
 }) {
   const cwd = useCwd();
+  const color = useColor();
+  const running = useAppStore(state => {
+    if (state.sessionMode.mode !== "live") return false;
+    const mode = state.sessionMode.liveMode.trajectoryMode;
+    return !mode.root && mode.scope.parentSubagentIR === trajectory;
+  });
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
-      <Span style={{ color: "gray" }}>{subagent}</Span>
-      <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
-        {calls.map((call, index) => {
-          let label: string;
-          switch (call.name) {
-            case "read":
-              label = `read: ${call.parsed.filePath}`;
-              break;
-            case "partial-read":
-              label = `partial-read: ${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`;
-              break;
-            case "list":
-              label = `list: ${call.parsed.dirPath || cwd}`;
-              break;
-            case "grep":
-            case "glob":
-              label = call.name;
-              break;
-          }
-          return <Span key={index}>- {label}</Span>;
-        })}
-      </TerminalFlex>
+      <ExploreHeading running={running} />
+      {running && (
+        <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+          {calls.map((call, index) => {
+            let detail: string | null;
+            switch (call.name) {
+              case "read":
+                detail = call.parsed.filePath;
+                break;
+              case "partial-read":
+                detail = `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`;
+                break;
+              case "list":
+                detail = call.parsed.dirPath || cwd;
+                break;
+              case "grep":
+              case "glob":
+                detail = null;
+                break;
+            }
+            return (
+              <Span key={index}>
+                <Span style={{ color: "gray" }}>- </Span>
+                <Span style={{ color }}>{call.name}</Span>
+                {detail != null && <Span style={{ color: "gray" }}>: {detail}</Span>}
+              </Span>
+            );
+          })}
+        </TerminalFlex>
+      )}
     </TerminalFlex>
   );
+}
+
+function ExploreHeading({ running }: { running: boolean }) {
+  const color = useColor();
+  const { time } = useAnimation({ isActive: running });
+  const dots = ["...", "", ".", ".."][Math.floor(time / 300) % 4];
+  return <Span style={{ color }}>{running ? `Exploring${dots}` : "Explored"}</Span>;
 }
 
 function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {

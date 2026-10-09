@@ -180,7 +180,9 @@ type SubagentModes<Agents extends AgentDirectory> = (string extends keyof Agents
 
 export type TrajectoryMode<A extends Agent<any, any, any>> =
   | WithArcScope<ScopeRoot, RootOnlyModes | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>>
-  | SubagentModes<A["agents"]>;
+  | (SubagentModes<A["agents"]> & {
+      scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
+    });
 
 // onMessage fires for the active arc's history appends, carrying that arc's exact IR
 // universe: narrow the scope to know whose IRs these are. Subagent appends also carry the
