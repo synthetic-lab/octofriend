@@ -12,6 +12,10 @@ questions, or run arbitrary commands.
 
 Pass a self-contained task: include the exact question to answer, any relevant starting points,
 and the format you want back.
+
+Be precise: include exactly what you want, and ideas of reasonable stopping points, in your task to
+the subagent. The subagent will autonomously run until it finishes what it believes your task is,
+so be specific so it doesn't run forever or give you too much information!
 `.trim(),
   ArgumentsSchema: t.subtype({
     task: t.str.comment("A complete, self-contained exploration task"),
