@@ -15,8 +15,13 @@ import type {
   ToolRejectMessage,
   UserMessage,
 } from "./llm-ir.ts";
-import { downconvert, inspectHistory, lower } from "./ir-operations.ts";
-import type { ActiveHistory, HistoryInspection } from "./ir-operations.ts";
+import { downconvert, inspectHistory, inspectSubagentTrajectory, lower } from "./ir-operations.ts";
+import type {
+  ActiveHistory,
+  HistoryInspection,
+  SubagentTrajectoryInspection,
+} from "./ir-operations.ts";
+export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
@@ -510,6 +515,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   get messages(): ReadonlyArray<AgentIR<A>> {
     return [...this.history];
+  }
+
+  inspectSubagentTrajectory(
+    trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
+  ): SubagentTrajectoryInspection {
+    return inspectSubagentTrajectory<A>(
+      downconvert<A>(irs => this.params.lowerMessages(irs, null))(trajectory.ir),
+    );
   }
 
   private inputControl(): InputControl {

@@ -105,6 +105,7 @@ export type SessionMode =
       mode: "lost";
       config: Config;
       transport: Transport;
+      trajectory: LiveTrajectory;
       sessionId: string | null;
       sessionLostError: string;
     };
@@ -443,6 +444,7 @@ export const useAppStore = create<UiState>((set, get) => {
                         mode: "lost",
                         config: state.sessionMode.config,
                         transport: state.sessionMode.transport,
+                        trajectory: state.sessionMode.trajectory,
                         sessionId: session.metadata.sessionId,
                         sessionLostError: e.message,
                       },

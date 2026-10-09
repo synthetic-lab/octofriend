@@ -56,6 +56,7 @@ import {
   useModel,
   InflightResponseType,
   LiveMirror,
+  LiveTrajectory,
   PermissionUiState,
   inputFieldAvailable,
   userMessageContent,
@@ -63,6 +64,7 @@ import {
 } from "./state.ts";
 import type {
   TrajectoryMode,
+  SubagentTrajectoryInspection,
   RetryControl,
   RectifyControl,
   ClearControl,
@@ -98,7 +100,6 @@ import type { ToolCall } from "./libocto/tool-def.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
-import type { OctoIR } from "./ir/octo-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -448,13 +449,20 @@ export default function App({
                               }}
                             >
                               {history.map(item => (
-                                <MessageDisplay item={item} key={item.nodeId} />
+                                <MessageDisplay
+                                  item={item}
+                                  trajectory={sessionMode.trajectory.instance}
+                                  key={item.nodeId}
+                                />
                               ))}
                               {(trajectoryMode?.mode === "responding" ||
                                 trajectoryMode?.mode === "compacting") &&
                                 inflightResponse != null &&
                                 (inflightResponse.reasoningContent || inflightResponse.content) && (
-                                  <MessageDisplay item={inflightResponse} />
+                                  <MessageDisplay
+                                    item={inflightResponse}
+                                    trajectory={sessionMode.trajectory.instance}
+                                  />
                                 )}
                               {liveMirror != null &&
                                 liveMirror.trajectoryMode.root &&
@@ -1633,19 +1641,33 @@ const TranscriptItemRenderer = React.memo(({ item }: { item: TranscriptItem }) =
   return null;
 });
 
-const MessageDisplay = React.memo(({ item }: { item: HistoryNode | InflightResponseType }) => {
-  return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-        paddingRight: 4,
-      }}
-    >
-      <MessageDisplayInner item={item} />
-    </TerminalFlex>
-  );
-});
-const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
+const MessageDisplay = React.memo(
+  ({
+    item,
+    trajectory,
+  }: {
+    item: HistoryNode | InflightResponseType;
+    trajectory: LiveTrajectory["instance"];
+  }) => {
+    return (
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          paddingRight: 4,
+        }}
+      >
+        <MessageDisplayInner item={item} trajectory={trajectory} />
+      </TerminalFlex>
+    );
+  },
+);
+const MessageDisplayInner = ({
+  item,
+  trajectory,
+}: {
+  item: HistoryNode | InflightResponseType;
+  trajectory: LiveTrajectory["instance"];
+}) => {
   const isCompacting = useAppStore(
     state =>
       state.sessionMode.mode === "live" &&
@@ -1673,7 +1695,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item, isCompacting);
+    return renderLlmIR(item, isCompacting, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1722,13 +1744,18 @@ function renderInflightResponse(item: InflightResponseType, isCompacting: boolea
     </TerminalFlex>
   );
 }
-function renderLlmIR(node: Extract<HistoryNode, { type: "llm-ir" }>, isCompacting: boolean) {
+function renderLlmIR(
+  node: Extract<HistoryNode, { type: "llm-ir" }>,
+  isCompacting: boolean,
+  trajectory: LiveTrajectory["instance"],
+) {
   const item = node.ir;
   if (item.role === "subagent-trajectory") {
+    const inspection = trajectory.inspectSubagentTrajectory(item);
     const calls = item.ir.flatMap(ir =>
       ir.role === "assistant" ? (ir.toolCalls ?? []).filter(call => call.type === "tool-call") : [],
     );
-    return <SubagentTrajectoryRenderer trajectory={item} calls={calls} />;
+    return <SubagentTrajectoryRenderer inspection={inspection} calls={calls} />;
   }
   if (item.role === "assistant") {
     if (isCompacting) {
@@ -1982,23 +2009,18 @@ function renderLlmIR(node: Extract<HistoryNode, { type: "llm-ir" }>, isCompactin
   );
 }
 function SubagentTrajectoryRenderer({
-  trajectory,
+  inspection,
   calls,
 }: {
-  trajectory: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  inspection: SubagentTrajectoryInspection;
   calls: Array<ToolCall<typeof octoAgent.agents.explore.tools>>;
 }) {
   const cwd = useCwd();
   const color = useColor();
-  const running = useAppStore(state => {
-    if (state.sessionMode.mode !== "live") return false;
-    const mode = state.sessionMode.liveMode.trajectoryMode;
-    return !mode.root && mode.scope.parentSubagentIR === trajectory;
-  });
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
-      <ExploreHeading running={running} />
-      {running && (
+      <ExploreHeading inspection={inspection} />
+      {inspection.type === "in-progress" && (
         <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
           {calls.map((call, index) => {
             let detail: string | null;
@@ -2031,14 +2053,31 @@ function SubagentTrajectoryRenderer({
   );
 }
 
-function ExploreHeading({ running }: { running: boolean }) {
+function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
   const color = useColor();
-  const { frame } = useAnimation({ isActive: running, interval: 300 });
+  const { frame } = useAnimation({ isActive: inspection.type === "in-progress", interval: 300 });
   const dots = ["...", "", ".", ".."][frame % 4];
+  const heading = (() => {
+    switch (inspection.type) {
+      case "in-progress":
+        return `Exploring${dots}`;
+      case "complete":
+        return "Octo finished exploring!";
+      case "error":
+        return (
+          <>
+            Octo encountered an error while exploring:{" "}
+            <Span style={{ color: "red" }}>{inspection.error}</Span>
+          </>
+        );
+      case "aborted":
+        return "Octo's exploration was aborted";
+    }
+  })();
   return (
     <TerminalFlex>
       <Octo />
-      <Span style={{ color }}> {running ? `Exploring${dots}` : "Octo finished exploring!"}</Span>
+      <Span style={{ color }}> {heading}</Span>
     </TerminalFlex>
   );
 }
