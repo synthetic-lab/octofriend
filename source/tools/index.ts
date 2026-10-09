@@ -54,6 +54,7 @@ export const SKIP_CONFIRMATION_TOOLS: Array<keyof LoadedTools> = [
   "fetch",
   "glob",
   "grep",
+  "explore",
   "lsp-definition",
   "lsp-references",
   "lsp-hover",
