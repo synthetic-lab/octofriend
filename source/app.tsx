@@ -799,7 +799,8 @@ function BottomBarContent({
     trajectoryMode.mode === "autofix-tool" ||
     trajectoryMode.mode === "request-error-retrying" ||
     trajectoryMode.mode === "tool-call" ||
-    trajectoryMode.mode === "running-tool"
+    trajectoryMode.mode === "running-tool" ||
+    (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
   ) {
     const overrideStrings = (() => {
       if (trajectoryMode.mode === "compacting") {
