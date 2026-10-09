@@ -751,16 +751,39 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return run(location.agent, location.history);
   }
 
+  private async startSubagent({
+    location,
+    tail,
+  }: Extract<HistoryInspection<A>, { action: "invoke-subagent" }>): Promise<void> {
+    // The invocation and child directory belong to the selected parent in A's tree.
+    await this.appendIr(location, {
+      role: "subagent-trajectory",
+      subagent: tail.subagent,
+      toolCall: tail.toolCall,
+      task: tail.message,
+      ir: [{ role: "user", content: subagentPrompt(tail.message) }],
+    } as TreeIR<A>);
+  }
+
   async step(): Promise<boolean> {
     if (this.params.abortSignal.aborted) return false;
     this.turnController = new AbortController();
     this.awaitingSteering = false;
 
     let inspection = this.inspect();
-    while (inspection.action === "rectify") {
-      const resolved = await this.rectify(inspection);
-      if (!resolved.success) return false;
+    while (inspection.action === "rectify" || inspection.action === "invoke-subagent") {
+      if (inspection.action === "rectify") {
+        const resolved = await this.rectify(inspection);
+        if (!resolved.success) return false;
+      } else {
+        await this.startSubagent(inspection);
+      }
+      if (this.params.abortSignal.aborted) return false;
       inspection = this.inspect();
+      if (this.turnController.signal.aborted) {
+        await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+        return true;
+      }
     }
 
     const active = inspection;
@@ -833,6 +856,15 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       }
       if (this.params.abortSignal.aborted) return false;
       inspection = this.inspect();
+      if (inspection.action === "invoke-subagent") {
+        await this.startSubagent(inspection);
+        if (this.params.abortSignal.aborted) return false;
+        inspection = this.inspect();
+        if (this.turnController.signal.aborted) {
+          await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+          return true;
+        }
+      }
       if (inspection.action !== "respond") return true;
     }
     await this.respond(inspection.location, runtimeData.data);
@@ -978,7 +1010,13 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       return { role: "tool-runtime-error", toolCall, error: output.error };
     }
     if (output.data.type === "invoke-subagent") {
-      throw new Error(`Subagent invocation is not supported: ${output.data.name}`);
+      // The loaded tool's subagent dependency belongs to the selected agent's directory.
+      return {
+        role: "tool-invoke-subagent",
+        toolCall,
+        subagent: output.data.name,
+        message: output.data.message,
+      } as TreeIR<A>;
     }
 
     let ir: TreeIR<A>;

@@ -391,6 +391,11 @@ export type HistoryInspection<A extends Agent<any, any, any>> = {
       tail: RecursiveLowered<A>["converted"];
     }
   | {
+      action: "invoke-subagent";
+      location: ActiveHistory<A>;
+      tail: RecursiveLowered<A>["converted"] & { role: "tool-invoke-subagent" };
+    }
+  | {
       action: "run-tools";
       location: ActiveHistory<A>;
       tail: RecursiveLowered<A>["converted"];
@@ -412,6 +417,9 @@ export function inspectHistory<A extends Agent<any, any, any>>(
   }
   const common = { location, pendingCalls };
 
+  if (tail.role === "tool-invoke-subagent") {
+    return ok({ ...common, action: "invoke-subagent", tail });
+  }
   if (
     tail.role === "auth-error" ||
     tail.role === "payment-error" ||

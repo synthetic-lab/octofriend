@@ -192,14 +192,22 @@ function rateLimitError(): Extract<CompilerError, { type: "rate-limit-error" }> 
 }
 
 function makeRunCompiler(queue: CompilerQueueItem[]) {
-  const calls: Array<{ irs: Array<LoweredIR<any>> }> = [];
+  const calls: Array<{
+    irs: Array<LoweredIR<any>>;
+    tools: string[];
+    systemPrompt: string | undefined;
+  }> = [];
   const runCompiler: Compiler<null> = async <
     A extends Agent<any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
-    calls.push({ irs: [...params.irs] as Array<LoweredIR<any>> });
+    calls.push({
+      irs: [...params.irs] as Array<LoweredIR<any>>,
+      tools: Object.keys(params.tools ?? {}),
+      systemPrompt: await params.systemPrompt?.(),
+    });
     const next = queue.shift();
     if (next == null) throw new Error("unexpected compiler call");
     const result = await next(params.onTokens, params);
@@ -220,6 +228,7 @@ function makeTrajectory(opts?: {
   errorCorrection?: ErrorCorrection<TestAgent>;
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
+  onMessage?: (event: TrajectoryEvents<TestAgent>["onMessage"]) => void | Promise<void>;
   modelAuthError?: () => string | undefined;
   loadTools?: (
     signal: AbortSignal,
@@ -229,6 +238,7 @@ function makeTrajectory(opts?: {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
     modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
     roles: [] as string[],
+    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessage"]>,
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     capCalls: [] as unknown[],
@@ -318,9 +328,11 @@ function makeTrajectory(opts?: {
           rec.modeObjs.push(mode);
           rec.timeline.push(`mode:${mode.mode}`);
         },
-        onMessage: ({ ir }) => {
-          rec.roles.push(ir.role);
-          rec.timeline.push(`ir:${ir.role}`);
+        onMessage: async event => {
+          rec.messages.push(event);
+          rec.roles.push(event.ir.role);
+          rec.timeline.push(`ir:${event.ir.role}`);
+          await opts?.onMessage?.(event);
         },
         steeringChange: ({ upcoming, queued }) => {
           rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
@@ -638,16 +650,388 @@ describe("trajectory", () => {
     },
   );
 
-  it("throws when a tool tries to invoke a subagent", async () => {
-    const { build } = makeTrajectory();
-    const { traj } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+  it("runs a delegated child before resuming the parent's unanswered calls", async () => {
+    const queries: string[] = [];
+    const permissions: string[] = [];
+    const task = [...text("Inspect this diagram"), img("diagram.png")];
+    const { build, rec } = makeTrajectory({
+      permission: async call => {
+        permissions.push(call.name);
+        return { decision: "allow" };
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [
+              searchCall("before", "c1"),
+              searchCall("delegate", "c2"),
+              searchCall("after", "c3"),
+            ],
+          }),
+        ),
+      // Reusing a parent ID must not answer a call in the parent's batch.
+      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "c3")] })),
+      () => okResult(assistantMessage({ content: "child findings" })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return query === "delegate"
+        ? ok({ type: "invoke-subagent", name: "research", message: task })
+        : ok({ type: "output", content: text(query) });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(compilerCalls).toHaveLength(2);
+    expect(compilerCalls[1].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+    expect(compilerCalls[0].tools).toEqual(["search", "shell"]);
+    expect(compilerCalls[1].tools).toEqual(["shell"]);
+    expect(compilerCalls[1].systemPrompt).toBe("You are the research subagent.");
+
+    const child = traj.messages.at(-1);
+    if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+    expect(child.task).toBe(task);
+    expect(child.toolCall.toolCallId).toBe("c2");
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant"]);
+    expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "responding" });
+
+    await inputControl(traj).enqueueSteering(text("after all the tools"));
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant", "shell-result", "assistant"]);
+    expect(compilerCalls[2].irs.map(ir => ir.role)).toEqual(["user", "assistant", "tool-output"]);
+    expect(traj.messages.at(-1)).toBe(child);
+    const childEvents = rec.messages.filter(event => !event.root);
+    expect(childEvents.map(event => event.ir.role)).toEqual([
+      "assistant",
+      "shell-result",
+      "assistant",
+    ]);
+    for (const event of childEvents) {
+      expect(event.scope.parentSubagentIR).toBe(child);
+      expect(event.scope.toplevelSubagentIR).toBe(child);
+      expect(event.scope.path).toEqual([{ subagent: "research", toolCallId: "c2" }]);
+    }
+
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate", "after"]);
+    expect(permissions).toEqual(["search", "search", "shell", "search"]);
+    expect(traj.messages.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-invoke-subagent",
+      "subagent-trajectory",
+      "tool-output",
+      "user",
+      "assistant",
+    ]);
+    const continuation = compilerCalls[3].irs;
+    expect(continuation.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-output",
+      "tool-output",
+      "user",
+    ]);
+    expect(continuation[3]).toMatchObject({
+      role: "tool-output",
+      toolCall: { toolCallId: "c2" },
+      content: text("child findings"),
+    });
+    expect(continuation[4]).toMatchObject({ role: "tool-output", toolCall: { toolCallId: "c3" } });
+    expect(continuation[5]).toEqual({ role: "user", content: text("after all the tools") });
+    expect(rec.modeObjs.filter(mode => mode.mode === "responding").map(mode => mode.root)).toEqual([
+      true,
+      false,
+      false,
+      true,
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each(["success", "failure"] as const)(
+    "resumes a batch containing consecutive delegations after child %s",
+    async outcome => {
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory();
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("first", "c1"), searchCall("second", "c2")],
+            }),
+          ),
+        outcome === "success" ? plainOk : () => err(requestError("child failed")),
+        plainOk,
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "invoke-subagent", name: "research", message: text(query) });
+      };
+
+      await inputControl(traj).enqueueSteering(text("delegate twice"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(compilerCalls).toHaveLength(4);
+      expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual([
+        "user",
+        "assistant",
+        outcome === "success" ? "tool-output" : "tool-runtime-error",
+        "tool-output",
+      ]);
+      if (outcome === "failure") {
+        expect(compilerCalls[3].irs[2]).toMatchObject({
+          role: "tool-runtime-error",
+          error: "child failed",
+          toolCall: { toolCallId: "c1" },
+        });
+      }
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(2);
+      expect(rec.modes).not.toContain("request-error");
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it.each([false, true])(
+    "resumes a tail invocation without rerunning its tool (auth failure=%s)",
+    async authFailure => {
+      let failing = authFailure;
+      const task = text("Resume this delegated task");
+      const toolCall = searchCall("delegate", "c1");
+      const { build, rec } = makeTrajectory({
+        messages: [
+          { role: "user", content: text("run") },
+          assistantMessage({ toolCalls: [toolCall] }),
+          { role: "tool-invoke-subagent", toolCall, subagent: "research", message: task },
+        ],
+        modelAuthError: () => (failing ? "credentials expired" : undefined),
+      });
+      const { traj, compilerCalls } = await build([plainOk, plainOk]);
+      runImpl = async () => {
+        throw new Error("delegating tool must not run again");
+      };
+
+      expect(await traj.step()).toBe(true);
+      const child = traj.messages.at(-1);
+      if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+      expect(child.task).toBe(task);
+      if (authFailure) {
+        expect(compilerCalls).toHaveLength(0);
+        expect(child.ir.map(ir => ir.role)).toEqual(["user", "auth-error"]);
+        const waiting = await startWaitingStep(traj, "auth-error");
+        expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "auth-error" });
+        failing = false;
+        retryControl(traj).retry();
+        expect(await waiting.finished).toBe(true);
+        expect(child.ir.map(ir => ir.role)).toEqual([
+          "user",
+          "auth-error",
+          "error-retry",
+          "assistant",
+        ]);
+      }
+      expect(compilerCalls).toHaveLength(1);
+      expect(compilerCalls[0].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+      expect(await traj.step()).toBe(true);
+      expect(compilerCalls).toHaveLength(2);
+      expect(compilerCalls[1].irs[2]).toMatchObject({
+        role: "tool-output",
+        toolCall: { toolCallId: "c1" },
+      });
+      expect(rec.modes).not.toContain("running-tool");
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(1);
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it("resumes each parent in a nested delegation with reused call IDs", async () => {
+    const middle = definePermissionlessAgent({
+      tools: { search: searchTool },
+      agents: { research: plainResearchAgent },
+    });
+    const root = definePermissionlessAgent({
+      tools: { search: searchTool },
+      agents: { research: middle },
+    });
+    const exit = new AbortController();
+    exitControllers.push(exit);
+    const search = await searchTool({ signal: exit.signal, transport, data: { marker: "fresh" } });
+    if (search == null) throw new Error("search tool failed to load");
+    const queries: string[] = [];
+    runImpl = async query => {
+      queries.push(query);
+      return query.endsWith("delegate")
+        ? ok({ type: "invoke-subagent", name: "research", message: text(query) })
+        : ok({ type: "output", content: text(query) });
+    };
+    const { runCompiler, calls } = makeRunCompiler([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("root delegate", "c1"), searchCall("root after", "c2")],
+          }),
+        ),
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("middle delegate", "c1"), searchCall("middle after", "c2")],
+          }),
+        ),
+      () => okResult(assistantMessage({ content: "leaf findings" })),
+      () => okResult(assistantMessage({ content: "middle findings" })),
+      plainOk,
+    ]);
+    const events: Array<TrajectoryEvents<typeof root>["onMessage"]> = [];
+    const traj = new Trajectory({
+      agent: root,
+      model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
+      loadTools: async () => ok({ search }),
+      toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
+      messages: [],
+      toolData: { marker: "fresh" },
+      runCompiler,
+      systemPrompt: async () => "root prompt",
+      subagentPrompts: { research: async () => "research prompt" },
+      lowerMessages: messages => messages.map(original => ({ original, converted: original })),
+      transport,
+      abortSignal: exit.signal,
+      handler: {
+        onMessage: event => {
+          events.push(event);
+        },
+      },
+    });
+
+    await inputControl(traj).enqueueSteering(text("run nested work"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["root delegate"]);
+    const outer = traj.messages.at(-1);
+    if (outer?.role !== "subagent-trajectory") throw new Error("Expected outer trajectory");
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["root delegate", "middle delegate"]);
+    const inner = outer.ir.at(-1);
+    if (inner?.role !== "subagent-trajectory") throw new Error("Expected inner trajectory");
+    const leafEvent = events.at(-1);
+    if (leafEvent == null || leafEvent.root) throw new Error("Expected leaf event");
+    const leafMessage = inner.ir.at(-1);
+    if (leafMessage == null) throw new Error("Expected leaf message");
+    expect(leafEvent.ir).toBe(leafMessage);
+    expect(leafEvent.scope.parentSubagentIR).toBe(inner);
+    expect(leafEvent.scope.toplevelSubagentIR).toBe(outer);
+    expect(leafEvent.scope.path).toEqual([
+      { subagent: "research", toolCallId: "c1" },
+      { subagent: "research", toolCallId: "c1" },
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["root delegate", "middle delegate", "middle after"]);
+    expect(calls[3].irs[2]).toMatchObject({ role: "tool-output", content: text("leaf findings") });
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["root delegate", "middle delegate", "middle after", "root after"]);
+    expect(calls[4].irs[2]).toMatchObject({
+      role: "tool-output",
+      content: text("middle findings"),
+    });
+    expect(calls.map(call => call.tools)).toEqual([
+      ["search"],
+      ["search"],
+      [],
+      ["search"],
+      ["search"],
+    ]);
+    expect(calls.map(call => call.systemPrompt)).toEqual([
+      "root prompt",
+      "research prompt",
+      "research prompt",
+      "research prompt",
+      "root prompt",
+    ]);
+    expect(outer.ir.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-invoke-subagent",
+      "subagent-trajectory",
+      "tool-output",
+      "assistant",
+    ]);
+    expect(traj.messages[3]).toBe(outer);
+    expect(outer.ir[3]).toBe(inner);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each(["tool-invoke-subagent", "subagent-trajectory"] as const)(
+    "does not start child work when quitting during the %s notification",
+    async role => {
+      const { build, exit } = makeTrajectory({
+        onMessage: async event => {
+          if (event.ir.role !== role) return;
+          exit.abort();
+          await new Promise(resolve => setTimeout(resolve, 0));
+        },
+      });
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+            }),
+          ),
+      ]);
+      runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
+      await inputControl(traj).enqueueSteering(text("run"));
+      await traj.run();
+      expect(compilerCalls).toHaveLength(1);
+      expect(traj.mode.mode).toBe("aborted");
+      const children = traj.messages.filter(ir => ir.role === "subagent-trajectory");
+      expect(children).toHaveLength(role === "subagent-trajectory" ? 1 : 0);
+      if (children.length > 0) expect(children[0].ir.at(-1)?.role).toBe("interrupted-by-user");
+      expect(
+        traj.messages
+          .filter(ir => ir.role === "tool-skip-output")
+          .map(ir => ir.toolCall.toolCallId),
+      ).toEqual(role === "subagent-trajectory" ? ["c2"] : ["c1", "c2"]);
+    },
+  );
+
+  it("closes the newly inserted child when interrupted during its notification", async () => {
+    const { build } = makeTrajectory({
+      onMessage: async event => {
+        if (event.ir.role === "subagent-trajectory") await interruptNow(traj);
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
     ]);
     runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
-
-    inputControl(traj).enqueueSteering(text("run"));
+    await inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
-    await expect(traj.step()).rejects.toThrow("Subagent invocation is not supported: research");
+    expect(await traj.step()).toBe(true);
+    const child = traj.messages.find(ir => ir.role === "subagent-trajectory");
+    expect(child?.ir.at(-1)?.role).toBe("interrupted-by-user");
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c2"]);
+    expect(compilerCalls).toHaveLength(1);
+    await startWaitingStep(traj, "ready-for-request");
   });
 
   it("skips unanswered tool calls when a tool throws, then rethrows", async () => {
