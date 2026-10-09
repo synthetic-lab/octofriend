@@ -2033,9 +2033,14 @@ function SubagentTrajectoryRenderer({
 
 function ExploreHeading({ running }: { running: boolean }) {
   const color = useColor();
-  const { time } = useAnimation({ isActive: running });
-  const dots = ["...", "", ".", ".."][Math.floor(time / 300) % 4];
-  return <Span style={{ color }}>{running ? `Exploring${dots}` : "Explored"}</Span>;
+  const { frame } = useAnimation({ isActive: running, interval: 300 });
+  const dots = ["...", "", ".", ".."][frame % 4];
+  return (
+    <TerminalFlex>
+      <Octo />
+      <Span style={{ color }}> {running ? `Exploring${dots}` : "Octo finished exploring!"}</Span>
+    </TerminalFlex>
+  );
 }
 
 function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
