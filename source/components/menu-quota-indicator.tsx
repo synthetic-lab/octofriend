@@ -135,7 +135,6 @@ export const MenuQuotaIndicator = () => {
     <TerminalFlex
       style={{
         flexDirection: "column",
-        alignItems: "center",
       }}
     >
       {quota.weeklyTokenLimit ? (
