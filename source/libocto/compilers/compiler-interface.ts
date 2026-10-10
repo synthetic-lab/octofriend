@@ -143,7 +143,7 @@ export type CompilerParams<
   Model,
   Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
 > = CompilerParamsBase<A, Model> & {
-  onTokens: (t: string, type: CompilerTokenType<Tools>) => any;
+  onTokens: (t: string, type: CompilerTokenType<Tools>) => Promise<void>;
   tools?: Tools;
 };
 
@@ -151,7 +151,7 @@ export type CompilerParamsWithoutTools<A extends Agent<any, any, any>, Model> = 
   A,
   Model
 > & {
-  onTokens: (t: string, type: CompilerTokenType<undefined>) => any;
+  onTokens: (t: string, type: CompilerTokenType<undefined>) => Promise<void>;
   tools?: undefined;
 };
 
@@ -160,7 +160,7 @@ export type CompilerParamsWithTools<
   Model,
   Tools extends Partial<LoadedTools<A["tools"]>> = Partial<LoadedTools<A["tools"]>>,
 > = CompilerParamsBase<A, Model> & {
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   tools: Tools;
 };
 
@@ -187,7 +187,7 @@ export type CompilerImplementationParams<A extends Agent<any, any, any>, Model> 
   CompilerParamsImplementation<A, Model>,
   "onTokens"
 > & {
-  onTokens: (t: string, type: "reasoning" | "content" | "tool") => any;
+  onTokens: (t: string, type: "reasoning" | "content" | "tool") => Promise<void>;
   finish: (args: {
     curl: string;
     headers: Headers;
@@ -252,18 +252,18 @@ export function defineCompiler<Model>(
     params: CompilerParamsImplementation<A, Model>,
   ): Promise<CompilerResult<A, undefined> | CompilerResult<A>> {
     let unexpectedToolCall = false;
-    const onTokens: CompilerImplementationParams<A, Model>["onTokens"] = (tokens, type) => {
+    const onTokens: CompilerImplementationParams<A, Model>["onTokens"] = async (tokens, type) => {
       if (type === "tool") {
         if (!compilerParamsHaveTools(params)) {
           unexpectedToolCall = true;
           return;
         }
         if (tokens === "") return;
-        params.onTokens(tokens, type);
+        await params.onTokens(tokens, type);
         return;
       }
 
-      params.onTokens(tokens, type);
+      await params.onTokens(tokens, type);
     };
 
     const finish: CompilerImplementationParams<A, Model>["finish"] = async ({

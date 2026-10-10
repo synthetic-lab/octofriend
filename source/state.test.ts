@@ -212,7 +212,7 @@ function deferred<T = void>(): {
 
 /* Mock compiler seam: state.ts lets tests inject a Compiler via BootEnv. */
 
-type Emit = (tokens: string, type: "reasoning" | "content") => void;
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type CompilerQueueItem = (
   onTokens: Emit,
   params: { abortSignal: AbortSignal },
@@ -640,7 +640,7 @@ describe("error-mode mirrors", () => {
     process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
     await waitForNextTurn(() => authError.control.retry());
     expect(compilerCalls.length).toBe(1);
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual(["user", "auth-error", "error-retry", "assistant"]);
   });
 
   it("mirrors a rewind: restores the prompt as the draft query and slices history", async () => {
@@ -775,7 +775,7 @@ describe("history persistence (BUGS.md #8, #12)", () => {
   it("persists the partial response exactly once when interrupted mid-stream", async () => {
     const { session } = await bootSession([
       async (onTokens, params) => {
-        onTokens("partial-stream-marker", "content");
+        await onTokens("partial-stream-marker", "content");
         // Abort-aware park: the arc must see the abort after tokens were emitted.
         await new Promise<void>(resolve => {
           if (params.abortSignal.aborted) return resolve();
@@ -805,10 +805,12 @@ describe("inputFieldAvailable", () => {
     rejectionTx: { commitRejection: () => {} },
   };
   const ready: TrajectoryMode<OctoAgent> = {
+    root: true,
     mode: "ready-for-request",
     control: { enqueueSteering: async () => {} },
   };
   const error: TrajectoryMode<OctoAgent> = {
+    root: true,
     mode: "request-error",
     requestError: "boom",
     curl: null,
@@ -825,6 +827,6 @@ describe("inputFieldAvailable", () => {
   });
 
   it("is hidden when aborted", () => {
-    expect(inputFieldAvailable({ mode: "aborted" }, idle)).toBe(false);
+    expect(inputFieldAvailable({ root: true, mode: "aborted" }, idle)).toBe(false);
   });
 });

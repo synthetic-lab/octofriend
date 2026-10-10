@@ -1903,7 +1903,12 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
     item.role === "request-error" ||
     item.role === "compaction-error" ||
     item.role === "validation-retry-budget-exceeded" ||
-    item.role === "interrupted-by-user"
+    item.role === "interrupted-by-user" ||
+    item.role === "auth-error" ||
+    item.role === "payment-error" ||
+    item.role === "rate-limit-error" ||
+    item.role === "error-dismissed" ||
+    item.role === "error-retry"
   ) {
     // Arc-level error records are bookkeeping for the parked error modes; drop them before
     // the exhaustive user check.

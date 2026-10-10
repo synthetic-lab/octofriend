@@ -1,15 +1,6 @@
 import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
-
-export type ImageModalityConfig = {
-  enabled: boolean;
-  maxSizeMB: number;
-  acceptedMimeTypes: string[];
-};
-
-export type MultimodalConfig = {
-  image?: ImageModalityConfig;
-};
+import type { MultimodalConfig } from "./libocto/modalities.ts";
 
 export type ProviderConfig = {
   shortcut: Hotkey;
@@ -215,7 +206,7 @@ export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
 export type CanDisplayImageResult = { ok: true } | { ok: false; reason: string };
 
 export function canDisplayImage(
-  modalities: MultimodalConfig | undefined,
+  modalities: MultimodalConfig | null,
   image: ImageInfo,
 ): CanDisplayImageResult {
   if (!modalities?.image?.enabled) {

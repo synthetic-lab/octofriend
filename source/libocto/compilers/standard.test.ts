@@ -71,7 +71,7 @@ describe("standard mixed stream chunks", () => {
         tools: { search: loaded },
         abortSignal: controller.signal,
         transport,
-        onTokens: (text, type) => {
+        onTokens: async (text, type) => {
           tokens.push({ text, type });
         },
       });

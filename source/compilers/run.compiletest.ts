@@ -27,7 +27,7 @@ const noToolsResult = run<typeof octoAgent>({
   abortSignal: signal,
   transport,
   autofixJson,
-  onTokens: (_tokens, type) => {
+  onTokens: async (_tokens, type) => {
     expectType<"reasoning" | "content">(type);
     // @ts-expect-error no tools were provided, so no tool-token stream is possible.
     expectType<"tool">(type);
@@ -48,7 +48,7 @@ const withToolsResult = run<typeof octoAgent, Partial<LoadedTools>>({
   transport,
   autofixJson,
   tools,
-  onTokens: (_tokens, type) => {
+  onTokens: async (_tokens, type) => {
     expectType<CompilerTokenType<LoadedTools>>(type);
   },
 });
@@ -62,5 +62,5 @@ run<typeof octoAgent>({
   transport,
   autofixJson,
   // @ts-expect-error no-tools callbacks cannot require only tool tokens.
-  onTokens: (_tokens, _type: "tool") => {},
+  onTokens: async (_tokens, _type: "tool") => {},
 });
