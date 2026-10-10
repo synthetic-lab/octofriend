@@ -526,17 +526,30 @@ export type IRConversion<Original, Converted> = {
   converted: Converted;
 };
 
-type DescendantShallowIR<Agents extends AgentDirectory> = string extends keyof Agents
-  ? ShallowLoweredIR<Agents[string]>
+// Traverse the directory independently of the IR projection. Interleaving recursive tree
+// traversal with the full IR union makes generic assignability (including Awaited<TreeIR<A>>)
+// repeatedly expand both. Box each entry so an any agent cannot absorb typed siblings, and a
+// union-valued entry is projected as one agent type, just as it is in that agent's own history.
+// String-indexed abstract directories terminate at their declared agent type.
+type DescendantAgentNodes<Agents extends AgentDirectory> = string extends keyof Agents
+  ? [Agents[string]]
   : {
-      [K in keyof Agents]: ShallowLoweredIR<Agents[K]> | DescendantShallowIR<Agents[K]["agents"]>;
+      [K in keyof Agents]: [Agents[K]] | DescendantAgentNodes<Agents[K]["agents"]>;
     }[keyof Agents];
 
-type DescendantPreLoweredIR<Agents extends AgentDirectory> = string extends keyof Agents
-  ? PreLoweredIR<Agents[string]>
-  : {
-      [K in keyof Agents]: PreLoweredIR<Agents[K]> | DescendantPreLoweredIR<Agents[K]["agents"]>;
-    }[keyof Agents];
+type AgentShallowIR<Node> = Node extends [infer A extends Agent<any, any, any>]
+  ? ShallowLoweredIR<A>
+  : never;
+type DescendantShallowIR<Agents extends AgentDirectory> = AgentShallowIR<
+  DescendantAgentNodes<Agents>
+>;
+
+type AgentPreLoweredIR<Node> = Node extends [infer A extends Agent<any, any, any>]
+  ? PreLoweredIR<A>
+  : never;
+type DescendantPreLoweredIR<Agents extends AgentDirectory> = AgentPreLoweredIR<
+  DescendantAgentNodes<Agents>
+>;
 
 // A structural inspection bound, not a tool catalogue. Unknown argument payloads preserve
 // the exact descendant schemas when intersected; any would erase their literal types.
@@ -583,11 +596,12 @@ export type RecursiveLowered<A extends Agent<any, any, any>> = IRConversion<
 >;
 
 // A tree-wide consumer can see any agent's IR without widening that agent's own history.
-type DescendantOriginals<Agents extends AgentDirectory> = string extends keyof Agents
-  ? AgentIR<Agents[string]>
-  : {
-      [K in keyof Agents]: AgentIR<Agents[K]> | DescendantOriginals<Agents[K]["agents"]>;
-    }[keyof Agents];
+type AgentOriginals<Node> = Node extends [infer A extends Agent<any, any, any>]
+  ? AgentIR<A>
+  : never;
+type DescendantOriginals<Agents extends AgentDirectory> = AgentOriginals<
+  DescendantAgentNodes<Agents>
+>;
 
 export type TreeIR<A extends Agent<any, any, any>> = AgentIR<A> | DescendantOriginals<A["agents"]>;
 
@@ -604,11 +618,10 @@ export type CompilerReadyIR<A extends Agent<any, any, any>> = IRConversion<
   LoweredIR<A["tools"]> | DescendantOutputs<A["agents"]>
 >;
 
-type DescendantOutputs<Agents extends AgentDirectory> = (string extends keyof Agents
-  ? LoweredIR<Agents[string]["tools"]>
-  : {
-      [K in keyof Agents]: LoweredIR<Agents[K]["tools"]> | DescendantOutputs<Agents[K]["agents"]>;
-    }[keyof Agents]) &
+type AgentOutputs<Node> = Node extends [infer A extends Agent<any, any, any>]
+  ? LoweredIR<A["tools"]>
+  : never;
+type DescendantOutputs<Agents extends AgentDirectory> = AgentOutputs<DescendantAgentNodes<Agents>> &
   IRShape<LoweredIR<InspectionTools>>;
 
 /*
