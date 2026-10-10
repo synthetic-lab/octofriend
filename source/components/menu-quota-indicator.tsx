@@ -77,6 +77,7 @@ export const MenuQuotaIndicator = () => {
   const model = useModel();
   const storeQuota = useAppStore(state => state.quotaData);
   const [fetchedQuota, setFetchedQuota] = useState<QuotaData | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   // should only be used if menu is opened before the agent runs
   // otherwise, quota should come from the store, read from header values in the compiler
@@ -89,44 +90,59 @@ export const MenuQuotaIndicator = () => {
         return fetchQuota(apiKeyFromAuth(auth.auth));
       })
       .then(data => {
-        if (!cancelled) setFetchedQuota(prev => prev ?? data);
+        if (cancelled) return;
+        if (data == null) {
+          setFetchFailed(true);
+          return;
+        }
+        setFetchedQuota(prev => prev ?? data);
       })
       .catch(() => {
-        /* ignore errors, they're out-of-place in the menu */
+        if (!cancelled) setFetchFailed(true);
       });
     return () => {
       cancelled = true;
     };
   }, [storeQuota, model, config]);
   const quota = storeQuota ?? fetchedQuota;
-  if (!quota) return null;
-  if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) return null;
+  if (quota == null) {
+    return (
+      <TerminalFlex>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          {fetchFailed ? "Could not load usage information." : "Loading usage..."}
+        </Span>
+      </TerminalFlex>
+    );
+  }
+  if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) {
+    return (
+      <TerminalFlex>
+        <Span
+          style={{
+            color: "gray",
+          }}
+        >
+          No usage limits currently apply.
+        </Span>
+      </TerminalFlex>
+    );
+  }
   return (
     <TerminalFlex
       style={{
         flexDirection: "column",
-        alignItems: "center",
       }}
     >
-      <Span
-        style={{
-          fontWeight: "bold",
-        }}
-      >
-        Synthetic Quota
-      </Span>
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-        }}
-      >
-        {quota.weeklyTokenLimit ? (
-          <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
-        ) : null}
-        {quota.rollingFiveHourLimit ? (
-          <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
-        ) : null}
-      </TerminalFlex>
+      {quota.weeklyTokenLimit ? (
+        <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
+      ) : null}
+      {quota.rollingFiveHourLimit ? (
+        <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
+      ) : null}
     </TerminalFlex>
   );
 };

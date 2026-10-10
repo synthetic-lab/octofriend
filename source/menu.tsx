@@ -30,7 +30,8 @@ type MenuMode =
   | "quit-confirm"
   | "remove-model"
   | "clear-confirm"
-  | "notifications-menu";
+  | "notifications-menu"
+  | "usage-menu";
 type MenuState = {
   menuMode: MenuMode;
   setMenuMode: (mode: MenuMode) => void;
@@ -87,6 +88,7 @@ function MenuContent({
   if (menuMode === "diff-apply-toggle") return <DiffApplyToggle />;
   if (menuMode === "fix-json-toggle") return <FixJsonToggle />;
   if (menuMode === "notifications-menu") return <NotificationsMenu />;
+  if (menuMode === "usage-menu") return <UsageMenu />;
   const _: "add-model" = menuMode;
   return <AddModelMenuFlow />;
 }
@@ -404,7 +406,8 @@ function MainMenu() {
     | "diff-apply-toggle"
     | "settings-menu"
     | "clear-confirm"
-    | "notifications-menu";
+    | "notifications-menu"
+    | "usage-menu";
   let items: Keymap<Value> = {
     m: {
       label: "⤭ Switch model",
@@ -482,6 +485,15 @@ function MainMenu() {
       },
     };
   }
+  if (isSynthetic) {
+    items = {
+      ...items,
+      u: {
+        label: "◷ Usage",
+        value: "usage-menu" as const,
+      },
+    };
+  }
   items = {
     ...items,
     b: {
@@ -526,9 +538,7 @@ function MainMenu() {
         },
       ]}
       onSelect={onSelect}
-    >
-      {isSynthetic ? <MenuQuotaIndicator /> : null}
-    </KbShortcutPanel>
+    />
   );
 }
 function SettingsMenu() {
@@ -640,6 +650,38 @@ function NotificationsMenu() {
       ]}
       onSelect={onSelect}
     />
+  );
+}
+function UsageMenu() {
+  const { setMenuMode } = useMenuState(
+    useShallow(state => ({
+      setMenuMode: state.setMenuMode,
+    })),
+  );
+  const onSelect = useCallback(
+    (item: Item<"back">) => {
+      if (item.value === "back") setMenuMode("main-menu");
+    },
+    [setMenuMode],
+  );
+  return (
+    <KbShortcutPanel
+      title="Usage"
+      shortcutItems={[
+        {
+          type: "key" as const,
+          mapping: {
+            b: {
+              label: "Back to main menu",
+              value: "back" as const,
+            },
+          },
+        },
+      ]}
+      onSelect={onSelect}
+    >
+      <MenuQuotaIndicator />
+    </KbShortcutPanel>
   );
 }
 function QuitConfirm() {
