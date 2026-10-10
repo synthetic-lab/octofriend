@@ -23,7 +23,7 @@ import type {
 } from "./ir-operations.ts";
 export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
-import { subagentPrompt } from "./compilers/ir-prompts.ts";
+import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
@@ -62,6 +62,12 @@ export type RectifyControl = RetryControl & {
 
 export type ClearControl = {
   clear(): void;
+};
+
+export type EditControl<A extends Agent<any, any, any>> = {
+  // Trims history from `target` onwards and fires rewind with the removed span; when the
+  // target is a user message, its content rides along so the client can offer it for editing.
+  rewindTo(target: AgentIR<A>): Promise<void>;
 };
 
 /*
@@ -141,8 +147,8 @@ type SharedArcModes<Call, Permissioned extends boolean> =
 
 // Arms only the root arc can be in: children never await input, and inside a trajectory
 // request/compaction failures are terminal records, so they never park for rectification.
-type RootOnlyModes =
-  | { mode: "ready-for-request"; control: InputControl }
+type RootOnlyModes<A extends Agent<any, any, any>> =
+  | { mode: "ready-for-request"; control: InputControl & EditControl<A> }
   | {
       mode: "request-error";
       requestError: string;
@@ -187,7 +193,10 @@ type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Age
     }[keyof Agents & string];
 
 export type TrajectoryMode<A extends Agent<any, any, any>> =
-  | WithArcScope<ScopeRoot, RootOnlyModes | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>>
+  | WithArcScope<
+      ScopeRoot,
+      RootOnlyModes<A> | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>
+    >
   | (SubagentModes<A["agents"]> & {
       scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
     });
@@ -495,7 +504,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
       lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
-    this._mode = { root: true, mode: "ready-for-request", control: this.inputControl() };
+    this._mode = { root: true, mode: "ready-for-request", control: this.readyControl() };
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
     this.permissionGate =
@@ -533,6 +542,29 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       enqueueSteering: async content => {
         this.steering.push(content);
         await this.emitSteeringChange();
+      },
+    };
+  }
+
+  private readyControl(): InputControl & EditControl<A> {
+    return { ...this.inputControl(), ...this.editControl() };
+  }
+
+  private editControl(): EditControl<A> {
+    return {
+      rewindTo: async target => {
+        // Only a parked root loop may trim; stale controls and unknown targets are no-ops.
+        if (this.params.abortSignal.aborted) return;
+        const mode = this._mode;
+        if (mode.mode !== "ready-for-request" || !mode.root) return;
+        const index = this.history.indexOf(target);
+        if (index < 0) return;
+        const removed = this.history.splice(index);
+        const first = removed[0] as LlmIR<A> | undefined;
+        const content = first != null && isUserMessage(first) ? first.content : null;
+        this.steering.clear();
+        await this.emitSteeringChange();
+        await this.params.handler?.rewind?.({ removed, content });
       },
     };
   }
@@ -575,7 +607,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     await this.setMode({
       root: inspection.location.root,
       mode: "ready-for-request",
-      control: this.inputControl(),
+      control: this.readyControl(),
     });
   }
 
@@ -662,13 +694,16 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           });
         }
       }
-      if (!location.root || this.inspect().action !== "wait-for-input") {
+      // Response-phase aborts now mark themselves in the arc; don't double-mark.
+      const tail = location.history[location.history.length - 1] as LlmIR<any> | undefined;
+      if (
+        tail?.role !== "interrupted-by-user" &&
+        (!location.root || this.inspect().action !== "wait-for-input")
+      ) {
         await owner.ifOwner(async () => {
           await this.appendIr(location, {
             role: "interrupted-by-user",
-            reason: location.root
-              ? "The user interrupted the response."
-              : INTERRUPTED_BY_USER_REASON,
+            reason: location.root ? userInterruptReason() : INTERRUPTED_BY_USER_REASON,
           });
         });
       }
@@ -729,6 +764,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           },
           responseProgress: async event => {
             await params.handler?.responseProgress?.({ ...scope, payload: event });
+          },
+          responseProgressRollback: async event => {
+            await params.handler?.responseProgressRollback?.({ ...scope, payload: event });
           },
           startCompaction: async event => {
             await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });

@@ -253,6 +253,7 @@ function makeTrajectory(opts?: {
       autofixJson: 0,
       autofixTool: 0,
       requestRetry: 0,
+      rollbacks: 0,
     },
     modelCalls: 0,
     modelInvocations: [] as Array<TestInvocation | null>,
@@ -364,6 +365,9 @@ function makeTrajectory(opts?: {
         },
         requestRetry: () => {
           rec.arc.requestRetry++;
+        },
+        responseProgressRollback: () => {
+          rec.arc.rollbacks++;
         },
       },
     });
@@ -1513,6 +1517,91 @@ describe("trajectory", () => {
     expect(compilerCalls.length).toBe(2);
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("interrupt with only reasoning tokens records just the interruption and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: CompilerQueueItem[] = [];
+    const { traj, compilerCalls } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(async onTokens => {
+      await onTokens("thinking", "reasoning");
+      interruptNow(traj);
+      return okResult(assistantMessage({ content: "unreached full answer" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
+    const marker = traj.messages[1];
+    if (marker.role !== "interrupted-by-user") throw new Error("impossible");
+    expect(marker.reason).toBe("The user interrupted the response.");
+    expect(rec.modes).toEqual(["responding", "ready-for-request"]);
+    expect(rec.arc.rollbacks).toBe(1);
+    expect(compilerCalls.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("again"));
+    expect(await waiting.finished).toBe(true);
+    expect(compilerCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("rewindTo trims from a target IR and restores its content for editing", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: CompilerQueueItem[] = [];
+    const { traj, compilerCalls } = await build(queue);
+
+    queue.push(
+      plainOk,
+      async onTokens => {
+        await onTokens("thinking", "reasoning");
+        interruptNow(traj);
+        return okResult(assistantMessage({ content: "unreached" }));
+      },
+      plainOk,
+    );
+
+    inputControl(traj).enqueueSteering(text("first"));
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", "assistant"]);
+
+    inputControl(traj).enqueueSteering(text("second"));
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", "assistant", "user", "interrupted-by-user"]);
+
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("impossible");
+    const target = traj.messages[2];
+    await mode.control.rewindTo(target);
+
+    expect(traj.messages.length).toBe(2);
+    expect(rec.rewinds.length).toBe(1);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual(["user", "interrupted-by-user"]);
+    expect(rec.rewinds[0].content).toEqual(text("second"));
+    expect(rec.roles).toEqual(["user", "assistant", "user", "interrupted-by-user"]);
+    expect(traj.mode.mode).toBe("ready-for-request");
+
+    // Unknown targets are no-ops.
+    await mode.control.rewindTo({ role: "user", content: text("ghost") });
+    expect(traj.messages.length).toBe(2);
+    expect(rec.rewinds.length).toBe(1);
+
+    inputControl(traj).enqueueSteering(text("edited second"));
+    expect(await waiting.finished).toBe(true);
+    expect(compilerCalls.length).toBe(3);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "interrupted-by-user",
+      "user",
+      "assistant",
+    ]);
   });
 
   it("rectifies a request error by retrying with a fresh resolution", async () => {

@@ -919,6 +919,59 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     expect(dbLlmIrCount(sessionId, "partial-stream-marker")).toBe(1);
     expect(dbLlmIrCount(sessionId, "unreached-full-answer")).toBe(0);
   });
+
+  it("transparently rewinds an interrupted reasoning-only turn, restoring the draft", async () => {
+    const { session } = await bootSession([
+      async (onTokens, params) => {
+        await onTokens("reasoning-stream-marker", "reasoning");
+        // Abort-aware park: the arc must see the abort after tokens were emitted.
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+      plain("edited-response-marker"),
+    ]);
+
+    await respond("hi");
+    const responding = await waitTrajectoryMode("responding");
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+    await waitFor(() => useAppStore.getState().history.length === 0);
+
+    expect(useAppStore.getState().query).toBe("hi");
+    expect(useAppStore.getState().inflightResponse).toBeNull();
+    const sessionId = session.metadata.sessionId!;
+    expect(dbLlmIrCount(sessionId, "reasoning-stream-marker")).toBe(0);
+    expect(dbLlmIrCount(sessionId, "unreached-full-answer")).toBe(0);
+
+    // The restored draft can be edited and sent, continuing the turn cleanly.
+    await waitForNextTurn(() => respond("edited hi"));
+    expect(historyRoles()).toEqual(["user", "assistant"]);
+  });
+
+  it("keeps an interrupted reasoning-only turn when a draft was in progress", async () => {
+    await bootSession([
+      async (onTokens, params) => {
+        await onTokens("reasoning-stream-marker", "reasoning");
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+    ]);
+
+    await respond("hi");
+    const responding = await waitTrajectoryMode("responding");
+    useAppStore.getState().setQuery("draft in progress");
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+
+    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(useAppStore.getState().query).toBe("draft in progress");
+  });
 });
 
 describe("inputFieldAvailable", () => {
@@ -930,7 +983,7 @@ describe("inputFieldAvailable", () => {
   const ready: TrajectoryMode<OctoAgent> = {
     root: true,
     mode: "ready-for-request",
-    control: { enqueueSteering: async () => {} },
+    control: { enqueueSteering: async () => {}, rewindTo: async () => {} },
   };
   const error: TrajectoryMode<OctoAgent> = {
     root: true,

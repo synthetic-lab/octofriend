@@ -90,6 +90,7 @@ function makeHandler(opts?: {
   const messages: Array<TrajectoryArcIR<TestAgent>> = [];
   const retries: Array<TrajectoryArcEvents<TestAgent>["requestRetry"]> = [];
   const correctedTools: string[] = [];
+  const rollbacks: null[] = [];
   const handler: {
     [K in keyof TrajectoryArcEvents<TestAgent>]: (
       event: TrajectoryArcEvents<TestAgent>[K],
@@ -97,6 +98,9 @@ function makeHandler(opts?: {
   } = {
     startResponse: async () => {},
     responseProgress: async () => {},
+    responseProgressRollback: async () => {
+      rollbacks.push(null);
+    },
     startCompaction: async () => {},
     compactionProgress: async () => {},
     autofixingJson: async () => {},
@@ -112,7 +116,7 @@ function makeHandler(opts?: {
     },
     onResponseHeaders: async () => {},
   };
-  return { handler, messages, retries, correctedTools };
+  return { handler, messages, retries, correctedTools, rollbacks };
 }
 
 function assistant(opts: {
@@ -559,6 +563,52 @@ describe("trajectoryArc", () => {
       },
       { role: "request-error", requestError: "boom", curl: "curl" },
     ]);
+  });
+
+  it("emits an interrupted-by-user marker instead of a reasoning-only partial on abort", async () => {
+    const abortController = new AbortController();
+    const { finish, messages, rollbacks } = await runArc({
+      abortController,
+      queue: [
+        async onTokens => {
+          await onTokens("thinking", "reasoning");
+          abortController.abort();
+          return plainResult(onTokens);
+        },
+      ],
+    });
+
+    expect(finish.reason).toEqual({ type: "abort" });
+    expect(messages).toEqual([
+      { role: "interrupted-by-user", reason: "The user interrupted the response." },
+    ]);
+    expect(rollbacks.length).toBe(1);
+  });
+
+  it("keeps the buffered partial when aborted after content streamed", async () => {
+    const abortController = new AbortController();
+    const { finish, messages, rollbacks } = await runArc({
+      abortController,
+      queue: [
+        async onTokens => {
+          await onTokens("thinking", "reasoning");
+          await onTokens("partial response", "content");
+          abortController.abort();
+          return plainResult(onTokens);
+        },
+      ],
+    });
+
+    expect(finish.reason).toEqual({ type: "abort" });
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        content: "partial response",
+        reasoningContent: "thinking",
+        usage: compilerUsage(0, 0),
+      },
+    ]);
+    expect(rollbacks.length).toBe(0);
   });
 });
 
