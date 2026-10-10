@@ -9,6 +9,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   HistoryNode,
   insertHistoryItems,
   overwriteLlmIrNode,
@@ -251,6 +252,7 @@ export const useAppStore = create<UiState>((set, get) => {
     const throttle = throttledBuffer<Partial<UiState>>(300, set);
     let responseByteCount = 0;
     let compactionByteCount = 0;
+    let rewindInterruptedTurn = false;
 
     const isCurrent = () => {
       const mode = get().sessionMode;
@@ -410,6 +412,18 @@ export const useAppStore = create<UiState>((set, get) => {
             };
           });
           if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
+          if (rewindInterruptedTurn && mode.root && mode.mode === "ready-for-request") {
+            rewindInterruptedTurn = false;
+            // Veto only: a draft typed since the event cancels the rewind, never triggers it.
+            if (get().query.trim() === "") {
+              const messages = instance.messages;
+              const tail = messages[messages.length - 1];
+              const prev = messages[messages.length - 2];
+              if (tail?.role === "interrupted-by-user" && prev?.role === "user") {
+                void mode.control.rewindTo(prev);
+              }
+            }
+          }
         },
         onMessage: event => {
           if (!isCurrent()) return;
@@ -458,22 +472,27 @@ export const useAppStore = create<UiState>((set, get) => {
         },
         rewind: ({ removed, content }) => {
           if (!isCurrent()) return;
+          if (removed.length > 0) {
+            const first = irNodeMap.get(removed[0]);
+            if (first == null) throw new Error("rewind target is missing from history");
+            const start = get().history.findIndex(node => node.nodeId === first.nodeId);
+            const trimmed = get().history.slice(start);
+            // Dropping the trimmed rows keeps a fresh append legal (one root per tree) and
+            // stops rewound turns from resurrecting on session reload.
+            deleteHistoryNodes(trimmed.map(node => node.nodeId));
+            set(state => {
+              const textPart = content?.find(part => part.type === "text");
+              return {
+                history: state.history.slice(0, start),
+                query: textPart?.content ?? "",
+                clearNonce: state.clearNonce + 1,
+              };
+            });
+            return;
+          }
           set(state => {
-            let history = state.history;
-            if (removed.length > 0) {
-              const first = irNodeMap.get(removed[0]);
-              if (first == null) throw new Error("rewind target is missing from history");
-              history = history.slice(
-                0,
-                history.findIndex(node => node.nodeId === first.nodeId),
-              );
-            }
             const textPart = content?.find(part => part.type === "text");
-            return {
-              history,
-              query: textPart?.content ?? "",
-              clearNonce: state.clearNonce + 1,
-            };
+            return { query: textPart?.content ?? "", clearNonce: state.clearNonce + 1 };
           });
         },
         steeringChange: ({ queued }) => {
@@ -491,6 +510,12 @@ export const useAppStore = create<UiState>((set, get) => {
             }),
             byteCount: 0,
           }));
+        },
+        responseProgressRollback: ({ root }) => {
+          if (!isCurrent()) return;
+          // Latch the draft's emptiness at the moment the response was discarded; the rewind
+          // fires when the loop parks, and nothing later can re-arm it.
+          if (root) rewindInterruptedTurn = get().query.trim() === "";
         },
         responseProgress: ({ root, payload: event }) => {
           if (!isCurrent()) return;

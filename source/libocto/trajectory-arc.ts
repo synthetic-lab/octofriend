@@ -11,6 +11,7 @@ import type {
   AssistantMessage,
   Checkpoint,
   CompactionErrorIR,
+  InterruptedByUserIR,
   LlmIR,
   ModelErrorIR,
   CompilerReadyIR,
@@ -28,6 +29,7 @@ import {
   shouldAutoCompactHistory,
   type CompactionError,
 } from "./compilers/autocompact.ts";
+import { userInterruptReason } from "./compilers/ir-prompts.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 
@@ -94,6 +96,7 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | Checkpoint
   | RequestErrorIR
   | CompactionErrorIR
+  | InterruptedByUserIR
   | ValidationRetryBudgetExceededIR
   | ModelErrorIR;
 
@@ -183,6 +186,9 @@ export type TrajectoryArcEvents<A extends Agent<any, any, any>> = {
     buffer: AssistantBuffer<TrajectoryArcTokenTypes>;
     delta: AssistantDelta<TrajectoryArcTokenTypes>;
   };
+  // An in-progress response was discarded on abort without leaving any IR behind (nothing
+  // user-visible had streamed): clients should wipe any in-progress display state.
+  responseProgressRollback: null;
   startCompaction: null;
   compactionProgress: AutocompactionStream;
   autofixingJson: null;
@@ -520,7 +526,11 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       },
     });
 
-    function maybeBufferedMessage(): Array<TrajectoryArcIR<A>> {
+    async function maybeBufferedMessage(): Promise<Array<TrajectoryArcIR<A>>> {
+      if (abortSignal.aborted && !buffer.content && !buffer.tool) {
+        if (buffer.reasoning) await handler.responseProgressRollback(null);
+        return [{ role: "interrupted-by-user", reason: userInterruptReason() }];
+      }
       if (buffer.content || buffer.reasoning || buffer.tool) {
         return [
           ...irs,
@@ -542,7 +552,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         : undefined;
     if (headers) await handler.onResponseHeaders(headers);
 
-    if (abortSignal.aborted) return finishWith({ type: "abort" }, maybeBufferedMessage());
+    if (abortSignal.aborted) return finishWith({ type: "abort" }, await maybeBufferedMessage());
 
     if (!result.success) {
       const requestError = result.error;
@@ -550,16 +560,16 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         const decision = await maybeRetryRequest(requestError);
         if (decision === "retry") continue;
         if (decision === "abort") {
-          return finishWith({ type: "abort" }, maybeBufferedMessage());
+          return finishWith({ type: "abort" }, await maybeBufferedMessage());
         }
         if (decision === "exhausted") {
           return finishWith(
             { type: "request-error-retry-budget-exceeded", error: requestError },
-            maybeBufferedMessage(),
+            await maybeBufferedMessage(),
           );
         }
       }
-      return finishWith(compilerErrorToFinishReason(requestError), maybeBufferedMessage());
+      return finishWith(compilerErrorToFinishReason(requestError), await maybeBufferedMessage());
     }
 
     requestAttempts = 0;
