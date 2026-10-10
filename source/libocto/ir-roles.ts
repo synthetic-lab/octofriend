@@ -19,7 +19,12 @@ export const BUILTIN_IR_ROLES = {
   "tool-parse-error": true,
   "tool-skip-output": true,
   "tool-reject": true,
-  trajectory: true,
+  "tool-invoke-subagent": true,
+  "subagent-trajectory": true,
+  "request-error": true,
+  "compaction-error": true,
+  "validation-retry-budget-exceeded": true,
+  "interrupted-by-user": true,
 } as const;
 
 export type BuiltinIRRole = keyof typeof BUILTIN_IR_ROLES;
