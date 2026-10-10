@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { InputWithHistory } from "./input-with-history.tsx";
 import { InputHistory } from "../input-history/index.ts";
 import { ImageInfo, loadImageFromPaintFile } from "../utils/image-utils.ts";
@@ -28,6 +28,9 @@ interface Props {
 export const MultimediaInput = (props: Props) => {
   const [showLoadingImageBadge, setShowLoadingImageBadge] = useState(false);
   const [errorMessages, setErrorMessages] = useState<string[]>([]);
+  useEffect(() => {
+    setErrorMessages([]);
+  }, [props.modalities]);
   const inputMode = props.inputMode ?? DEFAULT_INPUT_MODE;
   useCtrlC(() => {
     if (inputMode.kind === "vim") return;
