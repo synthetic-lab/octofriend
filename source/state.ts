@@ -11,6 +11,7 @@ import {
   createSession,
   HistoryNode,
   insertHistoryItems,
+  overwriteLlmIrNode,
   latestModelJson,
   HistoryItem,
   Session,
@@ -32,6 +33,7 @@ import type { MultimodalConfig } from "./libocto/modalities.ts";
 import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
+import { exploreSystemPrompt } from "./prompts/explore-system-prompt.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
 import { err, ok, type Result } from "./libocto/result.ts";
 import {
@@ -103,6 +105,7 @@ export type SessionMode =
       mode: "lost";
       config: Config;
       transport: Transport;
+      trajectory: LiveTrajectory;
       sessionId: string | null;
       sessionLostError: string;
     };
@@ -277,8 +280,7 @@ export const useAppStore = create<UiState>((set, get) => {
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
       systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
-      // octo declares no subagents yet: an agentless tree takes an empty catalogue.
-      subagentPrompts: {},
+      subagentPrompts: { explore: exploreSystemPrompt },
       model: async (): Promise<
         Result<
           { model: ModelData; contextWindow: number; modalities: MultimodalConfig | null },
@@ -409,16 +411,29 @@ export const useAppStore = create<UiState>((set, get) => {
           });
           if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
         },
-        onMessage: ({ root, ir }) => {
-          // Octo currently has no subagents, so every event is root-scoped. When it gains
-          // them, child IRs must not be inserted as flat root history: insert the event's
-          // scope.toplevelSubagentIR on its first child append, then use irNodeMap to overwrite
-          // that same persisted node as the trajectory grows in place.
-          const _: true = root;
+        onMessage: event => {
           if (!isCurrent()) return;
           throttle.flush();
           try {
-            insertIr(ir);
+            if (event.root) {
+              insertIr(event.ir);
+            } else {
+              const trajectory = event.scope.toplevelSubagentIR;
+              const node = irNodeMap.get(trajectory);
+              if (node == null) {
+                insertIr(trajectory);
+              } else {
+                const overwritten = overwriteLlmIrNode(node.nodeId, trajectory);
+                if (!overwritten.success) throw new Error(overwritten.error);
+                const updated: HistoryNode = { ...node, type: "llm-ir", ir: trajectory };
+                irNodeMap.set(trajectory, updated);
+                set(state => ({
+                  history: state.history.map(item =>
+                    item.nodeId === node.nodeId ? updated : item,
+                  ),
+                }));
+              }
+            }
           } catch (e) {
             if (e instanceof SessionNotFoundError) {
               set(state =>
@@ -429,6 +444,7 @@ export const useAppStore = create<UiState>((set, get) => {
                         mode: "lost",
                         config: state.sessionMode.config,
                         transport: state.sessionMode.transport,
+                        trajectory: state.sessionMode.trajectory,
                         sessionId: session.metadata.sessionId,
                         sessionLostError: e.message,
                       },

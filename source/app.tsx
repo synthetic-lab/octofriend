@@ -56,6 +56,7 @@ import {
   useModel,
   InflightResponseType,
   LiveMirror,
+  LiveTrajectory,
   PermissionUiState,
   inputFieldAvailable,
   userMessageContent,
@@ -63,6 +64,7 @@ import {
 } from "./state.ts";
 import type {
   TrajectoryMode,
+  SubagentTrajectoryInspection,
   RetryControl,
   RectifyControl,
   ClearControl,
@@ -98,7 +100,6 @@ import type { ToolCall } from "./libocto/tool-def.ts";
 import { type OctoPermissionControl } from "./octo-permissions.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import type { Content, MalformedToolRequest } from "./libocto/llm-ir.ts";
-import type { OctoIR } from "./ir/octo-ir.ts";
 import {
   InputPriorityProvider,
   usePriorityInput,
@@ -157,10 +158,6 @@ type TranscriptItem =
     }
   | {
       type: "slogan";
-    }
-  | {
-      type: "history-item";
-      item: HistoryNode;
     }
   | {
       type: "boot-notification";
@@ -353,17 +350,13 @@ export default function App({
     ];
     return items;
   }, [metadata, skillNotifs, updates]);
-  const historyItems: TranscriptItem[] = useMemo(
-    () => history.map(item => ({ type: "history-item", item })),
-    [history],
-  );
   const liveMirror = sessionMode.mode === "live" ? sessionMode.liveMode : null;
   const trajectoryMode = liveMirror?.trajectoryMode ?? null;
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
     clearNonce,
-    history.length,
+    history,
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
     trajectoryMode?.mode,
@@ -455,16 +448,24 @@ export default function App({
                                 flexDirection: "column",
                               }}
                             >
-                              {historyItems.map((item, index) => (
-                                <TranscriptItemRenderer item={item} key={`history-${index}`} />
+                              {history.map(item => (
+                                <MessageDisplay
+                                  item={item}
+                                  trajectory={sessionMode.trajectory.instance}
+                                  key={item.nodeId}
+                                />
                               ))}
                               {(trajectoryMode?.mode === "responding" ||
                                 trajectoryMode?.mode === "compacting") &&
                                 inflightResponse != null &&
                                 (inflightResponse.reasoningContent || inflightResponse.content) && (
-                                  <MessageDisplay item={inflightResponse} />
+                                  <MessageDisplay
+                                    item={inflightResponse}
+                                    trajectory={sessionMode.trajectory.instance}
+                                  />
                                 )}
                               {liveMirror != null &&
+                                liveMirror.trajectoryMode.root &&
                                 isToolTrajectoryMode(liveMirror.trajectoryMode) && (
                                   <ToolRequestsRenderer
                                     trajectoryMode={liveMirror.trajectoryMode}
@@ -806,7 +807,8 @@ function BottomBarContent({
     trajectoryMode.mode === "autofix-tool" ||
     trajectoryMode.mode === "request-error-retrying" ||
     trajectoryMode.mode === "tool-call" ||
-    trajectoryMode.mode === "running-tool"
+    trajectoryMode.mode === "running-tool" ||
+    (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
   ) {
     const overrideStrings = (() => {
       if (trajectoryMode.mode === "compacting") {
@@ -1635,25 +1637,41 @@ const TranscriptItemRenderer = React.memo(({ item }: { item: TranscriptItem }) =
       </TerminalFlex>
     );
   }
-  return <MessageDisplay item={item.item} />;
+  const _: never = item;
+  return null;
 });
 
-const MessageDisplay = ({ item }: { item: HistoryNode | InflightResponseType }) => {
-  return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-        paddingRight: 4,
-      }}
-    >
-      <MessageDisplayInner item={item} />
-    </TerminalFlex>
-  );
-};
-const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseType }) => {
+const MessageDisplay = React.memo(
+  ({
+    item,
+    trajectory,
+  }: {
+    item: HistoryNode | InflightResponseType;
+    trajectory: LiveTrajectory["instance"];
+  }) => {
+    return (
+      <TerminalFlex
+        style={{
+          flexDirection: "column",
+          paddingRight: 4,
+        }}
+      >
+        <MessageDisplayInner item={item} trajectory={trajectory} />
+      </TerminalFlex>
+    );
+  },
+);
+const MessageDisplayInner = ({
+  item,
+  trajectory,
+}: {
+  item: HistoryNode | InflightResponseType;
+  trajectory: LiveTrajectory["instance"];
+}) => {
   const isCompacting = useAppStore(
     state =>
       state.sessionMode.mode === "live" &&
+      state.sessionMode.liveMode.trajectoryMode.root &&
       state.sessionMode.liveMode.trajectoryMode.mode === "compacting",
   );
   if (item.type === "inflight-response") {
@@ -1677,7 +1695,7 @@ const MessageDisplayInner = ({ item }: { item: HistoryNode | InflightResponseTyp
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item.ir, isCompacting);
+    return renderLlmIR(item, isCompacting, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1726,7 +1744,19 @@ function renderInflightResponse(item: InflightResponseType, isCompacting: boolea
     </TerminalFlex>
   );
 }
-function renderLlmIR(item: OctoIR, isCompacting: boolean) {
+function renderLlmIR(
+  node: Extract<HistoryNode, { type: "llm-ir" }>,
+  isCompacting: boolean,
+  trajectory: LiveTrajectory["instance"],
+) {
+  const item = node.ir;
+  if (item.role === "subagent-trajectory") {
+    const inspection = trajectory.inspectSubagentTrajectory(item);
+    const calls = item.ir.flatMap(ir =>
+      ir.role === "assistant" ? (ir.toolCalls ?? []).filter(call => call.type === "tool-call") : [],
+    );
+    return <SubagentTrajectoryRenderer inspection={inspection} calls={calls} />;
+  }
   if (item.role === "assistant") {
     if (isCompacting) {
       return (
@@ -1978,6 +2008,80 @@ function renderLlmIR(item: OctoIR, isCompacting: boolean) {
     </TerminalFlex>
   );
 }
+function SubagentTrajectoryRenderer({
+  inspection,
+  calls,
+}: {
+  inspection: SubagentTrajectoryInspection;
+  calls: Array<ToolCall<typeof octoAgent.agents.explore.tools>>;
+}) {
+  const cwd = useCwd();
+  const color = useColor();
+  return (
+    <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
+      <ExploreHeading inspection={inspection} />
+      {inspection.type === "in-progress" && (
+        <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+          {calls.map((call, index) => {
+            let detail: string | null;
+            switch (call.name) {
+              case "read":
+                detail = call.parsed.filePath;
+                break;
+              case "partial-read":
+                detail = `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`;
+                break;
+              case "list":
+                detail = call.parsed.dirPath || cwd;
+                break;
+              case "grep":
+              case "glob":
+                detail = null;
+                break;
+            }
+            return (
+              <Span key={index}>
+                <Span style={{ color: "gray" }}>- </Span>
+                <Span style={{ color }}>{call.name}</Span>
+                {detail != null && <Span style={{ color: "gray" }}>: {detail}</Span>}
+              </Span>
+            );
+          })}
+        </TerminalFlex>
+      )}
+    </TerminalFlex>
+  );
+}
+
+function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
+  const color = useColor();
+  const { frame } = useAnimation({ isActive: inspection.type === "in-progress", interval: 300 });
+  const dots = ["...", "", ".", ".."][frame % 4];
+  const heading = (() => {
+    switch (inspection.type) {
+      case "in-progress":
+        return `Exploring${dots}`;
+      case "complete":
+        return "Octo finished exploring!";
+      case "error":
+        return (
+          <>
+            Octo encountered an error while exploring:{" "}
+            <Span style={{ color: "red" }}>{inspection.error}</Span>
+          </>
+        );
+      case "aborted":
+        return "Octo's exploration was aborted";
+    }
+  })();
+  return (
+    <TerminalFlex>
+      <Octo />
+      <Span style={{ color }}> {heading}</Span>
+    </TerminalFlex>
+  );
+}
+
 function CompactionSummaryRenderer({ content }: { content: Content["content"] }) {
   const color = useColor();
   const displayContent = content.map(part => {
@@ -2018,6 +2122,8 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
     return null;
   }
   switch (item.name) {
+    case "explore":
+      return null;
     case "read":
       return <ReadToolRenderer item={parsedToolSchema(item)} />;
     case "partial-read":

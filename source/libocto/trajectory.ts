@@ -15,8 +15,13 @@ import type {
   ToolRejectMessage,
   UserMessage,
 } from "./llm-ir.ts";
-import { downconvert, inspectHistory, lower } from "./ir-operations.ts";
-import type { ActiveHistory, HistoryInspection } from "./ir-operations.ts";
+import { downconvert, inspectHistory, inspectSubagentTrajectory, lower } from "./ir-operations.ts";
+import type {
+  ActiveHistory,
+  HistoryInspection,
+  SubagentTrajectoryInspection,
+} from "./ir-operations.ts";
+export type { SubagentTrajectoryInspection } from "./ir-operations.ts";
 import type { MultimodalConfig } from "./modalities.ts";
 import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
@@ -180,7 +185,9 @@ type SubagentModes<Agents extends AgentDirectory> = (string extends keyof Agents
 
 export type TrajectoryMode<A extends Agent<any, any, any>> =
   | WithArcScope<ScopeRoot, RootOnlyModes | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>>
-  | SubagentModes<A["agents"]>;
+  | (SubagentModes<A["agents"]> & {
+      scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
+    });
 
 // onMessage fires for the active arc's history appends, carrying that arc's exact IR
 // universe: narrow the scope to know whose IRs these are. Subagent appends also carry the
@@ -508,6 +515,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   get messages(): ReadonlyArray<AgentIR<A>> {
     return [...this.history];
+  }
+
+  inspectSubagentTrajectory(
+    trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
+  ): SubagentTrajectoryInspection {
+    return inspectSubagentTrajectory<A>(
+      downconvert<A>(irs => this.params.lowerMessages(irs, null))(trajectory.ir),
+    );
   }
 
   private inputControl(): InputControl {

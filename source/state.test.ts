@@ -13,7 +13,7 @@ import {
 import type { Config } from "./config.ts";
 import { db } from "./db/db.ts";
 import type { HistoryItem, HistoryNode } from "./session-history/index.ts";
-import { createSession, insertHistoryItems } from "./session-history/index.ts";
+import { createSession, insertHistoryItems, loadSession } from "./session-history/index.ts";
 import { serializeModelJson } from "./session-history/model-json.ts";
 import type { OctoPermissionControl } from "./octo-permissions.ts";
 import {
@@ -252,14 +252,17 @@ const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
   });
 
 function makeRunCompiler(queue: CompilerQueueItem[]) {
-  const calls: Array<{ irs: Array<LoweredIR<any>> }> = [];
+  const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[] }> = [];
   const runCompiler: Compiler<ModelData> = async <
     A extends Agent<any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, ModelData, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
-    calls.push({ irs: [...params.irs] as Array<LoweredIR<any>> });
+    calls.push({
+      irs: [...params.irs] as Array<LoweredIR<any>>,
+      tools: Object.keys(params.tools ?? {}),
+    });
     const next = queue.shift() ?? QUEUE_EXHAUSTED;
     const result = await next(params.onTokens, params);
     return result as typeof result & CompilerResult<A, Tools>;
@@ -456,6 +459,126 @@ describe("boot and response mirror", () => {
     const firstId = first.session.metadata.sessionId!;
     expect(secondId).not.toBe(firstId);
     expect(dbLlmIrCount(firstId, "first-assistant-marker")).toBe(1);
+  });
+});
+
+describe("explore subagent", () => {
+  it("auto-allows exploration and persists child progress in one trajectory row", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-explore-test-"));
+    tempDirs.push(dir);
+    const filePath = path.join(dir, "notes.txt");
+    await fs.writeFile(filePath, "explore-file-marker: oranges are citrus fruits");
+    const task = `Find the fruit description in ${filePath}`;
+    const delegate: Extract<ToolCall<typeof toolMap>, { name: "explore" }> = {
+      type: "tool-call",
+      name: "explore",
+      toolCallId: "delegate",
+      original: { task },
+      parsed: { task },
+    };
+    const read: Extract<ToolCall<typeof toolMap>, { name: "read" }> = {
+      type: "tool-call",
+      name: "read",
+      toolCallId: "child-read",
+      original: { filePath },
+      parsed: { filePath },
+    };
+    const release = deferred();
+    const { session, compilerCalls } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [delegate] })),
+      () => okResult(assistantMessage({ toolCalls: [read] })),
+      async onTokens => {
+        await onTokens("explore-stream-marker", "content");
+        await release.promise;
+        return okResult(
+          assistantMessage({ content: "explore-report-marker: oranges are citrus fruits" }),
+        );
+      },
+      plain("parent-final-marker"),
+    ]);
+    let prompted = false;
+    const unsubscribe = useAppStore.subscribe(state => {
+      if (
+        state.sessionMode.mode === "live" &&
+        state.sessionMode.liveMode.permissionUi.type === "prompt"
+      ) {
+        prompted = true;
+      }
+    });
+    try {
+      await respond(task);
+      await waitFor(() => compilerCalls.length === 3 && useAppStore.getState().byteCount > 0);
+      expect(compilerCalls[0].tools).toContain("explore");
+      expect(compilerCalls[1].tools.sort()).toEqual([
+        "glob",
+        "grep",
+        "list",
+        "partial-read",
+        "read",
+      ]);
+      const directive = compilerCalls[1].irs[0];
+      if (directive.role !== "user") throw new Error("Expected child directive");
+      expect(directive.content.some(part => part.type === "text" && part.content === task)).toBe(
+        true,
+      );
+      expect(compilerCalls[2].irs.at(-1)).toMatchObject({
+        role: "tool-output",
+        toolCall: { toolCallId: "child-read" },
+      });
+      expect(currentLive()!.liveMode.trajectoryMode).toMatchObject({
+        root: false,
+        subagent: "explore",
+      });
+      expect(useAppStore.getState().inflightResponse).toBeNull();
+      expect(historyRoles()).toEqual([
+        "user",
+        "assistant",
+        "tool-invoke-subagent",
+        "subagent-trajectory",
+      ]);
+      const node = useAppStore.getState().history[3];
+      if (node.type !== "llm-ir" || node.ir.role !== "subagent-trajectory")
+        throw new Error("Expected trajectory");
+      const trajectory = node.ir;
+      expect(trajectory.ir.map(ir => ir.role)).toEqual(["user", "assistant", "file-read"]);
+      const sessionId = session.metadata.sessionId!;
+      expect(dbNodeCount(sessionId)).toBe(4);
+      expect(dbLlmIrCount(sessionId, "explore-file-marker")).toBe(1);
+
+      release.resolve();
+      await waitTrajectoryMode("ready-for-request");
+      expect(prompted).toBe(false);
+      expect(dbNodeCount(sessionId)).toBe(5);
+      expect(dbLlmIrCount(sessionId, "explore-report-marker")).toBe(1);
+      expect(historyRoles()).toEqual([
+        "user",
+        "assistant",
+        "tool-invoke-subagent",
+        "subagent-trajectory",
+        "assistant",
+      ]);
+      const updated = useAppStore.getState().history[3];
+      expect(updated.nodeId).toBe(node.nodeId);
+      expect(updated).not.toBe(node);
+      if (updated.type !== "llm-ir") throw new Error("Expected persisted IR");
+      expect(updated.ir).toBe(trajectory);
+      expect(trajectory.ir.at(-1)).toMatchObject({
+        role: "assistant",
+        content: "explore-report-marker: oranges are citrus fruits",
+      });
+      expect(compilerCalls[3].irs.at(-1)).toMatchObject({
+        role: "tool-output",
+        toolCall: { toolCallId: "delegate" },
+        content: [{ type: "text", content: "explore-report-marker: oranges are citrus fruits" }],
+      });
+      const persisted = loadSession(sessionId);
+      expect(persisted?.history).toEqual(
+        JSON.parse(JSON.stringify(useAppStore.getState().history)),
+      );
+    } finally {
+      release.resolve();
+      unsubscribe();
+    }
   });
 });
 
