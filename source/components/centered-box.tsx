@@ -5,7 +5,6 @@ export const CenteredBox = ({ children }: { children?: React.ReactNode }) => {
     <TerminalFlex
       style={{
         flexDirection: "column",
-        justifyContent: "center",
         alignItems: "center",
         height: "100%",
       }}
@@ -13,6 +12,8 @@ export const CenteredBox = ({ children }: { children?: React.ReactNode }) => {
       <TerminalFlex
         style={{
           flexDirection: "column",
+          justifyContent: "center",
+          height: "100%",
           width: "100%",
           minWidth: 0,
           maxWidth: 80,

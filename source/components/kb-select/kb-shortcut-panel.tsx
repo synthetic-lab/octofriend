@@ -1,12 +1,19 @@
 import React from "react";
 import { Octo } from "../octo.tsx";
-import { Item, KbShortcutSelect, ShortcutArray } from "./kb-shortcut-select.tsx";
+import {
+  Item,
+  Keymap,
+  KbShortcutRows,
+  ShortcutArray,
+  useShortcutMenu,
+} from "./kb-shortcut-select.tsx";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "../terminal-flex.tsx";
 type KbPanelProps<V> = {
-  shortcutItems: ShortcutArray<V>;
+  shortcutItems?: ShortcutArray<V>;
+  actions?: Keymap<V>;
   readonly onSelect: (item: Item<V>) => any;
-  title: string;
+  header?: React.ReactNode;
   children?: React.ReactNode;
 };
 export const MenuHeader = ({ title }: { title: string }) => {
@@ -37,41 +44,58 @@ export const MenuHeader = ({ title }: { title: string }) => {
     </TerminalFlex>
   );
 };
-export function KbShortcutPanel<V>({ shortcutItems, onSelect, title, children }: KbPanelProps<V>) {
+export function KbShortcutPanel<V>({
+  shortcutItems,
+  actions,
+  onSelect,
+  header,
+  children,
+}: KbPanelProps<V>) {
+  const { rows, footerRows, focused } = useShortcutMenu({
+    shortcutItems: shortcutItems ?? [],
+    actions,
+    onSelect,
+  });
   return (
     <TerminalFlex
       style={{
         flexDirection: "column",
+        alignSelf: "center",
+        flexShrink: 1,
+        minHeight: 0,
+        maxHeight: "100%",
+        width: "100%",
+        maxWidth: 80,
+        minWidth: 0,
       }}
     >
-      <MenuHeader title={title} />
-      {children && (
-        <TerminalFlex
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <TerminalFlex
-            style={{
-              flexDirection: "column",
-              width: "100%",
-              minWidth: 0,
-              maxWidth: 80,
-            }}
-          >
-            {children}
-          </TerminalFlex>
+      {header != null && (
+        <TerminalFlex style={{ flexDirection: "column", flexShrink: 0 }}>
+          {typeof header === "string" ? <MenuHeader title={header} /> : header}
         </TerminalFlex>
       )}
       <TerminalFlex
         style={{
-          justifyContent: "center",
-          marginTop: children ? 1 : 0,
+          flexDirection: "column",
+          flexShrink: 0,
         }}
       >
-        <KbShortcutSelect shortcutItems={shortcutItems} onSelect={onSelect} />
+        {children}
+        <TerminalFlex
+          style={{
+            flexDirection: "column",
+            flexShrink: 0,
+            marginTop: children && rows.length > 0 ? 1 : 0,
+          }}
+        >
+          <KbShortcutRows rows={rows} focused={focused} />
+        </TerminalFlex>
       </TerminalFlex>
+      {footerRows.length > 0 && (
+        <TerminalFlex style={{ flexDirection: "column", flexShrink: 0, marginTop: 1 }}>
+          <KbShortcutRows rows={footerRows} focused={focused} />
+        </TerminalFlex>
+      )}
     </TerminalFlex>
   );
 }
