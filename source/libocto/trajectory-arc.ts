@@ -528,7 +528,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     async function maybeBufferedMessage(): Promise<Array<TrajectoryArcIR<A>>> {
       if (abortSignal.aborted && !buffer.content && !buffer.tool) {
-        if (buffer.reasoning) await handler.responseProgressRollback(null);
+        await handler.responseProgressRollback(null);
         return [{ role: "interrupted-by-user", reason: userInterruptReason() }];
       }
       if (buffer.content || buffer.reasoning || buffer.tool) {
