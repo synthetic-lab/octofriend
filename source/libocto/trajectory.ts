@@ -560,7 +560,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         const index = this.history.indexOf(target);
         if (index < 0) return;
         const removed = this.history.splice(index);
-        const first = removed[0] as LlmIR<A> | undefined;
+        const first = removed[0];
         const content = first != null && isUserMessage(first) ? first.content : null;
         this.steering.clear();
         await this.emitSteeringChange();
