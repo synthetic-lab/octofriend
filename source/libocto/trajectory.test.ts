@@ -366,7 +366,7 @@ function makeTrajectory(opts?: {
         requestRetry: () => {
           rec.arc.requestRetry++;
         },
-        responseProgressRollback: () => {
+        discardResponseProgress: () => {
           rec.arc.rollbacks++;
         },
       },

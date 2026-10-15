@@ -765,8 +765,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           responseProgress: async event => {
             await params.handler?.responseProgress?.({ ...scope, payload: event });
           },
-          responseProgressRollback: async event => {
-            await params.handler?.responseProgressRollback?.({ ...scope, payload: event });
+          discardResponseProgress: async event => {
+            await params.handler?.discardResponseProgress?.({ ...scope, payload: event });
           },
           startCompaction: async event => {
             await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });

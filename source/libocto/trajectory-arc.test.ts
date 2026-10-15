@@ -98,7 +98,7 @@ function makeHandler(opts?: {
   } = {
     startResponse: async () => {},
     responseProgress: async () => {},
-    responseProgressRollback: async () => {
+    discardResponseProgress: async () => {
       rollbacks.push(null);
     },
     startCompaction: async () => {},

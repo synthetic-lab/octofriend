@@ -511,7 +511,7 @@ export const useAppStore = create<UiState>((set, get) => {
             byteCount: 0,
           }));
         },
-        responseProgressRollback: ({ root }) => {
+        discardResponseProgress: ({ root }) => {
           if (!isCurrent()) return;
           // Latch the draft's emptiness at the moment the response was discarded; the rewind
           // fires when the loop parks, and nothing later can re-arm it.

@@ -188,7 +188,7 @@ export type TrajectoryArcEvents<A extends Agent<any, any, any>> = {
   };
   // An in-progress response was discarded on abort without leaving any IR behind (nothing
   // user-visible had streamed): clients should wipe any in-progress display state.
-  responseProgressRollback: null;
+  discardResponseProgress: null;
   startCompaction: null;
   compactionProgress: AutocompactionStream;
   autofixingJson: null;
@@ -528,7 +528,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     async function maybeBufferedMessage(): Promise<Array<TrajectoryArcIR<A>>> {
       if (abortSignal.aborted && !buffer.content && !buffer.tool) {
-        await handler.responseProgressRollback(null);
+        await handler.discardResponseProgress(null);
         return [{ role: "interrupted-by-user", reason: userInterruptReason() }];
       }
       if (buffer.content || buffer.reasoning || buffer.tool) {
