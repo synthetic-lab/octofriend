@@ -481,10 +481,12 @@ export const useAppStore = create<UiState>((set, get) => {
             // stops rewound turns from resurrecting on session reload.
             deleteHistoryNodes(trimmed.map(node => node.nodeId));
             set(state => {
-              const textPart = content?.find(part => part.type === "text");
+              const textParts = content?.filter(part => part.type === "text") || [];
+              const images = content?.filter(part => part.type === "image") || [];
               return {
                 history: state.history.slice(0, start),
-                query: textPart?.content ?? "",
+                query: textParts.map(item => item.content).join(""),
+                attachedImages: images.map(item => item.image),
                 clearNonce: state.clearNonce + 1,
               };
             });
