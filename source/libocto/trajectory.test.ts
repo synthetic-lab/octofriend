@@ -1552,6 +1552,27 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
+  it("interrupt mid-turn with only reasoning tokens discards the tokens and waits for input", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      async onTokens => {
+        await onTokens("thinking", "reasoning");
+        interruptNow(traj);
+        return okResult(assistantMessage({ content: "unreached full answer" }));
+      },
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "interrupted-by-user"]);
+    expect(rec.arc.rollbacks).toBe(1);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
   it("rewindTo trims from a target IR and restores its content for editing", async () => {
     const { build, rec } = makeTrajectory();
     const queue: CompilerQueueItem[] = [];
