@@ -33,10 +33,6 @@ const PackageBun = t.subtype({
 });
 const targetBunVersion = PackageBun.slice(packageJson).engines.bun;
 
-if (typeof targetBunVersion !== "string") {
-  console.error("package.json is missing engines.bun");
-  process.exit(1);
-}
 if (Bun.version !== targetBunVersion) {
   console.error(
     `octofriend requires Bun ${targetBunVersion} (found ${Bun.version}). Run \`bun upgrade\` or ` +
