@@ -16,9 +16,6 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          # Reads the engines.bun pin from package.json; build.ts's startup
-          # check enforces the same version, so there is exactly one place
-          # to bump.
           bun-version-file: package.json
 
       - run: bun install
