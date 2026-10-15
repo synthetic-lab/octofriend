@@ -513,11 +513,27 @@ export const useAppStore = create<UiState>((set, get) => {
             byteCount: 0,
           }));
         },
-        discardResponseProgress: ({ root }) => {
+        interrupted: ({ droppedSteering }) => {
           if (!isCurrent()) return;
-          // Latch the draft's emptiness at the moment the response was discarded; the rewind
-          // fires when the loop parks, and nothing later can re-arm it.
-          if (root) rewindInterruptedTurn = get().query.trim() === "";
+          // Latch the rewind veto at the moment of interruption; the rewind fires when the
+          // loop parks, and nothing later can re-arm it. Salvaged steering lands in the
+          // draft below, which keeps the interrupted turn instead of rolling it back.
+          rewindInterruptedTurn = droppedSteering.length === 0 && get().query.trim() === "";
+          if (droppedSteering.length === 0) return;
+          set(state => {
+            const texts: string[] = [];
+            const images: ImageInfo[] = [];
+            for (const content of droppedSteering) {
+              for (const part of content) {
+                if (part.type === "text") texts.push(part.content);
+                else images.push(part.image);
+              }
+            }
+            // The salvaged queue precedes any in-progress draft, so the draft is appended
+            // to it rather than clobbered.
+            const query = [texts.join("\n"), state.query].filter(part => part !== "").join("\n");
+            return { query, attachedImages: [...images, ...state.attachedImages] };
+          });
         },
         responseProgress: ({ root, payload: event }) => {
           if (!isCurrent()) return;

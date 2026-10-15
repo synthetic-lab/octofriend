@@ -243,6 +243,7 @@ function makeTrajectory(opts?: {
     messages: [] as Array<TrajectoryEvents<TestAgent>["onMessage"]>,
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
+    interruptions: [] as Array<TrajectoryEvents<TestAgent>["interrupted"]>,
     capCalls: [] as unknown[],
     loweringModalities: [] as Array<MultimodalConfig | null>,
     arc: {
@@ -344,6 +345,9 @@ function makeTrajectory(opts?: {
         },
         rewind: payload => {
           rec.rewinds.push(payload);
+        },
+        interrupted: payload => {
+          rec.interruptions.push(payload);
         },
         startResponse: () => {
           rec.arc.startResponse++;
@@ -2090,6 +2094,29 @@ describe("trajectory", () => {
       "ir:assistant",
       "mode:ready-for-request",
     ]);
+  });
+
+  it("drains queued steering on interrupt and reports it via the interrupted event", async () => {
+    const { build, rec } = makeTrajectory();
+    const queue: CompilerQueueItem[] = [];
+    const { traj } = await build(queue);
+
+    inputControl(traj).enqueueSteering(text("hi"));
+    queue.push(async onTokens => {
+      await onTokens("thinking", "reasoning");
+      inputControl(traj).enqueueSteering(text("queued one"));
+      inputControl(traj).enqueueSteering(text("queued two"));
+      interruptNow(traj);
+      return okResult(assistantMessage({ content: "unreached full answer" }));
+    }, plainOk);
+
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(rec.interruptions).toEqual([
+      { droppedSteering: [text("queued one"), text("queued two")] },
+    ]);
+    expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
   });
 
   it("compacts an over-full history, then responds", async () => {

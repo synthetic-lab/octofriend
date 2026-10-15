@@ -972,6 +972,56 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
     expect(useAppStore.getState().query).toBe("draft in progress");
   });
+
+  it("salvages queued steering into the draft instead of rolling back when interrupted", async () => {
+    await bootSession([
+      async (onTokens, params) => {
+        await onTokens("reasoning-stream-marker", "reasoning");
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+    ]);
+
+    await respond("hi");
+    const responding = await waitTrajectoryMode("responding");
+    await responding.control.enqueueSteering([{ type: "text", content: "queued one" }]);
+    await responding.control.enqueueSteering([{ type: "text", content: "queued two" }]);
+    await waitFor(() => useAppStore.getState().queuedSteering.length === 2);
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+
+    // The salvaged queue lands in the draft concatenated, and the turn is kept: the
+    // now-non-empty draft vetoes the transparent rewind.
+    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(useAppStore.getState().queuedSteering).toEqual([]);
+    expect(useAppStore.getState().query).toBe("queued one\nqueued two");
+  });
+
+  it("appends an in-progress draft after salvaged steering when interrupted", async () => {
+    await bootSession([
+      async (onTokens, params) => {
+        await onTokens("reasoning-stream-marker", "reasoning");
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+    ]);
+
+    await respond("hi");
+    const responding = await waitTrajectoryMode("responding");
+    await responding.control.enqueueSteering([{ type: "text", content: "queued steering" }]);
+    useAppStore.getState().setQuery("draft in progress");
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+
+    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(useAppStore.getState().query).toBe("queued steering\ndraft in progress");
+  });
 });
 
 describe("inputFieldAvailable", () => {

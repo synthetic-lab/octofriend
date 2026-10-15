@@ -264,6 +264,10 @@ export type TrajectoryEvents<A extends Agent<any, any, any>> = ScopedArcEvents<A
     upcoming: readonly UserMessage["content"][];
     queued: readonly UserMessage["content"][];
   };
+  // Fires once when an interrupt control is invoked, carrying whatever the steering queue held
+  // before the interrupt drained it. Unscoped like rewind and steeringChange: the queue belongs
+  // to the root even when the interrupt fired from a child arc's control.
+  interrupted: { droppedSteering: readonly UserMessage["content"][] };
 };
 
 export type TrajectoryHandler<A extends Agent<any, any, any>> = Partial<{
@@ -562,7 +566,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         const removed = this.history.splice(index);
         const first = removed[0];
         const content = first != null && isUserMessage(first) ? first.content : null;
-        this.steering.clear();
+        this.steering.take();
         await this.emitSteeringChange();
         await this.params.handler?.rewind?.({ removed, content });
       },
@@ -572,9 +576,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private interruptControl(): { interrupt(): Promise<void> } {
     return {
       interrupt: async () => {
-        this.steering.clear();
+        const droppedSteering = this.steering.take();
         this.turnController.abort();
         await this.emitSteeringChange();
+        await this.params.handler?.interrupted?.({ droppedSteering });
       },
     };
   }
@@ -1033,7 +1038,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
                 this.history.length = index;
                 break;
               }
-              this.steering.clear();
+              this.steering.take();
               await this.emitSteeringChange();
               await this.params.handler?.rewind?.({ removed, content });
               if (this.inspect().action !== "wait-for-input") {
