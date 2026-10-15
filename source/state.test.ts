@@ -973,6 +973,34 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     expect(useAppStore.getState().query).toBe("draft in progress");
   });
 
+  it("drops mid-turn reasoning progress without rewinding when interrupted", async () => {
+    await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [shellCall("call_a", "echo hi")] })),
+      async (onTokens, params) => {
+        await onTokens("reasoning-stream-marker", "reasoning");
+        await new Promise<void>(resolve => {
+          if (params.abortSignal.aborted) return resolve();
+          params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return okResult(assistantMessage({ content: "unreached-full-answer" }));
+      },
+    ]);
+
+    useAppStore.setState({ unchained: true });
+    await respond("hi");
+    // Wait out the first tool-calling response before arming on the second one.
+    await waitFor(() => historyRoles().length === 3);
+    const responding = await waitTrajectoryMode("responding");
+    await responding.control.interrupt();
+    await waitTrajectoryMode("ready-for-request");
+
+    // The reasoning tokens are gone, the interruption is marked, and the turn is kept: the
+    // rewind only fires when the interrupted turn began with a user message.
+    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "interrupted-by-user"]);
+    expect(useAppStore.getState().query).toBe("");
+    expect(useAppStore.getState().inflightResponse).toBeNull();
+  });
+
   it("salvages queued steering into the draft instead of rolling back when interrupted", async () => {
     await bootSession([
       async (onTokens, params) => {
