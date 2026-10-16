@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import {
+  CURRENT_CONFIG_VERSION,
   configDeps,
   getModelFromConfig,
   hasExistingAuthForBaseUrl,
@@ -158,6 +159,40 @@ async function writeConfigFixture(config: unknown): Promise<string> {
   await fs.writeFile(configPath, JSON.stringify(config));
   return configPath;
 }
+
+describe("config migrations", () => {
+  for (const configVersion of [undefined, 0, 1, 2]) {
+    it(`preserves saved Synthetic models from config version ${configVersion}`, async () => {
+      const base = {
+        nickname: "test",
+        model: "syn:large:vision",
+        baseUrl: "https://api.synthetic.new/openai/v1",
+        context: 262144,
+      };
+      const models = [
+        base,
+        { ...base, model: "syn:small:vision" },
+        ...[false, true].map(enabled => ({
+          ...base,
+          modalities: {
+            image: { enabled, maxSizeMB: 5, acceptedMimeTypes: ["image/png"] },
+          },
+        })),
+      ];
+      const configPath = await writeConfigFixture({ configVersion, yourName: "test", models });
+      try {
+        const config = await readConfig(configPath);
+        expect(config.models).toEqual(models);
+        expect(config.configVersion).toBe(CURRENT_CONFIG_VERSION);
+        const persisted = await fs.readFile(configPath, "utf8");
+        expect(await readConfig(configPath)).toEqual(config);
+        expect(await fs.readFile(configPath, "utf8")).toBe(persisted);
+      } finally {
+        await fs.rm(path.dirname(configPath), { recursive: true, force: true });
+      }
+    });
+  }
+});
 
 describe("matchModelFromConfig", () => {
   const smartModel: ModelConfig = {

@@ -2,20 +2,21 @@ import { Hotkey } from "./components/kb-select/kb-shortcut-select.tsx";
 import { ImageInfo } from "./utils/image-utils.ts";
 import type { MultimodalConfig } from "./libocto/modalities.ts";
 
+export type ProviderModelConfig = {
+  model: string;
+  nickname: string;
+  context: number;
+  reasoning?: "low" | "medium" | "high" | "xhigh";
+  modalities?: MultimodalConfig;
+};
+
 export type ProviderConfig = {
   shortcut: Hotkey;
   type?: "standard" | "openai-responses" | "anthropic" | "codex";
   name: string;
-  description?: string;
   envVar: string;
   baseUrl: string;
-  models: Array<{
-    model: string;
-    nickname: string;
-    context: number;
-    reasoning?: "low" | "medium" | "high" | "xhigh";
-    modalities?: MultimodalConfig;
-  }>;
+  models: ProviderModelConfig[] | "load-from-synthetic";
   testModel: string;
 };
 
@@ -23,46 +24,9 @@ export const PROVIDERS = {
   synthetic: {
     shortcut: "s" as const,
     name: "Synthetic",
-    description:
-      "Synthetic offers syn: aliases that auto-route to the latest recommended models, so these never go stale. \n\nFor more details, see https://dev.synthetic.new/docs/api/overview",
     envVar: "SYNTHETIC_API_KEY",
     baseUrl: "https://api.synthetic.new/openai/v1",
-    models: [
-      {
-        model: "syn:large:text",
-        nickname: "syn:large:text",
-        context: 512 * 1024,
-      },
-      {
-        model: "syn:small:text",
-        nickname: "syn:small:text",
-        context: 192 * 1024,
-      },
-      {
-        model: "syn:large:vision",
-        nickname: "syn:large:vision",
-        context: 512 * 1024,
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 10,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
-      {
-        model: "syn:small:vision",
-        nickname: "syn:small:vision",
-        context: 256 * 1024,
-        modalities: {
-          image: {
-            enabled: true,
-            maxSizeMB: 10,
-            acceptedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          },
-        },
-      },
-    ],
+    models: "load-from-synthetic",
     testModel: "syn:small:text",
   } satisfies ProviderConfig,
 
@@ -200,8 +164,7 @@ export const PROVIDERS = {
   } satisfies ProviderConfig,
 };
 
-export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE =
-  PROVIDERS.synthetic.models.find(m => m.modalities?.image.enabled)?.nickname ?? "Syn Large Vision";
+export const DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE = "syn:large:vision";
 
 export type CanDisplayImageResult = { ok: true } | { ok: false; reason: string };
 
@@ -230,7 +193,7 @@ export function canDisplayImage(
 
 export type ProviderKey = keyof typeof PROVIDERS;
 
-export function recommendedModel(provider: ProviderKey): ProviderConfig["models"][number] {
+export function recommendedModel(provider: Exclude<ProviderKey, "synthetic">): ProviderModelConfig {
   return PROVIDERS[provider].models[0];
 }
 
