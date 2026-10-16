@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { lowerOcto } from "./lower-octo.ts";
-import type { LoweredIR } from "../libocto/llm-ir.ts";
+import { lowerOctoToLlmIR } from "./lower-octo.ts";
+import type { LowerOutputIR } from "../libocto/llm-ir.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
-import type { OctoIR } from "../ir/octo-ir.ts";
+import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
 import type { ImageInfo } from "../utils/image-utils.ts";
-import type { MultimodalConfig } from "../providers.ts";
+import type { MultimodalConfig } from "../libocto/modalities.ts";
 
 /*
  * Regression tests for BUGS.md #3: reading an image with a vision model must not leave a
@@ -48,27 +48,27 @@ const VISION: MultimodalConfig = {
   },
 };
 
-function unansweredToolCallIds(messages: Array<LoweredIR<typeof toolMap>>): string[] {
+function unansweredToolCallIds(messages: Array<LowerOutputIR<typeof octoAgent>>): string[] {
   const requested: string[] = [];
   const answered = new Set<string>();
-  for (const ir of messages) {
-    if (ir.role === "assistant") {
-      for (const call of ir.toolCalls ?? []) {
+  for (const { converted } of messages) {
+    if (converted.role === "assistant") {
+      for (const call of converted.toolCalls ?? []) {
         requested.push(call.toolCallId);
       }
       continue;
     }
     if (
-      ir.role === "tool-output" ||
-      ir.role === "tool-skip-output" ||
-      ir.role === "tool-runtime-error" ||
-      ir.role === "tool-validation-error"
+      converted.role === "tool-output" ||
+      converted.role === "tool-skip-output" ||
+      converted.role === "tool-runtime-error" ||
+      converted.role === "tool-validation-error"
     ) {
-      answered.add(ir.toolCall.toolCallId);
+      answered.add(converted.toolCall.toolCallId);
       continue;
     }
-    if (ir.role === "tool-parse-error") {
-      answered.add(ir.malformedRequest.toolCallId);
+    if (converted.role === "tool-parse-error") {
+      answered.add(converted.malformedRequest.toolCallId);
     }
   }
   return requested.filter(id => !answered.has(id));
@@ -97,20 +97,20 @@ function imageReadHistory(): OctoIR[] {
   ];
 }
 
-describe("lowerOcto tool-call answering", () => {
+describe("lowerOctoToLlmIR tool-call answering", () => {
   it("answers the tool call for an image read when the model has vision", () => {
-    const lowered = lowerOcto(imageReadHistory(), VISION);
+    const lowered = lowerOctoToLlmIR(imageReadHistory(), VISION);
     expect(unansweredToolCallIds(lowered)).toEqual([]);
   });
 
   it("answers the tool call for an image read when the model lacks vision", () => {
-    const lowered = lowerOcto(imageReadHistory(), undefined);
+    const lowered = lowerOctoToLlmIR(imageReadHistory(), null);
     expect(unansweredToolCallIds(lowered)).toEqual([]);
   });
 
   it("answers the tool call for a plain text read", () => {
     const call = readCall("call_text", "/tmp/notes.txt");
-    const lowered = lowerOcto(
+    const lowered = lowerOctoToLlmIR(
       [
         {
           role: "user",

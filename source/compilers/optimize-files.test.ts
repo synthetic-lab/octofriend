@@ -46,7 +46,10 @@ describe("optimizeFiles", () => {
       },
     ];
 
-    expect(optimizeFiles(messages)).toEqual([
+    const pairs = optimizeFiles(messages, null);
+    expect(pairs[0].original).toBe(messages[0]);
+    expect(pairs[1].original).toBe(messages[1]);
+    expect(pairs.map(({ converted }) => converted)).toEqual([
       {
         role: "tool-output",
         toolCall: toolCall("old"),
@@ -87,7 +90,7 @@ describe("optimizeFiles", () => {
             maxSizeMB: 1,
           },
         },
-      ),
+      ).map(({ converted }) => converted),
     ).toEqual([
       {
         role: "tool-output",
@@ -102,14 +105,17 @@ describe("optimizeFiles", () => {
 
   it("rewrites file mutation to a base tool message", () => {
     expect(
-      optimizeFiles([
-        {
-          role: "file-mutate",
-          path: "/tmp/a.txt",
-          content: "raw mutate output",
-          toolCall: mutateToolCall("mutate"),
-        },
-      ]),
+      optimizeFiles(
+        [
+          {
+            role: "file-mutate",
+            path: "/tmp/a.txt",
+            content: "raw mutate output",
+            toolCall: mutateToolCall("mutate"),
+          },
+        ],
+        null,
+      ).map(({ converted }) => converted),
     ).toEqual([
       {
         role: "tool-output",

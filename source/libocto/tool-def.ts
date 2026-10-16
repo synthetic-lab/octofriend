@@ -108,6 +108,7 @@ export type ToolReturn<SubagentName extends string, Extra> =
       type: "invoke-subagent";
       name: SubagentName;
       message: UserMessage["content"];
+      model?: string;
     }
   | {
       type: "custom-ir";

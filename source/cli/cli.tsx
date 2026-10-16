@@ -291,6 +291,8 @@ async function runMain(opts: {
         console.log(`${model}: ${input} input, ${output} output`);
       }
     }
+  } catch (e) {
+    console.error(e);
   } finally {
     await processes.manager().terminateOnOctoExit();
     unregisterCleanup();
@@ -462,7 +464,7 @@ bench
             ],
           },
         ],
-        onTokens: () => {
+        onTokens: async () => {
           const now = new Date();
           tokenTimestamps.push(now);
           if (firstToken == null) firstToken = now;
@@ -692,7 +694,7 @@ cli
       systemPrompt,
       irs: messages,
       autofixJson,
-      onTokens: (chunk, type) => {
+      onTokens: async (chunk, type) => {
         if (type === "reasoning") seenReasoning = true;
 
         if (seenReasoning && type === "content" && !seenContent) {

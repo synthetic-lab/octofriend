@@ -7,11 +7,13 @@ import { combineSignals } from "./signals.ts";
 import type {
   Agent,
   AgentIR,
+  TreeIR,
   AssistantMessage,
   Checkpoint,
   CompactionErrorIR,
   LlmIR,
-  LoweredIR,
+  ModelErrorIR,
+  CompilerReadyIR,
   RequestErrorIR,
   ToolParseErrorMessage,
   ToolSkipOutputMessage,
@@ -92,7 +94,8 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | Checkpoint
   | RequestErrorIR
   | CompactionErrorIR
-  | ValidationRetryBudgetExceededIR;
+  | ValidationRetryBudgetExceededIR
+  | ModelErrorIR;
 
 export type RecoverableRequestError = Extract<
   CompilerError,
@@ -226,7 +229,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
-  lowerMessages: (messages: Array<LlmIR<A> | AgentIR<A>>) => Array<LoweredIR<A["tools"]>>;
+  lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
   // Called with the arc's abort signal, so prompt construction (often filesystem reads) dies
   // with the turn that requested it.
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
@@ -236,7 +239,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   validationRetries?: number;
   requestErrorRetries?: RequestErrorRetriesConfig;
   handler: {
-    [K in keyof TrajectoryArcEvents<A>]: (event: TrajectoryArcEvents<A>[K]) => void;
+    [K in keyof TrajectoryArcEvents<A>]: (event: TrajectoryArcEvents<A>[K]) => Promise<void>;
   };
 };
 
@@ -277,22 +280,22 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   handler,
 }: TrajectoryArcParams<A, Model>): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
   const messagesCopy: Array<LlmIR<A> | AgentIR<A>> = [...messages];
-  const emitIrs = (delta: Array<TrajectoryArcIR<A>>) => {
-    for (const ir of delta) handler.onMessage(ir);
+  const emitIrs = async (delta: Array<TrajectoryArcIR<A>>): Promise<void> => {
+    for (const ir of delta) await handler.onMessage(ir);
   };
-  const finishWith = (
+  const finishWith = async (
     reason: AllFinishReasons<A>,
     remaining: Array<TrajectoryArcIR<A>> = [],
-  ): TrajectoryArcFinish<AllFinishReasons<A>> => {
+  ): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> => {
     const record = arcErrorRecord(reason);
-    emitIrs(record == null ? remaining : [...remaining, record]);
+    await emitIrs(record == null ? remaining : [...remaining, record]);
     return { type: "finish", reason };
   };
 
   const jsonCorrector = errorCorrection?.json;
   const jsonCorrectorWithEvent: AutofixJsonFn | undefined = jsonCorrector
-    ? (badJson, signal) => {
-        handler.autofixingJson(null);
+    ? async (badJson, signal) => {
+        await handler.autofixingJson(null);
         return jsonCorrector(badJson, signal);
       }
     : undefined;
@@ -324,7 +327,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
 
     const retryAbort = new AbortController();
-    handler.requestRetry({
+    await handler.requestRetry({
       error,
       attempt: requestAttempts,
       delayMs,
@@ -364,7 +367,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     const corrector = errorCorrection?.tools?.[toolCall.name];
     if (corrector != null) {
-      handler.autofixingTool({ tool: toolCall.name });
+      await handler.autofixingTool({ tool: toolCall.name });
       const fixed = await corrector({
         toolCall,
         validationError: validation.error,
@@ -424,13 +427,14 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     Result<{ checkpoint: Checkpoint } | null, CompactionError>
   > => {
     const loweredMessages = lowerMessages(messagesCopy);
-    if (!shouldAutoCompactHistory(contextWindow, loweredMessages)) return ok(null);
+    const convertedMessages = loweredMessages.map(({ converted }) => converted);
+    if (!shouldAutoCompactHistory(contextWindow, convertedMessages)) return ok(null);
 
-    handler.startCompaction(null);
+    await handler.startCompaction(null);
 
     const buffer: AssistantBuffer<CompactionTokenTypes> = {};
     const checkpointContent = await generateCompactionCheckpointContent<A>({
-      messages: loweredMessages,
+      messages: convertedMessages,
       run: compactionMessages =>
         runCompiler<A, undefined>({
           model,
@@ -438,10 +442,10 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
           abortSignal,
           transport,
           autofixJson: jsonCorrector,
-          onTokens: (tokens, type) => {
+          onTokens: async (tokens, type) => {
             if (!buffer[type]) buffer[type] = "";
             buffer[type] += tokens;
-            handler.compactionProgress({
+            await handler.compactionProgress({
               type: "autocompaction-stream",
               buffer,
               delta: { value: tokens, type },
@@ -488,28 +492,28 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
 
     if (compaction.data) {
-      emitIrs([compaction.data.checkpoint]);
+      await emitIrs([compaction.data.checkpoint]);
       messagesCopy.push(compaction.data.checkpoint);
     }
     if (abortSignal.aborted) return finishWith({ type: "abort" });
 
-    handler.startResponse(null);
+    await handler.startResponse(null);
 
     let irs: Array<TrajectoryArcIR<A>> = [];
     const buffer: AssistantBuffer<TrajectoryArcTokenTypes> = {};
     const loweredMessages = lowerMessages(messagesCopy);
     const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
       model,
-      irs: loweredMessages,
+      irs: loweredMessages.map(({ converted }) => converted),
       abortSignal,
       transport,
       tools,
       systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
       autofixJson: jsonCorrectorWithEvent,
-      onTokens: (tokens, type) => {
+      onTokens: async (tokens, type) => {
         if (!buffer[type]) buffer[type] = "";
         buffer[type] += tokens;
-        handler.responseProgress({
+        await handler.responseProgress({
           buffer,
           delta: { type, value: tokens },
         });
@@ -536,7 +540,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       : "headers" in result.error
         ? result.error.headers
         : undefined;
-    if (headers) handler.onResponseHeaders(headers);
+    if (headers) await handler.onResponseHeaders(headers);
 
     if (abortSignal.aborted) return finishWith({ type: "abort" }, maybeBufferedMessage());
 
@@ -590,7 +594,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         }
       }
 
-      emitIrs(irs);
+      await emitIrs(irs);
       if (!consumeValidationRetry()) {
         return finishWith({
           type: "validation-retry-budget-exceeded",
@@ -603,7 +607,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
     const { toolCalls } = assistantMessage;
 
-    if (toolCalls == null) {
+    if (!toolCalls?.length) {
       return finishWith({ type: "needs-response" }, irs);
     }
 
@@ -643,7 +647,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
     if (needsRetry) {
       const fullRetryTrajectory = [...irs, ...retryIrs];
-      emitIrs(fullRetryTrajectory);
+      await emitIrs(fullRetryTrajectory);
       if (!consumeValidationRetry()) {
         return finishWith({
           type: "validation-retry-budget-exceeded",
@@ -669,8 +673,13 @@ const VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR = "The model repeatedly produced in
 
 function arcErrorRecord(
   reason: AllFinishReasons<any>,
-): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | null {
+): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | ModelErrorIR | null {
   switch (reason.type) {
+    case "auth-error":
+      return { role: "auth-error", authError: reason.authError };
+    case "payment-error":
+    case "rate-limit-error":
+      return { role: reason.type, requestError: reason.requestError };
     case "request-error":
       return {
         role: "request-error",
@@ -689,20 +698,16 @@ function arcErrorRecord(
         error: reason.error,
       };
     case "request-error-retry-budget-exceeded":
-      if (reason.error.type === "rate-limit-error") return null;
+      if (reason.error.type === "rate-limit-error") {
+        return { role: "rate-limit-error", requestError: reason.error.requestError };
+      }
       return {
         role: "request-error",
         requestError: reason.error.requestError,
         curl: reason.error.curl,
       };
     default: {
-      const _:
-        | "abort"
-        | "needs-response"
-        | "request-tool"
-        | "auth-error"
-        | "payment-error"
-        | "rate-limit-error" = reason.type;
+      const _: "abort" | "needs-response" | "request-tool" = reason.type;
       return null;
     }
   }

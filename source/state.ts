@@ -28,7 +28,8 @@ import { toLlmIR } from "./ir/convert-history-ir.ts";
 import { Transport } from "./transports/transport-common.ts";
 import { run, type ModelData } from "./compilers/run.ts";
 import type { Compiler } from "./libocto/compilers/compiler-interface.ts";
-import { lowerOcto } from "./compilers/lower-octo.ts";
+import type { MultimodalConfig } from "./libocto/modalities.ts";
+import { lowerOctoToLlmIR } from "./compilers/lower-octo.ts";
 import { autofixEdit, makeAutofixJson } from "./compilers/autofix.ts";
 import { systemPrompt } from "./prompts/system-prompt.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
@@ -113,8 +114,7 @@ export function userMessageContent(query: string, images?: ImageInfo[]): UserMes
   ];
 }
 
-// Maps each trajectory IR to its persisted history node, so a rewind can find the history
-// prefix to keep. IRs are seeded and appended by unique object identity, never reconstructed.
+// Maps each trajectory IR to its persisted history node, so we can find it later.
 const irNodeMap = new WeakMap<OctoIR, HistoryNode>();
 
 const PREVIEW_CHARS = 200;
@@ -199,6 +199,17 @@ function appendAndPersistHistory(
   ];
 }
 
+// The inflight mirror belongs to the root conversation; child streams only tick the byte
+// count, so their scopes leave the mirror untouched.
+function updateInflightResponse(
+  event: { root: boolean },
+  state: UiState,
+  inflightResponse: InflightResponseType,
+): InflightResponseType | null {
+  if (!event.root) return state.inflightResponse;
+  return inflightResponse;
+}
+
 export const useAppStore = create<UiState>((set, get) => {
   const currentConfig = (): Config => {
     const mode = get().sessionMode;
@@ -248,13 +259,31 @@ export const useAppStore = create<UiState>((set, get) => {
       whitelistState: get().whitelistState,
     };
 
+    const insertIr = (ir: OctoIR) => {
+      set(state => ({
+        history: appendAndPersistHistory(
+          session,
+          state.history,
+          [{ type: "llm-ir", ir }],
+          currentModel(),
+        ),
+      }));
+      const node = get().history.at(-1);
+      if (node != null) irNodeMap.set(ir, node);
+    };
+
     const instance = new Trajectory({
       agent: octoAgent,
       messages: toLlmIR([...history]),
       abortSignal: exitController.signal,
       systemPrompt: signal => systemPrompt({ config: currentConfig(), transport, signal }),
+      // octo declares no subagents yet: an agentless tree takes an empty catalogue.
+      subagentPrompts: {},
       model: async (): Promise<
-        Result<{ model: ModelData; contextWindow: number }, TrajectoryModelError>
+        Result<
+          { model: ModelData; contextWindow: number; modalities: MultimodalConfig | null },
+          TrajectoryModelError
+        >
       > => {
         const model = currentModel();
         if (model.type === "codex") {
@@ -265,6 +294,7 @@ export const useAppStore = create<UiState>((set, get) => {
           return ok({
             model: { type: "codex", auth: authResult.auth, model },
             contextWindow: model.context,
+            modalities: model.modalities ?? null,
           });
         }
         const authResult = await readAuthForModel(model, currentConfig());
@@ -274,6 +304,7 @@ export const useAppStore = create<UiState>((set, get) => {
         return ok({
           model: { type: "api", auth: authResult.auth, model },
           contextWindow: model.context,
+          modalities: model.modalities ?? null,
         });
       },
       loadTools: signal => loadTools(transport, signal, currentConfig()),
@@ -303,7 +334,7 @@ export const useAppStore = create<UiState>((set, get) => {
       },
       toolData: config,
       runCompiler,
-      lowerMessages: messages => lowerOcto(messages, currentModel().modalities),
+      lowerMessages: lowerOctoToLlmIR,
       transport,
       errorCorrection: {
         json: makeAutofixJson(config),
@@ -355,7 +386,7 @@ export const useAppStore = create<UiState>((set, get) => {
         },
       }),
       handler: {
-        modeChange: mode => {
+        modeChange: ({ mode }) => {
           if (!isCurrent()) return;
           throttle.flush();
           set(state => {
@@ -366,24 +397,28 @@ export const useAppStore = create<UiState>((set, get) => {
                 ...state.sessionMode,
                 liveMode: { trajectoryMode: mode, permissionUi: { type: "idle" } },
               },
-              inflightResponse: streaming ? state.inflightResponse : null,
+              inflightResponse: (() => {
+                // Children never alter inflight response state.
+                if (!mode.root) return state.inflightResponse;
+                // Moving to a non-streaming root mode clears any inflight response.
+                if (!streaming) return null;
+                return state.inflightResponse;
+              })(),
               byteCount: streaming ? state.byteCount : 0,
             };
           });
           if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
         },
-        onMessage: ir => {
+        onMessage: ({ root, ir }) => {
+          // Octo currently has no subagents, so every event is root-scoped. When it gains
+          // them, child IRs must not be inserted as flat root history: insert the event's
+          // scope.toplevelSubagentIR on its first child append, then use irNodeMap to overwrite
+          // that same persisted node as the trajectory grows in place.
+          const _: true = root;
           if (!isCurrent()) return;
           throttle.flush();
           try {
-            set(state => ({
-              history: appendAndPersistHistory(
-                session,
-                state.history,
-                [{ type: "llm-ir", ir }],
-                currentModel(),
-              ),
-            }));
+            insertIr(ir);
           } catch (e) {
             if (e instanceof SessionNotFoundError) {
               set(state =>
@@ -404,8 +439,6 @@ export const useAppStore = create<UiState>((set, get) => {
             }
             throw e;
           }
-          const node = get().history.at(-1);
-          if (node != null) irNodeMap.set(ir, node);
         },
         rewind: ({ removed, content }) => {
           if (!isCurrent()) return;
@@ -431,15 +464,25 @@ export const useAppStore = create<UiState>((set, get) => {
           if (!isCurrent()) return;
           set({ queuedSteering: queued });
         },
-        startResponse: () => {
+        startResponse: event => {
           if (!isCurrent()) return;
           throttle.flush();
           responseByteCount = 0;
-          set({ inflightResponse: { type: "inflight-response", content: "" }, byteCount: 0 });
+          set(state => ({
+            inflightResponse: updateInflightResponse(event, state, {
+              type: "inflight-response",
+              content: "",
+            }),
+            byteCount: 0,
+          }));
         },
-        responseProgress: event => {
+        responseProgress: ({ root, payload: event }) => {
           if (!isCurrent()) return;
           responseByteCount += event.delta.value.length;
+          if (!root) {
+            throttle.emit({ byteCount: responseByteCount });
+            return;
+          }
           throttle.emit({
             inflightResponse: {
               type: "inflight-response",
@@ -449,15 +492,25 @@ export const useAppStore = create<UiState>((set, get) => {
             byteCount: responseByteCount,
           });
         },
-        startCompaction: () => {
+        startCompaction: event => {
           if (!isCurrent()) return;
           throttle.flush();
           compactionByteCount = 0;
-          set({ inflightResponse: { type: "inflight-response", content: "" }, byteCount: 0 });
+          set(state => ({
+            inflightResponse: updateInflightResponse(event, state, {
+              type: "inflight-response",
+              content: "",
+            }),
+            byteCount: 0,
+          }));
         },
-        compactionProgress: event => {
+        compactionProgress: ({ root, payload: event }) => {
           if (!isCurrent()) return;
           compactionByteCount += event.delta.value.length;
+          if (!root) {
+            throttle.emit({ byteCount: compactionByteCount });
+            return;
+          }
           throttle.emit({
             inflightResponse: {
               type: "inflight-response",
@@ -467,7 +520,7 @@ export const useAppStore = create<UiState>((set, get) => {
             byteCount: compactionByteCount,
           });
         },
-        onResponseHeaders: headers => {
+        onResponseHeaders: ({ payload: headers }) => {
           if (!isCurrent()) return;
           const raw = headers.get("x-synthetic-quotas");
           if (raw == null) return;

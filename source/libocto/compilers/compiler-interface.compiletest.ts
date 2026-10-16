@@ -16,8 +16,8 @@ type ScratchAgent = Agent<never, {}, {}>;
 
 const scratchCompiler: Compiler<ScratchModel> = defineCompiler(
   async <A extends Agent<any, any, any>>(params: CompilerImplementationParams<A, ScratchModel>) => {
-    params.onTokens("hello", "content");
-    params.onTokens("{}", "tool");
+    await params.onTokens("hello", "content");
+    await params.onTokens("{}", "tool");
 
     return params.finish({
       curl: "",
@@ -46,7 +46,7 @@ const withoutTools = scratchCompiler<ScratchAgent>({
   irs: [],
   abortSignal,
   transport,
-  onTokens: (_token, tokenType) => {
+  onTokens: async (_token, tokenType) => {
     const validTokenType: "reasoning" | "content" = tokenType;
     void validTokenType;
 

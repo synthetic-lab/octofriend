@@ -207,6 +207,7 @@ type DynamicTestAgentIR = LlmIR<typeof dynamicSuccessAgent>;
 const a = {
   role: "subagent-trajectory",
   subagent: "explore",
+  task: [{ type: "text", content: "Explore /tmp/x" }],
   ir: [],
   toolCall: {
     type: "tool-call",

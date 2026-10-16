@@ -385,21 +385,21 @@ export const runAgent: Compiler<OpenAICompilerModel> = defineCompiler(
           if (delta && "content" in delta && delta.content) {
             const tokens = delta.content || "";
             content += tokens;
-            params.onTokens(tokens, "content");
+            await params.onTokens(tokens, "content");
           }
           if (delta && "reasoning_content" in delta && delta.reasoning_content) {
             if (reasoningContent == null) reasoningContent = "";
             reasoningContent += delta.reasoning_content;
-            params.onTokens(delta.reasoning_content, "reasoning");
+            await params.onTokens(delta.reasoning_content, "reasoning");
           } else if (delta && "reasoning" in delta && delta.reasoning) {
             if (reasoningContent == null) reasoningContent = "";
             reasoningContent += delta.reasoning;
-            params.onTokens(delta.reasoning, "reasoning");
+            await params.onTokens(delta.reasoning, "reasoning");
           }
           if (delta && "tool_calls" in delta && delta.tool_calls && delta.tool_calls.length > 0) {
             for (const deltaCall of delta.tool_calls) {
               const index = deltaCall.index ?? 0;
-              params.onTokens(
+              await params.onTokens(
                 (deltaCall.function.name || "") + (deltaCall.function.arguments || ""),
                 "tool",
               );

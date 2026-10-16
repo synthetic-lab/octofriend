@@ -338,12 +338,12 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
               switch (chunk.delta.type) {
                 case "text_delta":
                   content += chunk.delta.text;
-                  params.onTokens(chunk.delta.text, "content");
+                  await params.onTokens(chunk.delta.text, "content");
                   break;
                 case "thinking_delta":
                   if (reasoningContent == null) reasoningContent = "";
                   reasoningContent += chunk.delta.thinking;
-                  params.onTokens(chunk.delta.thinking, "reasoning");
+                  await params.onTokens(chunk.delta.thinking, "reasoning");
                   if (thinkingBlocks.length === 0) {
                     thinkingBlocks.push({
                       type: "thinking",
@@ -387,7 +387,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
                   {
                     const tool = inProgressTools.get(chunk.index);
                     if (tool != null) {
-                      params.onTokens(chunk.delta.partial_json, "tool");
+                      await params.onTokens(chunk.delta.partial_json, "tool");
                       tool.partialJson += chunk.delta.partial_json;
                     }
                   }
@@ -397,7 +397,7 @@ export const runAnthropicAgent: Compiler<AnthropicCompilerModel> = defineCompile
             case "content_block_start":
               switch (chunk.content_block.type) {
                 case "tool_use":
-                  params.onTokens(chunk.content_block.name, "tool");
+                  await params.onTokens(chunk.content_block.name, "tool");
                   inProgressTools.set(chunk.index, {
                     id: chunk.content_block.id,
                     index: chunk.index,

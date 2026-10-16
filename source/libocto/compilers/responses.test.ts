@@ -168,7 +168,7 @@ describe("runResponsesAgent", () => {
           content: [{ type: "text", content: "hello" }],
         },
       ],
-      onTokens: () => {},
+      onTokens: async () => {},
       abortSignal: new AbortController().signal,
       transport: fakeTransport(),
     });

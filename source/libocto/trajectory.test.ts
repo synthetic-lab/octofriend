@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
 import type { Transport } from "../transports/transport-common.ts";
 import type { ImageInfo } from "../utils/image-utils.ts";
+import type { MultimodalConfig } from "./modalities.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall, type ToolReturn } from "./tool-def.ts";
 import {
@@ -11,8 +12,10 @@ import {
   type Agent,
   type AgentIR,
   type AssistantMessage,
+  type Checkpoint,
   type LoweredIR,
-  type PreLoweredIR,
+  type LowerOutputIR,
+  type TreeIR,
   type UserMessage,
 } from "./llm-ir.ts";
 import {
@@ -25,7 +28,7 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import type { ErrorCorrection } from "./trajectory-arc.ts";
-import { lower } from "./lower.ts";
+import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
   Trajectory,
@@ -36,6 +39,7 @@ import {
   type TrajectoryEvents,
   type TrajectoryLoopController,
   type TrajectoryMode,
+  type TrajectoryToolLoadError,
 } from "./trajectory.ts";
 
 type TestData = { marker: string };
@@ -77,21 +81,46 @@ const shellTool = new ToolBuilder<TestData>()
     run: async ({ customIR }: any) => customIR.result({ transcript: "ran ok" }),
   }));
 
-const researchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
+// The capability is uniform down the tree, so each fixture's tree stays uniform: the
+// permissioned test agent and the plain agent each own their own research subagent.
+const researchAgent = definePermissionedAgent({ tools: { shell: shellTool }, agents: {} });
+const plainResearchAgent = definePermissionlessAgent({ tools: {}, agents: {} });
 
 const _testAgent = definePermissionedAgent({
   tools: { search: searchTool, shell: shellTool },
   agents: { research: researchAgent },
 });
 type TestAgent = typeof _testAgent;
+type TestInvocation = Extract<TreeIR<TestAgent>, { role: "tool-invoke-subagent" }>;
 
 const _plainAgent = definePermissionlessAgent({
   tools: { search: searchTool },
-  agents: { research: researchAgent },
+  agents: { research: plainResearchAgent },
 });
-type PlainAgent = typeof _plainAgent;
 
 const transport: Transport = new LocalTransport();
+const exitControllers: AbortController[] = [];
+const waitingSteps: Promise<boolean>[] = [];
+
+afterEach(async () => {
+  for (const exit of exitControllers.splice(0)) exit.abort();
+  await Promise.all(waitingSteps.splice(0));
+});
+
+async function startWaitingStep<A extends Agent<any, any, any>, Model>(
+  traj: Trajectory<A, Model>,
+  mode: TrajectoryMode<TestAgent>["mode"],
+): Promise<{ finished: Promise<boolean> }> {
+  const before = traj.mode;
+  const finished = traj.step();
+  waitingSteps.push(finished);
+  const deadline = Date.now() + 1000;
+  while (traj.mode === before || traj.mode.mode !== mode) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${mode}`);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  return { finished };
+}
 
 function text(content: string): UserMessage["content"] {
   return [{ type: "text", content }];
@@ -134,7 +163,7 @@ function assistantMessage(opts: {
   };
 }
 
-type Emit = (tokens: string, type: "reasoning" | "content") => void;
+type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type CompilerQueueItemParams = { autofixJson?: AutofixJsonFn; abortSignal: AbortSignal };
 type CompilerQueueItem = (
   onTokens: Emit,
@@ -165,14 +194,22 @@ function rateLimitError(): Extract<CompilerError, { type: "rate-limit-error" }> 
 }
 
 function makeRunCompiler(queue: CompilerQueueItem[]) {
-  const calls: Array<{ irs: Array<LoweredIR<any>> }> = [];
+  const calls: Array<{
+    irs: Array<LoweredIR<any>>;
+    tools: string[];
+    systemPrompt: string | undefined;
+  }> = [];
   const runCompiler: Compiler<null> = async <
     A extends Agent<any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
   >(
     params: CompilerParams<A, null, Tools>,
   ): Promise<CompilerResult<A, Tools>> => {
-    calls.push({ irs: [...params.irs] as Array<LoweredIR<any>> });
+    calls.push({
+      irs: [...params.irs] as Array<LoweredIR<any>>,
+      tools: Object.keys(params.tools ?? {}),
+      systemPrompt: await params.systemPrompt?.(),
+    });
     const next = queue.shift();
     if (next == null) throw new Error("unexpected compiler call");
     const result = await next(params.onTokens, params);
@@ -184,6 +221,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
 function makeTrajectory(opts?: {
   permission?: (toolCall: ToolCall<TestAgent["tools"]>) => Promise<PermissionDecision>;
   contextWindow?: number;
+  modalities?: MultimodalConfig | null;
   maxToolOutput?: number;
   countTokens?: (irs: Array<LoweredIR<TestAgent["tools"]>>) => number;
   toolContentTooLargeError?: (ir: unknown) => Promise<string>;
@@ -192,15 +230,21 @@ function makeTrajectory(opts?: {
   errorCorrection?: ErrorCorrection<TestAgent>;
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
-  modelAuthError?: () => string | undefined;
+  onMessage?: (event: TrajectoryEvents<TestAgent>["onMessage"]) => void | Promise<void>;
+  modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
+  loadTools?: (
+    signal: AbortSignal,
+  ) => Promise<Result<Partial<LoadedTools<TestAgent["tools"]>>, TrajectoryToolLoadError>>;
 }) {
   const rec = {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
     modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
     roles: [] as string[],
+    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessage"]>,
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     capCalls: [] as unknown[],
+    loweringModalities: [] as Array<MultimodalConfig | null>,
     arc: {
       startResponse: 0,
       responseProgress: 0,
@@ -211,9 +255,11 @@ function makeTrajectory(opts?: {
       requestRetry: 0,
     },
     modelCalls: 0,
+    modelInvocations: [] as Array<TestInvocation | null>,
     loadToolsCalls: 0,
   };
   const exit = new AbortController();
+  exitControllers.push(exit);
 
   const build = async (queue: CompilerQueueItem[]) => {
     const [searchDef, shellDef] = await Promise.all([
@@ -224,15 +270,21 @@ function makeTrajectory(opts?: {
     const { runCompiler, calls } = makeRunCompiler(queue);
     const traj = new Trajectory({
       agent: _testAgent,
-      model: async () => {
+      model: async invocation => {
         rec.modelCalls++;
-        const authError = opts?.modelAuthError?.();
+        rec.modelInvocations.push(invocation);
+        const authError = opts?.modelAuthError?.(invocation);
         if (authError != null) return err({ type: "auth-error", authError });
-        return ok({ model: null, contextWindow: opts?.contextWindow ?? 10_000 });
+        return ok({
+          model: null,
+          contextWindow: opts?.contextWindow ?? 10_000,
+          modalities: opts?.modalities ?? null,
+        });
       },
-      loadTools: async () => {
+      loadTools: async signal => {
         rec.loadToolsCalls++;
-        return { search: searchDef, shell: shellDef };
+        if (opts?.loadTools != null) return opts.loadTools(signal);
+        return ok({ search: searchDef, shell: shellDef });
       },
       maxToolOutput: opts?.maxToolOutput,
       countTokens: opts?.countTokens,
@@ -249,23 +301,25 @@ function makeTrajectory(opts?: {
       messages: opts?.messages ?? [],
       toolData: { marker: "fresh" },
       runCompiler,
-      lowerMessages: messages => {
-        const preLowered: Array<PreLoweredIR<TestAgent>> = [];
-        for (const ir of messages) {
-          if (ir.role === "shell-result") {
-            preLowered.push({
-              role: "tool-output",
-              toolCall: ir.toolCall,
-              content: text(ir.transcript),
+      subagentPrompts: { research: async () => "You are the research subagent." },
+      lowerMessages: (messages, modalities) => {
+        rec.loweringModalities.push(modalities);
+        const pairs: Array<LowerOutputIR<TestAgent>> = [];
+        for (const original of messages) {
+          if (original.role === "shell-result") {
+            pairs.push({
+              original,
+              converted: {
+                role: "tool-output",
+                toolCall: original.toolCall,
+                content: text(original.transcript),
+              },
             });
           } else {
-            // This binding is the exhaustiveness check: if the agent gains another extension
-            // IR, it no longer fits PreLoweredIR and this fails to compile until converted.
-            const builtin: PreLoweredIR<TestAgent> = ir;
-            preLowered.push(builtin);
+            pairs.push({ original, converted: original });
           }
         }
-        return lower<TestAgent>(preLowered);
+        return pairs;
       },
       transport,
       abortSignal: exit.signal,
@@ -273,14 +327,16 @@ function makeTrajectory(opts?: {
         return opts?.permission ? opts.permission(toolCall) : { decision: "allow" };
       },
       handler: {
-        modeChange: mode => {
+        modeChange: ({ mode }) => {
           rec.modes.push(mode.mode);
           rec.modeObjs.push(mode);
           rec.timeline.push(`mode:${mode.mode}`);
         },
-        onMessage: ir => {
-          rec.roles.push(ir.role);
-          rec.timeline.push(`ir:${ir.role}`);
+        onMessage: async event => {
+          rec.messages.push(event);
+          rec.roles.push(event.ir.role);
+          rec.timeline.push(`ir:${event.ir.role}`);
+          await opts?.onMessage?.(event);
         },
         steeringChange: ({ upcoming, queued }) => {
           rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
@@ -316,7 +372,7 @@ function makeTrajectory(opts?: {
   return { build, rec, exit };
 }
 
-function inputControl<A extends Agent<any, any, any>>(traj: Trajectory<A, null>) {
+function inputControl<A extends Agent<any, any, any>, Model>(traj: Trajectory<A, Model>) {
   const mode = traj.mode;
   if ("control" in mode && "enqueueSteering" in mode.control) {
     return mode.control as InputControl;
@@ -355,7 +411,7 @@ beforeEach(() => {
 });
 
 describe("trajectory", () => {
-  it("appends input, runs one arc, and lands ready-for-request", async () => {
+  it("announces ready only when the next step is waiting for input", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([plainOk]);
 
@@ -365,6 +421,9 @@ describe("trajectory", () => {
     expect(rec.roles).toEqual(["user", "assistant"]);
     expect(compilerCalls.length).toBe(1);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
+    expect(rec.modes).toEqual(["responding"]);
+
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "ready-for-request"]);
     expect(traj.mode.mode).toBe("ready-for-request");
   });
@@ -399,7 +458,107 @@ describe("trajectory", () => {
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
     expect(rec.modes).toContain("tool-call-permission");
     expect(rec.modes).toContain("running-tool");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("reloads tools for a batch and reuses that runtime data for its response", async () => {
+    let generation = 0;
+    const { build, rec } = makeTrajectory({
+      loadTools: async signal => {
+        const loadedGeneration = ++generation;
+        const search = await searchTool({ signal, transport, data: { marker: "fresh" } });
+        if (search == null) throw new Error("search tool failed to load");
+        return ok({
+          search: {
+            ...search,
+            run: async () =>
+              ok({ type: "output", content: text(`generation ${loadedGeneration}`) }),
+          },
+        });
+      },
+    });
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+      plainOk,
+    ]);
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.modelCalls).toBe(1);
+    expect(rec.loadToolsCalls).toBe(1);
+    expect(await traj.step()).toBe(true);
+
+    const result = traj.messages[2];
+    if (result.role !== "tool-output") throw new Error("impossible");
+    expect(result.content).toEqual(text("generation 2"));
+    expect(rec.modelCalls).toBe(2);
+    expect(rec.loadToolsCalls).toBe(2);
+  });
+
+  it("uses freshly resolved context and modalities for the whole batch and response", async () => {
+    const vision: MultimodalConfig = {
+      image: { enabled: true, maxSizeMB: 1, acceptedMimeTypes: ["image/png"] },
+    };
+    const opts = { contextWindow: 10_000, modalities: null as MultimodalConfig | null };
+    const { build, rec } = makeTrajectory(opts);
+    const { traj } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async () => {
+      // Config changes during execution must not change this step's resolved model context.
+      opts.modalities = null;
+      return ok({ type: "output", content: text("x".repeat(1000)) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(rec.loweringModalities.length).toBeGreaterThan(0);
+    expect(rec.loweringModalities.every(modalities => modalities === null)).toBe(true);
+    rec.loweringModalities.length = 0;
+    opts.contextWindow = 1000;
+    opts.modalities = vision;
+    expect(await traj.step()).toBe(true);
+
+    expect(rec.capCalls.length).toBe(1);
+    expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
+    expect(rec.modelCalls).toBe(2);
+    expect(rec.loadToolsCalls).toBe(2);
+    // Pending-call scans use null; two size-check lowerings and both arc lowerings use vision.
+    expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
+    expect(rec.loweringModalities).toContain(null);
+    expect(rec.loweringModalities.at(-1)).toBe(vision);
+  });
+
+  it("only runs current calls when validation retries and later batches reuse IDs", async () => {
+    const queries: string[] = [];
+    const { build } = makeTrajectory();
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("invalid", "c1"), searchCall("skipped", "c2")],
+          }),
+        ),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
+      () => okResult(assistantMessage({ toolCalls: [searchCall("b", "c1")] })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(compilerCalls.length).toBe(2);
+    expect(queries).toEqual([]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a"]);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["a", "b"]);
+    expect(traj.messages.filter(ir => ir.role === "tool-output").length).toBe(2);
   });
 
   it("records a tool's error as tool-runtime-error and continues", async () => {
@@ -423,6 +582,7 @@ describe("trajectory", () => {
       "assistant",
       "tool-runtime-error",
     ]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -446,19 +606,528 @@ describe("trajectory", () => {
     expect(lowered.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
     if (lowered[2].role !== "tool-output") throw new Error("impossible");
     expect(lowered[2].content).toEqual(text("ran ok"));
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
-  it("throws when a tool tries to invoke a subagent", async () => {
-    const { build } = makeTrajectory();
-    const { traj } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+  it.each(["reject", "throw", "exit"] as const)(
+    "keeps custom IR answers when a later call triggers %s cleanup",
+    async stop => {
+      const { build, exit } = makeTrajectory({
+        permission: async toolCall => {
+          if (toolCall.toolCallId !== "c2") return { decision: "allow" };
+          if (stop === "reject") return { decision: "reject", steering: text("stop") };
+          if (stop === "exit") exit.abort();
+          return { decision: "allow" };
+        },
+      });
+      const { traj } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [shellCall("ls", "c1"), searchCall("a", "c2"), searchCall("b", "c3")],
+            }),
+          ),
+        plainOk,
+      ]);
+      runImpl = async () => {
+        throw new Error("boom in tool");
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      if (stop === "throw") {
+        await expect(traj.step()).rejects.toThrow("boom in tool");
+      } else if (stop === "exit") {
+        await traj.run();
+      } else {
+        expect(await traj.step()).toBe(true);
+      }
+
+      const answers = traj.messages.filter(ir => "toolCall" in ir);
+      expect(answers.map(ir => ir.role)).toEqual([
+        "shell-result",
+        stop === "reject" ? "tool-reject" : "tool-skip-output",
+        "tool-skip-output",
+      ]);
+      expect(answers.map(ir => ir.toolCall.toolCallId)).toEqual(["c1", "c2", "c3"]);
+    },
+  );
+
+  it("runs a delegated child before resuming the parent's unanswered calls", async () => {
+    const queries: string[] = [];
+    const permissions: string[] = [];
+    const task = [...text("Inspect this diagram"), img("diagram.png")];
+    const { build, rec } = makeTrajectory({
+      permission: async call => {
+        permissions.push(call.name);
+        return { decision: "allow" };
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [
+              searchCall("before", "c1"),
+              searchCall("delegate", "c2"),
+              searchCall("after", "c3"),
+            ],
+          }),
+        ),
+      // Reusing a parent ID must not answer a call in the parent's batch.
+      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "c3")] })),
+      () => okResult(assistantMessage({ content: "child findings" })),
+      plainOk,
+    ]);
+    runImpl = async query => {
+      queries.push(query);
+      return query === "delegate"
+        ? ok({ type: "invoke-subagent", name: "research", message: task })
+        : ok({ type: "output", content: text(query) });
+    };
+
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(compilerCalls).toHaveLength(2);
+    expect(compilerCalls[1].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+    expect(compilerCalls[0].tools).toEqual(["search", "shell"]);
+    expect(compilerCalls[1].tools).toEqual(["shell"]);
+    expect(compilerCalls[1].systemPrompt).toBe("You are the research subagent.");
+
+    const child = traj.messages.at(-1);
+    if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+    expect(child.task).toBe(task);
+    expect(child.toolCall.toolCallId).toBe("c2");
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant"]);
+    expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "responding" });
+
+    await inputControl(traj).enqueueSteering(text("after all the tools"));
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate"]);
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant", "shell-result", "assistant"]);
+    expect(compilerCalls[2].irs.map(ir => ir.role)).toEqual(["user", "assistant", "tool-output"]);
+    expect(traj.messages.at(-1)).toBe(child);
+    const childEvents = rec.messages.filter(event => !event.root);
+    expect(childEvents.map(event => event.ir.role)).toEqual([
+      "assistant",
+      "shell-result",
+      "assistant",
+    ]);
+    for (const event of childEvents) {
+      expect(event.scope.parentSubagentIR).toBe(child);
+      expect(event.scope.toplevelSubagentIR).toBe(child);
+      expect(event.scope.path).toEqual([{ subagent: "research", toolCallId: "c2" }]);
+    }
+
+    expect(await traj.step()).toBe(true);
+    expect(queries).toEqual(["before", "delegate", "after"]);
+    expect(permissions).toEqual(["search", "search", "shell", "search"]);
+    expect(traj.messages.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-invoke-subagent",
+      "subagent-trajectory",
+      "tool-output",
+      "user",
+      "assistant",
+    ]);
+    const continuation = compilerCalls[3].irs;
+    expect(continuation.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "tool-output",
+      "tool-output",
+      "tool-output",
+      "user",
+    ]);
+    expect(continuation[3]).toMatchObject({
+      role: "tool-output",
+      toolCall: { toolCallId: "c2" },
+      content: text("child findings"),
+    });
+    expect(continuation[4]).toMatchObject({ role: "tool-output", toolCall: { toolCallId: "c3" } });
+    expect(continuation[5]).toEqual({ role: "user", content: text("after all the tools") });
+    expect(rec.modeObjs.filter(mode => mode.mode === "responding").map(mode => mode.root)).toEqual([
+      true,
+      false,
+      false,
+      true,
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each(["success", "failure"] as const)(
+    "resumes a batch containing consecutive delegations after child %s",
+    async outcome => {
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory();
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("first", "c1"), searchCall("second", "c2")],
+            }),
+          ),
+        outcome === "success" ? plainOk : () => err(requestError("child failed")),
+        plainOk,
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "invoke-subagent", name: "research", message: text(query) });
+      };
+
+      await inputControl(traj).enqueueSteering(text("delegate twice"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["first", "second"]);
+      expect(compilerCalls).toHaveLength(4);
+      expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual([
+        "user",
+        "assistant",
+        outcome === "success" ? "tool-output" : "tool-runtime-error",
+        "tool-output",
+      ]);
+      if (outcome === "failure") {
+        expect(compilerCalls[3].irs[2]).toMatchObject({
+          role: "tool-runtime-error",
+          error: "child failed",
+          toolCall: { toolCallId: "c1" },
+        });
+      }
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(2);
+      expect(rec.modes).not.toContain("request-error");
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it("records a child model-resolution failure in the child and retries the same invocation", async () => {
+    let failing = true;
+    const { build, rec } = makeTrajectory({
+      modelAuthError: invocation =>
+        failing && invocation?.model === "child-model" ? "child credentials missing" : undefined,
+    });
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ toolCalls: [searchCall("delegate", "c1")] })),
+      plainOk,
+      plainOk,
+    ]);
+    let delegations = 0;
+    runImpl = async () => {
+      delegations++;
+      return ok({
+        type: "invoke-subagent",
+        name: "research",
+        model: "child-model",
+        message: text("go"),
+      });
+    };
+    await inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(compilerCalls).toHaveLength(1);
+    expect(rec.loadToolsCalls).toBe(2);
+    const invocation = traj.messages[2];
+    const child = traj.messages[3];
+    if (invocation.role !== "tool-invoke-subagent" || child.role !== "subagent-trajectory") {
+      throw new Error("Expected delegation");
+    }
+    expect(child.ir.at(-1)).toEqual({ role: "auth-error", authError: "child credentials missing" });
+    expect(rec.modelInvocations).toEqual([null, null, invocation]);
+    const waiting = await startWaitingStep(traj, "auth-error");
+    expect(traj.mode).toMatchObject({ root: false, subagent: "research" });
+    failing = false;
+    retryControl(traj).retry();
+    expect(await waiting.finished).toBe(true);
+    expect(rec.modelInvocations[3]).toBe(invocation);
+    expect(await traj.step()).toBe(true);
+    expect(rec.modelInvocations[4]).toBeNull();
+    expect(compilerCalls).toHaveLength(3);
+    expect(delegations).toBe(1);
+    await startWaitingStep(traj, "ready-for-request");
+  });
+
+  it.each([false, true])(
+    "resumes a tail invocation without rerunning its tool (auth failure=%s)",
+    async authFailure => {
+      let failing = authFailure;
+      const task = text("Resume this delegated task");
+      const toolCall = searchCall("delegate", "c1");
+      const { build, rec } = makeTrajectory({
+        messages: [
+          { role: "user", content: text("run") },
+          assistantMessage({ toolCalls: [toolCall] }),
+          { role: "tool-invoke-subagent", toolCall, subagent: "research", message: task },
+        ],
+        modelAuthError: () => (failing ? "credentials expired" : undefined),
+      });
+      const { traj, compilerCalls } = await build([plainOk, plainOk]);
+      runImpl = async () => {
+        throw new Error("delegating tool must not run again");
+      };
+
+      expect(await traj.step()).toBe(true);
+      const child = traj.messages.at(-1);
+      if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
+      expect(child.task).toBe(task);
+      if (authFailure) {
+        expect(compilerCalls).toHaveLength(0);
+        expect(child.ir.map(ir => ir.role)).toEqual(["user", "auth-error"]);
+        const waiting = await startWaitingStep(traj, "auth-error");
+        expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "auth-error" });
+        failing = false;
+        retryControl(traj).retry();
+        expect(await waiting.finished).toBe(true);
+        expect(child.ir.map(ir => ir.role)).toEqual([
+          "user",
+          "auth-error",
+          "error-retry",
+          "assistant",
+        ]);
+      }
+      expect(compilerCalls).toHaveLength(1);
+      expect(compilerCalls[0].irs).toEqual([{ role: "user", content: subagentPrompt(task) }]);
+      expect(await traj.step()).toBe(true);
+      expect(compilerCalls).toHaveLength(2);
+      expect(compilerCalls[1].irs[2]).toMatchObject({
+        role: "tool-output",
+        toolCall: { toolCallId: "c1" },
+      });
+      expect(rec.modes).not.toContain("running-tool");
+      expect(traj.messages.filter(ir => ir.role === "subagent-trajectory")).toHaveLength(1);
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it.each([undefined, "leaf-model"])(
+    "resumes nested parents and selects each invocation's model (leaf=%s)",
+    async leafModel => {
+      const middle = definePermissionlessAgent({
+        tools: { search: searchTool },
+        agents: { research: plainResearchAgent },
+      });
+      const root = definePermissionlessAgent({
+        tools: { search: searchTool },
+        agents: { research: middle },
+      });
+      const exit = new AbortController();
+      exitControllers.push(exit);
+      const search = await searchTool({
+        signal: exit.signal,
+        transport,
+        data: { marker: "fresh" },
+      });
+      if (search == null) throw new Error("search tool failed to load");
+      const queries: string[] = [];
+      runImpl = async query => {
+        queries.push(query);
+        return query.endsWith("delegate")
+          ? ok({
+              type: "invoke-subagent",
+              name: "research",
+              message: text(query),
+              model: query === "root delegate" ? "middle-model" : leafModel,
+            })
+          : ok({ type: "output", content: text(query) });
+      };
+      const { runCompiler, calls } = makeRunCompiler([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("root delegate", "c1"), searchCall("root after", "c2")],
+            }),
+          ),
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("middle delegate", "c1"), searchCall("middle after", "c2")],
+            }),
+          ),
+        () => okResult(assistantMessage({ content: "leaf findings" })),
+        () => okResult(assistantMessage({ content: "middle findings" })),
+        plainOk,
+      ]);
+      const events: Array<TrajectoryEvents<typeof root>["onMessage"]> = [];
+      const resolutions: Array<Extract<
+        TreeIR<typeof root>,
+        { role: "tool-invoke-subagent" }
+      > | null> = [];
+      const models: string[] = [];
+      const compiler: Compiler<string> = params => {
+        models.push(params.model);
+        return runCompiler({ ...params, model: null });
+      };
+      const traj = new Trajectory({
+        agent: root,
+        model: async invocation => {
+          resolutions.push(invocation);
+          return ok({
+            model: invocation?.model ?? "default-model",
+            contextWindow: 10_000,
+            modalities: null,
+          });
+        },
+        loadTools: async () => ok({ search }),
+        toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
+        messages: [],
+        toolData: { marker: "fresh" },
+        runCompiler: compiler,
+        systemPrompt: async () => "root prompt",
+        subagentPrompts: { research: async () => "research prompt" },
+        lowerMessages: messages => messages.map(original => ({ original, converted: original })),
+        transport,
+        abortSignal: exit.signal,
+        handler: {
+          onMessage: event => {
+            events.push(event);
+          },
+        },
+      });
+
+      await inputControl(traj).enqueueSteering(text("run nested work"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate"]);
+      const outer = traj.messages.at(-1);
+      if (outer?.role !== "subagent-trajectory") throw new Error("Expected outer trajectory");
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate"]);
+      const inner = outer.ir.at(-1);
+      if (inner?.role !== "subagent-trajectory") throw new Error("Expected inner trajectory");
+      const leafEvent = events.at(-1);
+      if (leafEvent == null || leafEvent.root) throw new Error("Expected leaf event");
+      const leafMessage = inner.ir.at(-1);
+      if (leafMessage == null) throw new Error("Expected leaf message");
+      expect(leafEvent.ir).toBe(leafMessage);
+      expect(leafEvent.scope.parentSubagentIR).toBe(inner);
+      expect(leafEvent.scope.toplevelSubagentIR).toBe(outer);
+      expect(leafEvent.scope.path).toEqual([
+        { subagent: "research", toolCallId: "c1" },
+        { subagent: "research", toolCallId: "c1" },
+      ]);
+
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate", "middle after"]);
+      expect(calls[3].irs[2]).toMatchObject({
+        role: "tool-output",
+        content: text("leaf findings"),
+      });
+      expect(await traj.step()).toBe(true);
+      expect(queries).toEqual(["root delegate", "middle delegate", "middle after", "root after"]);
+      expect(calls[4].irs[2]).toMatchObject({
+        role: "tool-output",
+        content: text("middle findings"),
+      });
+      expect(calls.map(call => call.tools)).toEqual([
+        ["search"],
+        ["search"],
+        [],
+        ["search"],
+        ["search"],
+      ]);
+      expect(calls.map(call => call.systemPrompt)).toEqual([
+        "root prompt",
+        "research prompt",
+        "research prompt",
+        "research prompt",
+        "root prompt",
+      ]);
+      expect(outer.ir.map(ir => ir.role)).toEqual([
+        "user",
+        "assistant",
+        "tool-invoke-subagent",
+        "subagent-trajectory",
+        "tool-output",
+        "assistant",
+      ]);
+      expect(traj.messages[3]).toBe(outer);
+      expect(outer.ir[3]).toBe(inner);
+      expect(models).toEqual([
+        "default-model",
+        "middle-model",
+        leafModel ?? "default-model",
+        "middle-model",
+        "default-model",
+      ]);
+      expect(resolutions).toHaveLength(7);
+      expect(resolutions[0]).toBeNull();
+      expect(resolutions[1]).toBeNull();
+      expect(resolutions[2] === traj.messages[2]).toBe(true);
+      expect(resolutions[3] === traj.messages[2]).toBe(true);
+      expect(resolutions[4] === outer.ir[2]).toBe(true);
+      expect(resolutions[5] === traj.messages[2]).toBe(true);
+      expect(resolutions[6]).toBeNull();
+      await startWaitingStep(traj, "ready-for-request");
+    },
+  );
+
+  it.each(["tool-invoke-subagent", "subagent-trajectory"] as const)(
+    "does not start child work when quitting during the %s notification",
+    async role => {
+      const { build, exit } = makeTrajectory({
+        onMessage: async event => {
+          if (event.ir.role !== role) return;
+          exit.abort();
+          await new Promise(resolve => setTimeout(resolve, 0));
+        },
+      });
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(
+            assistantMessage({
+              toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+            }),
+          ),
+      ]);
+      runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
+      await inputControl(traj).enqueueSteering(text("run"));
+      await traj.run();
+      expect(compilerCalls).toHaveLength(1);
+      expect(traj.mode.mode).toBe("aborted");
+      const children = traj.messages.filter(ir => ir.role === "subagent-trajectory");
+      expect(children).toHaveLength(role === "subagent-trajectory" ? 1 : 0);
+      if (children.length > 0) expect(children[0].ir.at(-1)?.role).toBe("interrupted-by-user");
+      expect(
+        traj.messages
+          .filter(ir => ir.role === "tool-skip-output")
+          .map(ir => ir.toolCall.toolCallId),
+      ).toEqual(role === "subagent-trajectory" ? ["c2"] : ["c1", "c2"]);
+    },
+  );
+
+  it("closes the newly inserted child when interrupted during its notification", async () => {
+    const { build } = makeTrajectory({
+      onMessage: async event => {
+        if (event.ir.role === "subagent-trajectory") await interruptNow(traj);
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
     ]);
     runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
-
-    inputControl(traj).enqueueSteering(text("run"));
+    await inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
-    await expect(traj.step()).rejects.toThrow("Subagent invocation is not supported: research");
+    expect(await traj.step()).toBe(true);
+    const child = traj.messages.find(ir => ir.role === "subagent-trajectory");
+    expect(child?.ir.at(-1)?.role).toBe("interrupted-by-user");
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c2"]);
+    expect(compilerCalls).toHaveLength(1);
+    await startWaitingStep(traj, "ready-for-request");
   });
 
   it("skips unanswered tool calls when a tool throws, then rethrows", async () => {
@@ -524,6 +1193,7 @@ describe("trajectory", () => {
     const steering = continuation[4];
     if (steering.role !== "user") throw new Error("impossible");
     expect(steering.content).toEqual(text("do it differently"));
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -549,6 +1219,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(queries).toEqual(["a", "b", "c"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual([
       "responding",
       "tool-call",
@@ -617,6 +1288,7 @@ describe("trajectory", () => {
     const skip = continuation[4];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.reason).toBe("A previous tool call was rejected, so this tool was skipped");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -650,6 +1322,7 @@ describe("trajectory", () => {
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
     expect(skip.toolCall.toolCallId).toBe("c3");
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
   });
@@ -671,6 +1344,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
   });
@@ -802,10 +1476,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("go"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
     expect(traj.mode.mode).toBe("request-error");
 
     exit.abort();
-    expect(await traj.step()).toBe(false);
+    expect(await waiting.finished).toBe(false);
+    await traj.run();
     expect(traj.mode.mode).toBe("aborted");
   });
 
@@ -815,13 +1491,14 @@ describe("trajectory", () => {
     const { traj, compilerCalls } = await build(queue);
 
     inputControl(traj).enqueueSteering(text("hi"));
-    queue.push(onTokens => {
-      onTokens("partial answer", "content");
+    queue.push(async onTokens => {
+      await onTokens("partial answer", "content");
       interruptNow(traj);
       return okResult(assistantMessage({ content: "full answer" }));
     }, plainOk);
 
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual(["user", "assistant"]);
     const partial = traj.messages[1];
     if (partial.role !== "assistant") throw new Error("impossible");
@@ -832,8 +1509,9 @@ describe("trajectory", () => {
     expect(compilerCalls.length).toBe(1);
 
     inputControl(traj).enqueueSteering(text("again"));
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
     expect(compilerCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -843,10 +1521,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("go"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "request-error");
     expect(rec.modes).toEqual(["responding", "request-error"]);
 
     rectifyControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modelCalls).toBe(2);
@@ -857,8 +1537,8 @@ describe("trajectory", () => {
   it("rewinds past the last user message, fires the rewind event once, and ignores stale rewinds", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([
-      onTokens => {
-        onTokens("partial response", "content");
+      async onTokens => {
+        await onTokens("partial response", "content");
         return err(requestError("boom"));
       },
       plainOk,
@@ -868,10 +1548,15 @@ describe("trajectory", () => {
     readyControl.enqueueSteering(text("please do the thing"));
     expect(await traj.step()).toBe(true);
     expect(rec.roles).toEqual(["user", "assistant", "request-error"]);
+    const waiting = await startWaitingStep(traj, "request-error");
 
     readyControl.enqueueSteering(text("staged while parked"));
-    await rectifyControl(traj).rewind();
-    await rectifyControl(traj).rewind();
+    const control = rectifyControl(traj);
+    await control.rewind();
+    await control.rewind();
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
 
     expect(rec.rewinds.length).toBe(1);
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
@@ -887,13 +1572,11 @@ describe("trajectory", () => {
       "steering:0u0q",
     ]);
     expect(traj.messages.length).toBe(0);
-
-    expect(await traj.step()).toBe(true);
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
 
     inputControl(traj).enqueueSteering(text("edited request"));
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user"]);
   });
 
@@ -906,9 +1589,11 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("auth please"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "auth-error");
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modelCalls).toBe(2);
@@ -923,9 +1608,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("auth please"));
     expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
 
     retryControl(traj).clear?.();
-    expect(await traj.step()).toBe(true);
+    while (traj.mode.mode !== "ready-for-request") {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
 
     expect(compilerCalls.length).toBe(1);
     expect(traj.mode.mode).toBe("ready-for-request");
@@ -942,16 +1630,113 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(0);
+    const waiting = await startWaitingStep(traj, "auth-error");
     expect(rec.modes).toEqual(["auth-error"]);
     expect(traj.mode).toEqual(expect.objectContaining({ mode: "auth-error", authError: "no key" }));
 
     failing = false;
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(1);
     expect(rec.modelCalls).toBe(2);
     expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it.each(["retry", "clear"] as const)(
+    "%s resumes runtime loading before running pending tools or folding queued steering",
+    async resolution => {
+      let failing = false;
+      const queries: string[] = [];
+      const { build, rec } = makeTrajectory({
+        modelAuthError: () => (failing ? "credentials changed" : undefined),
+      });
+      const { traj, compilerCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
+        plainOk,
+      ]);
+      runImpl = async query => {
+        queries.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("after the batch"));
+      failing = true;
+      expect(await traj.step()).toBe(true);
+      const waiting = await startWaitingStep(traj, "auth-error");
+      expect(traj.mode).toEqual(
+        expect.objectContaining({
+          mode: "auth-error",
+          authError: "credentials changed",
+        }),
+      );
+      expect(queries).toEqual([]);
+      expect(compilerCalls.length).toBe(1);
+      expect(rec.roles).toEqual(["user", "assistant", "auth-error"]);
+      expect(rec.modelCalls).toBe(2);
+
+      failing = false;
+      const control = retryControl(traj);
+      if (resolution === "retry") control.retry();
+      else control.clear?.();
+      expect(await waiting.finished).toBe(true);
+      expect(queries).toEqual(["cats"]);
+      expect(rec.roles).toEqual([
+        "user",
+        "assistant",
+        "auth-error",
+        "error-retry",
+        "tool-output",
+        "user",
+        "assistant",
+      ]);
+      expect(compilerCalls.length).toBe(2);
+      expect(rec.modelCalls).toBe(3);
+      expect(rec.loadToolsCalls).toBe(3);
+    },
+  );
+
+  it("exit after a batch runtime-loading error skips pending calls without running them", async () => {
+    let failing = false;
+    const { build, rec, exit } = makeTrajectory({
+      modelAuthError: () => (failing ? "no key" : undefined),
+    });
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")],
+          }),
+        ),
+    ]);
+    runImpl = async () => {
+      throw new Error("must not run");
+    };
+
+    inputControl(traj).enqueueSteering(text("run"));
+    expect(await traj.step()).toBe(true);
+    failing = true;
+    expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "auth-error");
+    expect(traj.mode.mode).toBe("auth-error");
+
+    exit.abort();
+    await traj.run();
+    expect(traj.mode.mode).toBe("aborted");
+    expect(rec.roles).toEqual([
+      "user",
+      "assistant",
+      "auth-error",
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c1", "c2"]);
+    expect(compilerCalls.length).toBe(1);
   });
 
   it("maps retryable error finishes to retry modes and drives retries", async () => {
@@ -960,10 +1745,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "rate-limit-error");
     expect(rec.modes).toEqual(["responding", "rate-limit-error"]);
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(rec.modes).toEqual([
       "responding",
@@ -982,6 +1769,7 @@ describe("trajectory", () => {
 
     inputControl(firstBuild.traj).enqueueSteering(text("hi"));
     expect(await firstBuild.traj.step()).toBe(true);
+    await startWaitingStep(firstBuild.traj, "rate-limit-error");
     expect(firstBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "rate-limit-error", requestError: "slow down" }),
     );
@@ -994,6 +1782,7 @@ describe("trajectory", () => {
 
     inputControl(secondBuild.traj).enqueueSteering(text("hi"));
     expect(await secondBuild.traj.step()).toBe(true);
+    await startWaitingStep(secondBuild.traj, "request-error");
     expect(secondBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "request-error", requestError: "boom", curl: "curl" }),
     );
@@ -1014,10 +1803,12 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "payment-error");
     expect(rec.modes).toEqual(["responding", "payment-error"]);
 
     retryControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(2);
     expect(rec.modes).toEqual(["responding", "payment-error", "responding", "ready-for-request"]);
@@ -1033,6 +1824,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(2);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual([
       "responding",
       "request-error-retrying",
@@ -1062,6 +1854,7 @@ describe("trajectory", () => {
       "tool-validation-error",
       "validation-retry-budget-exceeded",
     ]);
+    await startWaitingStep(traj, "request-error");
     expect(traj.mode).toEqual(
       expect.objectContaining({
         mode: "request-error",
@@ -1092,12 +1885,21 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
+    const assistant = traj.messages[1];
+    if (assistant.role !== "assistant") throw new Error("impossible");
+    expect(assistant.toolCalls?.[0]).toEqual(
+      expect.objectContaining({
+        original: { query: "invalid" },
+        parsed: { query: "fixed" },
+      }),
+    );
     expect(await traj.step()).toBe(true);
 
     expect(rec.modes).toContain("autofix-tool");
     expect(rec.arc.autofixTool).toBe(1);
     expect(queries).toEqual(["fixed"]);
     expect(rec.roles).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
 
@@ -1118,6 +1920,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "autofix-json", "ready-for-request"]);
     expect(rec.arc.autofixJson).toBe(1);
     expect(traj.mode.mode).toBe("ready-for-request");
@@ -1154,6 +1957,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.timeline).toEqual([
       "steering:1u0q",
       "steering:0u0q",
@@ -1179,6 +1983,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.timeline).toEqual([
       "steering:1u0q",
       "steering:0u0q",
@@ -1211,6 +2016,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["compacting", "responding", "ready-for-request"]);
     expect(rec.arc.compaction).toBe(1);
     expect(rec.roles).toEqual(["user", "checkpoint", "assistant"]);
@@ -1218,6 +2024,123 @@ describe("trajectory", () => {
     expect(compilerCalls.length).toBe(2);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user", "user", "user"]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it.each([true, false])(
+    "renders checkpoints for root=%s without changing stored IR",
+    async root => {
+      const task = [
+        ...text("Investigate the attached diagram"),
+        img("diagram.png"),
+        ...text("Report only when the investigation is complete"),
+      ];
+      const checkpoint: Checkpoint = { role: "checkpoint", content: text("Existing summary") };
+      const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+        role: "subagent-trajectory",
+        subagent: "research",
+        toolCall: searchCall("delegate", "delegation"),
+        task,
+        ir: [{ role: "user", content: subagentPrompt(task) }, checkpoint],
+      };
+      const { build } = makeTrajectory({
+        messages: root
+          ? [checkpoint]
+          : [
+              {
+                role: "tool-invoke-subagent",
+                subagent: child.subagent,
+                toolCall: child.toolCall,
+                message: task,
+              },
+              child,
+            ],
+      });
+      const { traj, compilerCalls } = await build([plainOk]);
+
+      expect(await traj.step()).toBe(true);
+      const rendered = compilerCalls[0].irs[0];
+      if (rendered.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(rendered.content).toEqual(
+        root
+          ? checkpoint.content
+          : [...checkpoint.content, ...text("\n\n"), ...subagentPrompt(task)],
+      );
+      expect(checkpoint.content).toEqual(text("Existing summary"));
+      expect(child.task).toBe(task);
+      if (!root) expect(child.ir[1]).toBe(checkpoint);
+    },
+  );
+
+  it("keeps child directives in repeated compactions and tool-output token counts", async () => {
+    const task = text("Inspect the workspace and report the result");
+    const originalCheckpoint: Checkpoint = { role: "checkpoint", content: text("x".repeat(12000)) };
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [{ role: "user", content: subagentPrompt(task) }, originalCheckpoint],
+    };
+    const counted: Array<Array<LoweredIR<TestAgent["tools"]>>> = [];
+    const { build } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [
+        assistantMessage({ toolCalls: [child.toolCall] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: child.subagent,
+          toolCall: child.toolCall,
+          message: task,
+        },
+        child,
+      ],
+      countTokens: irs => {
+        counted.push(irs);
+        return irs.length;
+      },
+    });
+    const firstRequest = assistantMessage({ toolCalls: [shellCall("pwd", "first")] });
+    const secondRequest = assistantMessage({ toolCalls: [shellCall("ls", "second")] });
+    firstRequest.usage = compilerUsage(4000, 1);
+    secondRequest.usage = compilerUsage(4000, 1);
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "First summary" })),
+      () => okResult(firstRequest),
+      () => okResult(assistantMessage({ content: "Second summary" })),
+      () => okResult(secondRequest),
+      () => okResult(assistantMessage({ content: "Third summary" })),
+      plainOk,
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    expect(compilerCalls).toHaveLength(6);
+    expect(counted).toHaveLength(4);
+    const checkpoints = child.ir.filter(ir => ir.role === "checkpoint");
+    expect(checkpoints).toHaveLength(4);
+    expect(checkpoints[0]).toBe(originalCheckpoint);
+
+    const renderedContent = (checkpoint: Checkpoint) => [
+      ...checkpoint.content,
+      ...text("\n\n"),
+      ...subagentPrompt(task),
+    ];
+    for (let index = 0; index < checkpoints.length; index++) {
+      expect(JSON.stringify(checkpoints[index].content)).not.toContain("You are a subagent");
+      if (index === 0) continue;
+      const request = compilerCalls[index * 2 - 1].irs[0];
+      if (request.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(request.content).toEqual(renderedContent(checkpoints[index]));
+    }
+    for (let index = 0; index < counted.length; index++) {
+      const checkpoint = counted[index][0];
+      if (checkpoint.role !== "lowered-checkpoint") throw new Error("Expected checkpoint");
+      expect(checkpoint.content).toEqual(renderedContent(checkpoints[Math.floor(index / 2) + 1]));
+    }
+    // Each subsequent compaction sees the same rendering as the preceding normal request.
+    expect(compilerCalls[2].irs[0]).toEqual(compilerCalls[1].irs[0]);
+    expect(compilerCalls[4].irs[0]).toEqual(compilerCalls[3].irs[0]);
   });
 
   it("rectifies a compaction error and recovers on retry", async () => {
@@ -1234,6 +2157,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
+    const waiting = await startWaitingStep(traj, "compaction-error");
     expect(rec.modes).toEqual(["compacting", "compaction-error"]);
     expect(rec.roles).toEqual(["user", "compaction-error"]);
     expect(traj.mode).toEqual(
@@ -1241,7 +2165,8 @@ describe("trajectory", () => {
     );
 
     rectifyControl(traj).retry();
-    expect(await traj.step()).toBe(true);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(3);
     expect(rec.modes).toEqual([
@@ -1251,7 +2176,13 @@ describe("trajectory", () => {
       "responding",
       "ready-for-request",
     ]);
-    expect(rec.roles).toEqual(["user", "compaction-error", "checkpoint", "assistant"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "compaction-error",
+      "error-retry",
+      "checkpoint",
+      "assistant",
+    ]);
   });
 
   it("suppresses the ready announce when steering arrives mid-response", async () => {
@@ -1269,6 +2200,7 @@ describe("trajectory", () => {
     expect(rec.modes).toEqual(["responding"]);
 
     expect(await traj.step()).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "user"]);
   });
@@ -1368,22 +2300,25 @@ describe("trajectory", () => {
       () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
       plainOk,
     ]);
+    const exit = new AbortController();
+    exitControllers.push(exit);
     const traj = new Trajectory({
       agent: _plainAgent,
-      model: async () => ok({ model: null, contextWindow: 10_000 }),
-      loadTools: async () => ({ search: searchDef }),
+      model: async () => ok({ model: null, contextWindow: 10_000, modalities: null }),
+      loadTools: async () => ok({ search: searchDef }),
       toolContentTooLargeError: async () => "OUTPUT TOO LARGE",
       messages: [],
       toolData: { marker: "fresh" },
       runCompiler,
-      lowerMessages: messages => lower<PlainAgent>(messages),
+      subagentPrompts: { research: async () => "You are the research subagent." },
+      lowerMessages: messages => messages.map(original => ({ original, converted: original })),
       transport,
-      abortSignal: new AbortController().signal,
+      abortSignal: exit.signal,
       handler: {
-        modeChange: mode => {
+        modeChange: ({ mode }) => {
           modes.push(mode.mode);
         },
-        onMessage: ir => {
+        onMessage: ({ ir }) => {
           roles.push(ir.role);
         },
       },
@@ -1393,6 +2328,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
+    await startWaitingStep(traj, "ready-for-request");
     expect(modes).toEqual([
       "responding",
       "tool-call",

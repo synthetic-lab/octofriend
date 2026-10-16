@@ -4,11 +4,8 @@ import { InputHistory } from "../input-history/index.ts";
 import { ImageInfo, loadImageFromPaintFile } from "../utils/image-utils.ts";
 import type { PaintFile } from "paintcannon";
 import { useCtrlC } from "./exit-on-double-ctrl-c.tsx";
-import {
-  DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE,
-  MultimodalConfig,
-  canDisplayImage,
-} from "../providers.ts";
+import { DEFAULT_MULTIMODAL_IMAGE_MODEL_EXAMPLE, canDisplayImage } from "../providers.ts";
+import type { MultimodalConfig } from "../libocto/modalities.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 import { DEFAULT_INPUT_MODE, type InputMode, type VimMode } from "./input-mode.ts";

@@ -17,6 +17,7 @@ import {
 } from "./schema/session-history-schema.ts";
 import { deserializeLlmIr, serializeLlmIr } from "./llm-ir-json.ts";
 import { NO_MODEL_RECORDED } from "./model-json.ts";
+import { err, ok, type Result } from "../libocto/result.ts";
 import { excerpt } from "../str.ts";
 
 export type TransportKind = "local" | "docker-connect" | "docker-run";
@@ -365,6 +366,25 @@ export function insertHistoryItems(
   session.treeId = result.treeId;
   session.launchId = result.launchId;
   return result.insertedNodes;
+}
+
+// Rewrites a persisted LLM IR in place: a growing IR object (a subagent trajectory picking
+// up child appends) stays one node, re-serialized whole on each append rather than
+// inserting flat rows that would revive as root conversation.
+export function overwriteLlmIrNode(nodeId: number, ir: OctoIR): Result<null, string> {
+  const row = db()
+    .select({ llmIrId: historyItems.llmIrId })
+    .from(treeNodes)
+    .innerJoin(historyItems, eq(historyItems.id, treeNodes.historyItemId))
+    .where(eq(treeNodes.id, nodeId))
+    .get();
+  if (row?.llmIrId == null) return err(`History node ${nodeId} has no LLM IR payload.`);
+  db()
+    .update(llmIrs)
+    .set({ json: serializeLlmIr(ir) })
+    .where(eq(llmIrs.id, row.llmIrId))
+    .run();
+  return ok(null);
 }
 
 function treeIdForHistoryInsert(tx: DbTransaction, session: Session, sessionId: string): number {
