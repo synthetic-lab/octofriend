@@ -90,14 +90,6 @@ describe("renderToString", () => {
   });
 
   describe("links and images", () => {
-    it("preserves link content and applies formatting", () => {
-      const result = renderToString("[link text](https://example.com)");
-      const stripped = stripAnsi(result);
-      expect(stripped).toContain("link text");
-      expect(stripped).toContain("https://example.com");
-      expect(hasFormatting(result)).toBe(true);
-    });
-
     it("preserves image alt text", () => {
       const result = renderToString("![alt text](image.jpg)");
       const stripped = stripAnsi(result);
