@@ -454,7 +454,7 @@ describe("trajectory", () => {
     const { traj } = await build([
       () => okResult(assistantMessage({ toolCalls: [searchCall("cats", "c1")] })),
     ]);
-    runImpl = async () => ok({ type: "invoke-subagent", name: "research" });
+    runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
@@ -867,7 +867,7 @@ describe("trajectory", () => {
     const readyControl = inputControl(traj);
     readyControl.enqueueSteering(text("please do the thing"));
     expect(await traj.step()).toBe(true);
-    expect(rec.roles).toEqual(["user", "assistant"]);
+    expect(rec.roles).toEqual(["user", "assistant", "request-error"]);
 
     readyControl.enqueueSteering(text("staged while parked"));
     await rectifyControl(traj).rewind();
@@ -875,7 +875,11 @@ describe("trajectory", () => {
 
     expect(rec.rewinds.length).toBe(1);
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
-    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual(["user", "assistant"]);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "assistant",
+      "request-error",
+    ]);
     expect(rec.timeline.filter(e => e.startsWith("steering"))).toEqual([
       "steering:1u0q",
       "steering:0u0q",
@@ -1052,7 +1056,12 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-validation-error"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "assistant",
+      "tool-validation-error",
+      "validation-retry-budget-exceeded",
+    ]);
     expect(traj.mode).toEqual(
       expect.objectContaining({
         mode: "request-error",
@@ -1226,7 +1235,7 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(rec.modes).toEqual(["compacting", "compaction-error"]);
-    expect(rec.roles).toEqual(["user"]);
+    expect(rec.roles).toEqual(["user", "compaction-error"]);
     expect(traj.mode).toEqual(
       expect.objectContaining({ mode: "compaction-error", requestError: "boom", curl: "curl" }),
     );
@@ -1242,7 +1251,7 @@ describe("trajectory", () => {
       "responding",
       "ready-for-request",
     ]);
-    expect(rec.roles).toEqual(["user", "checkpoint", "assistant"]);
+    expect(rec.roles).toEqual(["user", "compaction-error", "checkpoint", "assistant"]);
   });
 
   it("suppresses the ready announce when steering arrives mid-response", async () => {

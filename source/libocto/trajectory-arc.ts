@@ -9,11 +9,14 @@ import type {
   AgentIR,
   AssistantMessage,
   Checkpoint,
+  CompactionErrorIR,
   LlmIR,
   LoweredIR,
+  RequestErrorIR,
   ToolParseErrorMessage,
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
+  ValidationRetryBudgetExceededIR,
 } from "./llm-ir.ts";
 import type { LoadedTools, ToolCall, ToolDef } from "./tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
@@ -86,7 +89,10 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | ToolParseErrorMessage
   | ToolValidationErrorMessage<A["tools"]>
   | ToolSkipOutputMessage<A["tools"]>
-  | Checkpoint;
+  | Checkpoint
+  | RequestErrorIR
+  | CompactionErrorIR
+  | ValidationRetryBudgetExceededIR;
 
 export type RecoverableRequestError = Extract<
   CompilerError,
@@ -127,6 +133,7 @@ export type StaticFinishReasons<A extends Agent<any, any, any>> =
 
 export type ValidationRetryBudgetFinishReason = {
   type: "validation-retry-budget-exceeded";
+  error: string;
 };
 
 export type RequestErrorRetryBudgetFinishReason = {
@@ -277,7 +284,8 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     reason: AllFinishReasons<A>,
     remaining: Array<TrajectoryArcIR<A>> = [],
   ): TrajectoryArcFinish<AllFinishReasons<A>> => {
-    emitIrs(remaining);
+    const record = arcErrorRecord(reason);
+    emitIrs(record == null ? remaining : [...remaining, record]);
     return { type: "finish", reason };
   };
 
@@ -584,7 +592,10 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 
       emitIrs(irs);
       if (!consumeValidationRetry()) {
-        return finishWith({ type: "validation-retry-budget-exceeded" });
+        return finishWith({
+          type: "validation-retry-budget-exceeded",
+          error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
+        });
       }
       messagesCopy.push(...irs);
       continue;
@@ -634,7 +645,10 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       const fullRetryTrajectory = [...irs, ...retryIrs];
       emitIrs(fullRetryTrajectory);
       if (!consumeValidationRetry()) {
-        return finishWith({ type: "validation-retry-budget-exceeded" });
+        return finishWith({
+          type: "validation-retry-budget-exceeded",
+          error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
+        });
       }
       messagesCopy.push(...fullRetryTrajectory);
       continue;
@@ -648,6 +662,49 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       },
       irs,
     );
+  }
+}
+
+const VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR = "The model repeatedly produced invalid tool calls";
+
+function arcErrorRecord(
+  reason: AllFinishReasons<any>,
+): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | null {
+  switch (reason.type) {
+    case "request-error":
+      return {
+        role: "request-error",
+        requestError: reason.requestError,
+        curl: reason.curl,
+      };
+    case "compaction-error":
+      return {
+        role: "compaction-error",
+        requestError: reason.requestError,
+        curl: reason.curl,
+      };
+    case "validation-retry-budget-exceeded":
+      return {
+        role: "validation-retry-budget-exceeded",
+        error: reason.error,
+      };
+    case "request-error-retry-budget-exceeded":
+      if (reason.error.type === "rate-limit-error") return null;
+      return {
+        role: "request-error",
+        requestError: reason.error.requestError,
+        curl: reason.error.curl,
+      };
+    default: {
+      const _:
+        | "abort"
+        | "needs-response"
+        | "request-tool"
+        | "auth-error"
+        | "payment-error"
+        | "rate-limit-error" = reason.type;
+      return null;
+    }
   }
 }
 

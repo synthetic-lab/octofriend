@@ -2,7 +2,7 @@ import { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
 import { Result, ok } from "./result.ts";
 import type { BuiltinIRRole } from "./ir-roles.ts";
-import type { Content } from "./llm-ir.ts";
+import type { Content, UserMessage } from "./llm-ir.ts";
 
 /*
  * Tool definitions
@@ -107,6 +107,7 @@ export type ToolReturn<SubagentName extends string, Extra> =
   | {
       type: "invoke-subagent";
       name: SubagentName;
+      message: UserMessage["content"];
     }
   | {
       type: "custom-ir";
