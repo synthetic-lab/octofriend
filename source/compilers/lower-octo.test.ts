@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { lowerOctoToLlmIR } from "./lower-octo.ts";
-import type { LowerOutputIR } from "../libocto/llm-ir.ts";
+import type { LowerInputIR, LowerOutputIR } from "../libocto/llm-ir.ts";
 import { compilerUsage } from "../libocto/compilers/compiler-interface.ts";
 import type { ToolCall } from "../libocto/tool-def.ts";
 import type toolMap from "../tools/tool-defs/index.ts";
-import type { OctoIR, octoAgent } from "../ir/octo-ir.ts";
+import type { octoAgent } from "../ir/octo-ir.ts";
 import type { ImageInfo } from "../utils/image-utils.ts";
 import type { MultimodalConfig } from "../libocto/modalities.ts";
 
@@ -74,7 +74,7 @@ function unansweredToolCallIds(messages: Array<LowerOutputIR<typeof octoAgent>>)
   return requested.filter(id => !answered.has(id));
 }
 
-function imageReadHistory(): OctoIR[] {
+function imageReadHistory(): Array<LowerInputIR<typeof octoAgent>> {
   const call = readCall("call_image", "/tmp/screenshot.png");
   return [
     {

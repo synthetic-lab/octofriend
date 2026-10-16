@@ -13,6 +13,7 @@ import backgroundProcess from "./background-process.ts";
 import manageBackgroundProcess from "./manage-background-process.ts";
 import glob from "./glob.ts";
 import grep from "./grep.ts";
+import explore from "./explore.ts";
 import lspDefinition from "./lsp-definition.ts";
 import lspReferences from "./lsp-references.ts";
 import lspHover from "./lsp-hover.ts";
@@ -38,6 +39,7 @@ export default {
   "manage-background-process": manageBackgroundProcess,
   glob,
   grep,
+  explore,
   "lsp-definition": lspDefinition,
   "lsp-references": lspReferences,
   "lsp-hover": lspHover,

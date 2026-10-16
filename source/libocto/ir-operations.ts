@@ -459,6 +459,24 @@ export function inspectHistory<A extends Agent<any, any, any>>(
   return ok({ ...common, tail, action: "respond" });
 }
 
+export type SubagentTrajectoryInspection =
+  | { type: "in-progress" }
+  | { type: "complete" }
+  | { type: "error"; error: string }
+  | { type: "aborted" };
+
+/** @internal Clients should use Trajectory.inspectSubagentTrajectory with its bound lowering. */
+export function inspectSubagentTrajectory<A extends Agent<any, any, any>>(
+  converted: readonly RecursiveLowered<A>[],
+): SubagentTrajectoryInspection {
+  const last = converted.at(-1)?.converted;
+  if (last == null) return { type: "in-progress" };
+  if (last.role === "assistant" && !last.toolCalls?.length) return { type: "complete" };
+  if (last.role === "interrupted-by-user") return { type: "aborted" };
+  if (isTerminalError(last)) return { type: "error", error: errorMessage(last) };
+  return { type: "in-progress" };
+}
+
 // Callers must recursively convert extension IRs before testing the tail.
 export function isTrajectoryRunning(trajectory: {
   ir: readonly { converted: { role: string; toolCalls?: readonly unknown[] } }[];

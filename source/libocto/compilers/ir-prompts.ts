@@ -15,7 +15,7 @@ The primary agent has given you the following task:\n`,
     ...task,
     {
       type: "text",
-      content: `\nRemember, you must ONLY respond to the primary agent once you're done with your task or have determined your task is impossible. Until then, use your tools to complete the task. You cannot ask clarifying questions or talk to the user, you can only call tools or respond to the primary agent when you're done.`,
+      content: `\nRemember, you must ONLY respond to the primary agent once you're done with your task or have determined your task is impossible. Until then, use your tools to complete the task. You cannot ask clarifying questions or talk to the user, you can only call tools or respond to the primary agent when you're done. Follow the task specifically: don't do unrelated work. Once you think you're done, respond to the primary agent with the result.`,
     },
   ];
 }
