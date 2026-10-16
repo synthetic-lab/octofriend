@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import type { DivElement } from "paintcannon";
 import { useAnimation } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
-import { BACKGROUND_COLOR, DIMMED_BACKGROUND_COLOR, MODAL_Z_INDEX, useColor } from "../theme.ts";
+import { DIMMED_BACKGROUND_COLOR, MODAL_BACKGROUND_COLOR, MODAL_Z_INDEX } from "../theme.ts";
 
 const BACKDROP_FADE_DURATION_MS = 300;
 const MODAL_RESIZE_DURATION_MS = 200;
@@ -27,7 +27,6 @@ export function Modal({
   minWidth: number;
   onClose: () => void;
 }) {
-  const borderColor = useColor();
   const { time } = useAnimation({ isActive: true });
   const contentRef = useRef<DivElement>(null);
   const [resizeAnimation, setResizeAnimation] = useState<ResizeAnimation | null>(null);
@@ -111,9 +110,9 @@ export function Modal({
               left: 0,
               width: displayedSize.width,
               height: displayedSize.height,
-              border: "rounded",
-              borderColor,
-              backgroundColor: BACKGROUND_COLOR,
+              border: "chunky-best-effort",
+              borderColor: MODAL_BACKGROUND_COLOR,
+              backgroundColor: MODAL_BACKGROUND_COLOR,
             }}
           />
         )}
