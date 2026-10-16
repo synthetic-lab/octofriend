@@ -167,8 +167,12 @@ type WithArcScope<Scope, Modes> = Scope extends unknown
 
 // Modes fired from subagent arcs, one entry per name at any depth, carrying that arc's typed
 // calls. Concrete directories retain exact names and calls; abstract directories terminate
-// with their declared string-indexed agent type.
-type SubagentModes<Agents extends AgentDirectory> = (string extends keyof Agents
+// with their declared string-indexed agent type. Apply the inspection bound once, outside
+// recursion: repeating this same intersection at every depth multiplies generic union work.
+type SubagentModes<Agents extends AgentDirectory> = SubagentModeUnion<Agents> &
+  SharedArcModes<ToolCall<any>, true>;
+
+type SubagentModeUnion<Agents extends AgentDirectory> = string extends keyof Agents
   ? WithArcScope<
       ScopeSubagent<string>,
       SharedArcModes<ToolCall<Agents[string]["tools"]>, IsPermissioned<Agents[string]>>
@@ -179,9 +183,8 @@ type SubagentModes<Agents extends AgentDirectory> = (string extends keyof Agents
             ScopeSubagent<K>,
             SharedArcModes<ToolCall<Agents[K]["tools"]>, IsPermissioned<Agents[K]>>
           >
-        | SubagentModes<Agents[K]["agents"]>;
-    }[keyof Agents & string]) &
-  SharedArcModes<ToolCall<any>, true>;
+        | SubagentModeUnion<Agents[K]["agents"]>;
+    }[keyof Agents & string];
 
 export type TrajectoryMode<A extends Agent<any, any, any>> =
   | WithArcScope<ScopeRoot, RootOnlyModes | SharedArcModes<ToolCall<A["tools"]>, IsPermissioned<A>>>
