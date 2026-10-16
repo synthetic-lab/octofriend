@@ -11,7 +11,7 @@ import {
   isCodespanToken,
 } from "./types.ts";
 import { HighlightedCode } from "./highlight-code.tsx";
-import { Span } from "paintcannon-react";
+import { A, Span } from "paintcannon-react";
 import { TerminalFlex } from "../components/terminal-flex.tsx";
 import {
   MARKDOWN_BLOCKQUOTE_BORDER_COLOR,
@@ -276,16 +276,16 @@ function ImageRenderer({ token }: { token: Tokens.Image }) {
   );
 }
 function LinkRenderer({ token }: { token: Tokens.Link }) {
-  // For now, combine link text and URL in a single text element
-  const linkText = renderTokensAsPlaintext(token.tokens);
   return (
-    <Span
+    <A
+      href={token.href}
       style={{
         color: MARKDOWN_LINK_COLOR,
+        textDecorationLine: "underline",
       }}
     >
-      {linkText} ({token.href}){renderChildren(token.tokens)} ({token.href})
-    </Span>
+      {renderChildren(token.tokens)}
+    </A>
   );
 }
 function ListRenderer({ token }: { token: Tokens.List }) {
