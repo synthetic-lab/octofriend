@@ -29,8 +29,4 @@ export class Input<T> {
       this.waiter = resolve;
     });
   }
-
-  clear(): void {
-    this.buffered = [];
-  }
 }

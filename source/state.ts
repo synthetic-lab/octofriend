@@ -9,6 +9,7 @@ import {
 import { ImageInfo } from "./utils/image-utils.ts";
 import {
   createSession,
+  deleteHistoryNodes,
   HistoryNode,
   insertHistoryItems,
   overwriteLlmIrNode,
@@ -251,6 +252,7 @@ export const useAppStore = create<UiState>((set, get) => {
     const throttle = throttledBuffer<Partial<UiState>>(300, set);
     let responseByteCount = 0;
     let compactionByteCount = 0;
+    let rewindInterruptedTurn = false;
 
     const isCurrent = () => {
       const mode = get().sessionMode;
@@ -410,6 +412,18 @@ export const useAppStore = create<UiState>((set, get) => {
             };
           });
           if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
+          if (rewindInterruptedTurn && mode.root && mode.mode === "ready-for-request") {
+            rewindInterruptedTurn = false;
+            // Veto only: a draft typed since the event cancels the rewind, never triggers it.
+            if (get().query.trim() === "") {
+              const messages = instance.messages;
+              const tail = messages[messages.length - 1];
+              const prev = messages[messages.length - 2];
+              if (tail?.role === "interrupted-by-user" && prev?.role === "user") {
+                void mode.control.rewindTo(prev);
+              }
+            }
+          }
         },
         onMessage: event => {
           if (!isCurrent()) return;
@@ -458,22 +472,29 @@ export const useAppStore = create<UiState>((set, get) => {
         },
         rewind: ({ removed, content }) => {
           if (!isCurrent()) return;
+          if (removed.length > 0) {
+            const first = irNodeMap.get(removed[0]);
+            if (first == null) throw new Error("rewind target is missing from history");
+            const start = get().history.findIndex(node => node.nodeId === first.nodeId);
+            const trimmed = get().history.slice(start);
+            // Dropping the trimmed rows keeps a fresh append legal (one root per tree) and
+            // stops rewound turns from resurrecting on session reload.
+            deleteHistoryNodes(trimmed.map(node => node.nodeId));
+            set(state => {
+              const textParts = content?.filter(part => part.type === "text") || [];
+              const images = content?.filter(part => part.type === "image") || [];
+              return {
+                history: state.history.slice(0, start),
+                query: textParts.map(item => item.content).join(""),
+                attachedImages: images.map(item => item.image),
+                clearNonce: state.clearNonce + 1,
+              };
+            });
+            return;
+          }
           set(state => {
-            let history = state.history;
-            if (removed.length > 0) {
-              const first = irNodeMap.get(removed[0]);
-              if (first == null) throw new Error("rewind target is missing from history");
-              history = history.slice(
-                0,
-                history.findIndex(node => node.nodeId === first.nodeId),
-              );
-            }
             const textPart = content?.find(part => part.type === "text");
-            return {
-              history,
-              query: textPart?.content ?? "",
-              clearNonce: state.clearNonce + 1,
-            };
+            return { query: textPart?.content ?? "", clearNonce: state.clearNonce + 1 };
           });
         },
         steeringChange: ({ queued }) => {
@@ -491,6 +512,28 @@ export const useAppStore = create<UiState>((set, get) => {
             }),
             byteCount: 0,
           }));
+        },
+        interrupted: ({ droppedSteering }) => {
+          if (!isCurrent()) return;
+          // Latch the rewind veto at the moment of interruption; the rewind fires when the
+          // loop parks, and nothing later can re-arm it. Salvaged steering lands in the
+          // draft below, which keeps the interrupted turn instead of rolling it back.
+          rewindInterruptedTurn = droppedSteering.length === 0 && get().query.trim() === "";
+          if (droppedSteering.length === 0) return;
+          set(state => {
+            const texts: string[] = [];
+            const images: ImageInfo[] = [];
+            for (const content of droppedSteering) {
+              for (const part of content) {
+                if (part.type === "text") texts.push(part.content);
+                else images.push(part.image);
+              }
+            }
+            // The salvaged queue precedes any in-progress draft, so the draft is appended
+            // to it rather than clobbered.
+            const query = [texts.join("\n"), state.query].filter(part => part !== "").join("\n");
+            return { query, attachedImages: [...images, ...state.attachedImages] };
+          });
         },
         responseProgress: ({ root, payload: event }) => {
           if (!isCurrent()) return;

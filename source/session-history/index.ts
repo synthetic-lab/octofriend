@@ -141,6 +141,13 @@ export function deleteSession(sessionId: string): boolean {
   });
 }
 
+// The trigger chain makes node deletion self-sufficient: payloads cascade and the parent's
+// leaf bit is restored, so dropping a trimmed span needs nothing else.
+export function deleteHistoryNodes(nodeIds: number[]): void {
+  if (nodeIds.length === 0) return;
+  db().delete(treeNodes).where(inArray(treeNodes.id, nodeIds)).run();
+}
+
 export function listPreviousSessions(
   cwd: string,
   currentSessionId: string | null,

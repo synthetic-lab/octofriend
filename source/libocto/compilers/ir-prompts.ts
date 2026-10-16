@@ -20,6 +20,10 @@ The primary agent has given you the following task:\n`,
   ];
 }
 
+export function userInterruptReason() {
+  return "The user interrupted the response.";
+}
+
 export function toolSkip(reason: string) {
   return `
 Tool was skipped and didn't run. The reason for skipping the tool was:
