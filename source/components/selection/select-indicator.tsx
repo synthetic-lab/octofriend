@@ -2,6 +2,7 @@ import React from "react";
 import figures from "figures";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "../terminal-flex.tsx";
+import { SELECTED_ITEM_ACCENT_COLOR } from "../../theme.ts";
 export type Props = {
   readonly isSelected?: boolean;
 };
@@ -16,7 +17,7 @@ function Indicator({ isSelected = false }: Props) {
       {isSelected ? (
         <Span
           style={{
-            color: "blue",
+            color: SELECTED_ITEM_ACCENT_COLOR,
           }}
         >
           {figures.pointer}
