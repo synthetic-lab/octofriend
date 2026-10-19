@@ -207,6 +207,8 @@
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 
+    "@syntheticlab/paintcannon-native-darwin-arm64": ["@syntheticlab/paintcannon-native-darwin-arm64@0.0.45", "", { "os": "darwin", "cpu": "arm64" }, "sha512-HchFjB4Zr1zm5pGXK1krmiZOizVY+/ECHhNESRcdOKQj0Qvj2eTs2N8vvNgOYDxOHhITkZnhdO2N2JmuPkJ5ZQ=="],
+
     "@syntheticlab/paintcannon-native-darwin-x64": ["@syntheticlab/paintcannon-native-darwin-x64@0.0.45", "", { "os": "darwin", "cpu": "x64" }, "sha512-3S21+uWgRq4MZhxlgWlJ/8Q4fxI2rhgdL1d6XR4v42iWYTpWDG7eoMPg2chWcz7I95zz1rtXlsvgklO12+0E7A=="],
 
     "@syntheticlab/paintcannon-native-linux-arm64-gnu": ["@syntheticlab/paintcannon-native-linux-arm64-gnu@0.0.45", "", { "os": "linux", "cpu": "arm64" }, "sha512-SQyRHPeaJcp53HsxS+cv93hym+dZtEyXCPPMWHHU2fvQlIby6T36Oxq2nYIXQJbw7he/hVKVuUEIZjwWeF/alQ=="],
