@@ -69,7 +69,7 @@ import type {
   RectifyControl,
   ClearControl,
 } from "./libocto/trajectory.ts";
-import type { octoAgent } from "./ir/octo-ir.ts";
+import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type { UserMessage } from "./libocto/llm-ir.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
@@ -1802,49 +1802,8 @@ function renderLlmIR(
       </Span>
     );
   }
-  if (item.role === "tool-validation-error") {
-    const message = (() => {
-      if (item.aborted) return "Tool call aborted.";
-      return "Tool call failed validation checks. Retrying...";
-    })();
-    return (
-      <Span
-        style={{
-          color: "red",
-        }}
-      >
-        {displayLog({
-          verbose: `Error: ${item.error}`,
-          info: message,
-        })}
-      </Span>
-    );
-  }
-  if (item.role === "tool-runtime-error") {
-    return (
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-        }}
-      >
-        <TerminalFlex
-          style={{
-            marginLeft: 2,
-          }}
-        >
-          <Span
-            style={{
-              color: "red",
-            }}
-          >
-            {displayLog({
-              verbose: `Error: ${item.error}`,
-              info: "Tool failed...",
-            })}
-          </Span>
-        </TerminalFlex>
-      </TerminalFlex>
-    );
+  if (item.role === "tool-validation-error" || item.role === "tool-runtime-error") {
+    return <ToolFailureRenderer item={item} />;
   }
   if (item.role === "tool-reject") {
     return (
@@ -2126,6 +2085,118 @@ function CompactionSummaryRenderer({ content }: { content: Content["content"] })
     </TerminalFlex>
   );
 }
+type ToolFailureItem = Extract<OctoIR, { role: "tool-validation-error" | "tool-runtime-error" }>;
+
+function ToolFailureRenderer({ item }: { item: ToolFailureItem }) {
+  const themeColor = useColor();
+  const { action, detail } = toolFailureAction(item.toolCall);
+  const outcome = (() => {
+    if (item.role === "tool-runtime-error") return "ran into an error";
+    if (item.aborted) return "was aborted";
+    const _: "tool-validation-error" = item.role;
+    return "failed";
+  })();
+  // The underlying error is only useful for debugging, so it's verbose-only.
+  const errorDetail = displayLog({ verbose: `Error: ${item.error}`, info: "" });
+  return (
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <Span>
+        <Span
+          style={{
+            color: "red",
+          }}
+        >
+          Octo tried to {action}
+        </Span>
+        {detail != null && (
+          <>
+            {" "}
+            <Span
+              style={{
+                color: themeColor,
+              }}
+            >
+              {detail}
+            </Span>
+          </>
+        )}
+        <Span
+          style={{
+            color: "red",
+          }}
+        >
+          , but it {outcome}!
+        </Span>
+      </Span>
+      {errorDetail !== "" && (
+        <TerminalFlex
+          style={{
+            marginLeft: 2,
+          }}
+        >
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            {errorDetail}
+          </Span>
+        </TerminalFlex>
+      )}
+    </TerminalFlex>
+  );
+}
+
+function toolFailureAction(toolCall: ToolFailureItem["toolCall"]): {
+  action: string;
+  detail?: string;
+} {
+  const args = parsedToolSchema(toolCall).arguments;
+  switch (toolCall.name) {
+    case "edit":
+      return { action: "edit", detail: args?.filePath };
+    case "rewrite":
+      return { action: "rewrite", detail: args?.filePath };
+    case "create":
+      return { action: "create", detail: args?.filePath };
+    case "read":
+    case "partial-read":
+      return { action: "read", detail: args?.filePath };
+    case "list":
+      return { action: "list files in", detail: args?.dirPath || process.cwd() };
+    case "shell":
+      return { action: "run", detail: args?.cmd };
+    case "background-process":
+      return { action: "start a background process" };
+    case "manage-background-process":
+      return { action: "manage a background process" };
+    case "fetch":
+      return { action: "fetch", detail: args?.url };
+    case "web-search":
+      return { action: "search the web", detail: args?.query };
+    case "skill":
+      return args?.skillName
+        ? { action: "read", detail: `the ${args.skillName} skill` }
+        : { action: "read a skill" };
+    case "glob":
+      return { action: "search for files" };
+    case "grep":
+      return { action: "grep" };
+    case "explore":
+      return { action: "explore" };
+    case "mcp":
+      return args?.server && args?.tool
+        ? { action: "use", detail: `the ${args.server} MCP tool ${args.tool}` }
+        : { action: "use an MCP tool" };
+    default:
+      return { action: `use ${toolCall.name}` };
+  }
+}
+
 function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
   if (item.type === "malformed-tool-request") {
     return null;
