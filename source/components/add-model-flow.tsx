@@ -377,20 +377,20 @@ function CodexOAuthStep({ cancel, onComplete }: { cancel: () => void; onComplete
 }
 const codexOAuth = fullFlow
   .withRoutes("codexOAuth", "authAsk", "postAuth")
-  .build("codexOAuth", to => props => {
-    return (
-      <CodexOAuthStep
-        cancel={props.cancel}
-        onComplete={() =>
-          to.postAuth({
-            ...props,
-            auth: {
-              type: "codex",
-            },
-          })
-        }
-      />
-    );
+  .build("codexOAuth", to => ({ baseUrl, renderExamples, done, cancel, config }) => {
+    const onComplete = useCallback(() => {
+      to.postAuth({
+        baseUrl,
+        renderExamples,
+        done,
+        cancel,
+        config,
+        auth: {
+          type: "codex",
+        },
+      });
+    }, [to, baseUrl, renderExamples, done, cancel, config]);
+    return <CodexOAuthStep cancel={cancel} onComplete={onComplete} />;
   });
 const envVar = fullFlow.withRoutes("authAsk", "envVar", "postAuth").build("envVar", to => props => {
   return (
@@ -942,20 +942,19 @@ type CustomAuthData =
 const customAuthFlow = router<CustomAuthFlowData>();
 const customCodexOAuth = customAuthFlow
   .withRoutes("codexOAuth", "postAuth")
-  .build("codexOAuth", to => props => {
-    return (
-      <CodexOAuthStep
-        cancel={props.cancel}
-        onComplete={() =>
-          to.postAuth({
-            ...props,
-            auth: {
-              type: "codex",
-            },
-          })
-        }
-      />
-    );
+  .build("codexOAuth", to => ({ renderExamples, done, cancel, config }) => {
+    const onComplete = useCallback(() => {
+      to.postAuth({
+        renderExamples,
+        done,
+        cancel,
+        config,
+        auth: {
+          type: "codex",
+        },
+      });
+    }, [to, renderExamples, done, cancel, config]);
+    return <CodexOAuthStep cancel={cancel} onComplete={onComplete} />;
   });
 const customAuthRoutes = customAuthFlow.route({
   authAsk: to => props => {
