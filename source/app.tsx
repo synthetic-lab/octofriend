@@ -355,6 +355,7 @@ export default function App({
   }, [metadata, skillNotifs, updates]);
   const liveMirror = sessionMode.mode === "live" ? sessionMode.liveMode : null;
   const trajectoryMode = liveMirror?.trajectoryMode ?? null;
+  const permissionUiType = liveMirror?.permissionUi.type ?? null;
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
@@ -363,6 +364,7 @@ export default function App({
     inflightResponse?.content,
     inflightResponse?.reasoningContent,
     trajectoryMode?.mode,
+    permissionUiType,
     bootItems.length,
     query,
     scrollTranscriptToBottom,
