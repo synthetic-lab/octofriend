@@ -2179,6 +2179,63 @@ describe("trajectory", () => {
     expect(compilerCalls[2].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
   });
 
+  it.each(["allow", "reject"])(
+    "keeps compaction and steering queued until the permission decision is %s",
+    async decision => {
+      let resolvePermission!: (decision: PermissionDecision) => void;
+      const permission = new Promise<PermissionDecision>(resolve => {
+        resolvePermission = resolve;
+      });
+      const { build, rec } = makeTrajectory({ permission: () => permission });
+      const { traj, compilerCalls } = await build([
+        () =>
+          okResult(assistantMessage({ toolCalls: [searchCall("a", "c1"), searchCall("b", "c2")] })),
+        plainOk,
+        plainOk,
+      ]);
+      const ran: string[] = [];
+      runImpl = async query => {
+        ran.push(query);
+        return ok({ type: "output", content: text(query) });
+      };
+
+      await inputControl(traj).enqueueSteering(text("run both"));
+      await traj.step();
+      const waiting = await startWaitingStep(traj, "tool-call-permission");
+      expect(inputControl(traj).requestCompaction()).toBe(true);
+      await inputControl(traj).enqueueSteering(text("follow up after permission"));
+      expect(rec.arc.compaction).toBe(0);
+      expect(compilerCalls).toHaveLength(1);
+      expect(ran).toEqual([]);
+
+      resolvePermission(
+        decision === "allow"
+          ? { decision: "allow" }
+          : { decision: "reject", steering: text("do it differently") },
+      );
+      await waiting.finished;
+      await startWaitingStep(traj, "ready-for-request");
+
+      expect(ran).toEqual(decision === "allow" ? ["a", "b"] : []);
+      expect(rec.roles).toEqual([
+        "user",
+        "assistant",
+        ...(decision === "allow"
+          ? ["tool-output", "tool-output"]
+          : ["tool-reject", "tool-skip-output", "user"]),
+        "user",
+        "checkpoint",
+        "assistant",
+      ]);
+      expect(rec.arc.compaction).toBe(1);
+      expect(compilerCalls).toHaveLength(3);
+      expect(compilerCalls[1].irs.at(-2)).toEqual({
+        role: "user",
+        content: text("follow up after permission"),
+      });
+    },
+  );
+
   it("keeps messages and compaction queued through response retries until the next arc", async () => {
     const { build, rec } = makeTrajectory({
       requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
