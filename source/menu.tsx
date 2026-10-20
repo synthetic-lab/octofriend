@@ -592,17 +592,15 @@ function ContextMenu() {
           setMenuMode("main-menu");
           return;
         }
+        setMenuMode("main-menu");
+        closeMenu();
         if (
           trajectoryMode == null ||
           !("control" in trajectoryMode) ||
           !("requestCompaction" in trajectoryMode.control)
-        ) {
-          notify("Resolve the current prompt before compacting the session.");
+        )
           return;
-        }
         const accepted = trajectoryMode.control.requestCompaction();
-        setMenuMode("main-menu");
-        closeMenu();
         if (accepted) {
           notify(
             trajectoryMode.mode === "ready-for-request"

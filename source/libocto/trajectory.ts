@@ -142,7 +142,7 @@ type SharedArcModes<Call, Permissioned extends boolean> =
           mode: "tool-call-permission";
           toolCalls: Array<Call>;
           toolCall: Call;
-          control: { interrupt(): Promise<void> };
+          control: RunningControl;
         }
       : never);
 
@@ -1202,7 +1202,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             mode: "tool-call-permission",
             toolCalls,
             toolCall,
-            control: this.interruptControl(),
+            control: this.runningControl(),
           });
           const decision = await waitForPermissionDecision(this.permissionGate, toolCall, signal);
           if (!decision.success) {
