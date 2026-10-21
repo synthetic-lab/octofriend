@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate as drizzleMigrate } from "drizzle-orm/bun-sqlite/migrator";
 import { readFileSync } from "node:fs";
 import path from "path";
+import { t } from "structural";
 import { isStandaloneExecutable } from "../bun-env.ts";
 import { db } from "./db.ts";
 
@@ -68,16 +69,37 @@ function isForeignKeyConstraintError(error: unknown): boolean {
   return false;
 }
 
-type MigrationJournal = { entries: Array<{ tag: string; when: number }> };
+const MigrationJournalSchema = t.subtype({
+  entries: t.array(
+    t.subtype({
+      tag: t.str,
+      when: t.num,
+    }),
+  ),
+});
+type MigrationJournal = t.GetType<typeof MigrationJournalSchema>;
+
+function readMigrationJournal(migrationsFolder: string): MigrationJournal | null {
+  try {
+    const journal = MigrationJournalSchema.sliceResult(
+      JSON.parse(readFileSync(path.join(migrationsFolder, "meta/_journal.json"), "utf8")),
+    );
+    return journal instanceof t.Err ? null : journal;
+  } catch {
+    // A malformed journal is a build error; fall back to rethrowing the original migration
+    // error rather than masking it with a journal validation error.
+    return null;
+  }
+}
+
 const LAST_APPLIED_MIGRATION_SQL =
   "SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 1";
 
 function isBadMigrationPending(sqlite: Database, migrationsFolder: string): boolean {
   // Match by tag rather than a hardcoded timestamp. The journal's `when` is committed, so
   // Drizzle's pending check is exactly `lastAppliedAt < thatMigration.when`.
-  const journal = JSON.parse(
-    readFileSync(path.join(migrationsFolder, "meta/_journal.json"), "utf8"),
-  ) as MigrationJournal;
+  const journal = readMigrationJournal(migrationsFolder);
+  if (journal == null) return false;
   const badMigration = journal.entries.find(entry => entry.tag === BAD_MIGRATION_TAG);
   if (badMigration == null) return false;
 
