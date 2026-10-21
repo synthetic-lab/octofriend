@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - id: check
+        run: bun scripts/ci/check-release.ts
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+
+  publish:
+    name: Publish ${{ needs.check.outputs.version }}
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+
+      - run: bun install
+
+      - run: bun run lint
+
+      - run: bun x tsc --noEmit
+
+      - run: bun run test:run
+
+      - run: bun run compile:production -- --all
+
+      - run: bun scripts/ci/package.ts
+
+      - run: bun scripts/ci/publish.ts
+
+      - name: Tag the release
+        run: |
+          tag="octofriend@${{ needs.check.outputs.version }}"
+          if [ -n "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
+            echo "$tag already exists"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              tag -a "$tag" -m "octofriend ${{ needs.check.outputs.version }}" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"

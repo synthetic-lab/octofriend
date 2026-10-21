@@ -5,6 +5,7 @@ import { Command } from "@commander-js/extra-typings";
 import { reactCompiler } from "bun-plugin-react-compiler";
 import packageJson from "./package.json" with { type: "json" };
 import { t } from "structural";
+import { TARGETS, type Target } from "./build-targets.ts";
 
 // Cross-compile standalone binaries with `bun build --compile`.
 //
@@ -41,67 +42,6 @@ if (Bun.version !== targetBunVersion) {
   process.exit(1);
 }
 
-type Target = {
-  /** Output directory: `dist/<name>/` */
-  name: string;
-  /** Passed as `compile.target` to Bun.build */
-  bunTarget: string;
-  /**
-   * paintcannon Rust napi-rs binding variant this target needs
-   * (@syntheticlab/paintcannon-native-<rustNapiBinding>). Baseline builds use
-   * the regular x64 bindings: "baseline" constrains the embedded bun runtime's
-   * instruction set, not the napi addon's.
-   */
-  rustNapiBinding: string;
-  platform: string;
-  arch: string;
-  musl: boolean;
-  baseline: boolean;
-};
-
-function targets(options: {
-  rustNapiBinding: string;
-  platform: string;
-  arch: string;
-  musl?: boolean;
-}): Target[] {
-  const musl = options.musl ?? false;
-  // Baseline builds (no AVX2 requirement) only exist for x64.
-  const baselines = options.arch === "x64" ? [false, true] : [false];
-  return baselines.map(baseline => {
-    const name = [
-      options.platform,
-      options.arch,
-      ...(musl ? ["musl"] : []),
-      ...(baseline ? ["baseline"] : []),
-    ].join("-");
-    return {
-      name,
-      bunTarget: `bun-${name}`,
-      rustNapiBinding: options.rustNapiBinding,
-      platform: options.platform,
-      arch: options.arch,
-      musl,
-      baseline,
-    };
-  });
-}
-
-// Every `bun build --compile` target except Windows.
-const TARGETS: Target[] = [
-  ...targets({ platform: "linux", arch: "x64", rustNapiBinding: "linux-x64-gnu" }),
-  ...targets({ platform: "linux", arch: "x64", musl: true, rustNapiBinding: "linux-x64-musl" }),
-  ...targets({ platform: "linux", arch: "arm64", rustNapiBinding: "linux-arm64-gnu" }),
-  ...targets({
-    platform: "linux",
-    arch: "arm64",
-    musl: true,
-    rustNapiBinding: "linux-arm64-musl",
-  }),
-  ...targets({ platform: "darwin", arch: "x64", rustNapiBinding: "darwin-x64" }),
-  ...targets({ platform: "darwin", arch: "arm64", rustNapiBinding: "darwin-arm64" }),
-];
-
 function isMuslHost(): boolean {
   if (process.platform !== "linux") return false;
   const libArch = process.arch === "arm64" ? "aarch64" : process.arch;
@@ -111,8 +51,7 @@ function isMuslHost(): boolean {
 function hostTarget(): Target {
   const musl = isMuslHost();
   const found = TARGETS.find(
-    t =>
-      t.platform === process.platform && t.arch === process.arch && t.musl === musl && !t.baseline,
+    t => t.platform === process.platform && t.arch === process.arch && t.musl === musl,
   );
   if (found == null) {
     throw new Error(`No build target matches host ${process.platform}/${process.arch}`);
