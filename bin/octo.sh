@@ -2,8 +2,9 @@
 # Dispatch to the compiled octofriend binary for the user's platform.
 #
 # Written in POSIX shell so the npm package works on systems without bun,
-# node, or even bash installed. Binaries live in dist/<target>/octo; the
-# target naming matches build.ts's TARGETS.
+# node, or even bash installed. The target naming matches build.ts's TARGETS;
+# binaries come from either a repo checkout (`dist/<target>/octo`) or the
+# per-platform npm package `@syntheticlab/octofriend-<target>`.
 
 set -eu
 
@@ -36,33 +37,37 @@ if [ "$platform" = "linux" ]; then
   fi
 fi
 
-# x64 ships "baseline" builds without an AVX2 requirement; older x64 CPUs
-# (and Rosetta, which reports x86_64) need those. Prefer the modern build
-# when AVX2 is present; when in doubt fall back to baseline, which always runs.
-baseline=""
-if [ "$cpu" = "x64" ]; then
-  if [ "$platform" = "linux" ]; then
-    grep -qm1 avx2 /proc/cpuinfo 2>/dev/null || baseline="-baseline"
-  else
-    sysctl -n machdep.cpu.features 2>/dev/null | grep -q AVX2 || baseline="-baseline"
-  fi
-fi
+target="${platform}-${cpu}${libc}"
 
 # Resolve through any symlinks (npm links this via node_modules/.bin).
 script="$0"
 while [ -L "$script" ]; do
-  target="$(readlink "$script")"
-  case "$target" in
-    /*) script="$target" ;;
-    *) script="$(dirname -- "$script")/$target" ;;
+  link="$(readlink "$script")"
+  case "$link" in
+    /*) script="$link" ;;
+    *) script="$(dirname -- "$script")/$link" ;;
   esac
 done
 root="$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)"
 
-target="${platform}-${cpu}${libc}${baseline}"
-exe="$root/dist/$target/octo"
-if [ ! -x "$exe" ]; then
-  echo "octofriend: no compiled binary for your platform ($target) at $exe" >&2
+# dist/ covers repo checkouts and local canary builds. The platform package is
+# nested under us for global installs, and a sibling of us for local installs,
+# where npm hoists it (and where pnpm's virtual store always puts it).
+exe=""
+for candidate in \
+  "$root/dist/$target/octo" \
+  "$root/node_modules/@syntheticlab/octofriend-$target/octo" \
+  "$root/../@syntheticlab/octofriend-$target/octo"
+do
+  if [ -x "$candidate" ]; then
+    exe="$candidate"
+    break
+  fi
+done
+
+if [ -z "$exe" ]; then
+  echo "octofriend: no compiled binary for your platform ($target)" >&2
+  echo "octofriend: reinstall with: npm install -g --omit=dev octofriend" >&2
   exit 1
 fi
 

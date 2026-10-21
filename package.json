@@ -1,6 +1,7 @@
 {
   "name": "octofriend",
   "version": "0.0.59",
+  "description": "An open-source coding helper. Very friendly!",
   "license": "MIT",
   "repository": "github:synthetic-lab/octofriend",
   "bin": {

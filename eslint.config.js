@@ -26,15 +26,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: [
-      "dist/",
-      "coverage/",
-      "training/repos/",
-      "scripts/dev/",
-      ".agents/",
-      ".claude/",
-      ".octofriend/",
-    ],
+    ignores: ["dist/", "coverage/", "training/", ".agents/", ".claude/", ".octofriend/"],
   },
   {
     // Core ESLint rules, applied to all linted files.
