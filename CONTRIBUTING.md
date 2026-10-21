@@ -10,6 +10,7 @@ Thank you for your interest in contributing to Octofriend! We welcome contributi
 - [Code Style](#code-style)
 - [Reporting Bugs](#reporting-bugs)
 - [A Note on AI-Assisted Code](#a-note-on-ai-assisted-code)
+- [Releasing new Octo versions](#releasing-new-octo-versions)
 
 ---
 
@@ -138,6 +139,26 @@ Yes, we know: we're an AI company asking you to think before using AI coding age
 - Be hard to maintain because the author doesn't fully understand it
 
 If you submit a PR that looks vibecoded, we may close it. This isn't about gatekeeping AI use. It's about maintaining a codebase that's coherent, intentional, and actually works. If you used AI to help write your PR, great. Just make sure you understand every line of it and that it fits naturally into the project.
+
+---
+
+## Releasing new Octo versions
+
+Generally speaking only maintainers should be releasing new versions. However,
+if you are a maintainer, here's how the release process is expected to work:
+
+1. Create a new branch
+2. Update the `package.json` version
+3. `npm install` and `bun install`
+4. Update the CHANGELOG.md and IN-APP-UPDATES.md as appropriate (you might need
+   to read the git history to see what's been changed since the last release)
+5. Commit and push
+6. Open PR
+7. Get it reviewed
+8. Merge
+9. It will auto-release! FYI the release environment is configured so that
+   @synthetic-lab/engineering has to allow the action to run, to prevent
+   accidental releases from other folks slipping through ---
 
 ---
 
