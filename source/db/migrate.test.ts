@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { sql, type TablesRelationalConfig } from "drizzle-orm";
-import { SQLiteBunSession } from "drizzle-orm/bun-sqlite";
+import { drizzle, SQLiteBunSession } from "drizzle-orm/bun-sqlite";
+import { migrate as drizzleMigrate } from "drizzle-orm/bun-sqlite/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { expect, test } from "bun:test";
@@ -61,6 +62,12 @@ test("migration 0006 repairs existing installations automatically", () => {
       INSERT INTO previews (session_id, preview, preview_type, updated_at)
       VALUES ('saved-session', 'saved preview', 'latest-user-message', 1);
     `);
+
+    // Prove the raw Drizzle migrator can't get through 0006 on this state: that's the bug the
+    // repair path exists for. The failed transaction rolls back, leaving the DB at 0005.
+    expect(() => drizzleMigrate(drizzle({ client: sqlite }), { migrationsFolder })).toThrow(
+      /Failed to run the query 'COMMIT'/,
+    );
 
     // Startup migrates on every launch, so the repair must be a no-op the second time.
     migrateDatabase(sqlite, migrationsFolder);
