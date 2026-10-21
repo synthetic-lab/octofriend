@@ -44,6 +44,7 @@ import { renderInteractive } from "./render-interactive.tsx";
 import { setOctoTitles } from "./titles.ts";
 import changelog from "../../CHANGELOG.md" with { type: "text" };
 import { processes } from "../process-manager.ts";
+import * as logger from "../logger.ts";
 
 const CONFIG_STANDARD_DIR = path.join(os.homedir(), ".config/octofriend/");
 const CONFIG_JSON5_FILE = path.join(CONFIG_STANDARD_DIR, "octofriend.json5");
@@ -259,7 +260,7 @@ async function runMain(opts: {
       });
     }
 
-    const { waitUntilExit } = renderInteractive(
+    await renderInteractive(
       <App
         syntheticModels={syntheticModels}
         bootSkills={skills.map(s => s.name)}
@@ -275,7 +276,6 @@ async function runMain(opts: {
       { captureCtrlC: true },
     );
 
-    await waitUntilExit();
     const { history, sessionMode } = useAppStore.getState();
     if (sessionMode.mode === "live" && history.some(item => item.type === "llm-ir")) {
       const resumeCommand = chalk.hex(THEME_COLOR)(
@@ -295,7 +295,7 @@ async function runMain(opts: {
       }
     }
   } catch (e) {
-    console.error(e);
+    logger.error("info", e);
   } finally {
     await processes.manager().terminateOnOctoExit();
     unregisterCleanup();
@@ -314,7 +314,7 @@ cli
   .description("Create a fresh config file for Octo")
   .action(async () => {
     const syntheticModels = await loadSyntheticModels(AbortSignal.timeout(5000));
-    renderInteractive(
+    await renderInteractive(
       <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={syntheticModels} />,
       {
         captureCtrlC: false,
@@ -732,7 +732,7 @@ async function loadConfig(path: string | undefined, syntheticModels: SyntheticMo
   let { config, configPath } = await loadConfigWithoutReauth(path, syntheticModels);
   let defaultModel = config.models[0];
   if (!(await readAuthForModel(defaultModel, config)).ok) {
-    const { waitUntilExit } = renderInteractive(
+    await renderInteractive(
       <PreflightModelAuth
         error="It looks like we need to set up auth for your default model"
         model={defaultModel}
@@ -741,7 +741,6 @@ async function loadConfig(path: string | undefined, syntheticModels: SyntheticMo
       />,
       { captureCtrlC: false },
     );
-    await waitUntilExit();
     const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
     config = reloaded.config;
     configPath = reloaded.configPath;
@@ -753,7 +752,7 @@ async function loadConfig(path: string | undefined, syntheticModels: SyntheticMo
     let autofixModel = config[key];
     if (autofixModel) {
       if (!(await readAuthForModel(autofixModel, config)).ok) {
-        const { waitUntilExit } = renderInteractive(
+        await renderInteractive(
           <PreflightAutofixAuth
             autofixKey={key}
             model={autofixModel}
@@ -762,7 +761,6 @@ async function loadConfig(path: string | undefined, syntheticModels: SyntheticMo
           />,
           { captureCtrlC: false },
         );
-        await waitUntilExit();
         const reloaded = await loadConfigWithoutReauth(path, syntheticModels);
         config = reloaded.config;
         configPath = reloaded.configPath;
@@ -798,13 +796,12 @@ async function loadConfigWithoutReauth(
   // This is first-time setup; mark all updates as seen to avoid showing an update message on boot
   await markUpdatesSeen();
   const catalog = syntheticModels ?? (await loadSyntheticModels(AbortSignal.timeout(5000)));
-  const { waitUntilExit } = renderInteractive(
+  await renderInteractive(
     <FirstTimeSetup configPath={CONFIG_JSON5_FILE} syntheticModels={catalog} />,
     {
       captureCtrlC: false,
     },
   );
-  await waitUntilExit();
 
   if (await fileExists(CONFIG_JSON5_FILE)) {
     return {

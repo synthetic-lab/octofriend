@@ -3,6 +3,7 @@ import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
 import { findFiles } from "../../transports/transport-common.ts";
+import * as logger from "../../logger.ts";
 
 const MAX_SUGGESTIONS = 8;
 const CACHE_TTL = 5000;
@@ -155,7 +156,7 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
           err instanceof Error &&
           err.name !== "AbortError"
         ) {
-          console.error("Search failed:", err);
+          logger.error("info", "Search failed:", err);
         }
       } finally {
         if (thisRequest === currentRequestId.current && isMounted.current) {

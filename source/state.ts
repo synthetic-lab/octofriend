@@ -55,6 +55,7 @@ import { throttledBuffer } from "./throttled-buffer.ts";
 import { loadTools, SKIP_CONFIRMATION_TOOLS } from "./tools/index.ts";
 import { estimateTokens } from "./ir/count-ir-tokens.ts";
 import { octoAgent, type OctoIR } from "./ir/octo-ir.ts";
+import * as logger from "./logger.ts";
 
 export const MAX_RETRY_COUNT = 20;
 
@@ -593,7 +594,8 @@ export const useAppStore = create<UiState>((set, get) => {
       instance,
       exitController,
       runPromise: instance.run().catch(e => {
-        console.error(e);
+        logger.error("info", e);
+        logger.drain();
         process.exit(1);
       }),
     };

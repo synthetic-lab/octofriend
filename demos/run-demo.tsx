@@ -25,12 +25,7 @@ export async function runDemo(createDemo: DemoFactory) {
 
   try {
     const element = await createDemo(fixtures);
-    const root = renderInteractive(<ExitOnCtrlC>{element}</ExitOnCtrlC>, { captureCtrlC: true });
-    try {
-      await root.waitUntilExit();
-    } finally {
-      root.unmount();
-    }
+    await renderInteractive(<ExitOnCtrlC>{element}</ExitOnCtrlC>, { captureCtrlC: true });
   } finally {
     console.log(chalk.hex(THEME_COLOR)("\nCleaning up demo resources... Please don't force quit!"));
     await manager.terminateOnOctoExit();
