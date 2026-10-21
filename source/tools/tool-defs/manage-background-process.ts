@@ -15,6 +15,14 @@ Manages background processes started with the background-process tool: check the
 output, kill them, or list the ones still running.
 `.trim(),
   ArgumentsSchema: t.subtype({
+    action: t.value("poll").or(t.value("kill")).or(t.value("list")).comment(`
+"poll" returns the process's current status (running, or exited with its exit code/signal) plus
+any stdout/stderr appended since the last poll: output is drained each poll, so poll repeatedly to
+follow along. "kill" sends SIGTERM to the whole process group, escalating to SIGKILL after a grace
+period, waits for the process to die, and returns its final status plus any remaining output.
+"list" shows all currently-running background processes with their ids, labels, and commands.
+"poll" and "kill" require id and should repeat the process label; "list" ignores both.
+`),
     id: t.optional(
       t.str.comment("The background process id returned by the background-process tool"),
     ),
@@ -28,14 +36,6 @@ output, kill them, or list the ones still running.
         'Optional, and only used by "poll": wait up to this many milliseconds for new output or exit before returning. If unset, poll returns immediately.',
       ),
     ),
-    action: t.value("poll").or(t.value("kill")).or(t.value("list")).comment(`
-"poll" returns the process's current status (running, or exited with its exit code/signal) plus
-any stdout/stderr appended since the last poll: output is drained each poll, so poll repeatedly to
-follow along. "kill" sends SIGTERM to the whole process group, escalating to SIGKILL after a grace
-period, waits for the process to die, and returns its final status plus any remaining output.
-"list" shows all currently-running background processes with their ids, labels, and commands.
-"poll" and "kill" require id and should repeat the process label; "list" ignores both.
-`),
   }),
 }).define(async () => ({
   async run({ signal, toolCall }) {
