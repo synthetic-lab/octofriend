@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { err, flatten, ok, unwrap } from "./result.ts";
+import { attemptSync, err, flatten, ok, unwrap } from "./result.ts";
 
 describe("flatten", () => {
   it("leaves a flat ok alone", () => {
@@ -53,5 +53,30 @@ describe("unwrap", () => {
 
   it("throws err messages", () => {
     expect(() => unwrap(err("boom"))).toThrow("boom");
+  });
+});
+
+describe("attemptSync", () => {
+  it("wraps a returned value in ok", () => {
+    const result = attemptSync("boom", () => 1);
+
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBe(1);
+  });
+
+  it("converts a thrown error into err with the provided message", () => {
+    const result = attemptSync("boom", () => {
+      throw new Error("actual");
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBe("boom");
+  });
+
+  it("passes through an existing result", () => {
+    const result = attemptSync("boom", () => err("inner"));
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error).toBe("inner");
   });
 });
