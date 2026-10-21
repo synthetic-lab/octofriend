@@ -36,6 +36,24 @@ export async function attempt<T, E>(
   }
 }
 
+export function attemptSync<T, E>(
+  errMessage: string,
+  callback: () => Result<T, E>,
+): Result<T, E | string>;
+export function attemptSync<T>(errMessage: string, callback: () => T): Result<T, string>;
+export function attemptSync<T, E>(
+  errMessage: string,
+  callback: () => T | Result<T, E>,
+): Result<T, E | string> {
+  try {
+    const value = callback();
+    if (value instanceof Ok || value instanceof Err) return value;
+    return ok(value);
+  } catch {
+    return err(errMessage);
+  }
+}
+
 export function toErrString(error: unknown): Err<string> {
   return err(errorToString(error));
 }

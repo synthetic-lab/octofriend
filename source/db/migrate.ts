@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "path";
 import { t } from "structural";
 import { isStandaloneExecutable } from "../bun-env.ts";
+import { attemptSync, type Result } from "../libocto/result.ts";
 import { db } from "./db.ts";
 
 const __dir = import.meta.dirname;
@@ -79,17 +80,12 @@ const MigrationJournalSchema = t.subtype({
 });
 type MigrationJournal = t.GetType<typeof MigrationJournalSchema>;
 
-function readMigrationJournal(migrationsFolder: string): MigrationJournal | null {
-  try {
-    const journal = MigrationJournalSchema.sliceResult(
+function readMigrationJournal(migrationsFolder: string): Result<MigrationJournal, string> {
+  return attemptSync(`Invalid migration journal in ${migrationsFolder}`, () =>
+    MigrationJournalSchema.slice(
       JSON.parse(readFileSync(path.join(migrationsFolder, "meta/_journal.json"), "utf8")),
-    );
-    return journal instanceof t.Err ? null : journal;
-  } catch {
-    // A malformed journal is a build error; fall back to rethrowing the original migration
-    // error rather than masking it with a journal validation error.
-    return null;
-  }
+    ),
+  );
 }
 
 const LAST_APPLIED_MIGRATION_SQL =
@@ -99,8 +95,8 @@ function isBadMigrationPending(sqlite: Database, migrationsFolder: string): bool
   // Match by tag rather than a hardcoded timestamp. The journal's `when` is committed, so
   // Drizzle's pending check is exactly `lastAppliedAt < thatMigration.when`.
   const journal = readMigrationJournal(migrationsFolder);
-  if (journal == null) return false;
-  const badMigration = journal.entries.find(entry => entry.tag === BAD_MIGRATION_TAG);
+  if (!journal.success) return false;
+  const badMigration = journal.data.entries.find(entry => entry.tag === BAD_MIGRATION_TAG);
   if (badMigration == null) return false;
 
   let lastAppliedAt: number | null;
