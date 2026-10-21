@@ -231,6 +231,7 @@ export type RequestErrorRetriesConfig = {
 export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
   contextWindow: number;
+  manualCompactionPending: boolean;
   messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
@@ -272,6 +273,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>(
 async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   model,
   contextWindow,
+  manualCompactionPending,
   messages,
   tools,
   toolData,
@@ -429,12 +431,14 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     return { type: "ok" };
   };
 
-  const maybeAutocompact = async (): Promise<
+  const maybeCompact = async (): Promise<
     Result<{ checkpoint: Checkpoint } | null, CompactionError>
   > => {
     const loweredMessages = lowerMessages(messagesCopy);
     const convertedMessages = loweredMessages.map(({ converted }) => converted);
-    if (!shouldAutoCompactHistory(contextWindow, convertedMessages)) return ok(null);
+    if (!manualCompactionPending && !shouldAutoCompactHistory(contextWindow, convertedMessages)) {
+      return ok(null);
+    }
 
     await handler.startCompaction(null);
 
@@ -480,7 +484,8 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   while (true) {
     if (abortSignal.aborted) return finishWith({ type: "abort" });
 
-    const compaction = await maybeAutocompact();
+    const compaction = await maybeCompact();
+    if (abortSignal.aborted) return finishWith({ type: "abort" });
     if (!compaction.success) {
       const compactionError = compaction.error;
       if (isRetryableRequestError(compactionError)) {
@@ -500,6 +505,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     if (compaction.data) {
       await emitIrs([compaction.data.checkpoint]);
       messagesCopy.push(compaction.data.checkpoint);
+      manualCompactionPending = false;
     }
     if (abortSignal.aborted) return finishWith({ type: "abort" });
 

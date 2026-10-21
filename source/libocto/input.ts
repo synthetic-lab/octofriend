@@ -1,6 +1,6 @@
 /*
  * An async, infinite, pull-based input stream: producers push freely, and consumers pull
- * everything currently buffered — or await at least one push if nothing is buffered.
+ * everything currently buffered — or await a push or wake if nothing is buffered.
  */
 export class Input<T> {
   private buffered: T[] = [];
@@ -8,6 +8,10 @@ export class Input<T> {
 
   push(t: T): void {
     this.buffered.push(t);
+    this.wake();
+  }
+
+  wake(): void {
     if (this.waiter != null) {
       const waiter = this.waiter;
       this.waiter = null;

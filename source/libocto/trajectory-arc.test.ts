@@ -215,6 +215,7 @@ async function runArc({
   const base = await trajectoryArc.run<TestAgent, null>({
     model: null,
     contextWindow,
+    manualCompactionPending: false,
     messages: messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools,
     toolData,
@@ -623,6 +624,7 @@ function assertFinishReasonNarrowing() {
   const makeBase = () => ({
     model: null,
     contextWindow: 100,
+    manualCompactionPending: false,
     messages,
     toolData: { marker: "fresh" },
     transport,

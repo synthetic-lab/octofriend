@@ -43,6 +43,7 @@ import {
 
 export type InputControl = {
   enqueueSteering(content: UserMessage["content"]): Promise<void>;
+  requestCompaction(): boolean;
 };
 
 export type RunningControl = InputControl & {
@@ -141,7 +142,7 @@ type SharedArcModes<Call, Permissioned extends boolean> =
           mode: "tool-call-permission";
           toolCalls: Array<Call>;
           toolCall: Call;
-          control: { interrupt(): Promise<void> };
+          control: RunningControl;
         }
       : never);
 
@@ -322,6 +323,7 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   | "lowerMessages"
   | "toolData"
   | "errorCorrection"
+  | "manualCompactionPending"
 > & {
   agent: A;
   toolData: AgentToolData<A> &
@@ -494,6 +496,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private _mode: TrajectoryMode<A>;
   private turnController = new AbortController();
   private readonly steering = new Input<UserMessage["content"]>();
+  private manualCompactionPending = false;
   private readonly permissionGate: PermissionGate<A> | undefined;
   private awaitingSteering = true;
   private _finish: Promise<void> = Promise.resolve();
@@ -533,6 +536,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return [...this.history];
   }
 
+  get hasCompactableHistory(): boolean {
+    const lastMessage = this.history.at(-1);
+    return lastMessage != null && lastMessage.role !== "checkpoint";
+  }
+
   inspectSubagentTrajectory(
     trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
   ): SubagentTrajectoryInspection {
@@ -546,6 +554,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       enqueueSteering: async content => {
         this.steering.push(content);
         await this.emitSteeringChange();
+      },
+      requestCompaction: () => {
+        if (
+          this.params.abortSignal.aborted ||
+          this.manualCompactionPending ||
+          (this._mode.mode === "compacting" && !("subagent" in this._mode)) ||
+          !this.hasCompactableHistory
+        )
+          return false;
+        this.manualCompactionPending = true;
+        this.steering.wake();
+        return true;
       },
     };
   }
@@ -567,6 +587,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         const first = removed[0];
         const content = first != null && isUserMessage(first) ? first.content : null;
         this.steering.take();
+        this.manualCompactionPending = false;
         await this.emitSteeringChange();
         await this.params.handler?.rewind?.({ removed, content });
       },
@@ -577,6 +598,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return {
       interrupt: async () => {
         const droppedSteering = this.steering.take();
+        this.manualCompactionPending = false;
         this.turnController.abort();
         await this.emitSteeringChange();
         await this.params.handler?.interrupted?.({ droppedSteering });
@@ -608,7 +630,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async announceReady(
     inspection: Extract<HistoryInspection<A>, { action: "wait-for-input" }>,
   ): Promise<void> {
-    if (this.steering.peek().length > 0) return;
+    if (this.steering.peek().length > 0 || this.manualCompactionPending) return;
     await this.setMode({
       root: inspection.location.root,
       mode: "ready-for-request",
@@ -740,7 +762,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const owner = this.ownership.lease();
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
-    const systemPrompt = location.root
+    const isMainAgent = location.root;
+    const systemPrompt = isMainAgent
       ? params.systemPrompt
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
 
@@ -750,6 +773,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       trajectoryArc.run<B, Model>({
         model,
         contextWindow,
+        manualCompactionPending: isMainAgent && this.manualCompactionPending,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
         toolData: params.toolData as AgentToolData<B>,
@@ -808,7 +832,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           onResponseHeaders: async event => {
             await params.handler?.onResponseHeaders?.({ ...scope, payload: event });
           },
-          onMessage: ir => owner.ifOwner(() => this.appendIr(location, ir as TreeIR<A>)),
+          onMessage: ir =>
+            owner.ifOwner(() => {
+              if (isMainAgent && ir.role === "checkpoint") this.manualCompactionPending = false;
+              return this.appendIr(location, ir as TreeIR<A>);
+            }),
         },
       });
     return run(location.agent, location.history);
@@ -859,14 +887,20 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       if (active.action === "respond" || active.action === "run-tools") return active;
       this.awaitingSteering = true;
       await this.announceReady(active);
+      if (this.manualCompactionPending && this.steering.peek().length === 0) {
+        this.awaitingSteering = false;
+        return { action: "respond" };
+      }
       const waited = await waitSteeringOrExit(this.steering, this.params.abortSignal);
       this.awaitingSteering = false;
       if (!waited.success) return { action: "quit" };
-      await this.emitSteeringChange();
-      await this.appendIr(location, {
-        role: "user",
-        content: coalesceUserMessageContent(waited.data),
-      });
+      if (waited.data.length > 0) {
+        await this.emitSteeringChange();
+        await this.appendIr(location, {
+          role: "user",
+          content: coalesceUserMessageContent(waited.data),
+        });
+      }
       return { action: "respond" };
     })();
 
@@ -1039,6 +1073,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
                 break;
               }
               this.steering.take();
+              this.manualCompactionPending = false;
               await this.emitSteeringChange();
               await this.params.handler?.rewind?.({ removed, content });
               if (this.inspect().action !== "wait-for-input") {
@@ -1056,6 +1091,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     if (!resolved.success || resolved.data.type === "rewind") return resolved;
     if (this.params.abortSignal.aborted) return err("aborted");
     const retrying = resolved.data.type === "retry" || !location.root || pendingCalls.length > 0;
+    if (!retrying) this.manualCompactionPending = false;
     await this.appendIr(location, { role: retrying ? "error-retry" : "error-dismissed" });
     return resolved;
   }
@@ -1166,7 +1202,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             mode: "tool-call-permission",
             toolCalls,
             toolCall,
-            control: this.interruptControl(),
+            control: this.runningControl(),
           });
           const decision = await waitForPermissionDecision(this.permissionGate, toolCall, signal);
           if (!decision.success) {

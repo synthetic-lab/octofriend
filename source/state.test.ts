@@ -1061,7 +1061,11 @@ describe("inputFieldAvailable", () => {
   const ready: TrajectoryMode<OctoAgent> = {
     root: true,
     mode: "ready-for-request",
-    control: { enqueueSteering: async () => {}, rewindTo: async () => {} },
+    control: {
+      enqueueSteering: async () => {},
+      requestCompaction: () => false,
+      rewindTo: async () => {},
+    },
   };
   const error: TrajectoryMode<OctoAgent> = {
     root: true,
