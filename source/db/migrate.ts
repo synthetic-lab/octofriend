@@ -21,12 +21,13 @@ export async function migrate() {
   migrateDatabase(db().$client, migrationsFolder());
 }
 
-// Migration 0006 rebuilds history_items. With foreign keys on, DROP TABLE history_items performs
-// an implicit DELETE that fires history_items_delete_payloads, deleting the payload rows the
-// rebuilt table still references; the deferred foreign key check then fails at COMMIT. The
-// migration can't fix this itself: Drizzle wraps every pending migration in one transaction, and
-// PRAGMA foreign_keys is a no-op inside a transaction. Retry that one failure with foreign keys
-// off, then restore the connection's expected PRAGMAs.
+// Migration 0006 rebuilds history_items by dropping and recreating it. With foreign keys on,
+// DROP TABLE history_items performs an implicit DELETE while tree_nodes rows still reference the
+// old table. The migration's PRAGMA defer_foreign_keys only defers that check; it still fails at
+// COMMIT even though the rebuilt table has the same IDs. SQLite's table-rebuild procedure
+// requires foreign keys to be off before BEGIN, but Drizzle owns the transaction and
+// PRAGMA foreign_keys is a no-op inside one. Retry that one failure with foreign keys off, then
+// restore the connection's expected PRAGMAs.
 const BAD_MIGRATION_TAG = "0006_history_item_model_json";
 
 export function migrateDatabase(sqlite: Database, migrationsFolder: string): void {
