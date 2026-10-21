@@ -150,7 +150,7 @@ if you are a maintainer, here's how the release process is expected to work:
 1. Create a new branch
 2. Update the `package.json` version
 3. `npm install` and `bun install`
-4. Update the CHANGELOG.md and IN-APP-UPDATES.md as appropriate (you might need
+4. Update the CHANGELOG.md and IN-APP-UPDATES.txt as appropriate (you might need
    to read the git history to see what's been changed since the last release)
 5. Commit and push
 6. Open PR
