@@ -1,4 +1,5 @@
-export function formatTimeUntil(expiresAt: Date, now: Date = new Date()): string {
+// Intl.RelativeTimeFormat "long" style: full words, e.g. "in 2 hours 30 minutes".
+export function formatTimeUntilLong(expiresAt: Date, now: Date = new Date()): string {
   const diffMs = expiresAt.getTime() - now.getTime();
 
   if (diffMs <= 0) {
@@ -28,6 +29,17 @@ export function formatTimeUntil(expiresAt: Date, now: Date = new Date()): string
     return `in ${diffDays} day${diffDays !== 1 ? "s" : ""} ${remainingHours} hour${remainingHours !== 1 ? "s" : ""}`;
   }
   return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`;
+}
+
+// Intl.RelativeTimeFormat "narrow" style: bare unit letters, e.g. "in 2h 30m".
+export function formatTimeUntilNarrow(nextRegenAt: Date, now: Date): string {
+  const minutes = Math.ceil((nextRegenAt.getTime() - now.getTime()) / 60_000);
+  if (minutes <= 0) return "now";
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours}h${minutes % 60 === 0 ? "" : ` ${minutes % 60}m`}`;
+  const days = Math.floor(hours / 24);
+  return `in ${days}d${hours % 24 === 0 ? "" : ` ${hours % 24}h`}`;
 }
 
 export function formatTimeAgo(occurredAt: Date, now: Date = new Date()): string {
