@@ -1511,7 +1511,12 @@ describe("trajectory", () => {
     const partial = traj.messages[1];
     if (partial.role !== "assistant") throw new Error("impossible");
     expect(partial.content).toBe("partial answer");
-    expect(rec.modes).toEqual(["responding", "ready-for-request"]);
+    // The first streamed token flips the responding mode's receivedTokens, doubling the
+    // modeChange: request start (false), then first token (true).
+    expect(
+      rec.modeObjs.filter(mode => mode.mode === "responding").map(m => m.receivedTokens),
+    ).toEqual([false, true]);
+    expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
     expect(rec.arc.responseProgress).toBe(1);
     expect(rec.arc.onResponseHeaders).toBe(1);
     expect(compilerCalls.length).toBe(1);
@@ -1541,7 +1546,8 @@ describe("trajectory", () => {
     const marker = traj.messages[1];
     if (marker.role !== "interrupted-by-user") throw new Error("impossible");
     expect(marker.reason).toBe("The user interrupted the response.");
-    expect(rec.modes).toEqual(["responding", "ready-for-request"]);
+    // The reasoning token still flips receivedTokens before the interrupt lands.
+    expect(rec.modes).toEqual(["responding", "responding", "ready-for-request"]);
     expect(rec.arc.rollbacks).toBe(1);
     expect(compilerCalls.length).toBe(1);
 

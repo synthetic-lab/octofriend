@@ -111,7 +111,7 @@ export type ArcScope<A extends Agent<any, any, any>> = ScopeRoot | SubagentScope
 
 // The mode arms any arc sits in while the loop moves through it.
 type SharedArcModes<Call, Permissioned extends boolean> =
-  | { mode: "responding"; control: RunningControl }
+  | { mode: "responding"; receivedTokens: boolean; control: RunningControl }
   | { mode: "compacting"; control: RunningControl }
   | { mode: "autofix-json"; control: RunningControl }
   | { mode: "autofix-tool"; tool: string; control: RunningControl }
@@ -740,6 +740,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const owner = this.ownership.lease();
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
+    let receivedTokens = false;
     const systemPrompt = location.root
       ? params.systemPrompt
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
@@ -764,10 +765,23 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         abortSignal: combineSignals([params.abortSignal, this.turnController.signal]),
         handler: {
           startResponse: async event => {
-            await this.setArcMode(location, { mode: "responding", control: this.runningControl() });
+            receivedTokens = false;
+            await this.setArcMode(location, {
+              mode: "responding",
+              receivedTokens: false,
+              control: this.runningControl(),
+            });
             await params.handler?.startResponse?.({ ...scope, payload: event });
           },
           responseProgress: async event => {
+            if (!receivedTokens) {
+              receivedTokens = true;
+              await this.setArcMode(location, {
+                mode: "responding",
+                receivedTokens: true,
+                control: this.runningControl(),
+              });
+            }
             await params.handler?.responseProgress?.({ ...scope, payload: event });
           },
           discardResponseProgress: async event => {

@@ -1683,11 +1683,9 @@ const MessageDisplayInner = ({
 }) => {
   const inProgressState = useAppStore(state => {
     if (state.sessionMode.mode !== "live") return null;
-    const { mode } = state.sessionMode.liveMode.trajectoryMode;
-    if (mode === "compacting") return "compacting";
-    // Only once tokens are actually streaming: "responding" fires at request start, and an
-    // instant "thinking" line that hasn't seen a token yet reads as fake progress.
-    if (mode === "responding" && state.byteCount > 0) return "responding";
+    const mode = state.sessionMode.liveMode.trajectoryMode;
+    if (mode.mode === "compacting") return "compacting";
+    if (mode.mode === "responding" && mode.receivedTokens) return "responding";
     return null;
   });
   if (item.type === "inflight-response") {
