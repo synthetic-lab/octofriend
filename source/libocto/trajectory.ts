@@ -1085,10 +1085,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       },
       data: this.params.toolData,
     } as RunArgsFor<typeof def>);
+    let ir: TreeIR<A>;
     if (!output.success) {
-      return { role: "tool-runtime-error", toolCall, error: output.error };
-    }
-    if (output.data.type === "invoke-subagent") {
+      // Errors can contain large command outputs, so they need the same budget as successes.
+      ir = { role: "tool-runtime-error", toolCall, error: output.error };
+    } else if (output.data.type === "invoke-subagent") {
       // The loaded tool's subagent dependency belongs to the selected agent's directory.
       return {
         role: "tool-invoke-subagent",
@@ -1097,10 +1098,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         message: output.data.message,
         model: output.data.model,
       } as TreeIR<A>;
-    }
-
-    let ir: TreeIR<A>;
-    if (output.data.type === "output") {
+    } else if (output.data.type === "output") {
       ir = { role: "tool-output", toolCall, content: output.data.content };
     } else {
       const _: "custom-ir" = output.data.type;

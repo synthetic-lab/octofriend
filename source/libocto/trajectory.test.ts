@@ -2342,70 +2342,121 @@ describe("trajectory", () => {
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "user"]);
   });
 
-  it("rejects oversized tool outputs with the client's error copy", async () => {
-    const { build, rec } = makeTrajectory({ maxToolOutput: 10 });
-    const { traj } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
-      plainOk,
-    ]);
-    runImpl = async () => ok({ type: "output", content: text("x".repeat(1000)) });
+  it.each(["success", "error"] as const)(
+    "rejects oversized tool %s results with the client's error copy",
+    async outcome => {
+      const { build, rec } = makeTrajectory({ maxToolOutput: 10 });
+      const { traj, compilerCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
 
-    inputControl(traj).enqueueSteering(text("run"));
-    expect(await traj.step()).toBe(true);
-    expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
 
-    expect(rec.capCalls.length).toBe(1);
-    const cappedIr = rec.capCalls[0];
-    if (typeof cappedIr !== "object" || cappedIr == null || !("role" in cappedIr)) {
-      throw new Error("impossible");
-    }
-    expect(cappedIr.role).toBe("tool-output");
-    expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
-    const result = traj.messages[2];
-    if (result.role !== "tool-runtime-error") throw new Error("impossible");
-    expect(result.error).toBe("OUTPUT TOO LARGE");
-  });
+      expect(rec.capCalls).toEqual([
+        outcome === "error"
+          ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
+          : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
+      ]);
+      expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
+      const result = traj.messages[2];
+      if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
+      expect(result).toEqual({
+        role: "tool-runtime-error",
+        toolCall: searchCall("huge", "c1"),
+        error: "OUTPUT TOO LARGE",
+      });
+      expect(compilerCalls[1].irs.at(-1)).toEqual(result);
+    },
+  );
 
-  it("caps at 20% of the context window by default", async () => {
-    const { build, rec } = makeTrajectory({ contextWindow: 1000 });
-    const { traj } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
-      plainOk,
-    ]);
-    runImpl = async () => ok({ type: "output", content: text("x".repeat(1000)) });
+  it.each(["success", "error"] as const)(
+    "caps tool %s results at 20% of the context window by default",
+    async outcome => {
+      const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+      const { traj } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
 
-    inputControl(traj).enqueueSteering(text("run"));
-    expect(await traj.step()).toBe(true);
-    expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
 
-    expect(rec.capCalls.length).toBe(1);
-    expect(rec.roles).toContain("tool-runtime-error");
-  });
+      expect(rec.capCalls.length).toBe(1);
+      expect(rec.roles).toContain("tool-runtime-error");
+    },
+  );
 
-  it("honors an injected countTokens implementation over the default", async () => {
-    const countsSeen: number[] = [];
-    const { build, rec } = makeTrajectory({
-      maxToolOutput: 10,
-      countTokens: irs => {
-        countsSeen.push(irs.length);
-        return 0;
-      },
-    });
-    const { traj } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
-      plainOk,
-    ]);
-    runImpl = async () => ok({ type: "output", content: text("x".repeat(1000)) });
+  it.each([796, 800])(
+    "applies the exact tool-error budget boundary (%s characters)",
+    async length => {
+      const { build, rec } = makeTrajectory({ contextWindow: 1000 });
+      const { traj, compilerCalls } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("boundary", "c1")] })),
+        plainOk,
+      ]);
+      const error = "x".repeat(length);
+      runImpl = async () => err(error);
 
-    inputControl(traj).enqueueSteering(text("run"));
-    expect(await traj.step()).toBe(true);
-    expect(await traj.step()).toBe(true);
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
 
-    expect(rec.capCalls.length).toBe(0);
-    expect(rec.roles).toContain("tool-output");
-    expect(countsSeen.length).toBe(2);
-    expect(countsSeen[0]).toBe(countsSeen[1] + 1);
-  });
+      const capped = length === 800;
+      expect(rec.capCalls).toHaveLength(capped ? 1 : 0);
+      const result = traj.messages[2];
+      if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
+      expect(result).toEqual({
+        role: "tool-runtime-error",
+        toolCall: searchCall("boundary", "c1"),
+        error: capped ? "OUTPUT TOO LARGE" : error,
+      });
+      expect(compilerCalls[1].irs.at(-1)).toEqual(result);
+    },
+  );
+
+  it.each(["success", "error"] as const)(
+    "honors an injected countTokens implementation for tool %s results",
+    async outcome => {
+      const countsSeen: number[] = [];
+      const { build, rec } = makeTrajectory({
+        maxToolOutput: 10,
+        countTokens: irs => {
+          countsSeen.push(irs.length);
+          return 0;
+        },
+      });
+      const { traj } = await build([
+        () => okResult(assistantMessage({ toolCalls: [searchCall("huge", "c1")] })),
+        plainOk,
+      ]);
+      const content = "x".repeat(1000);
+      runImpl = async () =>
+        outcome === "error" ? err(content) : ok({ type: "output", content: text(content) });
+
+      inputControl(traj).enqueueSteering(text("run"));
+      expect(await traj.step()).toBe(true);
+      expect(await traj.step()).toBe(true);
+
+      expect(rec.capCalls.length).toBe(0);
+      expect(traj.messages[2]).toEqual(
+        outcome === "error"
+          ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
+          : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
+      );
+      expect(countsSeen.length).toBe(2);
+      expect(countsSeen[0]).toBe(countsSeen[1] + 1);
+    },
+  );
 
   it("drives steps through a custom loop controller", async () => {
     let stepsSeen = 0;
