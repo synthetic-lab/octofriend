@@ -64,6 +64,10 @@ export default tseslint.config(
         },
       ],
 
+      // Terminal output has to go through source/logger.ts, which buffers while
+      // paintcannon owns the pty.
+      "no-console": "error",
+
       // Empty catch blocks are used deliberately for best-effort cleanup.
       "no-empty": ["error", { allowEmptyCatch: true }],
 
@@ -219,6 +223,26 @@ export default tseslint.config(
     rules: {
       "no-restricted-imports": "off",
       "no-restricted-syntax": "off",
+    },
+  },
+  {
+    files: ["source/logger.ts"],
+    rules: {
+      "no-console": "off",
+    },
+  },
+  {
+    // Build scripts, test harnesses, and demos run outside the Octo process.
+    files: [
+      "build.ts",
+      "scripts/**",
+      "demos/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.compiletest.*",
+    ],
+    rules: {
+      "no-console": "off",
     },
   },
   {

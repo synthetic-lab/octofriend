@@ -18,7 +18,7 @@ import {
 
 export async function manageContainer(args: string[]) {
   const processManager = processes.manager();
-  console.log("Spawning Docker container...");
+  logger.log("info", "Spawning Docker container...");
 
   const { stdout } = await new Promise<{
     stdout: string;
