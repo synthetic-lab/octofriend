@@ -5,6 +5,7 @@ import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { Config } from "../../config.ts";
 import { getModelFromConfig } from "../../config.ts";
 import { Result, ok, err } from "../../libocto/result.ts";
+import * as logger from "../../logger.ts";
 
 // Types ported from:
 // https://github.com/modelcontextprotocol/typescript-sdk/blob/main/src/types.ts
@@ -115,7 +116,7 @@ export async function shutdownMcpClients(): Promise<void> {
       await client.close();
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      console.warn(`Warning: failed to close MCP client "${serverName}": ${reason}`);
+      logger.error("info", `Warning: failed to close MCP client "${serverName}": ${reason}`);
     }
   }
 }
