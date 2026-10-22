@@ -822,7 +822,9 @@ function BottomBarContent({
     (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
   ) {
     const overrideStrings = (() => {
-      if (trajectoryMode.mode === "compacting") {
+      // Subagent compaction stays inside the subagent renderer: the main UI only narrates
+      // the root arc, so a child compacting must not look like the session itself compacting.
+      if (trajectoryMode.root && trajectoryMode.mode === "compacting") {
         return ["Compacting history to save context tokens"];
       }
       if (trajectoryMode.mode === "autofix-tool") return ["Auto-fixing diff"];
@@ -1679,14 +1681,15 @@ const MessageDisplayInner = ({
   item: HistoryNode | InflightResponseType;
   trajectory: LiveTrajectory["instance"];
 }) => {
-  const isCompacting = useAppStore(
-    state =>
-      state.sessionMode.mode === "live" &&
-      state.sessionMode.liveMode.trajectoryMode.root &&
-      state.sessionMode.liveMode.trajectoryMode.mode === "compacting",
-  );
+  const inProgressState = useAppStore(state => {
+    if (state.sessionMode.mode !== "live") return null;
+    const mode = state.sessionMode.liveMode.trajectoryMode;
+    if (mode.mode === "compacting") return "compacting";
+    if (mode.mode === "responding" && mode.receivedTokens) return "responding";
+    return null;
+  });
   if (item.type === "inflight-response") {
-    return renderInflightResponse(item, isCompacting);
+    return renderInflightResponse(item, inProgressState);
   }
   if (item.type === "notification") {
     return (
@@ -1706,7 +1709,7 @@ const MessageDisplayInner = ({
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item, isCompacting, trajectory);
+    return renderLlmIR(item, inProgressState, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1733,8 +1736,10 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-function renderInflightResponse(item: InflightResponseType, isCompacting: boolean) {
-  if (isCompacting) {
+type InProgressState = "compacting" | "responding" | null;
+
+function renderInflightResponse(item: InflightResponseType, inProgressState: InProgressState) {
+  if (inProgressState === "compacting") {
     return (
       <TerminalFlex
         style={{
@@ -1757,19 +1762,22 @@ function renderInflightResponse(item: InflightResponseType, isCompacting: boolea
 }
 function renderLlmIR(
   node: Extract<HistoryNode, { type: "llm-ir" }>,
-  isCompacting: boolean,
+  inProgressState: InProgressState,
   trajectory: LiveTrajectory["instance"],
 ) {
   const item = node.ir;
   if (item.role === "subagent-trajectory") {
     const inspection = trajectory.inspectSubagentTrajectory(item);
-    const calls = item.ir.flatMap(ir =>
-      ir.role === "assistant" ? (ir.toolCalls ?? []).filter(call => call.type === "tool-call") : [],
+    return (
+      <SubagentTrajectoryRenderer
+        inspection={inspection}
+        trajectoryItem={item}
+        inProgressState={inProgressState}
+      />
     );
-    return <SubagentTrajectoryRenderer inspection={inspection} calls={calls} />;
   }
   if (item.role === "assistant") {
-    if (isCompacting) {
+    if (inProgressState === "compacting") {
       return (
         <TerminalFlex
           style={{
@@ -1978,45 +1986,76 @@ function renderLlmIR(
     </TerminalFlex>
   );
 }
+type SubagentHistoryItem =
+  | { type: "compaction" }
+  | { type: "tool-call"; name: string; detail: string | null };
+
 function SubagentTrajectoryRenderer({
   inspection,
-  calls,
+  trajectoryItem,
+  inProgressState,
 }: {
   inspection: SubagentTrajectoryInspection;
-  calls: Array<ToolCall<typeof octoAgent.agents.explore.tools>>;
+  trajectoryItem: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  inProgressState: InProgressState;
 }) {
   const cwd = useCwd();
   const color = useColor();
+  const items = trajectoryItem.ir.flatMap((ir): Array<SubagentHistoryItem> => {
+    if (ir.role === "checkpoint") return [{ type: "compaction" }];
+    if (ir.role !== "assistant") return [];
+    return (ir.toolCalls ?? [])
+      .filter(call => call.type === "tool-call")
+      .map((call): SubagentHistoryItem => {
+        // Exhaustive over the subagent's tools on purpose: adding a new tool without a case
+        // makes this map return undefined, which fails to compile.
+        switch (call.name) {
+          case "read":
+            return { type: "tool-call", name: call.name, detail: call.parsed.filePath };
+          case "partial-read":
+            return {
+              type: "tool-call",
+              name: call.name,
+              detail: `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`,
+            };
+          case "list":
+            return { type: "tool-call", name: call.name, detail: call.parsed.dirPath || cwd };
+          case "grep":
+          case "glob":
+            return { type: "tool-call", name: call.name, detail: null };
+        }
+      });
+  });
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
       {inspection.type === "in-progress" && (
         <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
-          {calls.map((call, index) => {
-            let detail: string | null;
-            switch (call.name) {
-              case "read":
-                detail = call.parsed.filePath;
-                break;
-              case "partial-read":
-                detail = `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`;
-                break;
-              case "list":
-                detail = call.parsed.dirPath || cwd;
-                break;
-              case "grep":
-              case "glob":
-                detail = null;
-                break;
+          {items.map((item, index) => {
+            if (item.type === "compaction") {
+              return (
+                <Span key={index}>
+                  <Span style={{ color: "gray" }}>- </Span>
+                  <Span style={{ color: "gray" }}>Compacted history</Span>
+                </Span>
+              );
             }
             return (
               <Span key={index}>
                 <Span style={{ color: "gray" }}>- </Span>
-                <Span style={{ color }}>{call.name}</Span>
-                {detail != null && <Span style={{ color: "gray" }}>: {detail}</Span>}
+                <Span style={{ color }}>{item.name}</Span>
+                {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
               </Span>
             );
           })}
+          {inProgressState === "compacting" && (
+            <Span style={{ color: "gray" }}>Compacting history...</Span>
+          )}
+          {inProgressState === "responding" && (
+            <Span style={{ color: "gray" }}>
+              {items.length === 0 ? " " : ""}Subagent is thinking...
+            </Span>
+          )}
         </TerminalFlex>
       )}
     </TerminalFlex>
