@@ -15,16 +15,27 @@ const WeeklyEntryRawSchema = t.subtype({
   nextRegenCredits: t.str,
 });
 
+const PlanWeeklyEntryRawSchema = t.subtype({
+  nextRegenAt: t.str,
+  percentRemaining: t.num,
+  nextRegenPercent: t.num,
+});
+
 type WithDateFields<T extends {}, K extends keyof T> = Omit<T, K> & {
   [P in K]: Date;
 };
 
 export type QuotaEntry = WithDateFields<t.GetType<typeof QuotaEntryRawSchema>, "nextTickAt">;
 export type WeeklyEntry = WithDateFields<t.GetType<typeof WeeklyEntryRawSchema>, "nextRegenAt">;
+export type PlanWeeklyEntry = WithDateFields<
+  t.GetType<typeof PlanWeeklyEntryRawSchema>,
+  "nextRegenAt"
+>;
 
 export type QuotaData = {
   rollingFiveHourLimit?: QuotaEntry;
   weeklyTokenLimit?: WeeklyEntry;
+  planWeeklyLimit?: PlanWeeklyEntry;
 };
 
 function parseOptionalQuotaEntry(raw: unknown): QuotaEntry | undefined {
@@ -51,10 +62,24 @@ function parseOptionalWeeklyEntry(raw: unknown): WeeklyEntry | undefined {
   };
 }
 
+function parseOptionalPlanWeeklyEntry(raw: unknown): PlanWeeklyEntry | undefined {
+  const result = PlanWeeklyEntryRawSchema.sliceResult(raw);
+  if (result instanceof t.Err) return undefined;
+  const nextRegenAt = new Date(result.nextRegenAt);
+  if (isNaN(nextRegenAt.getTime())) return undefined;
+  return {
+    ...result,
+    nextRegenAt,
+  };
+}
+
 export function parseQuotaJson(data: string): QuotaData | undefined {
   try {
     const raw = JSON.parse(data);
     if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+
+    const planWeeklyLimit = parseOptionalPlanWeeklyEntry(raw["planWeeklyLimit"]);
+    if (planWeeklyLimit) return { planWeeklyLimit };
 
     const rollingFiveHourLimit = parseOptionalQuotaEntry(raw["rollingFiveHourLimit"]);
     const weeklyTokenLimit = parseOptionalWeeklyEntry(raw["weeklyTokenLimit"]);

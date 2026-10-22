@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { apiKeyFromAuth, readAuthForModel, useConfig } from "../config.ts";
 import { useModel, useAppStore } from "../state.ts";
-import type { QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
+import type { PlanWeeklyEntry, QuotaData, QuotaEntry, WeeklyEntry } from "../utils/quota.ts";
 import { parseQuotaJson } from "../utils/quota.ts";
 import { formatTimeUntilLong, formatTimeUntilNarrow } from "../time.ts";
 import {
@@ -58,27 +58,29 @@ function QuotaRow({ label, entry }: QuotaRowProps) {
 type WeeklyQuotaRowProps = {
   label: string;
   entry: WeeklyEntry;
-  display: "credits" | "percentage";
 };
-function WeeklyQuotaRow({ label, entry, display }: WeeklyQuotaRowProps) {
+function WeeklyQuotaRow({ label, entry }: WeeklyQuotaRowProps) {
+  const showNextRegen = entry.percentRemaining < 100;
+  return (
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <Span>{`${label}: ${entry.remainingCredits} / ${entry.maxCredits} remaining`}</Span>
+      {showNextRegen && (
+        <Span style={{ color: "gray" }}>
+          {`Next regen: ${entry.nextRegenCredits} ${formatTimeUntilLong(entry.nextRegenAt)}`}
+        </Span>
+      )}
+    </TerminalFlex>
+  );
+}
+type WeeklyQuotaPercentBarProps = {
+  label: string;
+  entry: PlanWeeklyEntry;
+};
+function WeeklyQuotaPercentBar({ label, entry }: WeeklyQuotaPercentBarProps) {
   const themeColor = useColor();
   const showNextRegen = entry.percentRemaining < 100;
-  if (display === "credits") {
-    return (
-      <TerminalFlex style={{ flexDirection: "column" }}>
-        <Span>{`${label}: ${entry.remainingCredits} / ${entry.maxCredits} remaining`}</Span>
-        {showNextRegen && (
-          <Span style={{ color: "gray" }}>
-            {`Next regen: ${entry.nextRegenCredits} ${formatTimeUntilLong(entry.nextRegenAt)}`}
-          </Span>
-        )}
-      </TerminalFlex>
-    );
-  }
   const remainingLabel = `${entry.percentRemaining.toFixed(2)}% left`;
-  const maxCredits = Number(entry.maxCredits.replace("$", ""));
-  const nextRegenCredits = Number(entry.nextRegenCredits.replace("$", ""));
-  const regenPercent = Number(((nextRegenCredits / maxCredits) * 100).toFixed(2));
+  const regenPercent = Number(entry.nextRegenPercent.toFixed(2));
   return (
     <TerminalFlex
       style={{
@@ -200,6 +202,9 @@ export const MenuQuotaIndicator = () => {
       </TerminalFlex>
     );
   }
+  if (quota.planWeeklyLimit) {
+    return <WeeklyQuotaPercentBar label="Weekly credits" entry={quota.planWeeklyLimit} />;
+  }
   if (!quota.weeklyTokenLimit && !quota.rollingFiveHourLimit) {
     return (
       <TerminalFlex>
@@ -213,7 +218,6 @@ export const MenuQuotaIndicator = () => {
       </TerminalFlex>
     );
   }
-  const weeklyDisplay = quota.rollingFiveHourLimit ? "credits" : "percentage";
   return (
     <TerminalFlex
       style={{
@@ -221,11 +225,7 @@ export const MenuQuotaIndicator = () => {
       }}
     >
       {quota.weeklyTokenLimit ? (
-        <WeeklyQuotaRow
-          label="Weekly credits"
-          entry={quota.weeklyTokenLimit}
-          display={weeklyDisplay}
-        />
+        <WeeklyQuotaRow label="Weekly credits" entry={quota.weeklyTokenLimit} />
       ) : null}
       {quota.rollingFiveHourLimit ? (
         <QuotaRow label="5h request limit" entry={quota.rollingFiveHourLimit} />
