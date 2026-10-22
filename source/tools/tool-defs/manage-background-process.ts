@@ -1,7 +1,7 @@
 import { t } from "structural";
 import { TOOL, USER_ABORTED_ERROR_MESSAGE } from "../common.ts";
 import { ok, err } from "../../libocto/result.ts";
-import { MAX_SHELL_OUTPUT_LENGTH } from "../../transports/transport-common.ts";
+import { MAX_SHELL_OUTPUT_MEMORY_LIMIT } from "../../transports/transport-common.ts";
 import {
   backgroundProcesses,
   type BackgroundProcess,
@@ -86,7 +86,7 @@ function formatProcess(backgroundProcess: BackgroundProcess): string {
   let content = `Background process ${backgroundProcess.label} (${backgroundProcess.id}): ${formatStatus(backgroundProcess.status)}
 Command: ${backgroundProcess.command}`;
   if (backgroundProcess.outputExceeded) {
-    content += `\nOutput exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was discarded; the process was terminated.`;
+    content += `\nOutput exceeded the ${MAX_SHELL_OUTPUT_MEMORY_LIMIT} character memory limit and was discarded; the process was terminated.`;
   } else if (latestOutput.stdout.length === 0 && latestOutput.stderr.length === 0) {
     content += "\nNo new output.";
   } else {

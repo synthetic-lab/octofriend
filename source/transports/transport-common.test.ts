@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { LocalTransport } from "./local.ts";
-import { ShellOutput } from "./transport-common.ts";
+import {
+  MAX_COMMAND_FAILURE_OUTPUT_LENGTH,
+  ShellOutput,
+  truncateCommandFailureOutput,
+} from "./transport-common.ts";
 
 describe("LocalTransport", () => {
   it("does not leak internal env vars into child processes", async () => {
@@ -91,5 +95,24 @@ describe("ShellOutput", () => {
 
     expect(output.hasUndrainedOutput()).toBe(false);
     expect(output.drainNewOutput()).toBe("");
+  });
+});
+
+describe("truncateCommandFailureOutput", () => {
+  it("leaves output at or below the failure cap untouched", () => {
+    const exact = "a".repeat(MAX_COMMAND_FAILURE_OUTPUT_LENGTH);
+    expect(truncateCommandFailureOutput(exact)).toBe(exact);
+    expect(truncateCommandFailureOutput("small output")).toBe("small output");
+  });
+
+  it("caps oversized output at the failure limit and reports the truncated size", () => {
+    const oversized = "a".repeat(MAX_COMMAND_FAILURE_OUTPUT_LENGTH + 12345);
+    const result = truncateCommandFailureOutput(oversized);
+
+    expect(result.startsWith("a".repeat(MAX_COMMAND_FAILURE_OUTPUT_LENGTH))).toBe(true);
+    expect(result.endsWith("[...truncated 12345 characters]")).toBe(true);
+    expect(result.length).toBe(
+      MAX_COMMAND_FAILURE_OUTPUT_LENGTH + "\n[...truncated 12345 characters]".length,
+    );
   });
 });

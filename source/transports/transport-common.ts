@@ -8,7 +8,22 @@ import type {
 } from "./transport-process.ts";
 import type { BackgroundProcess, BackgroundProcessManager } from "../background-process.ts";
 
-export const MAX_SHELL_OUTPUT_LENGTH = 100_000_000;
+// Memory bound for a process's captured output: past this, the process is killed and its
+// output discarded. This is NOT an LLM-context cap — anything embedded in an error payload
+// is truncated to MAX_COMMAND_FAILURE_OUTPUT_LENGTH instead.
+export const MAX_SHELL_OUTPUT_MEMORY_LIMIT = 100_000_000;
+
+// The widest a single UTF-8 character can be, in bytes. Failure payloads cap captured output
+// at 100k of the widest possible characters, so a failing command can't blow model context
+// with unbounded output (the memory bound above would otherwise allow ~100MB into an error).
+export const MAX_UTF8_CHAR_SIZE = 4;
+export const MAX_COMMAND_FAILURE_OUTPUT_LENGTH = MAX_UTF8_CHAR_SIZE * 100_000;
+
+export function truncateCommandFailureOutput(output: string): string {
+  if (output.length <= MAX_COMMAND_FAILURE_OUTPUT_LENGTH) return output;
+  const truncated = output.length - MAX_COMMAND_FAILURE_OUTPUT_LENGTH;
+  return `${output.slice(0, MAX_COMMAND_FAILURE_OUTPUT_LENGTH)}\n[...truncated ${truncated} characters]`;
+}
 
 export class ShellOutput {
   private readonly chunks: string[] = [];
@@ -16,7 +31,7 @@ export class ShellOutput {
   private exceededLimit = false;
   private drainedChunkCount = 0;
 
-  constructor(maxLength = MAX_SHELL_OUTPUT_LENGTH) {
+  constructor(maxLength = MAX_SHELL_OUTPUT_MEMORY_LIMIT) {
     if (!Number.isSafeInteger(maxLength) || maxLength < 1) {
       throw new RangeError("maxLength must be a positive safe integer");
     }
@@ -301,7 +316,7 @@ export function runShell(
       if (commandOutput == null) {
         reject(
           new CommandFailedError(
-            `Command output exceeded the ${MAX_SHELL_OUTPUT_LENGTH} character limit and was terminated.`,
+            `Command output exceeded the ${MAX_SHELL_OUTPUT_MEMORY_LIMIT} character memory limit and was terminated.`,
           ),
         );
         return;
@@ -310,7 +325,7 @@ export function runShell(
         reject(
           new CommandFailedError(
             `Command timed out.
-output: ${commandOutput}`,
+output: ${truncateCommandFailureOutput(commandOutput)}`,
           ),
         );
         return;
@@ -322,14 +337,14 @@ output: ${commandOutput}`,
           reject(
             new CommandFailedError(
               `Command killed by signal.
-output: ${commandOutput}`,
+output: ${truncateCommandFailureOutput(commandOutput)}`,
             ),
           );
         } else {
           reject(
             new CommandFailedError(
               `Command exited with code: ${code}
-output: ${commandOutput}`,
+output: ${truncateCommandFailureOutput(commandOutput)}`,
               code,
             ),
           );

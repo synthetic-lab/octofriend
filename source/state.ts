@@ -322,6 +322,8 @@ export const useAppStore = create<UiState>((set, get) => {
           }
         } else if (ir.role === "file-read" || ir.role === "file-mutate") {
           text = ir.content;
+        } else if (ir.role === "tool-runtime-error") {
+          text = ir.error;
         }
         const model = currentModel();
         const tokens = estimateTokens(text);
