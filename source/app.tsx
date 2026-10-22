@@ -1777,17 +1777,6 @@ function renderLlmIR(
     );
   }
   if (item.role === "assistant") {
-    if (inProgressState === "compacting") {
-      return (
-        <TerminalFlex
-          style={{
-            marginBottom: 1,
-          }}
-        >
-          <CompactionRenderer item={item} />
-        </TerminalFlex>
-      );
-    }
     return (
       <TerminalFlex
         style={{
