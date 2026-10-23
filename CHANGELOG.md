@@ -4,19 +4,73 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.0.56] - 07-25-2046
+## [0.0.60] - 10-22-2026
+
+### Added
+
+- Octo can now send subagents to explore your codebase. Subagents search and
+  read files in their own context, then report back to Octo.
+
+- Octo can run dev servers, file watchers, and other long-running commands in
+  the background, check their output, and stop them when they're no longer
+  needed.
+
+- You can now queue messages while Octo is responding, so you can steer it
+  without interrupting its work.
+
+### Changed
+
+- Octo now ships as a standalone executable with its runtime bundled in, so it
+  no longer depends on your system's Node.js version.
+
+- Synthetic models are now fetched automatically during setup, so new models
+  can show up without updating Octo.
+
+- The menu now opens over your conversation, with scrollable lists and a
+  separate usage screen.
+
+- Hitting ESC before Octo has responded now puts your message back in the
+  input box, including any attached images.
+
+- Resuming a session now restores the model you were using.
+
+- LSP servers are now detected inside Docker containers when Octo is running
+  in Docker.
+
+- Improved Markdown link rendering
+
+- Improved typing performance and faster exit
+
+- Fix for disappearing input during tool calls, and improved Vim mode when
+  returning to the input box.
+
+- Newline spacing is now preserved in sent messages.
+
+- Bugfixes for missing or duplicated tool output in saved conversations
+
+- Bugfix for session database migrations
+
+- Fix for opening the browser during OpenAI Codex login
+
+- Tool output and errors are now capped to keep large responses from filling
+  up the context.
+
+- Improved rendering for failed tool calls, subagent thinking, and
+  autocompaction
+
+## [0.0.56] - 07-25-2026
 
 ### Changed
 
 - Improved reliability for partial file reads
 
-## [0.0.55] - 07-24-2046
+## [0.0.55] - 07-24-2026
 
 ### Changed
 
 - Bugfix for inherited `NODE_ENV`
 
-## [0.0.54] - 07-24-2046
+## [0.0.54] - 07-24-2026
 
 ### Added
 
