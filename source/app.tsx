@@ -75,6 +75,8 @@ import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import Spinner from "./components/spinner.tsx";
+import PausableLineSpinner from "./components/pausable-line-spinner.tsx";
+import Shimmer from "./components/shimmer.tsx";
 import { Menu } from "./menu.tsx";
 import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
@@ -1687,6 +1689,7 @@ const MessageDisplayInner = ({
     const mode = state.sessionMode.liveMode.trajectoryMode;
     if (mode.mode === "compacting") return "compacting";
     if (mode.mode === "responding" && mode.receivedTokens) return "responding";
+    if (mode.mode === "running-tool") return "running-tool";
     return null;
   });
   if (item.type === "inflight-response") {
@@ -1737,7 +1740,7 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-type InProgressState = "compacting" | "responding" | null;
+type InProgressState = "compacting" | "responding" | "running-tool" | null;
 
 function renderInflightResponse(item: InflightResponseType, inProgressState: InProgressState) {
   if (inProgressState === "compacting") {
@@ -2016,6 +2019,7 @@ function SubagentTrajectoryRenderer({
         }
       });
   });
+  const lastToolCall = lastToolCallIndex(items);
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
@@ -2030,29 +2034,44 @@ function SubagentTrajectoryRenderer({
                 </Span>
               );
             }
+            const running = inProgressState === "running-tool" && index === lastToolCall;
             return (
               <Span key={index}>
-                <Span style={{ color: "gray" }}>- </Span>
-                <Span style={{ color }}>{item.name}</Span>
-                {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
+                <PausableLineSpinner running={running} />{" "}
+                <Shimmer text={item.name} from={color} to="#ffffff" running={running} />
+                {item.detail != null && (
+                  <>
+                    <Span style={{ color: "gray" }}>: </Span>
+                    <Shimmer text={item.detail} from="#808080" to="#cccccc" running={running} />
+                  </>
+                )}
               </Span>
             );
           })}
           {inProgressState === "compacting" && (
             <Span style={{ color: "gray" }}>
-              <Spinner type="line" /> Compacting history...
+              <Spinner type="line" />{" "}
+              <Shimmer text="Compacting history..." from="#808080" to="#cccccc" running />
             </Span>
           )}
           {inProgressState === "responding" && (
             <Span style={{ color: "gray" }}>
               {items.length === 0 ? " " : ""}
-              <Spinner type="line" /> Subagent is thinking...
+              <Spinner type="line" />{" "}
+              <Shimmer text="Subagent is thinking..." from="#808080" to="#cccccc" running />
             </Span>
           )}
         </TerminalFlex>
       )}
     </TerminalFlex>
   );
+}
+
+function lastToolCallIndex(items: Array<SubagentHistoryItem>): number {
+  for (let index = items.length - 1; index >= 0; index--) {
+    if (items[index].type === "tool-call") return index;
+  }
+  return -1;
 }
 
 function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
