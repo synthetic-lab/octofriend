@@ -20,14 +20,12 @@ if (before == null || after == null) {
   throw new Error("usage: BEFORE=<sha> AFTER=<sha> bun scripts/ci/check-release.ts");
 }
 
-const release = packageJsonChanged(before, after);
+const release = versionChanged(before, after);
 
 if (release) {
   console.log(`Releasing ${packageJson.name}@${packageJson.version}`);
 } else {
-  console.log(
-    `package.json unchanged; ${packageJson.name}@${packageJson.version} already released`,
-  );
+  console.log(`version unchanged; ${packageJson.name}@${packageJson.version} already released`);
 }
 
 const outputs: Record<string, string> = {
@@ -49,11 +47,14 @@ if (outputFile == null) {
   );
 }
 
-function packageJsonChanged(before: string, after: string): boolean {
-  const result = spawnSync("git", ["diff", "--quiet", before, after, "--", "package.json"], {
-    encoding: "utf8",
-  });
-  if (result.status === 0) return false;
-  if (result.status === 1) return true;
-  throw new Error(`git diff ${before} ${after} failed: ${result.stderr}`);
+function versionChanged(before: string, after: string): boolean {
+  return versionAt(before) !== versionAt(after);
+}
+
+function versionAt(sha: string): string {
+  const result = spawnSync("git", ["show", `${sha}:package.json`], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(`git show ${sha}:package.json failed: ${result.stderr}`);
+  }
+  return JSON.parse(result.stdout).version;
 }
