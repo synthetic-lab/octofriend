@@ -1,8 +1,6 @@
-- Octo now auto-saves your session and allows resuming saved sessions later.
-- Octo's rendering backend was rewritten in Rust! Octo should be much faster
-  and prettier.
-- Octo learned to auto-detect and use many common LSP servers.
-- You can now log into OpenAI Codex subscriptions in Octo, and Octo will use
-  your Codex subscription instead of per-token API pricing. As usual,
-  Synthetic.new subscriptions always use your subscription.
+- Octo learned to send subagents to explore your codebase!
+- Octo can now run & check in on dev servers and other long-running commands in the background.
+- You can now queue messages while Octo is responding.
+- Synthetic's latest models now show up automatically during setup.
+- Resuming a session now restores the model you were using.
 - And a lot more! Run `octo changelog` to see the full list.
