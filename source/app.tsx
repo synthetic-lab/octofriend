@@ -74,6 +74,7 @@ import type { UserMessage } from "./libocto/llm-ir.ts";
 import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
+import Spinner from "./components/spinner.tsx";
 import { Menu } from "./menu.tsx";
 import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
@@ -2038,11 +2039,14 @@ function SubagentTrajectoryRenderer({
             );
           })}
           {inProgressState === "compacting" && (
-            <Span style={{ color: "gray" }}>Compacting history...</Span>
+            <Span style={{ color: "gray" }}>
+              <Spinner type="line" /> Compacting history...
+            </Span>
           )}
           {inProgressState === "responding" && (
             <Span style={{ color: "gray" }}>
-              {items.length === 0 ? " " : ""}Subagent is thinking...
+              {items.length === 0 ? " " : ""}
+              <Spinner type="line" /> Subagent is thinking...
             </Span>
           )}
         </TerminalFlex>
