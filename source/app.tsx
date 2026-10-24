@@ -117,6 +117,7 @@ import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { useShimmerlock } from "./hooks/use-shimmerlock.ts";
 import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
@@ -1775,7 +1776,7 @@ function renderLlmIR(
     return (
       <SubagentTrajectoryRenderer
         inspection={inspection}
-        trajectoryItem={item}
+        history={[...item.ir]}
         inProgressState={inProgressState}
       />
     );
@@ -1985,16 +1986,15 @@ type SubagentHistoryItem =
 
 function SubagentTrajectoryRenderer({
   inspection,
-  trajectoryItem,
+  history,
   inProgressState,
 }: {
   inspection: SubagentTrajectoryInspection;
-  trajectoryItem: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  history: Extract<OctoIR, { role: "subagent-trajectory" }>["ir"];
   inProgressState: InProgressState;
 }) {
   const cwd = useCwd();
-  const color = useColor();
-  const items = trajectoryItem.ir.flatMap((ir): Array<SubagentHistoryItem> => {
+  const items = history.flatMap((ir): Array<SubagentHistoryItem> => {
     if (ir.role === "checkpoint") return [{ type: "compaction" }];
     if (ir.role !== "assistant") return [];
     return (ir.toolCalls ?? [])
@@ -2019,49 +2019,76 @@ function SubagentTrajectoryRenderer({
         }
       });
   });
-  const lastToolCall = lastToolCallIndex(items);
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
-      {inspection.type === "in-progress" && (
-        <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
-          {items.map((item, index) => {
-            if (item.type === "compaction") {
-              return (
-                <Span key={index}>
-                  <Span style={{ color: "gray" }}>- </Span>
-                  <Span style={{ color: "gray" }}>Compacted history</Span>
-                </Span>
-              );
-            }
-            const running = inProgressState === "running-tool" && index === lastToolCall;
-            return (
-              <Span key={index}>
-                <PausableLineSpinner running={running} />{" "}
-                <Shimmer text={item.name} from={color} to="#ffffff" running={running} />
-                {item.detail != null && (
-                  <>
-                    <Span style={{ color: "gray" }}>: </Span>
-                    <Shimmer text={item.detail} from="#808080" to="#cccccc" running={running} />
-                  </>
-                )}
-              </Span>
-            );
-          })}
-          {inProgressState === "compacting" && (
-            <Span style={{ color: "gray" }}>
-              <Spinner type="line" />{" "}
-              <Shimmer text="Compacting history..." from="#808080" to="#cccccc" running />
+      {inspection.type === "in-progress" && items.length > 0 && (
+        <SubagentProgressRenderer items={items} inProgressState={inProgressState} />
+      )}
+    </TerminalFlex>
+  );
+}
+
+function SubagentProgressRenderer({
+  items,
+  inProgressState,
+}: {
+  items: Array<SubagentHistoryItem>;
+  inProgressState: InProgressState;
+}) {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent");
+  const lastToolCall = lastToolCallIndex(items);
+  return (
+    <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+      {items.map((item, index) => {
+        if (item.type === "compaction") {
+          return (
+            <Span key={index}>
+              <Span style={{ color: "gray" }}>- </Span>
+              <Span style={{ color: "gray" }}>Compacted history</Span>
             </Span>
-          )}
-          {inProgressState === "responding" && (
-            <Span style={{ color: "gray" }}>
-              {items.length === 0 ? " " : ""}
-              <Spinner type="line" />{" "}
-              <Shimmer text="Subagent is thinking..." from="#808080" to="#cccccc" running />
-            </Span>
-          )}
-        </TerminalFlex>
+          );
+        }
+        const running = inProgressState === "running-tool" && index === lastToolCall;
+        return (
+          <Span key={index}>
+            <PausableLineSpinner running={running} />{" "}
+            <Shimmer
+              text={item.name}
+              from={color}
+              to="#ffffff"
+              lock={shimmerlock}
+              running={running && item.name === "grep"}
+            />
+            {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
+          </Span>
+        );
+      })}
+      {inProgressState === "compacting" && (
+        <Span style={{ color: "gray" }}>
+          <Spinner type="line" />{" "}
+          <Shimmer
+            text="Compacting history..."
+            from="#808080"
+            to="#cccccc"
+            lock={shimmerlock}
+            running
+          />
+        </Span>
+      )}
+      {inProgressState === "responding" && (
+        <Span style={{ color: "gray" }}>
+          {items.length === 0 ? " " : ""}
+          <Spinner type="line" />{" "}
+          <Shimmer
+            text="Subagent is thinking..."
+            from="#808080"
+            to="#cccccc"
+            lock={shimmerlock}
+            running
+          />
+        </Span>
       )}
     </TerminalFlex>
   );
@@ -2076,12 +2103,10 @@ function lastToolCallIndex(items: Array<SubagentHistoryItem>): number {
 
 function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
   const color = useColor();
-  const { frame } = useAnimation({ isActive: inspection.type === "in-progress", interval: 300 });
-  const dots = ["...", "", ".", ".."][frame % 4];
   const heading = (() => {
     switch (inspection.type) {
       case "in-progress":
-        return `Exploring${dots}`;
+        return <ExploringHeading />;
       case "complete":
         return "Octo finished exploring!";
       case "error":
@@ -2100,6 +2125,19 @@ function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspecti
       <Octo />
       <Span style={{ color }}> {heading}</Span>
     </TerminalFlex>
+  );
+}
+
+function ExploringHeading() {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent-header");
+  const { frame } = useAnimation({ interval: 300 });
+  const dots = ["...", "", ".", ".."][frame % 4];
+  return (
+    <>
+      <Shimmer text="Exploring" from={color} to="#ffffff" lock={shimmerlock} running />
+      {dots}
+    </>
   );
 }
 
