@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Spinner from "./spinner.tsx";
 import Shimmer from "./shimmer.tsx";
-import { useColor } from "../theme.ts";
+import { SHIMMER_HIGHLIGHT_COLOR, useColor } from "../theme.ts";
 import { useShimmerlock } from "../hooks/use-shimmerlock.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
@@ -55,9 +55,7 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
       </Span>
       <Span> </Span>
       <Shimmer
-        text={loadingStrings[idx]}
-        from={themeColor}
-        to="#ffffff"
+        segments={[{ text: loadingStrings[idx], from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR }]}
         lock={shimmerlock}
         running
       />

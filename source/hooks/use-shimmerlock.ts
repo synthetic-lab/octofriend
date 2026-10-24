@@ -2,12 +2,17 @@ import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 
-export type ShimmerPriority = "primary-loading" | "explore-subagent" | "explore-subagent-header";
+export type ShimmerPriority =
+  | "primary-loading"
+  | "primary-tool"
+  | "explore-subagent"
+  | "explore-subagent-header";
 
 export const SHIMMER_PRIORITY_ORDER: { [K in ShimmerPriority]: number } = {
   "explore-subagent": 0,
   "explore-subagent-header": 1,
-  "primary-loading": 2,
+  "primary-tool": 2,
+  "primary-loading": 3,
 };
 
 type ShimmerRegistration = {
