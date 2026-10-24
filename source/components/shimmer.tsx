@@ -2,10 +2,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { Span, useAnimation } from "paintcannon-react";
 import { useShimmerlockOwnershipCheck } from "../hooks/use-shimmerlock.ts";
 
-type Props = {
+export type ShimmerSegment = {
   text: string;
   from: string;
   to: string;
+};
+
+type Props = {
+  segments: Array<ShimmerSegment>;
   lock: symbol;
   running?: boolean;
 };
@@ -31,15 +35,18 @@ function mix(from: Rgb, to: Rgb, t: number): string {
   return `#${channel(0)}${channel(1)}${channel(2)}`;
 }
 
-function Shimmer({ text, from, to, lock, running = false }: Props) {
+function Shimmer({ segments, lock, running = false }: Props) {
   const ownsLock = useShimmerlockOwnershipCheck(lock);
   const shouldRun = running && ownsLock;
-  const fromRgb = parseHex(from);
-  const toRgb = parseHex(to);
+  const characters = segments.flatMap(({ text, from, to }) => {
+    const fromRgb = parseHex(from);
+    const toRgb = parseHex(to);
+    return text.split("").map(char => ({ char, from, fromRgb, toRgb }));
+  });
   const [animating, setAnimating] = useState(shouldRun);
   const fadeStartRef = useRef<{ time: number; frame: number } | null>(null);
   const { frame, time } = useAnimation({ isActive: animating, interval: INTERVAL_MS });
-  const cycle = text.length + 2 * WAVE_WIDTH;
+  const cycle = characters.length + 2 * WAVE_WIDTH;
 
   useEffect(() => {
     if (shouldRun) {
@@ -66,7 +73,7 @@ function Shimmer({ text, from, to, lock, running = false }: Props) {
 
   return (
     <Span>
-      {text.split("").map((char, index) => {
+      {characters.map(({ char, from, fromRgb, toRgb }, index) => {
         let color = from;
         if (active && fromRgb != null && toRgb != null) {
           const distance = Math.abs(peak - index);
