@@ -18,12 +18,15 @@ export function ToolCallRow({
   activity: ToolCallActivity;
 }) {
   const themeColor = useColor();
+  const hasLongDetails = details != null && details.length >= 20;
   const segments: Array<ShimmerSegment> =
     details == null
       ? [{ text: name, from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR }]
       : [
           { text: `${name}: `, from: TOOL_LABEL_COLOR, to: SHIMMER_HIGHLIGHT_COLOR },
-          { text: details, from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR },
+          ...(hasLongDetails
+            ? []
+            : [{ text: details, from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR }]),
         ];
 
   return (
@@ -41,6 +44,7 @@ export function ToolCallRow({
             </Span>
           ))
         )}
+        {hasLongDetails && <Span style={{ color: themeColor }}>{details}</Span>}
       </Span>
     </TerminalFlex>
   );
