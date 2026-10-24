@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import Spinner from "./spinner.tsx";
+import Shimmer from "./shimmer.tsx";
 import { useColor } from "../theme.ts";
+import { useShimmerlock } from "../hooks/use-shimmerlock.ts";
 import { Span } from "paintcannon-react";
 import { TerminalFlex } from "./terminal-flex.tsx";
 const DEFAULT_LOADING_STRINGS = [
@@ -25,6 +27,7 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
   const [idx, setIndex] = useState(0);
   const [dotCount, setDotCount] = useState(0);
   const themeColor = useColor();
+  const shimmerlock = useShimmerlock("primary-loading");
   const loadingStrings = overrideStrings || DEFAULT_LOADING_STRINGS;
   useEffect(() => {
     let fired = false;
@@ -51,13 +54,13 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
         <Spinner type="binary" />
       </Span>
       <Span> </Span>
-      <Span
-        style={{
-          color: themeColor,
-        }}
-      >
-        {loadingStrings[idx]}
-      </Span>
+      <Shimmer
+        text={loadingStrings[idx]}
+        from={themeColor}
+        to="#ffffff"
+        lock={shimmerlock}
+        running
+      />
       <Span>{".".repeat(dotCount)}</Span>
     </TerminalFlex>
   );
