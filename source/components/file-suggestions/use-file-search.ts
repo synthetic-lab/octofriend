@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import ignore from "ignore";
 import { usePriorityInput, FILE_SUGGESTIONS_PRIORITY } from "../../hooks/use-priority-input.tsx";
 import { useTransport } from "../../transport-context.ts";
-import { findFiles } from "../../transports/transport-common.ts";
+import { AbortError, findFiles } from "../../transports/transport-common.ts";
 import * as logger from "../../logger.ts";
 
 const MAX_SUGGESTIONS = 8;
@@ -153,7 +153,9 @@ export function useFileSearch(query: string, options: UseFileSearchOptions) {
       } catch (err) {
         if (
           thisRequest === currentRequestId.current &&
+          isMounted.current &&
           err instanceof Error &&
+          !(err instanceof AbortError) &&
           err.name !== "AbortError"
         ) {
           logger.error("info", "Search failed:", err);
