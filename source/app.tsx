@@ -2111,7 +2111,7 @@ function SubagentProgressRenderer({
               {
                 text:
                   inProgressState === "waiting"
-                    ? "Subagent is waiting..."
+                    ? "Waiting for API response..."
                     : "Subagent is thinking...",
                 from: SUBAGENT_ACTIVITY_COLOR,
                 to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
