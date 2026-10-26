@@ -30,20 +30,16 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
   const shimmerlock = useShimmerlock("root-loading");
   const loadingStrings = overrideStrings || DEFAULT_LOADING_STRINGS;
   useEffect(() => {
+    if (dotCount >= 3) return;
     let fired = false;
     const timer = setTimeout(() => {
       fired = true;
-      if (dotCount >= 3) {
-        setDotCount(0);
-        setIndex((idx + 1) % loadingStrings.length);
-        return;
-      }
       setDotCount(dotCount + 1);
     }, 300);
     return () => {
       if (!fired) clearTimeout(timer);
     };
-  }, [idx, dotCount]);
+  }, [dotCount]);
   return (
     <TerminalFlex>
       <Span
@@ -55,9 +51,14 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
       </Span>
       <Span> </Span>
       <Shimmer
+        key={loadingStrings[idx]}
         segments={[{ text: loadingStrings[idx], from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR }]}
         lock={shimmerlock}
         running
+        onShimmerEnd={() => {
+          setIndex((idx + 1) % loadingStrings.length);
+          setDotCount(0);
+        }}
       />
       <Span>{".".repeat(dotCount)}</Span>
     </TerminalFlex>

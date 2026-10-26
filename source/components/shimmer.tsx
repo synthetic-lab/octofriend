@@ -12,6 +12,7 @@ type Props = {
   segments: Array<ShimmerSegment>;
   lock: symbol;
   running: boolean;
+  onShimmerEnd?: () => void;
 };
 
 const INTERVAL_MS = 60;
@@ -35,7 +36,7 @@ function mix(from: Rgb, to: Rgb, t: number): string {
   return `#${channel(0)}${channel(1)}${channel(2)}`;
 }
 
-function Shimmer({ segments, lock, running }: Props) {
+function Shimmer({ segments, lock, running, onShimmerEnd }: Props) {
   const ownsLock = useShimmerlockOwnershipCheck(lock);
   const shouldRun = running && ownsLock;
   const characters = segments.flatMap(({ text, from, to }) => {
@@ -45,6 +46,8 @@ function Shimmer({ segments, lock, running }: Props) {
   });
   const [animating, setAnimating] = useState(shouldRun);
   const fadeStartRef = useRef<{ time: number; frame: number } | null>(null);
+  const onShimmerEndRef = useRef(onShimmerEnd);
+  const lastCyclePosRef = useRef<number | null>(null);
   const { frame, time } = useAnimation({ isActive: animating, interval: INTERVAL_MS });
   const cycle = characters.length + 2 * WAVE_WIDTH;
 
@@ -63,6 +66,23 @@ function Shimmer({ segments, lock, running }: Props) {
       setAnimating(false);
     }
   }, [time]);
+
+  useEffect(() => {
+    onShimmerEndRef.current = onShimmerEnd;
+  }, [onShimmerEnd]);
+
+  useEffect(() => {
+    if (!shouldRun) {
+      lastCyclePosRef.current = null;
+      return;
+    }
+    const pos = frame % cycle;
+    const lastPos = lastCyclePosRef.current;
+    lastCyclePosRef.current = pos;
+    if (pos !== lastPos && pos === cycle - 1) {
+      onShimmerEndRef.current?.();
+    }
+  }, [frame, cycle, shouldRun]);
 
   const fadeStart = fadeStartRef.current;
   const peak =
