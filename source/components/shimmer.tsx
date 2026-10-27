@@ -11,7 +11,7 @@ export type ShimmerSegment = {
 type Props = {
   segments: Array<ShimmerSegment>;
   lock: symbol;
-  running?: boolean;
+  running: boolean;
 };
 
 const INTERVAL_MS = 60;
