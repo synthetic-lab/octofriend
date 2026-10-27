@@ -21,7 +21,7 @@ import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
-  FOREGROUND_COLOR,
+  SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
   MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
   MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
   SCROLLBAR_COLOR,
@@ -2077,7 +2077,7 @@ function SubagentProgressRenderer({
               {
                 text: "Compacting history...",
                 from: SUBAGENT_ACTIVITY_COLOR,
-                to: SHIMMER_HIGHLIGHT_COLOR,
+                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
               },
             ]}
             lock={shimmerlock}
@@ -2094,7 +2094,7 @@ function SubagentProgressRenderer({
               {
                 text: "Subagent is thinking...",
                 from: SUBAGENT_ACTIVITY_COLOR,
-                to: SHIMMER_HIGHLIGHT_COLOR,
+                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
               },
             ]}
             lock={shimmerlock}

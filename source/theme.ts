@@ -14,6 +14,7 @@ export const FOREGROUND_COLOR = "#cccccc";
 export const TOOL_LABEL_COLOR = "#808080";
 export const SUBAGENT_ACTIVITY_COLOR = "#808080";
 export const SHIMMER_HIGHLIGHT_COLOR = "#ffffff";
+export const SUBAGENT_SHIMMER_HIGHLIGHT_COLOR = "#cccccc";
 export const THOUGHTBOX_COLOR = "#6b6b6b";
 export const QUOTA_BAR_TRACK_COLOR = "#334155";
 export const QUOTA_DETAIL_COLOR = "#94a3b8";
