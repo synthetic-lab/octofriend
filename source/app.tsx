@@ -21,9 +21,12 @@ import RetryCountdown from "./components/retry-countdown.tsx";
 import { Header } from "./header.tsx";
 import {
   DIMMED_SCROLLBAR_COLOR,
+  SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
   MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
   MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
   SCROLLBAR_COLOR,
+  SHIMMER_HIGHLIGHT_COLOR,
+  SUBAGENT_ACTIVITY_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
   THOUGHTBOX_COLOR,
   useColor,
@@ -75,6 +78,8 @@ import type { HistoryNode } from "./session-history/index.ts";
 import { tryDeserializeModelJson } from "./session-history/model-json.ts";
 import { Octo } from "./components/octo.tsx";
 import Spinner from "./components/spinner.tsx";
+import PausableLineSpinner from "./components/pausable-line-spinner.tsx";
+import Shimmer from "./components/shimmer.tsx";
 import { Menu } from "./menu.tsx";
 import { modelDisplayName, type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
@@ -115,6 +120,7 @@ import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
 import { Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
+import { useShimmerlock } from "./hooks/use-shimmerlock.ts";
 import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
@@ -1417,7 +1423,10 @@ function ToolRequestsRenderer({
         flexDirection: "column",
       }}
     >
-      <ToolMessageRenderer item={currentToolReq} />
+      <ToolMessageRenderer
+        item={currentToolReq}
+        animate={trajectoryMode.mode === "running-tool" ? true : false}
+      />
       {permissionUi.type === "prompt" && (
         <ToolPermissionSelect control={permissionUi.control} onContentLayout={onContentLayout} />
       )}
@@ -1687,6 +1696,13 @@ const MessageDisplayInner = ({
     const mode = state.sessionMode.liveMode.trajectoryMode;
     if (mode.mode === "compacting") return "compacting";
     if (mode.mode === "responding" && mode.receivedTokens) return "responding";
+    if (mode.mode === "running-tool") return "running-tool";
+    return null;
+  });
+  const runningToolCallId = useAppStore(state => {
+    if (state.sessionMode.mode !== "live") return null;
+    const mode = state.sessionMode.liveMode.trajectoryMode;
+    if (mode.mode === "running-tool") return mode.toolCall.toolCallId;
     return null;
   });
   if (item.type === "inflight-response") {
@@ -1710,7 +1726,7 @@ const MessageDisplayInner = ({
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item, inProgressState, trajectory);
+    return renderLlmIR(item, inProgressState, runningToolCallId, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1737,7 +1753,7 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-type InProgressState = "compacting" | "responding" | null;
+type InProgressState = "compacting" | "responding" | "running-tool" | null;
 
 function renderInflightResponse(item: InflightResponseType, inProgressState: InProgressState) {
   if (inProgressState === "compacting") {
@@ -1764,6 +1780,7 @@ function renderInflightResponse(item: InflightResponseType, inProgressState: InP
 function renderLlmIR(
   node: Extract<HistoryNode, { type: "llm-ir" }>,
   inProgressState: InProgressState,
+  runningToolCallId: string | null,
   trajectory: LiveTrajectory["instance"],
 ) {
   const item = node.ir;
@@ -1772,8 +1789,9 @@ function renderLlmIR(
     return (
       <SubagentTrajectoryRenderer
         inspection={inspection}
-        trajectoryItem={item}
+        history={[...item.ir]}
         inProgressState={inProgressState}
+        runningToolCallId={runningToolCallId}
       />
     );
   }
@@ -1812,7 +1830,7 @@ function renderLlmIR(
           flexDirection: "column",
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <TerminalFlex
           style={{
             marginLeft: 2,
@@ -1839,7 +1857,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer content={item.content} />
       </TerminalFlex>
     );
@@ -1852,7 +1870,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer
           content={[
             {
@@ -1880,7 +1898,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer
           content={[
             {
@@ -1978,20 +1996,21 @@ function renderLlmIR(
 }
 type SubagentHistoryItem =
   | { type: "compaction" }
-  | { type: "tool-call"; name: string; detail: string | null };
+  | { type: "tool-call"; toolCallId: string; name: string; detail: string | null };
 
 function SubagentTrajectoryRenderer({
   inspection,
-  trajectoryItem,
+  history,
   inProgressState,
+  runningToolCallId,
 }: {
   inspection: SubagentTrajectoryInspection;
-  trajectoryItem: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  history: Extract<OctoIR, { role: "subagent-trajectory" }>["ir"];
   inProgressState: InProgressState;
+  runningToolCallId: string | null;
 }) {
   const cwd = useCwd();
-  const color = useColor();
-  const items = trajectoryItem.ir.flatMap((ir): Array<SubagentHistoryItem> => {
+  const items = history.flatMap((ir): Array<SubagentHistoryItem> => {
     if (ir.role === "checkpoint") return [{ type: "compaction" }];
     if (ir.role !== "assistant") return [];
     return (ir.toolCalls ?? [])
@@ -1999,57 +2018,106 @@ function SubagentTrajectoryRenderer({
       .map((call): SubagentHistoryItem => {
         // Exhaustive over the subagent's tools on purpose: adding a new tool without a case
         // makes this map return undefined, which fails to compile.
+        const base = { type: "tool-call" as const, toolCallId: call.toolCallId, name: call.name };
         switch (call.name) {
           case "read":
-            return { type: "tool-call", name: call.name, detail: call.parsed.filePath };
+            return { ...base, detail: call.parsed.filePath };
           case "partial-read":
             return {
-              type: "tool-call",
-              name: call.name,
+              ...base,
               detail: `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`,
             };
           case "list":
-            return { type: "tool-call", name: call.name, detail: call.parsed.dirPath || cwd };
+            return { ...base, detail: call.parsed.dirPath || cwd };
           case "grep":
           case "glob":
-            return { type: "tool-call", name: call.name, detail: null };
+            return { ...base, detail: null };
         }
       });
   });
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
-      {inspection.type === "in-progress" && (
-        <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
-          {items.map((item, index) => {
-            if (item.type === "compaction") {
-              return (
-                <Span key={index}>
-                  <Span style={{ color: "gray" }}>- </Span>
-                  <Span style={{ color: "gray" }}>Compacted history</Span>
-                </Span>
-              );
-            }
-            return (
-              <Span key={index}>
-                <Span style={{ color: "gray" }}>- </Span>
-                <Span style={{ color }}>{item.name}</Span>
-                {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
-              </Span>
-            );
-          })}
-          {inProgressState === "compacting" && (
-            <Span style={{ color: "gray" }}>
-              <Spinner type="line" /> Compacting history...
+      {inspection.type === "in-progress" && items.length > 0 && (
+        <SubagentProgressRenderer
+          items={items}
+          inProgressState={inProgressState}
+          runningToolCallId={runningToolCallId}
+        />
+      )}
+    </TerminalFlex>
+  );
+}
+
+function SubagentProgressRenderer({
+  items,
+  inProgressState,
+  runningToolCallId,
+}: {
+  items: Array<SubagentHistoryItem>;
+  inProgressState: InProgressState;
+  runningToolCallId: string | null;
+}) {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent");
+  return (
+    <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+      {items.map((item, index) => {
+        if (item.type === "compaction") {
+          return (
+            <Span key={index}>
+              <Span style={{ color: "gray" }}>- </Span>
+              <Span style={{ color: "gray" }}>Compacted history</Span>
             </Span>
-          )}
-          {inProgressState === "responding" && (
-            <Span style={{ color: "gray" }}>
-              {items.length === 0 ? " " : ""}
-              <Spinner type="line" /> Subagent is thinking...
-            </Span>
-          )}
-        </TerminalFlex>
+          );
+        }
+        // The trajectory runs a batch's calls in order, so the running call may be any of them:
+        // match by ID instead of assuming it's the last.
+        const running = inProgressState === "running-tool" && item.toolCallId === runningToolCallId;
+        return (
+          <Span key={index}>
+            <PausableLineSpinner running={running} />{" "}
+            <Shimmer
+              segments={[{ text: item.name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
+              lock={shimmerlock}
+              running={running && item.name === "grep"}
+            />
+            {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
+          </Span>
+        );
+      })}
+      {inProgressState === "compacting" && (
+        <Span style={{ color: "gray" }}>
+          <Spinner type="line" />{" "}
+          <Shimmer
+            segments={[
+              {
+                text: "Compacting history...",
+                from: SUBAGENT_ACTIVITY_COLOR,
+                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
+              },
+            ]}
+            lock={shimmerlock}
+            running
+          />
+        </Span>
+      )}
+      {inProgressState === "responding" && (
+        <Span style={{ color: "gray" }}>
+          {items.length === 0 ? " " : ""}
+          <Spinner type="line" />{" "}
+          <Shimmer
+            segments={[
+              {
+                text: "Subagent is thinking...",
+                from: SUBAGENT_ACTIVITY_COLOR,
+                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
+              },
+            ]}
+            lock={shimmerlock}
+            running
+          />
+        </Span>
       )}
     </TerminalFlex>
   );
@@ -2057,12 +2125,10 @@ function SubagentTrajectoryRenderer({
 
 function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
   const color = useColor();
-  const { frame } = useAnimation({ isActive: inspection.type === "in-progress", interval: 300 });
-  const dots = ["...", "", ".", ".."][frame % 4];
   const heading = (() => {
     switch (inspection.type) {
       case "in-progress":
-        return `Exploring${dots}`;
+        return <ExploringHeading />;
       case "complete":
         return "Octo finished exploring!";
       case "error":
@@ -2081,6 +2147,23 @@ function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspecti
       <Octo />
       <Span style={{ color }}> {heading}</Span>
     </TerminalFlex>
+  );
+}
+
+function ExploringHeading() {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent-header");
+  const { frame } = useAnimation({ interval: 300 });
+  const dots = ["...", "", ".", ".."][frame % 4];
+  return (
+    <>
+      <Shimmer
+        segments={[{ text: "Exploring", from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
+        lock={shimmerlock}
+        running
+      />
+      {dots}
+    </>
   );
 }
 
@@ -2231,7 +2314,13 @@ function toolFailureAction(toolCall: ToolFailureItem["toolCall"]): {
   }
 }
 
-function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRequest }) {
+function ToolMessageRenderer({
+  item,
+  animate,
+}: {
+  item: ToolCallRequest | MalformedToolRequest;
+  animate: boolean;
+}) {
   if (item.type === "malformed-tool-request") {
     return null;
   }
@@ -2245,29 +2334,31 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
     case "list":
       return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
-      return <ShellToolRenderer item={parsedToolSchema(item)} />;
+      return <ShellToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "background-process":
       return <BackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
     case "manage-background-process":
-      return <ManageBackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
+      return (
+        <ManageBackgroundProcessToolRenderer item={parsedToolSchema(item)} animate={animate} />
+      );
     case "edit":
       return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
       return <CreateToolRenderer item={parsedToolSchema(item)} />;
     case "mcp":
-      return <McpToolRenderer item={parsedToolSchema(item)} />;
+      return <McpToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "fetch":
-      return <FetchToolRenderer item={parsedToolSchema(item)} />;
+      return <FetchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "rewrite":
       return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
       return <SkillToolRenderer item={parsedToolSchema(item)} />;
     case "web-search":
-      return <WebSearchToolRenderer item={parsedToolSchema(item)} />;
+      return <WebSearchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "glob":
-      return <GlobRenderer item={parsedToolSchema(item)} />;
+      return <GlobRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "grep":
-      return <GrepRenderer item={parsedToolSchema(item)} />;
+      return <GrepRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -2276,7 +2367,7 @@ function ToolMessageRenderer({ item }: { item: ToolCallRequest | MalformedToolRe
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <LspToolRenderer item={parsedToolSchema(item)} />;
+      return <LspToolRenderer item={parsedToolSchema(item)} animate={animate} />;
   }
 }
 function parsedToolSchema(toolCall: ToolCallRequest): any {
@@ -2285,47 +2376,43 @@ function parsedToolSchema(toolCall: ToolCallRequest): any {
     arguments: toolCall.parsed,
   };
 }
-function GlobRenderer({ item }: { item: ParsedToolSchemaFrom<typeof glob> }) {
+function GlobRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof glob>;
+  animate: boolean;
+}) {
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        Octo searched for files using a glob pattern:
-      </Span>
-      <GlobArg name="Path" arg={item.arguments.path} />
-      <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
-      <GlobArg name="Path pattern" arg={item.arguments.includePath} />
-      <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <ToolCallRow name="Octo searched for files using a glob pattern:" animate={animate} />
+      <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+        <GlobArg name="Path" arg={item.arguments.path} />
+        <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
+        <GlobArg name="Path pattern" arg={item.arguments.includePath} />
+        <GlobArg name="Max depth" arg={item.arguments.maxDepth} />
+      </TerminalFlex>
     </TerminalFlex>
   );
 }
-function GrepRenderer({ item }: { item: ParsedToolSchemaFrom<typeof grep> }) {
+function GrepRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof grep>;
+  animate: boolean;
+}) {
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        Octo searched file contents:
-      </Span>
-      <GlobArg name="Pattern" arg={item.arguments.pattern} />
-      <GlobArg name="Path" arg={item.arguments.path} />
-      <GlobArg name="Case insensitive" arg={item.arguments.caseInsensitive} />
-      <GlobArg name="Context lines" arg={item.arguments.context} />
-      <GlobArg name="Max results" arg={item.arguments.maxResults} />
-      <GlobArg name="Timeout" arg={item.arguments.timeout} />
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <ToolCallRow name="Octo searched file contents:" animate={animate} />
+      <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
+        <GlobArg name="Pattern" arg={item.arguments.pattern} />
+        <GlobArg name="Path" arg={item.arguments.path} />
+        <GlobArg name="Case insensitive" arg={item.arguments.caseInsensitive} />
+        <GlobArg name="Context lines" arg={item.arguments.context} />
+        <GlobArg name="Max results" arg={item.arguments.maxResults} />
+        <GlobArg name="Timeout" arg={item.arguments.timeout} />
+      </TerminalFlex>
     </TerminalFlex>
   );
 }
@@ -2351,18 +2438,13 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | boolean |
     </Span>
   );
 }
-function WebSearchToolRenderer(_: { item: ParsedToolSchemaFrom<typeof webSearch> }) {
-  return (
-    <TerminalFlex>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        Octo searched the web
-      </Span>
-    </TerminalFlex>
-  );
+function WebSearchToolRenderer({
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof webSearch>;
+  animate: boolean;
+}) {
+  return <ToolCallRow name="Octo searched the web" animate={animate} />;
 }
 function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
@@ -2377,24 +2459,28 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
     </TerminalFlex>
   );
 }
-function FetchToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof fetchTool> }) {
-  return <ToolCallRow name={item.name}>{item.arguments.url}</ToolCallRow>;
+function FetchToolRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof fetchTool>;
+  animate: boolean;
+}) {
+  return <ToolCallRow name={item.name} details={item.arguments.url} animate={animate} />;
 }
-function ShellToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof shell> }) {
+function ShellToolRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof shell>;
+  animate: boolean;
+}) {
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <ToolCallRow name={item.name}>{item.arguments.cmd}</ToolCallRow>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        timeout: {item.arguments.timeout}
-      </Span>
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <ToolCallRow name={item.name} details={item.arguments.cmd} animate={animate} />
+      <TerminalFlex style={{ marginLeft: 2 }}>
+        <Span style={{ color: "gray" }}>timeout: {item.arguments.timeout}</Span>
+      </TerminalFlex>
     </TerminalFlex>
   );
 }
@@ -2410,101 +2496,132 @@ function BackgroundProcessToolRenderer({
         flexDirection: "column",
       }}
     >
-      <ToolCallRow name={item.name}>Octo is starting a background process:</ToolCallRow>
-      <Span>
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          Label:
-        </Span>{" "}
-        <Span
-          style={{
-            fontWeight: "bold",
-          }}
-        >
-          {item.arguments.label}
-        </Span>
-      </Span>
-      <Span>
-        <Span
-          style={{
-            color: "gray",
-          }}
-        >
-          Command:
-        </Span>{" "}
-        <Span
-          style={{
-            color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
-            backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
-          }}
-        >
-          {item.arguments.cmd}
-        </Span>
-      </Span>
-    </TerminalFlex>
-  );
-}
-
-function ManageBackgroundProcessToolRenderer({
-  item,
-}: {
-  item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
-}) {
-  return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <ToolCallRow name={item.name}>Octo is managing a background process:</ToolCallRow>
-      <Span>
-        <Span style={{ color: "gray" }}>Action:</Span>{" "}
-        <Span style={{ fontWeight: "bold" }}>{item.arguments.action}</Span>
-      </Span>
-      {item.arguments.label != null && (
+      <ToolCallRow
+        name={item.name}
+        details="Octo is starting a background process:"
+        animate={false}
+      />
+      <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <Span>
-          <Span style={{ color: "gray" }}>Label:</Span>{" "}
-          <Span style={{ fontWeight: "bold" }}>{item.arguments.label}</Span>
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            Label:
+          </Span>{" "}
+          <Span
+            style={{
+              fontWeight: "bold",
+            }}
+          >
+            {item.arguments.label}
+          </Span>
         </Span>
-      )}
-      {item.arguments.id != null && (
         <Span>
-          <Span style={{ color: "gray" }}>ID:</Span>{" "}
+          <Span
+            style={{
+              color: "gray",
+            }}
+          >
+            Command:
+          </Span>{" "}
           <Span
             style={{
               color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
               backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
             }}
           >
-            {item.arguments.id}
+            {item.arguments.cmd}
           </Span>
         </Span>
-      )}
-      {item.arguments.timeout != null && (
+      </TerminalFlex>
+    </TerminalFlex>
+  );
+}
+
+function ManageBackgroundProcessToolRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
+  animate: boolean;
+}) {
+  const rowAnimate = ((): boolean => {
+    switch (item.arguments.action) {
+      case "list":
+        return false;
+      case "poll":
+        return (item.arguments.timeout ?? 0) > 0 ? animate : false;
+      case "kill":
+        return animate;
+    }
+  })();
+  return (
+    <TerminalFlex
+      style={{
+        flexDirection: "column",
+      }}
+    >
+      <ToolCallRow
+        name={item.name}
+        details="Octo is managing a background process:"
+        animate={rowAnimate}
+      />
+      <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <Span>
-          <Span style={{ color: "gray" }}>Timeout:</Span> {item.arguments.timeout}ms
+          <Span style={{ color: "gray" }}>Action:</Span>{" "}
+          <Span style={{ fontWeight: "bold" }}>{item.arguments.action}</Span>
         </Span>
-      )}
+        {item.arguments.label != null && (
+          <Span>
+            <Span style={{ color: "gray" }}>Label:</Span>{" "}
+            <Span style={{ fontWeight: "bold" }}>{item.arguments.label}</Span>
+          </Span>
+        )}
+        {item.arguments.id != null && (
+          <Span>
+            <Span style={{ color: "gray" }}>ID:</Span>{" "}
+            <Span
+              style={{
+                color: MARKDOWN_INLINE_CODE_FOREGROUND_COLOR,
+                backgroundColor: MARKDOWN_INLINE_CODE_BACKGROUND_COLOR,
+              }}
+            >
+              {item.arguments.id}
+            </Span>
+          </Span>
+        )}
+        {item.arguments.timeout != null && (
+          <Span>
+            <Span style={{ color: "gray" }}>Timeout:</Span> {item.arguments.timeout}ms
+          </Span>
+        )}
+      </TerminalFlex>
     </TerminalFlex>
   );
 }
 
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
-  return <ToolCallRow name={item.name}>{item.arguments.filePath}</ToolCallRow>;
+  return <ToolCallRow name={item.name} details={item.arguments.filePath} animate={false} />;
 }
 function PartialReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof partialRead> }) {
   return (
-    <ToolCallRow name={item.name}>
-      {item.arguments.filePath}:{item.arguments.offset}-
-      {item.arguments.offset + item.arguments.limit - 1}
-    </ToolCallRow>
+    <ToolCallRow
+      name={item.name}
+      details={`${item.arguments.filePath}:${item.arguments.offset}-${item.arguments.offset + item.arguments.limit - 1}`}
+      animate={false}
+    />
   );
 }
 function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> }) {
-  return <ToolCallRow name={item.name}>{item?.arguments?.dirPath || process.cwd()}</ToolCallRow>;
+  return (
+    <ToolCallRow
+      name={item.name}
+      details={item?.arguments?.dirPath || process.cwd()}
+      animate={false}
+    />
+  );
 }
 function EditToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof edit> }) {
   const themeColor = useColor();
@@ -2596,23 +2713,23 @@ function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof create
     </TerminalFlex>
   );
 }
-function McpToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof mcp> }) {
+function McpToolRenderer({
+  item,
+  animate,
+}: {
+  item: ParsedToolSchemaFrom<typeof mcp>;
+  animate: boolean;
+}) {
   return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <ToolCallRow name={item.name}>
-        Server: {item.arguments.server}, Tool: {item.arguments.tool}
-      </ToolCallRow>
-      <Span
-        style={{
-          color: "gray",
-        }}
-      >
-        Arguments: {JSON.stringify(item.arguments.arguments)}
-      </Span>
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <ToolCallRow
+        name={item.name}
+        details={`Server: ${item.arguments.server}, Tool: ${item.arguments.tool}`}
+        animate={animate}
+      />
+      <TerminalFlex style={{ marginLeft: 2 }}>
+        <Span style={{ color: "gray" }}>Arguments: {JSON.stringify(item.arguments.arguments)}</Span>
+      </TerminalFlex>
     </TerminalFlex>
   );
 }

@@ -1,6 +1,5 @@
 import React from "react";
-import { Span } from "paintcannon-react";
-import { TerminalFlex } from "./terminal-flex.tsx";
+import { ToolCallRow } from "./tool-call-row.tsx";
 type LspToolParsedSchema = {
   name: `lsp-${string}`;
   arguments: any;
@@ -19,17 +18,22 @@ const LSP_TOOL_ACTION_NAMES: Record<LspToolName, string> = {
 function getLspActionName(toolName: LspToolName): string {
   return LSP_TOOL_ACTION_NAMES[toolName] ?? "query";
 }
-export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
+export function LspToolRenderer({
+  item,
+  animate,
+}: {
+  item: LspToolParsedSchema;
+  animate: boolean;
+}) {
   const lspAction = getLspActionName(item.name);
   switch (item.name) {
     case "lsp-diagnostics":
     case "lsp-document-symbol":
       return (
-        <TerminalFlex>
-          <Span>
-            Octo wants to run LSP {lspAction} on {item.arguments.filePath}
-          </Span>
-        </TerminalFlex>
+        <ToolCallRow
+          name={`Octo wants to run LSP ${lspAction} on ${item.arguments.filePath}`}
+          animate={animate}
+        />
       );
     case "lsp-definition":
     case "lsp-references":
@@ -39,11 +43,10 @@ export function LspToolRenderer({ item }: { item: LspToolParsedSchema }) {
     case "lsp-outgoing-calls": {
       const { filePath, line, character } = item.arguments;
       return (
-        <TerminalFlex>
-          <Span>
-            Octo wants to run LSP {lspAction} at {filePath}:{line}:{character}
-          </Span>
-        </TerminalFlex>
+        <ToolCallRow
+          name={`Octo wants to run LSP ${lspAction} at ${filePath}:${line}:${character}`}
+          animate={animate}
+        />
       );
     }
   }
