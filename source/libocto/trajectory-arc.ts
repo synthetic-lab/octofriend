@@ -11,6 +11,7 @@ import type {
   AssistantMessage,
   Checkpoint,
   CompactionErrorIR,
+  ErrorRetryIR,
   InterruptedByUserIR,
   LlmIR,
   ModelErrorIR,
@@ -98,6 +99,7 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | CompactionErrorIR
   | InterruptedByUserIR
   | ValidationRetryBudgetExceededIR
+  | ErrorRetryIR
   | ModelErrorIR;
 
 export type RecoverableRequestError = Extract<
@@ -199,7 +201,9 @@ export type TrajectoryArcEvents<A extends Agent<any, any, any>> = {
     delayMs: number;
     abortController: AbortController;
   };
-  onMessage: TrajectoryArcIR<A>;
+  // One atomic history commit. Persist the entire group together: an assistant and
+  // the validation/error records that qualify it must never be published separately.
+  onMessages: Array<TrajectoryArcIR<A>>;
   onResponseHeaders: Headers;
 };
 
@@ -289,7 +293,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
 }: TrajectoryArcParams<A, Model>): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
   const messagesCopy: Array<LlmIR<A> | AgentIR<A>> = [...messages];
   const emitIrs = async (delta: Array<TrajectoryArcIR<A>>): Promise<void> => {
-    for (const ir of delta) await handler.onMessage(ir);
+    if (delta.length > 0) await handler.onMessages(delta);
   };
   const finishWith = async (
     reason: AllFinishReasons<A>,
@@ -445,8 +449,8 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     const buffer: AssistantBuffer<CompactionTokenTypes> = {};
     const checkpointContent = await generateCompactionCheckpointContent<A>({
       messages: convertedMessages,
-      run: compactionMessages =>
-        runCompiler<A, undefined>({
+      run: compactionMessages => {
+        return runCompiler<A, undefined>({
           model,
           irs: compactionMessages,
           abortSignal,
@@ -461,7 +465,8 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
               delta: { value: tokens, type },
             });
           },
-        }),
+        });
+      },
     });
 
     if (!checkpointContent.success) return checkpointContent;
@@ -610,13 +615,19 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         }
       }
 
-      await emitIrs(irs);
       if (!consumeValidationRetry()) {
-        return finishWith({
-          type: "validation-retry-budget-exceeded",
-          error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
-        });
+        return finishWith(
+          {
+            type: "validation-retry-budget-exceeded",
+            error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
+          },
+          irs,
+        );
       }
+      // Commit the continuation decision with the failed batch. Its error/skip tail
+      // alone is terminal; error-retry makes a reload continue the same arc.
+      irs.push({ role: "error-retry" });
+      await emitIrs(irs);
       messagesCopy.push(...irs);
       continue;
     }
@@ -663,13 +674,17 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     }
     if (needsRetry) {
       const fullRetryTrajectory = [...irs, ...retryIrs];
-      await emitIrs(fullRetryTrajectory);
       if (!consumeValidationRetry()) {
-        return finishWith({
-          type: "validation-retry-budget-exceeded",
-          error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
-        });
+        return finishWith(
+          {
+            type: "validation-retry-budget-exceeded",
+            error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
+          },
+          fullRetryTrajectory,
+        );
       }
+      fullRetryTrajectory.push({ role: "error-retry" });
+      await emitIrs(fullRetryTrajectory);
       messagesCopy.push(...fullRetryTrajectory);
       continue;
     }

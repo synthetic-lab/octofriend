@@ -88,6 +88,7 @@ function makeHandler(opts?: {
   onRequestRetry?: (event: TrajectoryArcEvents<TestAgent>["requestRetry"]) => void;
 }) {
   const messages: Array<TrajectoryArcIR<TestAgent>> = [];
+  const commits: Array<Array<TrajectoryArcIR<TestAgent>>> = [];
   const retries: Array<TrajectoryArcEvents<TestAgent>["requestRetry"]> = [];
   const correctedTools: string[] = [];
   const rollbacks: null[] = [];
@@ -111,12 +112,13 @@ function makeHandler(opts?: {
       retries.push(event);
       opts?.onRequestRetry?.(event);
     },
-    onMessage: async ir => {
-      messages.push(ir);
+    onMessages: async irs => {
+      commits.push([...irs]);
+      messages.push(...irs);
     },
     onResponseHeaders: async () => {},
   };
-  return { handler, messages, retries, correctedTools, rollbacks };
+  return { handler, messages, commits, retries, correctedTools, rollbacks };
 }
 
 function assistant(opts: {
@@ -265,7 +267,12 @@ describe("trajectoryArc", () => {
 
     expect(finish.reason).toEqual({ type: "needs-response" });
     expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual(["assistant", "tool-parse-error", "assistant"]);
+    expect(messages.map(m => m.role)).toEqual([
+      "assistant",
+      "tool-parse-error",
+      "error-retry",
+      "assistant",
+    ]);
   });
 
   it("finishes with retry-budget-exceeded once the retry budget is spent", async () => {
@@ -286,6 +293,26 @@ describe("trajectoryArc", () => {
     });
   });
 
+  it.each(["malformed", "invalid"] as const)(
+    "commits %s failures with their retry or exhausted-budget decision",
+    async kind => {
+      validateImpl = () => err("invalid query");
+      const failedResult = kind === "malformed" ? malformedResult : toolCallResult("bad");
+      const failureRole = kind === "malformed" ? "tool-parse-error" : "tool-validation-error";
+      const { finish, calls, commits } = await runArc({
+        queue: [failedResult, failedResult],
+        validationRetries: 1,
+      });
+
+      expect(calls).toHaveLength(2);
+      expect(finish.reason.type).toBe("validation-retry-budget-exceeded");
+      expect(commits.map(irs => irs.map(ir => ir.role))).toEqual([
+        ["assistant", failureRole, "error-retry"],
+        ["assistant", failureRole, "validation-retry-budget-exceeded"],
+      ]);
+    },
+  );
+
   it("retries invalid tool calls with tool-validation-error IRs", async () => {
     validateImpl = query => (query === "bad" ? err("stale") : ok(null));
     const { finish, calls, messages } = await runArc({
@@ -294,7 +321,12 @@ describe("trajectoryArc", () => {
 
     expect(finish.reason).toEqual({ type: "needs-response" });
     expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual(["assistant", "tool-validation-error", "assistant"]);
+    expect(messages.map(m => m.role)).toEqual([
+      "assistant",
+      "tool-validation-error",
+      "error-retry",
+      "assistant",
+    ]);
     const validationError = messages[1];
     if (validationError.role !== "tool-validation-error") throw new Error("impossible");
     expect(validationError.error).toBe("stale");
@@ -341,7 +373,12 @@ describe("trajectoryArc", () => {
 
     expect(finish.reason).toEqual({ type: "needs-response" });
     expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual(["assistant", "tool-validation-error", "assistant"]);
+    expect(messages.map(m => m.role)).toEqual([
+      "assistant",
+      "tool-validation-error",
+      "error-retry",
+      "assistant",
+    ]);
   });
 
   it("does not retry request errors when no retries config is passed", async () => {

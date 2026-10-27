@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
   inputFieldAvailable,
@@ -834,6 +834,61 @@ describe("error-mode mirrors", () => {
 });
 
 describe("history persistence (BUGS.md #8, #12)", () => {
+  it("persists each failed-batch commit in one SQL transaction", async () => {
+    const { session } = await bootSession([
+      () => {
+        return okResult(
+          assistantMessage({
+            toolCalls: [
+              {
+                type: "malformed-tool-request",
+                error: "bad json",
+                call: { original: { name: "shell", arguments: "{oops" } },
+                toolCallId: "malformed",
+              },
+              shellCall("skipped", "echo must-not-run"),
+            ],
+          }),
+        );
+      },
+      plain("recovered"),
+    ]);
+    const database = db();
+    const transaction = database.transaction.bind(database);
+    const committedHistories: Array<readonly HistoryNode[]> = [];
+    // Observe our transaction boundaries, not individual SQL statements or store
+    // updates: splitting one commit across multiple transactions must fail this test.
+    const transactions = spyOn(database, "transaction").mockImplementation((callback, options) => {
+      const result = transaction(callback, options);
+      const loaded = loadSession(session.metadata.sessionId!);
+      if (loaded == null) throw new Error("Committed session could not be reloaded");
+      committedHistories.push(loaded.history);
+      return result;
+    });
+    try {
+      await waitForNextTurn(() => respond("try the tools"));
+    } finally {
+      transactions.mockRestore();
+    }
+
+    const failedBatch = [
+      "user",
+      "assistant",
+      "tool-parse-error",
+      "tool-skip-output",
+      "error-retry",
+    ] as const;
+    expect(
+      committedHistories.map(history => {
+        return history.map(node => (node.type === "llm-ir" ? node.ir.role : node.type));
+      }),
+    ).toEqual([["user"], [...failedBatch], [...failedBatch, "assistant"]]);
+    expect(unansweredToolCallIds(committedHistories[1])).toEqual([]);
+    expect(committedHistories.at(-1)).toEqual(
+      JSON.parse(JSON.stringify(useAppStore.getState().history)),
+    );
+  });
+
   it("persists compaction and retry IRs exactly once in the same run", async () => {
     const malformed = {
       type: "malformed-tool-request" as const,
@@ -861,13 +916,14 @@ describe("history persistence (BUGS.md #8, #12)", () => {
       "user",
       "assistant",
       "tool-parse-error",
+      "error-retry",
       "checkpoint",
       "assistant",
     ]);
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
 
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(5);
+    expect(dbNodeCount(sessionId)).toBe(6);
     expect(dbLlmIrCount(sessionId, "mixed-attempt-marker")).toBe(1);
     expect(dbLlmIrCount(sessionId, "call_mixed")).toBe(2); // request + parse error, once each
     expect(dbLlmIrCount(sessionId, "mixed-summary-marker")).toBe(1);

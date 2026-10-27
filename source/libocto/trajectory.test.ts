@@ -230,7 +230,7 @@ function makeTrajectory(opts?: {
   errorCorrection?: ErrorCorrection<TestAgent>;
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
-  onMessage?: (event: TrajectoryEvents<TestAgent>["onMessage"]) => void | Promise<void>;
+  onMessages?: (event: TrajectoryEvents<TestAgent>["onMessages"]) => void | Promise<void>;
   modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
   loadTools?: (
     signal: AbortSignal,
@@ -240,7 +240,7 @@ function makeTrajectory(opts?: {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
     modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
     roles: [] as string[],
-    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessage"]>,
+    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessages"]>,
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     interruptions: [] as Array<TrajectoryEvents<TestAgent>["interrupted"]>,
@@ -334,11 +334,13 @@ function makeTrajectory(opts?: {
           rec.modeObjs.push(mode);
           rec.timeline.push(`mode:${mode.mode}`);
         },
-        onMessage: async event => {
+        onMessages: async event => {
           rec.messages.push(event);
-          rec.roles.push(event.ir.role);
-          rec.timeline.push(`ir:${event.ir.role}`);
-          await opts?.onMessage?.(event);
+          for (const ir of event.irs) {
+            rec.roles.push(ir.role);
+            rec.timeline.push(`ir:${ir.role}`);
+          }
+          await opts?.onMessages?.(event);
         },
         steeringChange: ({ upcoming, queued }) => {
           rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
@@ -719,7 +721,7 @@ describe("trajectory", () => {
     expect(compilerCalls[2].irs.map(ir => ir.role)).toEqual(["user", "assistant", "tool-output"]);
     expect(traj.messages.at(-1)).toBe(child);
     const childEvents = rec.messages.filter(event => !event.root);
-    expect(childEvents.map(event => event.ir.role)).toEqual([
+    expect(childEvents.flatMap(event => event.irs.map(ir => ir.role))).toEqual([
       "assistant",
       "shell-result",
       "assistant",
@@ -963,7 +965,7 @@ describe("trajectory", () => {
         () => okResult(assistantMessage({ content: "middle findings" })),
         plainOk,
       ]);
-      const events: Array<TrajectoryEvents<typeof root>["onMessage"]> = [];
+      const events: Array<TrajectoryEvents<typeof root>["onMessages"]> = [];
       const resolutions: Array<Extract<
         TreeIR<typeof root>,
         { role: "tool-invoke-subagent" }
@@ -994,7 +996,7 @@ describe("trajectory", () => {
         transport,
         abortSignal: exit.signal,
         handler: {
-          onMessage: event => {
+          onMessages: event => {
             events.push(event);
           },
         },
@@ -1014,7 +1016,8 @@ describe("trajectory", () => {
       if (leafEvent == null || leafEvent.root) throw new Error("Expected leaf event");
       const leafMessage = inner.ir.at(-1);
       if (leafMessage == null) throw new Error("Expected leaf message");
-      expect(leafEvent.ir).toBe(leafMessage);
+      expect(leafEvent.irs).toEqual([leafMessage]);
+      expect(leafEvent.irs[0]).toBe(leafMessage);
       expect(leafEvent.scope.parentSubagentIR).toBe(inner);
       expect(leafEvent.scope.toplevelSubagentIR).toBe(outer);
       expect(leafEvent.scope.path).toEqual([
@@ -1081,8 +1084,8 @@ describe("trajectory", () => {
     "does not start child work when quitting during the %s notification",
     async role => {
       const { build, exit } = makeTrajectory({
-        onMessage: async event => {
-          if (event.ir.role !== role) return;
+        onMessages: async event => {
+          if (!event.irs.some(ir => ir.role === role)) return;
           exit.abort();
           await new Promise(resolve => setTimeout(resolve, 0));
         },
@@ -1113,8 +1116,8 @@ describe("trajectory", () => {
 
   it("closes the newly inserted child when interrupted during its notification", async () => {
     const { build } = makeTrajectory({
-      onMessage: async event => {
-        if (event.ir.role === "subagent-trajectory") await interruptNow(traj);
+      onMessages: async event => {
+        if (event.irs.some(ir => ir.role === "subagent-trajectory")) await interruptNow(traj);
       },
     });
     const { traj, compilerCalls } = await build([
@@ -2710,8 +2713,8 @@ describe("trajectory", () => {
         modeChange: ({ mode }) => {
           modes.push(mode.mode);
         },
-        onMessage: ({ ir }) => {
-          roles.push(ir.role);
+        onMessages: ({ irs }) => {
+          roles.push(...irs.map(ir => ir.role));
         },
       },
     });

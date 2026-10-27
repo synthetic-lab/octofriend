@@ -265,17 +265,24 @@ export const useAppStore = create<UiState>((set, get) => {
       whitelistState: get().whitelistState,
     };
 
-    const insertIr = (ir: OctoIR) => {
-      set(state => ({
-        history: appendAndPersistHistory(
-          session,
-          state.history,
-          [{ type: "llm-ir", ir }],
-          currentModel(),
-        ),
-      }));
-      const node = get().history.at(-1);
-      if (node != null) irNodeMap.set(ir, node);
+    const insertIrs = (irs: OctoIR[]) => {
+      if (irs.length === 0) return;
+      const start = get().history.length;
+      set(state => {
+        return {
+          history: appendAndPersistHistory(
+            session,
+            state.history,
+            irs.map(ir => ({ type: "llm-ir", ir })),
+            currentModel(),
+          ),
+        };
+      });
+      // One database transaction for the entire commit; retain every IR's node identity
+      // for rewinds and subsequent nested-trajectory overwrites.
+      for (const node of get().history.slice(start)) {
+        if (node.type === "llm-ir") irNodeMap.set(node.ir, node);
+      }
     };
 
     const instance = new Trajectory({
@@ -428,17 +435,17 @@ export const useAppStore = create<UiState>((set, get) => {
             }
           }
         },
-        onMessage: event => {
+        onMessages: event => {
           if (!isCurrent()) return;
           throttle.flush();
           try {
             if (event.root) {
-              insertIr(event.ir);
+              insertIrs(event.irs);
             } else {
               const trajectory = event.scope.toplevelSubagentIR;
               const node = irNodeMap.get(trajectory);
               if (node == null) {
-                insertIr(trajectory);
+                insertIrs([trajectory]);
               } else {
                 const overwritten = overwriteLlmIrNode(node.nodeId, trajectory);
                 if (!overwritten.success) throw new Error(overwritten.error);

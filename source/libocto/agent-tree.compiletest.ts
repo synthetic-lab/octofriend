@@ -361,9 +361,9 @@ void inspectActiveHistory;
 
 // Message events preserve each active arc's IR universe. Every non-root event points at
 // both the immediate parent trajectory and the root-history trajectory that contains it.
-function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessage"]) {
+function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessages"]) {
   if (event.root) {
-    expectType<AgentIR<Root>>(event.ir);
+    expectType<Array<AgentIR<Root>>>(event.irs);
     // We expect an error here because root appends need no subagent metadata
     // @ts-expect-error
     event.scope;
@@ -374,11 +374,11 @@ function inspectMessageEvent(event: TrajectoryEvents<Root>["onMessage"]) {
     event.scope.toplevelSubagentIR,
   );
   if (event.subagent === "research") {
-    expectType<AgentIR<typeof _research>>(event.ir);
+    expectType<Array<AgentIR<typeof _research>>>(event.irs);
     expectType<Extract<AgentIR<Root>, { subagent: "research" }>>(event.scope.parentSubagentIR);
     return;
   }
-  expectType<AgentIR<typeof _grandchild>>(event.ir);
+  expectType<Array<AgentIR<typeof _grandchild>>>(event.irs);
   expectType<Extract<AgentIR<typeof _research>, { subagent: "grandchild" }>>(
     event.scope.parentSubagentIR,
   );

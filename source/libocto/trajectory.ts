@@ -202,17 +202,17 @@ export type TrajectoryMode<A extends Agent<any, any, any>> =
       scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
     });
 
-// onMessage fires for the active arc's history appends, carrying that arc's exact IR
-// universe: narrow the scope to know whose IRs these are. Subagent appends also carry the
-// immediate trajectory whose ir array received the append and the top-level trajectory that
-// contains it. A persisting client can overwrite the one root-history object even when the
-// append came from a nested child, while other clients can address the immediate parent.
+// onMessages fires once per atomic history commit, carrying that arc's exact IR universe:
+// narrow the scope to know whose IRs these are. Clients must persist the entire group in
+// one transaction. Subagent commits also carry the immediate trajectory whose ir array
+// received the append and the top-level trajectory that contains it; persisting clients
+// overwrite that one root-history object once for the whole group.
 type ScopedSubagentMessages<
   Root extends Agent<any, any, any>,
   Parent extends Agent<any, any, any>,
 > = string extends keyof Parent["agents"]
   ? ScopeSubagent<string> & {
-      ir: AgentIR<Parent["agents"][string]>;
+      irs: Array<AgentIR<Parent["agents"][string]>>;
       scope: {
         path: readonly ScopeHop[];
         parentSubagentIR: Extract<AgentIR<Parent>, { role: "subagent-trajectory" }>;
@@ -222,7 +222,7 @@ type ScopedSubagentMessages<
   : {
       [K in keyof Parent["agents"] & string]:
         | (ScopeSubagent<K> & {
-            ir: AgentIR<Parent["agents"][K]>;
+            irs: Array<AgentIR<Parent["agents"][K]>>;
             scope: {
               path: readonly ScopeHop[];
               parentSubagentIR: Extract<
@@ -236,26 +236,26 @@ type ScopedSubagentMessages<
     }[keyof Parent["agents"] & string];
 
 type ScopedMessages<A extends Agent<any, any, any>> =
-  | (ScopeRoot & { ir: AgentIR<A> })
+  | (ScopeRoot & { irs: Array<AgentIR<A>> })
   | ScopedSubagentMessages<A, A>;
 
 // The arc-sourced events' payloads don't vary by arc, so they carry the tree's exact scope
 // union as top-level discriminants alongside the original payload.
 type ScopedArcEvents<A extends Agent<any, any, any>> = {
-  [K in keyof Omit<TrajectoryArcEvents<A>, "onMessage">]: ArcScope<A> & {
-    payload: Omit<TrajectoryArcEvents<A>, "onMessage">[K];
+  [K in keyof Omit<TrajectoryArcEvents<A>, "onMessages">]: ArcScope<A> & {
+    payload: Omit<TrajectoryArcEvents<A>, "onMessages">[K];
   };
 };
 
 /*
- * Trajectory events are notifications only: handlers never feed back into the loop. onMessage
+ * Trajectory events are notifications only: handlers never feed back into the loop. onMessages
  * fires for every canonical history append; modeChange fires for every transition; arc events
  * are forwarded with their scope. rewind and steeringChange stay unscoped: both only ever
  * happen at the root, where children never park for rectification (inside a trajectory,
  * request/compaction failures are terminal) and never consume steering at all.
  */
 export type TrajectoryEvents<A extends Agent<any, any, any>> = ScopedArcEvents<A> & {
-  onMessage: ScopedMessages<A>;
+  onMessages: ScopedMessages<A>;
   modeChange: { mode: TrajectoryMode<A> };
   rewind: { removed: readonly AgentIR<A>[]; content: UserMessage["content"] | null };
   // Post-mutation steering snapshot, split by when it reaches the model: "upcoming" folds into
@@ -692,22 +692,30 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     ) as ArcScope<A>;
   }
 
-  private async appendIr(
+  private appendIr(
     location: ActiveHistory<A>,
     ir: TreeIR<A> | ToolRejectMessage<A["tools"]>,
   ): Promise<void> {
+    return this.appendIrs(location, [ir]);
+  }
+
+  private async appendIrs(
+    location: ActiveHistory<A>,
+    irs: Array<TreeIR<A> | ToolRejectMessage<A["tools"]>>,
+  ): Promise<void> {
+    if (irs.length === 0) return;
     // The selected history is a member of this tree, not a root history. The operation's
     // producer supplies its own agent's IR; rejects are only produced when the gate exists.
     const history = location.history as Array<TreeIR<A>>;
-    history.push(ir as TreeIR<A>);
-    const event = { ...this.scope(location), ir };
-    // Scope and IR are correlated by the operation, including after its terminal append.
-    await this.params.handler?.onMessage?.(event as ScopedMessages<A>);
+    history.push(...(irs as Array<TreeIR<A>>));
+    const event = { ...this.scope(location), irs };
+    // Publish the entire commit at once, retaining the scope even if it completed this child.
+    await this.params.handler?.onMessages?.(event as ScopedMessages<A>);
   }
 
   // Fires on the exit signal: when the process dies mid-batch, every call without a recorded
   // answer gets a skip marker, since nothing may run after this. Markers append one at a time,
-  // awaiting onMessage each time: the client owns serialization and must have finished
+  // awaiting onMessages each time: the client owns serialization and must have finished
   // persisting before run() resolves.
   private async markExitSkips(): Promise<void> {
     const owner = this.ownership.consume();
@@ -862,11 +870,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           onResponseHeaders: async event => {
             await params.handler?.onResponseHeaders?.({ ...scope, payload: event });
           },
-          onMessage: ir =>
-            owner.ifOwner(() => {
-              if (isMainAgent && ir.role === "checkpoint") this.manualCompactionPending = false;
-              return this.appendIr(location, ir as TreeIR<A>);
-            }),
+          onMessages: irs => {
+            return owner.ifOwner(() => {
+              if (isMainAgent && irs.some(ir => ir.role === "checkpoint")) {
+                this.manualCompactionPending = false;
+              }
+              return this.appendIrs(location, irs as Array<TreeIR<A>>);
+            });
+          },
         },
       });
     return run(location.agent, location.history);

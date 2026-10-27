@@ -84,7 +84,7 @@ type Response = (
 
 type Snapshot = {
   scope: Scope;
-  role: TreeIR<TestAgent>["role"];
+  roles: Array<TreeIR<TestAgent>["role"]>;
   history: string;
 };
 
@@ -170,10 +170,10 @@ async function fixture(messages: Array<AgentIR<TestAgent>>, responses: Response[
     subagentPrompts: { research: async () => "Research the task." },
     toolContentTooLargeError: async () => "Unexpected oversized test output",
     handler: {
-      onMessage: event => {
+      onMessages: event => {
         if (event.root) {
-          // Root appends persist the individual IR carried by this event.
-          persisted.push(event.ir);
+          // Root appends persist the whole commit in one transaction.
+          persisted.push(...event.irs);
         } else {
           // Child appends overwrite their containing root record, as in state.ts.
           const index = persisted.indexOf(event.scope.toplevelSubagentIR);
@@ -184,7 +184,7 @@ async function fixture(messages: Array<AgentIR<TestAgent>>, responses: Response[
         // appends repair an earlier snapshot and conceal the crash window.
         snapshots.push({
           scope: event.root ? "root" : event.subagent,
-          role: event.ir.role,
+          roles: event.irs.map(ir => ir.role),
           history: JSON.stringify(persisted),
         });
       },
@@ -216,9 +216,9 @@ async function recordArc(scope: Scope, responses: Response[]): Promise<Fixture> 
   return recording;
 }
 
-function snapshotAt(recording: Fixture, scope: Scope, role: Snapshot["role"]): Snapshot {
+function snapshotAt(recording: Fixture, scope: Scope, role: Snapshot["roles"][number]): Snapshot {
   const snapshot = recording.snapshots.find(
-    snapshot => snapshot.scope === scope && snapshot.role === role,
+    snapshot => snapshot.scope === scope && snapshot.roles.includes(role),
   );
   if (snapshot == null) throw new Error(`No ${scope} ${role} persistence boundary was recorded`);
   return snapshot;
@@ -294,7 +294,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
           // Exercise the real failed-batch path rather than fabricating invalid history.
           expect(
             recording.snapshots.some(
-              snapshot => snapshot.scope === scope && snapshot.role === failure.errorRole,
+              snapshot => snapshot.scope === scope && snapshot.roles.includes(failure.errorRole),
             ),
           ).toBe(true);
           const recovered = await reload(snapshotAt(recording, scope, "assistant"));
