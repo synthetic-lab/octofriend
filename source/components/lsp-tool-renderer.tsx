@@ -1,5 +1,5 @@
 import React from "react";
-import { ToolCallRow, type ToolCallActivity } from "./tool-call-row.tsx";
+import { ToolCallRow } from "./tool-call-row.tsx";
 type LspToolParsedSchema = {
   name: `lsp-${string}`;
   arguments: any;
@@ -20,10 +20,10 @@ function getLspActionName(toolName: LspToolName): string {
 }
 export function LspToolRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: LspToolParsedSchema;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   const lspAction = getLspActionName(item.name);
   switch (item.name) {
@@ -32,7 +32,7 @@ export function LspToolRenderer({
       return (
         <ToolCallRow
           name={`Octo wants to run LSP ${lspAction} on ${item.arguments.filePath}`}
-          activity={activity}
+          animate={animate}
         />
       );
     case "lsp-definition":
@@ -45,7 +45,7 @@ export function LspToolRenderer({
       return (
         <ToolCallRow
           name={`Octo wants to run LSP ${lspAction} at ${filePath}:${line}:${character}`}
-          activity={activity}
+          animate={animate}
         />
       );
     }

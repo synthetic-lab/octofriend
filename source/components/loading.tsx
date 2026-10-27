@@ -27,7 +27,7 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
   const [idx, setIndex] = useState(0);
   const [dotCount, setDotCount] = useState(0);
   const themeColor = useColor();
-  const shimmerlock = useShimmerlock("primary-loading");
+  const shimmerlock = useShimmerlock("root-loading");
   const loadingStrings = overrideStrings || DEFAULT_LOADING_STRINGS;
   useEffect(() => {
     let fired = false;

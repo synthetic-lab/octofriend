@@ -6,16 +6,14 @@ import PausableLineSpinner from "./pausable-line-spinner.tsx";
 import Shimmer, { type ShimmerSegment } from "./shimmer.tsx";
 import { useShimmerlock } from "../hooks/use-shimmerlock.ts";
 
-export type ToolCallActivity = "static" | "pending" | "running";
-
 export function ToolCallRow({
   name,
   details,
-  activity,
+  animate,
 }: {
   name: string;
   details?: string;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   const themeColor = useColor();
   const hasLongDetails = details != null && details.length >= 20;
@@ -32,10 +30,10 @@ export function ToolCallRow({
   return (
     <TerminalFlex>
       <Span style={{ flexShrink: 0 }}>
-        <PausableLineSpinner running={activity === "running"} />{" "}
+        <PausableLineSpinner running={animate} />{" "}
       </Span>
       <Span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-        {activity === "running" ? (
+        {animate ? (
           <LiveToolText segments={segments} />
         ) : (
           segments.map((segment, index) => (
@@ -51,6 +49,6 @@ export function ToolCallRow({
 }
 
 function LiveToolText({ segments }: { segments: Array<ShimmerSegment> }) {
-  const lock = useShimmerlock("primary-tool");
+  const lock = useShimmerlock("root-tool");
   return <Shimmer segments={segments} lock={lock} running />;
 }

@@ -124,7 +124,7 @@ import { useShimmerlock } from "./hooks/use-shimmerlock.ts";
 import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
 import { AppShell } from "./components/app-shell.tsx";
-import { ToolCallRow, type ToolCallActivity } from "./components/tool-call-row.tsx";
+import { ToolCallRow } from "./components/tool-call-row.tsx";
 import { useToast } from "./components/toast.tsx";
 import { ReactDevelopmentBuildToast } from "./components/react-development-build-toast.tsx";
 import {
@@ -1425,7 +1425,7 @@ function ToolRequestsRenderer({
     >
       <ToolMessageRenderer
         item={currentToolReq}
-        activity={trajectoryMode.mode === "running-tool" ? "running" : "pending"}
+        animate={trajectoryMode.mode === "running-tool" ? true : false}
       />
       {permissionUi.type === "prompt" && (
         <ToolPermissionSelect control={permissionUi.control} onContentLayout={onContentLayout} />
@@ -1822,7 +1822,7 @@ function renderLlmIR(
           flexDirection: "column",
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} activity="static" />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <TerminalFlex
           style={{
             marginLeft: 2,
@@ -1849,7 +1849,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} activity="static" />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer content={item.content} />
       </TerminalFlex>
     );
@@ -1862,7 +1862,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} activity="static" />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer
           content={[
             {
@@ -1890,7 +1890,7 @@ function renderLlmIR(
           marginBottom: 1,
         }}
       >
-        <ToolMessageRenderer item={item.toolCall} activity="static" />
+        <ToolMessageRenderer item={item.toolCall} animate={false} />
         <ToolOutputContentRenderer
           content={[
             {
@@ -2306,10 +2306,10 @@ function toolFailureAction(toolCall: ToolFailureItem["toolCall"]): {
 
 function ToolMessageRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ToolCallRequest | MalformedToolRequest;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   if (item.type === "malformed-tool-request") {
     return null;
@@ -2324,31 +2324,31 @@ function ToolMessageRenderer({
     case "list":
       return <ListToolRenderer item={parsedToolSchema(item)} />;
     case "shell":
-      return <ShellToolRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <ShellToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "background-process":
       return <BackgroundProcessToolRenderer item={parsedToolSchema(item)} />;
     case "manage-background-process":
       return (
-        <ManageBackgroundProcessToolRenderer item={parsedToolSchema(item)} activity={activity} />
+        <ManageBackgroundProcessToolRenderer item={parsedToolSchema(item)} animate={animate} />
       );
     case "edit":
       return <EditToolRenderer item={parsedToolSchema(item)} />;
     case "create":
       return <CreateToolRenderer item={parsedToolSchema(item)} />;
     case "mcp":
-      return <McpToolRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <McpToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "fetch":
-      return <FetchToolRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <FetchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "rewrite":
       return <RewriteToolRenderer item={parsedToolSchema(item)} />;
     case "skill":
       return <SkillToolRenderer item={parsedToolSchema(item)} />;
     case "web-search":
-      return <WebSearchToolRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <WebSearchToolRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "glob":
-      return <GlobRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <GlobRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "grep":
-      return <GrepRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <GrepRenderer item={parsedToolSchema(item)} animate={animate} />;
     case "lsp-definition":
     case "lsp-references":
     case "lsp-hover":
@@ -2357,7 +2357,7 @@ function ToolMessageRenderer({
     case "lsp-implementation":
     case "lsp-incoming-calls":
     case "lsp-outgoing-calls":
-      return <LspToolRenderer item={parsedToolSchema(item)} activity={activity} />;
+      return <LspToolRenderer item={parsedToolSchema(item)} animate={animate} />;
   }
 }
 function parsedToolSchema(toolCall: ToolCallRequest): any {
@@ -2368,14 +2368,14 @@ function parsedToolSchema(toolCall: ToolCallRequest): any {
 }
 function GlobRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof glob>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   return (
     <TerminalFlex style={{ flexDirection: "column" }}>
-      <ToolCallRow name="Octo searched for files using a glob pattern:" activity={activity} />
+      <ToolCallRow name="Octo searched for files using a glob pattern:" animate={animate} />
       <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <GlobArg name="Path" arg={item.arguments.path} />
         <GlobArg name="Filename pattern" arg={item.arguments.includeName} />
@@ -2387,14 +2387,14 @@ function GlobRenderer({
 }
 function GrepRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof grep>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   return (
     <TerminalFlex style={{ flexDirection: "column" }}>
-      <ToolCallRow name="Octo searched file contents:" activity={activity} />
+      <ToolCallRow name="Octo searched file contents:" animate={animate} />
       <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <GlobArg name="Pattern" arg={item.arguments.pattern} />
         <GlobArg name="Path" arg={item.arguments.path} />
@@ -2429,12 +2429,12 @@ function GlobArg({ name, arg }: { name: string; arg: string | number | boolean |
   );
 }
 function WebSearchToolRenderer({
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof webSearch>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
-  return <ToolCallRow name="Octo searched the web" activity={activity} />;
+  return <ToolCallRow name="Octo searched the web" animate={animate} />;
 }
 function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> }) {
   return (
@@ -2451,23 +2451,23 @@ function SkillToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof skill> 
 }
 function FetchToolRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof fetchTool>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
-  return <ToolCallRow name={item.name} details={item.arguments.url} activity={activity} />;
+  return <ToolCallRow name={item.name} details={item.arguments.url} animate={animate} />;
 }
 function ShellToolRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof shell>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   return (
     <TerminalFlex style={{ flexDirection: "column" }}>
-      <ToolCallRow name={item.name} details={item.arguments.cmd} activity={activity} />
+      <ToolCallRow name={item.name} details={item.arguments.cmd} animate={animate} />
       <TerminalFlex style={{ marginLeft: 2 }}>
         <Span style={{ color: "gray" }}>timeout: {item.arguments.timeout}</Span>
       </TerminalFlex>
@@ -2489,7 +2489,7 @@ function BackgroundProcessToolRenderer({
       <ToolCallRow
         name={item.name}
         details="Octo is starting a background process:"
-        activity="static"
+        animate={false}
       />
       <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <Span>
@@ -2532,19 +2532,19 @@ function BackgroundProcessToolRenderer({
 
 function ManageBackgroundProcessToolRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof manageBackgroundProcess>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
-  const rowActivity = ((): ToolCallActivity => {
+  const rowAnimate = ((): boolean => {
     switch (item.arguments.action) {
       case "list":
-        return "static";
+        return false;
       case "poll":
-        return (item.arguments.timeout ?? 0) > 0 ? activity : "static";
+        return (item.arguments.timeout ?? 0) > 0 ? animate : false;
       case "kill":
-        return activity;
+        return animate;
     }
   })();
   return (
@@ -2556,7 +2556,7 @@ function ManageBackgroundProcessToolRenderer({
       <ToolCallRow
         name={item.name}
         details="Octo is managing a background process:"
-        activity={rowActivity}
+        animate={rowAnimate}
       />
       <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
         <Span>
@@ -2593,14 +2593,14 @@ function ManageBackgroundProcessToolRenderer({
 }
 
 function ReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof read> }) {
-  return <ToolCallRow name={item.name} details={item.arguments.filePath} activity="static" />;
+  return <ToolCallRow name={item.name} details={item.arguments.filePath} animate={false} />;
 }
 function PartialReadToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof partialRead> }) {
   return (
     <ToolCallRow
       name={item.name}
       details={`${item.arguments.filePath}:${item.arguments.offset}-${item.arguments.offset + item.arguments.limit - 1}`}
-      activity="static"
+      animate={false}
     />
   );
 }
@@ -2609,7 +2609,7 @@ function ListToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof list> })
     <ToolCallRow
       name={item.name}
       details={item?.arguments?.dirPath || process.cwd()}
-      activity="static"
+      animate={false}
     />
   );
 }
@@ -2705,17 +2705,17 @@ function CreateToolRenderer({ item }: { item: ParsedToolSchemaFrom<typeof create
 }
 function McpToolRenderer({
   item,
-  activity,
+  animate,
 }: {
   item: ParsedToolSchemaFrom<typeof mcp>;
-  activity: ToolCallActivity;
+  animate: boolean;
 }) {
   return (
     <TerminalFlex style={{ flexDirection: "column" }}>
       <ToolCallRow
         name={item.name}
         details={`Server: ${item.arguments.server}, Tool: ${item.arguments.tool}`}
-        activity={activity}
+        animate={animate}
       />
       <TerminalFlex style={{ marginLeft: 2 }}>
         <Span style={{ color: "gray" }}>Arguments: {JSON.stringify(item.arguments.arguments)}</Span>
