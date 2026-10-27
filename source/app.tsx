@@ -2077,7 +2077,7 @@ function SubagentProgressRenderer({
               {
                 text: "Compacting history...",
                 from: SUBAGENT_ACTIVITY_COLOR,
-                to: FOREGROUND_COLOR,
+                to: SHIMMER_HIGHLIGHT_COLOR,
               },
             ]}
             lock={shimmerlock}
@@ -2094,7 +2094,7 @@ function SubagentProgressRenderer({
               {
                 text: "Subagent is thinking...",
                 from: SUBAGENT_ACTIVITY_COLOR,
-                to: FOREGROUND_COLOR,
+                to: SHIMMER_HIGHLIGHT_COLOR,
               },
             ]}
             lock={shimmerlock}
