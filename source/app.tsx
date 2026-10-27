@@ -1695,7 +1695,7 @@ const MessageDisplayInner = ({
     if (state.sessionMode.mode !== "live") return null;
     const mode = state.sessionMode.liveMode.trajectoryMode;
     if (mode.mode === "compacting") return "compacting";
-    if (mode.mode === "responding" && mode.receivedTokens) return "responding";
+    if (mode.mode === "responding") return mode.receivedTokens ? "responding" : "waiting";
     if (mode.mode === "running-tool") return "running-tool";
     return null;
   });
@@ -1753,7 +1753,7 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-type InProgressState = "compacting" | "responding" | "running-tool" | null;
+type InProgressState = "compacting" | "responding" | "waiting" | "running-tool" | null;
 
 function renderInflightResponse(item: InflightResponseType, inProgressState: InProgressState) {
   if (inProgressState === "compacting") {
@@ -2102,14 +2102,17 @@ function SubagentProgressRenderer({
           />
         </Span>
       )}
-      {inProgressState === "responding" && (
+      {(inProgressState === "responding" || inProgressState === "waiting") && (
         <Span style={{ color: "gray" }}>
           {items.length === 0 ? " " : ""}
           <Spinner type="line" />{" "}
           <Shimmer
             segments={[
               {
-                text: "Subagent is thinking...",
+                text:
+                  inProgressState === "waiting"
+                    ? "Waiting for API response..."
+                    : "Subagent is thinking...",
                 from: SUBAGENT_ACTIVITY_COLOR,
                 to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
               },
