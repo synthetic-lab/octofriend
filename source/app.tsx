@@ -1699,6 +1699,12 @@ const MessageDisplayInner = ({
     if (mode.mode === "running-tool") return "running-tool";
     return null;
   });
+  const runningToolCallId = useAppStore(state => {
+    if (state.sessionMode.mode !== "live") return null;
+    const mode = state.sessionMode.liveMode.trajectoryMode;
+    if (mode.mode === "running-tool") return mode.toolCall.toolCallId;
+    return null;
+  });
   if (item.type === "inflight-response") {
     return renderInflightResponse(item, inProgressState);
   }
@@ -1720,7 +1726,7 @@ const MessageDisplayInner = ({
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item, inProgressState, trajectory);
+    return renderLlmIR(item, inProgressState, runningToolCallId, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1774,6 +1780,7 @@ function renderInflightResponse(item: InflightResponseType, inProgressState: InP
 function renderLlmIR(
   node: Extract<HistoryNode, { type: "llm-ir" }>,
   inProgressState: InProgressState,
+  runningToolCallId: string | null,
   trajectory: LiveTrajectory["instance"],
 ) {
   const item = node.ir;
@@ -1784,6 +1791,7 @@ function renderLlmIR(
         inspection={inspection}
         history={[...item.ir]}
         inProgressState={inProgressState}
+        runningToolCallId={runningToolCallId}
       />
     );
   }
@@ -1988,16 +1996,18 @@ function renderLlmIR(
 }
 type SubagentHistoryItem =
   | { type: "compaction" }
-  | { type: "tool-call"; name: string; detail: string | null };
+  | { type: "tool-call"; toolCallId: string; name: string; detail: string | null };
 
 function SubagentTrajectoryRenderer({
   inspection,
   history,
   inProgressState,
+  runningToolCallId,
 }: {
   inspection: SubagentTrajectoryInspection;
   history: Extract<OctoIR, { role: "subagent-trajectory" }>["ir"];
   inProgressState: InProgressState;
+  runningToolCallId: string | null;
 }) {
   const cwd = useCwd();
   const items = history.flatMap((ir): Array<SubagentHistoryItem> => {
@@ -2008,20 +2018,20 @@ function SubagentTrajectoryRenderer({
       .map((call): SubagentHistoryItem => {
         // Exhaustive over the subagent's tools on purpose: adding a new tool without a case
         // makes this map return undefined, which fails to compile.
+        const base = { type: "tool-call" as const, toolCallId: call.toolCallId, name: call.name };
         switch (call.name) {
           case "read":
-            return { type: "tool-call", name: call.name, detail: call.parsed.filePath };
+            return { ...base, detail: call.parsed.filePath };
           case "partial-read":
             return {
-              type: "tool-call",
-              name: call.name,
+              ...base,
               detail: `${call.parsed.filePath}:${call.parsed.offset}-${call.parsed.offset + call.parsed.limit - 1}`,
             };
           case "list":
-            return { type: "tool-call", name: call.name, detail: call.parsed.dirPath || cwd };
+            return { ...base, detail: call.parsed.dirPath || cwd };
           case "grep":
           case "glob":
-            return { type: "tool-call", name: call.name, detail: null };
+            return { ...base, detail: null };
         }
       });
   });
@@ -2029,7 +2039,11 @@ function SubagentTrajectoryRenderer({
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
       {inspection.type === "in-progress" && items.length > 0 && (
-        <SubagentProgressRenderer items={items} inProgressState={inProgressState} />
+        <SubagentProgressRenderer
+          items={items}
+          inProgressState={inProgressState}
+          runningToolCallId={runningToolCallId}
+        />
       )}
     </TerminalFlex>
   );
@@ -2038,13 +2052,14 @@ function SubagentTrajectoryRenderer({
 function SubagentProgressRenderer({
   items,
   inProgressState,
+  runningToolCallId,
 }: {
   items: Array<SubagentHistoryItem>;
   inProgressState: InProgressState;
+  runningToolCallId: string | null;
 }) {
   const color = useColor();
   const shimmerlock = useShimmerlock("explore-subagent");
-  const lastToolCall = lastToolCallIndex(items);
   return (
     <TerminalFlex style={{ flexDirection: "column", marginLeft: 2 }}>
       {items.map((item, index) => {
@@ -2056,7 +2071,9 @@ function SubagentProgressRenderer({
             </Span>
           );
         }
-        const running = inProgressState === "running-tool" && index === lastToolCall;
+        // The trajectory runs a batch's calls in order, so the running call may be any of them:
+        // match by ID instead of assuming it's the last.
+        const running = inProgressState === "running-tool" && item.toolCallId === runningToolCallId;
         return (
           <Span key={index}>
             <PausableLineSpinner running={running} />{" "}
@@ -2104,13 +2121,6 @@ function SubagentProgressRenderer({
       )}
     </TerminalFlex>
   );
-}
-
-function lastToolCallIndex(items: Array<SubagentHistoryItem>): number {
-  for (let index = items.length - 1; index >= 0; index--) {
-    if (items[index].type === "tool-call") return index;
-  }
-  return -1;
 }
 
 function ExploreHeading({ inspection }: { inspection: SubagentTrajectoryInspection }) {
