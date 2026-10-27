@@ -15,15 +15,20 @@ export const SHIMMER_PRIORITY_ORDER: { [K in ShimmerPriority]: number } = {
   "root-loading": 3,
 };
 
+declare const shimmerBrand: unique symbol;
+type ShimmerId = symbol & {
+  [shimmerBrand]: never;
+};
+
 type ShimmerRegistration = {
-  id: symbol;
+  id: ShimmerId;
   priority: ShimmerPriority;
 };
 
 type ShimmerlockState = {
   registrations: Array<ShimmerRegistration>;
-  register: (id: symbol, priority: ShimmerPriority) => void;
-  unregister: (id: symbol) => void;
+  register: (id: ShimmerId, priority: ShimmerPriority) => void;
+  unregister: (id: ShimmerId) => void;
 };
 
 const useShimmerlockStore = create<ShimmerlockState>(set => ({
@@ -50,7 +55,7 @@ function owner(registrations: Array<ShimmerRegistration>): symbol | null {
 }
 
 export function useShimmerlock(priority: ShimmerPriority): symbol {
-  const [id] = useState(() => Symbol());
+  const [id] = useState(() => Symbol() as ShimmerId);
   const { register, unregister } = useShimmerlockStore(
     useShallow(state => ({
       register: state.register,
