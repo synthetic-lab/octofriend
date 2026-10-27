@@ -35,7 +35,7 @@ function mix(from: Rgb, to: Rgb, t: number): string {
   return `#${channel(0)}${channel(1)}${channel(2)}`;
 }
 
-function Shimmer({ segments, lock, running = false }: Props) {
+function Shimmer({ segments, lock, running }: Props) {
   const ownsLock = useShimmerlockOwnershipCheck(lock);
   const shouldRun = running && ownsLock;
   const characters = segments.flatMap(({ text, from, to }) => {
