@@ -23,6 +23,11 @@ const INTERVAL_MS = 60;
 const WAVE_WIDTH = 4;
 const FADE_OUT_MS = 500;
 
+/** Duration of one full shimmer sweep, in milliseconds. */
+export function shimmerTime(str: string): number {
+  return (str.length + 2 * WAVE_WIDTH) * INTERVAL_MS;
+}
+
 type Rgb = [number, number, number];
 
 function parseHex(color: string): Rgb | null {
