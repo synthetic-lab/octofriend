@@ -45,7 +45,13 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
       <Span> </Span>
       <Shimmer
         key={loadingString}
-        segments={[{ text: loadingString, from: themeColor, to: SHIMMER_HIGHLIGHT_COLOR }]}
+        segments={[
+          {
+            text: loadingString + ".".repeat(dotCount),
+            from: themeColor,
+            to: SHIMMER_HIGHLIGHT_COLOR,
+          },
+        ]}
         lock={shimmerlock}
         running
         onShimmerEnd={() => {
@@ -53,7 +59,6 @@ export default function Loading({ overrideStrings }: { overrideStrings?: Array<s
           resetDots();
         }}
       />
-      <Span>{".".repeat(dotCount)}</Span>
     </TerminalFlex>
   );
 }
