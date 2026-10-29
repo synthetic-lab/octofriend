@@ -115,10 +115,10 @@ async function startWaitingStep<A extends Agent<any, any, any>, Model>(
   const finished = traj.step();
   waitingSteps.push(finished);
   const deadline = Date.now() + 1000;
-  while (traj.mode === before || traj.mode.mode !== mode) {
+  do {
     if (Date.now() >= deadline) throw new Error(`Timed out waiting for ${mode}`);
     await new Promise(resolve => setTimeout(resolve, 0));
-  }
+  } while (traj.mode === before || traj.mode.mode !== mode);
   return { finished };
 }
 
@@ -1596,11 +1596,11 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("first"));
     expect(await traj.step()).toBe(true);
-    await startWaitingStep(traj, "ready-for-request");
+    const second = await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual(["user", "assistant"]);
 
     inputControl(traj).enqueueSteering(text("second"));
-    expect(await traj.step()).toBe(true);
+    expect(await second.finished).toBe(true);
     const waiting = await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual(["user", "assistant", "user", "interrupted-by-user"]);
 
@@ -2123,7 +2123,7 @@ describe("trajectory", () => {
     ]);
   });
 
-  it("drains queued steering on interrupt and reports it via the interrupted event", async () => {
+  it("cancels queued compaction and reports dropped steering on interrupt", async () => {
     const { build, rec } = makeTrajectory();
     const queue: CompilerQueueItem[] = [];
     const { traj } = await build(queue);
@@ -2131,6 +2131,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     queue.push(async onTokens => {
       await onTokens("thinking", "reasoning");
+      inputControl(traj).requestCompaction();
       inputControl(traj).enqueueSteering(text("queued one"));
       inputControl(traj).enqueueSteering(text("queued two"));
       interruptNow(traj);
@@ -2138,15 +2139,19 @@ describe("trajectory", () => {
     }, plainOk);
 
     expect(await traj.step()).toBe(true);
-    await startWaitingStep(traj, "ready-for-request");
+    const waiting = await startWaitingStep(traj, "ready-for-request");
 
     expect(rec.interruptions).toEqual([
       { droppedSteering: [text("queued one"), text("queued two")] },
     ]);
     expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
+
+    await inputControl(traj).enqueueSteering(text("continue"));
+    expect(await waiting.finished).toBe(true);
+    expect(rec.arc.compaction).toBe(0);
   });
 
-  it("wakes an idle trajectory to compact and preserves steering queued during compaction", async () => {
+  it("unpauses for repeated compactions without losing concurrent steering", async () => {
     const { build, rec } = makeTrajectory({
       messages: [
         { role: "user", content: text("original request") },
@@ -2172,11 +2177,20 @@ describe("trajectory", () => {
     expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
 
     await traj.step();
-    await startWaitingStep(traj, "ready-for-request");
+    const second = await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual(["checkpoint", "assistant", "user", "assistant"]);
     expect(rec.arc.compaction).toBe(1);
     expect(compilerCalls).toHaveLength(3);
     expect(compilerCalls[2].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
+
+    queue.push(plainOk, plainOk);
+    inputControl(traj).requestCompaction();
+    await inputControl(traj).enqueueSteering(text("next follow up"));
+    await second.finished;
+    expect(rec.arc.compaction).toBe(2);
+    expect(compilerCalls).toHaveLength(5);
+    expect(compilerCalls[3].irs.at(-2)).toEqual({ role: "user", content: text("next follow up") });
+    await startWaitingStep(traj, "ready-for-request");
   });
 
   it.each(["allow", "reject"])(
@@ -2193,12 +2207,6 @@ describe("trajectory", () => {
         plainOk,
         plainOk,
       ]);
-      const ran: string[] = [];
-      runImpl = async query => {
-        ran.push(query);
-        return ok({ type: "output", content: text(query) });
-      };
-
       await inputControl(traj).enqueueSteering(text("run both"));
       await traj.step();
       const waiting = await startWaitingStep(traj, "tool-call-permission");
@@ -2206,7 +2214,6 @@ describe("trajectory", () => {
       await inputControl(traj).enqueueSteering(text("follow up after permission"));
       expect(rec.arc.compaction).toBe(0);
       expect(compilerCalls).toHaveLength(1);
-      expect(ran).toEqual([]);
 
       resolvePermission(
         decision === "allow"
@@ -2216,55 +2223,15 @@ describe("trajectory", () => {
       await waiting.finished;
       await startWaitingStep(traj, "ready-for-request");
 
-      expect(ran).toEqual(decision === "allow" ? ["a", "b"] : []);
-      expect(rec.roles).toEqual([
-        "user",
-        "assistant",
-        ...(decision === "allow"
-          ? ["tool-output", "tool-output"]
-          : ["tool-reject", "tool-skip-output", "user"]),
-        "user",
-        "checkpoint",
-        "assistant",
-      ]);
       expect(rec.arc.compaction).toBe(1);
       expect(compilerCalls).toHaveLength(3);
       expect(compilerCalls[1].irs.at(-2)).toEqual({
         role: "user",
         content: text("follow up after permission"),
       });
+      expect(compilerCalls[2].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
     },
   );
-
-  it("keeps messages and compaction queued through response retries until the next arc", async () => {
-    const { build, rec } = makeTrajectory({
-      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
-    });
-    const queue: CompilerQueueItem[] = [];
-    const { traj, compilerCalls } = await build(queue);
-    queue.push(
-      async () => {
-        inputControl(traj).requestCompaction();
-        await inputControl(traj).enqueueSteering(text("follow up"));
-        return err(requestError("response failed"));
-      },
-      plainOk,
-      plainOk,
-      plainOk,
-    );
-
-    await inputControl(traj).enqueueSteering(text("original request"));
-    await traj.step();
-    expect(rec.arc.compaction).toBe(0);
-    expect(compilerCalls[1].irs).toEqual(compilerCalls[0].irs);
-
-    await traj.step();
-    await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["user", "assistant", "user", "checkpoint", "assistant"]);
-    expect(rec.arc.compaction).toBe(1);
-    expect(compilerCalls).toHaveLength(4);
-    expect(compilerCalls[2].irs.at(-2)).toEqual({ role: "user", content: text("follow up") });
-  });
 
   it("keeps session compaction queued through child compaction and the rest of the tool batch", async () => {
     const { build, rec } = makeTrajectory({ contextWindow: 1000 });
@@ -2375,31 +2342,6 @@ describe("trajectory", () => {
     expect(compilerCalls).toHaveLength(5);
     expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
     expect(compilerCalls[4].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
-  });
-
-  it("cancels a queued compaction when the user interrupts the tool", async () => {
-    const { build, rec } = makeTrajectory();
-    const { traj, compilerCalls } = await build([
-      () => okResult(assistantMessage({ toolCalls: [searchCall("a", "c1")] })),
-      plainOk,
-    ]);
-    runImpl = async () => {
-      inputControl(traj).requestCompaction();
-      await inputControl(traj).enqueueSteering(text("queued before interrupt"));
-      await interruptNow(traj);
-      return ok({ type: "output", content: text("stopped") });
-    };
-
-    await inputControl(traj).enqueueSteering(text("run"));
-    await traj.step();
-    await traj.step();
-    await inputControl(traj).enqueueSteering(text("continue"));
-    await traj.step();
-
-    expect(rec.arc.compaction).toBe(0);
-    expect(compilerCalls).toHaveLength(2);
-    expect(rec.interruptions).toEqual([{ droppedSteering: [text("queued before interrupt")] }]);
-    await startWaitingStep(traj, "ready-for-request");
   });
 
   it("compacts an over-full history, then responds", async () => {

@@ -393,19 +393,33 @@ function coalesceUserMessageContent(
   return [{ type: "text", content: text.join("\n") }, ...images];
 }
 
-async function waitSteeringOrExit(
+type UnpauseResult = Result<"compaction-requested" | Array<UserMessage["content"]>, "aborted">;
+
+async function waitForUnpause(
   steering: Input<UserMessage["content"]>,
+  compactionRequested: Promise<void>,
   exit: AbortSignal,
-): Promise<Result<Array<UserMessage["content"]>, "aborted">> {
+): Promise<UnpauseResult> {
   if (exit.aborted) return err("aborted");
   let onAbort!: () => void;
-  const aborted = new Promise<Result<Array<UserMessage["content"]>, "aborted">>(resolve => {
-    onAbort = () => resolve(err("aborted"));
+  const aborted = new Promise<"aborted">(resolve => {
+    onAbort = () => resolve("aborted");
     exit.addEventListener("abort", onAbort, { once: true });
   });
-  const winner = await Promise.race([steering.get().then(ok), aborted]);
+  const winner = await Promise.race([
+    steering.wait().then(() => "steering-available" as const),
+    compactionRequested.then(() => "compaction-requested" as const),
+    aborted,
+  ]);
   exit.removeEventListener("abort", onAbort);
-  return winner;
+  switch (winner) {
+    case "steering-available":
+      return ok(steering.take());
+    case "compaction-requested":
+      return ok(winner);
+    case "aborted":
+      return err(winner);
+  }
 }
 
 const ABORTED_TOOL_SKIP_REASON = "The user aborted the response, so this tool was skipped";
@@ -497,8 +511,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private turnController = new AbortController();
   private readonly steering = new Input<UserMessage["content"]>();
   private manualCompactionPending = false;
+  private compactionRequested = Promise.withResolvers<void>();
   private readonly permissionGate: PermissionGate<A> | undefined;
-  private awaitingSteering = true;
+  private awaitingUnpause = true;
   private _finish: Promise<void> = Promise.resolve();
   private readonly ownership = new OwnershipLock();
   // Every level is downconverted, then lower() is applied using the resolved model's modalities.
@@ -564,7 +579,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         )
           return false;
         this.manualCompactionPending = true;
-        this.steering.wake();
+        this.compactionRequested.resolve();
+        this.compactionRequested = Promise.withResolvers<void>();
         return true;
       },
     };
@@ -746,7 +762,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async emitSteeringChange(): Promise<void> {
     const pending = [...this.steering.peek()];
     await this.params.handler?.steeringChange?.(
-      this.awaitingSteering ? { upcoming: pending, queued: [] } : { upcoming: [], queued: pending },
+      this.awaitingUnpause ? { upcoming: pending, queued: [] } : { upcoming: [], queued: pending },
     );
   }
 
@@ -873,7 +889,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   async step(): Promise<boolean> {
     if (this.params.abortSignal.aborted) return false;
     this.turnController = new AbortController();
-    this.awaitingSteering = false;
+    this.awaitingUnpause = false;
 
     let inspection = this.inspect();
     while (inspection.action === "rectify" || inspection.action === "invoke-subagent") {
@@ -899,16 +915,21 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       | { action: "quit" }
     > => {
       if (active.action === "respond" || active.action === "run-tools") return active;
-      this.awaitingSteering = true;
+      this.awaitingUnpause = true;
       await this.announceReady(active);
       if (this.manualCompactionPending && this.steering.peek().length === 0) {
-        this.awaitingSteering = false;
+        this.awaitingUnpause = false;
         return { action: "respond" };
       }
-      const waited = await waitSteeringOrExit(this.steering, this.params.abortSignal);
-      this.awaitingSteering = false;
+      const waited = await waitForUnpause(
+        this.steering,
+        this.compactionRequested.promise,
+        this.params.abortSignal,
+      );
+      this.compactionRequested = Promise.withResolvers<void>();
+      this.awaitingUnpause = false;
       if (!waited.success) return { action: "quit" };
-      if (waited.data.length > 0) {
+      if (waited.data !== "compaction-requested" && waited.data.length > 0) {
         await this.emitSteeringChange();
         await this.appendIr(location, {
           role: "user",
