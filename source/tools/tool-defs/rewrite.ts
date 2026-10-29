@@ -2,7 +2,7 @@ import { t } from "structural";
 import { fileTracker } from "../file-tracker.ts";
 import { attemptUntrackedRead, TOOL, fileMutateIR, parseOriginalFile } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok } from "../../libocto/result.ts";
+import { ok, attempt } from "../../libocto/result.ts";
 
 const ArgumentsSchema = t.subtype({
   filePath: t.str.comment("The path to the file"),
@@ -41,7 +41,10 @@ export default rewrite.withCustomIR({ fileMutateIR }).define(async () => ({
     const validation = await validate(signal, transport, edit);
     if (!validation.success) return validation;
     const replaced = runEdit({ edit });
-    await fileTracker.write(transport, signal, filePath, replaced);
+    const written = await attempt(`Failed to rewrite file ${filePath}`, () => {
+      return fileTracker.write(transport, signal, filePath, replaced);
+    });
+    if (!written.success) return written;
     return customIR.fileMutateIR({ content: "" });
   },
 }));
