@@ -19,7 +19,6 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import { lower } from "./ir-operations.ts";
-import { requestSnapshot } from "./request-snapshot.ts";
 import { trajectoryArc, type ErrorCorrection, type TrajectoryArcEvents } from "./trajectory-arc.ts";
 
 type TestData = { marker: string };
@@ -120,10 +119,7 @@ async function runArc(opts: {
     toolData,
     runCompiler,
     lowerMessages: msgs => {
-      return lower<TestAgent>(
-        msgs.map(original => ({ original, converted: original })),
-        { validation: 0, requestError: 0 },
-      );
+      return lower<TestAgent>(msgs.map(original => ({ original, converted: original })));
     },
     transport,
     abortSignal: abortController.signal,
@@ -139,13 +135,13 @@ beforeEach(() => {
 });
 
 describe("trajectoryArc", () => {
-  it("returns validated calls in a complete snapshot and supplies tool data", async () => {
+  it("returns validated calls and supplies tool data", async () => {
     const output = assistant({ toolCalls: [searchCall("kittens")] });
     const { messages } = await runArc({
       response: result(output),
       toolData: { marker: "validated" },
     });
-    expect(messages).toEqual(requestSnapshot([output]));
+    expect(messages).toEqual([output]);
     expect(dataSeen).toEqual([{ marker: "validated" }]);
   });
 
@@ -158,14 +154,12 @@ describe("trajectoryArc", () => {
       const output = assistant({ toolCalls: [failedCall, sibling] });
       const { messages } = await runArc({ response: result(output) });
       expect(messages.map(ir => ir.role)).toEqual([
-        "request-snapshot-begin",
         "assistant",
         kind === "malformed" ? "tool-parse-error" : "tool-validation-error",
         "tool-skip-output",
-        "request-snapshot-end",
       ]);
-      expect(messages[1]).toBe(output);
-      expect(messages[3]).toMatchObject({ role: "tool-skip-output", toolCall: sibling });
+      expect(messages[0]).toBe(output);
+      expect(messages[2]).toMatchObject({ role: "tool-skip-output", toolCall: sibling });
     },
   );
 
@@ -184,7 +178,7 @@ describe("trajectoryArc", () => {
         },
       },
     });
-    expect(messages).toEqual(requestSnapshot([output]));
+    expect(messages).toEqual([output]);
     expect(output.toolCalls?.[0]).toMatchObject({
       original: { query: "bad" },
       parsed: { query: "fixed" },
@@ -200,17 +194,15 @@ describe("trajectoryArc", () => {
       response: result(output),
       errorCorrection: { tools: { search: async () => null } },
     });
-    expect(messages).toEqual(
-      requestSnapshot([
-        output,
-        {
-          role: "tool-validation-error",
-          toolCall: searchCall("bad"),
-          error: "stale",
-          aborted: false,
-        },
-      ]),
-    );
+    expect(messages).toEqual([
+      output,
+      {
+        role: "tool-validation-error",
+        toolCall: searchCall("bad"),
+        error: "stale",
+        aborted: false,
+      },
+    ]);
   });
 
   it.each([
@@ -219,7 +211,7 @@ describe("trajectoryArc", () => {
     "rate-limit-error",
     "auth-error",
     "payment-error",
-  ] as const)("maps compiler %s to its persisted error snapshot", async type => {
+  ] as const)("maps compiler %s to its finalized error outcome", async type => {
     const error: CompilerError =
       type === "auth-error"
         ? { type, authError: "no key" }
@@ -231,15 +223,13 @@ describe("trajectoryArc", () => {
             usage: compilerUsage(1, 1),
           };
     const { messages } = await runArc({ response: () => err(error) });
-    expect(messages).toEqual(
-      requestSnapshot([
-        type === "auth-error"
-          ? { role: "auth-error", authError: "no key" }
-          : type === "payment-error" || type === "rate-limit-error"
-            ? { role: type, requestError: "failed" }
-            : { role: "request-error", requestError: "failed", curl: "curl" },
-      ]),
-    );
+    expect(messages).toEqual([
+      type === "auth-error"
+        ? { role: "auth-error", authError: "no key" }
+        : type === "payment-error" || type === "rate-limit-error"
+          ? { role: type, requestError: "failed" }
+          : { role: "request-error", requestError: "failed", curl: "curl" },
+    ]);
   });
 
   it("returns partial content together with its error, without changing history during progress", async () => {
@@ -252,17 +242,15 @@ describe("trajectoryArc", () => {
         return err(requestError("boom"));
       },
     });
-    expect(messages).toEqual(
-      requestSnapshot([
-        {
-          role: "assistant",
-          content: "partial response",
-          reasoningContent: undefined,
-          usage: compilerUsage(0, 0),
-        },
-        { role: "request-error", requestError: "boom", curl: "curl" },
-      ]),
-    );
+    expect(messages).toEqual([
+      {
+        role: "assistant",
+        content: "partial response",
+        reasoningContent: undefined,
+        usage: compilerUsage(0, 0),
+      },
+      { role: "request-error", requestError: "boom", curl: "curl" },
+    ]);
     expect(history).toHaveLength(1);
   });
 
@@ -278,7 +266,7 @@ describe("trajectoryArc", () => {
     });
     expect(messages).toEqual(
       type === "content"
-        ? requestSnapshot([
+        ? [
             {
               role: "assistant",
               content: "partial",
@@ -286,10 +274,8 @@ describe("trajectoryArc", () => {
               usage: compilerUsage(0, 0),
             },
             { role: "interrupted-by-user", reason: "The user interrupted the response." },
-          ])
-        : requestSnapshot([
-            { role: "interrupted-by-user", reason: "The user interrupted the response." },
-          ]),
+          ]
+        : [{ role: "interrupted-by-user", reason: "The user interrupted the response." }],
     );
     expect(rollbacks).toHaveLength(type === "reasoning" ? 1 : 0);
   });
@@ -310,18 +296,16 @@ describe("trajectoryArc", () => {
       },
     });
     expect(messages.map(ir => ir.role)).toEqual([
-      "request-snapshot-begin",
       "assistant",
       "tool-validation-error",
       "tool-skip-output",
       "interrupted-by-user",
-      "request-snapshot-end",
     ]);
-    expect(messages[2]).toMatchObject({
+    expect(messages[1]).toMatchObject({
       role: "tool-validation-error",
       aborted: true,
       toolCall: { toolCallId: "call-1" },
     });
-    expect(messages[3]).toMatchObject({ role: "tool-skip-output", toolCall: { toolCallId: "c2" } });
+    expect(messages[2]).toMatchObject({ role: "tool-skip-output", toolCall: { toolCallId: "c2" } });
   });
 });

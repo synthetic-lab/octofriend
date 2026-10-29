@@ -31,7 +31,6 @@ import {
   latestRequestSnapshot,
   validationFailure,
   VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
-  type RetryBudget,
 } from "./trajectory-retry.ts";
 
 type MeaningfulIR<IR> = Exclude<IR, RequestSnapshotBeginIR | RequestSnapshotEndIR>;
@@ -102,16 +101,14 @@ export function activeHistory<A extends Agent<any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): ActiveHistory<A> {
-  return walkHistory(agent, history, converted, retryBudget).location;
+  return walkHistory(agent, history, converted).location;
 }
 
 function walkHistory<A extends Agent<any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): { location: ActiveHistory<A>; converted: readonly RecursiveLowered<A>[] } {
   let currentAgent: { agents: AgentDirectory } = agent;
   let currentHistory: Array<TreeIR<A>> = history;
@@ -128,8 +125,7 @@ function walkHistory<A extends Agent<any, any, any>>(
   while (true) {
     const tail = inspected.at(-1);
     if (tail?.converted.role !== "subagent-trajectory") break;
-    if (!isTrajectoryRunning(tail.converted) && !retryable<A>(tail.converted.ir, retryBudget))
-      break;
+    if (!isTrajectoryRunning(tail.converted) && !retryable<A>(tail.converted.ir)) break;
 
     const original = tail.original;
     // downconvert alone creates trajectory pairs, so this is a raw trajectory by construction.
@@ -219,20 +215,18 @@ function isRawTrajectory<IR>(ir: IR): ir is IR & {
 // Answers stay local to that history; descendants' IDs never answer their parent's calls.
 export function pendingToolCalls<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): Array<TreeToolCall<A>> {
   while (true) {
     const tail = history.at(-1)?.converted;
     if (tail?.role !== "subagent-trajectory") break;
-    if (!isTrajectoryRunning(tail) && !retryable<A>(tail.ir, retryBudget)) break;
+    if (!isTrajectoryRunning(tail) && !retryable<A>(tail.ir)) break;
     history = tail.ir;
   }
-  return scanPendingCalls(history, retryBudget);
+  return scanPendingCalls(history);
 }
 
 function scanPendingCalls<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): Array<TreeToolCall<A>> {
   const answered = new Set<string>();
   for (let index = history.length - 1; index >= 0; index--) {
@@ -247,7 +241,7 @@ function scanPendingCalls<A extends Agent<any, any, any>>(
     }
     if (ir.role === "user" || ir.role === "checkpoint") return [];
     if (ir.role === "subagent-trajectory") {
-      if (!isTrajectoryRunning(ir) && !retryable<A>(ir.ir, retryBudget)) {
+      if (!isTrajectoryRunning(ir) && !retryable<A>(ir.ir)) {
         answered.add(ir.toolCall.toolCallId);
       }
       continue;
@@ -260,13 +254,12 @@ function scanPendingCalls<A extends Agent<any, any, any>>(
 
 export function lower<A extends Agent<any, any, any>>(
   messages: Array<RecursiveLowered<A>>,
-  retryBudget: RetryBudget,
 ): Array<CompilerReadyIR<A>> {
   const sliced = sliceFromMostRecentCheckpoint(messages);
   const last = sliced[sliced.length - 1]?.converted;
   if (
     last?.role === "subagent-trajectory" &&
-    (isTrajectoryRunning(last) || retryable<A>(last.ir, retryBudget))
+    (isTrajectoryRunning(last) || retryable<A>(last.ir))
   ) {
     // The most recent subagent invocation is a slice point: everything before it, including the
     // still-unanswered tool call that delegated, compresses away, and the trajectory presents its
@@ -275,14 +268,13 @@ export function lower<A extends Agent<any, any, any>>(
       sliced[sliced.length - 2]?.converted.role === "tool-invoke-subagent"
         ? sliced.length - 2
         : sliced.length - 1;
-    return lowered<A>(sliced.slice(invocation), retryBudget);
+    return lowered<A>(sliced.slice(invocation));
   }
-  return lowered<A>(sliced, retryBudget);
+  return lowered<A>(sliced);
 }
 
 function lowered<A extends Agent<any, any, any>>(
   messages: Array<RecursiveLowered<A>>,
-  retryBudget: RetryBudget,
 ): Array<CompilerReadyIR<A>> {
   return messages.flatMap<CompilerReadyIR<A>>(({ original, converted }, index) => {
     if (converted.role === "checkpoint") {
@@ -328,7 +320,7 @@ function lowered<A extends Agent<any, any, any>>(
     }
 
     if (converted.role === "subagent-trajectory") {
-      return loweredTrajectory<A>(original, converted, index === messages.length - 1, retryBudget);
+      return loweredTrajectory<A>(original, converted, index === messages.length - 1);
     }
     return [{ original, converted }];
   });
@@ -338,7 +330,6 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
   original: TreeIR<A>,
   trajectory: RecursiveLowered<A>["converted"] & { role: "subagent-trajectory" },
   isLast: boolean,
-  retryBudget: RetryBudget,
 ): Array<CompilerReadyIR<A>> {
   const last = lastOutcome(trajectory.ir);
   if (last != null && last.role === "assistant" && !last.toolCalls?.length) {
@@ -353,7 +344,7 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
       },
     ];
   }
-  if (last != null && isTerminalError(last) && !retryable<A>(trajectory.ir, retryBudget)) {
+  if (last != null && isTerminalError(last) && !retryable<A>(trajectory.ir)) {
     return [
       {
         original,
@@ -366,7 +357,7 @@ function loweredTrajectory<A extends Agent<any, any, any>>(
     ];
   }
   if (isLast) {
-    return lower(trajectory.ir, retryBudget);
+    return lower(trajectory.ir);
   }
   if (process.env["CANARY_OCTO"] === "1") {
     throw new Error(`Subagent ${trajectory.subagent} has IRs after it but no terminal state`);
@@ -467,18 +458,17 @@ export function inspectHistory<A extends Agent<any, any, any>>(
   agent: A,
   history: Array<AgentIR<A>>,
   converted: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): Result<HistoryInspection<A>, string> {
-  const { location, converted: selected } = walkHistory(agent, history, converted, retryBudget);
+  const { location, converted: selected } = walkHistory(agent, history, converted);
   const tail = lastOutcome(selected);
-  const pendingCalls = scanPendingCalls<A>(selected, retryBudget);
+  const pendingCalls = scanPendingCalls<A>(selected);
   if (tail == null) {
     if (!location.root) return err("Cannot execute a subagent with an empty history");
     return ok({ location, pendingCalls, action: "wait-for-input", tail });
   }
   const common = { location, pendingCalls };
 
-  if (retryable(selected, retryBudget)) {
+  if (retryable(selected)) {
     return ok({ ...common, action: "retry", tail });
   }
   if (tail.role === "tool-invoke-subagent") {
@@ -493,7 +483,11 @@ export function inspectHistory<A extends Agent<any, any, any>>(
   }
   if (location.root) {
     const snapshot = latestRequestSnapshot(selected);
-    if (snapshot != null && validationFailure(snapshot) && tail.role !== "interrupted-by-user") {
+    if (
+      snapshot != null &&
+      validationFailure(snapshot.irs) &&
+      tail.role !== "interrupted-by-user"
+    ) {
       // This is derived error-mode input, not a persisted exhaustion record.
       return ok({
         location,
@@ -535,9 +529,8 @@ export type SubagentTrajectoryInspection =
 /** @internal Clients should use Trajectory.inspectSubagentTrajectory with its bound lowering. */
 export function inspectSubagentTrajectory<A extends Agent<any, any, any>>(
   converted: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): SubagentTrajectoryInspection {
-  if (retryable(converted, retryBudget)) return { type: "in-progress" };
+  if (retryable(converted)) return { type: "in-progress" };
   const last = lastOutcome(converted);
   if (last == null) return { type: "in-progress" };
   if (last.role === "assistant" && !last.toolCalls?.length) return { type: "complete" };

@@ -7,6 +7,7 @@ import {
   type AgentIR,
   type LowerOutputIR,
   type RequestErrorIR,
+  type RetryBudget,
 } from "./llm-ir.ts";
 import { ToolBuilder, type ToolCall } from "./tool-def.ts";
 import { requestSnapshot } from "./request-snapshot.ts";
@@ -61,7 +62,9 @@ const call: ToolCall<TestAgent["tools"]> = {
   parsed: {},
 };
 const success: TestIR = { role: "assistant", content: "done", usage: compilerUsage(1, 1) };
-const validation: TestIR[] = requestSnapshot<TestIR>([
+const retryBudget: RetryBudget = { validation: 2, requestError: 2 };
+const unlimited: RetryBudget = { validation: null, requestError: null };
+const validationOutcome: TestIR[] = [
   {
     role: "assistant",
     content: "",
@@ -75,8 +78,9 @@ const validation: TestIR[] = requestSnapshot<TestIR>([
     error: "also invalid",
     aborted: false,
   },
-]);
-const request = requestSnapshot([requestError]);
+];
+const validation = requestSnapshot(validationOutcome, retryBudget);
+const request = requestSnapshot([requestError], retryBudget);
 
 describe("trajectory retry inspection", () => {
   it("classifies existing errors without compiler transport metadata", () => {
@@ -91,39 +95,76 @@ describe("trajectory retry inspection", () => {
     for (const [ir, expected] of cases) expect(transientError(convert([ir])[0])).toBe(expected);
   });
 
-  it("never automatically retries legacy errors even with a larger budget", () => {
-    const budget = { validation: Infinity, requestError: Infinity };
-    expect(retryable(convert([requestError]), budget)).toBe(false);
-    expect(retryable(convert(validation.slice(1, -1)), budget)).toBe(false);
+  it("never automatically retries legacy errors", () => {
+    expect(retryable(convert([requestError]))).toBe(false);
+    expect(retryable(convert(validationOutcome))).toBe(false);
     expect(countTransientErrors(convert([requestError, ...request]))).toBe(1);
   });
 
   it("requires a complete nonempty snapshot at the active tip", () => {
-    const budget = { validation: 2, requestError: 2 };
-    for (const irs of [[], request.slice(0, -1), request.slice(1), requestSnapshot<TestIR>([])]) {
+    for (const irs of [
+      [],
+      request.slice(0, -1),
+      request.slice(1),
+      requestSnapshot<TestIR>([], retryBudget),
+    ]) {
       const history = convert(irs);
       expect(latestRequestSnapshot(history)).toBeNull();
-      expect(retryable(history, budget)).toBe(false);
+      expect(retryable(history)).toBe(false);
     }
-    expect(retryable(convert(request), budget)).toBe(true);
+    const history = convert(request);
+    expect(retryable(history)).toBe(true);
+    expect(latestRequestSnapshot(history)).toEqual({ retryBudget, irs: [history[1]] });
   });
 
   it("counts request and validation failures independently, once per snapshot", () => {
-    const history = convert([...request, ...validation, ...request, ...validation]);
-    expect(countTransientErrors(history)).toBe(2);
-    expect(countValidationErrors(history)).toBe(2);
-    expect(retryable(history, { validation: 2, requestError: 0 })).toBe(true);
-    expect(retryable(history, { validation: 1, requestError: 100 })).toBe(false);
-    const requestTip = convert([...validation, ...request, ...validation, ...request]);
-    expect(retryable(requestTip, { validation: 0, requestError: 2 })).toBe(true);
-    expect(retryable(requestTip, { validation: 100, requestError: 1 })).toBe(false);
+    for (const [budget, expected] of [
+      [{ validation: 2, requestError: 0 }, true],
+      [{ validation: 1, requestError: 100 }, false],
+    ] as const) {
+      const history = convert([
+        ...request,
+        ...validation,
+        ...request,
+        ...requestSnapshot(validationOutcome, budget),
+      ]);
+      expect(countTransientErrors(history)).toBe(2);
+      expect(countValidationErrors(history)).toBe(2);
+      expect(retryable(history)).toBe(expected);
+    }
+    for (const [budget, expected] of [
+      [{ validation: 0, requestError: 2 }, true],
+      [{ validation: 100, requestError: 1 }, false],
+    ] as const) {
+      const history = convert([
+        ...validation,
+        ...request,
+        ...validation,
+        ...requestSnapshot([requestError], budget),
+      ]);
+      expect(countTransientErrors(history)).toBe(2);
+      expect(countValidationErrors(history)).toBe(2);
+      expect(retryable(history)).toBe(expected);
+    }
+  });
+
+  it.each([null, Infinity])("persists unlimited limits as null for %s", limit => {
+    for (const outcome of [[requestError], validationOutcome]) {
+      const snapshot = requestSnapshot(outcome, { validation: limit, requestError: limit });
+      expect(snapshot[0]).toEqual({ role: "request-snapshot-begin", retryBudget: unlimited });
+      const history: TestIR[] = JSON.parse(
+        JSON.stringify([...request, ...validation, ...request, ...validation, ...snapshot]),
+      );
+      expect(latestRequestSnapshot(convert(history))?.retryBudget).toEqual(unlimited);
+      expect(retryable(convert(history))).toBe(true);
+    }
   });
 
   it.each(
     [
-      requestSnapshot<TestIR>([success]),
-      requestSnapshot<TestIR>([{ ...success, toolCalls: [call] }]),
-      requestSnapshot<TestIR>([{ role: "checkpoint", content: [] }]),
+      requestSnapshot<TestIR>([success], retryBudget),
+      requestSnapshot<TestIR>([{ ...success, toolCalls: [call] }], retryBudget),
+      requestSnapshot<TestIR>([{ role: "checkpoint", content: [] }], retryBudget),
       [{ role: "error-retry" }] satisfies TestIR[],
       [{ role: "error-dismissed" }] satisfies TestIR[],
       [{ role: "interrupted-by-user", reason: "stopped" }] satisfies TestIR[],
@@ -138,20 +179,20 @@ describe("trajectory retry inspection", () => {
 
   it("does not retry interrupted snapshots containing validation errors", () => {
     const history = convert(
-      requestSnapshot<TestIR>([
-        ...validation.slice(1, -1),
-        { role: "interrupted-by-user", reason: "stopped" },
-      ]),
+      requestSnapshot<TestIR>(
+        [...validationOutcome, { role: "interrupted-by-user", reason: "stopped" }],
+        unlimited,
+      ),
     );
-    expect(retryable(history, { validation: Infinity, requestError: Infinity })).toBe(false);
+    expect(retryable(history)).toBe(false);
   });
 
   it("classifies converted extensions and keeps bookkeeping out of provider context", () => {
     const extension: TestIR = { role: "report-result", toolCall: call, error: "custom failure" };
-    const history = convert(requestSnapshot<TestIR>([extension]));
+    const history = convert(requestSnapshot<TestIR>([extension], retryBudget));
     expect(countTransientErrors(history)).toBe(1);
     expect(history[1].original).toBe(extension);
-    expect(lower(history, { validation: 0, requestError: 0 })).toEqual([]);
+    expect(lower(history)).toEqual([]);
   });
 
   it("does not count descendants or mistake partial assistants for success", () => {
@@ -162,7 +203,10 @@ describe("trajectory retry inspection", () => {
       toolCall: call,
       ir: [...request, ...request],
     };
-    const history = convert([child, ...requestSnapshot<TestIR>([success, requestError])]);
+    const history = convert([
+      child,
+      ...requestSnapshot<TestIR>([success, requestError], retryBudget),
+    ]);
     expect(countTransientErrors(history)).toBe(1);
     const convertedChild = history[0].converted;
     if (convertedChild.role !== "subagent-trajectory") throw new Error("Expected child");

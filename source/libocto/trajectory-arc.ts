@@ -11,8 +11,6 @@ import type {
   ModelErrorIR,
   CompilerReadyIR,
   RequestErrorIR,
-  RequestSnapshotBeginIR,
-  RequestSnapshotEndIR,
   ToolParseErrorMessage,
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
@@ -21,7 +19,6 @@ import type { LoadedTools, ToolCall, ToolDef } from "./tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
-import { requestSnapshot } from "./request-snapshot.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
@@ -74,8 +71,6 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | ToolValidationErrorMessage<A["tools"]>
   | ToolSkipOutputMessage<A["tools"]>
   | RequestErrorIR
-  | RequestSnapshotBeginIR
-  | RequestSnapshotEndIR
   | InterruptedByUserIR
   | ModelErrorIR;
 
@@ -128,13 +123,7 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
 
 // One response attempt, including local correction and validation. Only progress is
 // emitted in flight; the supervisor commits the finalized group and owns all retries.
-export const trajectoryArc = registry({
-  run: async function <A extends Agent<any, any, any>, Model>(
-    params: TrajectoryArcParams<A, Model>,
-  ): Promise<Array<TrajectoryArcIR<A>>> {
-    return requestSnapshot(await runTrajectoryArc(params));
-  },
-});
+export const trajectoryArc = registry({ run: runTrajectoryArc });
 
 async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   model,

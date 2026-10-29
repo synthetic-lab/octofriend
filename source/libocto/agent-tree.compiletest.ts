@@ -222,14 +222,13 @@ function inspectConversionTypes(
   trajectory: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
   extra: AgentExtra<Root>,
 ) {
-  const retryBudget = { validation: 0, requestError: 0 };
   // @ts-expect-error Final lowering requires paired IR, not bare history.
-  lower<Root>(raw, retryBudget);
+  lower<Root>(raw);
   // Client output contains no trajectories, so it already fits recursive lowering.
-  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(shallow, retryBudget));
-  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive, retryBudget));
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(shallow));
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive));
   // @ts-expect-error Raw child histories still need recursive conversion.
-  lower<Root>([{ original: trajectory, converted: trajectory }], retryBudget);
+  lower<Root>([{ original: trajectory, converted: trajectory }]);
   // @ts-expect-error The client callback cannot receive trajectories.
   pass([trajectory], null);
   // @ts-expect-error Nor can it manufacture trajectories from custom IR.
@@ -241,7 +240,7 @@ function inspectConversionTypes(
 function inspectGenericChildLowering<A extends Agent<any, any, any>>(
   history: Array<RecursiveLowered<A["agents"][keyof A["agents"]]>>,
 ): Array<CompilerReadyIR<A>> {
-  return lower(history, { validation: 0, requestError: 0 });
+  return lower(history);
 }
 
 const _conversionRoot = definePermissionedAgent({ tools: {}, agents: { child: _root } });

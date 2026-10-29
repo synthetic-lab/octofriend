@@ -17,6 +17,7 @@ import type {
   RequestErrorIR,
   CompactionErrorIR,
   ModelErrorIR,
+  RetryBudget,
 } from "./llm-ir.ts";
 import {
   downconvert,
@@ -30,8 +31,8 @@ import {
   countTransientErrors,
   latestRequestSnapshot,
   validationFailure,
-  type RetryBudget,
 } from "./trajectory-retry.ts";
+import { requestSnapshot } from "./request-snapshot.ts";
 import { sleep } from "./sleep.ts";
 import type {
   ActiveHistory,
@@ -342,7 +343,8 @@ type TreeErrorCorrection<A extends Agent<any, any, any>> = ErrorCorrection<A> &
   >;
 
 export type RequestErrorRetriesConfig = {
-  maxRetryCount?: number;
+  // null (or omission) means unlimited retries. Infinity is also accepted.
+  maxRetryCount?: number | null;
   backoffMs: number;
   maxBackoffMs?: number;
 };
@@ -355,7 +357,9 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   toolData: AgentToolData<A> &
     UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>;
   errorCorrection?: TreeErrorCorrection<A>;
-  validationRetries?: number;
+  // null (or omission) means unlimited retries. Infinity is also accepted.
+  validationRetries?: number | null;
+  // Omitting this configuration disables automatic request retries.
   requestErrorRetries?: RequestErrorRetriesConfig;
   // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
   abortSignal: AbortSignal;
@@ -553,10 +557,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
-      lower<A>(
-        downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages),
-        this.retryBudget,
-      );
+      lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
     this._mode = { root: true, mode: "ready-for-request", control: this.readyControl() };
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
@@ -593,11 +594,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   private get retryBudget(): RetryBudget {
     return {
-      validation: this.params.validationRetries ?? Infinity,
+      validation: this.params.validationRetries ?? null,
       requestError:
         this.params.requestErrorRetries == null
           ? 0
-          : (this.params.requestErrorRetries.maxRetryCount ?? Infinity),
+          : (this.params.requestErrorRetries.maxRetryCount ?? null),
     };
   }
 
@@ -606,7 +607,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   ): SubagentTrajectoryInspection {
     return inspectSubagentTrajectory<A>(
       downconvert<A>(irs => this.params.lowerMessages(irs, null))(trajectory.ir),
-      this.retryBudget,
     );
   }
 
@@ -705,7 +705,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       this.params.agent,
       this.history,
       downconvert<A>(irs => this.params.lowerMessages(irs, null))(this.history),
-      this.retryBudget,
     );
     if (!inspected.success) throw new Error(inspected.error);
     return inspected.data;
@@ -1103,6 +1102,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     runtime: RuntimeData<A, Model>,
   ): Promise<void> {
     const owner = this.ownership.lease();
+    const retryBudget = this.retryBudget;
     const scope = this.scope(location);
     const result = await trajectoryCompaction.run<A, Model>({
       model: runtime.model,
@@ -1130,18 +1130,16 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       return;
     }
     await owner.ifOwner(() => {
-      if (location.root && result.data.some(ir => ir.role === "checkpoint")) {
-        this.manualCompactionPending = false;
-      }
-      return this.appendIrs(location, result.data);
+      if (location.root && result.data.role === "checkpoint") this.manualCompactionPending = false;
+      return this.appendIrs(location, requestSnapshot([result.data], retryBudget));
     });
   }
 
   private async waitRetry(location: ActiveHistory<A>): Promise<void> {
     const history = downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history);
     const snapshot = latestRequestSnapshot(history);
-    if (snapshot == null || validationFailure(snapshot)) return;
-    const error = snapshot.at(-1)?.converted;
+    if (snapshot == null || validationFailure(snapshot.irs)) return;
+    const error = snapshot.irs.at(-1)?.converted;
     if (
       error == null ||
       (error.role !== "request-error" &&
@@ -1172,9 +1170,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     runtimeData: RuntimeData<A, Model>,
   ): Promise<void> {
     const owner = this.ownership.lease();
+    const retryBudget = this.retryBudget;
     const irs = await this.runArc(location, runtimeData);
     if (this.params.abortSignal.aborted) return;
-    await owner.ifOwner(() => this.appendIrs(location, irs));
+    await owner.ifOwner(() => this.appendIrs(location, requestSnapshot(irs, retryBudget)));
     if (this.turnController.signal.aborted) {
       await this.closeInterruptedWork(location, owner, null);
     }

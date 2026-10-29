@@ -23,7 +23,7 @@ import {
 } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall } from "./tool-def.ts";
-import { Trajectory } from "./trajectory.ts";
+import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 
 type ToolData = { executed: string[] };
 
@@ -122,7 +122,16 @@ function lowerMessages(messages: Array<LowerInputIR<TestAgent>>): Array<LowerOut
   return messages.map(original => ({ original, converted: original }));
 }
 
-async function fixture(messages: Array<AgentIR<TestAgent>>, responses: Response[]) {
+type FixtureOptions = Pick<
+  TrajectoryParams<TestAgent, Scope>,
+  "validationRetries" | "requestErrorRetries"
+> & { contextWindow?: (scope: Scope) => number };
+
+async function fixture(
+  messages: Array<AgentIR<TestAgent>>,
+  responses: Response[],
+  options: FixtureOptions = {},
+) {
   const executed: string[] = [];
   const snapshots: Snapshot[] = [];
   // Mirror the persistence adapter's root records independently of canonical history.
@@ -152,20 +161,24 @@ async function fixture(messages: Array<AgentIR<TestAgent>>, responses: Response[
     const result = await next(params.onTokens);
     return result as typeof result & CompilerResult<A, Tools>;
   };
-  const trajectory = new Trajectory({
+  const params: TrajectoryParams<TestAgent, Scope> = {
     agent,
     messages,
+    validationRetries: options.validationRetries,
+    requestErrorRetries: options.requestErrorRetries,
     abortSignal: controller.signal,
     toolData: data,
     transport,
     runCompiler,
     lowerMessages,
-    model: async invocation =>
-      ok({
-        model: invocation == null ? ("root" as const) : ("research" as const),
-        contextWindow: 100_000,
+    model: async invocation => {
+      const scope = invocation == null ? "root" : "research";
+      return ok({
+        model: scope,
+        contextWindow: options.contextWindow?.(scope) ?? 100_000,
         modalities: null,
-      }),
+      });
+    },
     loadTools: async () => ok({ search, delegate }),
     subagentPrompts: { research: async () => "Research the task." },
     toolContentTooLargeError: async () => "Unexpected oversized test output",
@@ -189,13 +202,18 @@ async function fixture(messages: Array<AgentIR<TestAgent>>, responses: Response[
         });
       },
     },
-  });
-  return { trajectory, snapshots, executed, compilerCalls };
+  };
+  const trajectory = new Trajectory(params);
+  return { trajectory, params, snapshots, executed, compilerCalls };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
-async function recordArc(scope: Scope, responses: Response[]): Promise<Fixture> {
+async function recordArc(
+  scope: Scope,
+  responses: Response[],
+  options: FixtureOptions = {},
+): Promise<Fixture> {
   const delegation = response(
     assistant("", [
       {
@@ -210,6 +228,7 @@ async function recordArc(scope: Scope, responses: Response[]): Promise<Fixture> 
   const recording = await fixture(
     [{ role: "user", content: [{ type: "text", content: "Do the task" }] }],
     scope === "root" ? responses : [delegation, ...responses],
+    options,
   );
   await recording.trajectory.step();
   if (scope === "research") await recording.trajectory.step();
@@ -226,10 +245,7 @@ function snapshotAt(recording: Fixture, scope: Scope, role: Snapshot["roles"][nu
 
 function inspect(trajectory: Fixture["trajectory"]) {
   const history = [...trajectory.messages];
-  const result = inspectHistory(agent, history, downconvert<TestAgent>(lowerMessages)(history), {
-    validation: Infinity,
-    requestError: 0,
-  });
+  const result = inspectHistory(agent, history, downconvert<TestAgent>(lowerMessages)(history));
   if (!result.success) throw new Error(result.error);
   return result.data;
 }
@@ -284,6 +300,207 @@ const failedResponse: Response = async emit => {
   await emit("unfinished answer", "content");
   return err({ type: "request-error", requestError: "connection lost", curl: "curl" });
 };
+
+const retryFailures = [
+  {
+    name: "request",
+    response: failedResponse,
+    role: "request-error",
+    error: "connection lost",
+  },
+  {
+    name: "validation",
+    response: response(assistant("", [searchCall("invalid")])),
+    role: "tool-validation-error",
+    error: "invalid query",
+  },
+  {
+    name: "compaction",
+    response: failedResponse,
+    role: "compaction-error",
+    error: "connection lost",
+  },
+] as const;
+
+describe("persisted retry budgets", () => {
+  for (const failure of retryFailures) {
+    it.each([1, null, Infinity])(
+      `keeps an exhausted child ${failure.name} failure terminal after raising limits to %s`,
+      async limit => {
+        const recording = await recordArc(
+          "research",
+          [failure.response, response(assistant("parent finished"))],
+          {
+            validationRetries: 0,
+            requestErrorRetries: { maxRetryCount: 0, backoffMs: 0 },
+            contextWindow: scope =>
+              scope === "research" && failure.name === "compaction" ? 1 : 100_000,
+          },
+        );
+        const beforeParent = snapshotAt(recording, "research", failure.role);
+        expect(inspect(recording.trajectory)).toMatchObject({
+          action: "respond",
+          location: { root: true },
+          pendingCalls: [],
+        });
+        await runUntilParked(recording);
+        const afterParent = recording.snapshots.at(-1);
+        if (afterParent == null) throw new Error("Missing parent persistence boundary");
+
+        for (const snapshot of [beforeParent, afterParent]) {
+          const history: Array<AgentIR<TestAgent>> = JSON.parse(snapshot.history);
+          const recovered = await fixture(history, [response(assistant("parent recovered"))], {
+            validationRetries: limit,
+            requestErrorRetries: { maxRetryCount: limit, backoffMs: 0 },
+          });
+          const child = recovered.trajectory.messages.find(ir => ir.role === "subagent-trajectory");
+          if (child?.role !== "subagent-trajectory") throw new Error("Missing child");
+          expect(recovered.trajectory.inspectSubagentTrajectory(child)).toEqual({
+            type: "error",
+            error: failure.error,
+          });
+          expect(inspect(recovered.trajectory).pendingCalls).toEqual([]);
+          await runUntilParked(recovered);
+          expect(recovered.executed).toEqual([]);
+          expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+            snapshot === beforeParent ? ["root"] : [],
+          );
+        }
+
+        // Force provider lowering after the completed parent, too: this was the canary crash.
+        const history: Array<AgentIR<TestAgent>> = JSON.parse(afterParent.history);
+        history.push({ role: "user", content: [{ type: "text", content: "Continue" }] });
+        const continued = await fixture(history, [response(assistant("continued"))], {
+          validationRetries: limit,
+          requestErrorRetries: { maxRetryCount: limit, backoffMs: 0 },
+        });
+        await runUntilParked(continued);
+        expect(continued.executed).toEqual([]);
+        expect(continued.compilerCalls.map(call => call.scope)).toEqual(["root"]);
+        expect(continued.compilerCalls[0].irs).toContainEqual({
+          role: "tool-runtime-error",
+          toolCall: expect.objectContaining({ toolCallId: "research-call" }),
+          error: failure.error,
+        });
+      },
+    );
+
+    for (const scope of scopes) {
+      it.each([1, null, Infinity])(
+        `preserves a saved ${scope} ${failure.name} retry after lowering limits from %s to zero`,
+        async limit => {
+          const contextWindow = (active: Scope) => {
+            return active === scope && failure.name === "compaction" ? 1 : 100_000;
+          };
+          const recording = await recordArc(scope, [failure.response], {
+            validationRetries: limit,
+            requestErrorRetries: { maxRetryCount: limit, backoffMs: 0 },
+            contextWindow,
+          });
+          const snapshot = snapshotAt(recording, scope, failure.role);
+          const history: Array<AgentIR<TestAgent>> = JSON.parse(snapshot.history);
+          const recovered = await fixture(
+            history,
+            [failure.response, response(assistant("parent finished"))],
+            {
+              validationRetries: 0,
+              requestErrorRetries: { maxRetryCount: 0, backoffMs: 0 },
+              contextWindow,
+            },
+          );
+          const inspection = inspect(recovered.trajectory);
+          expect(inspection).toMatchObject({
+            action: "retry",
+            location: { root: scope === "root" },
+          });
+          const savedLimit = limit === Infinity ? null : limit;
+          expect(
+            inspection.location.history.find(ir => ir.role === "request-snapshot-begin"),
+          ).toEqual({
+            role: "request-snapshot-begin",
+            retryBudget: { validation: savedLimit, requestError: savedLimit },
+          });
+          await recovered.trajectory.step();
+          const retriedHistory = inspection.location.root
+            ? recovered.trajectory.messages
+            : inspection.location.history;
+          expect(retriedHistory.filter(ir => ir.role === "request-snapshot-begin")).toEqual([
+            {
+              role: "request-snapshot-begin",
+              retryBudget: { validation: savedLimit, requestError: savedLimit },
+            },
+            { role: "request-snapshot-begin", retryBudget: { validation: 0, requestError: 0 } },
+          ]);
+          expect(inspect(recovered.trajectory).action).toBe(
+            scope === "root" ? "rectify" : "respond",
+          );
+          await runUntilParked(recovered);
+          expect(recovered.compilerCalls.map(call => call.scope)).toEqual(
+            scope === "root" ? ["root"] : ["research", "root"],
+          );
+          expect(recovered.executed).toEqual([]);
+        },
+      );
+    }
+
+    it(`captures both limits before awaiting a ${failure.name} operation`, async () => {
+      const recording = await fixture(
+        [{ role: "user", content: [{ type: "text", content: "Go" }] }],
+        [
+          async emit => {
+            await Promise.resolve();
+            recording.params.validationRetries = 0;
+            const requestConfig = recording.params.requestErrorRetries;
+            if (requestConfig == null) throw new Error("Missing request retry configuration");
+            requestConfig.maxRetryCount = 0;
+            return failure.response(emit);
+          },
+          failure.response,
+        ],
+        {
+          validationRetries: 1,
+          requestErrorRetries: { maxRetryCount: 1, backoffMs: 0 },
+          contextWindow: () => (failure.name === "compaction" ? 1 : 100_000),
+        },
+      );
+      await recording.trajectory.step();
+      expect(inspect(recording.trajectory).action).toBe("retry");
+      expect(recording.trajectory.messages[1]).toEqual({
+        role: "request-snapshot-begin",
+        retryBudget: { validation: 1, requestError: 1 },
+      });
+      await recording.trajectory.step();
+      expect(inspect(recording.trajectory).action).toBe("rectify");
+      expect(
+        recording.trajectory.messages.filter(ir => ir.role === "request-snapshot-begin"),
+      ).toEqual([
+        { role: "request-snapshot-begin", retryBudget: { validation: 1, requestError: 1 } },
+        { role: "request-snapshot-begin", retryBudget: { validation: 0, requestError: 0 } },
+      ]);
+      expect(recording.compilerCalls).toHaveLength(2);
+    });
+  }
+
+  it("records default unlimited validation and disabled request retries", async () => {
+    const recording = await recordArc("root", [failedResponse]);
+    expect(recording.trajectory.messages[1]).toEqual({
+      role: "request-snapshot-begin",
+      retryBudget: { validation: null, requestError: 0 },
+    });
+    expect(inspect(recording.trajectory).action).toBe("rectify");
+  });
+
+  it("records unlimited request retries when their maximum is omitted", async () => {
+    const recording = await recordArc("root", [failedResponse], {
+      requestErrorRetries: { backoffMs: 0 },
+    });
+    expect(recording.trajectory.messages[1]).toEqual({
+      role: "request-snapshot-begin",
+      retryBudget: { validation: null, requestError: null },
+    });
+    expect(inspect(recording.trajectory).action).toBe("retry");
+  });
+});
 
 describe("trajectory crash recovery at persisted IR boundaries", () => {
   for (const scope of scopes) {

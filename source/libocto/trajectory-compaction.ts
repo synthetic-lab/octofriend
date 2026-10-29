@@ -7,7 +7,6 @@ import {
 import type { AutofixJsonFn, Compiler, CompilerIR } from "./compilers/compiler-interface.ts";
 import type { Agent, Checkpoint, CompactionErrorIR, ModelErrorIR } from "./llm-ir.ts";
 import { err, ok, type Result } from "./result.ts";
-import { requestSnapshot } from "./request-snapshot.ts";
 
 export type AutocompactionStream = {
   type: "autocompaction-stream";
@@ -38,15 +37,7 @@ export type TrajectoryCompactionParams<A extends Agent<any, any, any>, Model> = 
 
 // Exactly one summary attempt. The caller owns scheduling, retries and persistence;
 // progress is ephemeral, and no checkpoint or failure IR is published in flight.
-export const trajectoryCompaction = registry({
-  run: async function <A extends Agent<any, any, any>, Model>(
-    params: TrajectoryCompactionParams<A, Model>,
-  ) {
-    const result = await runTrajectoryCompaction(params);
-    if (!result.success) return result;
-    return ok(requestSnapshot([result.data]));
-  },
-});
+export const trajectoryCompaction = registry({ run: runTrajectoryCompaction });
 
 async function runTrajectoryCompaction<A extends Agent<any, any, any>, Model>({
   model,

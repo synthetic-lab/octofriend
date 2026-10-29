@@ -384,9 +384,15 @@ export type ModelErrorIR =
 export type ErrorDismissedIR = { role: "error-dismissed" };
 export type ErrorRetryIR = { role: "error-retry" };
 
+// null means unlimited retries.
+export type RetryBudget = { validation: number | null; requestError: number | null };
+
 // A finalized one-shot attempt is committed with both boundaries in the same group.
 // Legacy errors outside these boundaries must not acquire automatic retries on reload.
-export type RequestSnapshotBeginIR = { role: "request-snapshot-begin" };
+export type RequestSnapshotBeginIR = {
+  role: "request-snapshot-begin";
+  retryBudget: RetryBudget;
+};
 export type RequestSnapshotEndIR = { role: "request-snapshot-end" };
 
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {

@@ -1,6 +1,4 @@
-import type { Agent, RecursiveLowered } from "./llm-ir.ts";
-
-export type RetryBudget = { validation: number; requestError: number };
+import type { Agent, RecursiveLowered, RetryBudget } from "./llm-ir.ts";
 
 // Snapshots are non-nested, atomic attempt groups. A legacy error or an incomplete
 // group is not evidence that an automatic retry remains to be performed.
@@ -19,23 +17,32 @@ function snapshotStart<A extends Agent<any, any, any>>(
 
 export function latestRequestSnapshot<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-): readonly RecursiveLowered<A>[] | null {
+): { retryBudget: RetryBudget; irs: readonly RecursiveLowered<A>[] } | null {
   const end = history.length - 1;
   const start = snapshotStart(history, end);
-  return start < 0 || start + 1 === end ? null : history.slice(start + 1, end);
+  if (start < 0 || start + 1 === end) return null;
+  const begin = history[start].converted;
+  if (begin.role !== "request-snapshot-begin") return null;
+  return { retryBudget: begin.retryBudget, irs: history.slice(start + 1, end) };
 }
 
 export function retryable<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
-  retryBudget: RetryBudget,
 ): boolean {
   const snapshot = latestRequestSnapshot(history);
-  const tip = snapshot?.at(-1);
-  if (snapshot == null || tip == null || tip.converted.role === "interrupted-by-user") return false;
-  if (validationFailure(snapshot)) {
-    return countValidationErrors(history) <= retryBudget.validation;
+  if (snapshot == null) return false;
+  const { irs, retryBudget } = snapshot;
+  const tip = irs.at(-1);
+  if (tip == null || tip.converted.role === "interrupted-by-user") return false;
+  if (validationFailure(irs)) {
+    return (
+      retryBudget.validation === null || countValidationErrors(history) <= retryBudget.validation
+    );
   }
-  return transientError(tip) && countTransientErrors(history) <= retryBudget.requestError;
+  return (
+    transientError(tip) &&
+    (retryBudget.requestError === null || countTransientErrors(history) <= retryBudget.requestError)
+  );
 }
 
 export function transientError<A extends Agent<any, any, any>>({
