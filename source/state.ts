@@ -426,9 +426,7 @@ export const useAppStore = create<UiState>((set, get) => {
             rewindInterruptedTurn = false;
             // Veto only: a draft typed since the event cancels the rewind, never triggers it.
             if (get().query.trim() === "") {
-              const messages = instance.messages;
-              const tail = messages[messages.length - 1];
-              const prev = messages[messages.length - 2];
+              const [tail, prev] = instance.meaningfulTailIR();
               if (tail?.role === "interrupted-by-user" && prev?.role === "user") {
                 void mode.control.rewindTo(prev);
               }

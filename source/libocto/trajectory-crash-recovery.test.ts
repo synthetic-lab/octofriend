@@ -226,7 +226,10 @@ function snapshotAt(recording: Fixture, scope: Scope, role: Snapshot["roles"][nu
 
 function inspect(trajectory: Fixture["trajectory"]) {
   const history = [...trajectory.messages];
-  const result = inspectHistory(agent, history, downconvert<TestAgent>(lowerMessages)(history));
+  const result = inspectHistory(agent, history, downconvert<TestAgent>(lowerMessages)(history), {
+    validation: Infinity,
+    requestError: 0,
+  });
   if (!result.success) throw new Error(result.error);
   return result.data;
 }

@@ -1,41 +1,32 @@
 import { registry } from "antipattern";
 import type { t } from "structural";
 import type { Transport } from "../transports/transport-common.ts";
-import { err, ok, type Result } from "./result.ts";
-import { sleep } from "./sleep.ts";
-import { combineSignals } from "./signals.ts";
+import { err, type Result } from "./result.ts";
 import type {
   Agent,
   AgentIR,
   TreeIR,
   AssistantMessage,
-  Checkpoint,
-  CompactionErrorIR,
-  ErrorRetryIR,
   InterruptedByUserIR,
-  LlmIR,
   ModelErrorIR,
   CompilerReadyIR,
   RequestErrorIR,
+  RequestSnapshotBeginIR,
+  RequestSnapshotEndIR,
   ToolParseErrorMessage,
   ToolSkipOutputMessage,
   ToolValidationErrorMessage,
-  ValidationRetryBudgetExceededIR,
 } from "./llm-ir.ts";
 import type { LoadedTools, ToolCall, ToolDef } from "./tool-def.ts";
 import type { AutofixJsonFn, Compiler, CompilerError } from "./compilers/compiler-interface.ts";
 import { compilerUsage } from "./compilers/compiler-interface.ts";
-import {
-  generateCompactionCheckpointContent,
-  shouldAutoCompactHistory,
-  type CompactionError,
-} from "./compilers/autocompact.ts";
 import { userInterruptReason } from "./compilers/ir-prompts.ts";
+import { requestSnapshot } from "./request-snapshot.ts";
 
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
+const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
 
 export type TrajectoryArcTokenTypes = "reasoning" | "content" | "tool";
-type CompactionTokenTypes = Exclude<TrajectoryArcTokenTypes, "tool">;
 
 export type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
@@ -45,18 +36,7 @@ export type AssistantDelta<AllowedType extends string> = {
   type: AllowedType;
 };
 
-export type AutocompactionStream = {
-  type: "autocompaction-stream";
-  buffer: AssistantBuffer<CompactionTokenTypes>;
-  delta: AssistantDelta<CompactionTokenTypes>;
-};
-
-/*
- * The arc validates and corrects tool calls by dispatching on the tool's declared name, so its
- * internal tool call types are indexed by tool name rather than by key in the agent's tool map.
- * LoadedToolsByName/ToolCallForTools re-associate LoadedTools/ToolCall with their declared names,
- * keeping the name-to-schema correlation visible to the type system.
- */
+// Associate loaded tool definitions with the names used in model requests.
 export type LoadedToolsByName<A extends Agent<any, any, any>> = {
   [K in keyof LoadedTools<A["tools"]> as LoadedTools<A["tools"]>[K]["name"]]: LoadedTools<
     A["tools"]
@@ -80,7 +60,6 @@ export type ToolCallForTools<A extends Agent<any, any, any>> = {
 export type ToolDataFor<Def> =
   Def extends ToolDef<infer Data, infer _N, infer _A, infer _P, infer _S, infer _E> ? Data : never;
 
-// Data that is valid for every tool the agent loads.
 export type AgentToolData<A extends Agent<any, any, any>> = UnionToIntersection<
   ToolDataFor<LoadedToolsByName<A>[ToolNames<A>]>
 >;
@@ -94,116 +73,21 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | ToolParseErrorMessage
   | ToolValidationErrorMessage<A["tools"]>
   | ToolSkipOutputMessage<A["tools"]>
-  | Checkpoint
   | RequestErrorIR
-  | CompactionErrorIR
+  | RequestSnapshotBeginIR
+  | RequestSnapshotEndIR
   | InterruptedByUserIR
-  | ValidationRetryBudgetExceededIR
-  | ErrorRetryIR
   | ModelErrorIR;
 
-export type RecoverableRequestError = Extract<
-  CompilerError,
-  { type: "payment-error" | "rate-limit-error" }
->;
-
-export type RetryableRequestError = Extract<
-  CompilerError,
-  { type: "request-error" | "stream-error" | "rate-limit-error" }
->;
-
-export type StaticFinishReasons<A extends Agent<any, any, any>> =
-  | {
-      type: "abort";
-    }
-  | {
-      type: "needs-response";
-    }
-  | {
-      type: "request-tool";
-      toolCalls: Array<ToolCall<A["tools"]>>;
-    }
-  | {
-      type: "request-error";
-      requestError: string;
-      curl: string;
-    }
-  | {
-      type: "auth-error";
-      authError: string;
-    }
-  | RecoverableRequestError
-  | {
-      type: "compaction-error";
-      requestError: string;
-      curl: string | null;
-    };
-
-export type ValidationRetryBudgetFinishReason = {
-  type: "validation-retry-budget-exceeded";
-  error: string;
-};
-
-export type RequestErrorRetryBudgetFinishReason = {
-  type: "request-error-retry-budget-exceeded";
-  error: RetryableRequestError;
-};
-
-export type TrajectoryArcFinish<Reason> = {
-  type: "finish";
-  reason: Reason;
-};
-
-export type AllFinishReasons<A extends Agent<any, any, any>> =
-  | StaticFinishReasons<A>
-  | ValidationRetryBudgetFinishReason
-  | RequestErrorRetryBudgetFinishReason;
-
-type ValidationBudgetParams<A extends Agent<any, any, any>, Model> = TrajectoryArcParams<
-  A,
-  Model
-> & {
-  validationRetries: number;
-};
-
-type RequestErrorBudgetParams<A extends Agent<any, any, any>, Model> = TrajectoryArcParams<
-  A,
-  Model
-> & {
-  requestErrorRetries: RequestErrorRetriesConfig & {
-    maxRetryCount: number;
-  };
-};
-
-type BothBudgetsParams<A extends Agent<any, any, any>, Model> = TrajectoryArcParams<A, Model> & {
-  validationRetries: number;
-  requestErrorRetries: RequestErrorRetriesConfig & {
-    maxRetryCount: number;
-  };
-};
-
-export type TrajectoryArcEvents<A extends Agent<any, any, any>> = {
+export type TrajectoryArcEvents = {
   startResponse: null;
   responseProgress: {
     buffer: AssistantBuffer<TrajectoryArcTokenTypes>;
     delta: AssistantDelta<TrajectoryArcTokenTypes>;
   };
-  // An in-progress response was discarded on abort without leaving any IR behind (nothing
-  // user-visible had streamed): clients should wipe any in-progress display state.
   discardResponseProgress: null;
-  startCompaction: null;
-  compactionProgress: AutocompactionStream;
   autofixingJson: null;
   autofixingTool: { tool: string };
-  requestRetry: {
-    error: RetryableRequestError;
-    attempt: number;
-    delayMs: number;
-    abortController: AbortController;
-  };
-  // One atomic history commit. Persist the entire group together: an assistant and
-  // the validation/error records that qualify it must never be published separately.
-  onMessages: Array<TrajectoryArcIR<A>>;
   onResponseHeaders: Headers;
 };
 
@@ -226,58 +110,34 @@ export type ErrorCorrection<A extends Agent<any, any, any>> = {
   tools?: ToolCorrections<A>;
 };
 
-export type RequestErrorRetriesConfig = {
-  maxRetryCount?: number;
-  backoffMs: number;
-  maxBackoffMs?: number;
-};
-
 export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
-  contextWindow: number;
-  manualCompactionPending: boolean;
   messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
   toolData: AgentToolData<A>;
   runCompiler: Compiler<Model>;
   lowerMessages: (messages: Array<TreeIR<A>>) => Array<CompilerReadyIR<A>>;
-  // Called with the arc's abort signal, so prompt construction (often filesystem reads) dies
-  // with the turn that requested it.
   systemPrompt?: (signal: AbortSignal) => Promise<string>;
   transport: Transport;
   abortSignal: AbortSignal;
   errorCorrection?: ErrorCorrection<A>;
-  validationRetries?: number;
-  requestErrorRetries?: RequestErrorRetriesConfig;
   handler: {
-    [K in keyof TrajectoryArcEvents<A>]: (event: TrajectoryArcEvents<A>[K]) => Promise<void>;
+    [K in keyof TrajectoryArcEvents]: (event: TrajectoryArcEvents[K]) => Promise<void>;
   };
 };
 
-/*
- * Given some LLM IR, runs the next arc of the trajectory until one of the finish reasons defined
- * above is hit.
- */
+// One response attempt, including local correction and validation. Only progress is
+// emitted in flight; the supervisor commits the finalized group and owns all retries.
 export const trajectoryArc = registry({
-  run: runTrajectoryArc,
+  run: async function <A extends Agent<any, any, any>, Model>(
+    params: TrajectoryArcParams<A, Model>,
+  ): Promise<Array<TrajectoryArcIR<A>>> {
+    return requestSnapshot(await runTrajectoryArc(params));
+  },
 });
 
-async function runTrajectoryArc<A extends Agent<any, any, any>, Model>(
-  params: BothBudgetsParams<A, Model>,
-): Promise<TrajectoryArcFinish<AllFinishReasons<A>>>;
-async function runTrajectoryArc<A extends Agent<any, any, any>, Model>(
-  params: ValidationBudgetParams<A, Model>,
-): Promise<TrajectoryArcFinish<StaticFinishReasons<A> | ValidationRetryBudgetFinishReason>>;
-async function runTrajectoryArc<A extends Agent<any, any, any>, Model>(
-  params: RequestErrorBudgetParams<A, Model>,
-): Promise<TrajectoryArcFinish<StaticFinishReasons<A> | RequestErrorRetryBudgetFinishReason>>;
-async function runTrajectoryArc<A extends Agent<any, any, any>, Model>(
-  params: TrajectoryArcParams<A, Model>,
-): Promise<TrajectoryArcFinish<StaticFinishReasons<A>>>;
 async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   model,
-  contextWindow,
-  manualCompactionPending,
   messages,
   tools,
   toolData,
@@ -287,22 +147,15 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   transport,
   abortSignal,
   errorCorrection,
-  validationRetries,
-  requestErrorRetries,
   handler,
-}: TrajectoryArcParams<A, Model>): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> {
-  const messagesCopy: Array<LlmIR<A> | AgentIR<A>> = [...messages];
-  const emitIrs = async (delta: Array<TrajectoryArcIR<A>>): Promise<void> => {
-    if (delta.length > 0) await handler.onMessages(delta);
+}: TrajectoryArcParams<A, Model>): Promise<Array<TrajectoryArcIR<A>>> {
+  const interrupted: InterruptedByUserIR = {
+    role: "interrupted-by-user",
+    reason: userInterruptReason(),
   };
-  const finishWith = async (
-    reason: AllFinishReasons<A>,
-    remaining: Array<TrajectoryArcIR<A>> = [],
-  ): Promise<TrajectoryArcFinish<AllFinishReasons<A>>> => {
-    const record = arcErrorRecord(reason);
-    await emitIrs(record == null ? remaining : [...remaining, record]);
-    return { type: "finish", reason };
-  };
+  if (abortSignal.aborted) return [interrupted];
+  await handler.startResponse(null);
+  if (abortSignal.aborted) return [interrupted];
 
   const jsonCorrector = errorCorrection?.json;
   const jsonCorrectorWithEvent: AutofixJsonFn | undefined = jsonCorrector
@@ -311,435 +164,150 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         return jsonCorrector(badJson, signal);
       }
     : undefined;
+  const buffer: AssistantBuffer<TrajectoryArcTokenTypes> = {};
+  const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
+    model,
+    irs: lowerMessages(messages).map(({ converted }) => converted),
+    abortSignal,
+    transport,
+    tools,
+    systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
+    autofixJson: jsonCorrectorWithEvent,
+    onTokens: async (tokens, type) => {
+      if (abortSignal.aborted) return;
+      buffer[type] = (buffer[type] ?? "") + tokens;
+      await handler.responseProgress({ buffer, delta: { type, value: tokens } });
+    },
+  });
 
-  let validationAttempts = 0;
-  let requestAttempts = 0;
+  const headers = result.success
+    ? result.data.headers
+    : "headers" in result.error
+      ? result.error.headers
+      : undefined;
+  if (headers) await handler.onResponseHeaders(headers);
 
-  const consumeValidationRetry = (): boolean => {
-    if (validationRetries != null && validationAttempts >= validationRetries) return false;
-    validationAttempts += 1;
-    return true;
-  };
-
-  const maybeRetryRequest = async (
-    error: RetryableRequestError,
-  ): Promise<"retry" | "exhausted" | "cancelled" | "abort"> => {
-    if (requestErrorRetries == null) return "cancelled";
-    if (
-      requestErrorRetries.maxRetryCount != null &&
-      requestAttempts >= requestErrorRetries.maxRetryCount
-    ) {
-      return "exhausted";
-    }
-    requestAttempts += 1;
-
-    let delayMs = requestErrorRetries.backoffMs * requestAttempts;
-    if (requestErrorRetries.maxBackoffMs != null) {
-      delayMs = Math.min(delayMs, requestErrorRetries.maxBackoffMs);
-    }
-
-    const retryAbort = new AbortController();
-    await handler.requestRetry({
-      error,
-      attempt: requestAttempts,
-      delayMs,
-      abortController: retryAbort,
+  const partial: Array<TrajectoryArcIR<A>> = [];
+  if (buffer.content || buffer.tool || (!abortSignal.aborted && buffer.reasoning)) {
+    partial.push({
+      role: "assistant",
+      content: buffer.content ?? "",
+      reasoningContent: buffer.reasoning,
+      usage: compilerUsage(0, 0),
     });
+  }
+  if (abortSignal.aborted) {
+    if (partial.length === 0) await handler.discardResponseProgress(null);
+    return [...partial, interrupted];
+  }
+  if (!result.success) return [...partial, compilerErrorIR(result.error)];
 
-    await sleep(delayMs, combineSignals([abortSignal, retryAbort.signal]));
-    if (retryAbort.signal.aborted) return "cancelled";
-    if (abortSignal.aborted) return "abort";
-    return "retry";
-  };
+  const assistant = result.data.output;
+  const calls = assistant.toolCalls ?? [];
+  if (calls.length === 0) return [assistant];
 
-  const processToolCall = async <Name extends ToolNames<A>>(
-    toolCall: ToolCallByName<A, Name>,
-    defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>>,
-    retryIrs: Array<TrajectoryArcIR<A>>,
-  ): Promise<{ type: "ok" } | { type: "aborted"; validationError: string }> => {
-    const validation = await validate<A, Name>(
+  const wellformedCalls = calls.filter(
+    (call): call is ToolCall<A["tools"]> => call.type === "tool-call",
+  );
+  if (wellformedCalls.length !== calls.length) {
+    const answers = calls.map((call): TrajectoryArcIR<A> => {
+      if (call.type === "malformed-tool-request") {
+        return { role: "tool-parse-error", malformedRequest: call };
+      }
+      return {
+        role: "tool-skip-output",
+        toolCall: call,
+        reason: "Another tool call in this batch was malformed, so this tool call was skipped",
+      };
+    });
+    return [assistant, ...answers];
+  }
+
+  const defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>> = {};
+  for (const def of Object.values(tools)) {
+    if (def != null) defsByName[def.name as ToolNames<A>] = def;
+  }
+  const answers: Array<ToolValidationErrorMessage<A["tools"]> | ToolSkipOutputMessage<A["tools"]>> =
+    [];
+  for (const call of wellformedCalls) {
+    const toolCall = toArcToolCall<A>(call);
+    let validation = await validate<A, typeof toolCall.name>(
       abortSignal,
       transport,
       defsByName,
       toolData,
       toolCall,
     );
-
-    if (validation.success) {
-      // If we got this far, the tool validated successfully. Proactively push a tool-skip-output
-      // IR for it, in case other tool calls fail to validate (since all tool calls will be
-      // skipped if any are invalid).
-      retryIrs.push({
-        role: "tool-skip-output",
-        toolCall: fromArcToolCall(toolCall),
-        reason: SKIP_INVALID_REASON,
-      });
-      return { type: "ok" };
-    }
-
-    const corrector = errorCorrection?.tools?.[toolCall.name];
-    if (corrector != null) {
-      await handler.autofixingTool({ tool: toolCall.name });
-      const fixed = await corrector({
-        toolCall,
-        validationError: validation.error,
-        abortSignal,
-        transport,
-        data: toolData,
-      });
-
-      // If we aborted the correction, end the turn with a failed tool call. The assistant
-      // message must stay in history: the tool-validation-error answers one of its tool calls,
-      // and emitting the answer without the call orphans the tool message — strict backends
-      // reject requests where a tool message's tool_call_id doesn't resolve to a preceding
-      // assistant tool_call, and any session containing this history 400s on every resumed
-      // request.
-      if (abortSignal.aborted) {
-        return { type: "aborted", validationError: validation.error };
-      }
-
-      if (fixed != null) {
-        // Validate that the correction applies before marking as fixed
-        const fixedValidation = await validate<A, Name>(
+    if (!validation.success && !abortSignal.aborted) {
+      const corrector = errorCorrection?.tools?.[toolCall.name];
+      if (corrector != null) {
+        await handler.autofixingTool({ tool: toolCall.name });
+        const fixed = await corrector({
+          toolCall,
+          validationError: validation.error,
           abortSignal,
           transport,
-          defsByName,
-          toolData,
-          {
-            type: "tool-call",
-            name: toolCall.name,
-            toolCallId: toolCall.toolCallId,
-            original: toolCall.original,
-            parsed: fixed,
-          },
-        );
-        if (fixedValidation.success) {
-          // If we got this far, it's valid: update the tool call and keep going
-          toolCall.parsed = fixed;
-          retryIrs.push({
-            role: "tool-skip-output",
-            toolCall: fromArcToolCall(toolCall),
-            reason: SKIP_INVALID_REASON,
-          });
-          return { type: "ok" };
-        }
-      }
-    }
-
-    retryIrs.push({
-      role: "tool-validation-error",
-      toolCall: fromArcToolCall(toolCall),
-      error: validation.error,
-      aborted: false,
-    });
-    return { type: "ok" };
-  };
-
-  const maybeCompact = async (): Promise<
-    Result<{ checkpoint: Checkpoint } | null, CompactionError>
-  > => {
-    const loweredMessages = lowerMessages(messagesCopy);
-    const convertedMessages = loweredMessages.map(({ converted }) => converted);
-    if (!manualCompactionPending && !shouldAutoCompactHistory(contextWindow, convertedMessages)) {
-      return ok(null);
-    }
-
-    await handler.startCompaction(null);
-
-    const buffer: AssistantBuffer<CompactionTokenTypes> = {};
-    const checkpointContent = await generateCompactionCheckpointContent<A>({
-      messages: convertedMessages,
-      run: compactionMessages => {
-        return runCompiler<A, undefined>({
-          model,
-          irs: compactionMessages,
-          abortSignal,
-          transport,
-          autofixJson: jsonCorrector,
-          onTokens: async (tokens, type) => {
-            if (!buffer[type]) buffer[type] = "";
-            buffer[type] += tokens;
-            await handler.compactionProgress({
-              type: "autocompaction-stream",
-              buffer,
-              delta: { value: tokens, type },
-            });
-          },
+          data: toolData,
         });
-      },
-    });
-
-    if (!checkpointContent.success) return checkpointContent;
-    if (checkpointContent.data == null) return ok(null);
-
-    return ok({
-      checkpoint: {
-        role: "checkpoint",
-        content: checkpointContent.data,
-      },
-    });
-  };
-
-  const defsByName: Partial<Record<ToolNames<A>, LoadedToolsByName<A>[ToolNames<A>]>> = {};
-  for (const def of Object.values(tools)) {
-    if (def == null) continue;
-    defsByName[def.name as ToolNames<A>] = def;
-  }
-
-  while (true) {
-    if (abortSignal.aborted) return finishWith({ type: "abort" });
-
-    const compaction = await maybeCompact();
-    if (abortSignal.aborted) return finishWith({ type: "abort" });
-    if (!compaction.success) {
-      const compactionError = compaction.error;
-      if (isRetryableRequestError(compactionError)) {
-        const decision = await maybeRetryRequest(compactionError);
-        if (decision === "retry") continue;
-        if (decision === "abort") return finishWith({ type: "abort" });
-        if (decision === "exhausted") {
-          return finishWith({
-            type: "request-error-retry-budget-exceeded",
-            error: compactionError,
-          });
-        }
-      }
-      return finishWith(compactionErrorToFinishReason(compactionError));
-    }
-
-    if (compaction.data) {
-      await emitIrs([compaction.data.checkpoint]);
-      messagesCopy.push(compaction.data.checkpoint);
-      manualCompactionPending = false;
-    }
-    if (abortSignal.aborted) return finishWith({ type: "abort" });
-
-    await handler.startResponse(null);
-
-    let irs: Array<TrajectoryArcIR<A>> = [];
-    const buffer: AssistantBuffer<TrajectoryArcTokenTypes> = {};
-    const loweredMessages = lowerMessages(messagesCopy);
-    const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
-      model,
-      irs: loweredMessages.map(({ converted }) => converted),
-      abortSignal,
-      transport,
-      tools,
-      systemPrompt: systemPrompt == null ? undefined : () => systemPrompt(abortSignal),
-      autofixJson: jsonCorrectorWithEvent,
-      onTokens: async (tokens, type) => {
-        if (!buffer[type]) buffer[type] = "";
-        buffer[type] += tokens;
-        await handler.responseProgress({
-          buffer,
-          delta: { type, value: tokens },
-        });
-      },
-    });
-
-    async function maybeBufferedMessage(): Promise<Array<TrajectoryArcIR<A>>> {
-      if (abortSignal.aborted && !buffer.content && !buffer.tool) {
-        await handler.discardResponseProgress(null);
-        return [{ role: "interrupted-by-user", reason: userInterruptReason() }];
-      }
-      if (buffer.content || buffer.reasoning || buffer.tool) {
-        return [
-          ...irs,
-          {
-            role: "assistant",
-            content: buffer.content || "",
-            reasoningContent: buffer.reasoning,
-            usage: compilerUsage(0, 0),
-          },
-        ];
-      }
-      return [];
-    }
-
-    const headers = result.success
-      ? result.data.headers
-      : "headers" in result.error
-        ? result.error.headers
-        : undefined;
-    if (headers) await handler.onResponseHeaders(headers);
-
-    if (abortSignal.aborted) return finishWith({ type: "abort" }, await maybeBufferedMessage());
-
-    if (!result.success) {
-      const requestError = result.error;
-      if (isRetryableRequestError(requestError)) {
-        const decision = await maybeRetryRequest(requestError);
-        if (decision === "retry") continue;
-        if (decision === "abort") {
-          return finishWith({ type: "abort" }, await maybeBufferedMessage());
-        }
-        if (decision === "exhausted") {
-          return finishWith(
-            { type: "request-error-retry-budget-exceeded", error: requestError },
-            await maybeBufferedMessage(),
+        if (fixed != null && !abortSignal.aborted) {
+          const corrected = { ...toolCall, parsed: fixed };
+          const correctedValidation = await validate<A, typeof toolCall.name>(
+            abortSignal,
+            transport,
+            defsByName,
+            toolData,
+            corrected,
           );
+          if (correctedValidation.success) {
+            toolCall.parsed = fixed;
+            validation = correctedValidation;
+          }
         }
       }
-      return finishWith(compilerErrorToFinishReason(requestError), await maybeBufferedMessage());
     }
-
-    requestAttempts = 0;
-
-    const assistantMessage = result.data.output;
-    irs = [...irs, assistantMessage];
-
-    let malformedRequests = false;
-    for (const call of assistantMessage.toolCalls || []) {
-      if (call.type === "malformed-tool-request") {
-        malformedRequests = true;
-        break;
+    if (validation.success) {
+      answers.push({ role: "tool-skip-output", toolCall: call, reason: SKIP_INVALID_REASON });
+    } else {
+      answers.push({
+        role: "tool-validation-error",
+        toolCall: call,
+        error: validation.error,
+        aborted: abortSignal.aborted,
+      });
+    }
+    if (abortSignal.aborted) {
+      // Complete all tool answers before returning the interrupted attempt. No persisted
+      // prefix may expose unvalidated siblings as runnable work after a crash.
+      for (const remaining of wellformedCalls.slice(answers.length)) {
+        answers.push({
+          role: "tool-skip-output",
+          toolCall: remaining,
+          reason: SKIP_ABORTED_REASON,
+        });
       }
+      return [assistant, ...answers, interrupted];
     }
-
-    if (malformedRequests) {
-      // Insert tool skips for all of the non-malformed tool call IRs, and ensure the original order
-      // is kept in terms of input ordering vs output message ordering
-      for (const call of assistantMessage.toolCalls || []) {
-        if (call.type === "tool-call") {
-          irs.push({
-            role: "tool-skip-output",
-            toolCall: call,
-            reason: "Another tool call in this batch was malformed, so this tool call was skipped",
-          });
-        } else {
-          const _: "malformed-tool-request" = call.type;
-          irs.push({
-            role: "tool-parse-error",
-            malformedRequest: call,
-          });
-        }
-      }
-
-      if (!consumeValidationRetry()) {
-        return finishWith(
-          {
-            type: "validation-retry-budget-exceeded",
-            error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
-          },
-          irs,
-        );
-      }
-      // Commit the continuation decision with the failed batch. Its error/skip tail
-      // alone is terminal; error-retry makes a reload continue the same arc.
-      irs.push({ role: "error-retry" });
-      await emitIrs(irs);
-      messagesCopy.push(...irs);
-      continue;
-    }
-
-    const { toolCalls } = assistantMessage;
-
-    if (!toolCalls?.length) {
-      return finishWith({ type: "needs-response" }, irs);
-    }
-
-    const retryIrs: Array<TrajectoryArcIR<A>> = [];
-    const wellformedToolCalls: Array<ToolCallForTools<A>> = [];
-    for (const toolCall of toolCalls) {
-      if (toolCall.type === "malformed-tool-request") {
-        throw new Error(
-          "Impossible tool ordering: encountered a malformed tool with no malformed response",
-        );
-      }
-      wellformedToolCalls.push(toArcToolCall(toolCall));
-    }
-
-    for (const toolCall of wellformedToolCalls) {
-      const outcome = await processToolCall(toolCall, defsByName, retryIrs);
-      if (outcome.type === "aborted") {
-        return finishWith({ type: "abort" }, [
-          ...irs,
-          {
-            role: "tool-validation-error",
-            toolCall: fromArcToolCall(toolCall),
-            error: outcome.validationError,
-            aborted: true,
-          },
-        ]);
-      }
-    }
-
-    // If you have any IRs that need to be retried, retry them
-    let needsRetry = false;
-    for (const ir of retryIrs) {
-      if (ir.role !== "tool-skip-output") {
-        needsRetry = true;
-        break;
-      }
-    }
-    if (needsRetry) {
-      const fullRetryTrajectory = [...irs, ...retryIrs];
-      if (!consumeValidationRetry()) {
-        return finishWith(
-          {
-            type: "validation-retry-budget-exceeded",
-            error: VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR,
-          },
-          fullRetryTrajectory,
-        );
-      }
-      fullRetryTrajectory.push({ role: "error-retry" });
-      await emitIrs(fullRetryTrajectory);
-      messagesCopy.push(...fullRetryTrajectory);
-      continue;
-    }
-
-    // Got this far? Everything validated. Return the tool calls
-    return finishWith(
-      {
-        type: "request-tool",
-        toolCalls: wellformedToolCalls.map(fromArcToolCall),
-      },
-      irs,
-    );
   }
+
+  if (answers.some(answer => answer.role === "tool-validation-error"))
+    return [assistant, ...answers];
+  return [assistant];
 }
 
-const VALIDATION_RETRY_BUDGET_EXCEEDED_ERROR = "The model repeatedly produced invalid tool calls";
-
-function arcErrorRecord(
-  reason: AllFinishReasons<any>,
-): RequestErrorIR | CompactionErrorIR | ValidationRetryBudgetExceededIR | ModelErrorIR | null {
-  switch (reason.type) {
+function compilerErrorIR(error: CompilerError): RequestErrorIR | ModelErrorIR {
+  switch (error.type) {
     case "auth-error":
-      return { role: "auth-error", authError: reason.authError };
+      return { role: "auth-error", authError: error.authError };
     case "payment-error":
     case "rate-limit-error":
-      return { role: reason.type, requestError: reason.requestError };
+      return { role: error.type, requestError: error.requestError };
     case "request-error":
-      return {
-        role: "request-error",
-        requestError: reason.requestError,
-        curl: reason.curl,
-      };
-    case "compaction-error":
-      return {
-        role: "compaction-error",
-        requestError: reason.requestError,
-        curl: reason.curl,
-      };
-    case "validation-retry-budget-exceeded":
-      return {
-        role: "validation-retry-budget-exceeded",
-        error: reason.error,
-      };
-    case "request-error-retry-budget-exceeded":
-      if (reason.error.type === "rate-limit-error") {
-        return { role: "rate-limit-error", requestError: reason.error.requestError };
-      }
-      return {
-        role: "request-error",
-        requestError: reason.error.requestError,
-        curl: reason.error.curl,
-      };
+    case "stream-error":
+    case "unexpected-tool-call":
+      return { role: "request-error", requestError: error.requestError, curl: error.curl };
     default: {
-      const _: "abort" | "needs-response" | "request-tool" = reason.type;
-      return null;
+      const _exhaustive: never = error;
+      return _exhaustive;
     }
   }
 }
@@ -751,17 +319,12 @@ async function validate<A extends Agent<any, any, any>, Name extends ToolNames<A
   toolData: AgentToolData<A>,
   toolCall: ToolCallByName<A, Name>,
 ): Promise<Result<null, string>> {
-  // defsByName was built by indexing each loaded definition by its declared name, so the entry
-  // for toolCall.name is the definition of the tool this call targets.
   const def = defsByName[toolCall.name] as LoadedToolsByName<A>[Name] | undefined;
   if (def == null) return err(`No tool named ${toolCall.name}`);
-
   const schemaPair = {
     original: { name: toolCall.name, arguments: toolCall.original },
     parsed: { name: toolCall.name, arguments: toolCall.parsed },
   } as ValidateSchemaPair<LoadedToolsByName<A>[Name]>;
-
-  // AgentToolData is the intersection of every tool's data type, so it is valid for this tool.
   return def.validate(abortSignal, transport, schemaPair, toolData as ToolDataFor<typeof def>);
 }
 
@@ -776,60 +339,9 @@ type ValidateSchemaPair<Def> = Def extends {
   ? Pair
   : never;
 
-// ToolCall and ToolCallForTools describe the same runtime values; the arc validates and corrects
-// tool calls dispatched by tool name, while the compiler IR types them through the tool map. These
-// two coercions re-associate the same union without changing any runtime data.
+// Re-associate tool names with their definitions without changing their payloads.
 function toArcToolCall<A extends Agent<any, any, any>>(
   toolCall: ToolCall<A["tools"]>,
 ): ToolCallForTools<A> {
   return toolCall as ToolCall<A["tools"]> & ToolCallForTools<A>;
-}
-
-function fromArcToolCall<A extends Agent<any, any, any>>(
-  toolCall: ToolCallForTools<A>,
-): ToolCall<A["tools"]> {
-  return toolCall as ToolCall<A["tools"]> & ToolCallForTools<A>;
-}
-
-function isRecoverableRequestError(error: { type: string }): error is RecoverableRequestError {
-  return error.type === "payment-error" || error.type === "rate-limit-error";
-}
-
-function isRetryableRequestError(error: { type: string }): error is RetryableRequestError {
-  return (
-    error.type === "request-error" ||
-    error.type === "stream-error" ||
-    error.type === "rate-limit-error"
-  );
-}
-
-function compilerErrorToFinishReason<A extends Agent<any, any, any>>(
-  error: CompilerError,
-): StaticFinishReasons<A> {
-  if (error.type === "auth-error") return error;
-  if (isRecoverableRequestError(error)) return error;
-  return {
-    type: "request-error",
-    requestError: error.requestError,
-    curl: error.curl,
-  };
-}
-
-function compactionErrorToFinishReason<A extends Agent<any, any, any>>(
-  error: CompactionError,
-): StaticFinishReasons<A> {
-  switch (error.type) {
-    case "auth-error":
-    case "payment-error":
-    case "rate-limit-error":
-      return error;
-    case "compaction-error":
-    case "request-error":
-    case "stream-error":
-      return {
-        type: "compaction-error",
-        requestError: error.requestError,
-        curl: error.curl,
-      };
-  }
 }

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { t } from "structural";
 import { LocalTransport } from "../transports/local.ts";
-import type { Transport } from "../transports/transport-common.ts";
 import { err, ok, type Result } from "./result.ts";
 import { ToolBuilder, type LoadedTools, type ToolCall } from "./tool-def.ts";
 import {
@@ -20,24 +19,12 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import { lower } from "./ir-operations.ts";
-import {
-  trajectoryArc,
-  type AllFinishReasons,
-  type ErrorCorrection,
-  type RequestErrorRetriesConfig,
-  type RequestErrorRetryBudgetFinishReason,
-  type StaticFinishReasons,
-  type TrajectoryArcEvents,
-  type TrajectoryArcFinish,
-  type TrajectoryArcIR,
-  type ValidationRetryBudgetFinishReason,
-} from "./trajectory-arc.ts";
+import { requestSnapshot } from "./request-snapshot.ts";
+import { trajectoryArc, type ErrorCorrection, type TrajectoryArcEvents } from "./trajectory-arc.ts";
 
 type TestData = { marker: string };
-
 const dataSeen: TestData[] = [];
 let validateImpl: (query: string) => Result<null, string> = () => ok(null);
-
 const searchTool = new ToolBuilder<TestData>()
   .declare({
     name: "search",
@@ -51,75 +38,15 @@ const searchTool = new ToolBuilder<TestData>()
     },
     run: async () => ok({ type: "output" as const, content: [] }),
   }));
-
-const _testAgent = defineAgent({
-  tools: { search: searchTool },
-  agents: {},
-});
+const _testAgent = defineAgent({ tools: { search: searchTool }, agents: {} });
 type TestAgent = typeof _testAgent;
-
-const transport: Transport = new LocalTransport();
-
+const transport = new LocalTransport();
 type Emit = (tokens: string, type: "reasoning" | "content") => Promise<void>;
 type QueueItem = (
   onTokens: Emit,
 ) =>
   | Result<CompilerSuccessData<TestAgent>, CompilerError>
   | Promise<Result<CompilerSuccessData<TestAgent>, CompilerError>>;
-
-function makeRunCompiler(queue: QueueItem[]) {
-  const calls: Array<{ irCount: number; hasTools: boolean }> = [];
-  const runCompiler: Compiler<null> = async <
-    A extends Agent<any, any, any>,
-    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
-  >(
-    params: CompilerParams<A, null, Tools>,
-  ): Promise<CompilerResult<A, Tools>> => {
-    calls.push({ irCount: params.irs.length, hasTools: params.tools != null });
-    const next = queue.shift();
-    if (next == null) throw new Error("Unexpected compiler call");
-    const result = await next(params.onTokens);
-    return result as typeof result & CompilerResult<A, Tools>;
-  };
-  return { runCompiler, calls };
-}
-
-function makeHandler(opts?: {
-  onRequestRetry?: (event: TrajectoryArcEvents<TestAgent>["requestRetry"]) => void;
-}) {
-  const messages: Array<TrajectoryArcIR<TestAgent>> = [];
-  const commits: Array<Array<TrajectoryArcIR<TestAgent>>> = [];
-  const retries: Array<TrajectoryArcEvents<TestAgent>["requestRetry"]> = [];
-  const correctedTools: string[] = [];
-  const rollbacks: null[] = [];
-  const handler: {
-    [K in keyof TrajectoryArcEvents<TestAgent>]: (
-      event: TrajectoryArcEvents<TestAgent>[K],
-    ) => Promise<void>;
-  } = {
-    startResponse: async () => {},
-    responseProgress: async () => {},
-    discardResponseProgress: async () => {
-      rollbacks.push(null);
-    },
-    startCompaction: async () => {},
-    compactionProgress: async () => {},
-    autofixingJson: async () => {},
-    autofixingTool: async event => {
-      correctedTools.push(event.tool);
-    },
-    requestRetry: async event => {
-      retries.push(event);
-      opts?.onRequestRetry?.(event);
-    },
-    onMessages: async irs => {
-      commits.push([...irs]);
-      messages.push(...irs);
-    },
-    onResponseHeaders: async () => {},
-  };
-  return { handler, messages, commits, retries, correctedTools, rollbacks };
-}
 
 function assistant(opts: {
   content?: string;
@@ -132,17 +59,9 @@ function assistant(opts: {
     toolCalls: opts.toolCalls,
   };
 }
-
 function searchCall(query: string, toolCallId = "call-1"): ToolCall<TestAgent["tools"]> {
-  return {
-    type: "tool-call",
-    name: "search",
-    toolCallId,
-    original: { query },
-    parsed: { query },
-  };
+  return { type: "tool-call", name: "search", toolCallId, original: { query }, parsed: { query } };
 }
-
 function malformedRequest(): MalformedToolRequest {
   return {
     type: "malformed-tool-request",
@@ -151,89 +70,67 @@ function malformedRequest(): MalformedToolRequest {
     toolCallId: "call-bad",
   };
 }
-
-const toolCallResult =
-  (query: string): QueueItem =>
-  () =>
-    ok({
-      output: assistant({ toolCalls: [searchCall(query)] }),
-      curl: "curl",
-      headers: new Headers(),
-      usage: compilerUsage(1, 1),
-    });
-
-const plainResult: QueueItem = () =>
-  ok({
-    output: assistant({ content: "done" }),
-    curl: "curl",
-    headers: new Headers(),
-    usage: compilerUsage(1, 1),
-  });
-
-const malformedResult: QueueItem = () =>
-  ok({
-    output: assistant({ toolCalls: [malformedRequest()] }),
-    curl: "curl",
-    headers: new Headers(),
-    usage: compilerUsage(1, 1),
-  });
-
+function result(output: AssistantMessage<TestAgent["tools"]>): QueueItem {
+  return () => ok({ output, curl: "curl", headers: new Headers(), usage: compilerUsage(1, 1) });
+}
 function requestError(message: string): Extract<CompilerError, { type: "request-error" }> {
   return { type: "request-error", requestError: message, curl: "curl" };
 }
 
-async function runArc({
-  queue,
-  toolData = { marker: "fresh" },
-  contextWindow = 1_000_000,
-  messages,
-  errorCorrection,
-  validationRetries,
-  requestErrorRetries,
-  abortController = new AbortController(),
-  onRequestRetry,
-}: {
-  queue: QueueItem[];
+async function runArc(opts: {
+  response: QueueItem;
   toolData?: TestData;
-  contextWindow?: number;
   messages?: Array<LlmIR<TestAgent>>;
   errorCorrection?: ErrorCorrection<TestAgent>;
-  validationRetries?: number;
-  requestErrorRetries?: RequestErrorRetriesConfig;
   abortController?: AbortController;
-  onRequestRetry?: (event: TrajectoryArcEvents<TestAgent>["requestRetry"]) => void;
 }) {
-  const tools: Partial<LoadedTools<TestAgent["tools"]>> = {};
-  const searchDef = await searchTool({
-    signal: new AbortController().signal,
-    transport,
-    data: toolData,
-  });
-  if (searchDef == null) throw new Error("search tool failed to load");
-  tools.search = searchDef;
-
-  const { runCompiler, calls } = makeRunCompiler(queue);
-  const rec = makeHandler({ onRequestRetry });
-  const base = await trajectoryArc.run<TestAgent, null>({
+  const toolData = opts.toolData ?? { marker: "fresh" };
+  const abortController = opts.abortController ?? new AbortController();
+  const search = await searchTool({ signal: abortController.signal, transport, data: toolData });
+  if (search == null) throw new Error("search tool failed to load");
+  const runCompiler: Compiler<null> = async <
+    A extends Agent<any, any, any>,
+    Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
+  >(
+    params: CompilerParams<A, null, Tools>,
+  ): Promise<CompilerResult<A, Tools>> => {
+    const compiled = await opts.response(params.onTokens);
+    return compiled as typeof compiled & CompilerResult<A, Tools>;
+  };
+  const correctedTools: string[] = [];
+  const rollbacks: null[] = [];
+  const handler: {
+    [K in keyof TrajectoryArcEvents]: (event: TrajectoryArcEvents[K]) => Promise<void>;
+  } = {
+    startResponse: async () => {},
+    responseProgress: async () => {},
+    discardResponseProgress: async () => {
+      rollbacks.push(null);
+    },
+    autofixingJson: async () => {},
+    autofixingTool: async event => {
+      correctedTools.push(event.tool);
+    },
+    onResponseHeaders: async () => {},
+  };
+  const messages = await trajectoryArc.run<TestAgent, null>({
     model: null,
-    contextWindow,
-    manualCompactionPending: false,
-    messages: messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
-    tools,
+    messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
+    tools: { search },
     toolData,
     runCompiler,
-    lowerMessages: msgs =>
-      lower<TestAgent>(msgs.map(original => ({ original, converted: original }))),
+    lowerMessages: msgs => {
+      return lower<TestAgent>(
+        msgs.map(original => ({ original, converted: original })),
+        { validation: 0, requestError: 0 },
+      );
+    },
     transport,
     abortSignal: abortController.signal,
-    errorCorrection,
-    validationRetries,
-    requestErrorRetries,
-    handler: rec.handler,
+    errorCorrection: opts.errorCorrection,
+    handler,
   });
-  // The budget options are runtime-dynamic in this helper, so any finish reason is possible.
-  const finish: TrajectoryArcFinish<AllFinishReasons<TestAgent>> = base;
-  return { finish, calls, ...rec };
+  return { messages, correctedTools, rollbacks };
 }
 
 beforeEach(() => {
@@ -242,488 +139,189 @@ beforeEach(() => {
 });
 
 describe("trajectoryArc", () => {
-  it("returns tool calls when validation succeeds, passing tool data to the tool", async () => {
-    const { finish, calls, messages } = await runArc({
-      queue: [toolCallResult("kittens")],
+  it("returns validated calls in a complete snapshot and supplies tool data", async () => {
+    const output = assistant({ toolCalls: [searchCall("kittens")] });
+    const { messages } = await runArc({
+      response: result(output),
       toolData: { marker: "validated" },
     });
-
-    expect(finish).toEqual({
-      type: "finish",
-      reason: {
-        type: "request-tool",
-        toolCalls: [searchCall("kittens")],
-      },
-    });
-    expect(calls).toEqual([{ irCount: 1, hasTools: true }]);
-    expect(messages.map(m => m.role)).toEqual(["assistant"]);
+    expect(messages).toEqual(requestSnapshot([output]));
     expect(dataSeen).toEqual([{ marker: "validated" }]);
   });
 
-  it("retries malformed tool calls and finishes needs-response when the retry is clean", async () => {
-    const { finish, calls, messages } = await runArc({
-      queue: [malformedResult, plainResult],
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual([
-      "assistant",
-      "tool-parse-error",
-      "error-retry",
-      "assistant",
-    ]);
-  });
-
-  it("finishes with retry-budget-exceeded once the retry budget is spent", async () => {
-    const { finish, calls, messages } = await runArc({
-      queue: [malformedResult, malformedResult, malformedResult],
-      validationRetries: 2,
-    });
-
-    expect(finish.reason).toEqual({
-      type: "validation-retry-budget-exceeded",
-      error: "The model repeatedly produced invalid tool calls",
-    });
-    expect(calls.length).toBe(3);
-    expect(messages.filter(m => m.role === "tool-parse-error").length).toBe(3);
-    expect(messages[messages.length - 1]).toEqual({
-      role: "validation-retry-budget-exceeded",
-      error: "The model repeatedly produced invalid tool calls",
-    });
-  });
-
   it.each(["malformed", "invalid"] as const)(
-    "commits %s failures with their retry or exhausted-budget decision",
+    "returns the whole %s batch with sibling answers",
     async kind => {
-      validateImpl = () => err("invalid query");
-      const failedResult = kind === "malformed" ? malformedResult : toolCallResult("bad");
-      const failureRole = kind === "malformed" ? "tool-parse-error" : "tool-validation-error";
-      const { finish, calls, commits } = await runArc({
-        queue: [failedResult, failedResult],
-        validationRetries: 1,
-      });
-
-      expect(calls).toHaveLength(2);
-      expect(finish.reason.type).toBe("validation-retry-budget-exceeded");
-      expect(commits.map(irs => irs.map(ir => ir.role))).toEqual([
-        ["assistant", failureRole, "error-retry"],
-        ["assistant", failureRole, "validation-retry-budget-exceeded"],
+      validateImpl = query => (query === "bad" ? err("invalid query") : ok(null));
+      const failedCall = kind === "malformed" ? malformedRequest() : searchCall("bad");
+      const sibling = searchCall("sibling", "c2");
+      const output = assistant({ toolCalls: [failedCall, sibling] });
+      const { messages } = await runArc({ response: result(output) });
+      expect(messages.map(ir => ir.role)).toEqual([
+        "request-snapshot-begin",
+        "assistant",
+        kind === "malformed" ? "tool-parse-error" : "tool-validation-error",
+        "tool-skip-output",
+        "request-snapshot-end",
       ]);
+      expect(messages[1]).toBe(output);
+      expect(messages[3]).toMatchObject({ role: "tool-skip-output", toolCall: sibling });
     },
   );
 
-  it("retries invalid tool calls with tool-validation-error IRs", async () => {
+  it("applies correction and revalidates before returning a successful request", async () => {
     validateImpl = query => (query === "bad" ? err("stale") : ok(null));
-    const { finish, calls, messages } = await runArc({
-      queue: [toolCallResult("bad"), plainResult],
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual([
-      "assistant",
-      "tool-validation-error",
-      "error-retry",
-      "assistant",
-    ]);
-    const validationError = messages[1];
-    if (validationError.role !== "tool-validation-error") throw new Error("impossible");
-    expect(validationError.error).toBe("stale");
-    expect(validationError.aborted).toBe(false);
-  });
-
-  it("applies tool error correction and re-validates the corrected call", async () => {
-    validateImpl = query => (query === "bad" ? err("stale") : ok(null));
-    const errorCorrection: ErrorCorrection<TestAgent> = {
-      tools: {
-        search: async ({ toolCall, validationError, data }) => {
-          expect(validationError).toBe("stale");
-          expect(toolCall.parsed).toEqual({ query: "bad" });
-          expect(data).toEqual({ marker: "fresh" });
-          return { query: "fixed" };
+    const output = assistant({ toolCalls: [searchCall("bad")] });
+    const { messages, correctedTools } = await runArc({
+      response: result(output),
+      errorCorrection: {
+        tools: {
+          search: async ({ validationError, data }) => {
+            expect(validationError).toBe("stale");
+            expect(data).toEqual({ marker: "fresh" });
+            return { query: "fixed" };
+          },
         },
       },
-    };
-    const { finish, calls, correctedTools } = await runArc({
-      queue: [toolCallResult("bad")],
-      errorCorrection,
     });
-
-    expect(finish.reason).toEqual({
-      type: "request-tool",
-      toolCalls: [{ ...searchCall("bad"), parsed: { query: "fixed" } }],
+    expect(messages).toEqual(requestSnapshot([output]));
+    expect(output.toolCalls?.[0]).toMatchObject({
+      original: { query: "bad" },
+      parsed: { query: "fixed" },
     });
-    expect(calls.length).toBe(1);
     expect(correctedTools).toEqual(["search"]);
-    expect(dataSeen.length).toBe(2);
+    expect(dataSeen).toHaveLength(2);
   });
 
-  it("emits tool-validation-error when error correction returns null", async () => {
-    validateImpl = query => (query === "bad" ? err("stale") : ok(null));
-    const errorCorrection: ErrorCorrection<TestAgent> = {
-      tools: {
-        search: async () => null,
-      },
-    };
-    const { finish, calls, messages } = await runArc({
-      queue: [toolCallResult("bad"), plainResult],
-      errorCorrection,
+  it("returns the validation failure when correction returns null", async () => {
+    validateImpl = () => err("stale");
+    const output = assistant({ toolCalls: [searchCall("bad")] });
+    const { messages } = await runArc({
+      response: result(output),
+      errorCorrection: { tools: { search: async () => null } },
     });
+    expect(messages).toEqual(
+      requestSnapshot([
+        output,
+        {
+          role: "tool-validation-error",
+          toolCall: searchCall("bad"),
+          error: "stale",
+          aborted: false,
+        },
+      ]),
+    );
+  });
 
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls.length).toBe(2);
-    expect(messages.map(m => m.role)).toEqual([
+  it.each([
+    "request-error",
+    "stream-error",
+    "rate-limit-error",
+    "auth-error",
+    "payment-error",
+  ] as const)("maps compiler %s to its persisted error snapshot", async type => {
+    const error: CompilerError =
+      type === "auth-error"
+        ? { type, authError: "no key" }
+        : {
+            type,
+            requestError: "failed",
+            curl: "curl",
+            headers: new Headers(),
+            usage: compilerUsage(1, 1),
+          };
+    const { messages } = await runArc({ response: () => err(error) });
+    expect(messages).toEqual(
+      requestSnapshot([
+        type === "auth-error"
+          ? { role: "auth-error", authError: "no key" }
+          : type === "payment-error" || type === "rate-limit-error"
+            ? { role: type, requestError: "failed" }
+            : { role: "request-error", requestError: "failed", curl: "curl" },
+      ]),
+    );
+  });
+
+  it("returns partial content together with its error, without changing history during progress", async () => {
+    const history: Array<LlmIR<TestAgent>> = [{ role: "user", content: [] }];
+    const { messages } = await runArc({
+      messages: history,
+      response: async emit => {
+        await emit("partial response", "content");
+        expect(history).toEqual([{ role: "user", content: [] }]);
+        return err(requestError("boom"));
+      },
+    });
+    expect(messages).toEqual(
+      requestSnapshot([
+        {
+          role: "assistant",
+          content: "partial response",
+          reasoningContent: undefined,
+          usage: compilerUsage(0, 0),
+        },
+        { role: "request-error", requestError: "boom", curl: "curl" },
+      ]),
+    );
+    expect(history).toHaveLength(1);
+  });
+
+  it.each(["reasoning", "content"] as const)("finalizes an interrupted %s stream", async type => {
+    const abortController = new AbortController();
+    const { messages, rollbacks } = await runArc({
+      abortController,
+      response: async emit => {
+        await emit("partial", type);
+        abortController.abort();
+        return result(assistant({ content: "unreached" }))(emit);
+      },
+    });
+    expect(messages).toEqual(
+      type === "content"
+        ? requestSnapshot([
+            {
+              role: "assistant",
+              content: "partial",
+              reasoningContent: undefined,
+              usage: compilerUsage(0, 0),
+            },
+            { role: "interrupted-by-user", reason: "The user interrupted the response." },
+          ])
+        : requestSnapshot([
+            { role: "interrupted-by-user", reason: "The user interrupted the response." },
+          ]),
+    );
+    expect(rollbacks).toHaveLength(type === "reasoning" ? 1 : 0);
+  });
+
+  it("answers every sibling before returning an interrupted correction", async () => {
+    validateImpl = () => err("stale");
+    const abortController = new AbortController();
+    const { messages } = await runArc({
+      abortController,
+      response: result(assistant({ toolCalls: [searchCall("bad"), searchCall("sibling", "c2")] })),
+      errorCorrection: {
+        tools: {
+          search: async () => {
+            abortController.abort();
+            return null;
+          },
+        },
+      },
+    });
+    expect(messages.map(ir => ir.role)).toEqual([
+      "request-snapshot-begin",
       "assistant",
       "tool-validation-error",
-      "error-retry",
-      "assistant",
+      "tool-skip-output",
+      "interrupted-by-user",
+      "request-snapshot-end",
     ]);
-  });
-
-  it("does not retry request errors when no retries config is passed", async () => {
-    const { finish, calls, messages } = await runArc({
-      queue: [() => err(requestError("boom"))],
+    expect(messages[2]).toMatchObject({
+      role: "tool-validation-error",
+      aborted: true,
+      toolCall: { toolCallId: "call-1" },
     });
-
-    expect(finish.reason).toEqual({
-      type: "request-error",
-      requestError: "boom",
-      curl: "curl",
-    });
-    expect(calls.length).toBe(1);
-    expect(messages).toEqual([{ role: "request-error", requestError: "boom", curl: "curl" }]);
-  });
-
-  it("passes through rate limit errors without retrying when no retries config is passed", async () => {
-    const { finish, calls, messages } = await runArc({
-      queue: [
-        () =>
-          err({
-            type: "rate-limit-error",
-            requestError: "slow down",
-            curl: "curl",
-            headers: new Headers(),
-          }),
-      ],
-    });
-
-    expect(finish.reason.type).toBe("rate-limit-error");
-    expect(calls.length).toBe(1);
-    expect(messages).toEqual([{ role: "rate-limit-error", requestError: "slow down" }]);
-  });
-
-  it("retries request errors with the configured backoff", async () => {
-    const { finish, calls, retries } = await runArc({
-      queue: [() => err(requestError("boom")), plainResult],
-      requestErrorRetries: { backoffMs: 1 },
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls.length).toBe(2);
-    expect(retries.length).toBe(1);
-    expect(retries[0].attempt).toBe(1);
-    expect(retries[0].delayMs).toBe(1);
-    expect(retries[0].error.requestError).toBe("boom");
-  });
-
-  it("grows the backoff per attempt, capped at maxBackoffMs", async () => {
-    const { finish, calls, retries } = await runArc({
-      queue: [
-        () => err(requestError("boom")),
-        () => err(requestError("boom")),
-        () => err(requestError("boom")),
-        plainResult,
-      ],
-      requestErrorRetries: { backoffMs: 1, maxBackoffMs: 2 },
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls.length).toBe(4);
-    expect(retries.map(retry => retry.attempt)).toEqual([1, 2, 3]);
-    expect(retries.map(retry => retry.delayMs)).toEqual([1, 2, 2]);
-  });
-
-  it("gives up retrying request errors after maxRetryCount attempts", async () => {
-    const { finish, calls, retries, messages } = await runArc({
-      queue: [() => err(requestError("boom")), () => err(requestError("boom"))],
-      requestErrorRetries: { maxRetryCount: 1, backoffMs: 1 },
-    });
-
-    expect(finish.reason).toEqual({
-      type: "request-error-retry-budget-exceeded",
-      error: requestError("boom"),
-    });
-    expect(calls.length).toBe(2);
-    expect(retries.length).toBe(1);
-    expect(messages).toEqual([{ role: "request-error", requestError: "boom", curl: "curl" }]);
-  });
-
-  it("finishes with the request error when the retry wait is aborted", async () => {
-    const { finish, calls, retries } = await runArc({
-      queue: [() => err(requestError("boom")), plainResult],
-      requestErrorRetries: { backoffMs: 60_000 },
-      onRequestRetry: event => event.abortController.abort(),
-    });
-
-    expect(finish.reason).toEqual({
-      type: "request-error",
-      requestError: "boom",
-      curl: "curl",
-    });
-    expect(calls.length).toBe(1);
-    expect(retries.length).toBe(1);
-  });
-
-  it("finishes with abort when the arc is aborted during the retry wait", async () => {
-    const abortController = new AbortController();
-    const { finish, calls } = await runArc({
-      queue: [() => err(requestError("boom")), plainResult],
-      requestErrorRetries: { backoffMs: 60_000 },
-      abortController,
-      onRequestRetry: () => abortController.abort(),
-    });
-
-    expect(finish.reason).toEqual({ type: "abort" });
-    expect(calls.length).toBe(1);
-  });
-
-  it("compacts history when the context window is nearly full", async () => {
-    const { finish, calls, messages } = await runArc({
-      contextWindow: 4,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", content: "hello world hello" }],
-        },
-      ],
-      queue: [
-        () =>
-          ok({
-            output: assistant({ content: "summary of the past" }),
-            curl: "curl",
-            headers: new Headers(),
-            usage: compilerUsage(1, 1),
-          }),
-        plainResult,
-      ],
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls).toEqual([
-      { irCount: 2, hasTools: false },
-      { irCount: 1, hasTools: true },
-    ]);
-    expect(messages.map(m => m.role)).toEqual(["checkpoint", "assistant"]);
-  });
-
-  it("retries request errors from the compaction run", async () => {
-    const { finish, calls, retries } = await runArc({
-      contextWindow: 4,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", content: "hello world hello" }],
-        },
-      ],
-      queue: [
-        () => err(requestError("boom")),
-        () =>
-          ok({
-            output: assistant({ content: "summary of the past" }),
-            curl: "curl",
-            headers: new Headers(),
-            usage: compilerUsage(1, 1),
-          }),
-        plainResult,
-      ],
-      requestErrorRetries: { backoffMs: 1 },
-    });
-
-    expect(finish.reason).toEqual({ type: "needs-response" });
-    expect(calls).toEqual([
-      { irCount: 2, hasTools: false },
-      { irCount: 2, hasTools: false },
-      { irCount: 1, hasTools: true },
-    ]);
-    expect(retries.length).toBe(1);
-  });
-
-  it("emits a compaction-error record when the compaction run fails", async () => {
-    const { finish, messages } = await runArc({
-      contextWindow: 4,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", content: "hello world hello" }],
-        },
-      ],
-      queue: [() => err(requestError("boom"))],
-    });
-
-    expect(finish.reason).toEqual({
-      type: "compaction-error",
-      requestError: "boom",
-      curl: "curl",
-    });
-    expect(messages).toEqual([{ role: "compaction-error", requestError: "boom", curl: "curl" }]);
-  });
-
-  it("finishes with abort when the signal is already aborted", async () => {
-    const abortController = new AbortController();
-    abortController.abort();
-    const { finish, calls } = await runArc({
-      queue: [plainResult],
-      abortController,
-    });
-
-    expect(finish.reason).toEqual({ type: "abort" });
-    expect(calls.length).toBe(0);
-  });
-
-  it("emits buffered assistant content when the request fails", async () => {
-    const { finish, messages } = await runArc({
-      queue: [
-        async onTokens => {
-          await onTokens("partial response", "content");
-          return err(requestError("boom"));
-        },
-      ],
-    });
-
-    expect(finish.reason.type).toBe("request-error");
-    expect(messages).toEqual([
-      {
-        role: "assistant",
-        content: "partial response",
-        reasoningContent: undefined,
-        usage: compilerUsage(0, 0),
-      },
-      { role: "request-error", requestError: "boom", curl: "curl" },
-    ]);
-  });
-
-  it("emits an interrupted-by-user marker instead of a reasoning-only partial on abort", async () => {
-    const abortController = new AbortController();
-    const { finish, messages, rollbacks } = await runArc({
-      abortController,
-      queue: [
-        async onTokens => {
-          await onTokens("thinking", "reasoning");
-          abortController.abort();
-          return plainResult(onTokens);
-        },
-      ],
-    });
-
-    expect(finish.reason).toEqual({ type: "abort" });
-    expect(messages).toEqual([
-      { role: "interrupted-by-user", reason: "The user interrupted the response." },
-    ]);
-    expect(rollbacks.length).toBe(1);
-  });
-
-  it("keeps the buffered partial when aborted after content streamed", async () => {
-    const abortController = new AbortController();
-    const { finish, messages, rollbacks } = await runArc({
-      abortController,
-      queue: [
-        async onTokens => {
-          await onTokens("thinking", "reasoning");
-          await onTokens("partial response", "content");
-          abortController.abort();
-          return plainResult(onTokens);
-        },
-      ],
-    });
-
-    expect(finish.reason).toEqual({ type: "abort" });
-    expect(messages).toEqual([
-      {
-        role: "assistant",
-        content: "partial response",
-        reasoningContent: "thinking",
-        usage: compilerUsage(0, 0),
-      },
-    ]);
-    expect(rollbacks.length).toBe(0);
+    expect(messages[3]).toMatchObject({ role: "tool-skip-output", toolCall: { toolCallId: "c2" } });
   });
 });
-
-// Compile-time checks that the run overloads narrow finish reasons by which retry budgets are
-// passed. Never executed.
-function assertFinishReasonNarrowing() {
-  type Includes<T, U> = [T] extends [U] ? true : never;
-
-  const messages: Array<LlmIR<TestAgent>> = [
-    { role: "user", content: [{ type: "text", content: "hi" }] },
-  ];
-  const makeBase = () => ({
-    model: null,
-    contextWindow: 100,
-    manualCompactionPending: false,
-    messages,
-    toolData: { marker: "fresh" },
-    transport,
-    abortSignal: new AbortController().signal,
-  });
-
-  return (async () => {
-    const searchDef = await searchTool({
-      signal: new AbortController().signal,
-      transport,
-      data: { marker: "fresh" },
-    });
-    if (searchDef == null) throw new Error("impossible");
-    const base = {
-      ...makeBase(),
-      tools: { search: searchDef },
-      runCompiler: makeRunCompiler([plainResult]).runCompiler,
-      lowerMessages: (msgs: Array<LlmIR<TestAgent>>) =>
-        lower<TestAgent>(msgs.map(original => ({ original, converted: original }))),
-      handler: makeHandler({}).handler,
-    };
-
-    const none = await trajectoryArc.run<TestAgent, null>(base);
-    type NoneReason = (typeof none)["reason"];
-    const noValidationBudget: Includes<ValidationRetryBudgetFinishReason, NoneReason> =
-      true as never;
-    const noRequestBudget: Includes<RequestErrorRetryBudgetFinishReason, NoneReason> =
-      true as never;
-    const hasStatic: Includes<StaticFinishReasons<TestAgent>, NoneReason> = true;
-
-    const both = await trajectoryArc.run<TestAgent, null>({
-      ...base,
-      validationRetries: 2,
-      requestErrorRetries: { maxRetryCount: 3, backoffMs: 10 },
-    });
-    type BothReason = (typeof both)["reason"];
-    const hasValidationBudget: Includes<ValidationRetryBudgetFinishReason, BothReason> = true;
-    const hasRequestBudget: Includes<RequestErrorRetryBudgetFinishReason, BothReason> = true;
-
-    const validationOnly = await trajectoryArc.run<TestAgent, null>({
-      ...base,
-      validationRetries: 2,
-      requestErrorRetries: { backoffMs: 10 },
-    });
-    type ValidationOnlyReason = (typeof validationOnly)["reason"];
-    const onlyValidation: Includes<ValidationRetryBudgetFinishReason, ValidationOnlyReason> = true;
-    const stillNoRequest: Includes<RequestErrorRetryBudgetFinishReason, ValidationOnlyReason> =
-      true as never;
-
-    return [
-      none,
-      both,
-      validationOnly,
-      noValidationBudget,
-      noRequestBudget,
-      hasStatic,
-      hasValidationBudget,
-      hasRequestBudget,
-      onlyValidation,
-      stillNoRequest,
-    ];
-  })();
-}
-
-void assertFinishReasonNarrowing;

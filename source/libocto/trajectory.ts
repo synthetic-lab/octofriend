@@ -14,8 +14,25 @@ import type {
   LoweredIR,
   ToolRejectMessage,
   UserMessage,
+  RequestErrorIR,
+  CompactionErrorIR,
+  ModelErrorIR,
 } from "./llm-ir.ts";
-import { downconvert, inspectHistory, inspectSubagentTrajectory, lower } from "./ir-operations.ts";
+import {
+  downconvert,
+  inspectHistory,
+  inspectSubagentTrajectory,
+  lastOutcome,
+  lower,
+  meaningfulTailIR,
+} from "./ir-operations.ts";
+import {
+  countTransientErrors,
+  latestRequestSnapshot,
+  validationFailure,
+  type RetryBudget,
+} from "./trajectory-retry.ts";
+import { sleep } from "./sleep.ts";
 import type {
   ActiveHistory,
   HistoryInspection,
@@ -30,14 +47,14 @@ import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
+import { shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
   trajectoryArc,
-  type AllFinishReasons,
   type AgentToolData,
   type ErrorCorrection,
   type ToolDataFor,
   type TrajectoryArcEvents,
-  type TrajectoryArcFinish,
   type TrajectoryArcParams,
 } from "./trajectory-arc.ts";
 
@@ -239,11 +256,22 @@ type ScopedMessages<A extends Agent<any, any, any>> =
   | (ScopeRoot & { irs: Array<AgentIR<A>> })
   | ScopedSubagentMessages<A, A>;
 
-// The arc-sourced events' payloads don't vary by arc, so they carry the tree's exact scope
-// union as top-level discriminants alongside the original payload.
+// Response and compaction progress retain the selected branch's scope.
+type OperationEvents = TrajectoryArcEvents &
+  TrajectoryCompactionEvents & {
+    requestRetry: {
+      error:
+        | RequestErrorIR
+        | CompactionErrorIR
+        | Extract<ModelErrorIR, { role: "rate-limit-error" }>;
+      attempt: number;
+      delayMs: number;
+    };
+  };
+
 type ScopedArcEvents<A extends Agent<any, any, any>> = {
-  [K in keyof Omit<TrajectoryArcEvents<A>, "onMessages">]: ArcScope<A> & {
-    payload: Omit<TrajectoryArcEvents<A>, "onMessages">[K];
+  [K in keyof OperationEvents]: ArcScope<A> & {
+    payload: OperationEvents[K];
   };
 };
 
@@ -313,22 +341,22 @@ type TreeErrorCorrection<A extends Agent<any, any, any>> = ErrorCorrection<A> &
     {} | { [K in keyof A["agents"]]: TreeErrorCorrection<A["agents"][K]> }[keyof A["agents"]]
   >;
 
+export type RequestErrorRetriesConfig = {
+  maxRetryCount?: number;
+  backoffMs: number;
+  maxBackoffMs?: number;
+};
+
 export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   TrajectoryArcParams<A, Model>,
-  | "handler"
-  | "abortSignal"
-  | "model"
-  | "contextWindow"
-  | "tools"
-  | "lowerMessages"
-  | "toolData"
-  | "errorCorrection"
-  | "manualCompactionPending"
+  "handler" | "abortSignal" | "model" | "tools" | "lowerMessages" | "toolData" | "errorCorrection"
 > & {
   agent: A;
   toolData: AgentToolData<A> &
     UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>;
   errorCorrection?: TreeErrorCorrection<A>;
+  validationRetries?: number;
+  requestErrorRetries?: RequestErrorRetriesConfig;
   // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;
@@ -525,7 +553,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   constructor(private readonly params: TrajectoryParams<A, Model>) {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
-      lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
+      lower<A>(
+        downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages),
+        this.retryBudget,
+      );
     this._mode = { root: true, mode: "ready-for-request", control: this.readyControl() };
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
@@ -552,8 +583,22 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   get hasCompactableHistory(): boolean {
-    const lastMessage = this.history.at(-1);
+    const [lastMessage] = this.meaningfulTailIR();
     return lastMessage != null && lastMessage.role !== "checkpoint";
+  }
+
+  meaningfulTailIR() {
+    return meaningfulTailIR(this.history);
+  }
+
+  private get retryBudget(): RetryBudget {
+    return {
+      validation: this.params.validationRetries ?? Infinity,
+      requestError:
+        this.params.requestErrorRetries == null
+          ? 0
+          : (this.params.requestErrorRetries.maxRetryCount ?? Infinity),
+    };
   }
 
   inspectSubagentTrajectory(
@@ -561,6 +606,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   ): SubagentTrajectoryInspection {
     return inspectSubagentTrajectory<A>(
       downconvert<A>(irs => this.params.lowerMessages(irs, null))(trajectory.ir),
+      this.retryBudget,
     );
   }
 
@@ -659,6 +705,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       this.params.agent,
       this.history,
       downconvert<A>(irs => this.params.lowerMessages(irs, null))(this.history),
+      this.retryBudget,
     );
     if (!inspected.success) throw new Error(inspected.error);
     return inspected.data;
@@ -746,7 +793,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         }
       }
       // Response-phase aborts now mark themselves in the arc; don't double-mark.
-      const tail = location.history[location.history.length - 1] as LlmIR<any> | undefined;
+      const tail = lastOutcome(
+        downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history),
+      );
       if (
         tail?.role !== "interrupted-by-user" &&
         (!location.root || this.inspect().action !== "wait-for-input")
@@ -776,14 +825,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   private async runArc(
     location: ActiveHistory<A>,
-    { model, contextWindow, tools: allTools, modalities }: RuntimeData<A, Model>,
-  ): Promise<
-    TrajectoryArcFinish<
-      Exclude<AllFinishReasons<A>, { type: "request-tool" }> | { type: "request-tool" }
-    >
-  > {
+    { model, tools: allTools, modalities }: RuntimeData<A, Model>,
+  ): Promise<Array<TreeIR<A>>> {
     const params = this.params;
-    const owner = this.ownership.lease();
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
     let receivedTokens = false;
@@ -797,8 +841,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const run = <B extends Agent<any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
       trajectoryArc.run<B, Model>({
         model,
-        contextWindow,
-        manualCompactionPending: isMainAgent && this.manualCompactionPending,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
         toolData: params.toolData as AgentToolData<B>,
@@ -808,8 +850,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         systemPrompt,
         transport: params.transport,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
-        validationRetries: params.validationRetries,
-        requestErrorRetries: params.requestErrorRetries,
         abortSignal: combineSignals([params.abortSignal, this.turnController.signal]),
         handler: {
           startResponse: async event => {
@@ -835,13 +875,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           discardResponseProgress: async event => {
             await params.handler?.discardResponseProgress?.({ ...scope, payload: event });
           },
-          startCompaction: async event => {
-            await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });
-            await params.handler?.startCompaction?.({ ...scope, payload: event });
-          },
-          compactionProgress: async event => {
-            await params.handler?.compactionProgress?.({ ...scope, payload: event });
-          },
           autofixingJson: async event => {
             await this.setArcMode(location, {
               mode: "autofix-json",
@@ -857,26 +890,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             });
             await params.handler?.autofixingTool?.({ ...scope, payload: event });
           },
-          requestRetry: async event => {
-            await this.setArcMode(location, {
-              mode: "request-error-retrying",
-              error: event.error.requestError,
-              attempt: event.attempt,
-              delayMs: event.delayMs,
-              control: this.runningControl(),
-            });
-            await params.handler?.requestRetry?.({ ...scope, payload: event });
-          },
           onResponseHeaders: async event => {
             await params.handler?.onResponseHeaders?.({ ...scope, payload: event });
-          },
-          onMessages: irs => {
-            return owner.ifOwner(() => {
-              if (isMainAgent && irs.some(ir => ir.role === "checkpoint")) {
-                this.manualCompactionPending = false;
-              }
-              return this.appendIrs(location, irs as Array<TreeIR<A>>);
-            });
           },
         },
       });
@@ -918,6 +933,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       }
     }
 
+    if (inspection.action === "retry") {
+      await this.waitRetry(inspection.location);
+      if (this.params.abortSignal.aborted) return false;
+      if (this.turnController.signal.aborted) {
+        await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+        return true;
+      }
+    }
     const active = inspection;
     const location = active.location;
     const work = await (async (): Promise<
@@ -925,6 +948,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       | { action: "respond" }
       | { action: "quit" }
     > => {
+      if (active.action === "retry") return { action: "respond" };
       if (active.action === "respond" || active.action === "run-tools") return active;
       this.awaitingUnpause = true;
       await this.announceReady(active);
@@ -1025,7 +1049,13 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         runtime = { ...runtime, ...model.data };
       }
     }
-    await this.respond(inspection.location, runtime);
+    await this.applySteering(inspection.location);
+    if (this.params.abortSignal.aborted) return false;
+    if (this.needsCompaction(inspection.location, runtime)) {
+      await this.autocompact(inspection.location, runtime);
+    } else {
+      await this.respond(inspection.location, runtime);
+    }
     return !this.params.abortSignal.aborted;
   }
 
@@ -1048,23 +1078,105 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return ok({ ...modelResult.data, tools: toolsResult.data });
   }
 
+  private async applySteering(location: ActiveHistory<A>): Promise<void> {
+    if (!location.root) return;
+    const queued = this.steering.take();
+    if (queued.length === 0) return;
+    await this.emitSteeringChange();
+    await this.appendIr(location, {
+      role: "user",
+      content: coalesceUserMessageContent(queued),
+    });
+  }
+
+  private needsCompaction(location: ActiveHistory<A>, runtime: RuntimeData<A, Model>): boolean {
+    if (location.root && this.manualCompactionPending) return true;
+    const messages = this.lowerForLocation(
+      location,
+      runtime.modalities,
+    )(location.history).map(pair => pair.converted);
+    return shouldAutoCompactHistory(runtime.contextWindow, messages);
+  }
+
+  private async autocompact(
+    location: ActiveHistory<A>,
+    runtime: RuntimeData<A, Model>,
+  ): Promise<void> {
+    const owner = this.ownership.lease();
+    const scope = this.scope(location);
+    const result = await trajectoryCompaction.run<A, Model>({
+      model: runtime.model,
+      messages: this.lowerForLocation(
+        location,
+        runtime.modalities,
+      )(location.history).map(pair => pair.converted),
+      runCompiler: this.params.runCompiler,
+      transport: this.params.transport,
+      abortSignal: combineSignals([this.params.abortSignal, this.turnController.signal]),
+      autofixJson: this.params.errorCorrection?.json,
+      handler: {
+        startCompaction: async event => {
+          await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });
+          await this.params.handler?.startCompaction?.({ ...scope, payload: event });
+        },
+        compactionProgress: async event => {
+          await this.params.handler?.compactionProgress?.({ ...scope, payload: event });
+        },
+      },
+    });
+    if (this.params.abortSignal.aborted) return;
+    if (!result.success) {
+      await this.closeInterruptedWork(location, owner, null);
+      return;
+    }
+    await owner.ifOwner(() => {
+      if (location.root && result.data.some(ir => ir.role === "checkpoint")) {
+        this.manualCompactionPending = false;
+      }
+      return this.appendIrs(location, result.data);
+    });
+  }
+
+  private async waitRetry(location: ActiveHistory<A>): Promise<void> {
+    const history = downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history);
+    const snapshot = latestRequestSnapshot(history);
+    if (snapshot == null || validationFailure(snapshot)) return;
+    const error = snapshot.at(-1)?.converted;
+    if (
+      error == null ||
+      (error.role !== "request-error" &&
+        error.role !== "compaction-error" &&
+        error.role !== "rate-limit-error")
+    )
+      return;
+    const config = this.params.requestErrorRetries;
+    if (config == null) return;
+    const attempt = countTransientErrors(history);
+    const delayMs = Math.min(config.backoffMs * attempt, config.maxBackoffMs ?? Infinity);
+    await this.setArcMode(location, {
+      mode: "request-error-retrying",
+      error: error.requestError,
+      attempt,
+      delayMs,
+      control: this.runningControl(),
+    });
+    await this.params.handler?.requestRetry?.({
+      ...this.scope(location),
+      payload: { error, attempt, delayMs },
+    });
+    await sleep(delayMs, combineSignals([this.params.abortSignal, this.turnController.signal]));
+  }
+
   private async respond(
     location: ActiveHistory<A>,
     runtimeData: RuntimeData<A, Model>,
   ): Promise<void> {
-    if (location.root) {
-      const queued = this.steering.take();
-      if (queued.length > 0) {
-        await this.emitSteeringChange();
-        await this.appendIr(location, {
-          role: "user",
-          content: coalesceUserMessageContent(queued),
-        });
-      }
-    }
-    const { reason } = await this.runArc(location, runtimeData);
-    if (reason.type === "abort" && !this.params.abortSignal.aborted) {
-      await this.closeInterruptedWork(location, this.ownership.lease(), null);
+    const owner = this.ownership.lease();
+    const irs = await this.runArc(location, runtimeData);
+    if (this.params.abortSignal.aborted) return;
+    await owner.ifOwner(() => this.appendIrs(location, irs));
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, owner, null);
     }
   }
 

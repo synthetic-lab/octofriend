@@ -18,12 +18,17 @@ import type {
   PreLoweredIR,
 } from "./llm-ir.ts";
 import { definePermissionedAgent, definePermissionlessAgent } from "./llm-ir.ts";
-import { downconvert, lower } from "./ir-operations.ts";
+import { downconvert, lower, meaningfulTailIR } from "./ir-operations.ts";
 import type { ActiveHistory } from "./ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./tool-def.ts";
 import { ToolBuilder } from "./tool-def.ts";
 import { ok } from "./result.ts";
-import type { TrajectoryEvents, TrajectoryMode, TrajectoryParams } from "./trajectory.ts";
+import type {
+  Trajectory,
+  TrajectoryEvents,
+  TrajectoryMode,
+  TrajectoryParams,
+} from "./trajectory.ts";
 
 /*
  * Compile-only test: the agent-tree surface — tree-wide subagent names, the merged tool map,
@@ -217,13 +222,14 @@ function inspectConversionTypes(
   trajectory: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
   extra: AgentExtra<Root>,
 ) {
+  const retryBudget = { validation: 0, requestError: 0 };
   // @ts-expect-error Final lowering requires paired IR, not bare history.
-  lower<Root>(raw);
+  lower<Root>(raw, retryBudget);
   // Client output contains no trajectories, so it already fits recursive lowering.
-  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(shallow));
-  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive));
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(shallow, retryBudget));
+  expectType<Array<CompilerReadyIR<Root>>>(lower<Root>(recursive, retryBudget));
   // @ts-expect-error Raw child histories still need recursive conversion.
-  lower<Root>([{ original: trajectory, converted: trajectory }]);
+  lower<Root>([{ original: trajectory, converted: trajectory }], retryBudget);
   // @ts-expect-error The client callback cannot receive trajectories.
   pass([trajectory], null);
   // @ts-expect-error Nor can it manufacture trajectories from custom IR.
@@ -235,7 +241,7 @@ function inspectConversionTypes(
 function inspectGenericChildLowering<A extends Agent<any, any, any>>(
   history: Array<RecursiveLowered<A["agents"][keyof A["agents"]]>>,
 ): Array<CompilerReadyIR<A>> {
-  return lower(history);
+  return lower(history, { validation: 0, requestError: 0 });
 }
 
 const _conversionRoot = definePermissionedAgent({ tools: {}, agents: { child: _root } });
@@ -328,6 +334,21 @@ type _descendantTools = Expect<
 
 void inspectConversionTypes;
 void inspectGenericChildLowering;
+
+function inspectMeaningfulTailIR(
+  trajectory: Trajectory<Root, null>,
+  child: Extract<AgentIR<Root>, { role: "subagent-trajectory" }>,
+) {
+  const rootIRs = [...trajectory.meaningfulTailIR()];
+  const childIRs = [...meaningfulTailIR(child.ir)];
+  type Boundary = { role: "request-snapshot-begin" | "request-snapshot-end" };
+  type _rootIR = Expect<Equal<(typeof rootIRs)[number], Exclude<AgentIR<Root>, Boundary>>>;
+  type _childIR = Expect<
+    Equal<(typeof childIRs)[number], Exclude<AgentIR<typeof _research>, Boundary>>
+  >;
+}
+
+void inspectMeaningfulTailIR;
 
 // The active location preserves the same agent/IR/scope correlation as message events.
 function inspectActiveHistory(location: ActiveHistory<Root>) {
