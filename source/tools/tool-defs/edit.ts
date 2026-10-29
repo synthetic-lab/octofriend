@@ -8,7 +8,7 @@ import {
   parseOriginalFile,
 } from "../common.ts";
 import { Transport } from "../../transports/transport-common.ts";
-import { ok, err } from "../../libocto/result.ts";
+import { ok, err, attempt } from "../../libocto/result.ts";
 
 // Construct the intersection manually, since OpenAI and Anthropic can't handle top-level allOf(...)
 const DiffParts = {
@@ -63,7 +63,10 @@ export default edit.withCustomIR({ fileMutateIR }).define(async () => ({
       file: file.data,
     });
     if (!replaced.success) return replaced;
-    await fileTracker.write(transport, signal, filePath, replaced.data);
+    const written = await attempt(`Failed to edit file ${filePath}`, () => {
+      return fileTracker.write(transport, signal, filePath, replaced.data);
+    });
+    if (!written.success) return written;
     return customIR.fileMutateIR({ content: "" });
   },
 }));
@@ -116,8 +119,11 @@ async function validateDiff({
   diff: t.GetType<typeof ArgumentsSchema>;
 }) {
   if (!file.includes(diff.search)) {
-    const isOutdated = await fileTracker.isOutdated(transport, signal, path);
-    if (isOutdated) return err(FILE_OUTDATED_ERROR_MESSAGE);
+    const isOutdated = await attempt(`Could not check file ${path} for changes`, () => {
+      return fileTracker.isOutdated(transport, signal, path);
+    });
+    if (!isOutdated.success) return isOutdated;
+    if (isOutdated.data) return err(FILE_OUTDATED_ERROR_MESSAGE);
     return err(
       `
 Could not find search string in file ${path}: ${diff.search}
