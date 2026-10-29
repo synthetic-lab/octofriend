@@ -19,7 +19,11 @@ import {
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
 import { lower } from "./ir-operations.ts";
-import { trajectoryArc, type ErrorCorrection, type TrajectoryArcEvents } from "./trajectory-arc.ts";
+import {
+  trajectoryAssistantRequest,
+  type ErrorCorrection,
+  type TrajectoryAssistantRequestEvents,
+} from "./trajectory-assistant-request.ts";
 
 type TestData = { marker: string };
 const dataSeen: TestData[] = [];
@@ -76,7 +80,7 @@ function requestError(message: string): Extract<CompilerError, { type: "request-
   return { type: "request-error", requestError: message, curl: "curl" };
 }
 
-async function runArc(opts: {
+async function runAssistantRequest(opts: {
   response: QueueItem;
   toolData?: TestData;
   messages?: Array<LlmIR<TestAgent>>;
@@ -99,7 +103,9 @@ async function runArc(opts: {
   const correctedTools: string[] = [];
   const rollbacks: null[] = [];
   const handler: {
-    [K in keyof TrajectoryArcEvents]: (event: TrajectoryArcEvents[K]) => Promise<void>;
+    [K in keyof TrajectoryAssistantRequestEvents]: (
+      event: TrajectoryAssistantRequestEvents[K],
+    ) => Promise<void>;
   } = {
     startResponse: async () => {},
     responseProgress: async () => {},
@@ -112,7 +118,7 @@ async function runArc(opts: {
     },
     onResponseHeaders: async () => {},
   };
-  const messages = await trajectoryArc.run<TestAgent, null>({
+  const messages = await trajectoryAssistantRequest.run<TestAgent, null>({
     model: null,
     messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools: { search },
@@ -134,10 +140,10 @@ beforeEach(() => {
   dataSeen.length = 0;
 });
 
-describe("trajectoryArc", () => {
+describe("trajectoryAssistantRequest", () => {
   it("returns validated calls and supplies tool data", async () => {
     const output = assistant({ toolCalls: [searchCall("kittens")] });
-    const { messages } = await runArc({
+    const { messages } = await runAssistantRequest({
       response: result(output),
       toolData: { marker: "validated" },
     });
@@ -152,7 +158,7 @@ describe("trajectoryArc", () => {
       const failedCall = kind === "malformed" ? malformedRequest() : searchCall("bad");
       const sibling = searchCall("sibling", "c2");
       const output = assistant({ toolCalls: [failedCall, sibling] });
-      const { messages } = await runArc({ response: result(output) });
+      const { messages } = await runAssistantRequest({ response: result(output) });
       expect(messages.map(ir => ir.role)).toEqual([
         "assistant",
         kind === "malformed" ? "tool-parse-error" : "tool-validation-error",
@@ -166,7 +172,7 @@ describe("trajectoryArc", () => {
   it("applies correction and revalidates before returning a successful request", async () => {
     validateImpl = query => (query === "bad" ? err("stale") : ok(null));
     const output = assistant({ toolCalls: [searchCall("bad")] });
-    const { messages, correctedTools } = await runArc({
+    const { messages, correctedTools } = await runAssistantRequest({
       response: result(output),
       errorCorrection: {
         tools: {
@@ -190,7 +196,7 @@ describe("trajectoryArc", () => {
   it("returns the validation failure when correction returns null", async () => {
     validateImpl = () => err("stale");
     const output = assistant({ toolCalls: [searchCall("bad")] });
-    const { messages } = await runArc({
+    const { messages } = await runAssistantRequest({
       response: result(output),
       errorCorrection: { tools: { search: async () => null } },
     });
@@ -222,7 +228,7 @@ describe("trajectoryArc", () => {
             headers: new Headers(),
             usage: compilerUsage(1, 1),
           };
-    const { messages } = await runArc({ response: () => err(error) });
+    const { messages } = await runAssistantRequest({ response: () => err(error) });
     expect(messages).toEqual([
       type === "auth-error"
         ? { role: "auth-error", authError: "no key" }
@@ -234,7 +240,7 @@ describe("trajectoryArc", () => {
 
   it("returns partial content together with its error, without changing history during progress", async () => {
     const history: Array<LlmIR<TestAgent>> = [{ role: "user", content: [] }];
-    const { messages } = await runArc({
+    const { messages } = await runAssistantRequest({
       messages: history,
       response: async emit => {
         await emit("partial response", "content");
@@ -256,7 +262,7 @@ describe("trajectoryArc", () => {
 
   it.each(["reasoning", "content"] as const)("finalizes an interrupted %s stream", async type => {
     const abortController = new AbortController();
-    const { messages, rollbacks } = await runArc({
+    const { messages, rollbacks } = await runAssistantRequest({
       abortController,
       response: async emit => {
         await emit("partial", type);
@@ -283,7 +289,7 @@ describe("trajectoryArc", () => {
   it("answers every sibling before returning an interrupted correction", async () => {
     validateImpl = () => err("stale");
     const abortController = new AbortController();
-    const { messages } = await runArc({
+    const { messages } = await runAssistantRequest({
       abortController,
       response: result(assistant({ toolCalls: [searchCall("bad"), searchCall("sibling", "c2")] })),
       errorCorrection: {

@@ -23,7 +23,7 @@ import { userInterruptReason } from "./compilers/ir-prompts.ts";
 const SKIP_INVALID_REASON = "One of your other tool calls was invalid, so no tool calls were run";
 const SKIP_ABORTED_REASON = "The user aborted the response, so this tool was skipped";
 
-export type TrajectoryArcTokenTypes = "reasoning" | "content" | "tool";
+export type TrajectoryAssistantRequestTokenTypes = "reasoning" | "content" | "tool";
 
 export type AssistantBuffer<AllowedType extends string> = {
   [K in AllowedType]?: string;
@@ -65,7 +65,7 @@ type UnionToIntersection<U> = (U extends U ? (x: U) => void : never) extends (x:
   ? I
   : never;
 
-export type TrajectoryArcIR<A extends Agent<any, any, any>> =
+export type TrajectoryAssistantRequestIR<A extends Agent<any, any, any>> =
   | AssistantMessage<A["tools"]>
   | ToolParseErrorMessage
   | ToolValidationErrorMessage<A["tools"]>
@@ -74,11 +74,11 @@ export type TrajectoryArcIR<A extends Agent<any, any, any>> =
   | InterruptedByUserIR
   | ModelErrorIR;
 
-export type TrajectoryArcEvents = {
+export type TrajectoryAssistantRequestEvents = {
   startResponse: null;
   responseProgress: {
-    buffer: AssistantBuffer<TrajectoryArcTokenTypes>;
-    delta: AssistantDelta<TrajectoryArcTokenTypes>;
+    buffer: AssistantBuffer<TrajectoryAssistantRequestTokenTypes>;
+    delta: AssistantDelta<TrajectoryAssistantRequestTokenTypes>;
   };
   discardResponseProgress: null;
   autofixingJson: null;
@@ -105,7 +105,7 @@ export type ErrorCorrection<A extends Agent<any, any, any>> = {
   tools?: ToolCorrections<A>;
 };
 
-export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
+export type TrajectoryAssistantRequestParams<A extends Agent<any, any, any>, Model> = {
   model: Model;
   messages: Array<AgentIR<A>>;
   tools: Partial<LoadedTools<A["tools"]>>;
@@ -117,15 +117,17 @@ export type TrajectoryArcParams<A extends Agent<any, any, any>, Model> = {
   abortSignal: AbortSignal;
   errorCorrection?: ErrorCorrection<A>;
   handler: {
-    [K in keyof TrajectoryArcEvents]: (event: TrajectoryArcEvents[K]) => Promise<void>;
+    [K in keyof TrajectoryAssistantRequestEvents]: (
+      event: TrajectoryAssistantRequestEvents[K],
+    ) => Promise<void>;
   };
 };
 
 // One response attempt, including local correction and validation. Only progress is
 // emitted in flight; the supervisor commits the finalized group and owns all retries.
-export const trajectoryArc = registry({ run: runTrajectoryArc });
+export const trajectoryAssistantRequest = registry({ run: runTrajectoryAssistantRequest });
 
-async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
+async function runTrajectoryAssistantRequest<A extends Agent<any, any, any>, Model>({
   model,
   messages,
   tools,
@@ -137,7 +139,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   abortSignal,
   errorCorrection,
   handler,
-}: TrajectoryArcParams<A, Model>): Promise<Array<TrajectoryArcIR<A>>> {
+}: TrajectoryAssistantRequestParams<A, Model>): Promise<Array<TrajectoryAssistantRequestIR<A>>> {
   const interrupted: InterruptedByUserIR = {
     role: "interrupted-by-user",
     reason: userInterruptReason(),
@@ -153,7 +155,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
         return jsonCorrector(badJson, signal);
       }
     : undefined;
-  const buffer: AssistantBuffer<TrajectoryArcTokenTypes> = {};
+  const buffer: AssistantBuffer<TrajectoryAssistantRequestTokenTypes> = {};
   const result = await runCompiler<A, Partial<LoadedTools<A["tools"]>>>({
     model,
     irs: lowerMessages(messages).map(({ converted }) => converted),
@@ -176,7 +178,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
       : undefined;
   if (headers) await handler.onResponseHeaders(headers);
 
-  const partial: Array<TrajectoryArcIR<A>> = [];
+  const partial: Array<TrajectoryAssistantRequestIR<A>> = [];
   if (buffer.content || buffer.tool || (!abortSignal.aborted && buffer.reasoning)) {
     partial.push({
       role: "assistant",
@@ -199,7 +201,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
     (call): call is ToolCall<A["tools"]> => call.type === "tool-call",
   );
   if (wellformedCalls.length !== calls.length) {
-    const answers = calls.map((call): TrajectoryArcIR<A> => {
+    const answers = calls.map((call): TrajectoryAssistantRequestIR<A> => {
       if (call.type === "malformed-tool-request") {
         return { role: "tool-parse-error", malformedRequest: call };
       }
@@ -219,7 +221,7 @@ async function runTrajectoryArc<A extends Agent<any, any, any>, Model>({
   const answers: Array<ToolValidationErrorMessage<A["tools"]> | ToolSkipOutputMessage<A["tools"]>> =
     [];
   for (const call of wellformedCalls) {
-    const toolCall = toArcToolCall<A>(call);
+    const toolCall = toToolCallForTools<A>(call);
     let validation = await validate<A, typeof toolCall.name>(
       abortSignal,
       transport,
@@ -329,7 +331,7 @@ type ValidateSchemaPair<Def> = Def extends {
   : never;
 
 // Re-associate tool names with their definitions without changing their payloads.
-function toArcToolCall<A extends Agent<any, any, any>>(
+function toToolCallForTools<A extends Agent<any, any, any>>(
   toolCall: ToolCall<A["tools"]>,
 ): ToolCallForTools<A> {
   return toolCall as ToolCall<A["tools"]> & ToolCallForTools<A>;

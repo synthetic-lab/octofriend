@@ -28,7 +28,7 @@ import { Trajectory, type TrajectoryParams } from "./trajectory.ts";
 type ToolData = { executed: string[] };
 
 // Deliberately do not repeat validation inside run: the runner must not execute a
-// call that the arc has already rejected, even when its failure group was interrupted.
+// call that the assistant request has already rejected, even when its failure group was interrupted.
 const searchTool = new ToolBuilder<ToolData>()
   .declare({
     name: "search",
@@ -552,7 +552,7 @@ describe("trajectory crash recovery at persisted IR boundaries", () => {
         );
       });
 
-      it("recovers a fully recorded request failure without reexecuting the failed arc", async () => {
+      it("recovers a fully recorded request failure without reexecuting the failed request", async () => {
         const recording = await recordArc(scope, [failedResponse]);
         const recovered = await reload(snapshotAt(recording, scope, "request-error"));
         expectRequestFailure(recovered, scope);

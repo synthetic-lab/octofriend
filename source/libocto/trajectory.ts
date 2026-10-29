@@ -51,13 +51,13 @@ import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts
 import { shouldAutoCompactHistory } from "./compilers/autocompact.ts";
 import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
-  trajectoryArc,
+  trajectoryAssistantRequest,
   type AgentToolData,
   type ErrorCorrection,
   type ToolDataFor,
-  type TrajectoryArcEvents,
-  type TrajectoryArcParams,
-} from "./trajectory-arc.ts";
+  type TrajectoryAssistantRequestEvents,
+  type TrajectoryAssistantRequestParams,
+} from "./trajectory-assistant-request.ts";
 
 export type InputControl = {
   enqueueSteering(content: UserMessage["content"]): Promise<void>;
@@ -258,7 +258,7 @@ type ScopedMessages<A extends Agent<any, any, any>> =
   | ScopedSubagentMessages<A, A>;
 
 // Response and compaction progress retain the selected branch's scope.
-type OperationEvents = TrajectoryArcEvents &
+type OperationEvents = TrajectoryAssistantRequestEvents &
   TrajectoryCompactionEvents & {
     requestRetry: {
       error:
@@ -350,7 +350,7 @@ export type RequestErrorRetriesConfig = {
 };
 
 export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
-  TrajectoryArcParams<A, Model>,
+  TrajectoryAssistantRequestParams<A, Model>,
   "handler" | "abortSignal" | "model" | "tools" | "lowerMessages" | "toolData" | "errorCorrection"
 > & {
   agent: A;
@@ -791,7 +791,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           });
         }
       }
-      // Response-phase aborts now mark themselves in the arc; don't double-mark.
+      // Response-phase aborts mark themselves in the assistant request; don't double-mark.
       const tail = lastOutcome(
         downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history),
       );
@@ -822,7 +822,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     );
   }
 
-  private async runArc(
+  private async runAssistantRequest(
     location: ActiveHistory<A>,
     { model, tools: allTools, modalities }: RuntimeData<A, Model>,
   ): Promise<Array<TreeIR<A>>> {
@@ -836,9 +836,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
 
     // The selected agent B is in A's tree. Narrow the shared catalogues to B at this boundary;
-    // the arc still runs with B's history and tools, never with a child retyped as the root.
+    // the request still uses B's history and tools, never with a child retyped as the root.
     const run = <B extends Agent<any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
-      trajectoryArc.run<B, Model>({
+      trajectoryAssistantRequest.run<B, Model>({
         model,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
@@ -1171,7 +1171,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   ): Promise<void> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
-    const irs = await this.runArc(location, runtimeData);
+    const irs = await this.runAssistantRequest(location, runtimeData);
     if (this.params.abortSignal.aborted) return;
     await owner.ifOwner(() => this.appendIrs(location, requestSnapshot(irs, retryBudget)));
     if (this.turnController.signal.aborted) {

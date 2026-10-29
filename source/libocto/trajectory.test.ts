@@ -27,7 +27,7 @@ import {
   type CompilerResult,
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
-import type { ErrorCorrection } from "./trajectory-arc.ts";
+import type { ErrorCorrection } from "./trajectory-assistant-request.ts";
 import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
@@ -575,7 +575,7 @@ describe("trajectory", () => {
     ]);
     expect(rec.modelCalls).toBe(2);
     expect(rec.loadToolsCalls).toBe(2);
-    // Pending-call scans use null; two size-check lowerings and both arc lowerings use vision.
+    // Pending-call scans use null; two size-check lowerings and both request lowerings use vision.
     expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
     expect(rec.loweringModalities).toContain(null);
     expect(rec.loweringModalities.at(-1)).toBe(vision);
