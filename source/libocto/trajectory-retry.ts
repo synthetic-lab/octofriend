@@ -1,26 +1,29 @@
 import type { Agent, RecursiveLowered, RetryBudget } from "./llm-ir.ts";
+import { err, ok, type Result } from "./result.ts";
 
 // Snapshots are non-nested, atomic attempt groups. A legacy error or an incomplete
 // group is not evidence that an automatic retry remains to be performed.
 function snapshotStart<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
   end: number,
-): number {
-  if (history[end]?.converted.role !== "request-snapshot-end") return -1;
+): Result<number, string> {
+  if (history[end]?.converted.role !== "request-snapshot-end") return err("No snapshot end found");
   for (let index = end - 1; index >= 0; index--) {
     const role = history[index].converted.role;
-    if (role === "request-snapshot-begin") return index;
-    if (role === "request-snapshot-end") return -1;
+    if (role === "request-snapshot-begin") return ok(index);
+    if (role === "request-snapshot-end") break;
   }
-  return -1;
+  return err("No snapshot start found");
 }
 
 export function latestRequestSnapshot<A extends Agent<any, any, any>>(
   history: readonly RecursiveLowered<A>[],
 ): { retryBudget: RetryBudget; irs: readonly RecursiveLowered<A>[] } | null {
   const end = history.length - 1;
-  const start = snapshotStart(history, end);
-  if (start < 0 || start + 1 === end) return null;
+  const startResult = snapshotStart(history, end);
+  if (!startResult.success) return null;
+  const start = startResult.data;
+  if (start + 1 === end) return null;
   const begin = history[start].converted;
   if (begin.role !== "request-snapshot-begin") return null;
   return { retryBudget: begin.retryBudget, irs: history.slice(start + 1, end) };
@@ -132,8 +135,9 @@ function* failedSnapshots<A extends Agent<any, any, any>>(history: readonly Recu
     const ir = history[index].converted;
     switch (ir.role) {
       case "request-snapshot-end": {
-        const start = snapshotStart(history, index);
-        if (start < 0) return;
+        const startResult = snapshotStart(history, index);
+        if (!startResult.success) return;
+        const start = startResult.data;
         const snapshot = history.slice(start + 1, index);
         if (snapshot.length === 0 || !failedSnapshot(snapshot)) return;
         if (snapshot.some(pair => pair.converted.role === "interrupted-by-user")) return;
