@@ -54,7 +54,7 @@ function Shimmer({ segments, lock, running, onShimmerEnd }: Props) {
     return text.split("").map(char => ({ char, from, fromRgb, toRgb }));
   });
   const [animating, setAnimating] = useState(shouldRun);
-  const fadeStartRef = useRef<{ time: number; frame: number } | null>(null);
+  const fadeStartRef = useRef<{ time: number; frame: number; position: number } | null>(null);
   const onShimmerEndRef = useRef(onShimmerEnd);
   const lastCycleRef = useRef(0);
   // Keep cycle events ticking even when the lock suppresses the highlight.
@@ -62,14 +62,37 @@ function Shimmer({ segments, lock, running, onShimmerEnd }: Props) {
     isActive: running || animating,
     interval: INTERVAL_MS,
   });
-  const [cycleStart, setCycleStart] = useState({ running, ownsLock, frame: 0 });
+  const cycle = characters.length + 2 * WAVE_WIDTH;
+  const [cycleStart, setCycleStart] = useState({
+    running,
+    ownsLock,
+    frame: 0,
+    length: cycle,
+    completed: 0,
+  });
   if (cycleStart.running !== running || cycleStart.ownsLock !== ownsLock) {
     // Reset before committing a newly visible frame or firing cycle events.
     const restart = running && (!cycleStart.running || ownsLock);
-    setCycleStart({ running, ownsLock, frame: restart ? animationFrame : cycleStart.frame });
+    setCycleStart({
+      running,
+      ownsLock,
+      frame: restart ? animationFrame : cycleStart.frame,
+      length: restart ? cycle : cycleStart.length,
+      completed: restart ? 0 : cycleStart.completed,
+    });
+  } else if (cycle > cycleStart.length) {
+    // Extend for longer text; shorter text takes effect after the current sweep finishes.
+    setCycleStart({ ...cycleStart, length: cycle });
+  } else if (running && animationFrame - cycleStart.frame >= cycleStart.length) {
+    const remaining = animationFrame - cycleStart.frame - cycleStart.length;
+    setCycleStart({
+      ...cycleStart,
+      frame: animationFrame - (remaining % cycle),
+      length: cycle,
+      completed: cycleStart.completed + 1 + Math.floor(remaining / cycle),
+    });
   }
   const frame = animationFrame - cycleStart.frame;
-  const cycle = characters.length + 2 * WAVE_WIDTH;
 
   useEffect(() => {
     if (shouldRun) {
@@ -78,8 +101,8 @@ function Shimmer({ segments, lock, running, onShimmerEnd }: Props) {
       return;
     }
     if (!animating || fadeStartRef.current != null) return;
-    fadeStartRef.current = { time, frame };
-  }, [shouldRun, animating, time, frame]);
+    fadeStartRef.current = { time, frame: animationFrame, position: frame };
+  }, [shouldRun, animating, time, animationFrame, frame]);
 
   useEffect(() => {
     if (fadeStartRef.current != null && time - fadeStartRef.current.time >= FADE_OUT_MS) {
@@ -96,17 +119,16 @@ function Shimmer({ segments, lock, running, onShimmerEnd }: Props) {
       lastCycleRef.current = 0;
       return;
     }
-    const completedCycles = Math.floor(frame / cycle);
     const lastCycle = lastCycleRef.current;
-    lastCycleRef.current = completedCycles;
-    if (completedCycles > lastCycle) {
+    lastCycleRef.current = cycleStart.completed;
+    if (cycleStart.completed > lastCycle) {
       onShimmerEndRef.current?.({ holdsShimmerlock: ownsLock });
     }
-  }, [frame, cycle, running, ownsLock]);
+  }, [cycleStart.completed, running, ownsLock]);
 
   const fadeStart = shouldRun ? null : fadeStartRef.current;
   const peak =
-    (fadeStart == null ? frame % cycle : (fadeStart.frame % cycle) + frame - fadeStart.frame) -
+    (fadeStart == null ? frame : fadeStart.position + animationFrame - fadeStart.frame) -
     WAVE_WIDTH;
   const fade = fadeStart == null ? 1 : Math.max(0, 1 - (time - fadeStart.time) / FADE_OUT_MS);
   const active = (shouldRun || animating) && fade > 0;
