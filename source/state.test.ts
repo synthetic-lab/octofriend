@@ -1215,6 +1215,22 @@ describe("inputFieldAvailable", () => {
     expect(inputFieldAvailable(ready, idle)).toBe(true);
   });
 
+  it("stays available during a permission check with no visible prompt", () => {
+    const toolCall = shellCall("permission", "echo test");
+    const permission: TrajectoryMode<OctoAgent> = {
+      root: true,
+      mode: "tool-call-permission",
+      toolCalls: [toolCall],
+      toolCall,
+      control: {
+        enqueueSteering: async () => {},
+        requestCompaction: () => false,
+        interrupt: async () => {},
+      },
+    };
+    expect(inputFieldAvailable(permission, idle)).toBe(true);
+  });
+
   it("is hidden while an error mode is parked, and shown again when steering a rejection", () => {
     expect(inputFieldAvailable(error, idle)).toBe(false);
     expect(inputFieldAvailable(error, steering)).toBe(true);
