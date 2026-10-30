@@ -1133,6 +1133,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       if (location.root && result.data.role === "checkpoint") this.manualCompactionPending = false;
       return this.appendIrs(location, requestSnapshot([result.data], retryBudget));
     });
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, owner, null);
+    }
   }
 
   private async waitRetry(location: ActiveHistory<A>): Promise<void> {

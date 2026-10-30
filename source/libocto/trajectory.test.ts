@@ -2574,6 +2574,122 @@ describe("trajectory", () => {
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
   });
 
+  it("honors interruption during root checkpoint persistence and keeps the checkpoint", async () => {
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 300,
+      messages: [{ role: "user", content: text("x".repeat(2000)) }],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        expect(event.root).toBe(true);
+        expect(traj.mode.mode).toBe("compacting");
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed summary" })),
+      plainOk,
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(rec.messages.map(event => event.irs.map(ir => ir.role))).toEqual([
+      ["request-snapshot-begin", "checkpoint", "request-snapshot-end"],
+      ["interrupted-by-user"],
+    ]);
+    const checkpoint = traj.messages[2];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed summary" });
+    expect(rec.messages[0].irs[1]).toBe(checkpoint);
+
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(compilerCalls).toHaveLength(1);
+    expect(rec.modes).toEqual(["compacting", "ready-for-request"]);
+    await inputControl(traj).enqueueSteering(text("new request"));
+    expect(await waiting.finished).toBe(true);
+    expect(compilerCalls).toHaveLength(2);
+    expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint", "user"]);
+    expect(traj.messages[2]).toBe(checkpoint);
+  });
+
+  it("closes the child and pending parent work when interrupted during child checkpoint persistence", async () => {
+    const task = text("Inspect the workspace");
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [
+        { role: "user", content: subagentPrompt(task) },
+        { role: "checkpoint", content: text("x".repeat(12000)) },
+      ],
+    };
+    const pending = searchCall("must not run", "pending");
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [
+        assistantMessage({ toolCalls: [child.toolCall, pending] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: "research",
+          toolCall: child.toolCall,
+          message: task,
+        },
+        child,
+      ],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        if (event.root) throw new Error("Expected child checkpoint");
+        expect(event.scope.parentSubagentIR).toBe(child);
+        expect(traj.mode).toMatchObject({ mode: "compacting", root: false, subagent: "research" });
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed child summary" })),
+    ]);
+    const executed: string[] = [];
+    runImpl = async query => {
+      executed.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(traj.inspectSubagentTrajectory(child)).toEqual({ type: "aborted" });
+    expect(child.ir.map(ir => ir.role)).toEqual([
+      "user",
+      "checkpoint",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "interrupted-by-user",
+    ]);
+    const checkpoint = child.ir[3];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed child summary" });
+    expect(
+      rec.messages.map(event => ({ root: event.root, roles: event.irs.map(ir => ir.role) })),
+    ).toEqual([
+      { root: false, roles: ["request-snapshot-begin", "checkpoint", "request-snapshot-end"] },
+      { root: false, roles: ["interrupted-by-user"] },
+      { root: true, roles: ["tool-skip-output"] },
+    ]);
+    expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([
+      {
+        role: "tool-skip-output",
+        toolCall: pending,
+        reason: "The user aborted the response, so this tool was skipped",
+      },
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(compilerCalls).toHaveLength(1);
+    expect(executed).toEqual([]);
+  });
+
   it.each([true, false])(
     "renders checkpoints for root=%s without changing stored IR",
     async root => {
