@@ -22,6 +22,8 @@ export const BUILTIN_IR_ROLES = {
   "tool-invoke-subagent": true,
   "subagent-trajectory": true,
   "request-error": true,
+  "request-snapshot-begin": true,
+  "request-snapshot-end": true,
   "compaction-error": true,
   "validation-retry-budget-exceeded": true,
   "interrupted-by-user": true,

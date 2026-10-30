@@ -384,6 +384,17 @@ export type ModelErrorIR =
 export type ErrorDismissedIR = { role: "error-dismissed" };
 export type ErrorRetryIR = { role: "error-retry" };
 
+// null means unlimited retries.
+export type RetryBudget = { validation: number | null; requestError: number | null };
+
+// A finalized one-shot attempt is committed with both boundaries in the same group.
+// Legacy errors outside these boundaries must not acquire automatic retries on reload.
+export type RequestSnapshotBeginIR = {
+  role: "request-snapshot-begin";
+  retryBudget: RetryBudget;
+};
+export type RequestSnapshotEndIR = { role: "request-snapshot-end" };
+
 export type ToolSubagentInvoke<T extends ToolMap<any, any>, SubagentName extends string> = {
   role: "tool-invoke-subagent";
   toolCall: ToolCall<T>;
@@ -428,7 +439,9 @@ export type CheckpointedIR<T extends ToolMap<any, any>> =
   | InterruptedByUserIR
   | ModelErrorIR
   | ErrorDismissedIR
-  | ErrorRetryIR;
+  | ErrorRetryIR
+  | RequestSnapshotBeginIR
+  | RequestSnapshotEndIR;
 
 /*
  * Compiler-ready IR plus subagent trajectories.
@@ -651,6 +664,8 @@ function isBuiltinIR<
     | Checkpoint
     | ToolRejectMessage<any>
     | RequestErrorIR
+    | RequestSnapshotBeginIR
+    | RequestSnapshotEndIR
     | CompactionErrorIR
     | ValidationRetryBudgetExceededIR
     | InterruptedByUserIR
@@ -665,6 +680,8 @@ function isBuiltinIR<
   | Checkpoint
   | ToolRejectMessage<any>
   | RequestErrorIR
+  | RequestSnapshotBeginIR
+  | RequestSnapshotEndIR
   | CompactionErrorIR
   | ValidationRetryBudgetExceededIR
   | InterruptedByUserIR
@@ -686,6 +703,8 @@ export function answeredToolCallId<
     | Checkpoint
     | ToolRejectMessage<any>
     | RequestErrorIR
+    | RequestSnapshotBeginIR
+    | RequestSnapshotEndIR
     | CompactionErrorIR
     | ValidationRetryBudgetExceededIR
     | InterruptedByUserIR
@@ -706,6 +725,8 @@ export function answeredToolCallId<
     case "lowered-checkpoint":
     case "tool-invoke-subagent":
     case "request-error":
+    case "request-snapshot-begin":
+    case "request-snapshot-end":
     case "compaction-error":
     case "validation-retry-budget-exceeded":
     case "interrupted-by-user":
@@ -766,6 +787,8 @@ type _BuiltinIRRolesMatch = AssertNever<
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
       | RequestErrorIR["role"]
+      | RequestSnapshotBeginIR["role"]
+      | RequestSnapshotEndIR["role"]
       | CompactionErrorIR["role"]
       | ValidationRetryBudgetExceededIR["role"]
       | InterruptedByUserIR["role"]
@@ -782,6 +805,8 @@ type _BuiltinIRRolesMatch = AssertNever<
       | Checkpoint["role"]
       | ToolRejectMessage<any>["role"]
       | RequestErrorIR["role"]
+      | RequestSnapshotBeginIR["role"]
+      | RequestSnapshotEndIR["role"]
       | CompactionErrorIR["role"]
       | ValidationRetryBudgetExceededIR["role"]
       | InterruptedByUserIR["role"]

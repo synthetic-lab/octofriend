@@ -27,7 +27,7 @@ import {
   type CompilerResult,
   type CompilerSuccessData,
 } from "./compilers/compiler-interface.ts";
-import type { ErrorCorrection } from "./trajectory-arc.ts";
+import type { ErrorCorrection } from "./trajectory-assistant-request.ts";
 import { subagentPrompt } from "./compilers/ir-prompts.ts";
 import type { PermissionDecision } from "./permissions.ts";
 import {
@@ -179,6 +179,7 @@ function okResult(
 }
 
 const plainOk: CompilerQueueItem = () => okResult(assistantMessage({ content: "done" }));
+const assistantSnapshot = ["request-snapshot-begin", "assistant", "request-snapshot-end"] as const;
 
 function requestError(message: string): Extract<CompilerError, { type: "request-error" }> {
   return { type: "request-error", requestError: message, curl: "curl" };
@@ -230,7 +231,7 @@ function makeTrajectory(opts?: {
   errorCorrection?: ErrorCorrection<TestAgent>;
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
-  onMessage?: (event: TrajectoryEvents<TestAgent>["onMessage"]) => void | Promise<void>;
+  onMessages?: (event: TrajectoryEvents<TestAgent>["onMessages"]) => void | Promise<void>;
   modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
   loadTools?: (
     signal: AbortSignal,
@@ -240,7 +241,7 @@ function makeTrajectory(opts?: {
     modes: [] as Array<TrajectoryMode<TestAgent>["mode"]>,
     modeObjs: [] as Array<TrajectoryMode<TestAgent>>,
     roles: [] as string[],
-    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessage"]>,
+    messages: [] as Array<TrajectoryEvents<TestAgent>["onMessages"]>,
     timeline: [] as string[],
     rewinds: [] as Array<TrajectoryEvents<TestAgent>["rewind"]>,
     interruptions: [] as Array<TrajectoryEvents<TestAgent>["interrupted"]>,
@@ -334,11 +335,13 @@ function makeTrajectory(opts?: {
           rec.modeObjs.push(mode);
           rec.timeline.push(`mode:${mode.mode}`);
         },
-        onMessage: async event => {
+        onMessages: async event => {
           rec.messages.push(event);
-          rec.roles.push(event.ir.role);
-          rec.timeline.push(`ir:${event.ir.role}`);
-          await opts?.onMessage?.(event);
+          for (const ir of event.irs) {
+            rec.roles.push(ir.role);
+            rec.timeline.push(`ir:${ir.role}`);
+          }
+          await opts?.onMessages?.(event);
         },
         steeringChange: ({ upcoming, queued }) => {
           rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
@@ -419,6 +422,40 @@ beforeEach(() => {
 });
 
 describe("trajectory", () => {
+  it("meaningfulTailIR reflects appends and supplies original rewind targets", async () => {
+    const { build, rec } = makeTrajectory();
+    const { traj } = await build([plainOk]);
+    expect([...traj.meaningfulTailIR()]).toEqual([]);
+
+    await inputControl(traj).enqueueSteering(text("hi"));
+    expect(await traj.step()).toBe(true);
+    const [tail, prev] = traj.meaningfulTailIR();
+    expect(tail === traj.messages[2]).toBe(true);
+    expect(prev === traj.messages[0]).toBe(true);
+    expect(tail.role).toBe("assistant");
+    expect(prev.role).toBe("user");
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+    ]);
+
+    await startWaitingStep(traj, "ready-for-request");
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected input mode");
+    await mode.control.rewindTo(prev);
+    expect([...traj.meaningfulTailIR()]).toEqual([]);
+    expect(traj.messages).toEqual([]);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+    ]);
+    expect(rec.rewinds[0].content).toEqual(text("hi"));
+  });
+
   it("announces ready only when the next step is waiting for input", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([plainOk]);
@@ -426,7 +463,7 @@ describe("trajectory", () => {
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
     expect(compilerCalls.length).toBe(1);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
     expect(rec.modes).toEqual(["responding"]);
@@ -462,7 +499,7 @@ describe("trajectory", () => {
 
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["user", "assistant", "tool-output"]);
     expect(rec.modes).toContain("tool-call-permission");
     expect(rec.modes).toContain("running-tool");
@@ -497,7 +534,7 @@ describe("trajectory", () => {
     expect(rec.loadToolsCalls).toBe(1);
     expect(await traj.step()).toBe(true);
 
-    const result = traj.messages[2];
+    const result = traj.messages[4];
     if (result.role !== "tool-output") throw new Error("impossible");
     expect(result.content).toEqual(text("generation 2"));
     expect(rec.modelCalls).toBe(2);
@@ -530,10 +567,15 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
 
     expect(rec.capCalls.length).toBe(1);
-    expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-runtime-error",
+      ...assistantSnapshot,
+    ]);
     expect(rec.modelCalls).toBe(2);
     expect(rec.loadToolsCalls).toBe(2);
-    // Pending-call scans use null; two size-check lowerings and both arc lowerings use vision.
+    // Pending-call scans use null; two size-check lowerings and both request lowerings use vision.
     expect(rec.loweringModalities.filter(modalities => modalities === vision)).toHaveLength(4);
     expect(rec.loweringModalities).toContain(null);
     expect(rec.loweringModalities.at(-1)).toBe(vision);
@@ -560,6 +602,9 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
+    expect(compilerCalls.length).toBe(1);
+    expect(queries).toEqual([]);
+    expect(await traj.step()).toBe(true);
     expect(compilerCalls.length).toBe(2);
     expect(queries).toEqual([]);
     expect(await traj.step()).toBe(true);
@@ -581,8 +626,13 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
-    const result = traj.messages[2];
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-runtime-error",
+      ...assistantSnapshot,
+    ]);
+    const result = traj.messages[4];
     if (result.role !== "tool-runtime-error") throw new Error("impossible");
     expect(result.error).toBe("the search blew up");
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual([
@@ -605,8 +655,8 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "shell-result", "assistant"]);
-    const result = traj.messages[2];
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "shell-result", ...assistantSnapshot]);
+    const result = traj.messages[4];
     if (result.role !== "shell-result") throw new Error("impossible");
     expect(result.transcript).toBe("ran ok");
     expect(result.toolCall.toolCallId).toBe("c1");
@@ -709,20 +759,25 @@ describe("trajectory", () => {
     if (child?.role !== "subagent-trajectory") throw new Error("Expected child trajectory");
     expect(child.task).toBe(task);
     expect(child.toolCall.toolCallId).toBe("c2");
-    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant"]);
+    expect(child.ir.map(ir => ir.role)).toEqual(["user", ...assistantSnapshot]);
     expect(traj.mode).toMatchObject({ root: false, subagent: "research", mode: "responding" });
 
     await inputControl(traj).enqueueSteering(text("after all the tools"));
     expect(await traj.step()).toBe(true);
     expect(queries).toEqual(["before", "delegate"]);
-    expect(child.ir.map(ir => ir.role)).toEqual(["user", "assistant", "shell-result", "assistant"]);
+    expect(child.ir.map(ir => ir.role)).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "shell-result",
+      ...assistantSnapshot,
+    ]);
     expect(compilerCalls[2].irs.map(ir => ir.role)).toEqual(["user", "assistant", "tool-output"]);
     expect(traj.messages.at(-1)).toBe(child);
     const childEvents = rec.messages.filter(event => !event.root);
-    expect(childEvents.map(event => event.ir.role)).toEqual([
-      "assistant",
-      "shell-result",
-      "assistant",
+    expect(childEvents.map(event => event.irs.map(ir => ir.role))).toEqual([
+      [...assistantSnapshot],
+      ["shell-result"],
+      [...assistantSnapshot],
     ]);
     for (const event of childEvents) {
       expect(event.scope.parentSubagentIR).toBe(child);
@@ -735,13 +790,13 @@ describe("trajectory", () => {
     expect(permissions).toEqual(["search", "search", "shell", "search"]);
     expect(traj.messages.map(ir => ir.role)).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
       "tool-invoke-subagent",
       "subagent-trajectory",
       "tool-output",
       "user",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     const continuation = compilerCalls[3].irs;
     expect(continuation.map(ir => ir.role)).toEqual([
@@ -843,8 +898,8 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(compilerCalls).toHaveLength(1);
     expect(rec.loadToolsCalls).toBe(2);
-    const invocation = traj.messages[2];
-    const child = traj.messages[3];
+    const invocation = traj.messages[4];
+    const child = traj.messages[5];
     if (invocation.role !== "tool-invoke-subagent" || child.role !== "subagent-trajectory") {
       throw new Error("Expected delegation");
     }
@@ -898,7 +953,7 @@ describe("trajectory", () => {
           "user",
           "auth-error",
           "error-retry",
-          "assistant",
+          ...assistantSnapshot,
         ]);
       }
       expect(compilerCalls).toHaveLength(1);
@@ -963,7 +1018,7 @@ describe("trajectory", () => {
         () => okResult(assistantMessage({ content: "middle findings" })),
         plainOk,
       ]);
-      const events: Array<TrajectoryEvents<typeof root>["onMessage"]> = [];
+      const events: Array<TrajectoryEvents<typeof root>["onMessages"]> = [];
       const resolutions: Array<Extract<
         TreeIR<typeof root>,
         { role: "tool-invoke-subagent" }
@@ -994,7 +1049,7 @@ describe("trajectory", () => {
         transport,
         abortSignal: exit.signal,
         handler: {
-          onMessage: event => {
+          onMessages: event => {
             events.push(event);
           },
         },
@@ -1012,9 +1067,11 @@ describe("trajectory", () => {
       if (inner?.role !== "subagent-trajectory") throw new Error("Expected inner trajectory");
       const leafEvent = events.at(-1);
       if (leafEvent == null || leafEvent.root) throw new Error("Expected leaf event");
-      const leafMessage = inner.ir.at(-1);
-      if (leafMessage == null) throw new Error("Expected leaf message");
-      expect(leafEvent.ir).toBe(leafMessage);
+      expect(leafEvent.irs.map(ir => ir.role)).toEqual([...assistantSnapshot]);
+      expect(leafEvent.irs).toEqual(inner.ir.slice(1));
+      for (let index = 0; index < leafEvent.irs.length; index++) {
+        expect(leafEvent.irs[index]).toBe(inner.ir[index + 1]);
+      }
       expect(leafEvent.scope.parentSubagentIR).toBe(inner);
       expect(leafEvent.scope.toplevelSubagentIR).toBe(outer);
       expect(leafEvent.scope.path).toEqual([
@@ -1050,14 +1107,14 @@ describe("trajectory", () => {
       ]);
       expect(outer.ir.map(ir => ir.role)).toEqual([
         "user",
-        "assistant",
+        ...assistantSnapshot,
         "tool-invoke-subagent",
         "subagent-trajectory",
         "tool-output",
-        "assistant",
+        ...assistantSnapshot,
       ]);
-      expect(traj.messages[3]).toBe(outer);
-      expect(outer.ir[3]).toBe(inner);
+      expect(traj.messages[5]).toBe(outer);
+      expect(outer.ir[5]).toBe(inner);
       expect(models).toEqual([
         "default-model",
         "middle-model",
@@ -1068,10 +1125,10 @@ describe("trajectory", () => {
       expect(resolutions).toHaveLength(7);
       expect(resolutions[0]).toBeNull();
       expect(resolutions[1]).toBeNull();
-      expect(resolutions[2] === traj.messages[2]).toBe(true);
-      expect(resolutions[3] === traj.messages[2]).toBe(true);
-      expect(resolutions[4] === outer.ir[2]).toBe(true);
-      expect(resolutions[5] === traj.messages[2]).toBe(true);
+      expect(resolutions[2] === traj.messages[4]).toBe(true);
+      expect(resolutions[3] === traj.messages[4]).toBe(true);
+      expect(resolutions[4] === outer.ir[4]).toBe(true);
+      expect(resolutions[5] === traj.messages[4]).toBe(true);
       expect(resolutions[6]).toBeNull();
       await startWaitingStep(traj, "ready-for-request");
     },
@@ -1081,8 +1138,8 @@ describe("trajectory", () => {
     "does not start child work when quitting during the %s notification",
     async role => {
       const { build, exit } = makeTrajectory({
-        onMessage: async event => {
-          if (event.ir.role !== role) return;
+        onMessages: async event => {
+          if (!event.irs.some(ir => ir.role === role)) return;
           exit.abort();
           await new Promise(resolve => setTimeout(resolve, 0));
         },
@@ -1113,8 +1170,8 @@ describe("trajectory", () => {
 
   it("closes the newly inserted child when interrupted during its notification", async () => {
     const { build } = makeTrajectory({
-      onMessage: async event => {
-        if (event.ir.role === "subagent-trajectory") await interruptNow(traj);
+      onMessages: async event => {
+        if (event.irs.some(ir => ir.role === "subagent-trajectory")) await interruptNow(traj);
       },
     });
     const { traj, compilerCalls } = await build([
@@ -1155,11 +1212,11 @@ describe("trajectory", () => {
 
     expect(traj.messages.map(m => m.role)).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-skip-output",
       "tool-skip-output",
     ]);
-    const skip = traj.messages[2];
+    const skip = traj.messages[4];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.toolCall.toolCallId).toBe("c1");
     expect(skip.reason).toBe("The tool batch failed unexpectedly, so this tool was skipped");
@@ -1181,11 +1238,11 @@ describe("trajectory", () => {
 
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-reject",
       "tool-skip-output",
       "user",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     const continuation = compilerCalls[1].irs;
     expect(continuation.map(m => m.role)).toEqual([
@@ -1242,11 +1299,11 @@ describe("trajectory", () => {
     ]);
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
       "tool-output",
       "tool-output",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     expect(traj.mode.mode).toBe("ready-for-request");
   });
@@ -1274,12 +1331,12 @@ describe("trajectory", () => {
 
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
       "tool-reject",
       "tool-skip-output",
       "user",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     const continuation = compilerCalls[1].irs;
     expect(continuation.map(m => m.role)).toEqual([
@@ -1321,12 +1378,12 @@ describe("trajectory", () => {
 
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
       "tool-output",
       "tool-skip-output",
     ]);
-    const skip = traj.messages[4];
+    const skip = traj.messages[6];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
     expect(skip.toolCall.toolCallId).toBe("c3");
@@ -1351,7 +1408,12 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
     expect(compilerCalls.length).toBe(1);
@@ -1399,18 +1461,18 @@ describe("trajectory", () => {
 
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
       "tool-skip-output",
       "tool-skip-output",
     ]);
-    const runningSkip = traj.messages[3];
+    const runningSkip = traj.messages[5];
     if (runningSkip.role !== "tool-skip-output") throw new Error("impossible");
     expect(runningSkip.toolCall.toolCallId).toBe("c2");
     expect(runningSkip.reason).toBe(
       "The user exited while this tool was running, so its output was not recorded",
     );
-    const pendingSkip = traj.messages[4];
+    const pendingSkip = traj.messages[6];
     if (pendingSkip.role !== "tool-skip-output") throw new Error("impossible");
     expect(pendingSkip.toolCall.toolCallId).toBe("c3");
     expect(pendingSkip.reason).toBe("The user aborted the response, so this tool was skipped");
@@ -1435,8 +1497,13 @@ describe("trajectory", () => {
     exit.abort();
     await running;
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
-    const [first, second] = [traj.messages[2], traj.messages[3]];
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
+    const [first, second] = [traj.messages[4], traj.messages[5]];
     if (first.role !== "tool-skip-output" || second.role !== "tool-skip-output") {
       throw new Error("impossible");
     }
@@ -1469,8 +1536,8 @@ describe("trajectory", () => {
     exit.abort();
     await running;
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "tool-skip-output"]);
-    const skip = traj.messages[3];
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", "tool-skip-output"]);
+    const skip = traj.messages[5];
     if (skip.role !== "tool-skip-output") throw new Error("impossible");
     expect(skip.toolCall.toolCallId).toBe("c2");
     expect(skip.reason).toBe("The user aborted the response, so this tool was skipped");
@@ -1507,8 +1574,14 @@ describe("trajectory", () => {
 
     expect(await traj.step()).toBe(true);
     const waiting = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["user", "assistant"]);
-    const partial = traj.messages[1];
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    const partial = traj.messages[2];
     if (partial.role !== "assistant") throw new Error("impossible");
     expect(partial.content).toBe("partial answer");
     // The first streamed token flips the responding mode's receivedTokens, doubling the
@@ -1542,8 +1615,13 @@ describe("trajectory", () => {
 
     expect(await traj.step()).toBe(true);
     const waiting = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
-    const marker = traj.messages[1];
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
+    const marker = traj.messages[2];
     if (marker.role !== "interrupted-by-user") throw new Error("impossible");
     expect(marker.reason).toBe("The user interrupted the response.");
     // The reasoning token still flips receivedTokens before the interrupt lands.
@@ -1573,7 +1651,14 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "interrupted-by-user"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(rec.arc.rollbacks).toBe(1);
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
@@ -1596,29 +1681,48 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("first"));
     expect(await traj.step()).toBe(true);
-    const second = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["user", "assistant"]);
+    const firstWaiting = await startWaitingStep(traj, "ready-for-request");
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
 
     inputControl(traj).enqueueSteering(text("second"));
-    expect(await second.finished).toBe(true);
+    expect(await firstWaiting.finished).toBe(true);
     const waiting = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["user", "assistant", "user", "interrupted-by-user"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
 
     const mode = traj.mode;
     if (mode.mode !== "ready-for-request") throw new Error("impossible");
-    const target = traj.messages[2];
+    const target = traj.messages[4];
     await mode.control.rewindTo(target);
 
-    expect(traj.messages.length).toBe(2);
+    expect(traj.messages.length).toBe(4);
     expect(rec.rewinds.length).toBe(1);
-    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual(["user", "interrupted-by-user"]);
+    expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(rec.rewinds[0].content).toEqual(text("second"));
-    expect(rec.roles).toEqual(["user", "assistant", "user", "interrupted-by-user"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(traj.mode.mode).toBe("ready-for-request");
 
     // Unknown targets are no-ops.
     await mode.control.rewindTo({ role: "user", content: text("ghost") });
-    expect(traj.messages.length).toBe(2);
+    expect(traj.messages.length).toBe(4);
     expect(rec.rewinds.length).toBe(1);
 
     inputControl(traj).enqueueSteering(text("edited second"));
@@ -1627,11 +1731,13 @@ describe("trajectory", () => {
     await startWaitingStep(traj, "ready-for-request");
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "user",
+      "request-snapshot-begin",
       "interrupted-by-user",
+      "request-snapshot-end",
       "user",
-      "assistant",
+      ...assistantSnapshot,
     ]);
   });
 
@@ -1667,7 +1773,13 @@ describe("trajectory", () => {
     const readyControl = inputControl(traj);
     readyControl.enqueueSteering(text("please do the thing"));
     expect(await traj.step()).toBe(true);
-    expect(rec.roles).toEqual(["user", "assistant", "request-error"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-error",
+      "request-snapshot-end",
+    ]);
     const waiting = await startWaitingStep(traj, "request-error");
 
     readyControl.enqueueSteering(text("staged while parked"));
@@ -1682,8 +1794,10 @@ describe("trajectory", () => {
     expect(rec.rewinds[0].content).toEqual(text("please do the thing"));
     expect(rec.rewinds[0].removed.map(ir => ir.role)).toEqual([
       "user",
+      "request-snapshot-begin",
       "assistant",
       "request-error",
+      "request-snapshot-end",
     ]);
     expect(rec.timeline.filter(e => e.startsWith("steering"))).toEqual([
       "steering:1u0q",
@@ -1795,7 +1909,7 @@ describe("trajectory", () => {
       );
       expect(queries).toEqual([]);
       expect(compilerCalls.length).toBe(1);
-      expect(rec.roles).toEqual(["user", "assistant", "auth-error"]);
+      expect(rec.roles).toEqual(["user", ...assistantSnapshot, "auth-error"]);
       expect(rec.modelCalls).toBe(2);
 
       failing = false;
@@ -1806,12 +1920,12 @@ describe("trajectory", () => {
       expect(queries).toEqual(["cats"]);
       expect(rec.roles).toEqual([
         "user",
-        "assistant",
+        ...assistantSnapshot,
         "auth-error",
         "error-retry",
         "tool-output",
         "user",
-        "assistant",
+        ...assistantSnapshot,
       ]);
       expect(compilerCalls.length).toBe(2);
       expect(rec.modelCalls).toBe(3);
@@ -1848,7 +1962,7 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("aborted");
     expect(rec.roles).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "auth-error",
       "tool-skip-output",
       "tool-skip-output",
@@ -1889,6 +2003,10 @@ describe("trajectory", () => {
 
     inputControl(firstBuild.traj).enqueueSteering(text("hi"));
     expect(await firstBuild.traj.step()).toBe(true);
+    expect(firstBuild.compilerCalls).toHaveLength(1);
+    expect(await firstBuild.traj.step()).toBe(true);
+    expect(firstBuild.compilerCalls).toHaveLength(2);
+    expect(first.rec.arc.requestRetry).toBe(1);
     await startWaitingStep(firstBuild.traj, "rate-limit-error");
     expect(firstBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "rate-limit-error", requestError: "slow down" }),
@@ -1902,6 +2020,10 @@ describe("trajectory", () => {
 
     inputControl(secondBuild.traj).enqueueSteering(text("hi"));
     expect(await secondBuild.traj.step()).toBe(true);
+    expect(secondBuild.compilerCalls).toHaveLength(1);
+    expect(await secondBuild.traj.step()).toBe(true);
+    expect(secondBuild.compilerCalls).toHaveLength(2);
+    expect(second.rec.arc.requestRetry).toBe(1);
     await startWaitingStep(secondBuild.traj, "request-error");
     expect(secondBuild.traj.mode).toEqual(
       expect.objectContaining({ mode: "request-error", requestError: "boom", curl: "curl" }),
@@ -1942,6 +2064,15 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    expect(compilerCalls).toHaveLength(1);
+    expect(rec.arc.requestRetry).toBe(0);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "request-error",
+      "request-snapshot-end",
+    ]);
+    expect(await traj.step()).toBe(true);
 
     expect(compilerCalls.length).toBe(2);
     await startWaitingStep(traj, "ready-for-request");
@@ -1970,9 +2101,10 @@ describe("trajectory", () => {
 
     expect(rec.roles).toEqual([
       "user",
+      "request-snapshot-begin",
       "assistant",
       "tool-validation-error",
-      "validation-retry-budget-exceeded",
+      "request-snapshot-end",
     ]);
     await startWaitingStep(traj, "request-error");
     expect(traj.mode).toEqual(
@@ -2005,7 +2137,7 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("run"));
     expect(await traj.step()).toBe(true);
-    const assistant = traj.messages[1];
+    const assistant = traj.messages[2];
     if (assistant.role !== "assistant") throw new Error("impossible");
     expect(assistant.toolCalls?.[0]).toEqual(
       expect.objectContaining({
@@ -2018,7 +2150,7 @@ describe("trajectory", () => {
     expect(rec.modes).toContain("autofix-tool");
     expect(rec.arc.autofixTool).toBe(1);
     expect(queries).toEqual(["fixed"]);
-    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
   });
@@ -2061,7 +2193,13 @@ describe("trajectory", () => {
     expect(await traj.step()).toBe(true);
     expect(await traj.step()).toBe(true);
 
-    expect(rec.roles).toEqual(["user", "assistant", "tool-output", "user", "assistant"]);
+    expect(rec.roles).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "user",
+      ...assistantSnapshot,
+    ]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual([
       "user",
       "assistant",
@@ -2083,7 +2221,9 @@ describe("trajectory", () => {
       "steering:0u0q",
       "ir:user",
       "mode:responding",
+      "ir:request-snapshot-begin",
       "ir:assistant",
+      "ir:request-snapshot-end",
       "mode:ready-for-request",
     ]);
   });
@@ -2109,7 +2249,9 @@ describe("trajectory", () => {
       "steering:0u0q",
       "ir:user",
       "mode:responding",
+      "ir:request-snapshot-begin",
       "ir:assistant",
+      "ir:request-snapshot-end",
       "mode:tool-call",
       "mode:tool-call-permission",
       "mode:running-tool",
@@ -2118,7 +2260,9 @@ describe("trajectory", () => {
       "steering:0u0q",
       "ir:user",
       "mode:responding",
+      "ir:request-snapshot-begin",
       "ir:assistant",
+      "ir:request-snapshot-end",
       "mode:ready-for-request",
     ]);
   });
@@ -2144,7 +2288,12 @@ describe("trajectory", () => {
     expect(rec.interruptions).toEqual([
       { droppedSteering: [text("queued one"), text("queued two")] },
     ]);
-    expect(rec.roles).toEqual(["user", "interrupted-by-user"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
 
     await inputControl(traj).enqueueSteering(text("continue"));
     expect(await waiting.finished).toBe(true);
@@ -2160,36 +2309,43 @@ describe("trajectory", () => {
     });
     const queue: CompilerQueueItem[] = [];
     const { traj, compilerCalls } = await build(queue);
-    queue.push(
-      async () => {
-        inputControl(traj).requestCompaction();
-        await inputControl(traj).enqueueSteering(text("follow up"));
-        return okResult(assistantMessage({ content: "manual summary" }));
-      },
-      plainOk,
-      plainOk,
-    );
+    queue.push(async () => {
+      expect(inputControl(traj).requestCompaction()).toBe(false);
+      await inputControl(traj).enqueueSteering(text("follow up"));
+      return okResult(assistantMessage({ content: "manual summary" }));
+    }, plainOk);
 
     const waiting = await startWaitingStep(traj, "ready-for-request");
-    inputControl(traj).requestCompaction();
+    expect(inputControl(traj).requestCompaction()).toBe(true);
     await waiting.finished;
-    expect(rec.roles).toEqual(["checkpoint", "assistant"]);
-    expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
+    expect(rec.roles).toEqual(["request-snapshot-begin", "checkpoint", "request-snapshot-end"]);
+    expect(compilerCalls).toHaveLength(1);
+    expect(traj.hasCompactableHistory).toBe(false);
 
     await traj.step();
     const second = await startWaitingStep(traj, "ready-for-request");
-    expect(rec.roles).toEqual(["checkpoint", "assistant", "user", "assistant"]);
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "user",
+      ...assistantSnapshot,
+    ]);
     expect(rec.arc.compaction).toBe(1);
-    expect(compilerCalls).toHaveLength(3);
-    expect(compilerCalls[2].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
+    expect(compilerCalls).toHaveLength(2);
+    expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint", "user"]);
+    expect(compilerCalls[1].irs.at(-1)).toEqual({ role: "user", content: text("follow up") });
 
     queue.push(plainOk, plainOk);
-    inputControl(traj).requestCompaction();
+    expect(inputControl(traj).requestCompaction()).toBe(true);
     await inputControl(traj).enqueueSteering(text("next follow up"));
     await second.finished;
     expect(rec.arc.compaction).toBe(2);
-    expect(compilerCalls).toHaveLength(5);
-    expect(compilerCalls[3].irs.at(-2)).toEqual({ role: "user", content: text("next follow up") });
+    expect(compilerCalls).toHaveLength(3);
+    expect(compilerCalls[2].irs.at(-2)).toEqual({ role: "user", content: text("next follow up") });
+    await traj.step();
+    expect(compilerCalls).toHaveLength(4);
+    expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
     await startWaitingStep(traj, "ready-for-request");
   });
 
@@ -2221,6 +2377,9 @@ describe("trajectory", () => {
           : { decision: "reject", steering: text("do it differently") },
       );
       await waiting.finished;
+      expect(rec.arc.compaction).toBe(1);
+      expect(compilerCalls).toHaveLength(2);
+      await traj.step();
       await startWaitingStep(traj, "ready-for-request");
 
       expect(rec.arc.compaction).toBe(1);
@@ -2237,6 +2396,8 @@ describe("trajectory", () => {
     const { build, rec } = makeTrajectory({ contextWindow: 1000 });
     const queue: CompilerQueueItem[] = [];
     const { traj, compilerCalls } = await build(queue);
+    const childRequest = assistantMessage({ toolCalls: [shellCall("ls", "child-call")] });
+    childRequest.usage = compilerUsage(1200, 1);
     queue.push(
       () =>
         okResult(
@@ -2244,13 +2405,13 @@ describe("trajectory", () => {
             toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
           }),
         ),
+      () => okResult(childRequest),
       async () => {
-        inputControl(traj).requestCompaction();
-        inputControl(traj).requestCompaction();
+        expect(inputControl(traj).requestCompaction()).toBe(true);
+        expect(inputControl(traj).requestCompaction()).toBe(false);
         await inputControl(traj).enqueueSteering(text("follow up at the root"));
         return okResult(assistantMessage({ content: "child summary" }));
       },
-      () => okResult(assistantMessage({ toolCalls: [shellCall("ls", "child-call")] })),
       () => okResult(assistantMessage({ content: "child findings" })),
       () => okResult(assistantMessage({ content: "session summary" })),
       plainOk,
@@ -2259,12 +2420,14 @@ describe("trajectory", () => {
     runImpl = async query => {
       ran.push(query);
       return query === "delegate"
-        ? ok({ type: "invoke-subagent", name: "research", message: text("x".repeat(8000)) })
+        ? ok({ type: "invoke-subagent", name: "research", message: text("Inspect the workspace") })
         : ok({ type: "output", content: text("remaining tool result") });
     };
 
     await inputControl(traj).enqueueSteering(text("run"));
     await traj.step();
+    await traj.step();
+    expect(compilerCalls).toHaveLength(2);
     await traj.step();
     await traj.step();
 
@@ -2272,6 +2435,8 @@ describe("trajectory", () => {
     expect(rec.arc.compaction).toBe(1);
     expect(compilerCalls).toHaveLength(4);
 
+    await traj.step();
+    expect(compilerCalls).toHaveLength(5);
     await traj.step();
     await startWaitingStep(traj, "ready-for-request");
 
@@ -2313,7 +2478,7 @@ describe("trajectory", () => {
 
     await inputControl(traj).enqueueSteering(text("continue"));
     expect(await waiting.finished).toBe(true);
-    expect(rec.roles).toEqual(["user", "assistant"]);
+    expect(rec.roles).toEqual(["user", ...assistantSnapshot]);
     expect(rec.arc.compaction).toBe(1);
   });
 
@@ -2332,12 +2497,34 @@ describe("trajectory", () => {
 
     inputControl(traj).requestCompaction();
     await traj.step();
+    expect(compilerCalls).toHaveLength(1);
+    await traj.step();
+    expect(compilerCalls).toHaveLength(2);
     const waiting = await startWaitingStep(traj, "auth-error");
     retryControl(traj).retry();
     await waiting.finished;
+    expect(compilerCalls).toHaveLength(3);
+    await traj.step();
+    expect(compilerCalls).toHaveLength(4);
+    await traj.step();
     await startWaitingStep(traj, "ready-for-request");
 
-    expect(rec.roles).toEqual(["auth-error", "error-retry", "checkpoint", "assistant"]);
+    expect(rec.roles).toEqual([
+      "request-snapshot-begin",
+      "compaction-error",
+      "request-snapshot-end",
+      "request-snapshot-begin",
+      "auth-error",
+      "request-snapshot-end",
+      "error-retry",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "request-snapshot-begin",
+      "request-error",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
     expect(rec.arc.compaction).toBe(3);
     expect(compilerCalls).toHaveLength(5);
     expect(compilerCalls[3].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint"]);
@@ -2356,15 +2543,151 @@ describe("trajectory", () => {
 
     inputControl(traj).enqueueSteering(text("hi"));
     expect(await traj.step()).toBe(true);
+    expect(compilerCalls).toHaveLength(1);
+    expect(rec.modes).toEqual(["compacting"]);
+    expect(rec.messages.map(event => event.irs.map(ir => ir.role))).toEqual([
+      ["user"],
+      ["request-snapshot-begin", "checkpoint", "request-snapshot-end"],
+    ]);
+    expect(await traj.step()).toBe(true);
 
     await startWaitingStep(traj, "ready-for-request");
     expect(rec.modes).toEqual(["compacting", "responding", "ready-for-request"]);
     expect(rec.arc.compaction).toBe(1);
-    expect(rec.roles).toEqual(["user", "checkpoint", "assistant"]);
-    expect(traj.messages.map(m => m.role)).toEqual(["user", "user", "checkpoint", "assistant"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+    expect(traj.messages.map(m => m.role)).toEqual([
+      "user",
+      "user",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
     expect(compilerCalls.length).toBe(2);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user", "user", "user"]);
     expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+  });
+
+  it("honors interruption during root checkpoint persistence and keeps the checkpoint", async () => {
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 300,
+      messages: [{ role: "user", content: text("x".repeat(2000)) }],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        expect(event.root).toBe(true);
+        expect(traj.mode.mode).toBe("compacting");
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed summary" })),
+      plainOk,
+    ]);
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(rec.messages.map(event => event.irs.map(ir => ir.role))).toEqual([
+      ["request-snapshot-begin", "checkpoint", "request-snapshot-end"],
+      ["interrupted-by-user"],
+    ]);
+    const checkpoint = traj.messages[2];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed summary" });
+    expect(rec.messages[0].irs[1]).toBe(checkpoint);
+
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    expect(compilerCalls).toHaveLength(1);
+    expect(rec.modes).toEqual(["compacting", "ready-for-request"]);
+    await inputControl(traj).enqueueSteering(text("new request"));
+    expect(await waiting.finished).toBe(true);
+    expect(compilerCalls).toHaveLength(2);
+    expect(compilerCalls[1].irs.map(ir => ir.role)).toEqual(["lowered-checkpoint", "user"]);
+    expect(traj.messages[2]).toBe(checkpoint);
+  });
+
+  it("closes the child and pending parent work when interrupted during child checkpoint persistence", async () => {
+    const task = text("Inspect the workspace");
+    const child: Extract<AgentIR<TestAgent>, { role: "subagent-trajectory" }> = {
+      role: "subagent-trajectory",
+      subagent: "research",
+      task,
+      toolCall: searchCall("delegate", "delegation"),
+      ir: [
+        { role: "user", content: subagentPrompt(task) },
+        { role: "checkpoint", content: text("x".repeat(12000)) },
+      ],
+    };
+    const pending = searchCall("must not run", "pending");
+    let interruptReturned = false;
+    const { build, rec } = makeTrajectory({
+      contextWindow: 3000,
+      messages: [
+        assistantMessage({ toolCalls: [child.toolCall, pending] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: "research",
+          toolCall: child.toolCall,
+          message: task,
+        },
+        child,
+      ],
+      onMessages: async event => {
+        if (!event.irs.some(ir => ir.role === "checkpoint")) return;
+        if (event.root) throw new Error("Expected child checkpoint");
+        expect(event.scope.parentSubagentIR).toBe(child);
+        expect(traj.mode).toMatchObject({ mode: "compacting", root: false, subagent: "research" });
+        await interruptNow(traj);
+        interruptReturned = true;
+      },
+    });
+    const { traj, compilerCalls } = await build([
+      () => okResult(assistantMessage({ content: "completed child summary" })),
+    ]);
+    const executed: string[] = [];
+    runImpl = async query => {
+      executed.push(query);
+      return ok({ type: "output", content: text(query) });
+    };
+
+    expect(await traj.step()).toBe(true);
+    expect(interruptReturned).toBe(true);
+    expect(traj.inspectSubagentTrajectory(child)).toEqual({ type: "aborted" });
+    expect(child.ir.map(ir => ir.role)).toEqual([
+      "user",
+      "checkpoint",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      "interrupted-by-user",
+    ]);
+    const checkpoint = child.ir[3];
+    if (checkpoint.role !== "checkpoint") throw new Error("Expected checkpoint");
+    expect(checkpoint.content).toContainEqual({ type: "text", content: "completed child summary" });
+    expect(
+      rec.messages.map(event => ({ root: event.root, roles: event.irs.map(ir => ir.role) })),
+    ).toEqual([
+      { root: false, roles: ["request-snapshot-begin", "checkpoint", "request-snapshot-end"] },
+      { root: false, roles: ["interrupted-by-user"] },
+      { root: true, roles: ["tool-skip-output"] },
+    ]);
+    expect(traj.messages.filter(ir => ir.role === "tool-skip-output")).toEqual([
+      {
+        role: "tool-skip-output",
+        toolCall: pending,
+        reason: "The user aborted the response, so this tool was skipped",
+      },
+    ]);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(compilerCalls).toHaveLength(1);
+    expect(executed).toEqual([]);
   });
 
   it.each([true, false])(
@@ -2453,9 +2776,10 @@ describe("trajectory", () => {
       plainOk,
     ]);
 
-    expect(await traj.step()).toBe(true);
-    expect(await traj.step()).toBe(true);
-    expect(await traj.step()).toBe(true);
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      expect(await traj.step()).toBe(true);
+      expect(compilerCalls).toHaveLength(attempt);
+    }
     expect(compilerCalls).toHaveLength(6);
     expect(counted).toHaveLength(4);
     const checkpoints = child.ir.filter(ir => ir.role === "checkpoint");
@@ -2500,13 +2824,25 @@ describe("trajectory", () => {
 
     const waiting = await startWaitingStep(traj, "compaction-error");
     expect(rec.modes).toEqual(["compacting", "compaction-error"]);
-    expect(rec.roles).toEqual(["user", "compaction-error"]);
+    expect(rec.roles).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "compaction-error",
+      "request-snapshot-end",
+    ]);
     expect(traj.mode).toEqual(
       expect.objectContaining({ mode: "compaction-error", requestError: "boom", curl: "curl" }),
     );
 
     rectifyControl(traj).retry();
     expect(await waiting.finished).toBe(true);
+    expect(compilerCalls).toHaveLength(2);
+    expect(rec.messages.at(-1)?.irs.map(ir => ir.role)).toEqual([
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+    ]);
+    expect(await traj.step()).toBe(true);
     await startWaitingStep(traj, "ready-for-request");
 
     expect(compilerCalls.length).toBe(3);
@@ -2519,10 +2855,14 @@ describe("trajectory", () => {
     ]);
     expect(rec.roles).toEqual([
       "user",
+      "request-snapshot-begin",
       "compaction-error",
+      "request-snapshot-end",
       "error-retry",
+      "request-snapshot-begin",
       "checkpoint",
-      "assistant",
+      "request-snapshot-end",
+      ...assistantSnapshot,
     ]);
   });
 
@@ -2567,8 +2907,13 @@ describe("trajectory", () => {
           ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
           : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
       ]);
-      expect(rec.roles).toEqual(["user", "assistant", "tool-runtime-error", "assistant"]);
-      const result = traj.messages[2];
+      expect(rec.roles).toEqual([
+        "user",
+        ...assistantSnapshot,
+        "tool-runtime-error",
+        ...assistantSnapshot,
+      ]);
+      const result = traj.messages[4];
       if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
       expect(result).toEqual({
         role: "tool-runtime-error",
@@ -2617,7 +2962,7 @@ describe("trajectory", () => {
 
       const capped = length === 800;
       expect(rec.capCalls).toHaveLength(capped ? 1 : 0);
-      const result = traj.messages[2];
+      const result = traj.messages[4];
       if (result.role !== "tool-runtime-error") throw new Error("Expected tool runtime error");
       expect(result).toEqual({
         role: "tool-runtime-error",
@@ -2652,7 +2997,7 @@ describe("trajectory", () => {
       expect(await traj.step()).toBe(true);
 
       expect(rec.capCalls.length).toBe(0);
-      expect(traj.messages[2]).toEqual(
+      expect(traj.messages[4]).toEqual(
         outcome === "error"
           ? { role: "tool-runtime-error", toolCall: searchCall("huge", "c1"), error: content }
           : { role: "tool-output", toolCall: searchCall("huge", "c1"), content: text(content) },
@@ -2710,8 +3055,8 @@ describe("trajectory", () => {
         modeChange: ({ mode }) => {
           modes.push(mode.mode);
         },
-        onMessage: ({ ir }) => {
-          roles.push(ir.role);
+        onMessages: ({ irs }) => {
+          roles.push(...irs.map(ir => ir.role));
         },
       },
     });
@@ -2728,7 +3073,7 @@ describe("trajectory", () => {
       "responding",
       "ready-for-request",
     ]);
-    expect(roles).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    expect(roles).toEqual(["user", ...assistantSnapshot, "tool-output", ...assistantSnapshot]);
   });
 
   it("coalesces text and image steering parts in push order", async () => {
@@ -2764,6 +3109,6 @@ describe("trajectory", () => {
     const first = compilerCalls[0].irs[0];
     if (first.role !== "user") throw new Error("impossible");
     expect(first.content).toEqual(text("old question"));
-    expect(traj.messages.length).toBe(4);
+    expect(traj.messages.length).toBe(6);
   });
 });

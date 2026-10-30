@@ -14,8 +14,26 @@ import type {
   LoweredIR,
   ToolRejectMessage,
   UserMessage,
+  RequestErrorIR,
+  CompactionErrorIR,
+  ModelErrorIR,
+  RetryBudget,
 } from "./llm-ir.ts";
-import { downconvert, inspectHistory, inspectSubagentTrajectory, lower } from "./ir-operations.ts";
+import {
+  downconvert,
+  inspectHistory,
+  inspectSubagentTrajectory,
+  lastOutcome,
+  lower,
+  meaningfulTailIR,
+} from "./ir-operations.ts";
+import {
+  countTransientErrors,
+  latestRequestSnapshot,
+  validationFailure,
+} from "./trajectory-retry.ts";
+import { requestSnapshot } from "./request-snapshot.ts";
+import { sleep } from "./sleep.ts";
 import type {
   ActiveHistory,
   HistoryInspection,
@@ -30,16 +48,16 @@ import { Input } from "./input.ts";
 import { err, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
+import { shouldAutoCompactHistory } from "./compilers/autocompact.ts";
+import { trajectoryCompaction, type TrajectoryCompactionEvents } from "./trajectory-compaction.ts";
 import {
-  trajectoryArc,
-  type AllFinishReasons,
+  trajectoryAssistantRequest,
   type AgentToolData,
   type ErrorCorrection,
   type ToolDataFor,
-  type TrajectoryArcEvents,
-  type TrajectoryArcFinish,
-  type TrajectoryArcParams,
-} from "./trajectory-arc.ts";
+  type TrajectoryAssistantRequestEvents,
+  type TrajectoryAssistantRequestParams,
+} from "./trajectory-assistant-request.ts";
 
 export type InputControl = {
   enqueueSteering(content: UserMessage["content"]): Promise<void>;
@@ -202,17 +220,17 @@ export type TrajectoryMode<A extends Agent<any, any, any>> =
       scope: { parentSubagentIR: Extract<TreeIR<A>, { role: "subagent-trajectory" }> };
     });
 
-// onMessage fires for the active arc's history appends, carrying that arc's exact IR
-// universe: narrow the scope to know whose IRs these are. Subagent appends also carry the
-// immediate trajectory whose ir array received the append and the top-level trajectory that
-// contains it. A persisting client can overwrite the one root-history object even when the
-// append came from a nested child, while other clients can address the immediate parent.
+// onMessages fires once per atomic history commit, carrying that arc's exact IR universe:
+// narrow the scope to know whose IRs these are. Clients must persist the entire group in
+// one transaction. Subagent commits also carry the immediate trajectory whose ir array
+// received the append and the top-level trajectory that contains it; persisting clients
+// overwrite that one root-history object once for the whole group.
 type ScopedSubagentMessages<
   Root extends Agent<any, any, any>,
   Parent extends Agent<any, any, any>,
 > = string extends keyof Parent["agents"]
   ? ScopeSubagent<string> & {
-      ir: AgentIR<Parent["agents"][string]>;
+      irs: Array<AgentIR<Parent["agents"][string]>>;
       scope: {
         path: readonly ScopeHop[];
         parentSubagentIR: Extract<AgentIR<Parent>, { role: "subagent-trajectory" }>;
@@ -222,7 +240,7 @@ type ScopedSubagentMessages<
   : {
       [K in keyof Parent["agents"] & string]:
         | (ScopeSubagent<K> & {
-            ir: AgentIR<Parent["agents"][K]>;
+            irs: Array<AgentIR<Parent["agents"][K]>>;
             scope: {
               path: readonly ScopeHop[];
               parentSubagentIR: Extract<
@@ -236,26 +254,37 @@ type ScopedSubagentMessages<
     }[keyof Parent["agents"] & string];
 
 type ScopedMessages<A extends Agent<any, any, any>> =
-  | (ScopeRoot & { ir: AgentIR<A> })
+  | (ScopeRoot & { irs: Array<AgentIR<A>> })
   | ScopedSubagentMessages<A, A>;
 
-// The arc-sourced events' payloads don't vary by arc, so they carry the tree's exact scope
-// union as top-level discriminants alongside the original payload.
+// Response and compaction progress retain the selected branch's scope.
+type OperationEvents = TrajectoryAssistantRequestEvents &
+  TrajectoryCompactionEvents & {
+    requestRetry: {
+      error:
+        | RequestErrorIR
+        | CompactionErrorIR
+        | Extract<ModelErrorIR, { role: "rate-limit-error" }>;
+      attempt: number;
+      delayMs: number;
+    };
+  };
+
 type ScopedArcEvents<A extends Agent<any, any, any>> = {
-  [K in keyof Omit<TrajectoryArcEvents<A>, "onMessage">]: ArcScope<A> & {
-    payload: Omit<TrajectoryArcEvents<A>, "onMessage">[K];
+  [K in keyof OperationEvents]: ArcScope<A> & {
+    payload: OperationEvents[K];
   };
 };
 
 /*
- * Trajectory events are notifications only: handlers never feed back into the loop. onMessage
+ * Trajectory events are notifications only: handlers never feed back into the loop. onMessages
  * fires for every canonical history append; modeChange fires for every transition; arc events
  * are forwarded with their scope. rewind and steeringChange stay unscoped: both only ever
  * happen at the root, where children never park for rectification (inside a trajectory,
  * request/compaction failures are terminal) and never consume steering at all.
  */
 export type TrajectoryEvents<A extends Agent<any, any, any>> = ScopedArcEvents<A> & {
-  onMessage: ScopedMessages<A>;
+  onMessages: ScopedMessages<A>;
   modeChange: { mode: TrajectoryMode<A> };
   rewind: { removed: readonly AgentIR<A>[]; content: UserMessage["content"] | null };
   // Post-mutation steering snapshot, split by when it reaches the model: "upcoming" folds into
@@ -313,22 +342,25 @@ type TreeErrorCorrection<A extends Agent<any, any, any>> = ErrorCorrection<A> &
     {} | { [K in keyof A["agents"]]: TreeErrorCorrection<A["agents"][K]> }[keyof A["agents"]]
   >;
 
+export type RequestErrorRetriesConfig = {
+  // null (or omission) means unlimited retries. Infinity is also accepted.
+  maxRetryCount?: number | null;
+  backoffMs: number;
+  maxBackoffMs?: number;
+};
+
 export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
-  TrajectoryArcParams<A, Model>,
-  | "handler"
-  | "abortSignal"
-  | "model"
-  | "contextWindow"
-  | "tools"
-  | "lowerMessages"
-  | "toolData"
-  | "errorCorrection"
-  | "manualCompactionPending"
+  TrajectoryAssistantRequestParams<A, Model>,
+  "handler" | "abortSignal" | "model" | "tools" | "lowerMessages" | "toolData" | "errorCorrection"
 > & {
   agent: A;
   toolData: AgentToolData<A> &
     UnionToIntersection<ToolDataFor<AllToolsAcrossTree<A>[keyof AllToolsAcrossTree<A>]>>;
   errorCorrection?: TreeErrorCorrection<A>;
+  // null (or omission) means unlimited retries. Infinity is also accepted.
+  validationRetries?: number | null;
+  // Omitting this configuration disables automatic request retries.
+  requestErrorRetries?: RequestErrorRetriesConfig;
   // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;
@@ -552,8 +584,22 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   get hasCompactableHistory(): boolean {
-    const lastMessage = this.history.at(-1);
+    const [lastMessage] = this.meaningfulTailIR();
     return lastMessage != null && lastMessage.role !== "checkpoint";
+  }
+
+  meaningfulTailIR() {
+    return meaningfulTailIR(this.history);
+  }
+
+  private get retryBudget(): RetryBudget {
+    return {
+      validation: this.params.validationRetries ?? null,
+      requestError:
+        this.params.requestErrorRetries == null
+          ? 0
+          : (this.params.requestErrorRetries.maxRetryCount ?? null),
+    };
   }
 
   inspectSubagentTrajectory(
@@ -692,22 +738,30 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     ) as ArcScope<A>;
   }
 
-  private async appendIr(
+  private appendIr(
     location: ActiveHistory<A>,
     ir: TreeIR<A> | ToolRejectMessage<A["tools"]>,
   ): Promise<void> {
+    return this.appendIrs(location, [ir]);
+  }
+
+  private async appendIrs(
+    location: ActiveHistory<A>,
+    irs: Array<TreeIR<A> | ToolRejectMessage<A["tools"]>>,
+  ): Promise<void> {
+    if (irs.length === 0) return;
     // The selected history is a member of this tree, not a root history. The operation's
     // producer supplies its own agent's IR; rejects are only produced when the gate exists.
     const history = location.history as Array<TreeIR<A>>;
-    history.push(ir as TreeIR<A>);
-    const event = { ...this.scope(location), ir };
-    // Scope and IR are correlated by the operation, including after its terminal append.
-    await this.params.handler?.onMessage?.(event as ScopedMessages<A>);
+    history.push(...(irs as Array<TreeIR<A>>));
+    const event = { ...this.scope(location), irs };
+    // Publish the entire commit at once, retaining the scope even if it completed this child.
+    await this.params.handler?.onMessages?.(event as ScopedMessages<A>);
   }
 
   // Fires on the exit signal: when the process dies mid-batch, every call without a recorded
   // answer gets a skip marker, since nothing may run after this. Markers append one at a time,
-  // awaiting onMessage each time: the client owns serialization and must have finished
+  // awaiting onMessages each time: the client owns serialization and must have finished
   // persisting before run() resolves.
   private async markExitSkips(): Promise<void> {
     const owner = this.ownership.consume();
@@ -737,8 +791,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           });
         }
       }
-      // Response-phase aborts now mark themselves in the arc; don't double-mark.
-      const tail = location.history[location.history.length - 1] as LlmIR<any> | undefined;
+      // Response-phase aborts mark themselves in the assistant request; don't double-mark.
+      const tail = lastOutcome(
+        downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history),
+      );
       if (
         tail?.role !== "interrupted-by-user" &&
         (!location.root || this.inspect().action !== "wait-for-input")
@@ -766,16 +822,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     );
   }
 
-  private async runArc(
+  private async runAssistantRequest(
     location: ActiveHistory<A>,
-    { model, contextWindow, tools: allTools, modalities }: RuntimeData<A, Model>,
-  ): Promise<
-    TrajectoryArcFinish<
-      Exclude<AllFinishReasons<A>, { type: "request-tool" }> | { type: "request-tool" }
-    >
-  > {
+    { model, tools: allTools, modalities }: RuntimeData<A, Model>,
+  ): Promise<Array<TreeIR<A>>> {
     const params = this.params;
-    const owner = this.ownership.lease();
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
     let receivedTokens = false;
@@ -785,12 +836,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
 
     // The selected agent B is in A's tree. Narrow the shared catalogues to B at this boundary;
-    // the arc still runs with B's history and tools, never with a child retyped as the root.
+    // the request still uses B's history and tools, never with a child retyped as the root.
     const run = <B extends Agent<any, any, any>>(agent: B, history: Array<AgentIR<B>>) =>
-      trajectoryArc.run<B, Model>({
+      trajectoryAssistantRequest.run<B, Model>({
         model,
-        contextWindow,
-        manualCompactionPending: isMainAgent && this.manualCompactionPending,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
         toolData: params.toolData as AgentToolData<B>,
@@ -800,8 +849,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         systemPrompt,
         transport: params.transport,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
-        validationRetries: params.validationRetries,
-        requestErrorRetries: params.requestErrorRetries,
         abortSignal: combineSignals([params.abortSignal, this.turnController.signal]),
         handler: {
           startResponse: async event => {
@@ -827,13 +874,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           discardResponseProgress: async event => {
             await params.handler?.discardResponseProgress?.({ ...scope, payload: event });
           },
-          startCompaction: async event => {
-            await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });
-            await params.handler?.startCompaction?.({ ...scope, payload: event });
-          },
-          compactionProgress: async event => {
-            await params.handler?.compactionProgress?.({ ...scope, payload: event });
-          },
           autofixingJson: async event => {
             await this.setArcMode(location, {
               mode: "autofix-json",
@@ -849,24 +889,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             });
             await params.handler?.autofixingTool?.({ ...scope, payload: event });
           },
-          requestRetry: async event => {
-            await this.setArcMode(location, {
-              mode: "request-error-retrying",
-              error: event.error.requestError,
-              attempt: event.attempt,
-              delayMs: event.delayMs,
-              control: this.runningControl(),
-            });
-            await params.handler?.requestRetry?.({ ...scope, payload: event });
-          },
           onResponseHeaders: async event => {
             await params.handler?.onResponseHeaders?.({ ...scope, payload: event });
           },
-          onMessage: ir =>
-            owner.ifOwner(() => {
-              if (isMainAgent && ir.role === "checkpoint") this.manualCompactionPending = false;
-              return this.appendIr(location, ir as TreeIR<A>);
-            }),
         },
       });
     return run(location.agent, location.history);
@@ -907,6 +932,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       }
     }
 
+    if (inspection.action === "retry") {
+      await this.waitRetry(inspection.location);
+      if (this.params.abortSignal.aborted) return false;
+      if (this.turnController.signal.aborted) {
+        await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+        return true;
+      }
+    }
     const active = inspection;
     const location = active.location;
     const work = await (async (): Promise<
@@ -914,6 +947,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       | { action: "respond" }
       | { action: "quit" }
     > => {
+      if (active.action === "retry") return { action: "respond" };
       if (active.action === "respond" || active.action === "run-tools") return active;
       this.awaitingUnpause = true;
       await this.announceReady(active);
@@ -1014,7 +1048,13 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         runtime = { ...runtime, ...model.data };
       }
     }
-    await this.respond(inspection.location, runtime);
+    await this.applySteering(inspection.location);
+    if (this.params.abortSignal.aborted) return false;
+    if (this.needsCompaction(inspection.location, runtime)) {
+      await this.autocompact(inspection.location, runtime);
+    } else {
+      await this.respond(inspection.location, runtime);
+    }
     return !this.params.abortSignal.aborted;
   }
 
@@ -1037,23 +1077,108 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return ok({ ...modelResult.data, tools: toolsResult.data });
   }
 
+  private async applySteering(location: ActiveHistory<A>): Promise<void> {
+    if (!location.root) return;
+    const queued = this.steering.take();
+    if (queued.length === 0) return;
+    await this.emitSteeringChange();
+    await this.appendIr(location, {
+      role: "user",
+      content: coalesceUserMessageContent(queued),
+    });
+  }
+
+  private needsCompaction(location: ActiveHistory<A>, runtime: RuntimeData<A, Model>): boolean {
+    if (location.root && this.manualCompactionPending) return true;
+    const messages = this.lowerForLocation(
+      location,
+      runtime.modalities,
+    )(location.history).map(pair => pair.converted);
+    return shouldAutoCompactHistory(runtime.contextWindow, messages);
+  }
+
+  private async autocompact(
+    location: ActiveHistory<A>,
+    runtime: RuntimeData<A, Model>,
+  ): Promise<void> {
+    const owner = this.ownership.lease();
+    const retryBudget = this.retryBudget;
+    const scope = this.scope(location);
+    const result = await trajectoryCompaction.run<A, Model>({
+      model: runtime.model,
+      messages: this.lowerForLocation(
+        location,
+        runtime.modalities,
+      )(location.history).map(pair => pair.converted),
+      runCompiler: this.params.runCompiler,
+      transport: this.params.transport,
+      abortSignal: combineSignals([this.params.abortSignal, this.turnController.signal]),
+      autofixJson: this.params.errorCorrection?.json,
+      handler: {
+        startCompaction: async event => {
+          await this.setArcMode(location, { mode: "compacting", control: this.runningControl() });
+          await this.params.handler?.startCompaction?.({ ...scope, payload: event });
+        },
+        compactionProgress: async event => {
+          await this.params.handler?.compactionProgress?.({ ...scope, payload: event });
+        },
+      },
+    });
+    if (this.params.abortSignal.aborted) return;
+    if (!result.success) {
+      await this.closeInterruptedWork(location, owner, null);
+      return;
+    }
+    await owner.ifOwner(() => {
+      if (location.root && result.data.role === "checkpoint") this.manualCompactionPending = false;
+      return this.appendIrs(location, requestSnapshot([result.data], retryBudget));
+    });
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, owner, null);
+    }
+  }
+
+  private async waitRetry(location: ActiveHistory<A>): Promise<void> {
+    const history = downconvert<A>(irs => this.params.lowerMessages(irs, null))(location.history);
+    const snapshot = latestRequestSnapshot(history);
+    if (snapshot == null || validationFailure(snapshot.irs)) return;
+    const error = snapshot.irs.at(-1)?.converted;
+    if (
+      error == null ||
+      (error.role !== "request-error" &&
+        error.role !== "compaction-error" &&
+        error.role !== "rate-limit-error")
+    )
+      return;
+    const config = this.params.requestErrorRetries;
+    if (config == null) return;
+    const attempt = countTransientErrors(history);
+    const delayMs = Math.min(config.backoffMs * attempt, config.maxBackoffMs ?? Infinity);
+    await this.setArcMode(location, {
+      mode: "request-error-retrying",
+      error: error.requestError,
+      attempt,
+      delayMs,
+      control: this.runningControl(),
+    });
+    await this.params.handler?.requestRetry?.({
+      ...this.scope(location),
+      payload: { error, attempt, delayMs },
+    });
+    await sleep(delayMs, combineSignals([this.params.abortSignal, this.turnController.signal]));
+  }
+
   private async respond(
     location: ActiveHistory<A>,
     runtimeData: RuntimeData<A, Model>,
   ): Promise<void> {
-    if (location.root) {
-      const queued = this.steering.take();
-      if (queued.length > 0) {
-        await this.emitSteeringChange();
-        await this.appendIr(location, {
-          role: "user",
-          content: coalesceUserMessageContent(queued),
-        });
-      }
-    }
-    const { reason } = await this.runArc(location, runtimeData);
-    if (reason.type === "abort" && !this.params.abortSignal.aborted) {
-      await this.closeInterruptedWork(location, this.ownership.lease(), null);
+    const owner = this.ownership.lease();
+    const retryBudget = this.retryBudget;
+    const irs = await this.runAssistantRequest(location, runtimeData);
+    if (this.params.abortSignal.aborted) return;
+    await owner.ifOwner(() => this.appendIrs(location, requestSnapshot(irs, retryBudget)));
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, owner, null);
     }
   }
 

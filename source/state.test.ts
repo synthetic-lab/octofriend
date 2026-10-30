@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
   inputFieldAvailable,
@@ -40,6 +40,7 @@ import {
   type LoweredIR,
 } from "./libocto/llm-ir.ts";
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
+import { meaningfulTailIR } from "./libocto/ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./libocto/tool-def.ts";
 import type { octoAgent } from "./ir/octo-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
@@ -83,6 +84,7 @@ const agentConfig: Config = {
 
 const testModelJson = serializeModelJson(config.models[0]);
 const agentModelJson = serializeModelJson(agentConfig.models[0]);
+const assistantSnapshot = ["request-snapshot-begin", "assistant", "request-snapshot-end"] as const;
 
 // Captured while the store is still in its initial "booting" mode: booting's controls are the
 // only boot path reachable from every later store state (the "lost" mode has no controls).
@@ -420,12 +422,12 @@ describe("boot and response mirror", () => {
 
     await waitForNextTurn(() => respond("hello"));
 
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual(["user", ...assistantSnapshot]);
     expect(compilerCalls.length).toBe(1);
     expect(compilerCalls[0].irs.map(m => m.role)).toEqual(["user"]);
 
     const sessionId = session.metadata.sessionId ?? sessionError(new Error("no session id"));
-    expect(dbNodeCount(sessionId)).toBe(2);
+    expect(dbNodeCount(sessionId)).toBe(4);
     expect(dbLlmIrCount(sessionId, "boot-assistant-marker")).toBe(1);
   });
 
@@ -454,7 +456,7 @@ describe("boot and response mirror", () => {
     expect(useAppStore.getState().sessionHydrationNonce).toBeGreaterThan(noncesBefore.hydration);
 
     await waitForNextTurn(() => respond("again"));
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual(["user", ...assistantSnapshot]);
     const secondId = second.session.metadata.sessionId!;
     const firstId = first.session.metadata.sessionId!;
     expect(secondId).not.toBe(firstId);
@@ -532,40 +534,47 @@ describe("explore subagent", () => {
       expect(useAppStore.getState().inflightResponse).toBeNull();
       expect(historyRoles()).toEqual([
         "user",
-        "assistant",
+        ...assistantSnapshot,
         "tool-invoke-subagent",
         "subagent-trajectory",
       ]);
-      const node = useAppStore.getState().history[3];
+      const node = useAppStore.getState().history[5];
       if (node.type !== "llm-ir" || node.ir.role !== "subagent-trajectory")
         throw new Error("Expected trajectory");
       const trajectory = node.ir;
-      expect(trajectory.ir.map(ir => ir.role)).toEqual(["user", "assistant", "file-read"]);
+      expect(trajectory.ir.map(ir => ir.role)).toEqual(["user", ...assistantSnapshot, "file-read"]);
       const sessionId = session.metadata.sessionId!;
-      expect(dbNodeCount(sessionId)).toBe(4);
+      expect(dbNodeCount(sessionId)).toBe(6);
       expect(dbLlmIrCount(sessionId, "explore-file-marker")).toBe(1);
 
       release.resolve();
       await waitTrajectoryMode("ready-for-request");
       expect(prompted).toBe(false);
-      expect(dbNodeCount(sessionId)).toBe(5);
+      expect(dbNodeCount(sessionId)).toBe(9);
       expect(dbLlmIrCount(sessionId, "explore-report-marker")).toBe(1);
       expect(historyRoles()).toEqual([
         "user",
-        "assistant",
+        ...assistantSnapshot,
         "tool-invoke-subagent",
         "subagent-trajectory",
-        "assistant",
+        ...assistantSnapshot,
       ]);
-      const updated = useAppStore.getState().history[3];
+      const updated = useAppStore.getState().history[5];
       expect(updated.nodeId).toBe(node.nodeId);
       expect(updated).not.toBe(node);
       if (updated.type !== "llm-ir") throw new Error("Expected persisted IR");
       expect(updated.ir).toBe(trajectory);
-      expect(trajectory.ir.at(-1)).toMatchObject({
+      const [tail] = meaningfulTailIR(trajectory.ir);
+      expect(tail).toMatchObject({
         role: "assistant",
         content: "explore-report-marker: oranges are citrus fruits",
       });
+      expect(trajectory.ir.map(ir => ir.role)).toEqual([
+        "user",
+        ...assistantSnapshot,
+        "file-read",
+        ...assistantSnapshot,
+      ]);
       expect(compilerCalls[3].irs.at(-1)).toMatchObject({
         role: "tool-output",
         toolCall: { toolCallId: "delegate" },
@@ -601,7 +610,12 @@ describe("permission gate mirror", () => {
     expect(permissionControl().toolCall.toolCallId).toBe("call_a");
     await waitForNextTurn(() => prompt.control.allow());
 
-    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "assistant"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      ...assistantSnapshot,
+    ]);
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({ call_a: 1 });
     expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
     const parked = currentLive()!;
@@ -610,7 +624,7 @@ describe("permission gate mirror", () => {
     );
 
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(4);
+    expect(dbNodeCount(sessionId)).toBe(8);
     expect(dbLlmIrCount(sessionId, "echo-permission-marker")).toBe(2); // request + output, once each
     expect(dbLlmIrCount(sessionId, "permission-final-marker")).toBe(1);
   });
@@ -639,11 +653,11 @@ describe("permission gate mirror", () => {
 
     expect(historyRoles()).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-reject",
       "tool-skip-output",
       "user",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_a: 1,
@@ -677,20 +691,20 @@ describe("permission gate mirror", () => {
 
     expect(historyRoles()).toEqual([
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
-      "assistant",
+      ...assistantSnapshot,
       "user",
-      "assistant",
+      ...assistantSnapshot,
       "tool-output",
-      "assistant",
+      ...assistantSnapshot,
     ]);
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_a: 1,
       call_b: 1,
     });
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(8);
+    expect(dbNodeCount(sessionId)).toBe(16);
   });
 
   it("interrupting at the gate persists skip markers so no tool call dangles", async () => {
@@ -711,7 +725,12 @@ describe("permission gate mirror", () => {
     const parked = await waitTrajectoryMode("tool-call-permission");
     await waitForNextTurn(() => parked.control.interrupt());
 
-    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "tool-skip-output"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-output",
+      "tool-skip-output",
+    ]);
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
   });
 
@@ -738,7 +757,12 @@ describe("permission gate mirror", () => {
 
     expect(currentLive()!.liveMode.trajectoryMode.mode).toBe("aborted");
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
-    expect(historyRoles()).toEqual(["user", "assistant", "tool-skip-output", "tool-skip-output"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      ...assistantSnapshot,
+      "tool-skip-output",
+      "tool-skip-output",
+    ]);
 
     const sessionId = session.metadata.sessionId!;
     expect(dbLlmIrCount(sessionId, "exited while this tool was running")).toBe(1);
@@ -763,31 +787,37 @@ describe("error-mode mirrors", () => {
     process.env["OCTO_STATE_TEST_API_KEY"] = "test-key";
     await waitForNextTurn(() => authError.control.retry());
     expect(compilerCalls.length).toBe(1);
-    expect(historyRoles()).toEqual(["user", "auth-error", "error-retry", "assistant"]);
+    expect(historyRoles()).toEqual(["user", "auth-error", "error-retry", ...assistantSnapshot]);
   });
 
-  it("mirrors a rewind: restores the prompt as the draft query and slices history", async () => {
+  it("mirrors a legacy compaction-error rewind, restoring the draft and slicing history", async () => {
     const seededUsage = compilerUsage(200_000, 10);
-    const { compilerCalls } = await hydrateSession(
+    const { session, compilerCalls } = await hydrateSession(
       [
         {
           type: "llm-ir",
           ir: { role: "user", content: [{ type: "text", content: "original prompt" }] },
         },
         { type: "llm-ir", ir: assistantMessage({ content: "seeded answer", usage: seededUsage }) },
+        {
+          type: "llm-ir",
+          ir: { role: "user", content: [{ type: "text", content: "new question" }] },
+        },
+        {
+          type: "llm-ir",
+          ir: { role: "compaction-error", requestError: "empty summary", curl: null },
+        },
       ],
       [
-        // The seeded assistant's usage trips autocompaction; an empty summary fails it.
-        () => okResult(assistantMessage({ content: "" })),
-        // After the rewind, the seeded usage trips autocompaction again on the edited request.
+        // After the rewind, the seeded usage trips autocompaction on the edited request.
         plain("rewind-summary-marker"),
         plain("edited-response-marker"),
       ],
     );
 
     const nonceAfterHydrate = useAppStore.getState().clearNonce;
-    await respond("new question");
     const compactionError = await waitTrajectoryMode("compaction-error");
+    expect(compilerCalls).toHaveLength(0);
 
     await waitForNextTurn(() => compactionError.control.rewind());
 
@@ -796,19 +826,29 @@ describe("error-mode mirrors", () => {
     expect(useAppStore.getState().query).toBe("new question");
     expect(useAppStore.getState().clearNonce).toBeGreaterThan(nonceAfterHydrate);
     expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(2);
 
     await waitForNextTurn(() => respond("edited prompt text"));
 
-    expect(compilerCalls.length).toBe(3);
-    expect(historyRoles()).toEqual(["user", "assistant", "user", "checkpoint", "assistant"]);
+    expect(compilerCalls.length).toBe(2);
+    expect(historyRoles()).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "request-snapshot-begin",
+      "checkpoint",
+      "request-snapshot-end",
+      ...assistantSnapshot,
+    ]);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(9);
     // The edited request reaches the model in the re-compaction; after it, requests lower to
     // just the checkpoint.
-    const compactionRequest = compilerCalls[1].irs;
+    const compactionRequest = compilerCalls[0].irs;
     expect(compactionRequest.map(m => m.role)).toEqual(["user", "assistant", "user", "user"]);
     const editedUser = compactionRequest[2];
     if (editedUser.role !== "user") throw new Error("impossible");
     expect(editedUser.content).toEqual([{ type: "text", content: "edited prompt text" }]);
-    expect(compilerCalls[2].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
+    expect(compilerCalls[1].irs.map(m => m.role)).toEqual(["lowered-checkpoint"]);
   });
 
   it("degrades to the lost mode when the session's tree disappears", async () => {
@@ -829,11 +869,67 @@ describe("error-mode mirrors", () => {
 
     expect(lost.sessionId).toBe(sessionId);
     expect(lost.sessionLostError).toContain("does not exist");
-    expect(useAppStore.getState().history).toHaveLength(2);
+    expect(useAppStore.getState().history).toHaveLength(4);
   });
 });
 
 describe("history persistence (BUGS.md #8, #12)", () => {
+  it("persists each failed-batch commit in one SQL transaction", async () => {
+    const { session } = await bootSession([
+      () => {
+        return okResult(
+          assistantMessage({
+            toolCalls: [
+              {
+                type: "malformed-tool-request",
+                error: "bad json",
+                call: { original: { name: "shell", arguments: "{oops" } },
+                toolCallId: "malformed",
+              },
+              shellCall("skipped", "echo must-not-run"),
+            ],
+          }),
+        );
+      },
+      plain("recovered"),
+    ]);
+    const database = db();
+    const transaction = database.transaction.bind(database);
+    const committedHistories: Array<readonly HistoryNode[]> = [];
+    // Observe our transaction boundaries, not individual SQL statements or store
+    // updates: splitting one commit across multiple transactions must fail this test.
+    const transactions = spyOn(database, "transaction").mockImplementation((callback, options) => {
+      const result = transaction(callback, options);
+      const loaded = loadSession(session.metadata.sessionId!);
+      if (loaded == null) throw new Error("Committed session could not be reloaded");
+      committedHistories.push(loaded.history);
+      return result;
+    });
+    try {
+      await waitForNextTurn(() => respond("try the tools"));
+    } finally {
+      transactions.mockRestore();
+    }
+
+    const failedBatch = [
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "tool-parse-error",
+      "tool-skip-output",
+      "request-snapshot-end",
+    ] as const;
+    expect(
+      committedHistories.map(history => {
+        return history.map(node => (node.type === "llm-ir" ? node.ir.role : node.type));
+      }),
+    ).toEqual([["user"], [...failedBatch], [...failedBatch, ...assistantSnapshot]]);
+    expect(unansweredToolCallIds(committedHistories[1])).toEqual([]);
+    expect(committedHistories.at(-1)).toEqual(
+      JSON.parse(JSON.stringify(useAppStore.getState().history)),
+    );
+  });
+
   it("persists compaction and retry IRs exactly once in the same run", async () => {
     const malformed = {
       type: "malformed-tool-request" as const,
@@ -859,15 +955,19 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     expect(compilerCalls.length).toBe(3);
     expect(historyRoles()).toEqual([
       "user",
+      "request-snapshot-begin",
       "assistant",
       "tool-parse-error",
+      "request-snapshot-end",
+      "request-snapshot-begin",
       "checkpoint",
-      "assistant",
+      "request-snapshot-end",
+      ...assistantSnapshot,
     ]);
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
 
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(5);
+    expect(dbNodeCount(sessionId)).toBe(11);
     expect(dbLlmIrCount(sessionId, "mixed-attempt-marker")).toBe(1);
     expect(dbLlmIrCount(sessionId, "call_mixed")).toBe(2); // request + parse error, once each
     expect(dbLlmIrCount(sessionId, "mixed-summary-marker")).toBe(1);
@@ -889,9 +989,9 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     gate.resolve();
     await waitTrajectoryMode("ready-for-request");
 
-    expect(historyRoles()).toEqual(["user", "notification", "assistant"]);
+    expect(historyRoles()).toEqual(["user", "notification", ...assistantSnapshot]);
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(3);
+    expect(dbNodeCount(sessionId)).toBe(5);
     expect(dbLlmIrCount(sessionId, "notify-after-marker")).toBe(1);
   });
 
@@ -913,9 +1013,15 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     await responding.control.interrupt();
     await waitTrajectoryMode("ready-for-request");
 
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     const sessionId = session.metadata.sessionId!;
-    expect(dbNodeCount(sessionId)).toBe(2);
+    expect(dbNodeCount(sessionId)).toBe(5);
     expect(dbLlmIrCount(sessionId, "partial-stream-marker")).toBe(1);
     expect(dbLlmIrCount(sessionId, "unreached-full-answer")).toBe(0);
   });
@@ -945,10 +1051,16 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     const sessionId = session.metadata.sessionId!;
     expect(dbLlmIrCount(sessionId, "reasoning-stream-marker")).toBe(0);
     expect(dbLlmIrCount(sessionId, "unreached-full-answer")).toBe(0);
+    expect(dbNodeCount(sessionId)).toBe(0);
 
     // The restored draft can be edited and sent, continuing the turn cleanly.
     await waitForNextTurn(() => respond("edited hi"));
-    expect(historyRoles()).toEqual(["user", "assistant"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+    ]);
   });
 
   it("keeps an interrupted reasoning-only turn when a draft was in progress", async () => {
@@ -969,7 +1081,12 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     await responding.control.interrupt();
     await waitTrajectoryMode("ready-for-request");
 
-    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(useAppStore.getState().query).toBe("draft in progress");
   });
 
@@ -989,14 +1106,23 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     useAppStore.setState({ unchained: true });
     await respond("hi");
     // Wait out the first tool-calling response before arming on the second one.
-    await waitFor(() => historyRoles().length === 3);
+    await waitFor(() => historyRoles().includes("tool-output"));
     const responding = await waitTrajectoryMode("responding");
     await responding.control.interrupt();
     await waitTrajectoryMode("ready-for-request");
 
     // The reasoning tokens are gone, the interruption is marked, and the turn is kept: the
     // rewind only fires when the interrupted turn began with a user message.
-    expect(historyRoles()).toEqual(["user", "assistant", "tool-output", "interrupted-by-user"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "assistant",
+      "request-snapshot-end",
+      "tool-output",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(useAppStore.getState().query).toBe("");
     expect(useAppStore.getState().inflightResponse).toBeNull();
   });
@@ -1023,7 +1149,12 @@ describe("history persistence (BUGS.md #8, #12)", () => {
 
     // The salvaged queue lands in the draft concatenated, and the turn is kept: the
     // now-non-empty draft vetoes the transparent rewind.
-    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(useAppStore.getState().queuedSteering).toEqual([]);
     expect(useAppStore.getState().query).toBe("queued one\nqueued two");
   });
@@ -1047,7 +1178,12 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     await responding.control.interrupt();
     await waitTrajectoryMode("ready-for-request");
 
-    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(historyRoles()).toEqual([
+      "user",
+      "request-snapshot-begin",
+      "interrupted-by-user",
+      "request-snapshot-end",
+    ]);
     expect(useAppStore.getState().query).toBe("queued steering\ndraft in progress");
   });
 });

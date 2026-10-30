@@ -1917,6 +1917,8 @@ function renderLlmIR(
   }
   if (
     item.role === "request-error" ||
+    item.role === "request-snapshot-begin" ||
+    item.role === "request-snapshot-end" ||
     item.role === "compaction-error" ||
     item.role === "validation-retry-budget-exceeded" ||
     item.role === "interrupted-by-user" ||
