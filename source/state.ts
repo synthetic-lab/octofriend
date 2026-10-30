@@ -170,7 +170,6 @@ export function inputFieldAvailable(
   if (permissionUi.type === "awaiting-steering") return true;
   if (permissionUi.type === "prompt") return false;
   switch (trajectoryMode.mode) {
-    case "tool-call-permission":
     case "request-error":
     case "compaction-error":
     case "payment-error":
@@ -187,6 +186,7 @@ export function inputFieldAvailable(
     case "autofix-tool":
     case "request-error-retrying":
     case "tool-call":
+    case "tool-call-permission":
     case "running-tool":
       return true;
   }

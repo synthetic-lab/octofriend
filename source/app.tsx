@@ -1691,22 +1691,8 @@ const MessageDisplayInner = ({
   item: HistoryNode | InflightResponseType;
   trajectory: LiveTrajectory["instance"];
 }) => {
-  const inProgressState = useAppStore(state => {
-    if (state.sessionMode.mode !== "live") return null;
-    const mode = state.sessionMode.liveMode.trajectoryMode;
-    if (mode.mode === "compacting") return "compacting";
-    if (mode.mode === "responding") return mode.receivedTokens ? "responding" : "waiting";
-    if (mode.mode === "running-tool") return "running-tool";
-    return null;
-  });
-  const runningToolCallId = useAppStore(state => {
-    if (state.sessionMode.mode !== "live") return null;
-    const mode = state.sessionMode.liveMode.trajectoryMode;
-    if (mode.mode === "running-tool") return mode.toolCall.toolCallId;
-    return null;
-  });
   if (item.type === "inflight-response") {
-    return renderInflightResponse(item, inProgressState);
+    return <InflightResponseRenderer item={item} trajectory={trajectory} />;
   }
   if (item.type === "notification") {
     return (
@@ -1726,7 +1712,7 @@ const MessageDisplayInner = ({
     );
   }
   if (item.type === "llm-ir") {
-    return renderLlmIR(item, inProgressState, runningToolCallId, trajectory);
+    return renderLlmIR(item, trajectory);
   }
   if (item.type === "request-failed") {
     return (
@@ -1753,34 +1739,39 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-type InProgressState = "compacting" | "responding" | "waiting" | "running-tool" | null;
 
-function renderInflightResponse(item: InflightResponseType, inProgressState: InProgressState) {
-  if (inProgressState === "compacting") {
-    return (
-      <TerminalFlex
-        style={{
-          marginBottom: 1,
-        }}
-      >
-        <CompactionRenderer item={item} />
-      </TerminalFlex>
-    );
-  }
+function InflightResponseRenderer({
+  item,
+  trajectory,
+}: {
+  item: InflightResponseType;
+  trajectory: LiveTrajectory["instance"];
+}) {
+  const compacting = useAppStore(state => {
+    const session = state.sessionMode;
+    if (session.mode !== "live" || session.trajectory.instance !== trajectory) return false;
+    const mode = session.liveMode.trajectoryMode;
+    return mode.root && mode.mode === "compacting";
+  });
+  return <ResponseMessageRenderer item={item} compacting={compacting} />;
+}
+
+function ResponseMessageRenderer({
+  item,
+  compacting = false,
+}: {
+  item: AssistantDisplayItem;
+  compacting?: boolean;
+}) {
   return (
-    <TerminalFlex
-      style={{
-        marginBottom: 1,
-      }}
-    >
-      <AssistantMessageRenderer item={item} />
+    <TerminalFlex style={{ marginBottom: 1 }}>
+      {compacting ? <CompactionRenderer item={item} /> : <AssistantMessageRenderer item={item} />}
     </TerminalFlex>
   );
 }
+
 function renderLlmIR(
   node: Extract<HistoryNode, { type: "llm-ir" }>,
-  inProgressState: InProgressState,
-  runningToolCallId: string | null,
   trajectory: LiveTrajectory["instance"],
 ) {
   const item = node.ir;
@@ -1790,21 +1781,13 @@ function renderLlmIR(
       <SubagentTrajectoryRenderer
         inspection={inspection}
         history={[...item.ir]}
-        inProgressState={inProgressState}
-        runningToolCallId={runningToolCallId}
+        subagent={item}
+        trajectory={trajectory}
       />
     );
   }
   if (item.role === "assistant") {
-    return (
-      <TerminalFlex
-        style={{
-          marginBottom: 1,
-        }}
-      >
-        <AssistantMessageRenderer item={item} />
-      </TerminalFlex>
-    );
+    return <ResponseMessageRenderer item={item} />;
   }
   if (item.role === "tool-parse-error") {
     return (
@@ -2000,16 +1983,25 @@ type SubagentHistoryItem =
   | { type: "compaction" }
   | { type: "tool-call"; toolCallId: string; name: string; detail: string | null };
 
+const SUBAGENT_STATUS_TEXT = {
+  thinking: "Subagent is thinking...",
+  waiting: "Subagent is waiting for an API response...",
+  runningTools: "Subagent is running tools...",
+  errorWaiting: "Subagent encountered an error, waiting for resolution...",
+  error: "Subagent encountered an error",
+  compacting: "Compacting history...",
+} as const;
+
 function SubagentTrajectoryRenderer({
   inspection,
   history,
-  inProgressState,
-  runningToolCallId,
+  subagent,
+  trajectory,
 }: {
   inspection: SubagentTrajectoryInspection;
   history: Extract<OctoIR, { role: "subagent-trajectory" }>["ir"];
-  inProgressState: InProgressState;
-  runningToolCallId: string | null;
+  subagent: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  trajectory: LiveTrajectory["instance"];
 }) {
   const cwd = useCwd();
   const items = history.flatMap((ir): Array<SubagentHistoryItem> => {
@@ -2040,12 +2032,8 @@ function SubagentTrajectoryRenderer({
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
-      {inspection.type === "in-progress" && items.length > 0 && (
-        <SubagentProgressRenderer
-          items={items}
-          inProgressState={inProgressState}
-          runningToolCallId={runningToolCallId}
-        />
+      {inspection.type === "in-progress" && (
+        <SubagentProgressRenderer items={items} subagent={subagent} trajectory={trajectory} />
       )}
     </TerminalFlex>
   );
@@ -2053,13 +2041,67 @@ function SubagentTrajectoryRenderer({
 
 function SubagentProgressRenderer({
   items,
-  inProgressState,
-  runningToolCallId,
+  subagent,
+  trajectory,
 }: {
   items: Array<SubagentHistoryItem>;
-  inProgressState: InProgressState;
-  runningToolCallId: string | null;
+  subagent: Extract<OctoIR, { role: "subagent-trajectory" }>;
+  trajectory: LiveTrajectory["instance"];
 }) {
+  const { statusText, inProgressState, runningToolCallId } = useAppStore(
+    useShallow(state => {
+      const session = state.sessionMode;
+      if (session.mode === "lost") {
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.error,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
+      }
+      if (session.mode !== "live" || session.trajectory.instance !== trajectory) {
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.waiting,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
+      }
+      const mode = session.liveMode.trajectoryMode;
+      if (mode.root || mode.scope.parentSubagentIR !== subagent) {
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.waiting,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
+      }
+      const statusText = ((): string => {
+        switch (mode.mode) {
+          case "responding":
+            return mode.receivedTokens
+              ? SUBAGENT_STATUS_TEXT.thinking
+              : SUBAGENT_STATUS_TEXT.waiting;
+          case "request-error-retrying":
+          case "autofix-json":
+          case "autofix-tool":
+            return SUBAGENT_STATUS_TEXT.thinking;
+          case "tool-call":
+          case "tool-call-permission":
+          case "running-tool":
+            return SUBAGENT_STATUS_TEXT.runningTools;
+          case "payment-error":
+          case "auth-error":
+          case "rate-limit-error":
+            return SUBAGENT_STATUS_TEXT.errorWaiting;
+          case "compacting":
+            return SUBAGENT_STATUS_TEXT.compacting;
+        }
+      })();
+      return {
+        statusText,
+        inProgressState: mode.mode,
+        runningToolCallId: mode.mode === "running-tool" ? mode.toolCall.toolCallId : null,
+      };
+    }),
+  );
   const color = useColor();
   const shimmerlock = useShimmerlock("explore-subagent");
   return (
@@ -2079,52 +2121,43 @@ function SubagentProgressRenderer({
         return (
           <Span key={index}>
             <PausableLineSpinner running={running} />{" "}
-            <Shimmer
-              segments={[{ text: item.name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
-              lock={shimmerlock}
-              running={running && item.name === "grep"}
-            />
+            {running && item.name === "grep" ? (
+              <SubagentToolShimmer name={item.name} />
+            ) : (
+              <Span style={{ color }}>{item.name}</Span>
+            )}
             {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
           </Span>
         );
       })}
-      {inProgressState === "compacting" && (
-        <Span style={{ color: "gray" }}>
-          <Spinner type="line" />{" "}
-          <Shimmer
-            segments={[
-              {
-                text: "Compacting history...",
-                from: SUBAGENT_ACTIVITY_COLOR,
-                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
-              },
-            ]}
-            lock={shimmerlock}
-            running
-          />
-        </Span>
-      )}
-      {(inProgressState === "responding" || inProgressState === "waiting") && (
-        <Span style={{ color: "gray" }}>
-          {items.length === 0 ? " " : ""}
-          <Spinner type="line" />{" "}
-          <Shimmer
-            segments={[
-              {
-                text:
-                  inProgressState === "waiting"
-                    ? "Waiting for API response..."
-                    : "Subagent is thinking...",
-                from: SUBAGENT_ACTIVITY_COLOR,
-                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
-              },
-            ]}
-            lock={shimmerlock}
-            running
-          />
-        </Span>
-      )}
+      <Span style={{ color: "gray" }}>
+        {items.length === 0 ? " " : ""}
+        <Spinner type="line" />{" "}
+        <Shimmer
+          segments={[
+            {
+              text: statusText,
+              from: SUBAGENT_ACTIVITY_COLOR,
+              to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
+            },
+          ]}
+          lock={shimmerlock}
+          running
+        />
+      </Span>
     </TerminalFlex>
+  );
+}
+
+function SubagentToolShimmer({ name }: { name: string }) {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent-tool");
+  return (
+    <Shimmer
+      segments={[{ text: name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
+      lock={shimmerlock}
+      running
+    />
   );
 }
 
