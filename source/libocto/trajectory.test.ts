@@ -232,6 +232,7 @@ function makeTrajectory(opts?: {
   loopController?: TrajectoryLoopController;
   messages?: Array<AgentIR<TestAgent>>;
   onMessages?: (event: TrajectoryEvents<TestAgent>["onMessages"]) => void | Promise<void>;
+  onRewind?: (event: TrajectoryEvents<TestAgent>["rewind"]) => void | Promise<void>;
   modelAuthError?: (invocation: TestInvocation | null) => string | undefined;
   loadTools?: (
     signal: AbortSignal,
@@ -346,8 +347,9 @@ function makeTrajectory(opts?: {
         steeringChange: ({ upcoming, queued }) => {
           rec.timeline.push(`steering:${upcoming.length}u${queued.length}q`);
         },
-        rewind: payload => {
+        rewind: async payload => {
           rec.rewinds.push(payload);
+          await opts?.onRewind?.(payload);
         },
         interrupted: payload => {
           rec.interruptions.push(payload);
@@ -505,6 +507,68 @@ describe("trajectory", () => {
     expect(rec.modes).toContain("running-tool");
     await startWaitingStep(traj, "ready-for-request");
     expect(traj.mode.mode).toBe("ready-for-request");
+  });
+
+  it("interrupts runtime loading before allowing a rewind or starting the response", async () => {
+    let started!: (signal: AbortSignal) => void;
+    const loading = new Promise<AbortSignal>(resolve => {
+      started = resolve;
+    });
+    const { build, rec } = makeTrajectory({
+      loadTools: async signal => {
+        started(signal);
+        await new Promise<void>(resolve => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return err({ type: "quit" });
+      },
+    });
+    const { traj, compilerCalls } = await build([]);
+    await inputControl(traj).enqueueSteering(text("Original question"));
+    const running = traj.step();
+    waitingSteps.push(running);
+    const signal = await loading;
+    const target = traj.messages.at(-1);
+    const mode = traj.mode;
+    if (target?.role !== "user" || mode.mode !== "ready-for-request") {
+      throw new Error("Expected a user message before the response starts");
+    }
+    await mode.control.rewindTo(target);
+    expect(rec.rewinds).toEqual([]);
+    await mode.control.interrupt();
+    expect(signal.aborted).toBe(true);
+    expect(await running).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+    expect(compilerCalls).toHaveLength(0);
+    expect(traj.messages.map(ir => ir.role)).toEqual(["user", "interrupted-by-user"]);
+    await mode.control.rewindTo(target);
+    expect(traj.messages).toEqual([]);
+    expect(rec.rewinds).toHaveLength(1);
+  });
+
+  it.each(["steering", "compaction"])("interrupts pending %s before rewinding", async pending => {
+    const target: UserMessage = { role: "user", content: text("Original question") };
+    const messages = [target, assistantMessage({ content: "Original answer" })];
+    const { build, rec } = makeTrajectory({ messages });
+    const { traj, compilerCalls } = await build([plainOk]);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected to wait for input");
+
+    if (pending === "steering") void mode.control.enqueueSteering(text("Queued draft"));
+    else expect(mode.control.requestCompaction()).toBe(true);
+    await mode.control.interrupt();
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    expect(compilerCalls).toHaveLength(0);
+    expect(traj.messages).toEqual(messages);
+    expect(rec.interruptions).toEqual([
+      { droppedSteering: pending === "steering" ? [text("Queued draft")] : [] },
+    ]);
+    await mode.control.rewindTo(target);
+    expect(traj.messages).toEqual([]);
   });
 
   it("reloads tools for a batch and reuses that runtime data for its response", async () => {
@@ -1872,7 +1936,9 @@ describe("trajectory", () => {
     expect(traj.mode.mode).toBe("ready-for-request");
 
     // Unknown targets are no-ops.
-    await mode.control.rewindTo({ role: "user", content: text("ghost") });
+    expect((await mode.control.rewindTo({ role: "user", content: text("ghost") })).success).toBe(
+      false,
+    );
     expect(traj.messages.length).toBe(4);
     expect(rec.rewinds.length).toBe(1);
 
@@ -1889,6 +1955,80 @@ describe("trajectory", () => {
       "request-snapshot-end",
       "user",
       ...assistantSnapshot,
+    ]);
+  });
+
+  it("rejects another rewind while the selected rewind is still being handled", async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const firstTarget: UserMessage = { role: "user", content: text("first") };
+    const secondTarget: UserMessage = { role: "user", content: text("second") };
+    const messages = [
+      firstTarget,
+      assistantMessage({ content: "first answer" }),
+      secondTarget,
+      assistantMessage({ content: "second answer" }),
+    ];
+    const { build, rec } = makeTrajectory({
+      messages,
+      onRewind: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    });
+    const { traj } = await build([]);
+    await startWaitingStep(traj, "ready-for-request");
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected input mode");
+
+    const rewinding = mode.control.rewindTo(secondTarget);
+    await entered.promise;
+    const concurrent = mode.control.rewindTo(firstTarget);
+    release.resolve();
+
+    expect((await concurrent).success).toBe(false);
+    expect((await rewinding).success).toBe(true);
+    expect(traj.messages).toEqual(messages.slice(0, 2));
+    expect(rec.rewinds).toHaveLength(1);
+    expect(rec.rewinds[0].removed).toEqual(messages.slice(2));
+  });
+
+  it.each(["persisted", "failed"])("holds incoming input until a rewind has %s", async outcome => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const target: UserMessage = { role: "user", content: text("original") };
+    const messages = [target, assistantMessage({ content: "original answer" })];
+    const { build } = makeTrajectory({
+      messages,
+      onRewind: async () => {
+        entered.resolve();
+        await release.promise;
+        if (outcome === "failed") throw new Error("Database is busy");
+      },
+    });
+    const { traj, compilerCalls } = await build([plainOk]);
+    const waiting = await startWaitingStep(traj, "ready-for-request");
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected input mode");
+    const rewinding = mode.control.rewindTo(target);
+    await entered.promise;
+    const sending = mode.control.enqueueSteering(text("next question"));
+    try {
+      await Promise.resolve();
+      expect(traj.messages).toEqual(messages);
+      expect(compilerCalls).toHaveLength(0);
+    } finally {
+      release.resolve();
+    }
+
+    const result = await rewinding;
+    expect(result.success).toBe(outcome === "persisted");
+    await sending;
+    await waiting.finished;
+    expect(compilerCalls).toHaveLength(1);
+    expect(compilerCalls[0].irs).toEqual([
+      ...(outcome === "persisted" ? [] : messages),
+      { role: "user", content: text("next question") },
     ]);
   });
 
@@ -2173,6 +2313,39 @@ describe("trajectory", () => {
     );
   });
 
+  it("interrupts a parked child error and closes its parent's pending work before rewinding", async () => {
+    const { build } = makeTrajectory();
+    const { traj, compilerCalls } = await build([
+      () =>
+        okResult(
+          assistantMessage({
+            toolCalls: [searchCall("delegate", "c1"), searchCall("after", "c2")],
+          }),
+        ),
+      () => err(rateLimitError()),
+    ]);
+    runImpl = async () => ok({ type: "invoke-subagent", name: "research", message: text("go") });
+    await inputControl(traj).enqueueSteering(text("Original question"));
+    expect(await traj.step()).toBe(true);
+    expect(await traj.step()).toBe(true);
+    const waiting = await startWaitingStep(traj, "rate-limit-error");
+    await interruptNow(traj);
+    expect(await waiting.finished).toBe(true);
+    await startWaitingStep(traj, "ready-for-request");
+
+    const child = traj.messages.find(ir => ir.role === "subagent-trajectory");
+    expect(child?.ir.at(-1)?.role).toBe("interrupted-by-user");
+    expect(
+      traj.messages.filter(ir => ir.role === "tool-skip-output").map(ir => ir.toolCall.toolCallId),
+    ).toEqual(["c2"]);
+    expect(compilerCalls).toHaveLength(2);
+    const target = traj.messages[0];
+    const mode = traj.mode;
+    if (mode.mode !== "ready-for-request") throw new Error("Expected the root to wait for input");
+    await mode.control.rewindTo(target);
+    expect(traj.messages).toEqual([]);
+  });
+
   it("maps payment errors to a retry mode and recovers", async () => {
     const { build, rec } = makeTrajectory();
     const { traj, compilerCalls } = await build([
@@ -2421,7 +2594,7 @@ describe("trajectory", () => {
       inputControl(traj).requestCompaction();
       inputControl(traj).enqueueSteering(text("queued one"));
       inputControl(traj).enqueueSteering(text("queued two"));
-      interruptNow(traj);
+      await Promise.all([interruptNow(traj), interruptNow(traj)]);
       return okResult(assistantMessage({ content: "unreached full answer" }));
     }, plainOk);
 

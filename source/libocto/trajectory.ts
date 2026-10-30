@@ -45,7 +45,7 @@ import { subagentPrompt, userInterruptReason } from "./compilers/ir-prompts.ts";
 import type { LoadedTools, ToolCall, ToolExtensionIR, ToolReturn } from "./tool-def.ts";
 import { combineSignals } from "./signals.ts";
 import { Input } from "./input.ts";
-import { err, ok, type Result } from "./result.ts";
+import { err, errorToString, ok, type Result } from "./result.ts";
 import { OwnershipLock, type OwnershipLockRef } from "./ownership-lock.ts";
 import { waitForPermissionDecision, type PermissionGate } from "./permissions.ts";
 import { shouldAutoCompactHistory } from "./compilers/autocompact.ts";
@@ -64,10 +64,14 @@ export type InputControl = {
   requestCompaction(): boolean;
 };
 
-export type RunningControl = InputControl & {
-  running: true;
+type InterruptControl = {
   interrupt(): Promise<void>;
 };
+
+export type RunningControl = InputControl &
+  InterruptControl & {
+    running: true;
+  };
 
 export type PausedControl = {
   running: false;
@@ -91,7 +95,7 @@ export type ClearControl = {
 export type EditControl<A extends Agent<any, any, any>> = {
   // Trims history from `target` onwards and fires rewind with the removed span; when the
   // target is a user message, its content rides along so the client can offer it for editing.
-  rewindTo(target: AgentIR<A>): Promise<void>;
+  rewindTo(target: AgentIR<A>): Promise<Result<void, string>>;
 };
 
 /*
@@ -157,9 +161,21 @@ type SharedArcModes<Call, Permissioned extends boolean> =
       toolCall: Call;
       control: RunningControl;
     }
-  | { mode: "payment-error"; requestError: string; control: RetryControl & PausedControl }
-  | { mode: "rate-limit-error"; requestError: string; control: RetryControl & PausedControl }
-  | { mode: "auth-error"; authError: string; control: RetryControl & ClearControl & PausedControl }
+  | {
+      mode: "payment-error";
+      requestError: string;
+      control: RetryControl & InterruptControl & PausedControl;
+    }
+  | {
+      mode: "rate-limit-error";
+      requestError: string;
+      control: RetryControl & InterruptControl & PausedControl;
+    }
+  | {
+      mode: "auth-error";
+      authError: string;
+      control: RetryControl & ClearControl & InterruptControl & PausedControl;
+    }
   | ([Permissioned] extends [true]
       ? {
           mode: "tool-call-permission";
@@ -172,18 +188,21 @@ type SharedArcModes<Call, Permissioned extends boolean> =
 // Arms only the root arc can be in: children never await input, and inside a trajectory
 // request/compaction failures are terminal records, so they never park for rectification.
 type RootOnlyModes<A extends Agent<any, any, any>> =
-  | { mode: "ready-for-request"; control: InputControl & EditControl<A> & PausedControl }
+  | {
+      mode: "ready-for-request";
+      control: InputControl & EditControl<A> & InterruptControl & PausedControl;
+    }
   | {
       mode: "request-error";
       requestError: string;
       curl: string | null;
-      control: RectifyControl & PausedControl;
+      control: RectifyControl & InterruptControl & PausedControl;
     }
   | {
       mode: "compaction-error";
       requestError: string;
       curl: string | null;
-      control: RectifyControl & PausedControl;
+      control: RectifyControl & InterruptControl & PausedControl;
     }
   | { mode: "aborted"; control: PausedControl };
 
@@ -501,11 +520,11 @@ type Rectification =
   | { type: "rewind"; target: "last-user-message" }
   | { type: "await-input" };
 
-// Builds the one-shot promise a needs-rectification step awaits; the exit signal resolves
+// Builds the one-shot promise a needs-rectification step awaits; an abort signal resolves
 // err("aborted") so the step can end as usual without waiting on a control that may never
-// fire. Once any control resolves it — or the exit fires — the rectification is dead: controls
+// fire. Once any control resolves it — or an abort fires — the rectification is dead: controls
 // that mutate state (rewind) must check live before acting.
-function rectifiable(exit: AbortSignal): {
+function rectifiable(signal: AbortSignal): {
   resolved: Promise<Result<Rectification, "aborted">>;
   live: boolean;
   resolve(rectification: Rectification): void;
@@ -523,12 +542,12 @@ function rectifiable(exit: AbortSignal): {
     live: true,
     resolve(rectification: Rectification): void {
       channel.live = false;
-      exit.removeEventListener("abort", onAbort);
+      signal.removeEventListener("abort", onAbort);
       resolvePromise(ok(rectification));
     },
   };
-  if (exit.aborted) onAbort();
-  else exit.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
+  else signal.addEventListener("abort", onAbort, { once: true });
   return channel;
 }
 
@@ -557,6 +576,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private hasStepped = false;
   private rectification: ReturnType<typeof rectifiable> | null = null;
   private readonly steering = new Input<UserMessage["content"]>();
+  private rewindPending: Promise<void> | null = null;
   private manualCompactionPending = false;
   private compactionRequested = Promise.withResolvers<void>();
   private readonly permissionGate: PermissionGate<A> | undefined;
@@ -615,6 +635,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     };
   }
 
+  private get hasPendingInput(): boolean {
+    return this.steering.peek().length > 0 || this.manualCompactionPending;
+  }
+
+  get canRewindHistory(): boolean {
+    const isAwaitingInput =
+      this._mode.mode === "ready-for-request" &&
+      this.awaitingUnpause &&
+      !this.turnController.signal.aborted;
+    return isAwaitingInput && !this.hasPendingInput && this.rewindPending == null;
+  }
+
   inspectSubagentTrajectory(
     trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
   ): SubagentTrajectoryInspection {
@@ -626,12 +658,14 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private inputControl(): InputControl {
     return {
       enqueueSteering: async content => {
+        if (this.rewindPending != null) await this.rewindPending;
         this.steering.push(content);
         await this.emitSteeringChange();
       },
       requestCompaction: () => {
         if (
           this.params.abortSignal.aborted ||
+          this.rewindPending != null ||
           this.manualCompactionPending ||
           (this._mode.mode === "compacting" && !("subagent" in this._mode)) ||
           !this.hasCompactableHistory
@@ -645,33 +679,52 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     };
   }
 
-  private readyControl(): InputControl & EditControl<A> & PausedControl {
-    return { running: false, ...this.inputControl(), ...this.editControl() };
+  private readyControl(): InputControl & EditControl<A> & InterruptControl & PausedControl {
+    return {
+      running: false,
+      ...this.inputControl(),
+      ...this.interruptControl(),
+      ...this.editControl(),
+    };
   }
 
   private editControl(): EditControl<A> {
     return {
       rewindTo: async target => {
-        // Only a parked root loop may trim; stale controls and unknown targets are no-ops.
-        if (this.params.abortSignal.aborted) return;
-        const mode = this._mode;
-        if (mode.mode !== "ready-for-request" || !mode.root) return;
+        // Only a parked root loop may trim; stale controls and unknown targets return errors.
+        if (this.params.abortSignal.aborted || !this.canRewindHistory) {
+          return err("Wait for the current response to stop before rewinding history.");
+        }
         const index = this.history.indexOf(target);
-        if (index < 0) return;
-        const removed = this.history.splice(index);
-        const first = removed[0];
-        const content = first != null && isUserMessage(first) ? first.content : null;
-        this.steering.take();
-        this.manualCompactionPending = false;
-        await this.emitSteeringChange();
-        await this.params.handler?.rewind?.({ removed, content });
+        if (index < 0) return err("The message is no longer in this conversation.");
+        const completed = Promise.withResolvers<void>();
+        this.rewindPending = completed.promise;
+        const removed = this.history.slice(index);
+        const content = isUserMessage(target) ? target.content : null;
+        try {
+          await this.params.handler?.rewind?.({ removed, content });
+          this.history.splice(index);
+          return ok(undefined);
+        } catch (error) {
+          return err(`Could not rewind history: ${errorToString(error)}`);
+        } finally {
+          this.rewindPending = null;
+          completed.resolve();
+        }
       },
     };
   }
 
-  private interruptControl(): { interrupt(): Promise<void> } {
+  private interruptControl(): InterruptControl {
     return {
       interrupt: async () => {
+        if (
+          this.params.abortSignal.aborted ||
+          this.turnController.signal.aborted ||
+          this.rewindPending != null ||
+          this.canRewindHistory
+        )
+          return;
         const droppedSteering = this.steering.take();
         this.manualCompactionPending = false;
         this.turnController.abort();
@@ -743,7 +796,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async announceReady(
     inspection: Extract<HistoryInspection<A>, { action: "wait-for-input" }>,
   ): Promise<void> {
-    if (this.steering.peek().length > 0 || this.manualCompactionPending) return;
+    if (this.hasPendingInput) return;
     await this.setMode({
       root: inspection.location.root,
       mode: "ready-for-request",
@@ -953,18 +1006,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     this.hasStepped = true;
     if (firstStep && this.turnController.signal.aborted) {
       await this.closeInterruptedWork(this.inspect().location, this.ownership.lease());
+      this.turnController = new AbortController();
       await this.setMode(this.prepareMode());
       return !this.params.abortSignal.aborted;
     }
-    this.turnController = new AbortController();
+    if (!firstStep) this.turnController = new AbortController();
     this.awaitingUnpause = false;
 
     let inspection = this.inspect();
     if (inspection.action !== "rectify") this.rectification = null;
     while (inspection.action === "rectify" || inspection.action === "invoke-subagent") {
       if (inspection.action === "rectify") {
-        const resolved = await this.rectify(inspection);
-        if (!resolved.success) return false;
+        await this.rectify(inspection);
       } else {
         await this.startSubagent(inspection);
       }
@@ -1018,7 +1071,19 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     })();
 
     if (work.action === "quit" || this.params.abortSignal.aborted) return false;
-    const runtimeData = await this.loadRuntimeData(location, this.params.abortSignal);
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, this.ownership.lease());
+      return true;
+    }
+    const runtimeData = await this.loadRuntimeData(
+      location,
+      combineSignals([this.params.abortSignal, this.turnController.signal]),
+    );
+    if (this.params.abortSignal.aborted) return false;
+    if (this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(location, this.ownership.lease());
+      return true;
+    }
     if (!runtimeData.success) {
       switch (runtimeData.error.type) {
         case "quit":
@@ -1048,7 +1113,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           throw new Error(error);
         }
         case "auth-error":
-          if (this.params.abortSignal.aborted) return false;
           await this.appendIr(location, {
             role: "auth-error",
             authError: runtimeData.error.authError,
@@ -1056,7 +1120,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           return true;
       }
     }
-    if (this.params.abortSignal.aborted) return false;
     let runtime = runtimeData.data;
     if (work.action === "run-tools") {
       const batch = await this.runToolBatch(work, runtime);
@@ -1082,6 +1145,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           inspection.location.root ? null : inspection.location.invocation,
         );
         if (this.params.abortSignal.aborted) return false;
+        if (this.turnController.signal.aborted) {
+          await this.closeInterruptedWork(inspection.location, this.ownership.lease());
+          return true;
+        }
         if (!model.success) {
           await this.appendIr(inspection.location, {
             role: "auth-error",
@@ -1227,7 +1294,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     location,
     tail,
   }: Extract<HistoryInspection<A>, { action: "rectify" }>) {
-    const rectification = (this.rectification ??= rectifiable(this.params.abortSignal));
+    const rectification = (this.rectification ??= rectifiable(
+      combineSignals([this.params.abortSignal, this.turnController.signal]),
+    ));
     const retry = () => rectification.resolve({ type: "retry" });
     const mode = ((): TrajectoryMode<A> => {
       switch (tail.role) {
@@ -1237,6 +1306,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             authError: tail.authError,
             control: {
               running: false,
+              ...this.interruptControl(),
               retry,
               clear: () => rectification.resolve({ type: "await-input" }),
             },
@@ -1246,7 +1316,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           return this.arcMode(location, {
             mode: tail.role,
             requestError: tail.requestError,
-            control: { running: false, retry },
+            control: { running: false, ...this.interruptControl(), retry },
           });
         case "request-error":
         case "compaction-error":
@@ -1262,6 +1332,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             ...error,
             control: {
               running: false,
+              ...this.interruptControl(),
               retry,
               rewind: async () => {
                 if (!rectification.live) return;
@@ -1295,18 +1366,17 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   private async rectify(
     inspection: Extract<HistoryInspection<A>, { action: "rectify" }>,
-  ): Promise<Result<Rectification, "aborted">> {
+  ): Promise<void> {
     const { location, pendingCalls } = inspection;
     const { mode, rectification } = this.prepareRectification(inspection);
     await this.setMode(mode);
     const resolved = await rectification.resolved;
     this.rectification = null;
-    if (!resolved.success || resolved.data.type === "rewind") return resolved;
-    if (this.params.abortSignal.aborted) return err("aborted");
+    if (!resolved.success || resolved.data.type === "rewind" || this.params.abortSignal.aborted)
+      return;
     const retrying = resolved.data.type === "retry" || !location.root || pendingCalls.length > 0;
     if (!retrying) this.manualCompactionPending = false;
     await this.appendIr(location, { role: retrying ? "error-retry" : "error-dismissed" });
-    return resolved;
   }
 
   private async runTool(

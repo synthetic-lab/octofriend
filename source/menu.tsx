@@ -567,12 +567,13 @@ function MainMenu() {
 }
 function ContextMenu() {
   const setMenuMode = useMenuState(state => state.setMenuMode);
-  const { closeMenu, notify, trajectoryMode } = useAppStore(
+  const { closeMenu, notify, trajectoryMode, pendingRewind } = useAppStore(
     useShallow(state => ({
       closeMenu: state.closeMenu,
       notify: state.notify,
       trajectoryMode:
         state.sessionMode.mode === "live" ? state.sessionMode.liveMode.trajectoryMode : null,
+      pendingRewind: state.pendingRewind,
     })),
   );
   return (
@@ -582,7 +583,7 @@ function ContextMenu() {
         {
           type: "key",
           mapping: {
-            c: { label: "Compact session", value: "compact" },
+            ...(pendingRewind == null ? { c: { label: "Compact session", value: "compact" } } : {}),
             b: { label: "Back", value: "back" },
           },
         },
@@ -609,7 +610,11 @@ function ContextMenu() {
           );
         }
       }}
-    />
+    >
+      {pendingRewind != null && (
+        <Span style={{ color: "gray" }}>Finish or cancel your message edit before compacting.</Span>
+      )}
+    </KbShortcutPanel>
   );
 }
 function SettingsMenu() {

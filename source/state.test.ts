@@ -5,6 +5,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { eq } from "drizzle-orm";
 import {
+  historyBeforeRewind,
   inputFieldAvailable,
   useAppStore,
   type PermissionUiState,
@@ -38,7 +39,9 @@ import {
   type Agent,
   type AssistantMessage,
   type LoweredIR,
+  type UserMessage,
 } from "./libocto/llm-ir.ts";
+import type { ImageInfo } from "./utils/image-utils.ts";
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
 import { meaningfulTailIR } from "./libocto/ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./libocto/tool-def.ts";
@@ -109,6 +112,8 @@ afterEach(async () => {
     isMenuOpen: false,
     query: "",
     attachedImages: [],
+    pendingRewind: null,
+    rewindError: null,
     whitelistState: new Set<string>(),
     unchained: false,
   });
@@ -416,6 +421,464 @@ function sessionError(error: unknown): never {
 }
 
 /* Tests */
+
+describe("message editing", () => {
+  it("interrupts a response and restores queued drafts when the edit is cancelled", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Original question" }],
+    };
+    const aborted = deferred();
+    const finishAbort = deferred();
+    const { session, nodes, compilerCalls } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+      ],
+      [
+        async (onTokens, { abortSignal }) => {
+          await onTokens("Partial follow-up", "content");
+          if (abortSignal.aborted) aborted.resolve();
+          else abortSignal.addEventListener("abort", () => aborted.resolve(), { once: true });
+          await aborted.promise;
+          await finishAbort.promise;
+          return okResult(assistantMessage({ content: "Unreached answer" }));
+        },
+      ],
+    );
+    try {
+      await respond("Follow-up");
+      const responding = await waitTrajectoryMode("responding");
+      await responding.control.enqueueSteering([{ type: "text", content: "Queued draft" }]);
+      useAppStore.getState().setQuery("Unsent draft");
+      useAppStore.getState().beginMessageEdit(target);
+      await aborted.promise;
+
+      const result = await useAppStore.getState().sendMessageEdit("Too early", []);
+      expect(result.success).toBe(false);
+      expect(useAppStore.getState().query).toBe("Original question");
+      expect(useAppStore.getState().pendingRewind?.target).toBe(target);
+
+      finishAbort.resolve();
+      await waitTrajectoryMode("ready-for-request");
+      expect(useAppStore.getState().history.slice(0, nodes.length)).toEqual(nodes);
+      expect(compilerCalls).toHaveLength(1);
+      expect(useAppStore.getState().queuedSteering).toEqual([]);
+      const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+
+      useAppStore.getState().cancelMessageEdit();
+      expect(useAppStore.getState().query).toBe("Queued draft\nUnsent draft");
+      expect(useAppStore.getState().pendingRewind).toBeNull();
+      expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+    } finally {
+      finishAbort.resolve();
+    }
+  });
+
+  it("keeps history when an edit is cancelled before its interruption finishes", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Original question" }],
+    };
+    const finishAbort = deferred();
+    const { session } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+      ],
+      [
+        async onTokens => {
+          await onTokens("Thinking", "reasoning");
+          await finishAbort.promise;
+          return okResult(assistantMessage({ content: "Unreached" }));
+        },
+      ],
+    );
+    try {
+      await respond("Follow-up");
+      await waitTrajectoryMode("responding");
+      useAppStore.getState().beginMessageEdit(target);
+      useAppStore.getState().cancelMessageEdit();
+      finishAbort.resolve();
+      await waitTrajectoryMode("ready-for-request");
+
+      expect(historyRoles()).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "request-snapshot-begin",
+        "interrupted-by-user",
+        "request-snapshot-end",
+      ]);
+      expect(useAppStore.getState().pendingRewind).toBeNull();
+      expect(useAppStore.getState().query).toBe("");
+      const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+      expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+    } finally {
+      finishAbort.resolve();
+    }
+  });
+
+  it("preserves an image-only edit started while an earlier interruption is finishing", async () => {
+    const finishAbort = Promise.withResolvers<void>();
+    const image: ImageInfo = {
+      mimeType: "image/png",
+      base64Data: "aW1hZ2U=",
+      dataUrl: "data:image/png;base64,aW1hZ2U=",
+      filePath: "/tmp/original.png",
+      sizeBytes: 5,
+    };
+    const { session } = await bootSession([
+      async onTokens => {
+        await onTokens("Thinking", "reasoning");
+        await finishAbort.promise;
+        return okResult(assistantMessage({ content: "Unreached answer" }));
+      },
+    ]);
+    try {
+      const ready = await waitTrajectoryMode("ready-for-request");
+      await ready.control.enqueueSteering([{ type: "image", image }]);
+      const responding = await waitTrajectoryMode("responding");
+      await responding.control.interrupt();
+      const target = currentLive()?.trajectory.instance.messages[0];
+      if (target?.role !== "user") throw new Error("Expected the image-only user message");
+      useAppStore.getState().beginMessageEdit(target);
+      finishAbort.resolve();
+      await waitTrajectoryMode("ready-for-request");
+
+      expect(useAppStore.getState().pendingRewind).toMatchObject({ target });
+      expect(useAppStore.getState().query).toBe("");
+      expect(useAppStore.getState().attachedImages).toEqual([image]);
+      expect(useAppStore.getState().history[0]).toMatchObject({ type: "llm-ir", ir: target });
+      const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+      expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+    } finally {
+      finishAbort.resolve();
+    }
+  });
+
+  it("keeps the conversation intact until sending and restores the draft when cancelled", async () => {
+    const image: ImageInfo = {
+      mimeType: "image/png",
+      base64Data: "aW1hZ2U=",
+      dataUrl: "data:image/png;base64,aW1hZ2U=",
+      filePath: "/tmp/original.png",
+      sizeBytes: 5,
+    };
+    const target: UserMessage = {
+      role: "user",
+      content: [
+        { type: "text", content: "Original\n" },
+        { type: "image", image },
+        { type: "text", content: "question" },
+      ],
+    };
+    const { session, nodes, compilerCalls } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+      ],
+      [],
+    );
+    const previousImage = { ...image, filePath: "/tmp/draft.png" };
+    const originalDraft = useAppStore.getState();
+    useAppStore.getState().setQuery("Unsent draft");
+    originalDraft.addAttachedImage(previousImage, originalDraft.clearNonce);
+    useAppStore.getState().beginMessageEdit(target);
+    originalDraft.addAttachedImage(previousImage, originalDraft.clearNonce);
+    const editingDraft = useAppStore.getState();
+
+    expect(useAppStore.getState().query).toBe("Original\nquestion");
+    expect(useAppStore.getState().attachedImages).toEqual([image]);
+    expect(useAppStore.getState().history).toEqual(nodes);
+    const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+
+    useAppStore.getState().setQuery("Edited question");
+    useAppStore.getState().clearAttachedImages();
+    editingDraft.addAttachedImage(previousImage, editingDraft.clearNonce);
+    expect(useAppStore.getState().attachedImages).toEqual([previousImage]);
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+
+    useAppStore.getState().cancelMessageEdit();
+    editingDraft.addAttachedImage(image, editingDraft.clearNonce);
+    originalDraft.addAttachedImage(image, originalDraft.clearNonce);
+    expect(useAppStore.getState().query).toBe("Unsent draft");
+    expect(useAppStore.getState().attachedImages).toEqual([previousImage]);
+    expect(useAppStore.getState().pendingRewind).toBeNull();
+    expect(useAppStore.getState().history).toEqual(nodes);
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+    expect(compilerCalls).toHaveLength(0);
+  });
+
+  it.each([0, 4])(
+    "replaces message %i and its descendants in the trajectory and persisted session",
+    async index => {
+      const { session, compilerCalls } = await bootSession([
+        plain("First answer"),
+        plain("Second answer"),
+        plain("Third answer"),
+        plain("Edited answer"),
+      ]);
+      await waitForNextTurn(() => respond("First"));
+      await waitForNextTurn(() => respond("Second"));
+      useAppStore.getState().notify("Later notification");
+      await waitForNextTurn(() => respond("Third"));
+      const nodes = useAppStore.getState().history;
+      const target = nodes.at(index);
+      if (target?.type !== "llm-ir" || target.ir.role !== "user") {
+        throw new Error("Expected the user message to edit");
+      }
+      const image: ImageInfo = {
+        mimeType: "image/png",
+        base64Data: "aW1hZ2U=",
+        dataUrl: "data:image/png;base64,aW1hZ2U=",
+        filePath: "/tmp/edited.png",
+        sizeBytes: 5,
+      };
+      useAppStore.getState().beginMessageEdit(target.ir);
+      await waitForNextTurn(() =>
+        useAppStore.getState().sendMessageEdit("Edited question", [image]),
+      );
+
+      expect(useAppStore.getState().history.slice(0, index)).toEqual(nodes.slice(0, index));
+      expect(useAppStore.getState().history).toHaveLength(index + 4);
+      expect(useAppStore.getState().pendingRewind).toBeNull();
+      expect(useAppStore.getState().query).toBe("");
+      expect(useAppStore.getState().attachedImages).toEqual([]);
+      expect(compilerCalls).toHaveLength(4);
+      expect(compilerCalls[3].irs).toHaveLength(index === 0 ? 1 : 3);
+      expect(compilerCalls[3].irs.at(-1)).toMatchObject({
+        role: "user",
+        content: [
+          { type: "text", content: "Edited question" },
+          { type: "image", image },
+        ],
+      });
+      const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+      expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+    },
+  );
+
+  it("cancels an edit when switching sessions and ignores a stale message target", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Old session" }],
+    };
+    const { session, nodes } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Old answer" }) },
+      ],
+      [],
+    );
+    useAppStore.getState().setQuery("Unsent draft");
+    useAppStore.getState().beginMessageEdit(target);
+    useAppStore.getState().setQuery("Edited question");
+    await bootSession([]);
+    expect(useAppStore.getState().beginMessageEdit(target).success).toBe(false);
+    expect((await useAppStore.getState().sendMessageEdit("Edited question", [])).success).toBe(
+      false,
+    );
+
+    expect(useAppStore.getState().pendingRewind).toBeNull();
+    expect(useAppStore.getState().query).toBe("Unsent draft");
+    expect(useAppStore.getState().history).toEqual([]);
+    const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+  });
+
+  it("rejects an edit absent from the transcript without changing the draft", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Original question" }],
+    };
+    const { session, nodes, compilerCalls } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+      ],
+      [],
+    );
+    const history = nodes.slice(1);
+    useAppStore.setState({ history, query: "Unsent draft" });
+
+    const result = useAppStore.getState().beginMessageEdit(target);
+
+    expect(result).toMatchObject({ success: false, error: expect.any(String) });
+    expect(useAppStore.getState().pendingRewind).toBeNull();
+    expect(useAppStore.getState().query).toBe("Unsent draft");
+    expect(useAppStore.getState().history).toEqual(history);
+    expect(compilerCalls).toHaveLength(0);
+    const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+  });
+
+  it.each([
+    ["transcript", "send"],
+    ["trajectory", "send"],
+    ["transcript", "cancel"],
+    ["trajectory", "cancel"],
+  ])(
+    "keeps edited text and images when the target is missing from the %s on %s and accepts another turn",
+    async (missingFrom, action) => {
+      const original: UserMessage = {
+        role: "user",
+        content: [{ type: "text", content: "Original question" }],
+      };
+      const { session, nodes, compilerCalls } = await hydrateSession(
+        [
+          { type: "llm-ir", ir: original },
+          { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+        ],
+        [plain("Continued answer")],
+      );
+      const image: ImageInfo = {
+        mimeType: "image/png",
+        base64Data: "aW1hZ2U=",
+        dataUrl: "data:image/png;base64,aW1hZ2U=",
+        filePath: "/tmp/edited.png",
+        sizeBytes: 5,
+      };
+      const target = missingFrom === "trajectory" ? { ...original } : original;
+      const history =
+        missingFrom === "transcript"
+          ? nodes.slice(1)
+          : nodes.map(node =>
+              node.type === "llm-ir" && node.ir === original ? { ...node, ir: target } : node,
+            );
+      useAppStore.setState({
+        history,
+        query: "Edited question",
+        attachedImages: [image],
+        pendingRewind: {
+          target,
+          previousDraft: { query: "Previous draft", attachedImages: [] },
+        },
+      });
+      if (missingFrom === "transcript") {
+        expect(historyBeforeRewind(history, target)).toMatchObject({
+          success: false,
+          error: expect.any(String),
+        });
+      }
+
+      if (action === "send") {
+        const result = await useAppStore.getState().sendMessageEdit("Edited question", [image]);
+        expect(result).toMatchObject({ success: false, error: expect.any(String) });
+      } else {
+        expect(useAppStore.getState().cancelMessageEdit()).toMatchObject({
+          success: false,
+          error: expect.stringContaining("draft has been kept"),
+        });
+      }
+      expect(useAppStore.getState().query).toBe("Edited question");
+      expect(useAppStore.getState().attachedImages).toEqual([image]);
+      expect(useAppStore.getState().pendingRewind).toBeNull();
+      expect(useAppStore.getState().history).toEqual(history);
+      expect(currentLive()?.trajectory.instance.messages).toEqual([
+        original,
+        assistantMessage({ content: "Original answer" }),
+      ]);
+      expect(compilerCalls).toHaveLength(0);
+      const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+      expect(loadSession(sessionId)?.history).toEqual(nodes);
+
+      await waitForNextTurn(() => respond("Continue the conversation"));
+      expect(compilerCalls).toHaveLength(1);
+    },
+  );
+
+  it("keeps history and the edited draft when persistence throws, then allows a retry", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Original question" }],
+    };
+    const answer = assistantMessage({ content: "Original answer" });
+    const { session, nodes, compilerCalls } = await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: answer },
+      ],
+      [plain("Edited answer")],
+    );
+    const image: ImageInfo = {
+      mimeType: "image/png",
+      base64Data: "aW1hZ2U=",
+      dataUrl: "data:image/png;base64,aW1hZ2U=",
+      filePath: "/tmp/edited.png",
+      sizeBytes: 5,
+    };
+    useAppStore.getState().beginMessageEdit(target);
+    useAppStore.setState({ query: "Edited question", attachedImages: [image] });
+    const deletion = spyOn(db(), "delete").mockImplementationOnce(() => {
+      throw new Error("Database is busy");
+    });
+    try {
+      const result = await useAppStore.getState().sendMessageEdit("Edited question", [image]);
+      expect(result).toMatchObject({
+        success: false,
+        error: expect.stringContaining("Database is busy"),
+      });
+    } finally {
+      deletion.mockRestore();
+    }
+
+    expect(useAppStore.getState().query).toBe("Edited question");
+    expect(useAppStore.getState().attachedImages).toEqual([image]);
+    expect(useAppStore.getState().pendingRewind).toBeNull();
+    expect(useAppStore.getState().history).toEqual(nodes);
+    expect(currentLive()?.trajectory.instance.messages).toEqual([target, answer]);
+    expect(compilerCalls).toHaveLength(0);
+    const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+    expect(loadSession(sessionId)?.history).toEqual(nodes);
+
+    useAppStore.getState().beginMessageEdit(target);
+    await waitForNextTurn(() => useAppStore.getState().sendMessageEdit("Edited question", [image]));
+    expect(compilerCalls).toHaveLength(1);
+    expect(compilerCalls[0].irs[0]).toMatchObject({
+      role: "user",
+      content: [
+        { type: "text", content: "Edited question" },
+        { type: "image", image },
+      ],
+    });
+    expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+  });
+
+  it("does not let recovery from an earlier edit cancel a later edit of the same message", async () => {
+    const target: UserMessage = {
+      role: "user",
+      content: [{ type: "text", content: "Original question" }],
+    };
+    await hydrateSession(
+      [
+        { type: "llm-ir", ir: target },
+        { type: "llm-ir", ir: assistantMessage({ content: "Original answer" }) },
+      ],
+      [],
+    );
+    useAppStore.getState().beginMessageEdit(target);
+    const mode = currentLive()?.trajectory.instance.mode;
+    if (mode?.mode !== "ready-for-request") throw new Error("Expected input mode");
+    const rewound = Promise.withResolvers<Awaited<ReturnType<typeof mode.control.rewindTo>>>();
+    const rewind = spyOn(mode.control, "rewindTo").mockImplementationOnce(() => rewound.promise);
+    try {
+      const sending = useAppStore.getState().sendMessageEdit("Earlier changes", []);
+      useAppStore.getState().cancelMessageEdit();
+      useAppStore.getState().beginMessageEdit(target);
+      useAppStore.getState().setQuery("Newer changes");
+      const current = useAppStore.getState();
+      rewound.resolve(err("Could not persist the earlier edit."));
+
+      expect((await sending).success).toBe(false);
+      expect(useAppStore.getState().pendingRewind).toBe(current.pendingRewind);
+      expect(useAppStore.getState().query).toBe("Newer changes");
+    } finally {
+      rewind.mockRestore();
+    }
+  });
+});
 
 describe("boot and response mirror", () => {
   it("boots a session, runs a response, and persists history exactly once", async () => {
@@ -1252,6 +1715,55 @@ describe("history persistence (BUGS.md #8, #12)", () => {
     ]);
   });
 
+  it("reports repeated automatic rewind failures and continues with the intact history", async () => {
+    const interruptedResponse: CompilerQueueItem = async (onTokens, params) => {
+      await onTokens("Thinking", "reasoning");
+      await new Promise<void>(resolve => {
+        if (params.abortSignal.aborted) return resolve();
+        params.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return okResult(assistantMessage({ content: "Unreached answer" }));
+    };
+    const { session, compilerCalls } = await bootSession([
+      interruptedResponse,
+      interruptedResponse,
+      plain("Continued answer"),
+    ]);
+    for (const question of ["Original question", "Another question"]) {
+      const previous = useAppStore.getState();
+      await respond(question);
+      const responding = await waitTrajectoryMode("responding");
+      const deletion = spyOn(db(), "delete").mockImplementationOnce(() => {
+        throw new Error("Database is busy");
+      });
+      try {
+        await responding.control.interrupt();
+        await waitFor(() => useAppStore.getState().rewindError !== previous.rewindError);
+      } finally {
+        deletion.mockRestore();
+      }
+
+      expect(useAppStore.getState().rewindError?.error).toContain("Database is busy");
+      expect(historyRoles().slice(previous.history.length)).toEqual([
+        "user",
+        "request-snapshot-begin",
+        "interrupted-by-user",
+        "request-snapshot-end",
+      ]);
+      const history = useAppStore.getState().history;
+      expect(history.slice(0, previous.history.length)).toEqual([...previous.history]);
+      expect(currentLive()?.trajectory.instance.messages).toEqual(
+        history.flatMap(node => (node.type === "llm-ir" ? [node.ir] : [])),
+      );
+    }
+    const sessionId = session.metadata.sessionId ?? sessionError("No session id");
+    expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+
+    await waitForNextTurn(() => respond("Continue the conversation"));
+    expect(compilerCalls).toHaveLength(3);
+    expect(loadSession(sessionId)?.history).toEqual(useAppStore.getState().history);
+  });
+
   it("keeps an interrupted reasoning-only turn when a draft was in progress", async () => {
     await bootSession([
       async (onTokens, params) => {
@@ -1390,7 +1902,8 @@ describe("inputFieldAvailable", () => {
       running: false,
       enqueueSteering: async () => {},
       requestCompaction: () => false,
-      rewindTo: async () => {},
+      rewindTo: async () => ok(undefined),
+      interrupt: async () => {},
     },
   };
   const error: TrajectoryMode<OctoAgent> = {
@@ -1398,7 +1911,7 @@ describe("inputFieldAvailable", () => {
     mode: "request-error",
     requestError: "boom",
     curl: null,
-    control: { running: false, retry: () => {}, rewind: async () => {} },
+    control: { running: false, retry: () => {}, rewind: async () => {}, interrupt: async () => {} },
   };
 
   it("is available when ready for a request", () => {
