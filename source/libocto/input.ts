@@ -4,14 +4,14 @@
  */
 export class Input<T> {
   private buffered: T[] = [];
-  private waiter: ((ts: T[]) => void) | null = null;
+  private waiter: (() => void) | null = null;
 
   push(t: T): void {
     this.buffered.push(t);
     if (this.waiter != null) {
       const waiter = this.waiter;
       this.waiter = null;
-      waiter(this.buffered.splice(0));
+      waiter();
     }
   }
 
@@ -23,8 +23,8 @@ export class Input<T> {
     return this.buffered;
   }
 
-  async get(): Promise<T[]> {
-    if (this.buffered.length > 0) return this.buffered.splice(0);
+  async wait(): Promise<void> {
+    if (this.buffered.length > 0) return;
     return new Promise(resolve => {
       this.waiter = resolve;
     });

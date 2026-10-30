@@ -43,6 +43,7 @@ import {
 
 export type InputControl = {
   enqueueSteering(content: UserMessage["content"]): Promise<void>;
+  requestCompaction(): boolean;
 };
 
 export type RunningControl = InputControl & {
@@ -141,7 +142,7 @@ type SharedArcModes<Call, Permissioned extends boolean> =
           mode: "tool-call-permission";
           toolCalls: Array<Call>;
           toolCall: Call;
-          control: { interrupt(): Promise<void> };
+          control: RunningControl;
         }
       : never);
 
@@ -322,6 +323,7 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   | "lowerMessages"
   | "toolData"
   | "errorCorrection"
+  | "manualCompactionPending"
 > & {
   agent: A;
   toolData: AgentToolData<A> &
@@ -391,19 +393,33 @@ function coalesceUserMessageContent(
   return [{ type: "text", content: text.join("\n") }, ...images];
 }
 
-async function waitSteeringOrExit(
+type UnpauseResult = Result<"compaction-requested" | Array<UserMessage["content"]>, "aborted">;
+
+async function waitForUnpause(
   steering: Input<UserMessage["content"]>,
+  compactionRequested: Promise<void>,
   exit: AbortSignal,
-): Promise<Result<Array<UserMessage["content"]>, "aborted">> {
+): Promise<UnpauseResult> {
   if (exit.aborted) return err("aborted");
   let onAbort!: () => void;
-  const aborted = new Promise<Result<Array<UserMessage["content"]>, "aborted">>(resolve => {
-    onAbort = () => resolve(err("aborted"));
+  const aborted = new Promise<"aborted">(resolve => {
+    onAbort = () => resolve("aborted");
     exit.addEventListener("abort", onAbort, { once: true });
   });
-  const winner = await Promise.race([steering.get().then(ok), aborted]);
+  const winner = await Promise.race([
+    steering.wait().then(() => "steering-available" as const),
+    compactionRequested.then(() => "compaction-requested" as const),
+    aborted,
+  ]);
   exit.removeEventListener("abort", onAbort);
-  return winner;
+  switch (winner) {
+    case "steering-available":
+      return ok(steering.take());
+    case "compaction-requested":
+      return ok(winner);
+    case "aborted":
+      return err(winner);
+  }
 }
 
 const ABORTED_TOOL_SKIP_REASON = "The user aborted the response, so this tool was skipped";
@@ -494,8 +510,10 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private _mode: TrajectoryMode<A>;
   private turnController = new AbortController();
   private readonly steering = new Input<UserMessage["content"]>();
+  private manualCompactionPending = false;
+  private compactionRequested = Promise.withResolvers<void>();
   private readonly permissionGate: PermissionGate<A> | undefined;
-  private awaitingSteering = true;
+  private awaitingUnpause = true;
   private _finish: Promise<void> = Promise.resolve();
   private readonly ownership = new OwnershipLock();
   // Every level is downconverted, then lower() is applied using the resolved model's modalities.
@@ -533,6 +551,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return [...this.history];
   }
 
+  get hasCompactableHistory(): boolean {
+    const lastMessage = this.history.at(-1);
+    return lastMessage != null && lastMessage.role !== "checkpoint";
+  }
+
   inspectSubagentTrajectory(
     trajectory: TreeIR<A> & { role: "subagent-trajectory"; ir: Array<TreeIR<A>> },
   ): SubagentTrajectoryInspection {
@@ -546,6 +569,19 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       enqueueSteering: async content => {
         this.steering.push(content);
         await this.emitSteeringChange();
+      },
+      requestCompaction: () => {
+        if (
+          this.params.abortSignal.aborted ||
+          this.manualCompactionPending ||
+          (this._mode.mode === "compacting" && !("subagent" in this._mode)) ||
+          !this.hasCompactableHistory
+        )
+          return false;
+        this.manualCompactionPending = true;
+        this.compactionRequested.resolve();
+        this.compactionRequested = Promise.withResolvers<void>();
+        return true;
       },
     };
   }
@@ -567,6 +603,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         const first = removed[0];
         const content = first != null && isUserMessage(first) ? first.content : null;
         this.steering.take();
+        this.manualCompactionPending = false;
         await this.emitSteeringChange();
         await this.params.handler?.rewind?.({ removed, content });
       },
@@ -577,6 +614,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     return {
       interrupt: async () => {
         const droppedSteering = this.steering.take();
+        this.manualCompactionPending = false;
         this.turnController.abort();
         await this.emitSteeringChange();
         await this.params.handler?.interrupted?.({ droppedSteering });
@@ -608,7 +646,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async announceReady(
     inspection: Extract<HistoryInspection<A>, { action: "wait-for-input" }>,
   ): Promise<void> {
-    if (this.steering.peek().length > 0) return;
+    if (this.steering.peek().length > 0 || this.manualCompactionPending) return;
     await this.setMode({
       root: inspection.location.root,
       mode: "ready-for-request",
@@ -724,7 +762,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async emitSteeringChange(): Promise<void> {
     const pending = [...this.steering.peek()];
     await this.params.handler?.steeringChange?.(
-      this.awaitingSteering ? { upcoming: pending, queued: [] } : { upcoming: [], queued: pending },
+      this.awaitingUnpause ? { upcoming: pending, queued: [] } : { upcoming: [], queued: pending },
     );
   }
 
@@ -741,7 +779,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
     let receivedTokens = false;
-    const systemPrompt = location.root
+    const isMainAgent = location.root;
+    const systemPrompt = isMainAgent
       ? params.systemPrompt
       : params.subagentPrompts[location.subagent as keyof SubagentPromptCatalogue<A>];
 
@@ -751,6 +790,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       trajectoryArc.run<B, Model>({
         model,
         contextWindow,
+        manualCompactionPending: isMainAgent && this.manualCompactionPending,
         tools: arcTools<A>(agent, allTools) as Partial<LoadedTools<B["tools"]>>,
         messages: history,
         toolData: params.toolData as AgentToolData<B>,
@@ -822,7 +862,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           onResponseHeaders: async event => {
             await params.handler?.onResponseHeaders?.({ ...scope, payload: event });
           },
-          onMessage: ir => owner.ifOwner(() => this.appendIr(location, ir as TreeIR<A>)),
+          onMessage: ir =>
+            owner.ifOwner(() => {
+              if (isMainAgent && ir.role === "checkpoint") this.manualCompactionPending = false;
+              return this.appendIr(location, ir as TreeIR<A>);
+            }),
         },
       });
     return run(location.agent, location.history);
@@ -845,7 +889,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   async step(): Promise<boolean> {
     if (this.params.abortSignal.aborted) return false;
     this.turnController = new AbortController();
-    this.awaitingSteering = false;
+    this.awaitingUnpause = false;
 
     let inspection = this.inspect();
     while (inspection.action === "rectify" || inspection.action === "invoke-subagent") {
@@ -871,16 +915,27 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       | { action: "quit" }
     > => {
       if (active.action === "respond" || active.action === "run-tools") return active;
-      this.awaitingSteering = true;
+      this.awaitingUnpause = true;
       await this.announceReady(active);
-      const waited = await waitSteeringOrExit(this.steering, this.params.abortSignal);
-      this.awaitingSteering = false;
+      if (this.manualCompactionPending && this.steering.peek().length === 0) {
+        this.awaitingUnpause = false;
+        return { action: "respond" };
+      }
+      const waited = await waitForUnpause(
+        this.steering,
+        this.compactionRequested.promise,
+        this.params.abortSignal,
+      );
+      this.compactionRequested = Promise.withResolvers<void>();
+      this.awaitingUnpause = false;
       if (!waited.success) return { action: "quit" };
-      await this.emitSteeringChange();
-      await this.appendIr(location, {
-        role: "user",
-        content: coalesceUserMessageContent(waited.data),
-      });
+      if (waited.data !== "compaction-requested" && waited.data.length > 0) {
+        await this.emitSteeringChange();
+        await this.appendIr(location, {
+          role: "user",
+          content: coalesceUserMessageContent(waited.data),
+        });
+      }
       return { action: "respond" };
     })();
 
@@ -1053,6 +1108,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
                 break;
               }
               this.steering.take();
+              this.manualCompactionPending = false;
               await this.emitSteeringChange();
               await this.params.handler?.rewind?.({ removed, content });
               if (this.inspect().action !== "wait-for-input") {
@@ -1070,6 +1126,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     if (!resolved.success || resolved.data.type === "rewind") return resolved;
     if (this.params.abortSignal.aborted) return err("aborted");
     const retrying = resolved.data.type === "retry" || !location.root || pendingCalls.length > 0;
+    if (!retrying) this.manualCompactionPending = false;
     await this.appendIr(location, { role: retrying ? "error-retry" : "error-dismissed" });
     return resolved;
   }
@@ -1178,7 +1235,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             mode: "tool-call-permission",
             toolCalls,
             toolCall,
-            control: this.interruptControl(),
+            control: this.runningControl(),
           });
           const decision = await waitForPermissionDecision(this.permissionGate, toolCall, signal);
           if (!decision.success) {
