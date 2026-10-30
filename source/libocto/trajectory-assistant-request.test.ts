@@ -260,31 +260,40 @@ describe("trajectoryAssistantRequest", () => {
     expect(history).toHaveLength(1);
   });
 
-  it.each(["reasoning", "content"] as const)("finalizes an interrupted %s stream", async type => {
-    const abortController = new AbortController();
-    const { messages, rollbacks } = await runAssistantRequest({
-      abortController,
-      response: async emit => {
-        await emit("partial", type);
-        abortController.abort();
-        return result(assistant({ content: "unreached" }))(emit);
-      },
-    });
-    expect(messages).toEqual(
-      type === "content"
-        ? [
-            {
-              role: "assistant",
-              content: "partial",
-              reasoningContent: undefined,
-              usage: compilerUsage(0, 0),
-            },
-            { role: "interrupted-by-user", reason: "The user interrupted the response." },
-          ]
-        : [{ role: "interrupted-by-user", reason: "The user interrupted the response." }],
-    );
-    expect(rollbacks).toHaveLength(type === "reasoning" ? 1 : 0);
-  });
+  it.each([
+    { type: "reasoning", rejects: false },
+    { type: "content", rejects: false },
+    { type: "reasoning", rejects: true },
+    { type: "content", rejects: true },
+  ] as const)(
+    "finalizes an interrupted $type stream (rejects=$rejects)",
+    async ({ type, rejects }) => {
+      const abortController = new AbortController();
+      const { messages, rollbacks } = await runAssistantRequest({
+        abortController,
+        response: async emit => {
+          await emit("partial", type);
+          abortController.abort();
+          if (rejects) throw new DOMException("Aborted", "AbortError");
+          return result(assistant({ content: "unreached" }))(emit);
+        },
+      });
+      expect(messages).toEqual(
+        type === "content"
+          ? [
+              {
+                role: "assistant",
+                content: "partial",
+                reasoningContent: undefined,
+                usage: compilerUsage(0, 0),
+              },
+              { role: "interrupted-by-user", reason: "The user interrupted the response." },
+            ]
+          : [{ role: "interrupted-by-user", reason: "The user interrupted the response." }],
+      );
+      expect(rollbacks).toHaveLength(type === "reasoning" ? 1 : 0);
+    },
+  );
 
   it("answers every sibling before returning an interrupted correction", async () => {
     validateImpl = () => err("stale");
