@@ -1,7 +1,7 @@
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { withMock } from "antipattern";
-import type { PaintKeyboardEvent } from "paintcannon";
+import { PaintKeyboardEvent, type NativeKeyboardEvent } from "paintcannon";
 import { Span } from "paintcannon-react";
 import { describe, expect, it, mock } from "bun:test";
 import { keyboardDeps } from "../../hooks/use-keyboard.ts";
@@ -96,13 +96,24 @@ describe("KbShortcutSelect", () => {
     },
   );
 
-  it("prevents the default Enter action when selecting an item", async () => {
+  it("ignores a consumed opening Enter and accepts a subsequent Enter", async () => {
     let keyboardHandler: ((event: PaintKeyboardEvent) => void) | undefined;
     const useKeyboard = mock((callback: (event: PaintKeyboardEvent) => void) => {
       keyboardHandler = callback;
     });
     const onSelect = mock();
-    const preventDefault = mock();
+    const nativeEnter: NativeKeyboardEvent = {
+      type: "keydown",
+      key: "Enter",
+      code: "Enter",
+      ctrlKey: false,
+      altKey: false,
+      metaKey: false,
+      shiftKey: false,
+      repeat: false,
+    };
+    const openingEnter = new PaintKeyboardEvent(nativeEnter);
+    openingEnter.preventDefault();
 
     await withMock(keyboardDeps, "useKeyboard", useKeyboard, async () => {
       let renderer: TestRenderer.ReactTestRenderer;
@@ -124,13 +135,17 @@ describe("KbShortcutSelect", () => {
       });
 
       act(() => {
-        keyboardHandler?.({
-          key: "Enter",
-          preventDefault,
-        } as unknown as PaintKeyboardEvent);
+        keyboardHandler?.(openingEnter);
+      });
+      expect(onSelect).not.toHaveBeenCalled();
+
+      const selectionEnter = new PaintKeyboardEvent(nativeEnter);
+      act(() => {
+        keyboardHandler?.(selectionEnter);
       });
 
-      expect(preventDefault).toHaveBeenCalledTimes(1);
+      expect(selectionEnter.defaultPrevented).toBe(true);
+      expect(onSelect).toHaveBeenCalledTimes(1);
       expect(onSelect).toHaveBeenCalledWith({
         label: "Enter an API key",
         value: "api-key",

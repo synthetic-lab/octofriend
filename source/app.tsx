@@ -1,4 +1,12 @@
-import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react";
+import React, {
+  memo,
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import type { DivElement } from "paintcannon";
 import clipboardy from "clipboardy";
 import { t } from "structural";
@@ -32,6 +40,9 @@ import {
   SUBAGENT_ACTIVITY_COLOR,
   SUBTLE_SCROLLBAR_COLOR,
   THOUGHTBOX_COLOR,
+  USER_MESSAGE_ACTION_BACKGROUND_COLOR,
+  USER_MESSAGE_ACTION_HOVER_BACKGROUND_COLOR,
+  USER_MESSAGE_HOVER_BACKGROUND_COLOR,
   useColor,
   useUnchained,
 } from "./theme.ts";
@@ -58,6 +69,7 @@ import { Item, ShortcutArray } from "./components/kb-select/kb-shortcut-select.t
 import {
   useAppStore,
   useModel,
+  historyBeforeRewind,
   InflightResponseType,
   LiveMirror,
   LiveTrajectory,
@@ -84,6 +96,7 @@ import Shimmer from "./components/shimmer.tsx";
 import { Menu } from "./menu.tsx";
 import { type SyntheticModel } from "./synthetic-models.ts";
 import { Modal } from "./components/modal.tsx";
+import { MessageActions } from "./components/message-actions.tsx";
 import SelectInput from "./components/selection/select-input.tsx";
 import { IndicatorComponent } from "./components/select.tsx";
 import { displayLog } from "./logger.ts";
@@ -121,7 +134,7 @@ import { CwdContext, useCwd } from "./hooks/use-cwd.tsx";
 import { useTerminalFocus } from "./hooks/use-terminal-focus.ts";
 import { LspToolRenderer } from "./components/lsp-tool-renderer.tsx";
 import { CustomAuthFlow } from "./components/add-model-flow.tsx";
-import { Span, useAnimation, useApp } from "paintcannon-react";
+import { Button, Span, useAnimation, useApp } from "paintcannon-react";
 import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { useShimmerlock } from "./hooks/use-shimmerlock.ts";
 import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
@@ -274,6 +287,7 @@ function AppContent({
     }
   }, [isKeyboardScrollActive, keyboardScrollTime]);
   const [currConfig, setCurrConfig] = useState(config);
+  const [messageActions, setMessageActions] = useState<UserMessage | null>(null);
   const {
     history,
     sessionMode,
@@ -287,6 +301,9 @@ function AppContent({
     query,
     queuedSteering,
     unchained,
+    pendingRewind,
+    beginMessageEdit,
+    rewindError,
   } = useAppStore(
     useShallow(state => ({
       history: state.history,
@@ -301,6 +318,9 @@ function AppContent({
       query: state.query,
       queuedSteering: state.queuedSteering,
       unchained: state.unchained,
+      pendingRewind: state.pendingRewind,
+      beginMessageEdit: state.beginMessageEdit,
+      rewindError: state.rewindError,
     })),
   );
   const [tempNotification, setTempNotification] = useState<string | null>(
@@ -364,20 +384,38 @@ function AppContent({
   const liveMirror = sessionMode.mode === "live" ? sessionMode.liveMode : null;
   const trajectoryMode = liveMirror?.trajectoryMode ?? null;
   const permissionUiType = liveMirror?.permissionUi.type ?? null;
+  const canEditMessage =
+    trajectoryMode != null && trajectoryMode.mode !== "aborted" && pendingRewind == null;
+  useEffect(() => {
+    setMessageActions(null);
+  }, [sessionHydrationNonce, canEditMessage]);
+  useEffect(() => {
+    if (rewindError != null) {
+      showToast(<Span style={{ color: "red" }}>{rewindError.error}</Span>);
+    }
+  }, [rewindError, showToast]);
   const transcriptTrajectory =
     sessionMode.mode === "booting" ? null : sessionMode.trajectory.instance;
+  const historyPreview = useMemo(
+    () => historyBeforeRewind(history, pendingRewind?.target ?? null),
+    [history, pendingRewind],
+  );
+  const visibleHistory = historyPreview.success ? historyPreview.data : history;
   const { staticHistory, liveHistory } = useMemo(() => {
     // An active subagent is already in history, and notifications can follow it. Leave
     // that entire suffix outside the fixed-height virtualizer without reordering it.
-    const firstDynamic = history.findIndex(
+    const firstDynamic = visibleHistory.findIndex(
       item =>
         item.type === "llm-ir" &&
         item.ir.role === "subagent-trajectory" &&
         transcriptTrajectory?.inspectSubagentTrajectory(item.ir).type === "in-progress",
     );
-    const split = firstDynamic < 0 ? history.length : firstDynamic;
-    return { staticHistory: history.slice(0, split), liveHistory: history.slice(split) };
-  }, [history, transcriptTrajectory, trajectoryMode]);
+    const split = firstDynamic < 0 ? visibleHistory.length : firstDynamic;
+    return {
+      staticHistory: visibleHistory.slice(0, split),
+      liveHistory: visibleHistory.slice(split),
+    };
+  }, [visibleHistory, transcriptTrajectory, trajectoryMode]);
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
@@ -419,7 +457,7 @@ function AppContent({
           <ConfigContext.Provider value={currConfig}>
             <TransportContext.Provider value={transport}>
               <CwdContext.Provider value={cwd}>
-                <InputDisabledProvider disabled={isMenuOpen}>
+                <InputDisabledProvider disabled={isMenuOpen || messageActions != null}>
                   <ExitOnDoubleCtrlC>
                     <InputPriorityProvider>
                       <UnchainedShiftTabHandler setTempNotification={setTempNotification} />
@@ -485,6 +523,7 @@ function AppContent({
                                   <MessageDisplay
                                     item={item}
                                     trajectory={sessionMode.trajectory.instance}
+                                    onMessageActions={canEditMessage ? setMessageActions : null}
                                   />
                                 )}
                               </VirtualizedItems>
@@ -492,19 +531,23 @@ function AppContent({
                                 <MessageDisplay
                                   item={item}
                                   trajectory={sessionMode.trajectory.instance}
+                                  onMessageActions={canEditMessage ? setMessageActions : null}
                                   key={item.nodeId}
                                 />
                               ))}
-                              {(trajectoryMode?.mode === "responding" ||
-                                trajectoryMode?.mode === "compacting") &&
+                              {pendingRewind == null &&
+                                (trajectoryMode?.mode === "responding" ||
+                                  trajectoryMode?.mode === "compacting") &&
                                 inflightResponse != null &&
                                 (inflightResponse.reasoningContent || inflightResponse.content) && (
                                   <MessageDisplay
                                     item={inflightResponse}
                                     trajectory={sessionMode.trajectory.instance}
+                                    onMessageActions={null}
                                   />
                                 )}
-                              {liveMirror != null &&
+                              {pendingRewind == null &&
+                                liveMirror != null &&
                                 liveMirror.trajectoryMode.root &&
                                 isToolTrajectoryMode(liveMirror.trajectoryMode) && (
                                   <ToolRequestsRenderer
@@ -530,6 +573,9 @@ function AppContent({
                             </TerminalFlex>
                           </TerminalFlex>
                         </TerminalFlex>
+                        {!historyPreview.success && (
+                          <Span style={{ color: "red" }}>{historyPreview.error}</Span>
+                        )}
                         {sessionMode.mode === "lost" ? (
                           <SessionLostScreen
                             sessionId={sessionMode.sessionId}
@@ -555,6 +601,18 @@ function AppContent({
                       <Menu syntheticModels={syntheticModels} />
                     </SessionContext.Provider>
                   </Modal>
+                )}
+                {canEditMessage && messageActions != null && (
+                  <MessageActions
+                    onClose={() => setMessageActions(null)}
+                    onEdit={() => {
+                      const result = beginMessageEdit(messageActions);
+                      if (!result.success) {
+                        showToast(<Span style={{ color: "red" }}>{result.error}</Span>);
+                      }
+                      setMessageActions(null);
+                    }}
+                  />
                 )}
               </CwdContext.Provider>
             </TransportContext.Provider>
@@ -908,6 +966,7 @@ function BottomBarContent({
 }) {
   const config = useConfig();
   const model = useModel();
+  const showToast = useToast();
   const { trajectoryMode, permissionUi } = liveMode;
   const {
     clearNonce,
@@ -918,6 +977,10 @@ function BottomBarContent({
     addAttachedImage,
     removeLastAttachedImage,
     clearAttachedImages,
+    pendingRewind,
+    cancelMessageEdit,
+    sendMessageEdit,
+    canRewindHistory,
   } = useAppStore(
     useShallow(state => ({
       clearNonce: state.clearNonce,
@@ -928,6 +991,11 @@ function BottomBarContent({
       addAttachedImage: state.addAttachedImage,
       removeLastAttachedImage: state.removeLastAttachedImage,
       clearAttachedImages: state.clearAttachedImages,
+      pendingRewind: state.pendingRewind,
+      cancelMessageEdit: state.cancelMessageEdit,
+      sendMessageEdit: state.sendMessageEdit,
+      canRewindHistory:
+        state.sessionMode.mode === "live" && state.sessionMode.trajectory.instance.canRewindHistory,
     })),
   );
 
@@ -948,6 +1016,12 @@ function BottomBarContent({
       // Vim INSERT mode: Esc ONLY returns to NORMAL (no menu, no abort)
       if (inputMode.kind === "vim" && inputMode.mode === "INSERT") {
         setVimMode("NORMAL");
+        return;
+      }
+      if (pendingRewind != null) {
+        event.preventDefault();
+        const result = cancelMessageEdit();
+        if (!result.success) showToast(<Span style={{ color: "red" }}>{result.error}</Span>);
         return;
       }
       // Never interrupt at a permission prompt: ESC only navigates the prompt itself;
@@ -979,12 +1053,18 @@ function BottomBarContent({
     }
   });
   const onSubmit = useCallback(
-    (submittedQuery?: string, images?: ImageInfo[]) => {
-      const finalQuery = submittedQuery ?? query;
+    (submittedQuery: string, images: ImageInfo[]) => {
       inputSubmitted();
+      if (pendingRewind != null) {
+        void sendMessageEdit(submittedQuery, images).then(result => {
+          if (!result.success) showToast(<Span style={{ color: "red" }}>{result.error}</Span>);
+        });
+        return;
+      }
       setQuery("");
+      clearAttachedImages();
       if (permissionUi.type === "awaiting-steering") {
-        permissionUi.rejectionTx.commitRejection(userMessageContent(finalQuery, images));
+        permissionUi.rejectionTx.commitRejection(userMessageContent(submittedQuery, images));
         return;
       }
       if (
@@ -997,7 +1077,7 @@ function BottomBarContent({
         trajectoryMode.mode === "tool-call" ||
         trajectoryMode.mode === "running-tool"
       ) {
-        void trajectoryMode.control.enqueueSteering(userMessageContent(finalQuery, images));
+        void trajectoryMode.control.enqueueSteering(userMessageContent(submittedQuery, images));
       } else {
         const _:
           | "tool-call-permission"
@@ -1009,22 +1089,26 @@ function BottomBarContent({
           | "aborted" = trajectoryMode.mode;
       }
     },
-    [query, permissionUi, trajectoryMode, setQuery, inputSubmitted],
+    [
+      permissionUi,
+      trajectoryMode,
+      setQuery,
+      clearAttachedImages,
+      inputSubmitted,
+      pendingRewind,
+      sendMessageEdit,
+      showToast,
+    ],
   );
-  if (
-    isActiveMode(trajectoryMode) ||
-    (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
-  ) {
-    return (
-      <TerminalFlex
-        style={{
-          flexDirection: "column",
-        }}
-      >
+  const editor = (
+    <TerminalFlex style={{ flexDirection: "column" }}>
+      <InputDisabledProvider disabled={pendingRewind != null && !canRewindHistory}>
         <MultimediaInput
+          key={clearNonce}
           inputHistory={inputHistory}
           value={query}
           onChange={setQuery}
+          draftNonce={clearNonce}
           attachedImages={attachedImages}
           addAttachedImage={addAttachedImage}
           removeLastAttachedImage={removeLastAttachedImage}
@@ -1034,9 +1118,17 @@ function BottomBarContent({
           setVimMode={setVimMode}
           modalities={model.modalities}
         />
-        <VimModeIndicator inputMode={inputMode} />
-      </TerminalFlex>
-    );
+      </InputDisabledProvider>
+      {pendingRewind != null && <Span style={{ color: "gray" }}>Press ESC to cancel edit.</Span>}
+      <VimModeIndicator inputMode={inputMode} />
+    </TerminalFlex>
+  );
+  if (pendingRewind != null) return editor;
+  if (
+    isActiveMode(trajectoryMode) ||
+    (trajectoryMode.mode === "tool-call-permission" && permissionUi.type === "idle")
+  ) {
+    return editor;
   }
   if (trajectoryMode.mode === "payment-error") {
     return (
@@ -1077,28 +1169,7 @@ function BottomBarContent({
     return null;
   }
   const _: "ready-for-request" | "tool-call-permission" | "aborted" = trajectoryMode.mode;
-  return (
-    <TerminalFlex
-      style={{
-        flexDirection: "column",
-      }}
-    >
-      <MultimediaInput
-        inputHistory={inputHistory}
-        value={query}
-        onChange={setQuery}
-        attachedImages={attachedImages}
-        addAttachedImage={addAttachedImage}
-        removeLastAttachedImage={removeLastAttachedImage}
-        clearAttachedImages={clearAttachedImages}
-        onSubmit={onSubmit}
-        inputMode={inputMode}
-        setVimMode={setVimMode}
-        modalities={model.modalities}
-      />
-      <VimModeIndicator inputMode={inputMode} />
-    </TerminalFlex>
-  );
+  return editor;
 }
 function AuthErrorScreen({
   model,
@@ -1787,22 +1858,115 @@ function historyItemKey(item: HistoryNode): number {
   return item.nodeId;
 }
 
-const MessageDisplay = React.memo(
+const MessageDisplay = memo(
   ({
     item,
     trajectory,
+    onMessageActions,
   }: {
     item: HistoryNode | InflightResponseType;
     trajectory: LiveTrajectory["instance"];
+    onMessageActions: ((message: UserMessage) => void) | null;
   }) => {
+    const [hoverTarget, setHoverTarget] = useState<"message" | "actions" | null>(null);
+    const message = item.type === "llm-ir" && item.ir.role === "user" ? item.ir : null;
+    const canOpenActions = message != null && onMessageActions != null;
+    const actionBackgroundColor =
+      hoverTarget === "actions"
+        ? USER_MESSAGE_ACTION_HOVER_BACKGROUND_COLOR
+        : USER_MESSAGE_ACTION_BACKGROUND_COLOR;
     return (
       <TerminalFlex
+        onMouseEnter={canOpenActions ? () => setHoverTarget("message") : undefined}
+        onMouseLeave={canOpenActions ? () => setHoverTarget(null) : undefined}
         style={{
+          position: "relative",
           flexDirection: "column",
-          paddingRight: 4,
+          paddingRight: canOpenActions ? 3 : 4,
         }}
       >
-        <MessageDisplayInner item={item} trajectory={trajectory} />
+        {canOpenActions && (
+          <TerminalFlex
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 3,
+              border: "chunky-rounded",
+              borderColor: USER_MESSAGE_HOVER_BACKGROUND_COLOR,
+              backgroundColor: USER_MESSAGE_HOVER_BACKGROUND_COLOR,
+              visibility: hoverTarget != null ? "visible" : "hidden",
+            }}
+          />
+        )}
+        <TerminalFlex
+          style={{
+            position: "relative",
+            flexDirection: "column",
+            paddingRight: canOpenActions ? 7 : undefined,
+            marginTop: message != null ? 1 : undefined,
+            marginBottom: message != null ? 1 : undefined,
+            backgroundColor:
+              hoverTarget != null && canOpenActions
+                ? USER_MESSAGE_HOVER_BACKGROUND_COLOR
+                : undefined,
+          }}
+        >
+          <MessageDisplayInner item={item} trajectory={trajectory} />
+        </TerminalFlex>
+        {canOpenActions && (
+          <TerminalFlex
+            style={{
+              position: "absolute",
+              right: 2,
+              top: 0,
+              width: 9,
+              height: 1,
+              visibility: hoverTarget != null ? "visible" : "hidden",
+            }}
+          >
+            <TerminalFlex
+              style={{
+                width: 3,
+                height: 1,
+                flexShrink: 0,
+                backgroundColor: actionBackgroundColor,
+                transition: "background-color 120ms ease-out",
+              }}
+            >
+              <TerminalFlex
+                style={{
+                  flexGrow: 1,
+                  borderRight: "pill",
+                  borderColor: USER_MESSAGE_HOVER_BACKGROUND_COLOR,
+                  backgroundColor: USER_MESSAGE_HOVER_BACKGROUND_COLOR,
+                }}
+              />
+            </TerminalFlex>
+            <Button
+              type="button"
+              onClick={() => onMessageActions(message)}
+              onMouseEnter={() => setHoverTarget("actions")}
+              onMouseLeave={() => setHoverTarget("message")}
+              style={{
+                display: "flex",
+                flexGrow: 1,
+                height: 1,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRight: "pill",
+                borderColor: actionBackgroundColor,
+                backgroundColor: actionBackgroundColor,
+                transition: "background-color 120ms ease-out, border-color 120ms ease-out",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              •••
+            </Button>
+          </TerminalFlex>
+        )}
       </TerminalFlex>
     );
   },
@@ -2048,8 +2212,6 @@ function renderLlmIR(
     <TerminalFlex
       style={{
         flexDirection: "column",
-        marginTop: 1,
-        marginBottom: 1,
       }}
     >
       <TerminalFlex

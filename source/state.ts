@@ -37,7 +37,7 @@ import { systemPrompt } from "./prompts/system-prompt.ts";
 import { exploreSystemPrompt } from "./prompts/explore-system-prompt.ts";
 import { researcherSystemPrompt } from "./prompts/researcher-system-prompt.ts";
 import { messageText, type UserMessage } from "./libocto/llm-ir.ts";
-import { err, ok, type Result } from "./libocto/result.ts";
+import { err, ok, type Err, type Result } from "./libocto/result.ts";
 import {
   Trajectory,
   DEFAULT_MAX_TOOL_OUTPUT_FRACTION,
@@ -80,6 +80,7 @@ export type LiveMirror = {
 export type LiveTrajectory = {
   instance: Trajectory<typeof octoAgent, ModelData>;
   exitController: AbortController;
+  interruptForMessageEdit: () => Promise<void>;
   finished: Promise<void>;
 };
 
@@ -121,10 +122,27 @@ export function userMessageContent(query: string, images?: ImageInfo[]): UserMes
   ];
 }
 
+function messageDraft(content: UserMessage["content"]) {
+  return {
+    query: content
+      .filter(part => part.type === "text")
+      .map(part => part.content)
+      .join(""),
+    attachedImages: content.filter(part => part.type === "image").map(part => part.image),
+  };
+}
+
 // Maps each trajectory IR to its persisted history node, so we can find it later.
 const irNodeMap = new WeakMap<OctoIR, HistoryNode>();
 
 const PREVIEW_CHARS = 200;
+const MISSING_EDIT_TARGET =
+  "The message is no longer in this conversation. Your draft has been kept.";
+
+type PendingRewind = {
+  target: UserMessage;
+  previousDraft: { query: string; attachedImages: ImageInfo[] };
+};
 
 export type UiState = {
   isMenuOpen: boolean;
@@ -142,6 +160,8 @@ export type UiState = {
   byteCount: number;
   query: string;
   attachedImages: ImageInfo[];
+  pendingRewind: PendingRewind | null;
+  rewindError: Err<string> | null;
   clearNonce: number;
   sessionHydrationNonce: number;
   whitelistState: Set<string>;
@@ -158,11 +178,26 @@ export type UiState = {
   closeMenu: () => void;
   setModelOverride: (m: ModelConfig) => void;
   setQuery: (query: string) => void;
-  addAttachedImage: (image: ImageInfo) => void;
+  beginMessageEdit: (target: UserMessage) => Result<void, string>;
+  cancelMessageEdit: () => Result<void, string>;
+  sendMessageEdit: (query: string, images: ImageInfo[]) => Promise<Result<void, string>>;
+  addAttachedImage: (image: ImageInfo, draftNonce: number) => void;
   removeLastAttachedImage: () => void;
   clearAttachedImages: () => void;
   setUnchained: (unchained: boolean) => void;
 };
+
+export function historyBeforeRewind(
+  history: readonly HistoryNode[],
+  target: UserMessage | null,
+): Result<readonly HistoryNode[], string> {
+  if (target == null) return ok(history);
+  const index = history.findIndex(
+    historyNode => historyNode.type === "llm-ir" && historyNode.ir === target,
+  );
+  if (index < 0) return err(MISSING_EDIT_TARGET);
+  return ok(history.slice(0, index));
+}
 
 export function inputFieldAvailable(
   trajectoryMode: TrajectoryMode<typeof octoAgent>,
@@ -256,6 +291,7 @@ export const useAppStore = create<UiState>((set, get) => {
     let responseByteCount = 0;
     let compactionByteCount = 0;
     let rewindInterruptedTurn = false;
+    let editInterruptionPending = false;
 
     const isCurrent = () => {
       const mode = get().sessionMode;
@@ -430,13 +466,17 @@ export const useAppStore = create<UiState>((set, get) => {
             };
           });
           if (mode.mode === "ready-for-request") get().notifyReadyForInput(config);
+          if (mode.root && mode.mode === "ready-for-request") editInterruptionPending = false;
           if (rewindInterruptedTurn && mode.root && mode.mode === "ready-for-request") {
             rewindInterruptedTurn = false;
             // Veto only: a draft typed since the event cancels the rewind, never triggers it.
-            if (get().query.trim() === "") {
+            if (get().pendingRewind == null && get().query.trim() === "") {
               const [tail, prev] = instance.meaningfulTailIR();
               if (tail?.role === "interrupted-by-user" && prev?.role === "user") {
-                void mode.control.rewindTo(prev);
+                void mode.control.rewindTo(prev).then(result => {
+                  if (!isCurrent() || result.success) return;
+                  set({ rewindError: result });
+                });
               }
             }
           }
@@ -492,20 +532,18 @@ export const useAppStore = create<UiState>((set, get) => {
             const first = irNodeMap.get(removed[0]);
             if (first == null) throw new Error("rewind target is missing from history");
             const start = get().history.findIndex(node => node.nodeId === first.nodeId);
+            if (start < 0) throw new Error("rewind target is missing from history");
             const trimmed = get().history.slice(start);
             // Dropping the trimmed rows keeps a fresh append legal (one root per tree) and
             // stops rewound turns from resurrecting on session reload.
             deleteHistoryNodes(trimmed.map(node => node.nodeId));
-            set(state => {
-              const textParts = content?.filter(part => part.type === "text") || [];
-              const images = content?.filter(part => part.type === "image") || [];
-              return {
-                history: state.history.slice(0, start),
-                query: textParts.map(item => item.content).join(""),
-                attachedImages: images.map(item => item.image),
-                clearNonce: state.clearNonce + 1,
-              };
-            });
+            set(state => ({
+              history: state.history.slice(0, start),
+              ...messageDraft(state.pendingRewind == null ? (content ?? []) : []),
+              pendingRewind: null,
+              rewindError: null,
+              clearNonce: state.clearNonce + 1,
+            }));
             return;
           }
           set(state => {
@@ -531,10 +569,16 @@ export const useAppStore = create<UiState>((set, get) => {
         },
         interrupted: ({ droppedSteering }) => {
           if (!isCurrent()) return;
+          const editing = editInterruptionPending;
+          editInterruptionPending = false;
           // Latch the rewind veto at the moment of interruption; the rewind fires when the
           // loop parks, and nothing later can re-arm it. Salvaged steering lands in the
           // draft below, which keeps the interrupted turn instead of rolling it back.
-          rewindInterruptedTurn = droppedSteering.length === 0 && get().query.trim() === "";
+          rewindInterruptedTurn =
+            !editing &&
+            get().pendingRewind == null &&
+            droppedSteering.length === 0 &&
+            get().query.trim() === "";
           if (droppedSteering.length === 0) return;
           set(state => {
             const texts: string[] = [];
@@ -547,8 +591,14 @@ export const useAppStore = create<UiState>((set, get) => {
             }
             // The salvaged queue precedes any in-progress draft, so the draft is appended
             // to it rather than clobbered.
-            const query = [texts.join("\n"), state.query].filter(part => part !== "").join("\n");
-            return { query, attachedImages: [...images, ...state.attachedImages] };
+            const draft = state.pendingRewind?.previousDraft ?? state;
+            const restoredDraft = {
+              query: [texts.join("\n"), draft.query].filter(part => part !== "").join("\n"),
+              attachedImages: [...images, ...draft.attachedImages],
+            };
+            return state.pendingRewind == null
+              ? restoredDraft
+              : { pendingRewind: { ...state.pendingRewind, previousDraft: restoredDraft } };
           });
         },
         responseProgress: ({ root, payload: event }) => {
@@ -608,6 +658,12 @@ export const useAppStore = create<UiState>((set, get) => {
     return {
       instance,
       exitController,
+      interruptForMessageEdit: async () => {
+        const mode = instance.mode;
+        if (mode.mode === "aborted" || instance.canRewindHistory) return;
+        editInterruptionPending = true;
+        await mode.control.interrupt();
+      },
       finished: (async () => {
         try {
           const control = instance.mode.control;
@@ -661,6 +717,9 @@ export const useAppStore = create<UiState>((set, get) => {
       inflightResponse: null,
       queuedSteering: [],
       byteCount: 0,
+      ...state.pendingRewind?.previousDraft,
+      pendingRewind: null,
+      rewindError: null,
       clearNonce: state.clearNonce + 1,
       sessionHydrationNonce: state.sessionHydrationNonce + 1,
       sessionAutoNotify: false,
@@ -705,6 +764,14 @@ export const useAppStore = create<UiState>((set, get) => {
     },
   });
 
+  const keepMessageEditAsDraft = (edit: PendingRewind) => {
+    set(state =>
+      state.pendingRewind === edit
+        ? { pendingRewind: null, clearNonce: state.clearNonce + 1 }
+        : state,
+    );
+  };
+
   return {
     isMenuOpen: false,
     _notifyTimer: null,
@@ -722,6 +789,8 @@ export const useAppStore = create<UiState>((set, get) => {
     byteCount: 0,
     query: "",
     attachedImages: [],
+    pendingRewind: null,
+    rewindError: null,
     clearNonce: 0,
     sessionHydrationNonce: 0,
     whitelistState: new Set<string>(),
@@ -792,8 +861,83 @@ export const useAppStore = create<UiState>((set, get) => {
       set({ query });
     },
 
-    addAttachedImage: image => {
-      set(state => ({ attachedImages: [...state.attachedImages, image] }));
+    beginMessageEdit: target => {
+      const state = get();
+      if (state.sessionMode.mode !== "live") return err("This conversation cannot be edited.");
+      if (state.pendingRewind != null) return err("Another message is already being edited.");
+      const liveTrajectory = state.sessionMode.trajectory;
+      const trajectory = liveTrajectory.instance;
+      const mode = trajectory.mode;
+      if (mode.mode === "aborted") return err("This conversation has stopped.");
+      if (!trajectory.messages.includes(target)) return err(MISSING_EDIT_TARGET);
+      const preview = historyBeforeRewind(state.history, target);
+      if (!preview.success) return preview;
+      set({
+        pendingRewind: {
+          target,
+          previousDraft: { query: state.query, attachedImages: state.attachedImages },
+        },
+        ...messageDraft(target.content),
+        rewindError: null,
+        clearNonce: state.clearNonce + 1,
+      });
+      void liveTrajectory.interruptForMessageEdit();
+      return ok(undefined);
+    },
+
+    cancelMessageEdit: () => {
+      const { pendingRewind, clearNonce, history, sessionMode } = get();
+      if (pendingRewind == null) return ok(undefined);
+      if (
+        !historyBeforeRewind(history, pendingRewind.target).success ||
+        sessionMode.mode !== "live" ||
+        !sessionMode.trajectory.instance.messages.includes(pendingRewind.target)
+      ) {
+        keepMessageEditAsDraft(pendingRewind);
+        return err(MISSING_EDIT_TARGET);
+      }
+      set({
+        pendingRewind: null,
+        ...pendingRewind.previousDraft,
+        clearNonce: clearNonce + 1,
+      });
+      return ok(undefined);
+    },
+
+    sendMessageEdit: async (query, images) => {
+      const { pendingRewind, sessionMode, history } = get();
+      if (pendingRewind == null || sessionMode.mode !== "live") {
+        return err("The message edit is no longer active. Your draft has been kept.");
+      }
+      const preview = historyBeforeRewind(history, pendingRewind.target);
+      if (!preview.success) {
+        keepMessageEditAsDraft(pendingRewind);
+        return preview;
+      }
+      const trajectory = sessionMode.trajectory.instance;
+      const mode = trajectory.mode;
+      if (mode.mode !== "ready-for-request" || !trajectory.canRewindHistory) {
+        return err("Wait for the current response to stop before sending the edit.");
+      }
+      const rewound = await mode.control.rewindTo(pendingRewind.target);
+      if (!rewound.success) {
+        keepMessageEditAsDraft(pendingRewind);
+        return err(`${rewound.error} Your draft has been kept.`);
+      }
+      const current = get().sessionMode;
+      if (current.mode !== "live" || current.trajectory.instance !== trajectory) {
+        return err("The conversation changed before the edited message could be sent.");
+      }
+      await mode.control.enqueueSteering(userMessageContent(query, images));
+      return ok(undefined);
+    },
+
+    addAttachedImage: (image, draftNonce) => {
+      set(state =>
+        state.clearNonce === draftNonce
+          ? { attachedImages: [...state.attachedImages, image] }
+          : state,
+      );
     },
 
     removeLastAttachedImage: () => {
