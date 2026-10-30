@@ -1739,7 +1739,6 @@ const MessageDisplayInner = ({
   const _: never = item;
   return null;
 };
-type InProgressState = "compacting" | "responding" | "waiting" | "running-tool" | null;
 
 function InflightResponseRenderer({
   item,
@@ -1984,6 +1983,15 @@ type SubagentHistoryItem =
   | { type: "compaction" }
   | { type: "tool-call"; toolCallId: string; name: string; detail: string | null };
 
+const SUBAGENT_STATUS_TEXT = {
+  thinking: "Subagent is thinking...",
+  waiting: "Subagent is waiting for an API response...",
+  runningTools: "Subagent is running tools...",
+  errorWaiting: "Subagent encountered an error, waiting for resolution...",
+  error: "Subagent encountered an error",
+  compacting: "Compacting history...",
+} as const;
+
 function SubagentTrajectoryRenderer({
   inspection,
   history,
@@ -2024,7 +2032,7 @@ function SubagentTrajectoryRenderer({
   return (
     <TerminalFlex style={{ flexDirection: "column", marginBottom: 1 }}>
       <ExploreHeading inspection={inspection} />
-      {inspection.type === "in-progress" && items.length > 0 && (
+      {inspection.type === "in-progress" && (
         <SubagentProgressRenderer items={items} subagent={subagent} trajectory={trajectory} />
       )}
     </TerminalFlex>
@@ -2040,24 +2048,56 @@ function SubagentProgressRenderer({
   subagent: Extract<OctoIR, { role: "subagent-trajectory" }>;
   trajectory: LiveTrajectory["instance"];
 }) {
-  const { inProgressState, runningToolCallId } = useAppStore(
+  const { statusText, inProgressState, runningToolCallId } = useAppStore(
     useShallow(state => {
       const session = state.sessionMode;
+      if (session.mode === "lost") {
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.error,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
+      }
       if (session.mode !== "live" || session.trajectory.instance !== trajectory) {
-        return { inProgressState: null, runningToolCallId: null };
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.waiting,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
       }
       const mode = session.liveMode.trajectoryMode;
       if (mode.root || mode.scope.parentSubagentIR !== subagent) {
-        return { inProgressState: null, runningToolCallId: null };
+        return {
+          statusText: SUBAGENT_STATUS_TEXT.waiting,
+          inProgressState: null,
+          runningToolCallId: null,
+        };
       }
-      const inProgressState = ((): InProgressState => {
-        if (mode.mode === "compacting") return "compacting";
-        if (mode.mode === "responding") return mode.receivedTokens ? "responding" : "waiting";
-        if (mode.mode === "running-tool") return "running-tool";
-        return null;
+      const statusText = ((): string => {
+        switch (mode.mode) {
+          case "responding":
+            return mode.receivedTokens
+              ? SUBAGENT_STATUS_TEXT.thinking
+              : SUBAGENT_STATUS_TEXT.waiting;
+          case "request-error-retrying":
+          case "autofix-json":
+          case "autofix-tool":
+            return SUBAGENT_STATUS_TEXT.thinking;
+          case "tool-call":
+          case "tool-call-permission":
+          case "running-tool":
+            return SUBAGENT_STATUS_TEXT.runningTools;
+          case "payment-error":
+          case "auth-error":
+          case "rate-limit-error":
+            return SUBAGENT_STATUS_TEXT.errorWaiting;
+          case "compacting":
+            return SUBAGENT_STATUS_TEXT.compacting;
+        }
       })();
       return {
-        inProgressState,
+        statusText,
+        inProgressState: mode.mode,
         runningToolCallId: mode.mode === "running-tool" ? mode.toolCall.toolCallId : null,
       };
     }),
@@ -2081,52 +2121,43 @@ function SubagentProgressRenderer({
         return (
           <Span key={index}>
             <PausableLineSpinner running={running} />{" "}
-            <Shimmer
-              segments={[{ text: item.name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
-              lock={shimmerlock}
-              running={running && item.name === "grep"}
-            />
+            {running && item.name === "grep" ? (
+              <SubagentToolShimmer name={item.name} />
+            ) : (
+              <Span style={{ color }}>{item.name}</Span>
+            )}
             {item.detail != null && <Span style={{ color: "gray" }}>: {item.detail}</Span>}
           </Span>
         );
       })}
-      {inProgressState === "compacting" && (
-        <Span style={{ color: "gray" }}>
-          <Spinner type="line" />{" "}
-          <Shimmer
-            segments={[
-              {
-                text: "Compacting history...",
-                from: SUBAGENT_ACTIVITY_COLOR,
-                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
-              },
-            ]}
-            lock={shimmerlock}
-            running
-          />
-        </Span>
-      )}
-      {(inProgressState === "responding" || inProgressState === "waiting") && (
-        <Span style={{ color: "gray" }}>
-          {items.length === 0 ? " " : ""}
-          <Spinner type="line" />{" "}
-          <Shimmer
-            segments={[
-              {
-                text:
-                  inProgressState === "waiting"
-                    ? "Waiting for API response..."
-                    : "Subagent is thinking...",
-                from: SUBAGENT_ACTIVITY_COLOR,
-                to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
-              },
-            ]}
-            lock={shimmerlock}
-            running
-          />
-        </Span>
-      )}
+      <Span style={{ color: "gray" }}>
+        {items.length === 0 ? " " : ""}
+        <Spinner type="line" />{" "}
+        <Shimmer
+          segments={[
+            {
+              text: statusText,
+              from: SUBAGENT_ACTIVITY_COLOR,
+              to: SUBAGENT_SHIMMER_HIGHLIGHT_COLOR,
+            },
+          ]}
+          lock={shimmerlock}
+          running
+        />
+      </Span>
     </TerminalFlex>
+  );
+}
+
+function SubagentToolShimmer({ name }: { name: string }) {
+  const color = useColor();
+  const shimmerlock = useShimmerlock("explore-subagent-tool");
+  return (
+    <Shimmer
+      segments={[{ text: name, from: color, to: SHIMMER_HIGHLIGHT_COLOR }]}
+      lock={shimmerlock}
+      running
+    />
   );
 }
 
