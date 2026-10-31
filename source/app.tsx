@@ -123,6 +123,7 @@ import { useKeyboard } from "./hooks/use-keyboard.ts";
 import { useShimmerlock } from "./hooks/use-shimmerlock.ts";
 import { InputDisabledProvider } from "./hooks/use-input-disabled.tsx";
 import { TerminalFlex } from "./components/terminal-flex.tsx";
+import { VirtualizedItems } from "./components/virtualized-items.tsx";
 import { AppShell } from "./components/app-shell.tsx";
 import { ToolCallRow } from "./components/tool-call-row.tsx";
 import { useToast } from "./components/toast.tsx";
@@ -363,6 +364,20 @@ export default function App({
   const liveMirror = sessionMode.mode === "live" ? sessionMode.liveMode : null;
   const trajectoryMode = liveMirror?.trajectoryMode ?? null;
   const permissionUiType = liveMirror?.permissionUi.type ?? null;
+  const transcriptTrajectory =
+    sessionMode.mode === "booting" ? null : sessionMode.trajectory.instance;
+  const { staticHistory, liveHistory } = useMemo(() => {
+    // An active subagent is already in history, and notifications can follow it. Leave
+    // that entire suffix outside the fixed-height virtualizer without reordering it.
+    const firstDynamic = history.findIndex(
+      item =>
+        item.type === "llm-ir" &&
+        item.ir.role === "subagent-trajectory" &&
+        transcriptTrajectory?.inspectSubagentTrajectory(item.ir).type === "in-progress",
+    );
+    const split = firstDynamic < 0 ? history.length : firstDynamic;
+    return { staticHistory: history.slice(0, split), liveHistory: history.slice(split) };
+  }, [history, transcriptTrajectory, trajectoryMode]);
   useLayoutEffect(() => {
     scrollTranscriptToBottom();
   }, [
@@ -460,7 +475,19 @@ export default function App({
                                 flexDirection: "column",
                               }}
                             >
-                              {history.map(item => (
+                              <VirtualizedItems
+                                items={staticHistory}
+                                getKey={historyItemKey}
+                                rootRef={transcriptRef}
+                              >
+                                {item => (
+                                  <MessageDisplay
+                                    item={item}
+                                    trajectory={sessionMode.trajectory.instance}
+                                  />
+                                )}
+                              </VirtualizedItems>
+                              {liveHistory.map(item => (
                                 <MessageDisplay
                                   item={item}
                                   trajectory={sessionMode.trajectory.instance}
@@ -1663,6 +1690,10 @@ const TranscriptItemRenderer = React.memo(({ item }: { item: TranscriptItem }) =
   const _: never = item;
   return null;
 });
+
+function historyItemKey(item: HistoryNode): number {
+  return item.nodeId;
+}
 
 const MessageDisplay = React.memo(
   ({
