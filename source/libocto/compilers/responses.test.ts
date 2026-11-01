@@ -288,9 +288,16 @@ describe("toResponseInput tool-call answering", () => {
     expect(result[1].output).toContain("skipped");
   });
 
-  it("drops outputs with no originating tool call", async () => {
+  it("drops outputs with no originating tool call outside canary builds", async () => {
     const orphan = shellCall("call_orphan", "echo orphan");
-    expect(await trace([outputFor(orphan)])).toEqual([]);
+    const prevCanary = process.env["CANARY_OCTO"];
+    delete process.env["CANARY_OCTO"];
+    try {
+      expect(await trace([outputFor(orphan)])).toEqual([]);
+    } finally {
+      if (prevCanary == null) delete process.env["CANARY_OCTO"];
+      else process.env["CANARY_OCTO"] = prevCanary;
+    }
   });
 
   it("throws on orphan outputs in canary builds", async () => {
