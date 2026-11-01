@@ -541,6 +541,12 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private readonly history: Array<AgentIR<A>>;
   private _mode: TrajectoryMode<A>;
   private turnController = new AbortController();
+  // We don't emit interruption IRs until execution starts, but we want to allow interrupts
+  // before execution starts. This temporary flag tracks whether this is the first step:
+  // if turnController was already aborted, we insert and emit the interruption IR then,
+  // rather than losing the interruption when we replace the controller.
+  private hasStepped = false;
+  private rectification: ReturnType<typeof rectifiable> | null = null;
   private readonly steering = new Input<UserMessage["content"]>();
   private manualCompactionPending = false;
   private compactionRequested = Promise.withResolvers<void>();
@@ -558,7 +564,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     this.history = [...params.messages];
     this.lower = (messages, modalities) =>
       lower<A>(downconvert<A>(irs => params.lowerMessages(irs, modalities))(messages));
-    this._mode = { root: true, mode: "ready-for-request", control: this.readyControl() };
+    this._mode = this.prepareMode();
     // The permission param is conditional on the IsPermissioned brand, which TS can't reduce
     // for a generic A; check for its presence at runtime instead.
     this.permissionGate =
@@ -567,7 +573,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       "abort",
       () => {
         this._finish = this._finish.then(async () => {
-          await this.markExitSkips();
+          if (this.hasStepped) await this.markExitSkips();
           await this.setMode({ root: true, mode: "aborted" });
         });
       },
@@ -680,13 +686,49 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     await this.params.handler?.modeChange?.({ mode });
   }
 
+  private arcMode(
+    location: ActiveHistory<A>,
+    mode: SharedArcModes<TreeToolCall<A>, true>,
+  ): TrajectoryMode<A> {
+    // The calls and scope belong to the same selected operation. Permission modes are only
+    // emitted when the tree-wide gate exists; the public union retains both correlations.
+    return { ...this.scope(location), ...mode } as TrajectoryMode<A>;
+  }
+
   private setArcMode(
     location: ActiveHistory<A>,
     mode: SharedArcModes<TreeToolCall<A>, true>,
   ): Promise<void> {
-    // The calls and scope belong to the same selected operation. Permission modes are only
-    // emitted when the tree-wide gate exists; the public union retains both correlations.
-    return this.setMode({ ...this.scope(location), ...mode } as TrajectoryMode<A>);
+    return this.setMode(this.arcMode(location, mode));
+  }
+
+  private prepareMode(): TrajectoryMode<A> {
+    const mode = ((): TrajectoryMode<A> => {
+      if (this.params.abortSignal.aborted) return { root: true, mode: "aborted" };
+      const inspection = this.inspect();
+      switch (inspection.action) {
+        case "wait-for-input":
+          return { root: true, mode: "ready-for-request", control: this.readyControl() };
+        case "rectify":
+          return this.prepareRectification(inspection).mode;
+        case "run-tools":
+        case "invoke-subagent":
+          return this.arcMode(inspection.location, {
+            mode: "tool-call",
+            toolCalls: inspection.pendingCalls,
+            control: this.runningControl(),
+          });
+        case "respond":
+        case "retry":
+          return this.arcMode(inspection.location, {
+            mode: "responding",
+            receivedTokens: false,
+            control: this.runningControl(),
+          });
+      }
+    })();
+    this.awaitingUnpause = mode.mode === "ready-for-request";
+    return mode;
   }
 
   private async announceReady(
@@ -913,10 +955,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   async step(): Promise<boolean> {
     if (this.params.abortSignal.aborted) return false;
+    const firstStep = !this.hasStepped;
+    this.hasStepped = true;
+    if (firstStep && this.turnController.signal.aborted) {
+      await this.closeInterruptedWork(this.inspect().location, this.ownership.lease(), null);
+      await this.setMode(this.prepareMode());
+      return !this.params.abortSignal.aborted;
+    }
     this.turnController = new AbortController();
     this.awaitingUnpause = false;
 
     let inspection = this.inspect();
+    if (inspection.action !== "rectify") this.rectification = null;
     while (inspection.action === "rectify" || inspection.action === "invoke-subagent") {
       if (inspection.action === "rectify") {
         const resolved = await this.rectify(inspection);
@@ -1178,72 +1228,79 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     }
   }
 
-  private async rectify({
+  private prepareRectification({
     location,
     tail,
-    pendingCalls,
-  }: Extract<HistoryInspection<A>, { action: "rectify" }>): Promise<
-    Result<Rectification, "aborted">
-  > {
-    const rectification = rectifiable(this.params.abortSignal);
+  }: Extract<HistoryInspection<A>, { action: "rectify" }>) {
+    const rectification = (this.rectification ??= rectifiable(this.params.abortSignal));
     const retry = () => rectification.resolve({ type: "retry" });
-
-    switch (tail.role) {
-      case "auth-error":
-        await this.setArcMode(location, {
-          mode: "auth-error",
-          authError: tail.authError,
-          control: { retry, clear: () => rectification.resolve({ type: "await-input" }) },
-        });
-        break;
-      case "payment-error":
-      case "rate-limit-error":
-        await this.setArcMode(location, {
-          mode: tail.role,
-          requestError: tail.requestError,
-          control: { retry },
-        });
-        break;
-      case "request-error":
-      case "compaction-error":
-      case "validation-retry-budget-exceeded": {
-        await this.setMode({
-          root: true,
-          mode: tail.role === "compaction-error" ? "compaction-error" : "request-error",
-          requestError:
-            tail.role === "validation-retry-budget-exceeded" ? tail.error : tail.requestError,
-          curl: tail.role === "validation-retry-budget-exceeded" ? null : tail.curl,
-          control: {
-            retry,
-            rewind: async () => {
-              if (!rectification.live) return;
-              rectification.live = false;
-              let removed: readonly AgentIR<A>[] = [];
-              let content: UserMessage["content"] | null = null;
-              for (let index = this.history.length - 1; index >= 0; index--) {
-                const ir = this.history[index] as LlmIR<A>;
-                if (!isUserMessage(ir)) continue;
-                removed = this.history.slice(index);
-                content = ir.content;
-                this.history.length = index;
-                break;
-              }
-              this.steering.take();
-              this.manualCompactionPending = false;
-              await this.emitSteeringChange();
-              await this.params.handler?.rewind?.({ removed, content });
-              if (this.inspect().action !== "wait-for-input") {
-                await this.appendIr(location, { role: "error-dismissed" });
-              }
-              rectification.resolve({ type: "rewind", target: "last-user-message" });
+    const mode = ((): TrajectoryMode<A> => {
+      switch (tail.role) {
+        case "auth-error":
+          return this.arcMode(location, {
+            mode: "auth-error",
+            authError: tail.authError,
+            control: { retry, clear: () => rectification.resolve({ type: "await-input" }) },
+          });
+        case "payment-error":
+        case "rate-limit-error":
+          return this.arcMode(location, {
+            mode: tail.role,
+            requestError: tail.requestError,
+            control: { retry },
+          });
+        case "request-error":
+        case "compaction-error":
+        case "validation-retry-budget-exceeded": {
+          const error = (() => {
+            if (tail.role === "validation-retry-budget-exceeded") {
+              return { mode: "request-error" as const, requestError: tail.error, curl: null };
+            }
+            return { mode: tail.role, requestError: tail.requestError, curl: tail.curl };
+          })();
+          return {
+            root: true,
+            ...error,
+            control: {
+              retry,
+              rewind: async () => {
+                if (!rectification.live) return;
+                rectification.live = false;
+                let removed: readonly AgentIR<A>[] = [];
+                let content: UserMessage["content"] | null = null;
+                for (let index = this.history.length - 1; index >= 0; index--) {
+                  const ir = this.history[index] as LlmIR<A>;
+                  if (!isUserMessage(ir)) continue;
+                  removed = this.history.slice(index);
+                  content = ir.content;
+                  this.history.length = index;
+                  break;
+                }
+                this.steering.take();
+                this.manualCompactionPending = false;
+                await this.emitSteeringChange();
+                await this.params.handler?.rewind?.({ removed, content });
+                if (this.inspect().action !== "wait-for-input") {
+                  await this.appendIr(location, { role: "error-dismissed" });
+                }
+                rectification.resolve({ type: "rewind", target: "last-user-message" });
+              },
             },
-          },
-        });
-        break;
+          };
+        }
       }
-    }
+    })();
+    return { mode, rectification };
+  }
 
+  private async rectify(
+    inspection: Extract<HistoryInspection<A>, { action: "rectify" }>,
+  ): Promise<Result<Rectification, "aborted">> {
+    const { location, pendingCalls } = inspection;
+    const { mode, rectification } = this.prepareRectification(inspection);
+    await this.setMode(mode);
     const resolved = await rectification.resolved;
+    this.rectification = null;
     if (!resolved.success || resolved.data.type === "rewind") return resolved;
     if (this.params.abortSignal.aborted) return err("aborted");
     const retrying = resolved.data.type === "retry" || !location.root || pendingCalls.length > 0;
