@@ -79,7 +79,7 @@ export type LiveMirror = {
 export type LiveTrajectory = {
   instance: Trajectory<typeof octoAgent, ModelData>;
   exitController: AbortController;
-  runPromise: Promise<void>;
+  finished: Promise<void>;
 };
 
 export type BootEnv = {
@@ -607,21 +607,31 @@ export const useAppStore = create<UiState>((set, get) => {
     return {
       instance,
       exitController,
-      runPromise: instance.run().catch(e => {
-        logger.error("info", e);
-        logger.drain();
-        process.exit(1);
-      }),
+      finished: (async () => {
+        try {
+          const control = instance.mode.control;
+          if (control.running) await control.interrupt();
+          await instance.run();
+        } catch (e) {
+          logger.error("info", e);
+          logger.drain();
+          process.exit(1);
+        }
+      })(),
     };
   };
 
   const swapInto = async (
-    args: BootEnv & { session: Session; history: readonly HistoryNode[] },
+    args: BootEnv & {
+      session: Session;
+      history: readonly HistoryNode[];
+      modelOverride: string | null;
+    },
   ): Promise<void> => {
     const current = get().sessionMode;
-    if (current.mode === "live") {
+    if (current.mode !== "booting") {
       current.trajectory.exitController.abort();
-      await current.trajectory.runPromise;
+      await current.trajectory.finished;
     }
     const repairedHistory = repairOrphanedToolOutputs(args.history);
     // Canary builds fail loudly on any remaining pairing violation: after repair, any dangling
@@ -646,7 +656,7 @@ export const useAppStore = create<UiState>((set, get) => {
         liveMode: { trajectoryMode: trajectory.instance.mode, permissionUi: { type: "idle" } },
       }),
       history: repairedHistory,
-      modelOverride: latestModelJson(repairedHistory),
+      modelOverride: args.modelOverride,
       inflightResponse: null,
       queuedSteering: [],
       byteCount: 0,
@@ -656,6 +666,10 @@ export const useAppStore = create<UiState>((set, get) => {
     }));
   };
 
+  const hydrate: SessionControls["hydrate"] = args => {
+    return swapInto({ ...args, modelOverride: latestModelJson(args.history) });
+  };
+
   const newSession = async (
     cwd: string,
     cliArgs: ParsedCliArgs,
@@ -663,8 +677,8 @@ export const useAppStore = create<UiState>((set, get) => {
   ): Promise<Session> => {
     const session = createSession(cwd, cliArgs);
     const modelOverride = get().modelOverride;
-    await swapInto({ session, history: [], ...env });
-    set({ isMenuOpen: false, modelOverride });
+    await swapInto({ session, history: [], modelOverride, ...env });
+    set({ isMenuOpen: false });
     return session;
   };
 
@@ -678,7 +692,7 @@ export const useAppStore = create<UiState>((set, get) => {
     mode: "live",
     ...args,
     control: {
-      hydrate: swapInto,
+      hydrate,
       newSession,
       updateConfig: config => {
         set(state =>
@@ -697,7 +711,7 @@ export const useAppStore = create<UiState>((set, get) => {
     notifyOnce: false,
     sessionMode: {
       mode: "booting",
-      control: { hydrate: swapInto, newSession },
+      control: { hydrate, newSession },
     },
     inflightResponse: null,
     queuedSteering: [],

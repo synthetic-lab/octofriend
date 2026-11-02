@@ -118,7 +118,7 @@ async function runAssistantRequest(opts: {
     },
     onResponseHeaders: async () => {},
   };
-  const messages = await trajectoryAssistantRequest.run<TestAgent, null>({
+  const outcome = await trajectoryAssistantRequest.run<TestAgent, null>({
     model: null,
     messages: opts.messages ?? [{ role: "user", content: [{ type: "text", content: "hi" }] }],
     tools: { search },
@@ -129,10 +129,12 @@ async function runAssistantRequest(opts: {
     },
     transport,
     abortSignal: abortController.signal,
+    quitSignal: new AbortController().signal,
     errorCorrection: opts.errorCorrection,
     handler,
   });
-  return { messages, correctedTools, rollbacks };
+  if (!outcome.success) throw new Error("Unexpected quit during assistant request test");
+  return { messages: outcome.data, correctedTools, rollbacks };
 }
 
 beforeEach(() => {

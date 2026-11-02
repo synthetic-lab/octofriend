@@ -772,7 +772,7 @@ function QuitConfirm() {
       onConfirm={async () => {
         if (trajectory != null) {
           trajectory.exitController.abort();
-          await trajectory.runPromise;
+          await trajectory.finished;
         }
         app.exit();
       }}

@@ -42,7 +42,7 @@ import {
 import type { TrajectoryMode } from "./libocto/trajectory.ts";
 import { meaningfulTailIR } from "./libocto/ir-operations.ts";
 import type { LoadedTools, ToolCall } from "./libocto/tool-def.ts";
-import type { octoAgent } from "./ir/octo-ir.ts";
+import type { octoAgent, OctoIR } from "./ir/octo-ir.ts";
 import type toolMap from "./tools/tool-defs/index.ts";
 import { LocalTransport } from "./transports/local.ts";
 
@@ -103,7 +103,7 @@ afterEach(async () => {
   const mode = useAppStore.getState().sessionMode;
   if (mode.mode === "live") {
     mode.trajectory.exitController.abort();
-    await mode.trajectory.runPromise;
+    await mode.trajectory.finished;
   }
   useAppStore.setState({
     isMenuOpen: false,
@@ -254,7 +254,7 @@ const QUEUE_EXHAUSTED: CompilerQueueItem = () =>
   });
 
 function makeRunCompiler(queue: CompilerQueueItem[]) {
-  const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[] }> = [];
+  const calls: Array<{ irs: Array<LoweredIR<any>>; tools: string[]; model: ModelData }> = [];
   const runCompiler: Compiler<ModelData> = async <
     A extends Agent<any, any, any>,
     Tools extends Partial<LoadedTools<A["tools"]>> | undefined = undefined,
@@ -264,6 +264,7 @@ function makeRunCompiler(queue: CompilerQueueItem[]) {
     calls.push({
       irs: [...params.irs] as Array<LoweredIR<any>>,
       tools: Object.keys(params.tools ?? {}),
+      model: params.model,
     });
     const next = queue.shift() ?? QUEUE_EXHAUSTED;
     const result = await next(params.onTokens, params);
@@ -461,6 +462,175 @@ describe("boot and response mirror", () => {
     const firstId = first.session.metadata.sessionId!;
     expect(secondId).not.toBe(firstId);
     expect(dbLlmIrCount(firstId, "first-assistant-marker")).toBe(1);
+  });
+
+  it("installs the selected model before accepting new-session input", async () => {
+    await bootSession([]);
+    const previous = currentLive()!.trajectory.instance;
+    const selectedModel = {
+      ...agentConfig.models[0],
+      nickname: "selected-model",
+      model: "selected-model",
+    };
+    useAppStore.getState().setModelOverride(selectedModel);
+
+    let submitted = false;
+    const installedModels: Array<string | null> = [];
+    const enqueued = deferred();
+    const unsubscribe = useAppStore.subscribe(state => {
+      const session = state.sessionMode;
+      if (submitted || session.mode !== "live" || session.trajectory.instance === previous) return;
+      const mode = session.liveMode.trajectoryMode;
+      if (mode.mode !== "ready-for-request") return;
+      submitted = true;
+      installedModels.push(state.modelOverride);
+      enqueued.resolve(mode.control.enqueueSteering([{ type: "text", content: "first request" }]));
+    });
+    try {
+      const { runCompiler, calls: compilerCalls } = makeRunCompiler([
+        plain("selected-model response"),
+      ]);
+      await bootControls.newSession(
+        process.cwd(),
+        { kind: "local" },
+        {
+          config: { ...agentConfig, models: [...agentConfig.models, selectedModel] },
+          transport: new LocalTransport(),
+          runCompiler,
+        },
+      );
+      expect(submitted).toBe(true);
+      expect(installedModels).toEqual([serializeModelJson(selectedModel)]);
+      await enqueued.promise;
+      await waitFor(() => compilerCalls.length > 0);
+      await waitTrajectoryMode("ready-for-request");
+
+      expect(compilerCalls).toHaveLength(1);
+      expect(compilerCalls[0].model.model).toEqual(selectedModel);
+      expect(compilerCalls[0].irs).toEqual([
+        { role: "user", content: [{ type: "text", content: "first request" }] },
+      ]);
+      expect(useAppStore.getState().modelOverride).toBe(serializeModelJson(selectedModel));
+    } finally {
+      unsubscribe();
+      useAppStore.getState().setModelOverride(agentConfig.models[0]);
+    }
+  });
+});
+
+describe("runnable session hydration", () => {
+  it("restores an unanswered user prompt without making a request", async () => {
+    const { session, compilerCalls } = await hydrateSession(
+      [
+        {
+          type: "llm-ir",
+          ir: { role: "user", content: [{ type: "text", content: "unfinished prompt" }] },
+        },
+      ],
+      [plain("must not execute")],
+    );
+    await waitTrajectoryMode("ready-for-request");
+    await waitFor(() => useAppStore.getState().history.length === 0);
+    expect(useAppStore.getState().query).toBe("unfinished prompt");
+    expect(compilerCalls).toEqual([]);
+    expect(dbNodeCount(session.metadata.sessionId!)).toBe(0);
+  });
+
+  it("keeps a draft while interrupting an unanswered saved prompt", async () => {
+    useAppStore.getState().setQuery("existing draft");
+    const { session, compilerCalls } = await hydrateSession(
+      [
+        {
+          type: "llm-ir",
+          ir: { role: "user", content: [{ type: "text", content: "unfinished prompt" }] },
+        },
+      ],
+      [plain("must not execute")],
+    );
+    await waitTrajectoryMode("ready-for-request");
+    expect(compilerCalls).toEqual([]);
+    expect(useAppStore.getState().query).toBe("existing draft");
+    expect(historyRoles()).toEqual(["user", "interrupted-by-user"]);
+    expect(loadSession(session.metadata.sessionId!)?.history).toEqual(
+      JSON.parse(JSON.stringify(useAppStore.getState().history)),
+    );
+  });
+
+  it.each([false, true])(
+    "interrupts saved delegation work without running it (child already inserted=%s)",
+    async inserted => {
+      const delegate: Extract<ToolCall<typeof toolMap>, { name: "explore" }> = {
+        type: "tool-call",
+        name: "explore",
+        toolCallId: "delegate",
+        original: { task: "inspect" },
+        parsed: { task: "inspect" },
+      };
+      const read: Extract<ToolCall<typeof toolMap>, { name: "read" }> = {
+        type: "tool-call",
+        name: "read",
+        toolCallId: "child-read",
+        original: { filePath: "/must-not-read" },
+        parsed: { filePath: "/must-not-read" },
+      };
+      const child: Extract<OctoIR, { role: "subagent-trajectory" }> = {
+        role: "subagent-trajectory",
+        subagent: "explore",
+        toolCall: delegate,
+        task: [{ type: "text", content: "inspect" }],
+        ir: [
+          { role: "user", content: [{ type: "text", content: "inspect" }] },
+          { role: "assistant", content: "", usage: compilerUsage(1, 1), toolCalls: [read] },
+        ],
+      };
+      const irs: OctoIR[] = [
+        { role: "user", content: [{ type: "text", content: "run" }] },
+        assistantMessage({ toolCalls: [delegate, shellCall("pending", "echo must-not-run")] }),
+        {
+          role: "tool-invoke-subagent",
+          subagent: "explore",
+          toolCall: delegate,
+          message: child.task,
+        },
+      ];
+      if (inserted) irs.push(child);
+      const { session, nodes, compilerCalls } = await hydrateSession(
+        irs.map(ir => ({ type: "llm-ir", ir })),
+        [plain("must not execute")],
+      );
+      await waitTrajectoryMode("ready-for-request");
+      expect(compilerCalls).toEqual([]);
+      expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
+      const children = useAppStore
+        .getState()
+        .history.filter(node => node.type === "llm-ir" && node.ir.role === "subagent-trajectory");
+      expect(children).toHaveLength(inserted ? 1 : 0);
+      if (inserted) {
+        expect(children[0].nodeId).toBe(nodes[3].nodeId);
+        expect(child.ir.map(ir => ir.role)).toEqual([
+          "user",
+          "assistant",
+          "tool-skip-output",
+          "interrupted-by-user",
+        ]);
+      }
+      expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+      expect(loadSession(session.metadata.sessionId!)?.history).toEqual(
+        JSON.parse(JSON.stringify(useAppStore.getState().history)),
+      );
+    },
+  );
+
+  it("swapping away from unfinished work preserves the previous session", async () => {
+    const { session } = await bootSession([
+      () => okResult(assistantMessage({ toolCalls: [shellCall("pending", "echo must-not-run")] })),
+    ]);
+    await respond("run");
+    await waitPermissionUi("prompt");
+    const saved = JSON.parse(JSON.stringify(useAppStore.getState().history));
+    await bootSession([]);
+    expect(loadSession(session.metadata.sessionId!)?.history).toEqual(saved);
+    expect(useAppStore.getState().history).toEqual([]);
   });
 });
 
@@ -734,7 +904,7 @@ describe("permission gate mirror", () => {
     expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
   });
 
-  it("exiting mid-run skip-marks and persists every unanswered call", async () => {
+  it("quit preserves unanswered calls and loading deliberately interrupts them without execution", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "octo-state-test-"));
     tempDirs.push(dir);
     const marker = path.join(dir, "started");
@@ -749,27 +919,42 @@ describe("permission gate mirror", () => {
     (await waitPermissionUi("prompt")).control.allow();
     await waitFor(() => existsSync(marker));
 
-    // The menu-quit / double-Ctrl-C path: the process can't wait for the running tool to
-    // settle, so exit skip-marks every unanswered call before run() resolves.
+    const saved = JSON.stringify(useAppStore.getState().history);
     const live = currentLive()!;
     live.trajectory.exitController.abort();
-    await live.trajectory.runPromise;
+    await live.trajectory.finished;
 
     expect(currentLive()!.liveMode.trajectoryMode.mode).toBe("aborted");
-    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual([]);
+    expect(JSON.stringify(useAppStore.getState().history)).toBe(saved);
+    expect(unansweredToolCallIds(useAppStore.getState().history)).toEqual(["call_a", "call_b"]);
+    const sessionId = session.metadata.sessionId!;
+    const loaded = loadSession(sessionId);
+    if (loaded == null) throw new Error("Expected saved session");
+    expect(loaded.history).toEqual(JSON.parse(saved));
+
+    const compiler = makeRunCompiler([]);
+    await bootControls.hydrate({
+      ...loaded,
+      config: agentConfig,
+      transport: new LocalTransport(),
+      runCompiler: compiler.runCompiler,
+    });
+    await waitTrajectoryMode("ready-for-request");
+    expect(compiler.calls).toEqual([]);
+    expect(currentLive()!.liveMode.permissionUi.type).toBe("idle");
     expect(historyRoles()).toEqual([
       "user",
       ...assistantSnapshot,
       "tool-skip-output",
       "tool-skip-output",
     ]);
-
-    const sessionId = session.metadata.sessionId!;
-    expect(dbLlmIrCount(sessionId, "exited while this tool was running")).toBe(1);
     expect(answerCountsByToolCallId(useAppStore.getState().history)).toEqual({
       call_a: 1,
       call_b: 1,
     });
+    expect(loadSession(sessionId)?.history).toEqual(
+      JSON.parse(JSON.stringify(useAppStore.getState().history)),
+    );
   }, 30_000);
 });
 
@@ -1198,6 +1383,7 @@ describe("inputFieldAvailable", () => {
     root: true,
     mode: "ready-for-request",
     control: {
+      running: false,
       enqueueSteering: async () => {},
       requestCompaction: () => false,
       rewindTo: async () => {},
@@ -1208,7 +1394,7 @@ describe("inputFieldAvailable", () => {
     mode: "request-error",
     requestError: "boom",
     curl: null,
-    control: { retry: () => {}, rewind: async () => {} },
+    control: { running: false, retry: () => {}, rewind: async () => {} },
   };
 
   it("is available when ready for a request", () => {
@@ -1223,6 +1409,7 @@ describe("inputFieldAvailable", () => {
       toolCalls: [toolCall],
       toolCall,
       control: {
+        running: true,
         enqueueSteering: async () => {},
         requestCompaction: () => false,
         interrupt: async () => {},
@@ -1237,6 +1424,8 @@ describe("inputFieldAvailable", () => {
   });
 
   it("is hidden when aborted", () => {
-    expect(inputFieldAvailable({ root: true, mode: "aborted" }, idle)).toBe(false);
+    expect(
+      inputFieldAvailable({ root: true, mode: "aborted", control: { running: false } }, idle),
+    ).toBe(false);
   });
 });

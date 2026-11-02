@@ -65,7 +65,12 @@ export type InputControl = {
 };
 
 export type RunningControl = InputControl & {
+  running: true;
   interrupt(): Promise<void>;
+};
+
+export type PausedControl = {
+  running: false;
 };
 
 export type RetryControl = {
@@ -152,9 +157,9 @@ type SharedArcModes<Call, Permissioned extends boolean> =
       toolCall: Call;
       control: RunningControl;
     }
-  | { mode: "payment-error"; requestError: string; control: RetryControl }
-  | { mode: "rate-limit-error"; requestError: string; control: RetryControl }
-  | { mode: "auth-error"; authError: string; control: RetryControl & ClearControl }
+  | { mode: "payment-error"; requestError: string; control: RetryControl & PausedControl }
+  | { mode: "rate-limit-error"; requestError: string; control: RetryControl & PausedControl }
+  | { mode: "auth-error"; authError: string; control: RetryControl & ClearControl & PausedControl }
   | ([Permissioned] extends [true]
       ? {
           mode: "tool-call-permission";
@@ -167,20 +172,20 @@ type SharedArcModes<Call, Permissioned extends boolean> =
 // Arms only the root arc can be in: children never await input, and inside a trajectory
 // request/compaction failures are terminal records, so they never park for rectification.
 type RootOnlyModes<A extends Agent<any, any, any>> =
-  | { mode: "ready-for-request"; control: InputControl & EditControl<A> }
+  | { mode: "ready-for-request"; control: InputControl & EditControl<A> & PausedControl }
   | {
       mode: "request-error";
       requestError: string;
       curl: string | null;
-      control: RectifyControl;
+      control: RectifyControl & PausedControl;
     }
   | {
       mode: "compaction-error";
       requestError: string;
       curl: string | null;
-      control: RectifyControl;
+      control: RectifyControl & PausedControl;
     }
-  | { mode: "aborted" };
+  | { mode: "aborted"; control: PausedControl };
 
 // Distributes both unions into flat members, so root/subagent names and modes are ordinary
 // top-level discriminants that preserve every member's correlated payload types.
@@ -351,7 +356,14 @@ export type RequestErrorRetriesConfig = {
 
 export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   TrajectoryAssistantRequestParams<A, Model>,
-  "handler" | "abortSignal" | "model" | "tools" | "lowerMessages" | "toolData" | "errorCorrection"
+  | "handler"
+  | "abortSignal"
+  | "quitSignal"
+  | "model"
+  | "tools"
+  | "lowerMessages"
+  | "toolData"
+  | "errorCorrection"
 > & {
   agent: A;
   toolData: AgentToolData<A> &
@@ -361,7 +373,6 @@ export type TrajectoryParams<A extends Agent<any, any, any>, Model> = Omit<
   validationRetries?: number | null;
   // Omitting this configuration disables automatic request retries.
   requestErrorRetries?: RequestErrorRetriesConfig;
-  // Exit-level signal: firing it ends the trajectory (lands in the "aborted" mode).
   abortSignal: AbortSignal;
   handler?: TrajectoryHandler<A>;
   // Re-resolved each active step, so a retry always sees fresh credentials and config; a
@@ -457,8 +468,6 @@ async function waitForUnpause(
 const ABORTED_TOOL_SKIP_REASON = "The user aborted the response, so this tool was skipped";
 const REJECTED_TOOL_SKIP_REASON = "A previous tool call was rejected, so this tool was skipped";
 const FAILED_TOOL_SKIP_REASON = "The tool batch failed unexpectedly, so this tool was skipped";
-const EXIT_RUNNING_TOOL_SKIP_REASON =
-  "The user exited while this tool was running, so its output was not recorded";
 const INTERRUPTED_BY_USER_REASON = "The user interrupted this subagent.";
 
 type RunArgsFor<Def> = Def extends { run: (args: infer Args) => unknown } ? Args : never;
@@ -572,10 +581,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     params.abortSignal.addEventListener(
       "abort",
       () => {
-        this._finish = this._finish.then(async () => {
-          if (this.hasStepped) await this.markExitSkips();
-          await this.setMode({ root: true, mode: "aborted" });
-        });
+        this.ownership.consume();
+        this._finish = this.setMode({ root: true, mode: "aborted", control: { running: false } });
       },
       { once: true },
     );
@@ -638,8 +645,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     };
   }
 
-  private readyControl(): InputControl & EditControl<A> {
-    return { ...this.inputControl(), ...this.editControl() };
+  private readyControl(): InputControl & EditControl<A> & PausedControl {
+    return { running: false, ...this.inputControl(), ...this.editControl() };
   }
 
   private editControl(): EditControl<A> {
@@ -675,7 +682,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   }
 
   private runningControl(): RunningControl {
-    return { ...this.inputControl(), ...this.interruptControl() };
+    return { running: true, ...this.inputControl(), ...this.interruptControl() };
   }
 
   private async setMode(mode: TrajectoryMode<A>): Promise<void> {
@@ -704,7 +711,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
 
   private prepareMode(): TrajectoryMode<A> {
     const mode = ((): TrajectoryMode<A> => {
-      if (this.params.abortSignal.aborted) return { root: true, mode: "aborted" };
+      if (this.params.abortSignal.aborted) {
+        return { root: true, mode: "aborted", control: { running: false } };
+      }
       const inspection = this.inspect();
       switch (inspection.action) {
         case "wait-for-input":
@@ -791,7 +800,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     location: ActiveHistory<A>,
     irs: Array<TreeIR<A> | ToolRejectMessage<A["tools"]>>,
   ): Promise<void> {
-    if (irs.length === 0) return;
+    if (this.params.abortSignal.aborted || irs.length === 0) return;
     // The selected history is a member of this tree, not a root history. The operation's
     // producer supplies its own agent's IR; rejects are only produced when the gate exists.
     const history = location.history as Array<TreeIR<A>>;
@@ -801,21 +810,9 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     await this.params.handler?.onMessages?.(event as ScopedMessages<A>);
   }
 
-  // Fires on the exit signal: when the process dies mid-batch, every call without a recorded
-  // answer gets a skip marker, since nothing may run after this. Markers append one at a time,
-  // awaiting onMessages each time: the client owns serialization and must have finished
-  // persisting before run() resolves.
-  private async markExitSkips(): Promise<void> {
-    const owner = this.ownership.consume();
-    const inspection = this.inspect();
-    const running = this._mode.mode === "running-tool" ? this._mode.toolCall.toolCallId : null;
-    await this.closeInterruptedWork(inspection.location, owner, running);
-  }
-
   private async closeInterruptedWork(
     location: ActiveHistory<A>,
     owner: OwnershipLockRef,
-    running: string | null,
   ): Promise<void> {
     while (true) {
       const inspection = this.inspect();
@@ -825,10 +822,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             await this.appendIr(location, {
               role: "tool-skip-output",
               toolCall,
-              reason:
-                toolCall.toolCallId === running
-                  ? EXIT_RUNNING_TOOL_SKIP_REASON
-                  : ABORTED_TOOL_SKIP_REASON,
+              reason: ABORTED_TOOL_SKIP_REASON,
             });
           });
         }
@@ -853,7 +847,6 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       // Another owner may have taken over shutdown while persistence was awaited.
       if (next.location.history === location.history) return;
       location = next.location;
-      running = null;
     }
   }
 
@@ -867,7 +860,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   private async runAssistantRequest(
     location: ActiveHistory<A>,
     { model, tools: allTools, modalities }: RuntimeData<A, Model>,
-  ): Promise<Array<TreeIR<A>>> {
+  ): Promise<Result<Array<TreeIR<A>>, "quit">> {
     const params = this.params;
     const scope = this.scope(location);
     const lowerMessages = this.lowerForLocation(location, modalities);
@@ -891,7 +884,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         systemPrompt,
         transport: params.transport,
         errorCorrection: params.errorCorrection as ErrorCorrection<B> | undefined,
-        abortSignal: combineSignals([params.abortSignal, this.turnController.signal]),
+        abortSignal: this.turnController.signal,
+        quitSignal: params.abortSignal,
         handler: {
           startResponse: async event => {
             receivedTokens = false;
@@ -958,7 +952,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const firstStep = !this.hasStepped;
     this.hasStepped = true;
     if (firstStep && this.turnController.signal.aborted) {
-      await this.closeInterruptedWork(this.inspect().location, this.ownership.lease(), null);
+      await this.closeInterruptedWork(this.inspect().location, this.ownership.lease());
       await this.setMode(this.prepareMode());
       return !this.params.abortSignal.aborted;
     }
@@ -977,7 +971,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       if (this.params.abortSignal.aborted) return false;
       inspection = this.inspect();
       if (this.turnController.signal.aborted) {
-        await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+        await this.closeInterruptedWork(inspection.location, this.ownership.lease());
         return true;
       }
     }
@@ -986,7 +980,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       await this.waitRetry(inspection.location);
       if (this.params.abortSignal.aborted) return false;
       if (this.turnController.signal.aborted) {
-        await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+        await this.closeInterruptedWork(inspection.location, this.ownership.lease());
         return true;
       }
     }
@@ -1068,7 +1062,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       const batch = await this.runToolBatch(work, runtime);
       if (!batch.success) {
         if (this.params.abortSignal.aborted) return false;
-        await this.closeInterruptedWork(location, this.ownership.lease(), null);
+        await this.closeInterruptedWork(location, this.ownership.lease());
         return true;
       }
       if (this.params.abortSignal.aborted) return false;
@@ -1078,7 +1072,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         if (this.params.abortSignal.aborted) return false;
         inspection = this.inspect();
         if (this.turnController.signal.aborted) {
-          await this.closeInterruptedWork(inspection.location, this.ownership.lease(), null);
+          await this.closeInterruptedWork(inspection.location, this.ownership.lease());
           return true;
         }
       }
@@ -1154,7 +1148,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
     const scope = this.scope(location);
-    const ir = await trajectoryCompaction.run<A, Model>({
+    const result = await trajectoryCompaction.run<A, Model>({
       model: runtime.model,
       messages: this.lowerForLocation(
         location,
@@ -1162,7 +1156,8 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
       )(location.history).map(pair => pair.converted),
       runCompiler: this.params.runCompiler,
       transport: this.params.transport,
-      abortSignal: combineSignals([this.params.abortSignal, this.turnController.signal]),
+      abortSignal: this.turnController.signal,
+      quitSignal: this.params.abortSignal,
       autofixJson: this.params.errorCorrection?.json,
       handler: {
         startCompaction: async event => {
@@ -1174,13 +1169,13 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         },
       },
     });
-    if (this.params.abortSignal.aborted) return;
+    if (!result.success || this.params.abortSignal.aborted) return;
     await owner.ifOwner(() => {
-      if (location.root && ir.role === "checkpoint") this.manualCompactionPending = false;
-      return this.appendIrs(location, requestSnapshot([ir], retryBudget));
+      if (location.root && result.data.role === "checkpoint") this.manualCompactionPending = false;
+      return this.appendIrs(location, requestSnapshot([result.data], retryBudget));
     });
     if (this.turnController.signal.aborted) {
-      await this.closeInterruptedWork(location, owner, null);
+      await this.closeInterruptedWork(location, owner);
     }
   }
 
@@ -1220,11 +1215,11 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
   ): Promise<void> {
     const owner = this.ownership.lease();
     const retryBudget = this.retryBudget;
-    const irs = await this.runAssistantRequest(location, runtimeData);
-    if (this.params.abortSignal.aborted) return;
-    await owner.ifOwner(() => this.appendIrs(location, requestSnapshot(irs, retryBudget)));
+    const result = await this.runAssistantRequest(location, runtimeData);
+    if (!result.success || this.params.abortSignal.aborted) return;
+    await owner.ifOwner(() => this.appendIrs(location, requestSnapshot(result.data, retryBudget)));
     if (this.turnController.signal.aborted) {
-      await this.closeInterruptedWork(location, owner, null);
+      await this.closeInterruptedWork(location, owner);
     }
   }
 
@@ -1240,14 +1235,18 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
           return this.arcMode(location, {
             mode: "auth-error",
             authError: tail.authError,
-            control: { retry, clear: () => rectification.resolve({ type: "await-input" }) },
+            control: {
+              running: false,
+              retry,
+              clear: () => rectification.resolve({ type: "await-input" }),
+            },
           });
         case "payment-error":
         case "rate-limit-error":
           return this.arcMode(location, {
             mode: tail.role,
             requestError: tail.requestError,
-            control: { retry },
+            control: { running: false, retry },
           });
         case "request-error":
         case "compaction-error":
@@ -1262,6 +1261,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
             root: true,
             ...error,
             control: {
+              running: false,
               retry,
               rewind: async () => {
                 if (!rectification.live) return;
@@ -1460,6 +1460,7 @@ export class Trajectory<A extends Agent<any, any, any>, Model> {
         current = this.inspect();
       }
     } catch (e) {
+      if (this.params.abortSignal.aborted) return err("aborted");
       await skipPending(FAILED_TOOL_SKIP_REASON);
       throw e;
     }

@@ -19,16 +19,13 @@ export function ExitOnDoubleCtrlC({ children }: { children: React.ReactNode }) {
   const trajectory = useAppStore(state =>
     state.sessionMode.mode === "live" ? state.sessionMode.trajectory : null,
   );
-  useCtrlC(() => {
+  useCtrlC(async () => {
     if (ctrlCPressed) {
       if (trajectory != null) {
         trajectory.exitController.abort();
-        // Exit only once the trajectory has recorded skip markers for unanswered tool calls,
-        // so the session history stays well-formed on resume.
-        void trajectory.runPromise.then(() => exit());
-      } else {
-        exit();
+        await trajectory.finished;
       }
+      exit();
     } else {
       setCtrlCPressed(true);
       setTimeout(() => setCtrlCPressed(false), 2000).unref();

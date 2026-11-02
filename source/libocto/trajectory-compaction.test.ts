@@ -35,6 +35,7 @@ describe("trajectoryCompaction", () => {
         messages: [],
         transport,
         abortSignal: interrupt.signal,
+        quitSignal: new AbortController().signal,
         runCompiler: async params => {
           calls++;
           return summaryCompiler(params);
@@ -46,7 +47,7 @@ describe("trajectoryCompaction", () => {
           },
         },
       });
-      expect(outcome).toMatchObject(interrupted);
+      expect(outcome).toMatchObject({ success: true, data: interrupted });
       expect(calls).toBe(0);
       expect(starts).toBe(when === "before-start" ? 0 : 1);
     },
@@ -62,6 +63,7 @@ describe("trajectoryCompaction", () => {
         messages: [],
         transport,
         abortSignal: interrupt.signal,
+        quitSignal: new AbortController().signal,
         runCompiler: async params => {
           await params.onTokens("partial summary", "content");
           interrupt.abort();
@@ -77,7 +79,7 @@ describe("trajectoryCompaction", () => {
           },
         },
       });
-      expect(outcome).toMatchObject(interrupted);
+      expect(outcome).toMatchObject({ success: true, data: interrupted });
       expect(progress).toEqual(["partial summary"]);
     },
   );
@@ -88,11 +90,15 @@ describe("trajectoryCompaction", () => {
       messages: [],
       transport,
       abortSignal: new AbortController().signal,
+      quitSignal: new AbortController().signal,
       runCompiler: summaryCompiler,
     });
     expect(outcome).toMatchObject({
-      role: "checkpoint",
-      content: expect.arrayContaining([{ type: "text", content: "completed summary" }]),
+      success: true,
+      data: {
+        role: "checkpoint",
+        content: expect.arrayContaining([{ type: "text", content: "completed summary" }]),
+      },
     });
   });
 
@@ -102,13 +108,38 @@ describe("trajectoryCompaction", () => {
       messages: [],
       transport,
       abortSignal: new AbortController().signal,
+      quitSignal: new AbortController().signal,
       runCompiler: async () => err({ type: "request-error", requestError: "failed", curl: "curl" }),
     });
     expect(outcome).toMatchObject({
-      role: "compaction-error",
-      requestError: "failed",
-      curl: "curl",
+      success: true,
+      data: { role: "compaction-error", requestError: "failed", curl: "curl" },
     });
+  });
+
+  it.each([false, true])("quit wins over interruption (already cancelled=%s)", async cancelled => {
+    const interrupt = new AbortController();
+    const quit = new AbortController();
+    let calls = 0;
+    if (cancelled) {
+      interrupt.abort();
+      quit.abort();
+    }
+    const outcome = await trajectoryCompaction.run({
+      model: null,
+      messages: [],
+      transport,
+      abortSignal: interrupt.signal,
+      quitSignal: quit.signal,
+      runCompiler: async params => {
+        calls++;
+        interrupt.abort();
+        quit.abort();
+        return summaryCompiler(params);
+      },
+    });
+    expect(outcome).toEqual(err("quit"));
+    expect(calls).toBe(cancelled ? 0 : 1);
   });
 
   it("propagates exceptions when the signal is not aborted", async () => {
@@ -118,6 +149,7 @@ describe("trajectoryCompaction", () => {
         messages: [],
         transport,
         abortSignal: new AbortController().signal,
+        quitSignal: new AbortController().signal,
         runCompiler: async () => {
           throw new Error("compiler failed");
         },
